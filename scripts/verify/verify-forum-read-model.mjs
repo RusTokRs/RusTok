@@ -54,8 +54,8 @@ function verifyStatic() {
   const flexAttached = text(paths.flexAttached);
   const flexLib = text(paths.flexLib);
   const topicService = text(paths.topicService);
-  const sharedOrder = "crates/modules/rustok-forum/src/services/topic_visibility_list.rs";
-  const service = `${text(paths.serviceOwner)}\n${text(sharedOrder)}`;
+  const sharedOrder = paths.topicService;
+  const service = text(paths.serviceOwner);
   const compatibility = text(paths.compatibility);
   const categoryOwner = text(paths.categoryOwner);
   const servicesRegistry = text(paths.servicesRegistry);

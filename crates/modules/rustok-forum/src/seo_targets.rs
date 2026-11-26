@@ -6,8 +6,8 @@ use rustok_seo_targets::{
     SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
     SeoTargetCapabilities, SeoTargetError, SeoTargetLoadRequest, SeoTargetLoadScope,
     SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetResult as AnyResult,
-    SeoTargetRouteResolveRequest, SeoTargetRuntimeContext, SeoTargetSitemapRequest,
-    SeoTargetSlug, SeoTemplateFieldMap, builtin_slug, populate_image_template_fields, schema,
+    SeoTargetRouteResolveRequest, SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug,
+    SeoTemplateFieldMap, builtin_slug, populate_image_template_fields, schema,
 };
 use url::Url;
 use uuid::Uuid;
@@ -30,6 +30,22 @@ pub(crate) fn seo_settings_providers(runtime: &SeoTargetRuntimeContext) -> Forum
         Some(reader) => ForumSettingsProviders::default().with_static_reader(reader),
         None => ForumSettingsProviders::default(),
     }
+}
+
+pub(crate) fn seo_taxonomy_port(
+    runtime: &SeoTargetRuntimeContext,
+) -> std::sync::Arc<dyn crate::ForumTaxonomyPort> {
+    runtime
+        .runtime_extensions
+        .get::<std::sync::Arc<dyn crate::ForumTaxonomyPort>>()
+        .cloned()
+        .unwrap_or_else(|| std::sync::Arc::new(crate::NoopForumTaxonomyPort))
+}
+
+pub(crate) fn seo_category_route_service(
+    runtime: &SeoTargetRuntimeContext,
+) -> crate::ForumCategoryRouteService {
+    crate::ForumCategoryRouteService::new(runtime.db.clone()).with_port(seo_taxonomy_port(runtime))
 }
 
 #[derive(Clone, Default)]
@@ -63,7 +79,8 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
         runtime: &SeoTargetRuntimeContext,
         request: SeoTargetLoadRequest<'_>,
     ) -> AnyResult<Option<SeoLoadedTargetRecord>> {
-        let service = CategoryService::new(runtime.db.clone());
+        let service =
+            CategoryService::new(runtime.db.clone()).with_taxonomy_port(seo_taxonomy_port(runtime));
         let category = optional_category(
             service
                 .get_with_locale_fallback(
@@ -114,7 +131,8 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
         runtime: &SeoTargetRuntimeContext,
         request: SeoTargetBulkPageRequest<'_>,
     ) -> AnyResult<SeoBulkSummaryPage> {
-        let service = CategoryService::new(runtime.db.clone());
+        let service =
+            CategoryService::new(runtime.db.clone()).with_taxonomy_port(seo_taxonomy_port(runtime));
         let after = request
             .after
             .map(Uuid::parse_str)
@@ -157,7 +175,8 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
         runtime: &SeoTargetRuntimeContext,
         request: SeoTargetSitemapRequest<'_>,
     ) -> AnyResult<Vec<SeoSitemapCandidateRecord>> {
-        let service = CategoryService::new(runtime.db.clone());
+        let service =
+            CategoryService::new(runtime.db.clone()).with_taxonomy_port(seo_taxonomy_port(runtime));
         let mut page_number = 1_u64;
         let mut candidates = Vec::new();
 
@@ -230,6 +249,7 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
             // plus every inherited category layer and the topic-local layer.
             SeoTargetLoadScope::PublicRoute => {
                 ForumTopicAudienceReadService::new(runtime.db.clone(), runtime.event_bus.clone())
+                    .with_taxonomy_port(seo_taxonomy_port(runtime))
                     .with_settings_providers(seo_settings_providers(runtime))
                     .get_public_storefront_visible_with_locale_fallback(
                         request.tenant_id,
@@ -242,7 +262,8 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                     .map_err(SeoTargetError::provider)?
             }
             SeoTargetLoadScope::Authoring => {
-                let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone());
+                let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone())
+                    .with_taxonomy_port(seo_taxonomy_port(runtime));
                 optional_topic(
                     service
                         .get_with_locale_fallback(
@@ -306,7 +327,8 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         runtime: &SeoTargetRuntimeContext,
         request: SeoTargetBulkPageRequest<'_>,
     ) -> AnyResult<SeoBulkSummaryPage> {
-        let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone());
+        let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone())
+            .with_taxonomy_port(seo_taxonomy_port(runtime));
         // SEO summaries are public: the public read context hides pending topics and restricted
         // categories, as the storefront does. The system context would list held topics.
         let page = service
@@ -353,11 +375,13 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         runtime: &SeoTargetRuntimeContext,
         request: SeoTargetSitemapRequest<'_>,
     ) -> AnyResult<Vec<SeoSitemapCandidateRecord>> {
-        let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone());
+        let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone())
+            .with_taxonomy_port(seo_taxonomy_port(runtime));
         // Sitemap candidates are public: the owner list applies the storefront audience
         // contract before pagination, so restricted topics never reach the sitemap.
         let audience_list =
             ForumTopicAudienceListService::new(runtime.db.clone(), runtime.event_bus.clone())
+                .with_taxonomy_port(seo_taxonomy_port(runtime))
                 .with_settings_providers(seo_settings_providers(runtime));
         let mut after: Option<String> = None;
         let mut candidates = Vec::new();

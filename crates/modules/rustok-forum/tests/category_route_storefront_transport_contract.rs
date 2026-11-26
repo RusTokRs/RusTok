@@ -19,7 +19,7 @@ fn graphql_route_resolution_rechecks_exact_category_visibility() {
     let source = read("crates/modules/rustok-forum/src/graphql/category_route_query.rs");
     for marker in [
         "forum_storefront_category_route",
-        "ForumCategoryRouteService::new(db.clone())",
+        ".category_route_service(db.clone())",
         "Some(tenant.default_locale.as_str())",
         "runtime.category_audience_read_service(db.clone())",
         "ForumCategoryReadOperation::SelectedCategory",
@@ -36,9 +36,8 @@ fn graphql_route_resolution_rechecks_exact_category_visibility() {
 
 #[test]
 fn native_route_resolution_uses_trusted_context_and_same_owners() {
-    let source = read(
-        "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_category_route.rs",
-    );
+    let source =
+        read("crates/modules/rustok-forum/storefront/src/transport/native_server_adapter.rs");
     for marker in [
         "expect_context::<HostRuntimeContext>()",
         "extract::<TenantContext>()",
@@ -50,7 +49,7 @@ fn native_route_resolution_uses_trusted_context_and_same_owners() {
         "ForumCategoryReadOperation::SelectedCategory",
         "get_authenticated_storefront_list_visible_with_audience_context",
         "get_public_storefront_visible_with_locale_fallback",
-        "is_module_enabled(channel_id, \"forum\")",
+        "is_module_enabled_for_tenant(tenant_id, channel_id, \"forum\")",
     ] {
         assert!(source.contains(marker), "missing native marker: {marker}");
     }
@@ -60,8 +59,7 @@ fn native_route_resolution_uses_trusted_context_and_same_owners() {
 
 #[test]
 fn storefront_deep_link_uses_existing_category_list_permission_boundary() {
-    let inline_owner =
-        read("crates/modules/rustok-forum/src/services/category_audience_read_inline.rs");
+    let inline_owner = read("crates/modules/rustok-forum/src/services/category_audience_read.rs");
     let contract = read(
         "crates/modules/rustok-forum/contracts/forum-category-route-storefront-transport.json",
     );
@@ -77,12 +75,9 @@ fn storefront_deep_link_uses_existing_category_list_permission_boundary() {
 #[test]
 fn public_dto_and_adapters_have_graphql_native_parity() {
     let model = read("crates/modules/rustok-forum/storefront/src/model.rs");
-    let graphql = read(
-        "crates/modules/rustok-forum/storefront/src/transport/category_route_graphql_adapter.rs",
-    );
-    let native = read(
-        "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_category_route.rs",
-    );
+    let graphql = read("crates/modules/rustok-forum/storefront/src/transport/graphql_adapter.rs");
+    let native =
+        read("crates/modules/rustok-forum/storefront/src/transport/native_server_adapter.rs");
     let transport = read("crates/modules/rustok-forum/storefront/src/transport/mod.rs");
     let storefront_lib = read("crates/modules/rustok-forum/storefront/src/lib.rs");
 
@@ -108,8 +103,7 @@ fn transport_slice_does_not_mount_or_add_seo_policy() {
     let contract = read(
         "crates/modules/rustok-forum/contracts/forum-category-route-storefront-transport.json",
     );
-    let docs =
-        read("crates/modules/rustok-forum/docs/forum-24n-category-route-storefront-transport.md");
+    let docs = read("crates/modules/rustok-forum/docs/README.md");
     for marker in [
         "\"category_route_mounted_in_host\": false",
         "\"category_links_changed\": false",
@@ -122,6 +116,7 @@ fn transport_slice_does_not_mount_or_add_seo_policy() {
             "missing contract marker: {marker}"
         );
     }
-    assert!(docs.contains("No tests, verifiers, formatting, Cargo commands"));
-    assert!(docs.contains("No host router or UI invokes it in this slice"));
+    // The FORUM-24N contract records that historical slice, not the later mounts.
+    assert!(docs.contains("FORUM-24N exposes visibility-safe category route decisions"));
+    assert!(docs.contains("FORUM-24O mounts the canonical localized category route"));
 }

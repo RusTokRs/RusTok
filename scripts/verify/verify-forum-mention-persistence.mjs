@@ -63,8 +63,6 @@ const migrationRegistryPath = "crates/modules/rustok-forum/src/migrations/mod.rs
 const serviceRegistryPath = "crates/modules/rustok-forum/src/services/mod.rs";
 const entityRegistryPath = "crates/modules/rustok-forum/src/entities/mod.rs";
 const errorPath = "crates/modules/rustok-forum/src/error.rs";
-const b2RecordPath = "crates/modules/rustok-forum/docs/forum-12b2-owner-write-integration.md";
-const cRecordPath = "crates/modules/rustok-forum/docs/forum-12c-mention-events.md";
 const crateApiPath = "crates/modules/rustok-forum/CRATE_API.md";
 
 const migration = read(migrationPath);
@@ -75,8 +73,6 @@ const migrationRegistry = read(migrationRegistryPath);
 const serviceRegistry = read(serviceRegistryPath);
 const entityRegistry = read(entityRegistryPath);
 const error = read(errorPath);
-const b2Record = read(b2RecordPath);
-const cRecord = read(cRecordPath);
 const crateApi = read(crateApiPath);
 
 for (const marker of [
@@ -210,7 +206,7 @@ for (const eventType of ["forum.mention.user_added", "forum.mention.audience_add
 }
 requireText(
   serviceRegistry,
-  "mod mention_relation {",
+  "mod mention_relation;",
   `${serviceRegistryPath}: owner persistence service is not registered`,
 );
 for (const marker of [
@@ -227,20 +223,15 @@ for (const marker of [
 ]) {
   requireText(error, marker, `${errorPath}: safe relation failure code is missing: ${marker}`);
 }
-for (const marker of ["FORUM-12B2", "persist_in_tx", "same transaction"]) {
-  requireText(b2Record, marker, `${b2RecordPath}: active owner integration record is missing ${marker}`);
-}
-for (const marker of [
-  "FORUM-12C",
-  "forum.mention.user_added",
-  "ForumRelationReadService",
-  "one shared identity",
-]) {
-  requireText(cRecord, marker, `${cRecordPath}: event/read rollout record is missing ${marker}`);
-}
+// The live owner contract supersedes removed per-slice rollout notes. Pin the
+// identity and transaction guarantees there, not historical delivery headings.
 for (const marker of [
   "forum_relation_revisions",
   "MentionRelationService",
+  "persist_in_tx",
+  "same transaction",
+  "same event UUID",
+  "globally unique immutable identity",
   "FORUM_QUOTE_TARGET_UNAVAILABLE",
   "source INSERT seed triggers",
   "forum.mention.user_added",

@@ -73,3 +73,22 @@ Product selects the service in its standalone catalog configuration.
 - `migrations::*`
 
 See also `docs/README.md`.
+
+### Transaction-preserving Forum host adapter
+
+The joint Forum+Taxonomy server distribution now registers an in-process adapter
+at the composition root. Taxonomy does not depend on Forum. The adapter delegates
+sync/owned alias history, hierarchy mutations and tag writes to owner APIs inside
+the supplied transaction. `resolve_term_route_for_module_in` also reads route and
+alias provenance on that exact connection; the strict module parent reader rejects
+missing/wrong-scope Categories or missing placements rather than inventing roots.
+See [CRATE_API.md](CRATE_API.md#transactional-module-route-and-strict-hierarchy-readers).
+
+### Known Limitations / Pending Implementation
+
+The new strict-reader regression and server real-owner adapter tests are authored,
+not compiled or executed in the current environment (Cargo absent). Full migration,
+PostgreSQL contention and mounted Forum/SEO/Search/native paths remain acceptance
+checks. The adapter is shared-database/in-process only; it supplies no remote
+provider or distributed transaction protocol. Track this follow-up in Forum's
+[implementation plan](../rustok-forum/docs/implementation-plan.md).

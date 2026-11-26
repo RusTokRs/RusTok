@@ -40,8 +40,11 @@ old-format decoder; clients must restart a list when a stale cursor is rejected.
 
 REST, GraphQL and native adapters delegate to the same filter/owner. Next resets pages and guards
 late responses on query/tab/category/viewer changes, preserves owner order, and does no local
-search/Top/Solved filtering. Leptos adapters carry the same optional selection; its current UI may
-continue requesting the default latest feed without exposing all controls.
+search/Top/Solved filtering. Leptos adapters and UI carry the same selection. Its Latest/Top/Solved, submitted
+search and authenticated Unread controls drive the owner request, reset result-page
+state and preserve owner order. Unread selection is forwarded on initial and cursor
+requests and cannot fall back to the full/public feed. Controls and composer draft
+ownership outlive result reloads; an empty result retains the selection controls.
 
 ## Sources of truth and ownership
 

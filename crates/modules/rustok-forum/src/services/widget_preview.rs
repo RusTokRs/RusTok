@@ -45,6 +45,7 @@ pub struct ForumWidgetPreviewService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     audience_facts: Option<SharedForumAudienceFactsPort>,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
     settings: ForumSettingsProviders,
 }
 
@@ -60,8 +61,17 @@ impl ForumWidgetPreviewService {
             db,
             event_bus,
             audience_facts,
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
             settings: ForumSettingsProviders::default(),
         }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
@@ -153,6 +163,7 @@ impl ForumWidgetPreviewService {
 
     fn visibility_service(&self) -> ForumTopicAudienceVisibilityService {
         ForumTopicAudienceVisibilityService::new(self.db.clone(), self.audience_facts.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
             .with_settings_providers(self.settings.clone())
     }
 
@@ -165,6 +176,7 @@ impl ForumWidgetPreviewService {
             ),
             None => ForumTopicAudienceReadService::new(self.db.clone(), self.event_bus.clone()),
         }
+        .with_taxonomy_port(self.taxonomy_port.clone())
         .with_settings_providers(self.settings.clone())
     }
 
@@ -177,6 +189,7 @@ impl ForumWidgetPreviewService {
             ),
             None => ForumReplyAudienceReadService::new(self.db.clone(), self.event_bus.clone()),
         }
+        .with_taxonomy_port(self.taxonomy_port.clone())
         .with_settings_providers(self.settings.clone())
     }
 
@@ -195,6 +208,7 @@ impl ForumWidgetPreviewService {
         let sort = required_string(props, "sort")?;
         let visibility = self.visibility_service();
         let (items, total) = TopicService::new(self.db.clone(), self.event_bus.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
             .with_settings_providers(self.settings.clone())
             .list_widget_preview_owner_visible(
                 tenant_id,

@@ -129,6 +129,53 @@ impl TaxonomyOwnerCategoryReader {
         Ok(map)
     }
 
+    /// Strict module Category parent projection for a consumer membership set.
+    /// Unlike the generic legacy placement reader, this never invents root rows
+    /// for missing terms/placements. Tenant, kind and module scope are checked
+    /// before any hierarchy is returned, without requiring a translated copy.
+    pub async fn load_module_category_parents_in_strict<C: ConnectionTrait>(
+        connection: &C,
+        tenant_id: Uuid,
+        module_scope: &str,
+        term_ids: &[Uuid],
+    ) -> TaxonomyResult<HashMap<Uuid, Option<Uuid>>> {
+        let scope_value = normalize_scope_value(TaxonomyScopeType::Module, Some(module_scope))?;
+        if term_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let unique = term_ids.iter().copied().collect::<BTreeSet<_>>();
+        if unique.len() != term_ids.len() {
+            return Err(TaxonomyError::validation("Duplicate Category identities"));
+        }
+        let terms = taxonomy_term::Entity::find()
+            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
+            .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
+            .filter(taxonomy_term::Column::ScopeValue.eq(&scope_value))
+            .filter(taxonomy_term::Column::Id.is_in(term_ids.to_vec()))
+            .all(connection)
+            .await?;
+        if terms.len() != unique.len() {
+            return Err(TaxonomyError::conflict(
+                "Category membership is missing from the requested owner scope",
+            ));
+        }
+        let rows = taxonomy_category_hierarchy::Entity::find()
+            .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_category_hierarchy::Column::TermId.is_in(term_ids.to_vec()))
+            .all(connection)
+            .await?;
+        if rows.len() != unique.len() {
+            return Err(TaxonomyError::conflict(
+                "Category membership has missing hierarchy placements",
+            ));
+        }
+        Ok(rows
+            .into_iter()
+            .map(|row| (row.term_id, row.parent_term_id))
+            .collect())
+    }
+
     /// Loads Category snapshots in one bounded owner read.
     ///
     /// `term_ids=None` lists the selected Category scope. `Some(ids)` restricts

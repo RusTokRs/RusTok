@@ -472,6 +472,7 @@ fn category_audience_read_service(
         }
         None => ForumCategoryAudienceReadService::new(runtime.db_clone()),
     }
+    .with_taxonomy_port(runtime.taxonomy_port.clone())
 }
 
 fn ensure_forum_permission(

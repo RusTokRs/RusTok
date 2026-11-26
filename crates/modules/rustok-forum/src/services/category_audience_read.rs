@@ -1,4 +1,6 @@
+use crate::ports::taxonomy::ForumTaxonomyPort;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use rustok_api::{Action, PortContext, Resource};
 use rustok_core::SecurityContext;
@@ -17,7 +19,7 @@ use crate::error::{ForumError, ForumResult};
 use super::category_audience_visibility::{
     ForumCategoryAudienceViewer, ForumCategoryAudienceVisibilityService,
 };
-use super::category_owner::CategoryService;
+use super::category_owner::{CategorySelectedReadAccess, CategoryService};
 use super::engagement_mode::ForumSettingsProviders;
 use super::rbac::enforce_scope;
 
@@ -53,6 +55,12 @@ impl ForumCategoryAudienceReadService {
 
     pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
         self.visibility = self.visibility.with_settings_providers(settings);
+        self
+    }
+
+    pub fn with_taxonomy_port(mut self, port: Arc<dyn ForumTaxonomyPort>) -> Self {
+        self.category_service = self.category_service.with_taxonomy_port(port.clone());
+        self.visibility = self.visibility.with_taxonomy_port(port);
         self
     }
 
@@ -120,6 +128,7 @@ impl ForumCategoryAudienceReadService {
             category_id,
             &locale,
             fallback_locale,
+            CategorySelectedReadAccess::OwnerRead,
         )
         .await
     }
@@ -138,6 +147,7 @@ impl ForumCategoryAudienceReadService {
             category_id,
             locale,
             fallback_locale,
+            CategorySelectedReadAccess::OwnerRead,
         )
         .await
     }
@@ -150,6 +160,7 @@ impl ForumCategoryAudienceReadService {
         category_id: Uuid,
         locale: &str,
         fallback_locale: Option<&str>,
+        access: CategorySelectedReadAccess,
     ) -> ForumResult<CategoryResponse> {
         if !self
             .visibility
@@ -159,7 +170,14 @@ impl ForumCategoryAudienceReadService {
             return Err(ForumError::CategoryNotFound(category_id));
         }
         self.category_service
-            .get_with_locale_fallback(tenant_id, security, category_id, locale, fallback_locale)
+            .get_selected_with_access(
+                tenant_id,
+                security,
+                category_id,
+                locale,
+                fallback_locale,
+                access,
+            )
             .await
     }
 
@@ -454,6 +472,7 @@ impl ForumCategoryAudienceReadService {
             category_id,
             &locale,
             fallback_locale,
+            CategorySelectedReadAccess::StorefrontList,
         )
         .await
     }

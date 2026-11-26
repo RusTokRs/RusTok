@@ -256,3 +256,37 @@ async fn category_owner_reader_keeps_empty_identity_page_empty() {
 
     assert!(categories.is_empty());
 }
+
+#[tokio::test]
+async fn strict_module_parent_projection_never_fills_missing_placements_as_roots() {
+    use rustok_taxonomy::entities::taxonomy_category_hierarchy;
+    let (db, service) = setup().await;
+    let tenant = Uuid::new_v4();
+    let id = create_term(
+        &service,
+        tenant,
+        TaxonomyTermKind::Category,
+        "forum",
+        "Help",
+        "help",
+        None,
+    )
+    .await;
+    // Generic term creation may not have materialized a placement yet. The
+    // strict consumer API must fail, not invent a public root for damaged data.
+    taxonomy_category_hierarchy::Entity::delete_many()
+        .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant))
+        .filter(taxonomy_category_hierarchy::Column::TermId.eq(id))
+        .exec(&db)
+        .await
+        .unwrap();
+    let error = TaxonomyOwnerCategoryReader::load_module_category_parents_in_strict(
+        &db,
+        tenant,
+        "forum",
+        &[id],
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(error, rustok_taxonomy::TaxonomyError::Conflict(_)));
+}

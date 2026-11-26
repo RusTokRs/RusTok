@@ -1,6 +1,8 @@
+use crate::ports::taxonomy::{ForumTaxonomyPort, NoopForumTaxonomyPort};
 use rustok_api::{PortActorKind, PortContext};
 use rustok_core::{SecurityActorKind, SecurityContext};
 use sea_orm::DatabaseConnection;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::audience::{
@@ -9,7 +11,7 @@ use crate::audience::{
 };
 use crate::error::{ForumError, ForumResult};
 
-use super::category_audience::load_category_audience_policy;
+use super::category_audience::load_category_audience_policy_with_port;
 use super::category_visibility::ForumCategoryVisibilityPolicyService;
 use super::engagement_mode::ForumSettingsProviders;
 
@@ -81,6 +83,7 @@ pub struct ForumCategoryAudienceVisibilityService {
     db: DatabaseConnection,
     facts_resolver: ForumAudienceFactsResolver,
     settings: ForumSettingsProviders,
+    taxonomy_port: Arc<dyn ForumTaxonomyPort>,
 }
 
 impl ForumCategoryAudienceVisibilityService {
@@ -89,11 +92,17 @@ impl ForumCategoryAudienceVisibilityService {
             db,
             facts_resolver: ForumAudienceFactsResolver::new(facts_port),
             settings: ForumSettingsProviders::default(),
+            taxonomy_port: Arc::new(NoopForumTaxonomyPort),
         }
     }
 
     pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
         self.settings = settings;
+        self
+    }
+
+    pub fn with_taxonomy_port(mut self, port: Arc<dyn ForumTaxonomyPort>) -> Self {
+        self.taxonomy_port = port;
         self
     }
 
@@ -120,13 +129,22 @@ impl ForumCategoryAudienceVisibilityService {
         }
 
         if !ForumCategoryVisibilityPolicyService::new(self.db.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
             .is_category_visible_to_viewer(tenant_id, category_id, viewer.is_authenticated())
             .await?
         {
             return Ok(false);
         }
 
-        let policy = match load_category_audience_policy(&self.db, tenant_id, category_id).await {
+        let policy = match load_category_audience_policy_with_port(
+            self.taxonomy_port.as_ref(),
+            &self.db,
+            (&self.db).into(),
+            tenant_id,
+            category_id,
+        )
+        .await
+        {
             Ok(policy) => policy,
             Err(ForumError::CategoryNotFound(_)) => return Ok(false),
             Err(error) => return Err(error),

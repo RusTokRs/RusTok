@@ -101,8 +101,31 @@ impl TaxonomyService {
         fallback_locale: Option<&str>,
         slug_or_alias: &str,
     ) -> TaxonomyResult<Option<TaxonomyModuleRouteMatch>> {
-        let Some(route) = Self::resolve_route_key_for_module(
+        Self::resolve_term_route_for_module_in(
             self.database(),
+            tenant_id,
+            kind,
+            module_slug,
+            locale,
+            fallback_locale,
+            slug_or_alias,
+        )
+        .await
+    }
+
+    /// Resolve route and alias identity on the caller's connection/transaction.
+    /// No pool escape is permitted while a consumer aggregate transaction is open.
+    pub async fn resolve_term_route_for_module_in<C: ConnectionTrait>(
+        conn: &C,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        module_slug: &str,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        slug_or_alias: &str,
+    ) -> TaxonomyResult<Option<TaxonomyModuleRouteMatch>> {
+        let Some(route) = Self::resolve_route_key_for_module(
+            conn,
             tenant_id,
             kind,
             module_slug,
@@ -115,7 +138,7 @@ impl TaxonomyService {
             return Ok(None);
         };
 
-        let alias_id = route_source_alias_id(self.database(), tenant_id, &route).await?;
+        let alias_id = route_source_alias_id(conn, tenant_id, &route).await?;
         Ok(Some(TaxonomyModuleRouteMatch {
             term_id: route.term_id,
             kind: route.kind,

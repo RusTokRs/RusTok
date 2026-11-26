@@ -92,6 +92,7 @@ impl ForumSearchCategoryScopeService {
     }
 
     pub fn with_taxonomy_port(mut self, port: Arc<dyn ForumTaxonomyPort>) -> Self {
+        self.visibility = self.visibility.with_taxonomy_port(port.clone());
         self.port = port;
         self
     }
@@ -136,6 +137,10 @@ impl ForumSearchCategoryScopeService {
             .port
             .load_category_parents((&self.db).into(), tenant_id, &tenant_category_ids)
             .await?;
+        crate::services::category_hierarchy::validate_category_parent_projection(
+            &tenant_category_ids,
+            &parent_by_id,
+        )?;
 
         let hierarchy = CategoryHierarchy::from_ordered_nodes(
             tenant_category_ids

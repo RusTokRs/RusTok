@@ -1,9 +1,10 @@
 #!/usr/bin/env node
+import { containsMarker } from "./lib/forum-source-verification.mjs";
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertCanonicalLedger, requireValidationDisclosure } from "./lib/forum-source-verification.mjs";
+import { assertCanonicalLedger } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -21,7 +22,7 @@ function read(relativePath) {
 }
 
 function requireText(source, marker, message) {
-  if (!source.includes(marker)) failures.push(message);
+  if (!containsMarker(source, marker)) failures.push(message);
 }
 
 function rejectText(source, marker, message) {
@@ -48,7 +49,7 @@ const graphqlLegacy = read(contract.graphql_legacy_mutation_file ?? "");
 const graphqlTypes = read(contract.graphql_types_file ?? "");
 const graphqlCommand = read(contract.graphql_command_mutation_file ?? "");
 const httpRuntime = read(contract.http_runtime_file ?? "");
-const httpLegacy = read(contract.http_legacy_create_file ?? "");
+requireText(httpRuntime, "post(content_commands::create_topic)", "REST must mount the canonical topic create command");
 const httpCommand = read(contract.http_command_create_file ?? "");
 const manifest = read(contract.module_manifest ?? "");
 const hostPublication = read(contract.host_runtime_publication_file ?? "");
@@ -80,8 +81,7 @@ for (const key of [
   "graphql_manifest_runtime_factory",
   "graphql_legacy_create_composed",
   "graphql_command_create_composed",
-  "rest_legacy_create_composed",
-  "rest_command_create_composed",
+  "rest_create_composed",
   "host_extension_facts_consumed",
   "groups_feature_profile_supported",
   "missing_provider_fail_closed",
@@ -173,8 +173,8 @@ for (const [source, label, commandMarker] of [
 }
 
 for (const marker of [
-  "audience_facts: Option<crate::SharedForumAudienceFactsPort>",
-  "runtime.shared_get::<crate::SharedForumAudienceFactsPort>()",
+  "audience_facts: Option<SharedForumAudienceFactsPort>",
+  "runtime.shared_get::<SharedForumAudienceFactsPort>()",
   "fn topic_service(&self) -> crate::TopicService",
   "TopicService::with_audience_facts",
   "TopicService::new",
@@ -182,7 +182,6 @@ for (const marker of [
   requireText(httpRuntime, marker, `Forum HTTP runtime is missing ${marker}`);
 }
 for (const [source, label, commandMarker] of [
-  [httpLegacy, "legacy REST topic-create", ".create_with_audience_context("],
   [httpCommand, "command REST topic-create", ".create_command_with_audience_context("],
 ]) {
   for (const marker of [
@@ -223,21 +222,12 @@ for (const marker of [
 const createHelper = between(
   owner,
   "async fn create_command_with_optional_audience_context(",
-  "pub async fn get(",
+  "pub async fn resolve_canonical_topic(",
   "topic-create owner helper",
 );
-for (const marker of [
-  ".require(tenant_id, input.category_id, &security, context)",
-  ".create_command(tenant_id, security, input)",
-]) {
-  requireText(createHelper, marker, `topic-create owner helper is missing ${marker}`);
-}
-if (
-  createHelper.indexOf(".require(tenant_id, input.category_id, &security, context)") >
-  createHelper.indexOf(".create_command(tenant_id, security, input)")
-) {
-  failures.push("transport composition must preserve authorization before owner writes");
-}
+requireText(createHelper, ".create_with_audience_authorization(", "topic transport must delegate transactional audience admission");
+requireText(createHelper, "&self.create_audience", "topic transport must retain the configured audience owner");
+rejectText(createHelper, ".create_command(", "topic transport must not bypass configured admission");
 
 const legacyInput = between(
   graphqlTypes,
@@ -260,16 +250,9 @@ for (const [input, label] of [
   }
 }
 
-for (const marker of [
-  "# FORUM-20AS topic-create audience transport composition",
-  "source-ready / unvalidated",
-  "tenant and actor identity come only from authenticated transport extensions",
-  "same typed value from `HostRuntimeContext`",
-  "adds no Forum-to-Groups crate dependency",
-]) {
-  requireText(note, marker, `topic-create transport owner note is missing ${marker}`);
+for (const marker of ["### Selected hierarchy for create admission", "Rust tests remain uncompiled/unexecuted", "configured audience owner even when `PortContext` is absent"]) {
+  requireText(note, marker, `create transport documentation is missing ${marker}`);
 }
-requireValidationDisclosure(failures, note, "topic-create transport owner note is missing");
 for (const marker of [
   "ForumGraphqlRuntimeData",
   "graphql::attach_schema_data",

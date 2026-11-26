@@ -74,7 +74,7 @@ Apply the Ports & Adapters (Hexagonal / FBA) architecture pattern to decouple `r
 - `rustok-taxonomy` owns taxonomy terms, localized term copies, route aliases and canonical category hierarchy.
 - `rustok-forum` owns topic/reply data, forum-specific category policy, audience rules and the consumer-owned `ForumTaxonomyPort` contract.
 - The port is defined by Forum; a provider adapter belongs to the composition/provider boundary and must not create a `forum -> taxonomy -> forum` compile-time cycle.
-- The current Forum manifest keeps `rustok-taxonomy` as a dev-dependency for integration fixtures, not a production dependency. The server does not currently inject a concrete `ForumTaxonomyPort` provider.
+- The current Forum manifest keeps `rustok-taxonomy` as a dev-dependency for integration fixtures, not a production dependency. The server now registers an in-process `ForumTaxonomyPort` adapter only when both modules are selected in its distribution registry; behavioral verification is pending.
 
 ## Invariants
 
@@ -115,13 +115,13 @@ Apply the Ports & Adapters (Hexagonal / FBA) architecture pattern to decouple `r
 
 - A configured provider's error is mapped to `ForumError` and fails the owning command/read rather than being silently converted into a successful taxonomy mutation.
 - The no-op provider deliberately accepts hierarchy operations, returns synthetic category metadata, returns no canonical route, and returns deterministic IDs/names for tags without persisting them in Taxonomy.
-- Since `apps/server` currently has no concrete provider injection, Forum currently defaults to this degraded behavior unless another host injects the port. Taxonomy-backed production behavior is therefore not complete; keep implementation status `In progress` until host wiring and observable integration evidence exist.
+- The joint Forum+Taxonomy server distribution installs a concrete owner-API adapter; a Forum-only registry retains the standalone fallback even when both Cargo features are compiled. Taxonomy-backed production behavior remains unverified; keep implementation status `In progress` until compilation and observable integration evidence exist.
 
 ## Migration and cutover
 
 - The legacy forum-category-to-taxonomy migrations now carry their own migration-specific schema/helpers rather than importing live Taxonomy entities; migrations remain historical, executable transition code.
 - The production dependency on Taxonomy was removed from Forum's manifest; the test-only dependency remains for fixtures that install Taxonomy alongside Forum.
-- The domain source paths named in the decision were converted to the Forum-owned port. The remaining cutover is to provide and inject a real adapter in a composition that enables both modules, then test both provider-enabled and standalone profiles.
+- The domain source paths named in the decision were converted to the Forum-owned port. The host now supplies the real in-process adapter for joint distributions. Remaining cutover evidence is compilation and execution of both provider-enabled and standalone profiles.
 
 ## Alternatives considered
 
@@ -129,6 +129,62 @@ Apply the Ports & Adapters (Hexagonal / FBA) architecture pattern to decouple `r
 - Adding a compile-time adapter dependency from Taxonomy to Forum was rejected where it would form a cycle through Profiles; provider selection belongs to host composition or another acyclic seam.
 - Duplicating canonical taxonomy terms and routes in Forum was rejected because it creates competing sources of truth.
 - Treating the no-op provider as a faithful monolith implementation was rejected; its synthetic fallback semantics are only suitable for explicitly standalone operation.
+
+## Consumer capability propagation follow-up (2026-11-26)
+
+A configured `Arc<dyn ForumTaxonomyPort>` must reach both route resolution and
+category audience metadata/hierarchy reads. GraphQL, REST, native storefront,
+public discovery and Search must forward the same provider; no adapter may
+replace a configured provider or its failure with the no-op fallback. The category
+visibility floor and richer inherited audience layers must consult that provider's
+hierarchy, not reinterpret every category as a root. Whole-tenant hierarchy
+projections must match Forum's tenant-local membership exactly: no missing/extra
+keys, foreign parent references, cycles or excessive depth. Validate the entire
+graph before policy overrides or filtering can short-circuit. Category-tree
+metadata must also reject duplicate/foreign identities instead of trusting row
+count alone. Invalid provider projections fail the read; they are not route absence.
+
+Storefront selected-category reads retain their existing `forum_categories:list`
+admission through the metadata owner; ordinary owner-selected reads retain
+`forum_categories:read`. Preserve this distinction with an internal typed access
+mode, not by augmenting the caller's permission snapshot or weakening all reads.
+
+SEO target providers need request-time access to host capabilities. Carry a cloned
+`ModuleRuntimeExtensions` snapshot in `SeoTargetRuntimeContext`, populated by the
+SEO service's runtime assembly. This is a generic provider-composition seam, not
+a dependency from SEO onto Forum or Taxonomy. Direct standalone contexts use an
+explicit empty snapshot. No new global registry or second taxonomy owner is added.
+
+The consumer propagation follow-up alone did not prove taxonomy-backed routing.
+The subsequent host implementation is `apps/server/src/services/forum_taxonomy.rs`,
+registered before Search/SEO/GraphQL/native extension snapshots only when the
+runtime distribution contains both Forum and Taxonomy. It depends on both modules
+at the composition root and accesses only Taxonomy's public owner APIs, never its
+entities. No dependency from Taxonomy to Forum is introduced.
+
+Reads require the caller's connection or transaction. `None` fails with
+`FORUM_TAXONOMY_CONNECTION_REQUIRED` rather than escaping to the adapter's pool.
+Taxonomy now exposes transaction-aware route+alias resolution and a strict
+module/tenant/kind membership parent reader, which rejects missing placements
+instead of inventing roots. Sync uses Taxonomy's owned append-only alias history;
+hierarchy and tag operations retain the same transaction. Provider failures remain
+typed failures, not route absence. Module Category routes reject global fallback
+matches that do not belong to the Forum binding.
+
+The downstream continuation carries the selected provider through topic base/richer
+reads, topic-policy management and dependent topic/reply, discovery, read-state,
+engagement and report compositions, plus creation admission/policy management and
+split/fork/reply-range comparisons, richer/moderation category management and
+public moderation admission. Native creation and GraphQL/HTTP moderation factories
+also forward the provider. Transaction-scoped policy reads retain the actual transaction; provider errors do not trigger standalone fallback. This is
+source evidence only, with unexecuted fake-provider Rust regressions. Standalone
+loaders remain in move/merge comparisons and route-tombstone snapshots. Completing and verifying
+these owner/transaction paths is mandatory before production inheritance
+acceptance, as tracked in Forum's implementation plan and README limitations.
+
+Real-owner adapter tests are authored, not executed. No-op standalone semantics
+and route absence remain unchanged when Taxonomy is not selected. A remote adapter
+and distributed transaction semantics are not provided by this in-process adapter.
 
 ## Verification
 
@@ -141,4 +197,4 @@ Apply the Ports & Adapters (Hexagonal / FBA) architecture pattern to decouple `r
 
 - Forum can own a stable taxonomy contract without importing Taxonomy's private persistence model in production code.
 - Taxonomy can evolve behind that contract while host composition selects the provider.
-- The current default no-op behavior is materially degraded and no real provider is wired in `apps/server`; provider-backed acceptance remains open, which is why this ADR is `In progress`.
+- Standalone no-op behavior remains materially degraded. The joint server distribution now wires a real owner-API provider in source, but provider-backed compilation/runtime acceptance remains open, so this ADR stays `In progress`.

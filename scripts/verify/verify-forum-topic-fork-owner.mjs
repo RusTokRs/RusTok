@@ -7,10 +7,10 @@ import { containsMarker } from "./lib/forum-source-verification.mjs";
 
 const paths = {
   contract: "crates/modules/rustok-forum/contracts/forum-topic-fork-owner.json",
-  docs: "crates/modules/rustok-forum/docs/forum-21q-topic-fork-owner.md",
+  docs: "crates/modules/rustok-forum/CRATE_API.md",
   facade: "crates/modules/rustok-forum/src/services/topic_fork.rs",
-  owner: "crates/modules/rustok-forum/src/services/topic_fork_owner.rs",
-  storage: "crates/modules/rustok-forum/src/services/topic_fork_storage.rs",
+  owner: "crates/modules/rustok-forum/src/services/topic_fork/implementation.rs",
+  storage: "crates/modules/rustok-forum/src/services/topic_fork/implementation.rs",
   serviceRegistry: "crates/modules/rustok-forum/src/services/mod.rs",
   crateApi: "crates/modules/rustok-forum/src/lib.rs",
   error: "crates/modules/rustok-forum/src/error.rs",
@@ -86,8 +86,8 @@ assert.equal(contract.compatibility.admin_ui_changed, false);
 includesAll(
   facade,
   [
-    'include!("topic_fork_owner.rs")',
-    'include!("topic_fork_storage.rs")',
+    "mod implementation;",
+    "pub use implementation::",
     "ForumTopicForkService",
     "lock_topic_solution_scopes_in_tx",
     "&[source_topic_id]",
@@ -252,16 +252,8 @@ includesAll(
 
 includesAll(
   docs,
-  [
-    "# FORUM-21Q reply-branch fork owner",
-    "`source_ready_maintainer_execution_pending`",
-    paths.contract,
-    "source reply rows and IDs remain unchanged",
-    "retains the original `quoted_id` and `quoted_revision_id`",
-    "The target starts unsolved",
-    "No command above was run by the implementation agent",
-  ],
-  "FORUM-21Q handoff",
+  ["### Selected hierarchy for structural commands", "Rust tests remain uncompiled/unexecuted", "source reply identities remain unchanged", "original quote targets", "target starts unsolved"],
+  "fork owner contract and verification disclosure",
 );
 
 console.log(

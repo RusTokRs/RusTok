@@ -562,6 +562,9 @@ pub enum SeoTargetCapabilityKind {
 #[cfg(feature = "server")]
 #[derive(Clone)]
 pub struct SeoTargetRuntimeContext {
+    /// Host capabilities for provider-owned composition. Empty only in standalone contexts.
+    /// Consumers retain their own typed ports; SEO does not depend on domain modules.
+    pub runtime_extensions: ModuleRuntimeExtensions,
     pub db: DatabaseConnection,
     pub event_bus: TransactionalEventBus,
     /// Owner port for public target policy; absent reader must fail closed.

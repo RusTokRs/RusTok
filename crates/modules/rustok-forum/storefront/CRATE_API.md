@@ -6,6 +6,7 @@
 - `ForumView`: Root storefront component for forum discussion feeds, topic lists, and thread views.
 
 ### Models
+- `ForumTopicSelection`, `ForumTopicFeedOrder`: Public typed owner-feed selection accepted by `fetch_storefront_forum`; search, ranking, solved and unread predicates are evaluated by the owner, not on loaded cards.
 - `StorefrontForumCategoryRouteDescriptor`, `StorefrontForumCategoryRouteDisposition`, `StorefrontForumCategoryRouteResolution`: Category route resolution models.
 - `StorefrontForumTopicRouteDescriptor`, `StorefrontForumTopicRouteDisposition`, `StorefrontForumTopicRouteResolution`: Topic route resolution models.
 

@@ -84,7 +84,7 @@ for (const marker of [
   "pub(crate) async fn hidden_category_ids_for_viewer(",
   "pub(crate) async fn is_category_visible_to_viewer(",
   "forum_category::Column::TenantId.eq(tenant_id)",
-  "CategoryVisibilitySnapshot::load(&self.db, tenant_id)",
+  "CategoryVisibilitySnapshot::load_with_port(",
   "Err(ForumError::CategoryNotFound(_)) => Ok(false)",
   "ForumCategoryVisibility::Public",
 ]) {
@@ -105,22 +105,22 @@ for (const forbidden of [
 
 const exactRead = between(
   categoryFacade,
-  "pub async fn get_with_locale_fallback(",
+  "pub(super) async fn get_selected_with_access(",
   "/// Archive the complete category subtree",
   "category exact owner read",
 );
 for (const marker of [
-  "enforce_scope(&security, Resource::ForumCategories, Action::Read)?",
+  "enforce_scope(&security, Resource::ForumCategories, access.action())?",
   ".is_category_visible_to_viewer(",
   "!security.is_public_read()",
   "return Err(ForumError::CategoryNotFound(category_id))",
-  ".get_with_locale_fallback(tenant_id, security, category_id, locale, fallback_locale)",
+  ".get_selected_with_access(",
 ]) {
   requireText(exactRead, marker, `category exact owner read is missing ${marker}`);
 }
 const exactAuthIndex = exactRead.indexOf("enforce_scope(");
 const exactVisibilityIndex = exactRead.indexOf(".is_category_visible_to_viewer(");
-const exactHydrationIndex = exactRead.indexOf(".get_with_locale_fallback(");
+const exactHydrationIndex = exactRead.indexOf(".get_selected_with_access(");
 if (
   exactAuthIndex < 0 ||
   exactVisibilityIndex < 0 ||
@@ -154,7 +154,7 @@ if (!pageRead.includes("hidden_category_ids: &hidden_category_ids,")) {
 }
 
 for (const marker of [
-  "TaxonomyOwnerCategoryReader",
+  ".load_scoped_categories(",
   "pub(in crate::services) async fn list_paginated_with_locale_fallback_and_hidden_categories(",
   "forum_category::Column::Id.is_not_in(hidden_category_ids.to_vec())",
   "visible_categories_query(filter.tenant_id, filter.hidden_category_ids)",
@@ -186,7 +186,7 @@ if (
 }
 
 for (const marker of [
-  "TaxonomyOwnerCategoryReader",
+  ".load_scoped_categories(",
   "pub(super) async fn read_with_hidden_categories(",
   "let hidden = hidden_category_ids.iter().copied().collect::<HashSet<_>>()",
   "let (total_nodes, max_depth) = retain_visible_nodes(&mut roots, &hidden)",
@@ -198,9 +198,9 @@ for (const marker of [
 }
 
 requireText(
-  services,
-  'include!("category_visibility_list.rs");',
-  "services composition must retain the Taxonomy read adapter include",
+  read("crates/modules/rustok-forum/src/services/category.rs"),
+  '#[path = "category_taxonomy_read.rs"]',
+  "category persistence must compose the selected Taxonomy read adapter",
 );
 requireText(
   categoryFacade,

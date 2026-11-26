@@ -35,7 +35,7 @@
 ## Interactions
 
 - Depends on `rustok-content` for shared rich-text, locale, and future orchestration helpers.
-- Depends on `rustok-taxonomy` for canonical Category identity, localized copy, hierarchy, routes and presentation, and for the shared scope-aware term dictionary behind forum topic tags.
+- Collaborates with the Taxonomy owner through `ForumTaxonomyPort` for canonical Category identity, localized copy, hierarchy, routes/presentation and topic tags. `rustok-taxonomy` is a test-only Cargo dependency. The joint Forum+Taxonomy server distribution registers an in-process owner-API adapter; the Noop standalone fallback is not canonical Taxonomy behavior. Adapter Rust/runtime verification remains pending.
 - Category slugs are translation-local. `ForumCategoryRouteService` owns the
   transport-neutral flat `/{locale}/forum/c/{slug}` identity, shared locale
   fallback semantics and immutable old-slug redirects. Historical
@@ -144,10 +144,12 @@
 
 The manifest setting `use_reactions` is the canonical Forum engagement intent.
 Forum resolves that intent through the tenant-module runtime API rather than importing
-the tenant persistence entity directly. When the setting is enabled, effective
-reaction mode still requires the Reactions module to be enabled; otherwise Forum stays
-on internal voting. Provider absence affects only the selected engagement feature and
-never disables Forum core behavior.
+the tenant persistence entity directly. With no override, Forum uses internal voting.
+When `use_reactions` is true, the Reactions module must be enabled: missing/disabled
+Reactions yields `FORUM_REACTIONS_CAPABILITY_UNAVAILABLE`, never a silent switch to
+internal votes. Optional Reactions absence does not block locally decidable unrelated
+operations. An incomplete configured settings-reader pair is a separate dependency
+failure, not evidence that no engagement override exists.
 
 See the canonical settings contract in
 [`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
@@ -177,12 +179,166 @@ See the canonical settings contract in
 - `admin::ForumAdmin` (publishable Leptos package)
 - `storefront::ForumView` (publishable Leptos package)
 
+## Publication aggregates and edit guards
+
+- Explicit moderation, trusted moderation hide/reject, edit re-pending and reply removal
+  share `services/reply_publication.rs`.
+  The new status is persisted before derived topic/category/member counts are touched.
+  Removal of an accepted reply updates reply and solution statistics in one guarded
+  write, because the database guards recalculate all member counters together.
+  Reply removal from an already archived topic changes the topic's own count but
+  never releases category/member counters a second time.
+  Re-pending invalidates both category and topic projections in the transaction.
+  Trusted effects acquire category → topic → solution → subject/revision scopes,
+  then recheck the discovered reply parent and reviewed revision. SQLite reserves
+  the writer before parent discovery; PostgreSQL retains Serializable isolation.
+  Hide/reject and public/solution removal also invalidate the topic projection.
+  Existing decision receipts preserve exact replay and same-target hide/reject no-ops.
+  A shared 12-scenario-per-backend matrix covers accepted/ordinary replies under
+  open/archived parents, receipts, projections and injected-outbox rollback; it is
+  authored but unexecuted without Cargo. Eleven supplemental Node guard fixtures pass.
+  See [moderation effects verification](./docs/forum-moderation-effect-postgres-contract.md).
+- Direct topic/reply deletion rechecks ownership and `allow_user_content_deletion`
+  with the transactional settings reader after acquiring the source write fence.
+  A successful preflight cannot bypass a stricter transactional policy or reader
+  error. An incomplete configured reader pair raises the shared capability error;
+  only explicit no-reader services retain default-false author deletion policy.
+  Snapshot reasons are derived from admitted authority. Staff/system policy exemptions
+  remain unchanged. Internal moderation uses the same locked reply-removal core,
+  but retains its caller-owned authorization rather than acquiring author policy.
+  No schema/API payload changes. Eight source-guard fixtures pass; the shared
+  SQLite/PostgreSQL policy matrix is authored but unexecuted without Cargo.
+  See [delete admission decision](../../../DECISIONS/2026-11-26-forum-delete-policy-admission.md).
+- Reply restoration rejects an archived parent with `FORUM_TOPIC_ARCHIVED` before
+  replaying its delete snapshot. This applies equally to ordinary and accepted
+  replies; explicitly reopen the topic before retrying. Failure leaves the
+  tombstone, snapshot, revisions, counts and outbox unchanged. The existing active
+  solution-target guard stays enabled. The shared SQLite/PostgreSQL regression
+  covers rejection, reopen/retry with the original solution metadata, and a repeated
+  restore without double-counting; Rust execution remains pending.
+  See [parent admission decision](../../../DECISIONS/2026-11-26-forum-reply-restore-parent-admission.md).
+- Whole-topic restoration is a different lifecycle inverse: a thread archived before
+  deletion restores its original archived status, replies and accepted solution.
+  Migration 47 allows only an INSERT of that exact historical solution target,
+  bound to the tenant/topic and approved child delete snapshots still present in
+  the restore transaction. Ordinary archived solution INSERTs and target UPDATEs
+  remain forbidden. Snapshot consumption closes replay admission before commit.
+  Archived restoration contributes no category/member counts or new publication
+  events; explicit reopen restores public contributions once. Independently deleted
+  replies remain deleted. Down restores the strict prior target validator without
+  rewriting already restored relations.
+  See [topic replay decision](../../../DECISIONS/2026-11-26-forum-topic-restore-solution-replay.md).
+- Content edits recheck the configured author edit window after waiting for the write
+  lock. Topic edits claim the source first, reload it, and only then check current
+  ownership/lifecycle and transactional policy/time; rejection rolls back the claim.
+  Slug changes use the same window and reject archived topics under the lock;
+  GraphQL obtains the configured owner from `ForumGraphqlRuntimeData`. Standalone quote
+  changes recheck source ownership, the window, deletion and parent lifecycle in the
+  transaction, locking the parent and reply before checking policy/time rather than
+  relying on the later relation-persistence source lock. Archived topics are immutable; locked topics reject reply quote edits
+  just as they reject reply body edits. Moderator edit-window exemptions are unchanged.
+  REST and GraphQL both pass static and transactional settings to that owner; the
+  transactional read can close a window admitted by preflight or reject a failed
+  settings capability without appending a relation revision. A host-supplied static
+  reader without its transactional counterpart now returns
+  `FORUM_TRANSACTIONAL_SETTINGS_UNAVAILABLE` on transactional policy reads, never
+  unlimited/default policy. Read-only consumers remain supported; explicit no-reader
+  default-only services and paired readers with no saved row retain their defaults.
+  A transaction-only provider refuses ordinary and transactional policy reads with
+  `FORUM_STATIC_SETTINGS_UNAVAILABLE`. REST/GraphQL/native composition preserves both
+  optional readers through `ForumSettingsProviders::from_optional_readers`; neither
+  incomplete pair can silently become default-only composition. GraphQL topic-order
+  and topic/reply page-size defaults retain typed errors, including aliased fields:
+  exact capability codes and retry hints are not reconstructed from display text.
+  `graphql_settings_error_contract` covers eight settings branches plus aliased
+  selected category/topic/route storage failures and member-card validation. Those
+  Rust regressions are authored but unexecuted without Cargo. Selected reads,
+  route disclosure and member-card composition also preserve typed Forum errors;
+  category-route resolution/context/visibility no longer reclassify them as generic
+  internal errors. Aliased route-validation and malformed-identity `null` cases
+  are also authored, not executed. Existing privacy-safe `null` responses remain
+  unchanged. The bounded source guard is
+  `npm run verify:forum:graphql-error-provenance` (not runtime proof).
+  **Taxonomy consumer wiring:** configured ports now reach category-route and
+  category audience metadata/inherited-policy reads through GraphQL, REST, native,
+  Search and SEO composition. SEO forwards a generic host capability snapshot;
+  it does not depend on Forum to construct providers. The bounded check is
+  `npm run verify:forum:taxonomy-wiring`; `taxonomy_read_wiring` contains authored,
+  unexecuted fake-provider regressions. Whole-tenant provider hierarchies are
+  validated against local membership before visibility filtering; invalid maps,
+  cycles/depth violations and duplicate/foreign tree snapshots fail rather than
+  weakening inheritance or panicking. Storefront selection keeps list-only
+  admission through metadata loading, while ordinary selected reads still require
+  read permission; no caller permissions are synthesized.
+  **Host adapter source implemented:** `apps/server/src/services/forum_taxonomy.rs`
+  delegates to Taxonomy owner APIs and is registered before capability snapshots
+  only when both modules are selected in the distribution registry. All reads
+  keep the caller connection/transaction; missing connections fail explicitly.
+  Noop remains the degraded standalone profile. Real-owner Rust tests are authored,
+  not executed, so category-route runtime readiness is still unverified. See
+  `docs/implementation-plan.md`.
+  This shared admission applies to every transactional settings consumer, not just
+  edits. See [transactional settings capability](../../../DECISIONS/2026-11-26-forum-transactional-settings-capability.md).
+  Guard fixtures cover
+  loss of either transport's settings injection; the Rust policy-change regression
+  remains unexecuted without Cargo.
+- Migration `m20261126_000046_reconcile_reply_publication_counters` brings the SQLite
+  category guard into parity with PostgreSQL (archived parents contribute no category
+  counts) and rebuilds existing topic/category/member counters and `last_reply_at`
+  through their canonical guards. It skips immutable soft-deleted topic rows;
+  even a no-op aggregate update there would abort the migration. Live archived
+  topics still have their own reply projection repaired. Before aggregate repair,
+  it removes accepted-solution relations targeting nonpublic/deleted replies while
+  preserving approved solutions under live archived topics. It preserves content,
+  statuses, ownership and historical revisions. Run migrations with writers quiesced,
+  then rebuild Forum search projections before serving ranking-sensitive reads.
+  Rollback restores the preceding SQLite guard but never recreates previously corrupted
+  counters or invalid solutions. Extracted repair SQL/guard cases pass 4/4 on SQLite
+  and 4/4 on PostgreSQL 17.6; full Rust migration-chain execution remains required.
+
 ## Known Limitations / Pending Implementation
 
 The items below are verified gaps. They are not hidden behind compatibility
 wrappers. Each one has an owner decision or a follow-up task in
 [`docs/implementation-plan.md`](./docs/implementation-plan.md).
 
+- **Inherited policy propagation is partially repaired, not production-certified.**
+  Base/richer topic and reply reads now receive the selected `ForumTaxonomyPort`,
+  including GraphQL/REST/native, SEO/Search/discovery, Reactions/Notifications,
+  widget preview and unread/read-state composites. Vote/subscription transaction
+  gates and report audience preflights also forward it; topic-policy reads/writes
+  preserve the caller transaction. Create-policy owners/admission and split/fork/
+  reply-range comparisons now receive the selected provider too, including native
+  storefront/admin creation. Rust regressions are authored, not executed.
+  Richer/moderation category policy management and public moderation admission
+  now also retain the selected hierarchy and writer transaction; GraphQL/HTTP
+  moderation factories forward the provider. Six additional Rust regressions,
+  including a mounted HTTP request, are authored but unexecuted. Move/merge now
+  retain selected policy reads, and delete snapshots retain selected base/richer
+  audience in the writer transaction. Common create/placement/restore lifecycle
+  checks also use the selected parent projection; six more private Rust regressions
+  cover these paths, authored but unexecuted. Structural commands serialize the
+  hierarchy before topic/counter rows without moving exact replay behind policy
+  validation. Production inheritance acceptance stays blocked until the Rust,
+  PostgreSQL/concurrency and affected-transport checks in `docs/implementation-plan.md`
+  execute. Source-wiring checks alone cannot close this security boundary.
+- The deep re-review corrected 24 audience ORM relation mappings to tenant-scoped
+  composite FKs and made transactional create `require_in_tx` reject denied
+  authorizations itself. Six schema and two direct transaction regressions are
+  authored but not run. Passing declaration guards/SQLite FK projections do not
+  prove SeaORM-generated schema or domain runtime behavior; Cargo is still absent.
+- The server's in-process `ForumTaxonomyPort` adapter/registration is source-ready,
+  not runtime-certified. Fake-provider tests and source guards do not establish real
+  Taxonomy storage integration. Real-owner adapter regressions, including alias/tag
+  rollback and joint-distribution registration, remain uncompiled/unexecuted because
+  Cargo is absent. PostgreSQL/full mounted transport checks remain release gates.
+- The category-policy write fence is still an exclusive tenant-wide PostgreSQL lock.
+  Narrowing it requires contention measurements and a proven lock-order/posting-rate
+  replacement, not removal of the fence. SQLite uses its database write serialization.
+- Sparse audience/search feeds can scan many bounded candidate batches. There is no
+  constant request-cost guarantee or cross-request snapshot. Production PostgreSQL
+  EXPLAIN/contention and mounted Leptos evidence remain release checks; truncating the
+  scan without an explicit continuation contract would silently lose valid results.
 - Topic reads (GraphQL `forumTopic`, `forumTopics`, REST topic list and detail,
   the REST redirect, and the public SEO provider) apply the topic-level and
   category audience contract. See

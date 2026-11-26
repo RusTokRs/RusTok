@@ -431,14 +431,17 @@ pub async fn clear_reply_vote(
 fn reply_audience_read_service(
     runtime: &crate::controllers::ForumHttpRuntime,
 ) -> ForumReplyAudienceReadService {
-    match runtime.audience_facts.clone() {
+    let service = match runtime.audience_facts.clone() {
         Some(facts) => ForumReplyAudienceReadService::with_audience_facts(
             runtime.db_clone(),
             runtime.event_bus(),
             facts,
         ),
         None => ForumReplyAudienceReadService::new(runtime.db_clone(), runtime.event_bus()),
-    }
+    };
+    service
+        .with_taxonomy_port(runtime.taxonomy_port.clone())
+        .with_settings_providers(runtime.settings_providers.clone())
 }
 
 fn ensure_forum_permission(

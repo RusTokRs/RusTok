@@ -11,7 +11,9 @@ use std::sync::Arc;
 use crate::common::settings::RustokSettings;
 use crate::error::{Error, Result};
 use crate::services::event_transport_factory::EventRuntime;
-use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
+use crate::services::server_runtime_context::{
+    ServerRuntimeContext, ServerRuntimeStartReservation,
+};
 
 #[cfg(feature = "mod-blog")]
 #[path = "blog_public_comments_snapshot.rs"]
@@ -47,7 +49,9 @@ struct ModuleEventDispatcherReservation;
 #[derive(Clone, Default)]
 struct ModuleEventDispatcherRegistrationLock(Arc<std::sync::Mutex<()>>);
 
-fn dispatcher_registration_lock(ctx: &ServerRuntimeContext) -> ModuleEventDispatcherRegistrationLock {
+fn dispatcher_registration_lock(
+    ctx: &ServerRuntimeContext,
+) -> ModuleEventDispatcherRegistrationLock {
     ctx.shared_get_or_insert_with(ModuleEventDispatcherRegistrationLock::default)
 }
 
@@ -117,7 +121,8 @@ fn module_event_dispatcher_enabled(settings: &RustokSettings) -> bool {
 /// A published handle alone is not readiness: the listener requirement
 /// must also have been registered, and the dispatcher loop must still run.
 fn existing_module_dispatcher_status(ctx: &ServerRuntimeContext) -> Option<Result<()>> {
-    let running = ctx.shared_map::<ModuleEventDispatcherHandle, _>(|handle| !handle.is_finished())?;
+    let running =
+        ctx.shared_map::<ModuleEventDispatcherHandle, _>(|handle| !handle.is_finished())?;
     let required = ctx
         .shared_get::<ModuleEventDispatcherRequirement>()
         .is_some_and(|requirement| requirement.0);
@@ -177,8 +182,7 @@ pub fn spawn_module_event_dispatcher(
             ctx.shared_get::<Arc<EventRuntime>>()
                 .ok_or_else(|| {
                     Error::Message(
-                        "EventRuntime must be initialized before module event listeners"
-                            .to_owned(),
+                        "EventRuntime must be initialized before module event listeners".to_owned(),
                     )
                 })?
                 .listener_bus
@@ -458,6 +462,10 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         )
     })?;
     let db = runtime_ctx.db_clone();
+    // Install before host capabilities snapshot extensions (including source factories).
+    #[cfg(all(feature = "mod-forum", feature = "mod-taxonomy"))]
+    super::forum_taxonomy::register(&mut extensions, registry, db.clone());
+
     extensions.insert(
         crate::services::worker_service_context::materialize_worker_service_context(
             &runtime_ctx,
@@ -1035,7 +1043,9 @@ mod tests {
             &registry,
             &settings,
             runtime_ctx.clone(),
-            crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            crate::auth::test_auth_config(
+                "test-secret-key-for-unit-tests-only-32bytes!".to_string(),
+            ),
         )
         .expect("host runtime extensions should initialize");
 
@@ -1310,7 +1320,10 @@ mod lifecycle_tests {
         });
         ready_rx.await.expect("worker starter scheduled");
         tokio::task::yield_now().await;
-        assert!(!startup.is_finished(), "payment worker publication must hold the gate");
+        assert!(
+            !startup.is_finished(),
+            "payment worker publication must hold the gate"
+        );
 
         crate::services::app_lifecycle::StopHandle::ensure(&ctx)
             .stop()
@@ -1529,7 +1542,9 @@ mod lifecycle_tests {
                 0,
             )
         });
-        entered_rx.await.expect("startup attempt entered blocking thread");
+        entered_rx
+            .await
+            .expect("startup attempt entered blocking thread");
         tokio::task::yield_now().await;
         assert!(
             !startup.is_finished(),
@@ -1585,7 +1600,10 @@ mod lifecycle_tests {
             .expect("published dispatcher remains owned by shutdown");
         assert!(!ctx.shared_contains::<ModuleEventDispatcherHandle>());
         handle.request_stop();
-        handle.join().await.expect("dispatcher drains after snapshot");
+        handle
+            .join()
+            .await
+            .expect("dispatcher drains after snapshot");
     }
 
     #[tokio::test]
@@ -1658,13 +1676,14 @@ mod lifecycle_tests {
 
         let mut settings = RustokSettings::default();
         settings.runtime.host_mode = RuntimeHostMode::Worker;
-        let db = Database::connect("sqlite::memory:").await.expect("test database");
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database");
         let ctx = ServerRuntimeContext::new(db.clone(), settings.clone());
         let registry = ModuleRegistry::new();
         let extensions = build_shared_runtime_extensions(&registry, &settings)
             .expect("empty registry has valid extensions");
-        let transport: Arc<dyn EventTransport> =
-            Arc::new(rustok_outbox::OutboxTransport::new(db));
+        let transport: Arc<dyn EventTransport> = Arc::new(rustok_outbox::OutboxTransport::new(db));
         ctx.shared_insert(Arc::new(EventRuntime {
             delivery_profile: EventDeliveryProfile::Outbox,
             iggy_mode: None,
@@ -1790,11 +1809,8 @@ mod lifecycle_tests {
         );
 
         let tenant_id = Uuid::new_v4();
-        let root_event = EventEnvelope::new(
-            tenant_id,
-            None,
-            DomainEvent::TenantUpdated { tenant_id },
-        );
+        let root_event =
+            EventEnvelope::new(tenant_id, None, DomainEvent::TenantUpdated { tenant_id });
         memory
             .publish(root_event)
             .await

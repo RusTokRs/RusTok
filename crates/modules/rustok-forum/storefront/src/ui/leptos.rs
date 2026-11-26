@@ -9,7 +9,7 @@ use super::category_overview::CategoryOverview;
 use super::composer::{ComposerSignal, ForumComposer};
 use super::member_card::{ForumAuthorBadge, member_card_context};
 use super::timeline::TimelineScroller;
-use super::topic_feed::ForumTopicFeed;
+use super::topic_feed::{ForumFeedControls, ForumTopicFeed};
 use crate::core::{ComposerQuote, ComposerState};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,13 +24,53 @@ use crate::core::{
 };
 use crate::i18n::{count_message, slug_message, t};
 use crate::model::{
-    ForumCategoryListItem, ForumReplyDetail, ForumReplyPage, ForumTopicDetail, ForumTopicSelection,
-    StorefrontForumData,
+    ForumCategoryListItem, ForumReplyDetail, ForumReplyPage, ForumTopicDetail, StorefrontForumData,
 };
 use crate::transport;
 
 fn forum_storefront_content_lang(locale: &str) -> String {
     normalize_locale_tag(locale).unwrap_or_else(|| "und".to_string())
+}
+
+// Every continuation belongs to the same category, thread, locale, refresh and
+// selection as its initial page, even while Suspense retains an old result.
+type ForumResourceKey = (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    u64,
+    crate::model::ForumTopicSelection,
+);
+
+fn forum_page_is_current(current: Memo<ForumResourceKey>, expected: &ForumResourceKey) -> bool {
+    current.try_get_untracked().as_ref() == Some(expected)
+}
+
+// Reads must happen when Resource tracks its source, never during component
+// construction. Keeping this closure shared with the reactive regression test
+// prevents a category or selection from accidentally becoming a captured value.
+fn forum_resource_source(
+    category_override: ReadSignal<Option<String>>,
+    route_category: Option<String>,
+    route_topic: Option<String>,
+    locale: Option<String>,
+    refresh_nonce: ReadSignal<u64>,
+    selection: RwSignal<crate::model::ForumTopicSelection>,
+) -> impl Fn() -> ForumResourceKey {
+    move || {
+        let category = category_override.get();
+        (
+            category.clone().or_else(|| route_category.clone()),
+            if category.is_some() {
+                None
+            } else {
+                route_topic.clone()
+            },
+            locale.clone(),
+            refresh_nonce.get(),
+            selection.get(),
+        )
+    }
 }
 
 #[component]
@@ -62,30 +102,37 @@ pub fn ForumView() -> impl IntoView {
         "Failed to update forum read state",
     );
 
+    // Draft ownership follows the mounted Forum view, not a result page. A
+    // category/search refresh must not discard an open or pending submission.
+    let composer_signal: ComposerSignal = RwSignal::new(ComposerState::default());
+    provide_context(composer_signal);
+
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     // Category chosen from the community overview. The selected category is a route
     // query value, so an in-page switch is kept as a local override that feeds the
     // same read transport instead of inventing a second selection source.
     let (category_override, set_category_override) = signal(Option::<String>::None);
-    let selected_category_id = category_override
-        .get()
-        .or_else(|| selected_category_id.clone());
+    let selection = RwSignal::new(crate::model::ForumTopicSelection::default());
+    let (read_state_available, set_read_state_available) = signal(false);
     let (mutation_busy, set_mutation_busy) = signal(false);
     let (mutation_error, set_mutation_error) = signal(Option::<transport::TransportError>::None);
-    let topic_selection = RwSignal::new(ForumTopicSelection::default());
 
+    let source = forum_resource_source(
+        category_override,
+        selected_category_id,
+        selected_topic_id,
+        locale,
+        refresh_nonce,
+        selection,
+    );
+    let resource_key = Memo::new(move |_| source());
     let forum_resource = Resource::new_blocking(
-        move || {
-            (
-                selected_category_id.clone(),
-                selected_topic_id.clone(),
-                locale.clone(),
-                refresh_nonce.get(),
-                topic_selection.get(),
-            )
-        },
-        move |(category_id, topic_id, locale, _, selection)| async move {
-            transport::fetch_storefront_forum(category_id, topic_id, locale, selection).await
+        move || resource_key.get(),
+        move |requested_key| async move {
+            let (category_id, topic_id, locale, _, selection) = requested_key.clone();
+            transport::fetch_storefront_forum(category_id, topic_id, locale, selection)
+                .await
+                .map(|data| (requested_key, data))
         },
     );
 
@@ -129,7 +176,8 @@ pub fn ForumView() -> impl IntoView {
                         {format!("{}: {error}", mutation_error_label)}
                     </div>
                 })}
-                <Transition fallback=|| view! {
+                <ForumFeedControls selection read_state_available />
+                <Suspense fallback=|| view! {
                     <div class="grid gap-4 xl:grid-cols-[16rem_minmax(0,1fr)_24rem]">
                         <div class="h-80 animate-pulse rounded-[1.5rem] bg-muted"></div>
                         <div class="h-[32rem] animate-pulse rounded-[1.5rem] bg-muted"></div>
@@ -142,16 +190,23 @@ pub fn ForumView() -> impl IntoView {
                         let on_mark_topic_read = on_mark_topic_read;
                         Suspend::new(async move {
                             match forum_resource.await {
-                                Ok(data) => view! {
-                                    <ForumShowcase
-                                        data
-                                        topic_selection
-                                        on_mark_topic_read
-                                        on_post_submitted
-                                        on_select_category
-                                        mutation_busy
-                                    />
-                                }.into_any(),
+                                Ok((page_key, data)) => {
+                                    if forum_page_is_current(resource_key, &page_key) {
+                                        set_read_state_available.set(data.read_state_available);
+                                    }
+                                    view! {
+                                        <ForumShowcase
+                                            resource_key
+                                            page_key
+                                            data
+                                            selection
+                                            on_mark_topic_read
+                                            on_post_submitted
+                                            on_select_category
+                                            mutation_busy
+                                        />
+                                    }.into_any()
+                                },
                                 Err(err) => view! {
                                     <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                                         {format!("{}: {err}", load_error_label)}
@@ -160,7 +215,7 @@ pub fn ForumView() -> impl IntoView {
                             }
                         })
                     }}
-                </Transition>
+                </Suspense>
             </div>
         </section>
     }
@@ -168,15 +223,17 @@ pub fn ForumView() -> impl IntoView {
 
 #[component]
 fn ForumShowcase(
+    resource_key: Memo<ForumResourceKey>,
+    page_key: ForumResourceKey,
     data: StorefrontForumData,
-    topic_selection: RwSignal<ForumTopicSelection>,
+    selection: RwSignal<crate::model::ForumTopicSelection>,
     on_post_submitted: Callback<String>,
     on_select_category: Callback<String>,
     on_mark_topic_read: Callback<String>,
     mutation_busy: ReadSignal<bool>,
 ) -> impl IntoView {
     let StorefrontForumData {
-        topic_selection: _,
+        topic_selection,
         categories,
         topics,
         selected_category_id,
@@ -187,8 +244,6 @@ fn ForumShowcase(
         read_state_available,
     } = data;
     provide_context(member_card_context(member_cards));
-    let composer_signal: ComposerSignal = RwSignal::new(ComposerState::default());
-    provide_context(composer_signal);
 
     let showcase_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let discussions_label = t(
@@ -220,8 +275,12 @@ fn ForumShowcase(
     let feed_locale = showcase_locale.clone();
     let thread_topic_id = selected_topic_id.clone();
     let thread_locale = showcase_locale.clone();
+    // Identity travels with the fetched page. A retained/late result must not
+    // acquire the identity of a newer request while its subtree is mounted.
+    let topic_page_key = page_key;
+    let reply_page_key = topic_page_key.clone();
     let load_more_topics = Callback::new(move |_: ()| {
-        if topics_busy.get() {
+        if topics_busy.get() || !forum_page_is_current(resource_key, &topic_page_key) {
             return;
         }
         let Some(cursor) = topics_page.get().next_cursor else {
@@ -229,19 +288,28 @@ fn ForumShowcase(
         };
         let category_id = feed_category_id.clone();
         let locale = feed_locale.clone();
-        let selection = topic_selection.get();
+        let requested_selection = topic_selection.clone();
+        let requested_key = topic_page_key.clone();
         set_topics_busy.set(true);
         set_topics_error.set(None);
         spawn_local(async move {
-            match transport::fetch_storefront_forum_topic_page(
+            let result = transport::fetch_storefront_forum_topic_page(
                 category_id,
                 cursor,
                 locale,
                 read_state_available,
-                selection,
+                requested_selection.clone(),
             )
-            .await
-            {
+            .await;
+            // Fence all source dimensions, not just the selected feed filter.
+            if topics_page.try_get_untracked().is_none() {
+                return;
+            }
+            if !forum_page_is_current(resource_key, &requested_key) {
+                set_topics_busy.set(false);
+                return;
+            }
+            match result {
                 Ok(page) => topics_page.update(|state| state.append_page(page)),
                 Err(error) => set_topics_error.set(Some(error.to_string())),
             }
@@ -249,7 +317,7 @@ fn ForumShowcase(
         });
     });
     let load_more_replies = Callback::new(move |_: ()| {
-        if replies_busy.get() {
+        if replies_busy.get() || !forum_page_is_current(resource_key, &reply_page_key) {
             return;
         }
         let Some(topic_id) = thread_topic_id.clone() else {
@@ -259,10 +327,20 @@ fn ForumShowcase(
             return;
         };
         let locale = thread_locale.clone();
+        let requested_key = reply_page_key.clone();
         set_replies_busy.set(true);
         set_replies_error.set(None);
         spawn_local(async move {
-            match transport::fetch_storefront_forum_reply_page(topic_id, cursor, locale).await {
+            let result =
+                transport::fetch_storefront_forum_reply_page(topic_id, cursor, locale).await;
+            if replies_page.try_get_untracked().is_none() {
+                return;
+            }
+            if !forum_page_is_current(resource_key, &requested_key) {
+                set_replies_busy.set(false);
+                return;
+            }
+            match result {
                 Ok(page) => replies_page.update(|state| state.append_page(page)),
                 Err(error) => set_replies_error.set(Some(error.to_string())),
             }
@@ -333,13 +411,13 @@ fn ForumShowcase(
                             />
                             <ForumTopicFeed
                                 topics=topics_page
+                                selection
                                 total=selected_category_topic_count(&categories.items, selected_category_id.as_deref())
                                 selected_category_id=selected_category_id.clone()
                                 selected_topic_id=selected_topic_id.clone()
                                 paging_busy=topics_busy
                                 paging_error=topics_error
                                 on_load_more=load_more_topics
-                                selection=topic_selection
                             />
                             <ForumThreadPanel
                                 topic=selected_topic.clone()
@@ -914,17 +992,13 @@ fn ReportControl(is_topic: bool, target_id: String) -> impl IntoView {
         "forum.thread.reportTitle",
         "Report this content",
     );
-    let reason_label = t(
+    let reason_label = t(locale.as_deref(), "forum.thread.reportReason", "Reason");
+    let submit_label = t(
         locale.as_deref(),
-        "forum.thread.reportReason",
-        "Reason",
+        "forum.thread.reportSubmit",
+        "Send report",
     );
-    let submit_label = t(locale.as_deref(), "forum.thread.reportSubmit", "Send report");
-    let pending_label = t(
-        locale.as_deref(),
-        "forum.thread.reportPending",
-        "Sending…",
-    );
+    let pending_label = t(locale.as_deref(), "forum.thread.reportPending", "Sending…");
     let done_label = t(
         locale.as_deref(),
         "forum.thread.reportDone",
@@ -1036,5 +1110,86 @@ fn selected_category_topic_count(
             .map(count)
             .unwrap_or(0),
         None => categories.iter().map(count).sum(),
+    }
+}
+
+#[cfg(test)]
+mod reactive_feed_tests {
+    use super::*;
+    use crate::core::ForumTopicFeedMode;
+    use crate::model::ForumTopicSelection;
+
+    #[test]
+    fn continuation_admission_covers_every_resource_dimension() {
+        Owner::new().with(|| {
+            let expected: ForumResourceKey = (
+                Some("category-a".into()),
+                Some("topic-a".into()),
+                Some("en".into()),
+                0,
+                ForumTopicSelection::default(),
+            );
+            let state = RwSignal::new(expected.clone());
+            let key = Memo::new(move |_| state.get());
+            assert!(forum_page_is_current(key, &expected));
+            let mut category = expected.clone();
+            category.0 = Some("category-b".into());
+            let mut thread = expected.clone();
+            thread.1 = Some("topic-b".into());
+            let mut locale = expected.clone();
+            locale.2 = Some("ru".into());
+            let mut refresh = expected.clone();
+            refresh.3 += 1;
+            let mut selection = expected.clone();
+            selection.4.unread_only = true;
+            for changed in [category, thread, locale, refresh, selection] {
+                state.set(changed.clone());
+                assert!(!forum_page_is_current(key, &expected));
+                assert!(forum_page_is_current(key, &changed));
+            }
+        });
+    }
+
+    #[test]
+    fn resource_source_tracks_category_selection_and_refresh_without_remounting() {
+        Owner::new().with(|| {
+            let (category, set_category) = signal(None);
+            let (refresh, set_refresh) = signal(0_u64);
+            let selection = RwSignal::new(ForumTopicSelection::default());
+            let source = forum_resource_source(
+                category,
+                Some("route-category".into()),
+                Some("route-topic".into()),
+                Some("ru".into()),
+                refresh,
+                selection,
+            );
+            let key = Memo::new(move |_| source());
+            let original = key.get();
+            assert!(forum_page_is_current(key, &original));
+            assert_eq!(original.0.as_deref(), Some("route-category"));
+            assert_eq!(original.1.as_deref(), Some("route-topic"));
+            set_category.set(Some("other-category".into()));
+            let changed = key.get();
+            assert_ne!(original, changed);
+            assert!(!forum_page_is_current(key, &original));
+            assert!(forum_page_is_current(key, &changed));
+            assert_eq!(changed.0.as_deref(), Some("other-category"));
+            assert_eq!(
+                changed.1, None,
+                "a category override cannot retain another category's routed thread"
+            );
+            selection.update(|value| value.set_mode(ForumTopicFeedMode::Unread));
+            assert!(key.get().4.unread_only);
+            selection.update(|value| value.search = Some("older-page-match".into()));
+            assert_eq!(key.get().4.search.as_deref(), Some("older-page-match"));
+            let before_refresh = key.get();
+            set_refresh.set(1);
+            assert_eq!(key.get().3, 1);
+            assert!(!forum_page_is_current(key, &before_refresh));
+            set_category.set(None);
+            assert_eq!(key.get().0, original.0);
+            assert_eq!(key.get().1, original.1);
+        });
     }
 }

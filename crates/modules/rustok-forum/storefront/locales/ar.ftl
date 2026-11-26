@@ -49,7 +49,7 @@ forum-feed-threads =
         [many] { $count } موضوعًا
        *[other] { $count } موضوع
     }
-forum-feed-title = أحدث النقاشات
+forum-feed-title = النقاشات
 forum-member-replies = ردود
 forum-member-solutions = حلول
 forum-member-topics = مواضيع
@@ -120,3 +120,15 @@ forum-topic-unreadCount = { $count } غير مقروء
 forum-topic-updatedUnread = محدّث
 forum-view-categories = التصنيفات
 forum-view-discussions = النقاشات
+
+# Owner-selected topic feeds
+forum-feed-latest = الأحدث
+forum-feed-top = الأكثر نقاشًا
+forum-feed-unread = غير المقروءة
+forum-feed-solved = المحلولة
+forum-feed-search = البحث في المناقشات
+forum-feed-clear = مسح المرشحات
+forum-feed-noMatches = لا توجد مناقشات مطابقة
+forum-feed-noMatchesBody = لا توجد مواضيع تطابق الخلاصة أو البحث المحدد.
+forum-feed-newTopic = موضوع جديد
+forum-topic-solved = محلولة

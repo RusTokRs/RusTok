@@ -31,6 +31,7 @@ use crate::state_machine::ReplyStatus;
 pub struct ForumModerationReportService {
     db: DatabaseConnection,
     audience_facts: Option<SharedForumAudienceFactsPort>,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
     intake: Option<SharedForumModerationReportPort>,
 }
 
@@ -43,14 +44,22 @@ impl ForumModerationReportService {
         Self {
             db,
             audience_facts,
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
             intake,
         }
     }
 
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
+    }
+
     pub fn parse_reason_code(value: &str) -> ForumResult<ModerationReasonCode> {
-        ModerationReasonCode::parse(value.trim()).ok_or_else(|| {
-            ForumError::Validation("Unknown moderation reason code".to_string())
-        })
+        ModerationReasonCode::parse(value.trim())
+            .ok_or_else(|| ForumError::Validation("Unknown moderation reason code".to_string()))
     }
 
     pub async fn report_topic(
@@ -72,6 +81,7 @@ impl ForumModerationReportService {
         if !topic_write_audience_allows(
             &self.db,
             self.audience_facts.clone(),
+            self.taxonomy_port.clone(),
             tenant_id,
             topic_id,
             &security,
@@ -127,6 +137,7 @@ impl ForumModerationReportService {
         if !topic_write_audience_allows(
             &self.db,
             self.audience_facts.clone(),
+            self.taxonomy_port.clone(),
             tenant_id,
             reply.topic_id,
             &security,

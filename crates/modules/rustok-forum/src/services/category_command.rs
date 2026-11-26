@@ -73,13 +73,17 @@ impl CategoryCommandProjectionOwnerService {
                 .is_some();
             if !category_archived {
                 super::category_lifecycle::ensure_category_tree_target_is_active_in_tx(
-                    &txn, tenant_id, parent_id,
+                    self.port.as_ref(),
+                    &txn,
+                    tenant_id,
+                    parent_id,
                 )
                 .await
-                .map_err(|_| {
-                    ForumError::Validation(
+                .map_err(|error| match error {
+                    ForumError::Validation(_) => ForumError::Validation(
                         "active forum category cannot have archived parent".to_string(),
-                    )
+                    ),
+                    error => error,
                 })?;
             }
         }

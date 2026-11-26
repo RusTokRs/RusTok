@@ -45,7 +45,7 @@ forum-feed-threads =
         [many] { $count } тредов
        *[other] { $count } треда
     }
-forum-feed-title = Последние обсуждения
+forum-feed-title = Обсуждения
 forum-member-replies = ответов
 forum-member-solutions = решений
 forum-member-topics = тем
@@ -117,3 +117,15 @@ forum-topic-unreadCount =
 forum-topic-updatedUnread = Обновлено
 forum-view-categories = Категории
 forum-view-discussions = Обсуждения
+
+# Owner-selected topic feeds
+forum-feed-latest = Последние
+forum-feed-top = Популярные
+forum-feed-unread = Непрочитанные
+forum-feed-solved = Решённые
+forum-feed-search = Найти обсуждения
+forum-feed-clear = Сбросить фильтры
+forum-feed-noMatches = Подходящих обсуждений нет
+forum-feed-noMatchesBody = Нет тем, соответствующих выбранной ленте или поиску.
+forum-feed-newTopic = Новая тема
+forum-topic-solved = Решено

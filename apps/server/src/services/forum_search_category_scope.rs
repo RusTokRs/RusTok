@@ -4,6 +4,7 @@ use rustok_api::{
 };
 use rustok_core::SecurityContext;
 use rustok_forum::FORUM_MODULE_SLUG;
+use rustok_forum::ForumTaxonomyPort;
 use rustok_forum::{
     ForumCategoryReadOperation, ForumCategoryReadTransport, ForumError,
     ForumSearchCategoryAudienceScopeService, ForumSettingsProviders, SharedForumAudienceFactsPort,
@@ -14,11 +15,13 @@ use rustok_search::{
     StorefrontSearchCategoryScopeRequest, StorefrontSearchTransport, scope_is_exactly,
 };
 use sea_orm::DatabaseConnection;
+use std::sync::Arc;
 
 pub(crate) struct ServerForumSearchCategoryScopePort {
     db: DatabaseConnection,
     audience_facts: Option<SharedForumAudienceFactsPort>,
     settings_reader: Option<SharedStaticModuleSettingsReader>,
+    taxonomy_port: Option<Arc<dyn ForumTaxonomyPort>>,
 }
 
 impl ServerForumSearchCategoryScopePort {
@@ -26,11 +29,13 @@ impl ServerForumSearchCategoryScopePort {
         db: DatabaseConnection,
         audience_facts: Option<SharedForumAudienceFactsPort>,
         settings_reader: Option<SharedStaticModuleSettingsReader>,
+        taxonomy_port: Option<Arc<dyn ForumTaxonomyPort>>,
     ) -> SharedStorefrontSearchCategoryScopePort {
         std::sync::Arc::new(Self {
             db,
             audience_facts,
             settings_reader,
+            taxonomy_port,
         })
     }
 
@@ -40,6 +45,10 @@ impl ServerForumSearchCategoryScopePort {
                 ForumSearchCategoryAudienceScopeService::with_audience_facts(self.db.clone(), facts)
             }
             None => ForumSearchCategoryAudienceScopeService::new(self.db.clone()),
+        };
+        let service = match self.taxonomy_port.clone() {
+            Some(port) => service.with_taxonomy_port(port),
+            None => service,
         };
         match self.settings_reader.clone() {
             Some(reader) => service.with_settings_providers(

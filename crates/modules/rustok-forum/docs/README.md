@@ -13,6 +13,9 @@ The [Forum moderation revision migration contract](./forum-moderation-revision-m
 documents the schema, trigger parity, and migration guarantees for Forum-owned
 moderation revision fencing clocks.
 
+The [projection invalidation contract](./forum-20bk-projection-invalidation.md)
+documents current owner composition, atomic outbox publication and backend limits.
+
 ## Purpose
 
 - publish the canonical Forum runtime contract for categories, topics, replies and moderation;
@@ -88,7 +91,7 @@ solution reconciliation uses the same topic visibility rule.
 - FORUM-24G composes that mutation in the module-owned Leptos and Next-admin packages without adding route, alias, merge or locale-selection policy to either UI.
 - FORUM-24H exposes visibility-safe storefront canonical/redirect resolution through a legacy-compatible GraphQL field and exact category/topic audience recheck.
 - FORUM-24I composes the canonical localized topic route in `rustok-forum-storefront` and the shared Rust storefront router, cuts topic-card navigation over from UUID query links, and preserves native/GraphQL selected-path parity.
-- FORUM-24J records an immutable anonymous visibility and route-channel snapshot before topic deletion, seals channel scope with count and SHA-256 digest, and exposes only a boolean owner decision.
+- FORUM-24J records an immutable anonymous visibility and route-channel snapshot before topic deletion, seals channel scope with count and SHA-256 digest, and exposes only a boolean owner decision. The selected provider resolves both inherited base visibility and richer audience layers in the writer transaction; provider errors abort deletion instead of producing a public snapshot.
 - FORUM-24K adds a separate GraphQL route decision field, consumes the FORUM-24J boolean in GraphQL and native storefront paths, and maps only owner-authorized tombstones to private no-store `410 Gone` while preserving `404` for missing or unauthorized history.
 - FORUM-24L adds `ForumCategoryRouteService` for `/{locale}/forum/c/{slug}`, reuses the existing tenant/locale slug uniqueness and shared locale fallback order, hides archived categories, and fails closed when first-available lookup crosses category identities; transport, aliases and SEO remain follow-up scope.
 - FORUM-24M composes explicit and name-derived category slug changes into an append-only tenant/locale route ledger, permanently reserves historical keys, and resolves exact-locale aliases before fallback current routes; transport, tombstone disclosure and SEO remain follow-up scope.

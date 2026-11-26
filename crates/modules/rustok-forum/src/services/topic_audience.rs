@@ -1,4 +1,3 @@
-use tracing::instrument;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
@@ -6,6 +5,7 @@ use sea_orm::{
     TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -28,7 +28,7 @@ use crate::error::{ForumError, ForumResult};
 /// access stays behind the topic/policy owners.
 pub(super) type ForumTopicModel = forum_topic::Model;
 use crate::services::category_audience::{
-    ForumCategoryAudiencePolicyLayer, load_category_audience_policy, lock_category_tree_in_tx,
+    ForumCategoryAudiencePolicyLayer, lock_category_tree_in_tx,
 };
 use crate::services::rbac::enforce_scope;
 
@@ -55,11 +55,23 @@ pub struct SetForumTopicAudiencePolicyInput {
 /// any category rule, even when its local positive selectors match another actor.
 pub struct ForumTopicAudiencePolicyService {
     db: DatabaseConnection,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
 }
 
 impl ForumTopicAudiencePolicyService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
+        }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     /// Policy details may contain explicit user and group identifiers and are
@@ -75,7 +87,14 @@ impl ForumTopicAudiencePolicyService {
         lock_category_tree_in_tx(&txn, tenant_id).await?;
         lock_topic_audience_in_tx(&txn, tenant_id, topic_id).await?;
         let topic = find_topic(&txn, tenant_id, topic_id).await?;
-        let result = load_policy_for_topic(&txn, tenant_id, &topic).await?;
+        let result = load_policy_for_topic_with_port(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            (&txn).into(),
+            tenant_id,
+            &topic,
+        )
+        .await?;
         txn.commit().await?;
         Ok(result)
     }
@@ -164,15 +183,21 @@ async fn insert_users(
     .await
 }
 
-pub(super) async fn load_policy_for_topic<C>(
+pub(super) async fn load_policy_for_topic_with_port<C: ConnectionTrait>(
+    port: &dyn crate::ForumTaxonomyPort,
     db: &C,
+    taxonomy_connection: crate::ForumTaxonomyConnection<'_>,
     tenant_id: Uuid,
     topic: &forum_topic::Model,
-) -> ForumResult<ForumTopicAudiencePolicy>
-where
-    C: ConnectionTrait,
-{
-    let inherited_category_layers = load_category_audience_policy(db, tenant_id, topic.category_id)
+) -> ForumResult<ForumTopicAudiencePolicy> {
+    let inherited_category_layers =
+        super::category_audience::load_category_audience_policy_with_port(
+            port,
+            db,
+            taxonomy_connection,
+            tenant_id,
+            topic.category_id,
+        )
         .await?
         .effective_layers;
     let configured_constraints = load_topic_layer(db, tenant_id, topic.id).await?;
@@ -354,6 +379,14 @@ impl ForumTopicAudiencePolicyOwnerService {
         }
     }
 
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.inner = self.inner.with_taxonomy_port(port);
+        self
+    }
+
     pub async fn get(
         &self,
         tenant_id: Uuid,
@@ -382,7 +415,14 @@ impl ForumTopicAudiencePolicyOwnerService {
         .await?;
         super::topic_audience_lock::lock_topic_audience_scopes_in_tx(&txn, tenant_id, &[topic_id])
             .await?;
-        load_category_audience_policy(&txn, tenant_id, topic.category_id).await?;
+        super::category_audience::load_category_audience_policy_with_port(
+            self.inner.taxonomy_port.as_ref(),
+            &txn,
+            (&txn).into(),
+            tenant_id,
+            topic.category_id,
+        )
+        .await?;
 
         forum_topic_audience_policy::Entity::delete_many()
             .filter(forum_topic_audience_policy::Column::TenantId.eq(tenant_id))
@@ -406,7 +446,14 @@ impl ForumTopicAudiencePolicyOwnerService {
             insert_users(&txn, tenant_id, topic_id, &constraints).await?;
         }
 
-        let result = load_policy_for_topic(&txn, tenant_id, &topic).await?;
+        let result = load_policy_for_topic_with_port(
+            self.inner.taxonomy_port.as_ref(),
+            &txn,
+            (&txn).into(),
+            tenant_id,
+            &topic,
+        )
+        .await?;
         super::projection_invalidation::publish_forum_topic_projection_direct_in_tx(
             &txn,
             tenant_id,

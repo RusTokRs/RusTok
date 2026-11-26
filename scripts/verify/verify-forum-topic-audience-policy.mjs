@@ -2,6 +2,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { containsMarker } from "./lib/forum-source-verification.mjs";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -22,7 +23,7 @@ function read(relativePath) {
 // Markers may be strings or regular expressions: a bare `channel::` substring also occurs inside
 // Forum's own `forum_topic_audience_channel::Entity`, which is not a dependency on the Channel module.
 function matchesMarker(source, marker) {
-  return marker instanceof RegExp ? marker.test(source) : source.includes(marker);
+  return containsMarker(source, marker);
 }
 
 function requireText(source, marker, message) {
@@ -75,14 +76,9 @@ function requireInAny(blocks, markers, message) {
 const contractPath =
   "crates/modules/rustok-forum/contracts/forum-topic-audience-policy.json";
 const contract = JSON.parse(read(contractPath) || "{}");
-// `services/mod.rs` composes the topic audience module from the shared helpers and the thin owner
-// seam (`include!` of `topic_audience.rs` + `topic_audience_owner.rs`), so the owner contract is
-// checked across both files instead of assuming one file per module.
-const ownerParts = [
-  read(contract.owner_file ?? ""),
-  read(contract.owner_seam_file ?? contract.owner_file ?? ""),
-].filter((value, index, all) => value.length > 0 && all.indexOf(value) === index);
-const owner = ownerParts.join("\n");
+// The owner facade and its storage helpers share one canonical Rust module.
+const owner = read(contract.owner_file ?? "");
+const storage = read(contract.storage_file ?? "");
 const categoryOwner = read(contract.category_owner_file ?? "");
 const audience = read(contract.audience_contract_file ?? "");
 const migration = read(contract.migration_file ?? "");
@@ -207,7 +203,7 @@ for (const marker of [
   "enforce_scope(&security, Resource::ForumTopics, Action::Manage)?",
   "lock_category_tree_in_tx(&txn, tenant_id).await?",
   "lock_topic_audience_in_tx(&txn, tenant_id, topic_id).await?",
-  "load_category_audience_policy(&txn, tenant_id, topic.category_id).await?",
+  "load_category_audience_policy_with_port( self.inner.taxonomy_port.as_ref(), &txn, (&txn).into(), tenant_id, topic.category_id, )",
   "forum_topic_audience_policy::Entity::delete_many()",
   "insert_roles(&txn, tenant_id, topic_id, &constraints).await?",
   "insert_channels(&txn, tenant_id, topic_id, &constraints).await?",
@@ -226,10 +222,12 @@ for (const marker of [
   "pub(crate) async fn lock_category_tree_in_tx",
   "MAX_FORUM_CATEGORY_TREE_NODES + 1",
   "MAX_FORUM_CATEGORY_TREE_DEPTH",
-  "Forum category audience storage contains an empty local layer",
+  "crate::services::audience_storage::load_audience_layers_raw(",
 ]) {
   requireText(categoryOwner, marker, `category snapshot owner is missing ${marker}`);
 }
+requireText(storage, "Forum audience storage contains an empty local layer",
+  "shared category storage must reject empty local layers");
 // `lock_topic_audience_in_tx` never existed: the seam takes the category tree lock, then the active
 // topic write lock and the scope lock, and only then reads the category snapshot. Asserting both
 // topic locks is strictly stronger than the single name the guard asked for.
@@ -280,9 +278,7 @@ for (const marker of [
   requireText(audience, marker, `shared audience contract is missing ${marker}`);
 }
 for (const marker of [
-  "mod topic_audience {",
-  'include!("topic_audience.rs");',
-  'include!("topic_audience_owner.rs");',
+  "mod topic_audience;",
   "ForumTopicAudiencePolicyService",
   "SetForumTopicAudiencePolicyInput",
 ]) {

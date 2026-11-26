@@ -3,10 +3,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { ledgerRowProblems } from "./lib/forum-source-verification.mjs";
+import { containsMarker, ledgerRowProblems } from "./lib/forum-source-verification.mjs";
 import { resolve } from "node:path";
 
-const root = process.cwd();
+const root = process.env.RUSTOK_VERIFY_REPO_ROOT || process.cwd();
 const paths = {
   contract: "crates/modules/rustok-forum/contracts/forum-topic-move-owner.json",
   migration:
@@ -26,7 +26,7 @@ const paths = {
 const read = (path) => readFileSync(resolve(root, path), "utf8");
 const requireIncludes = (source, fragments, label) => {
   for (const fragment of fragments) {
-    assert.ok(source.includes(fragment), `${label} is missing: ${fragment}`);
+    assert.ok(containsMarker(source, fragment), `${label} is missing: ${fragment}`);
   }
 };
 const requireArrayIncludes = (actual, expected, label) => {
@@ -193,8 +193,8 @@ requireIncludes(
     "pub struct ForumTopicMoveService",
     "enforce_scope(&security, Resource::ForumTopics, Action::Manage)?;",
     "lock_topic_move_tenant_in_tx(&txn, tenant_id).await?;",
-    "SELECT pg_advisory_xact_lock(hashtextextended($1, $2))",
-    "(format!(\"forum-topic-move:{tenant_id}\"), 21_i32)",
+    "SELECT pg_advisory_xact_lock(hashtextextended($1, 21))",
+    'vec![format!("forum-topic-move:{tenant_id}").into()]',
     "INSERT INTO forum_topic_move_locks (tenant_id, touched_at)",
     "ON CONFLICT(tenant_id) DO UPDATE SET touched_at = CURRENT_TIMESTAMP",
     "forum_topic_move_operation::Entity::find_by_id((",
@@ -206,13 +206,13 @@ requireIncludes(
     "Forum topic is already assigned to the target category",
     "validate_solution_in_tx(&txn, tenant_id, topic_id).await?;",
     "reply.status == ReplyStatus::Approved",
-    "load_category_audience_policy(&txn, tenant_id, input.target_category_id)",
+    "load_category_audience_policy_with_port( self.taxonomy_port.as_ref(), &txn, (&txn).into(), tenant_id, input.target_category_id, )",
     "checked_sub(1)",
     ".checked_sub(published_reply_count)",
     "checked_add(1)",
     ".checked_add(published_reply_count)",
     "active.category_id = Set(input.target_category_id);",
-    "load_policy_for_topic(&txn, tenant_id, &moved_topic).await?;",
+    "load_policy_for_topic_with_port( self.taxonomy_port.as_ref(), &txn, (&txn).into(), tenant_id, &moved_topic, ).await?;",
     "forum_domain_event::ActiveModel",
     "event_id: Set(input.operation_id)",
     "forum_topic_move_operation::ActiveModel",

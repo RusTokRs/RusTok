@@ -193,14 +193,17 @@ pub async fn list_topics(
 pub(super) fn topic_audience_read_service(
     runtime: &crate::controllers::ForumHttpRuntime,
 ) -> ForumTopicAudienceReadService {
-    match runtime.audience_facts.clone() {
+    let service = match runtime.audience_facts.clone() {
         Some(facts) => ForumTopicAudienceReadService::with_audience_facts(
             runtime.db_clone(),
             runtime.event_bus(),
             facts,
         ),
         None => ForumTopicAudienceReadService::new(runtime.db_clone(), runtime.event_bus()),
-    }
+    };
+    service
+        .with_taxonomy_port(runtime.taxonomy_port.clone())
+        .with_settings_providers(runtime.settings_providers.clone())
 }
 
 fn topic_audience_list_service(
@@ -214,7 +217,9 @@ fn topic_audience_list_service(
         ),
         None => ForumTopicAudienceListService::new(runtime.db_clone(), runtime.event_bus()),
     };
-    service.with_settings_providers(runtime.settings_providers.clone())
+    service
+        .with_taxonomy_port(runtime.taxonomy_port.clone())
+        .with_settings_providers(runtime.settings_providers.clone())
 }
 
 #[cfg(test)]
