@@ -25,6 +25,7 @@ mod m20261126_000062_create_auth_application_clock;
 mod m20261126_000063_bind_invite_issuer_recovery_revision;
 mod m20261127_000002_bind_invite_membership_revision;
 mod m20261127_000004_bind_invite_role_grant_revision;
+mod m20261127_000005_bind_invite_module_policy;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -56,6 +57,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     migrations.push(Box::new(m20261126_000063_bind_invite_issuer_recovery_revision::Migration));
     migrations.push(Box::new(m20261127_000002_bind_invite_membership_revision::Migration));
     migrations.push(Box::new(m20261127_000004_bind_invite_role_grant_revision::Migration));
+    migrations.push(Box::new(m20261127_000005_bind_invite_module_policy::Migration));
     migrations
 }
 
@@ -70,6 +72,10 @@ pub(crate) fn jwt_fence_migrations() -> Vec<Box<dyn MigrationTrait>> {
 
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
     vec![
+        MigrationDependencyDescriptor::new(
+            "m20261127_000005_bind_invite_module_policy",
+            vec!["m20261127_000004_bind_invite_role_grant_revision", "m20261027_000080_policy_revision_cursor_sequences"],
+        ),
         MigrationDependencyDescriptor::new(
             "m20261127_000004_bind_invite_role_grant_revision",
             vec!["m20261127_000003_create_rbac_role_grant_revision", "m20261127_000002_bind_invite_membership_revision"],

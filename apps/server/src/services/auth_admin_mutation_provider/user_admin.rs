@@ -1045,6 +1045,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
 
         rustok_auth::application_clock::admit_now(&self.db).await
             .map_err(super::internal_admin_error)?;
+        crate::services::rbac_module_availability::prepare_invite_module_policy(
+            &self.db, self.invite_registry.as_ref(),
+        ).await.map_err(super::internal_admin_error)?;
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
         // Membership and account-status writers serialize on this user
         // fence. Do not issue a durable invitation for a removed, disabled
@@ -1058,6 +1061,10 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         .ok_or_else(|| AuthAdminMutationError::Forbidden(
             "active invitation issuer is required".to_string(),
         ))?;
+        let (module_policy_binding, availability) =
+            crate::services::rbac_module_availability::lock_invite_module_policy(
+                &self.db, &tx, self.invite_registry.as_ref(), context.tenant_id,
+            ).await.map_err(super::internal_admin_error)?;
         let membership_revision = rustok_rbac::read_user_membership_revision_on(
             &tx, context.tenant_id, context.actor_id,
         ).await.map_err(super::internal_admin_error)?;
@@ -1071,11 +1078,14 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             &tx, context.tenant_id, context.actor_id, &target_slug,
         ).await.map_err(super::internal_admin_error)?
             .ok_or_else(|| AuthAdminMutationError::NotFound("invitation role".to_string()))?;
-        let persisted_permissions = RbacService::get_user_permissions_authoritative(
+        let mut persisted_permissions = RbacService::get_user_permissions_authoritative(
             &tx, &context.tenant_id, &context.actor_id,
         )
         .await
         .map_err(super::internal_admin_error)?;
+        if let Some(availability) = availability {
+            persisted_permissions = availability.active_permissions(&persisted_permissions);
+        }
         let persisted_role = RbacService::get_user_role_authoritative(
             &tx, &context.tenant_id, &context.actor_id,
         )
@@ -1127,6 +1137,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             issuer_recovery_revision: Set(Some(issuer.recovery_revision)),
             issuer_membership_revision: Set(Some(membership_revision)),
             role_grant_binding: Set(Some(role_binding)),
+            module_policy_binding: Set(Some(module_policy_binding)),
             expires_at: Set(expires_at.into()),
             revoked_at: Set(None),
             created_at: Set(now.into()),
@@ -1370,6 +1381,7 @@ mod tests {
             issuer_recovery_revision: Set(None),
             issuer_membership_revision: Set(None),
             role_grant_binding: Set(None),
+            module_policy_binding: Set(None),
             expires_at: Set((now + chrono::Duration::hours(1)).into()),
             revoked_at: Set(None),
             created_at: Set(now.into()),

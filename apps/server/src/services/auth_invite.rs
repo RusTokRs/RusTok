@@ -185,15 +185,10 @@ impl AuthLifecycleService {
         let token_hash = invite_token_hash(token);
         let consumption_id = uuid::Uuid::new_v4();
 
-        // The host module-policy reader owns a pooled DatabaseConnection,
-        // not this transaction. Resolve its request snapshot before checking
-        // out a transaction connection, or a single-connection pool (and a
-        // saturated larger pool) can wait on itself. Persisted issuer grants
-        // and target-role checks below still execute under the transaction.
-        let availability =
-            crate::services::rbac_module_availability::permission_availability_for(ctx, tenant_id)
-                .await
-                .map_err(InviteAcceptanceError::Internal)?;
+        let registry = ctx.shared_get::<rustok_core::ModuleRegistry>();
+        crate::services::rbac_module_availability::prepare_invite_module_policy(
+            ctx.db(), registry.as_ref(),
+        ).await.map_err(InviteAcceptanceError::Internal)?;
 
         let tx = ctx
             .db()
@@ -242,6 +237,13 @@ impl AuthLifecycleService {
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
             .filter(|issuer| invite_issuer_matches_account(&issued, issuer))
             .ok_or(InviteAcceptanceError::InvalidToken)?;
+        let (module_policy_binding, availability) =
+            crate::services::rbac_module_availability::lock_invite_module_policy(
+                ctx.db(), &tx, registry.as_ref(), tenant_id,
+            ).await.map_err(InviteAcceptanceError::Internal)?;
+        if issued.module_policy_binding.as_deref() != Some(module_policy_binding.as_str()) {
+            return Err(InviteAcceptanceError::InvalidToken);
+        }
         let membership_revision = rustok_rbac::read_user_membership_revision_on(&tx, tenant_id, issuer_id)
             .await.map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
         if issued.issuer_membership_revision != Some(membership_revision) {
@@ -610,6 +612,7 @@ mod tests {
                 issuer_recovery_revision BIGINT NULL, \
                 issuer_membership_revision BIGINT NULL, \
                 role_grant_binding TEXT NULL, \
+                module_policy_binding TEXT NULL, \
                 expires_at TEXT NOT NULL, \
                 revoked_at TEXT NULL, \
                 created_at TEXT NOT NULL\
@@ -631,6 +634,7 @@ mod tests {
             issuer_recovery_revision: Set(None),
             issuer_membership_revision: Set(None),
             role_grant_binding: Set(None),
+            module_policy_binding: Set(None),
             expires_at: Set((now + chrono::Duration::days(7)).into()),
             revoked_at: Set(None),
             created_at: Set(now.into()),
@@ -707,6 +711,7 @@ mod tests {
             issuer_recovery_revision: None,
             issuer_membership_revision: None,
             role_grant_binding: None,
+            module_policy_binding: None,
             expires_at: expires_at.into(),
             revoked_at: None,
             created_at: now.into(),

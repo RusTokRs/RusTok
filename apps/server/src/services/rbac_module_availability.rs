@@ -21,12 +21,12 @@ use crate::error::{Error, Result};
 pub struct RbacPermissionOwnership(pub Arc<BTreeMap<String, String>>);
 
 fn build_permission_ownership(
-    ctx: &ServerRuntimeContext,
+    db: &sea_orm::DatabaseConnection,
     registry: &ModuleRegistry,
 ) -> Result<BTreeMap<String, String>> {
     // The definition catalog is an owner service: obtain it through the
     // control plane instead of constructing it in the host adapter.
-    let catalog = ModuleControlPlane::new(ctx.db_clone())
+    let catalog = ModuleControlPlane::new(db.clone())
         .catalog(registry)
         .map_err(|error| {
             Error::Message(format!("RBAC permission ownership catalog failed: {error}"))
@@ -51,7 +51,7 @@ pub(super) fn permission_ownership(
     if let Some(cached) = ctx.shared_get::<RbacPermissionOwnership>() {
         return Ok(cached.0);
     }
-    let ownership = Arc::new(build_permission_ownership(ctx, registry)?);
+    let ownership = Arc::new(build_permission_ownership(ctx.db(), registry)?);
     ctx.shared_insert(RbacPermissionOwnership(ownership.clone()));
     Ok(ownership)
 }
@@ -92,6 +92,47 @@ pub(super) async fn resolve_permission_availability(
         .map_err(|error| Error::Message(format!("module policy resolution failed: {error}")))?;
     let enabled: BTreeSet<String> = policy.into_enabled_modules().into_iter().collect();
     Ok(PermissionAvailability::new(ownership.clone(), enabled))
+}
+
+/// Initialize composition before checking out the credential transaction.
+pub(crate) async fn prepare_invite_module_policy(
+    db: &sea_orm::DatabaseConnection,
+    registry: Option<&ModuleRegistry>,
+) -> Result<()> {
+    if registry.is_some() {
+        super::platform_composition::PlatformCompositionService::active_snapshot(db)
+            .await.map_err(|error| Error::Message(format!("module composition unavailable: {error}")))?;
+    }
+    Ok(())
+}
+
+/// Caller holds SQLite's write fence or a PostgreSQL transaction. No cache
+/// or additional pool checkout; locks remain held until commit.
+pub(crate) async fn lock_invite_module_policy(
+    db: &sea_orm::DatabaseConnection,
+    tx: &sea_orm::DatabaseTransaction,
+    registry: Option<&ModuleRegistry>,
+    tenant_id: uuid::Uuid,
+) -> Result<(String, Option<PermissionAvailability>)> {
+    let Some(registry) = registry else {
+        return Ok(("v1:uncomposed".to_string(), None));
+    };
+    let ownership = build_permission_ownership(db, registry)?;
+    let owner_snapshot = rustok_modules::SeaOrmModuleCompositionService::lock_active_snapshot_in_transaction(tx)
+        .await.map_err(|error| Error::Message(format!("module composition lock failed: {error}")))?;
+    let snapshot = super::platform_composition::PlatformCompositionService::snapshot_from_owner(owner_snapshot)
+        .map_err(|error| Error::Message(format!("module composition decode failed: {error}")))?;
+    let corequisites = crate::modules::ManifestManager::module_policy_corequisites(&snapshot.manifest)
+        .map_err(|error| Error::Message(format!("module co-requisites unavailable: {error}")))?;
+    let (policy, state) = rustok_modules::SeaOrmModulePolicyRevisionConsumer::new(db.clone())
+        .lock_and_resolve_static_policy_state_in_transaction(
+            tx, tenant_id, "module.lifecycle", registry,
+            snapshot.manifest.settings.default_enabled, corequisites,
+        )
+        .await.map_err(|error| Error::Message(format!("module policy lock failed: {error}")))?;
+    let binding = format!("v1:{}:{}:{}", snapshot.revision, state.current_sequence, policy.policy_revision());
+    let enabled = policy.into_enabled_modules().into_iter().collect();
+    Ok((binding, Some(PermissionAvailability::new(ownership, enabled))))
 }
 
 /// GraphQL provider registered with the RBAC owner queries/mutations.

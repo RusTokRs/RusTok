@@ -135,6 +135,7 @@ pub struct ServerAuthAdminMutationProvider {
     auth_config: crate::auth::AuthConfig,
     cache_service: CacheService,
     event_bus: TransactionalEventBus,
+    invite_registry: Option<rustok_core::ModuleRegistry>,
 }
 
 impl ServerAuthAdminMutationProvider {
@@ -147,7 +148,13 @@ impl ServerAuthAdminMutationProvider {
             auth_config,
             cache_service: ensure_cache_service(runtime_ctx),
             event_bus: transactional_event_bus_from_context(runtime_ctx),
+            invite_registry: runtime_ctx.shared_get::<rustok_core::ModuleRegistry>(),
         }
+    }
+
+    pub(crate) fn with_invite_module_registry(mut self, registry: rustok_core::ModuleRegistry) -> Self {
+        self.invite_registry = Some(registry);
+        self
     }
 
     fn request_permissions(
@@ -546,6 +553,7 @@ mod tests {
             failed_login_count: 0,
             locked_until: None,
             password_changed_at: None,
+            recovery_revision: 0,
             metadata: json!({"team": "platform"}),
             created_at: chrono::Utc::now().into(),
             updated_at: chrono::Utc::now().into(),

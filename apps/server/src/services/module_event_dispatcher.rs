@@ -809,7 +809,7 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider::new(
             &runtime_ctx,
             auth_config.clone(),
-        ),
+        ).with_invite_module_registry(registry.clone()),
     );
     let oauth_admin_provider = Arc::new(
         crate::services::oauth_admin_guard::GuardedOAuthAdminProvider::new(

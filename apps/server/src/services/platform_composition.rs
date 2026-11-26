@@ -248,7 +248,7 @@ impl PlatformCompositionService {
         )?))
     }
 
-    fn snapshot_from_owner(
+    pub(super) fn snapshot_from_owner(
         snapshot: ModuleCompositionSnapshot,
     ) -> Result<PlatformCompositionSnapshot, PlatformCompositionError> {
         let manifest = serde_json::from_value(snapshot.manifest)

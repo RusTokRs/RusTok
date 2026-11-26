@@ -14,6 +14,7 @@ pub struct Model {
     pub issuer_recovery_revision: Option<i64>,
     pub issuer_membership_revision: Option<i64>,
     pub role_grant_binding: Option<String>,
+    pub module_policy_binding: Option<String>,
     pub expires_at: DateTimeWithTimeZone,
     pub revoked_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,

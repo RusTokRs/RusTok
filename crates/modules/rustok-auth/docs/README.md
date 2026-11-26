@@ -85,8 +85,13 @@ consumption history. The ledger also binds the exact IDs and static grant revisi
 membership role and the destination role. Those roles are locked before grant
 reads; missing or changed bindings deny acceptance. Missing built-in destinations
 are initialized by RBAC at issuance without rewriting existing grants. Legacy
-unbound invites are revoked at cutover. This is not a durable history of module policy,
-nor a transaction-spanning module-policy fence.
+unbound invites are revoked at cutover. Invites also bind the static module policy digest, platform composition revision,
+and tenant lifecycle cursor sequence under owner transaction locks. Issuance
+and acceptance filter current grants using this uncached policy. The tenant-wide
+sequence conservatively invalidates invites after unrelated tenant lifecycle
+transitions, while composition changes affect all tenants. Artifact runtime
+policy, out-of-contract writes bypassing owner cursors, and database rollback
+remain outside this guarantee.
 
 The host additionally composition-gates the OAuth protocol surface and discovery metadata with
 `settings.rustok.features.oauth_enabled`; when the gate is closed the routes are not mounted and

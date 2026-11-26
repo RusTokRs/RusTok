@@ -399,6 +399,21 @@ impl SeaOrmModuleCompositionService {
     pub async fn active_snapshot_on<C: ConnectionTrait>(
         connection: &C,
     ) -> Result<ModuleCompositionSnapshot, ModuleCompositionError> {
+        Self::read_active_snapshot_on(connection, false).await
+    }
+
+    /// Hold the active composition against owner CAS updates.
+    /// SQLite callers must already own the transaction's write fence.
+    pub async fn lock_active_snapshot_in_transaction(
+        transaction: &sea_orm::DatabaseTransaction,
+    ) -> Result<ModuleCompositionSnapshot, ModuleCompositionError> {
+        Self::read_active_snapshot_on(transaction, true).await
+    }
+
+    async fn read_active_snapshot_on<C: ConnectionTrait>(
+        connection: &C,
+        lock: bool,
+    ) -> Result<ModuleCompositionSnapshot, ModuleCompositionError> {
         let backend = SupportedBackend::new(connection.get_database_backend())
             .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
         let row = connection
@@ -406,8 +421,9 @@ impl SeaOrmModuleCompositionService {
                 backend.db_backend(),
                 format!(
                     "SELECT revision, manifest_hash, CAST(manifest_json AS TEXT) AS manifest_json \
-                     FROM platform_state WHERE id = {}",
+                     FROM platform_state WHERE id = {}{}",
                     backend.placeholder(1),
+                    if lock && backend == SupportedBackend::Postgres { " FOR SHARE" } else { "" },
                 ),
                 vec![ACTIVE_MODULE_COMPOSITION_ID.into()],
             ))
