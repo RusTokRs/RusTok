@@ -336,9 +336,12 @@ fn validate_locale_policy_coverage(document: &ProjectDocument) -> Vec<Validation
         ValidationSeverity::Warning
     };
     let catalog = TranslationCatalog::from_document(document);
+    let duplicate_ids = catalog.duplicate_ids();
     for entry in &catalog.entries {
         for locale in &policy.required_locales {
-            if !has_unambiguous_locale(&entry.values, locale) {
+            if duplicate_ids.contains(entry.id.as_str())
+                || !has_unambiguous_locale(&entry.values, locale)
+            {
                 diagnostics.push(locale_coverage_diagnostic(
                     missing_severity,
                     "translation_required_locale_missing",

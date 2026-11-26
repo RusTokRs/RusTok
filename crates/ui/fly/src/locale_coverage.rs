@@ -114,6 +114,7 @@ pub fn analyze_project_locale_coverage(document: &ProjectDocument) -> LocaleCove
         .map(|policy| policy.required_locales.clone())
         .unwrap_or_default();
     let catalog = TranslationCatalog::from_document(document);
+    let duplicate_ids = catalog.duplicate_ids();
     let metadata = collect_metadata(document);
     let tracked_locales = collect_locales(policy.as_ref(), &catalog, &metadata);
     let mut summaries = Vec::new();
@@ -124,12 +125,18 @@ pub fn analyze_project_locale_coverage(document: &ProjectDocument) -> LocaleCove
         let translation_present = catalog
             .entries
             .iter()
-            .filter(|entry| has_unambiguous_locale(&entry.values, locale))
+            .filter(|entry| {
+                !duplicate_ids.contains(entry.id.as_str())
+                    && has_unambiguous_locale(&entry.values, locale)
+            })
             .count();
         for entry in catalog
             .entries
             .iter()
-            .filter(|entry| !has_unambiguous_locale(&entry.values, locale))
+            .filter(|entry| {
+                duplicate_ids.contains(entry.id.as_str())
+                    || !has_unambiguous_locale(&entry.values, locale)
+            })
         {
             gaps.push(LocaleCoverageGap {
                 locale: locale.clone(),
@@ -349,6 +356,33 @@ mod tests {
         }));
         assert_eq!(report.summary_for("ru-RU").unwrap().missing, 2);
         assert!(!report.strict_ready());
+    }
+
+    #[test]
+    fn duplicate_translation_ids_do_not_satisfy_required_coverage() {
+        let project = json!({
+            "flyLocales": {
+                "supported_locales": ["en"],
+                "required_locales": ["en"],
+                "enforce_required_locales": true
+            },
+            "flyTranslations": [
+                { "id": "hero", "values": { "en": "First" } },
+                { "id": "hero", "values": { "en": "Second" } },
+                { "id": "other", "values": { "en": "Keep" } }
+            ],
+            "pages": [{ "component": { "id": "root", "type": "wrapper" } }]
+        });
+        let coverage = report(project.clone());
+        assert_eq!(coverage.summary_for("en").unwrap().translation_present, 1);
+        assert_eq!(coverage.summary_for("en").unwrap().missing, 2);
+        assert!(!coverage.strict_ready());
+        let document = GrapesJsCodec::decode_value(project).expect("document");
+        assert!(crate::validate_project_locale_policy(&document).iter().any(|diagnostic| {
+            diagnostic.code == "translation_required_locale_missing"
+                && diagnostic.path == "project.translations.hero"
+                && diagnostic.severity == crate::ValidationSeverity::Error
+        }));
     }
 
     #[test]

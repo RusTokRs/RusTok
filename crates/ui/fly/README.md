@@ -213,7 +213,10 @@ as an arbitrary language in the rendered head.
 Translation IDs are exact, nonempty ASCII alphanumeric, hyphen or underscore identities:
 surrounding whitespace is invalid on authoring and validation, and removal addresses the
 exact stored ID so an invalid imported entry can be removed without deleting a different
-entry. A present non-array `flyTranslations` block is a blocking diagnostic and catalog
+entry. Duplicate decoded IDs never resolve at lookup or runtime, cannot satisfy required
+coverage, and cannot be silently overwritten by upsert. Explicit removal clears all
+decoded entries with that exact ID so it can be recreated unambiguously. A present
+non-array `flyTranslations` block is a blocking diagnostic and catalog
 mutations reject it without changing the source document; opaque array entries remain
 preserved.
 A page-targeting interaction requires a unique page ID. Duplicate imported page IDs are
