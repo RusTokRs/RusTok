@@ -44,6 +44,7 @@ async fn insert_user(db: &sea_orm::DatabaseConnection, tenant_id: Uuid, email: &
         failed_login_count: Set(0),
         locked_until: Set(None),
         password_changed_at: Set(None),
+        recovery_revision: sea_orm::ActiveValue::NotSet,
         id: Set(user_id),
         tenant_id: Set(tenant_id),
         email: Set(email.to_string()),
