@@ -1216,20 +1216,57 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         )
         .await?;
 
-        // Acceptance uses the same row fence. Whichever operation acquires
-        // it first determines the outcome: a committed revocation prevents
-        // acceptance, while an already accepted invite cannot be "revoked"
-        // retroactively or emit a misleading second lifecycle event.
+        crate::services::rbac_module_availability::prepare_invite_module_policy(
+            &self.db, self.invite_registry.as_ref(),
+        ).await.map_err(super::internal_admin_error)?;
+        // Match acceptance's order: actor user -> invite -> module policy
+        // -> ordered role grants. Revoking an invite does not require its
+        // original issuer or destination role to remain valid.
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
+        AuthLifecycleService::lock_user_for_mutation(
+            &tx, context.tenant_id, context.actor_id,
+        ).await.map_err(super::internal_admin_error)?
+            .filter(|actor| actor.is_active())
+            .ok_or_else(|| AuthAdminMutationError::Forbidden(
+                "active invitation administrator is required".to_string(),
+            ))?;
         let invite = lock_invite_for_mutation(
             &tx,
             context.tenant_id,
             InviteLookup::Id(invite_id),
         )
         .await
-        .map_err(super::internal_admin_error)?
-        .ok_or_else(|| AuthAdminMutationError::NotFound("user invite".to_string()))?;
+        .map_err(super::internal_admin_error)?;
 
+        // The request ceiling was checked above. Independently re-read
+        // live persisted authority under the mutation fences, including
+        // for idempotent retries and accepted-invite conflicts.
+        let (_, availability) =
+            crate::services::rbac_module_availability::lock_invite_module_policy(
+                &self.db, &tx, self.invite_registry.as_ref(), context.tenant_id,
+            ).await.map_err(super::internal_admin_error)?;
+        rustok_rbac::lock_actor_role_grants_on(
+            &tx, context.tenant_id, context.actor_id,
+        ).await.map_err(super::internal_admin_error)?;
+        let mut permissions = RbacService::get_user_permissions_authoritative(
+            &tx, &context.tenant_id, &context.actor_id,
+        ).await.map_err(super::internal_admin_error)?;
+        if let Some(availability) = availability {
+            permissions = availability.active_permissions(&permissions);
+        }
+        if !rustok_rbac::has_effective_permission_in_set(&permissions, &Permission::USERS_MANAGE) {
+            return Err(AuthAdminMutationError::Forbidden(
+                "current users:manage required".to_string(),
+            ));
+        }
+
+        // Do not disclose whether the invite exists to an actor whose
+        // current permission was removed after request admission.
+        let invite = invite.ok_or_else(|| AuthAdminMutationError::NotFound("user invite".to_string()))?;
+
+        // The same ledger lock serializes with acceptance: a committed
+        // revocation prevents acceptance, and an accepted invite cannot
+        // emit a subsequent revocation event.
         if invite.revoked_at.is_some() {
             tx.commit().await.map_err(super::internal_admin_error)?;
             return Ok(invite_record(invite));
@@ -1412,7 +1449,7 @@ mod tests {
 
     #[tokio::test]
     async fn invite_revocation_rolls_back_when_runtime_event_transport_fails() {
-        use crate::models::{auth_invites, tenants};
+        use crate::models::{auth_invite_consumptions, auth_invites, tenants, users};
         use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
         use crate::services::server_runtime_context::ServerRuntimeContext;
         use rustok_api::Permission;
@@ -1421,12 +1458,11 @@ mod tests {
         use rustok_events::EventEnvelope;
         use rustok_migrations::SqliteTestMigrator;
         use rustok_test_utils::db::setup_test_db_with_migrations;
-        use sea_orm::{ActiveModelTrait, EntityTrait, Set};
-        use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+        use sea_orm::{ActiveModelTrait, EntityTrait, Set, TransactionTrait};
+        use std::sync::{Arc, atomic::{AtomicBool, AtomicUsize, Ordering}};
         use uuid::Uuid;
 
-        #[derive(Default)]
-        struct FailingTransport(AtomicUsize);
+        struct FailingTransport(AtomicUsize, AtomicBool);
 
         #[async_trait::async_trait]
         impl EventTransport for FailingTransport {
@@ -1444,7 +1480,11 @@ mod tests {
                 _event: EventEnvelope,
             ) -> rustok_core::Result<()> {
                 self.0.fetch_add(1, Ordering::SeqCst);
-                Err(rustok_core::Error::Validation("injected outbox failure".to_string()))
+                if self.1.load(Ordering::SeqCst) {
+                    Err(rustok_core::Error::Validation("injected outbox failure".to_string()))
+                } else {
+                    Ok(())
+                }
             }
 
             fn reliability_level(&self) -> ReliabilityLevel {
@@ -1461,7 +1501,9 @@ mod tests {
             .insert(&db)
             .await
             .expect("tenant");
-        let actor_id = Uuid::new_v4();
+        let actor = users::ActiveModel::new(tenant.id, "revoker@example.test", "hash")
+            .insert(&db).await.unwrap();
+        let actor_id = actor.id;
         let invite_id = Uuid::new_v4();
         let now = chrono::Utc::now();
         auth_invites::ActiveModel {
@@ -1483,7 +1525,7 @@ mod tests {
         .await
         .expect("invite");
         let runtime = ServerRuntimeContext::new(db.clone(), Default::default());
-        let failing = Arc::new(FailingTransport::default());
+        let failing = Arc::new(FailingTransport(AtomicUsize::new(0), AtomicBool::new(true)));
         runtime.shared_insert(failing.clone() as Arc<dyn EventTransport>);
         let provider = super::ServerAuthAdminMutationProvider::new(
             &runtime,
@@ -1496,11 +1538,26 @@ mod tests {
             locale: Some("en".to_string()),
             principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
         };
-        let scope = RbacRequestScope::new(
+        let scope = || RbacRequestScope::new(
             tenant.id, actor_id, vec![Permission::USERS_MANAGE], UserRole::Admin,
         );
 
-        let result = with_rbac_request_scope(Some(scope), async {
+        let denied = with_rbac_request_scope(Some(scope()), async {
+            provider.revoke_user_invite(&context, invite_id).await
+        }).await;
+        assert!(matches!(denied, Err(AuthAdminMutationError::Forbidden(_))));
+        assert_eq!(failing.0.load(Ordering::SeqCst), 0);
+        let missing = with_rbac_request_scope(Some(scope()), async {
+            provider.revoke_user_invite(&context, Uuid::new_v4()).await
+        }).await;
+        assert!(matches!(missing, Err(AuthAdminMutationError::Forbidden(_))));
+        let tx = db.begin().await.unwrap();
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &tx, tenant.id, actor_id, UserRole::Admin,
+        ).await.unwrap();
+        tx.commit().await.unwrap();
+
+        let result = with_rbac_request_scope(Some(scope()), async {
             provider.revoke_user_invite(&context, invite_id).await
         })
         .await;
@@ -1512,6 +1569,53 @@ mod tests {
             .expect("read invite")
             .expect("invite retained");
         assert!(persisted.revoked_at.is_none());
+
+        // A successful retry emits one event; idempotent retries do not.
+        // The ledger has no issuer or target-role binding and can still
+        // be revoked by a current administrator.
+        failing.1.store(false, Ordering::SeqCst);
+        let revoked = with_rbac_request_scope(Some(scope()), async {
+            provider.revoke_user_invite(&context, invite_id).await
+        }).await.unwrap();
+        assert!(revoked.revoked_at.is_some());
+        let retry = with_rbac_request_scope(Some(scope()), async {
+            provider.revoke_user_invite(&context, invite_id).await
+        }).await.unwrap();
+        assert_eq!(retry.revoked_at, revoked.revoked_at);
+        assert_eq!(failing.0.load(Ordering::SeqCst), 2);
+
+        // A committed acceptance receipt is terminal under the same fence.
+        let consumed_invite = auth_invites::ActiveModel {
+            id: Set(Uuid::new_v4()), tenant_id: Set(tenant.id),
+            token_hash: Set("b".repeat(64)), email: Set("accepted@example.test".to_string()),
+            role: Set("customer".to_string()), issued_by: Set(None),
+            issuer_recovery_revision: Set(None), issuer_membership_revision: Set(None),
+            role_grant_binding: Set(None), module_policy_binding: Set(None),
+            expires_at: Set((now + chrono::Duration::hours(1)).into()),
+            revoked_at: Set(None), created_at: Set(now.into()),
+        }.insert(&db).await.unwrap();
+        auth_invite_consumptions::ActiveModel {
+            id: Set(Uuid::new_v4()), tenant_id: Set(tenant.id),
+            token_hash: Set(consumed_invite.token_hash.clone()),
+            email: Set(consumed_invite.email.clone()), role: Set(consumed_invite.role.clone()),
+            user_id: Set(None), expires_at: Set(consumed_invite.expires_at),
+            consumed_at: Set(now.into()),
+        }.insert(&db).await.unwrap();
+        let result = with_rbac_request_scope(Some(scope()), async {
+            provider.revoke_user_invite(&context, consumed_invite.id).await
+        }).await;
+        assert!(matches!(result, Err(AuthAdminMutationError::Conflict(_))));
+        assert_eq!(failing.0.load(Ordering::SeqCst), 2);
+
+        // Losing the account fence also denies a previously idempotent retry.
+        users::ActiveModel {
+            id: Set(actor_id), status: Set(UserStatus::Inactive), ..Default::default()
+        }.update(&db).await.unwrap();
+        let denied = with_rbac_request_scope(Some(scope()), async {
+            provider.revoke_user_invite(&context, invite_id).await
+        }).await;
+        assert!(matches!(denied, Err(AuthAdminMutationError::Forbidden(_))));
+        assert_eq!(failing.0.load(Ordering::SeqCst), 2);
     }
 
     #[test]

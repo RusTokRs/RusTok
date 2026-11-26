@@ -88,6 +88,13 @@ issuer-delete/FK SET NULL lock order; committed consumption is rejected before
 module/RBAC locks, with the unique receipt insert retained as final authority.
 SQLite starts with the user write fence. PostgreSQL contention is unverified.
 
+Administrative invite revocation checks the request permission ceiling and
+re-reads the active revoker and current module-filtered static `users:manage`
+under actor -> invite -> module policy -> ordered actor-role fences. The
+original issuer or target role need not exist. Current authority is required
+even for idempotent retries. The shared ledger fence and transactional event
+preserve acceptance/revocation exclusivity; source regressions are unrun.
+
 Invite acceptance and administrative revocation serialize on the same
 `auth_invites` issuance row. PostgreSQL/MySQL use a locking read; SQLite acquires
 its write fence before rereading the row. A revocation committed first makes

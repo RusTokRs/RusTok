@@ -562,6 +562,8 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 
 ## Recovery lifecycle continuation (2026-11-26)
 
+- Invite revocation revalidates active actor and current module-filtered `users:manage` under actor/invite/module/ordered actor-role fences, including idempotent retries. Issuer and target-role validity are not prerequisites. Shared RBAC role-row query retains the invitation binding format. Source regression covers stale authority, event failure rollback, successful retry, idempotence and accepted receipt conflict; unrun. PostgreSQL contention and artifact/runtime grant fences remain open.
+
 - Admin custom-role provisioning uses the shared direct creation path after checking active actor and both request/persisted delegation under module and ordered role locks. No temporary Customer. Source regression covers stale request grants and exact final membership/revision; unrun. Built-in admin creation and cross-owner contention remain open.
 
 - Custom-role invite acceptance assigns the locked persisted target directly, sharing validated account insertion with built-in creation. No intermediate Customer membership or role bootstrap; the receipt, user and final role remain atomic. Source regression checks exact membership, single revision increment, absent Customer and rollback on missing role; unrun. Admin provisioning and full PostgreSQL contention are separate open paths.

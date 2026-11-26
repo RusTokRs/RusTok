@@ -1,16 +1,15 @@
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, DbErr, Statement};
 use uuid::Uuid;
 
-/// Caller holds the issuer's user mutation fence (SQLite: write fence).
-/// Lock every relevant role before any permission reads. A missing target is
-/// not a seed fallback: there is no persisted identity to bind. The sorted
-/// exact role identities and epochs are a stable, non-secret ledger binding.
-pub async fn lock_invite_role_grant_binding_on(
+/// Shared role-grant fence. The caller holds the actor's user mutation
+/// fence (SQLite: write fence). An optional target adds a role to the same
+/// UUID-ordered lock set; NULL selects only the actor's membership roles.
+async fn lock_role_grant_rows_on(
     tx: &DatabaseTransaction,
     tenant_id: Uuid,
-    issuer_id: Uuid,
-    target_slug: &str,
-) -> Result<Option<String>, DbErr> {
+    actor_id: Uuid,
+    target_slug: Option<&str>,
+) -> Result<Vec<(Uuid, String, i64)>, DbErr> {
     let backend = tx.get_database_backend();
     let sql = match backend {
         DatabaseBackend::Postgres => "SELECT r.id, r.slug, r.grant_revision FROM roles r WHERE r.tenant_id = $1 AND (r.slug = $2 OR EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = $3 AND ur.role_id = r.id)) ORDER BY r.id FOR UPDATE OF r",
@@ -18,10 +17,9 @@ pub async fn lock_invite_role_grant_binding_on(
         _ => return Err(DbErr::Custom("unsupported RBAC grant revision backend".into())),
     };
     let rows = tx.query_all_raw(Statement::from_sql_and_values(
-        backend, sql, [tenant_id.into(), target_slug.to_string().into(), issuer_id.into()],
+        backend, sql, [tenant_id.into(), target_slug.map(str::to_owned).into(), actor_id.into()],
     )).await?;
-    let mut target = None;
-    let mut revisions = Vec::with_capacity(rows.len());
+    let mut locked = Vec::with_capacity(rows.len());
     for row in rows {
         let id: Uuid = row.try_get("", "id")?;
         let slug: String = row.try_get("", "slug")?;
@@ -29,6 +27,34 @@ pub async fn lock_invite_role_grant_binding_on(
         if revision < 0 || id.is_nil() {
             return Err(DbErr::Custom("invalid RBAC role grant revision".into()));
         }
+        locked.push((id, slug, revision));
+    }
+    Ok(locked)
+}
+
+/// Lock only the current actor's static membership roles, for immediate
+/// authority checks that do not delegate a destination role.
+pub async fn lock_actor_role_grants_on(
+    tx: &DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+) -> Result<(), DbErr> {
+    lock_role_grant_rows_on(tx, tenant_id, actor_id, None).await?;
+    Ok(())
+}
+
+/// Lock issuer and destination roles before any permission reads. A missing
+/// destination cannot be bound. Preserve the exact canonical ledger encoding.
+pub async fn lock_invite_role_grant_binding_on(
+    tx: &DatabaseTransaction,
+    tenant_id: Uuid,
+    issuer_id: Uuid,
+    target_slug: &str,
+) -> Result<Option<String>, DbErr> {
+    let rows = lock_role_grant_rows_on(tx, tenant_id, issuer_id, Some(target_slug)).await?;
+    let mut target = None;
+    let mut revisions = Vec::with_capacity(rows.len());
+    for (id, slug, revision) in rows {
         if slug == target_slug {
             target = Some(id);
         }
