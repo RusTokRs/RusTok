@@ -344,11 +344,10 @@ fn validate_requested_scopes(
     requested: Option<&str>,
 ) -> Result<Vec<String>, OAuthTokenProtocolError> {
     let allowed = app.scopes_list();
-    let Some(requested) = requested else {
-        return Ok(allowed);
+    let requested = match requested {
+        Some(requested) => parse_requested_scopes(requested),
+        None => allowed.clone(),
     };
-
-    let requested = parse_requested_scopes(requested);
     if requested.is_empty() {
         return Err(OAuthTokenProtocolError::invalid_scope(
             "Requested scope must not be empty",
@@ -362,11 +361,10 @@ fn scopes_for_refresh(
     current: &[String],
     requested: Option<&str>,
 ) -> Result<Vec<String>, OAuthTokenProtocolError> {
-    let Some(requested) = requested else {
-        return Ok(current.to_vec());
+    let narrowed = match requested {
+        Some(requested) => parse_requested_scopes(requested),
+        None => current.to_vec(),
     };
-
-    let narrowed = parse_requested_scopes(requested);
     if narrowed.is_empty() {
         return Err(OAuthTokenProtocolError::invalid_scope(
             "Refresh scope must not be empty",
@@ -380,7 +378,9 @@ fn validate_scope_subset(
     allowed: &[String],
     requested: &[String],
 ) -> Result<(), OAuthTokenProtocolError> {
-    if requested.iter().all(|scope| scope_matches(allowed, scope)) {
+    // An empty persisted authorization code or refresh grant must not pass
+    // a vacuous subset check and be exchanged for a new credential.
+    if !requested.is_empty() && requested.iter().all(|scope| scope_matches(allowed, scope)) {
         Ok(())
     } else {
         Err(OAuthTokenProtocolError::invalid_scope(
@@ -2156,6 +2156,42 @@ mod tests {
                 validate_requested_scopes(&app, Some(empty))
                     .unwrap_err()
                     .error,
+                "invalid_scope"
+            );
+        }
+    }
+
+    #[test]
+    fn client_credentials_rejects_missing_or_malformed_default_scopes() {
+        for scopes in [
+            serde_json::json!([]),
+            serde_json::json!(null),
+            serde_json::json!(["catalog:read", 42]),
+        ] {
+            let app = app(scopes, serde_json::json!(["client_credentials"]));
+            assert_eq!(
+                validate_requested_scopes(&app, None).unwrap_err().error,
+                "invalid_scope"
+            );
+            assert_eq!(
+                validate_requested_scopes(&app, Some("catalog:read"))
+                    .unwrap_err()
+                    .error,
+                "invalid_scope"
+            );
+        }
+    }
+
+    #[test]
+    fn empty_persisted_grant_cannot_be_exchanged_or_rotated() {
+        let allowed = vec!["catalog:read".to_string()];
+        assert_eq!(
+            super::validate_scope_subset(&allowed, &[]).unwrap_err().error,
+            "invalid_scope"
+        );
+        for requested in [None, Some(""), Some("catalog:read")] {
+            assert_eq!(
+                scopes_for_refresh(&[], requested).unwrap_err().error,
                 "invalid_scope"
             );
         }
