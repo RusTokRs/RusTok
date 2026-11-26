@@ -1,9 +1,9 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 
 use async_graphql::extensions::{
     Extension, ExtensionContext, ExtensionFactory, NextExecute, NextPrepareRequest,
 };
-use async_graphql::parser::types::{ExecutableDocument, Selection, SelectionSet};
+use async_graphql::parser::types::{ExecutableDocument, SelectionSet};
 use async_graphql::{FieldError, Pos, Request, Response, ServerResult};
 use rustok_api::{AuthContext, Permission, graphql::GraphQLError, has_effective_permission};
 
@@ -82,50 +82,22 @@ fn is_forum_response_root(name: &str) -> bool {
 fn selection_policy(
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
-    inside_forum_response: bool,
-    visited_fragments: &mut BTreeSet<(String, bool)>,
 ) -> ForumOperationPolicy {
     let mut policy = ForumOperationPolicy::default();
-    for selection in &selection_set.items {
-        match &selection.node {
-            Selection::Field(field) => {
-                let name = field.node.name.node.as_str();
-                policy.merge(field_policy(name));
-                let next_inside_forum = inside_forum_response || is_forum_response_root(name);
-                if next_inside_forum && matches!(name, "currentUserVote" | "isSubscribed") {
-                    policy.personal_projection = true;
-                }
-                policy.merge(selection_policy(
-                    &field.node.selection_set.node,
-                    document,
-                    next_inside_forum,
-                    visited_fragments,
-                ));
+    let _completed = super::visit_selection_fields(
+        document,
+        selection_set,
+        false,
+        |field, inside_forum_response| {
+            let name = field.name.node.as_str();
+            policy.merge(field_policy(name));
+            let next_inside_forum = inside_forum_response || is_forum_response_root(name);
+            if next_inside_forum && matches!(name, "currentUserVote" | "isSubscribed") {
+                policy.personal_projection = true;
             }
-            Selection::FragmentSpread(fragment) => {
-                let name = fragment.node.fragment_name.node.as_str();
-                let Some(definition) = document.fragments.get(name) else {
-                    continue;
-                };
-                let visit_key = (name.to_owned(), inside_forum_response);
-                if !visited_fragments.insert(visit_key) {
-                    continue;
-                }
-                policy.merge(selection_policy(
-                    &definition.node.selection_set.node,
-                    document,
-                    inside_forum_response,
-                    visited_fragments,
-                ));
-            }
-            Selection::InlineFragment(fragment) => policy.merge(selection_policy(
-                &fragment.node.selection_set.node,
-                document,
-                inside_forum_response,
-                visited_fragments,
-            )),
-        }
-    }
+            std::ops::ControlFlow::Continue(Some(next_inside_forum))
+        },
+    );
     policy
 }
 
@@ -135,13 +107,7 @@ fn document_policy(
 ) -> ForumOperationPolicy {
     let mut policy = ForumOperationPolicy::default();
     for operation in super::selected_operations(document, operation_name) {
-        let mut visited_fragments = BTreeSet::new();
-        policy.merge(selection_policy(
-            &operation.node.selection_set.node,
-            document,
-            false,
-            &mut visited_fragments,
-        ));
+        policy.merge(selection_policy(&operation.node.selection_set.node, document));
     }
     policy
 }

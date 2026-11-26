@@ -1158,9 +1158,9 @@ let category = self.taxonomy()?
 - **Category:** GraphQL parser hardening and denial-of-service resistance.
 - **Logic dimensions:** Preconditions and bounds, algorithmic correctness.
 - **Observed behavior:** GraphQL fragment spreads form a directed graph, not a guaranteed tree. The parser can produce an AST containing cyclic fragment references; GraphQL validation rejects the cycle later, but host `prepare_request` security classifiers run before that validation. Recursive fragment inspection without a visited set can therefore recurse indefinitely and overflow the request task's stack before the normal validation error is returned.
-- **Remediation:** Track visited fragment names per selected operation before descending into a spread. When classification depends on traversal context, include that context in the visited key. Continue inspecting the first visit so sensitive fields reachable through a cycle are still detected; do not rely on later GraphQL validation to protect earlier host preflight code.
-- **Verification:** Cover self-cycles and multi-fragment cycles, with a sensitive field in the reachable fragment; classification must terminate and still detect the field.
-- **Detection:** Review recursive `Selection::FragmentSpread` handlers in GraphQL request-preparation policies for cycle guards.
+- **Remediation:** Track visited fragment names per selected operation before expanding a spread. When classification depends on traversal context, include that context in the visited key. Use an explicit worklist rather than recursive calls: even an acyclic chain of distinct fragments can exhaust the stack before validation. Continue inspecting the first visit so sensitive fields reachable through a cycle are still detected; do not rely on later GraphQL validation to protect earlier host preflight code. The shared host walker in `apps/server/src/graphql/mod.rs` preserves field order, root-only policies and context-sensitive Forum visits.
+- **Verification:** Cover self-cycles, multi-fragment cycles and long acyclic chains, with a sensitive field in the reachable fragment; classification must terminate and still detect the field. Verify context-sensitive revisits and root-only traversal. Host source regressions authored, unrun.
+- **Detection:** Review `Selection::FragmentSpread` handlers in GraphQL request-preparation policies for recursive expansion and missing context-aware cycle guards.
 
 ### Pattern 10C: Token-Effective Authority on REST (`P-TOKEN-CEILING`)
 

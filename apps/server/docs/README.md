@@ -782,7 +782,11 @@ executable document even when the request has no source text (for example,
 a server-supplied pre-parsed document); empty source is not a policy exemption.
 A request with neither source nor a parsed document fails parsing.
 Fragment-spread classification is cycle-safe because host preflight runs
-before GraphQL's normal document validation.
+before GraphQL's normal document validation. The host security policies share
+an explicit worklist rather than recursive fragment expansion, preserving root
+field scope and Forum traversal context without stack growth on long chains.
+GraphQL's own validation and execution limits remain separate. Source regression
+tests for long chains and context-sensitive cycles are present but unrun.
 
 ## Runtime surface
 
