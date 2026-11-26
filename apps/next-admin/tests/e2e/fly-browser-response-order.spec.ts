@@ -158,26 +158,26 @@ async function mountOrderContract(page: Page) {
   );
 }
 
-async function beginSaves(page: Page, count = 2) {
-  await page.evaluate((saveCount) => {
+async function beginIntents(page: Page, intent: string, count = 2, expectedFetches = count) {
+  await page.evaluate(({ intent, count }) => {
     const scope = globalThis as OrderScope;
     const adapter = scope.FlyBrowser?.mountAll?.(
       scope.__FLY_BROWSER_CONFIG__ ?? {}
     )[0];
     if (!adapter) throw new Error('Fly adapter unavailable');
-    for (let index = 0; index < saveCount; index += 1) {
+    for (let index = 0; index < count; index += 1) {
       scope.__flySavePromises?.push(
-        adapter.emitIntent('save', { save_number: index + 1 })
+        adapter.emitIntent(intent, { request_number: index + 1 })
       );
     }
-  }, count);
+  }, { intent, count });
   await expect
     .poll(() =>
       page.evaluate(
         () => (globalThis as OrderScope).__flyPendingFetches?.length ?? 0
       )
     )
-    .toBe(count);
+    .toBe(expectedFetches);
 }
 
 async function resolveFetch(
@@ -227,7 +227,7 @@ async function readState(page: Page) {
 
 test('late denial cannot replace newer success', async ({ page }) => {
   await mountOrderContract(page);
-  await beginSaves(page);
+  await beginIntents(page, 'hover');
 
   await resolveFetch(page, 1, success);
   await awaitSave(page, 1);
@@ -259,7 +259,7 @@ test('late denial cannot replace newer success', async ({ page }) => {
 
 test('late success cannot clear newer denial', async ({ page }) => {
   await mountOrderContract(page);
-  await beginSaves(page);
+  await beginIntents(page, 'hover');
 
   await resolveFetch(page, 1, denial);
   await awaitSave(page, 1);
@@ -283,7 +283,7 @@ test('unmount aborts in-flight work instead of accepting a late response', async
   page
 }) => {
   await mountOrderContract(page);
-  await beginSaves(page, 1);
+  await beginIntents(page, 'save', 1);
   await page.evaluate(() => {
     (globalThis as OrderScope).FlyBrowser?.unmountAll?.();
   });
@@ -299,12 +299,48 @@ test('unmount aborts in-flight work instead of accepting a late response', async
     problems: [],
     responses: []
   });
-  expect(state.aborts).toEqual([
-    expect.objectContaining({
-      code: 'INTENT_REQUEST_ABORTED',
-      kind: 'adapter_stop',
-      requestGeneration: 1,
-      current: false
-    })
-  ]);
+  expect(state.aborts).toEqual([]);
+});
+
+test('rejected queued admission settles every remaining write', async ({ page }) => {
+  await mountOrderContract(page);
+  await beginIntents(page, 'save', 3, 1);
+  await page.evaluate(() => {
+    const root = document.querySelector<HTMLElement>('#fly-root');
+    if (!root) throw new Error('missing root');
+    // The next request sees itself and one remaining queued request: 2 > 1.
+    root.dataset.flyMaxPendingIntentRequests = '1';
+  });
+  await resolveFetch(page, 0, success);
+  await page.evaluate(async () => {
+    const promises = (globalThis as OrderScope).__flySavePromises ?? [];
+    const result = await Promise.race([
+      Promise.all(promises),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('queue stranded')), 2000)),
+    ]);
+    if (result[1] !== null || result[2] !== null) throw new Error('unsent writes reported success');
+  });
+  expect(await page.evaluate(() => (globalThis as OrderScope).__flyPendingFetches?.length)).toBe(1);
+  await expect(page.locator('#fly-root')).toHaveAttribute('data-fly-queued-intents-discarded', '1');
+  await beginIntents(page, 'save', 1, 2);
+  await resolveFetch(page, 1, success);
+  await awaitSave(page, 3);
+});
+
+test('unmount from a response listener prevents the old mount from rebasing', async ({ page }) => {
+  await mountOrderContract(page);
+  await beginIntents(page, 'save', 1);
+  await page.evaluate(() => {
+    document.querySelector('#fly-root')?.addEventListener('fly:browser-intent-response', () => {
+      (globalThis as OrderScope).FlyBrowser?.unmountAll?.();
+    }, { once: true });
+  });
+  await resolveFetch(page, 0, success);
+  await awaitSave(page, 0);
+  expect(await readState(page)).toMatchObject({
+    mounted: 'false',
+    revision: 'rev-1',
+    projectHash: 'hash-1',
+    draft: { token: 'draft-1', generation: 1 }
+  });
 });

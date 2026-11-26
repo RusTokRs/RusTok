@@ -25,6 +25,7 @@ without evidence of a failure is recorded separately below.
 
 | Pattern | Observed defect and fix | Evidence |
 | --- | --- | --- |
+| `P-FLY-QUEUE-ADMISSION-TAIL-STRAND` | Browser queue replay assumed the dequeued request would reach transport finally. Admission rejection (for example a lowered pending limit) left the unsent tail unresolved. Discard and settle the tail when replay cannot acquire the authoritative guard; recheck disposal after synchronous response/network events before rebasing. Browser regressions must distinguish serialized writes from concurrent reads and suppress post-stop events. Detect with `rg -n queuedAuthoritativeIntents crates/ui/fly/browser/assets/fly-browser.js`. Category: browser lifecycle; dimensions: queue completeness and reentrancy. Regressions authored, unrun. | [Browser adapter](../../crates/ui/fly/browser/assets/fly-browser.js) |
 | `P-FLY-SAVE-LIFECYCLE-PROJECTION-DRIFT` | Generic Page Builder dispatch accepted save lifecycle events that only mutated the UI projection, leaving the revision owner and request identity inconsistent. SaveStarted also bypassed the document diagnostic admission of RequestSave, and blank revision acknowledgements could clear dirty state. Route lifecycle transitions through correlated controller APIs, share UI admission, reject blank acknowledgements before mutation and retain dirty state when the working hash differs. Detect with `rg -n require_save_admission crates/ui/fly/ui/src/machine.rs` and inspect the controller dispatch. Category: save state integrity; dimensions: admission, state transitions and projection parity. Regressions authored, unrun. | [Controller](../../crates/modules/rustok-page-builder/admin/src/model.rs), [Fly UI](../../crates/ui/fly/ui/src/machine.rs) |
 | `P-FLY-INEXACT-HISTORY-INVERSE` | An asset removal inverse appended a non-tail asset at the wrong position, and a reverse theme rename could rewrite references that predated the original rename. A decoded token inverse also lost raw theme representation. Use exact snapshot history whenever the local inverse cannot restore the original document; test the full document, not only selected fields. Detect with `rg -n invert_command crates/ui/fly/src/command`. Category: history integrity; dimensions: side effects and reversibility. Regressions authored, unrun. | [Fly editor](../../crates/ui/fly/src/command/editor.rs) |
 | `P-FLY-CANONICAL-LOCALE-COLLISION` | Distinct JSON keys could normalize to the same Fly locale, selecting a value by map order and falsely satisfying required coverage. Reject duplicate canonical identities at authoring and validation, preserve unresolved imported maps, and prevent ambiguous routes from producing inbound or outbound destinations. Share `duplicate_locale_key(values)` and `has_unambiguous_locale(values, locale)` across runtime, coverage and routing. Detect with `rg -n duplicate_locale_key crates/ui/fly/src`. Category: localization integrity; dimensions: identity, branch completeness and projection parity. Regressions authored, unrun. | [Fly locale runtime](../../crates/ui/fly/src/runtime_locale.rs) |
@@ -600,6 +601,13 @@ the driver mapping.
   before the explicit no-op, returning an error even after the handle was
   drained. The corrected ordering preserves the retained-handle error and
   the absent-handle stop check; regression coverage is source-only.
+  Dispatcher-owned paid-order, marketplace financial, payment-provider and
+  Product Media recovery workers had the same retained-handle false success.
+  Their synchronous constructors share one registration gate with shutdown,
+  so the canonical liveness check, reservation and publication can all occur
+  inside that gate. Return the child startup error through dispatcher bootstrap,
+  preserve the handle for shutdown, and release a claim when an optional
+  dependency is absent. Focused regression authored, unrun.
 
   ```rust
   if published_worker_running::<WorkerHandle>(
