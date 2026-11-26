@@ -187,6 +187,15 @@ and cross-replica verification pending.
 
 ## Recovery credential lifecycle (2026-11-26)
 
+Custom-role invitation acceptance inserts the account and assigns only the
+already-authorized persisted target role inside the consumption transaction.
+It does not bootstrap, assign or remove a temporary Customer membership, so
+one new membership advances the membership revision once. The shared account
+insertion preserves duplicate-email handling; the existing RBAC writer owns
+assignment and continuity checks. Missing role or assignment failure rolls back
+the account and receipt. Source regression unrun; admin provisioning is a
+separate path, and PostgreSQL contention evidence remains pending.
+
 Invite acceptance uses an unlocked ledger lookup only to locate the issuer,
 then locks the issuer before the exact invitation and revalidates the digest,
 account epoch and revocation under those fences. This avoids the inverse

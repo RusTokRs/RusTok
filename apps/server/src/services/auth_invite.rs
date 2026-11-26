@@ -388,15 +388,20 @@ impl AuthLifecycleService {
             };
         }
 
-        let user = match AuthLifecycleService::create_user_in_tx(
-            &tx,
-            tenant_id,
-            prepared,
-            role.clone(),
-            Some(rustok_core::UserStatus::Active),
-        )
-        .await
-        {
+        // The target grant is already authorized and locked. Do not
+        // temporarily assign Customer: that unrelated role may require an
+        // additional lock or bootstrap write and creates spurious membership
+        // history. Both branches share validated account insertion.
+        let created = if let Some(slug) = custom_role_slug.as_deref() {
+            AuthLifecycleService::create_user_with_custom_role_in_tx(
+                &tx, tenant_id, prepared, slug, Some(rustok_core::UserStatus::Active),
+            ).await
+        } else {
+            AuthLifecycleService::create_user_in_tx(
+                &tx, tenant_id, prepared, role.clone(), Some(rustok_core::UserStatus::Active),
+            ).await
+        };
+        let user = match created {
             Ok(user) => user,
             Err(error) => {
                 tx.rollback()
@@ -406,23 +411,9 @@ impl AuthLifecycleService {
             }
         };
 
-        // Layer the tenant-defined role over the baseline customer
-        // membership created above. The issuer's authority ceiling was
-        // revalidated against the current role grants before reservation.
-        // If the role changes again concurrently, the transactional role
-        // replacement still fails closed when the role no longer exists;
-        // the transaction rollback leaves the invite unconsumed.
-        let role = if let Some(slug) = custom_role_slug.as_deref() {
-            rustok_rbac::replace_persisted_user_role_by_slug_on(&tx, tenant_id, user.id, slug)
-                .await
-                .map_err(|error| {
-                    tracing::error!(
-                        %error,
-                        role_slug = slug,
-                        "invite custom role assignment failed"
-                    );
-                    InviteAcceptanceError::Internal(Error::InternalServerError)
-                })?;
+        // Project the final custom-role membership, never the JWT's
+        // built-in placeholder, before committing the acceptance.
+        let role = if custom_role_slug.is_some() {
             RbacService::get_user_role_authoritative(&tx, &tenant_id, &user.id)
                 .await
                 .map_err(InviteAcceptanceError::Internal)?
