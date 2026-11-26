@@ -80,7 +80,11 @@ The serialized writer queue fails closed on HTTP errors, timeouts/aborts, redire
 responses, application-level save failures, navigation responses, or HTTP successes without a
 confirmed nonempty revision and project hash. Pending mutations are resolved as unsent instead
 of being replayed with an unverified base. An abort signal that expired while queued skips that
-intent without posting. This is intentionally a safety gate, not automatic retry or reconciliation.
+intent without posting. If a dequeued request fails admission before taking the in-flight guard,
+the remaining queue is explicitly discarded and its promises settled; no request is left waiting
+for a nonexistent transport completion. Synchronous response or network-status listeners may
+unmount the adapter; the stopped continuation cannot rebase the root or initiate navigation.
+This is intentionally a safety gate, not automatic retry or reconciliation.
 
 Timeout notifications use the same authoritative/read-only request ordering rule as response
 and error notifications. A newer selection request cannot hide the timeout of a pending write.

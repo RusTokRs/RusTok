@@ -331,10 +331,13 @@ function reportBrowserProblem(adapter, detail, fallbackCode) {
       detail: problem,
     }),
   );
+  if (adapter.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return;
   const status = ensureProblemStatus(adapter);
   status.textContent = "";
   queueMicrotask(() => {
-    status.textContent = problem.error;
+    if (adapter.lifecycleState !== ADAPTER_LIFECYCLE.STOPPED) {
+      status.textContent = problem.error;
+    }
   });
 }
 
@@ -674,6 +677,7 @@ function fencePeerWriteConflict(adapter, details = {}) {
       source,
     },
   }));
+  if (adapter.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return;
   adapter.reportPeerWriteConflict();
   adapter.discardQueuedAuthoritativeIntents(
     details.reason ||
@@ -1852,6 +1856,7 @@ export class FlyBrowserAdapter {
         pageId: this.pageId,
       },
     }));
+    if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return;
     const status = ensureProblemStatus(this);
     queueMicrotask(() => {
       if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return;
@@ -2111,6 +2116,8 @@ export class FlyBrowserAdapter {
     }
 
     try {
+      // Network-status listeners run synchronously and may unmount the editor.
+      if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return null;
       const response = await fetch(this.intentEndpoint, {
         method: "POST",
         credentials: "same-origin",
@@ -2210,6 +2217,9 @@ export class FlyBrowserAdapter {
           },
         }),
       );
+      // A response listener can synchronously dispose or replace this mount.
+      // Do not let the old continuation rebase its root or trigger navigation.
+      if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return null;
       if (!this.peerWriteConflict && (unconfirmedStrictSuccess ||
           (matchesPendingLookup && !resolvedPendingReceipt && !current))) {
         updateNetworkIndicator(this.root, "error", "OPERATION_OUTCOME_UNKNOWN");
@@ -2228,6 +2238,7 @@ export class FlyBrowserAdapter {
           updateNetworkIndicator(this.root, "error", "WRITE_UNCONFIRMED");
         }
       }
+      if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return null;
       if (current && acknowledgedAuthoritativeResult && !this.peerWriteConflict) {
         delete this.root.dataset.flyQueuedIntentsDiscarded;
       }
@@ -2401,10 +2412,16 @@ export class FlyBrowserAdapter {
             // postIntent refreshes revision, hash and draft generation from
             // the preceding response. Its synchronous setup restores the
             // in-flight guard before another DOM callback can enqueue a write.
-            void this.postIntent(next.input, next.requestOptions).then(
-              next.resolve,
-              () => next.resolve(null),
-            );
+            const dispatched = this.postIntent(next.input, next.requestOptions);
+            // Admission can reject the next write before it acquires the
+            // in-flight guard (limits, receipt storage, conflict, etc.).
+            // No request will then reach finally to drain the remaining queue.
+            if (!this.authoritativeInFlight) {
+              this.discardQueuedAuthoritativeIntents(
+                "because the next queued request could not be sent",
+              );
+            }
+            void dispatched.then(next.resolve, () => next.resolve(null));
             break;
           }
         }
