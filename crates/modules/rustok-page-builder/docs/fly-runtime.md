@@ -12,9 +12,14 @@ runtime-scenario release policy.
 - validates through Fly registries and configurable node/depth limits;
 - keeps the decoded `ProjectDocument` and its `ValidationReport` together;
 - builds the layers tree from `pages[].component.components`;
-- returns component properties without the child subtree;
+- returns component properties without the child subtree, including anonymous nodes addressed by
+  the snapshot-local path IDs returned by the tree (not persistent component identities);
 - exposes the deterministic Fly project hash.
 
+All capabilities reject empty or whitespace-only page identities before calling their ports.
+The guarded service and authorized handlers discard rejected owned JSON iteratively; provider
+validation also bounds properties JSON depth and safely discards malformed stored projects.
+Handler tracing excludes full project and runtime request bodies.
 Preview and publish call `require_valid()` before invoking persistence or rendering ports.
 Structural errors such as duplicate component IDs or resource-limit violations reject the
 operation.
@@ -26,7 +31,10 @@ implementation owned by this crate. It uses:
 
 - `PageBuilderProjectStore` for tenant-scoped project persistence;
 - `PageBuilderPreviewRenderingPort` for contextual preview rendering after Fly validation;
-- `PageBuilderRuntimeTelemetry` for started, succeeded and failed operation evidence;
+- `PageBuilderRuntimeTelemetry` for started, succeeded and failed operation evidence; construct
+  evidence through its operation constructors and derive terminal evidence from that start.
+  The process-local `call_id()` distinguishes concurrent invocations even when request correlation,
+  tenant, page and revision are identical. It does not change the serialized evidence or metric labels;
 - `PageBuilderScenarioBaselineStore` and `RuntimeScenarioReleasePolicy` for optional release gates;
 - canonical DTOs and transport envelopes from `rustok-page-builder`.
 
@@ -48,9 +56,10 @@ The preview sequence is:
 
 ```text
 PreviewPageBuilderInput
+  -> page identity validation
   -> FlyProjectInspection::decode_with
   -> inspection.require_valid
-  -> preview runtime DTO validation
+  -> preview runtime DTO validation (object, bounded JSON depth and compact byte size, scenario ID)
   -> PageBuilderPreviewRenderingPort::render_preview
   -> runtime materialization in Fly renderer
   -> PreviewPageBuilderResult { html, runtime_scenario_id }
@@ -60,6 +69,7 @@ Publish retains the independent release sequence:
 
 ```text
 PublishPageBuilderInput
+  -> page and revision identity validation
   -> FlyProjectInspection::decode_with
   -> inspection.require_valid
   -> optional runtime-scenario release gate

@@ -75,3 +75,28 @@ test('partial GraphQL errors do not become successful policy results', async () 
     globalThis.fetch = originalFetch;
   }
 });
+
+test('browser GraphQL requests use same-origin BFF without bearer or token-derived tenant ID', async () => {
+  const originalFetch=globalThis.fetch;
+  const hadWindow=Object.prototype.hasOwnProperty.call(globalThis,'window');
+  const originalWindow=globalThis.window;
+  let observed;
+  globalThis.window={};
+  globalThis.fetch=async (url,options)=>{
+    observed={url,headers:new Headers(options.headers)};
+    return new Response(JSON.stringify({data:{scopeProbe:'browser'}}),{status:200,headers:{'Content-Type':'application/json'}});
+  };
+  try {
+    await graphqlRequest(query,{slug:'x'},'secret-access-token','tenant-a',{
+      graphqlUrl:'https://attacker.example.test/graphql'
+    });
+    assert.equal(observed.url,'/api/rustok/graphql');
+    assert.equal(observed.headers.get('authorization'),null);
+    assert.equal(observed.headers.get('x-tenant-id'),null);
+    assert.equal(observed.headers.get('x-tenant-slug'),'tenant-a');
+  } finally {
+    globalThis.fetch=originalFetch;
+    if(hadWindow) Object.defineProperty(globalThis,'window',{configurable:true,writable:true,value:originalWindow});
+    else delete globalThis.window;
+  }
+});

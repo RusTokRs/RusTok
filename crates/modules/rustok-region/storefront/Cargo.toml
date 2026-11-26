@@ -36,3 +36,6 @@ rustok-ui-i18n.workspace = true
 rustok-region = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
+
+[lints]
+workspace = true

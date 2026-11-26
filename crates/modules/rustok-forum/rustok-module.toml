@@ -96,6 +96,11 @@ subpath = "merge"
 title = "Merge Forum Topics"
 nav_label = "Merge Topics"
 
+[[provides.admin_ui.child_pages]]
+subpath = "move"
+title = "Move Forum Topic"
+nav_label = "Move Topic"
+
 [fba.builder_consumer]
 provider_module = "page-builder"
 contract = "grapesjs"

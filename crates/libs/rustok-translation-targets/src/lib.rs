@@ -292,7 +292,8 @@ pub fn protected_token_multiplicities_match(
     protected_tokens: &[String],
 ) -> bool {
     protected_tokens.iter().all(|token| {
-        token_occurrences(source_value, token) == token_occurrences(translated_value, token)
+        !token.is_empty()
+            && token_occurrences(source_value, token) == token_occurrences(translated_value, token)
     })
 }
 

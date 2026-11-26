@@ -29,7 +29,8 @@ use crate::{
     },
 };
 
-const IDEMPOTENCY_KEY_HEADER: &str = "idempotency-key";
+#[cfg(test)]
+use crate::common::idempotency::IDEMPOTENCY_KEY_HEADER;
 const MAX_ARTIFACT_HTTP_BODY_BYTES: usize = 1_048_576;
 const ARTIFACT_PRIVATE_CACHE_CONTROL: &str = "private, no-store";
 
@@ -187,29 +188,7 @@ async fn list_ui_action_audit(
 }
 
 fn header_idempotency_key(headers: &HeaderMap) -> Result<Option<Uuid>> {
-    let mut values = headers.get_all(IDEMPOTENCY_KEY_HEADER).iter();
-    let Some(first) = values.next() else {
-        return Ok(None);
-    };
-    if values.next().is_some() {
-        return Err(Error::BadRequest(
-            "Duplicate Idempotency-Key headers are forbidden".to_string(),
-        ));
-    }
-    let value = first
-        .to_str()
-        .map_err(|_| Error::BadRequest("Idempotency-Key header is invalid".to_string()))?;
-    let key = value
-        .trim()
-        .trim_matches('"')
-        .parse::<Uuid>()
-        .map_err(|_| Error::BadRequest("Idempotency-Key header must be a UUID".to_string()))?;
-    if key.is_nil() {
-        return Err(Error::BadRequest(
-            "Idempotency-Key header must not be the nil UUID".to_string(),
-        ));
-    }
-    Ok(Some(key))
+    crate::common::idempotency::optional_uuid_header(headers)
 }
 
 fn artifact_json_response<T: serde::Serialize>(value: T) -> Response {
@@ -243,12 +222,15 @@ fn parse_artifact_http_body(body: &[u8], max_body_bytes: u64) -> Result<serde_js
 }
 
 fn ensure_json_content_type(headers: &HeaderMap) -> Result<()> {
-    let content_type = headers
-        .get(CONTENT_TYPE)
+    let mut values = headers.get_all(CONTENT_TYPE).iter();
+    let content_type = values
+        .next()
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.split(';').next())
         .map(str::trim);
-    if content_type == Some("application/json") {
+    if values.next().is_none()
+        && content_type.is_some_and(|value| value.eq_ignore_ascii_case("application/json"))
+    {
         return Ok(());
     }
     Err(http_error(rustok_web::HttpError::new(
@@ -386,6 +368,27 @@ mod tests {
             .map(|binding| binding.id.as_str()),
             Some("http_status")
         );
+    }
+
+    #[test]
+    fn artifact_json_media_type_is_case_insensitive_but_not_ambiguous() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            CONTENT_TYPE,
+            HeaderValue::from_static("Application/JSON; charset=utf-8"),
+        );
+        assert!(ensure_json_content_type(&headers).is_ok());
+
+        headers.append(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        assert!(matches!(
+            ensure_json_content_type(&headers),
+            Err(Error::Http(error)) if error.status == StatusCode::UNSUPPORTED_MEDIA_TYPE
+        ));
+
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/json"));
+        assert!(ensure_json_content_type(&headers).is_err());
+        headers.remove(CONTENT_TYPE);
+        assert!(ensure_json_content_type(&headers).is_err());
     }
 
     #[test]

@@ -119,6 +119,7 @@ impl ForumHttpRuntime {
             self.audience_facts.clone(),
         )
         .with_taxonomy_port(self.taxonomy_port.clone())
+        .with_settings_providers(self.settings_providers.clone())
     }
 
     fn moderation_service(&self) -> crate::ModerationService {

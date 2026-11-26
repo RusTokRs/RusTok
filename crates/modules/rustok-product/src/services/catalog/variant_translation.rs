@@ -619,6 +619,7 @@ mod tests {
             position: 0,
             created_at: Utc::now().into(),
             updated_at: Utc::now().into(),
+            revision: 1,
             index_revision: 1,
         }
     }

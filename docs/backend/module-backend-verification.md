@@ -39,6 +39,12 @@ package identity. Use the registered selector for entries in `modules.toml`.
 cargo xtask module lint tax --embedded
 ```
 
+For a module-local operational adapter, run `cargo xtask module lint <slug> --cli`.
+The shared check covers the provider's package identity and source layout.
+Blog includes it in the default reference profile. Use `npm run verify:cli-registry`
+for the generated registry and exercise the actual commands through `rustok-cli`
+for runtime evidence.
+
 ```bash
 npm run verify:module-source-layout
 ```

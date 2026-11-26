@@ -56,10 +56,7 @@ async fn bootstrap_remote_session(
     headers: HeaderMap,
     Json(input): Json<BootstrapMcpRemoteSessionRequest>,
 ) -> Result<Json<McpRemoteBootstrapResponse>> {
-    let plaintext_token = input
-        .plaintext_token
-        .or_else(|| bearer_token_from_headers(&headers))
-        .ok_or_else(|| crate::error::Error::Unauthorized("MCP bearer token is required".into()))?;
+    let plaintext_token = resolve_remote_mcp_token(&headers, input.plaintext_token)?;
     let correlation_id = normalize_remote_correlation_id(input.correlation_id)?;
     let transport = input
         .transport
@@ -156,10 +153,7 @@ async fn execute_remote_tool_call(
     input: McpRemoteToolCallRequest,
     transport: &str,
 ) -> Result<McpRemoteToolCallResponse> {
-    let plaintext_token = input
-        .plaintext_token
-        .or_else(|| bearer_token_from_headers(&headers))
-        .ok_or_else(|| crate::error::Error::Unauthorized("MCP bearer token is required".into()))?;
+    let plaintext_token = resolve_remote_mcp_token(&headers, input.plaintext_token)?;
     let correlation_id = normalize_remote_correlation_id(input.correlation_id)?;
 
     let bridge = persistence(ctx)?;
@@ -975,22 +969,27 @@ pub fn router() -> crate::routes::ServerRouter {
         .route("/api/mcp/audit/", get(list_audit_events))
 }
 
-fn bearer_token_from_headers(headers: &HeaderMap) -> Option<String> {
-    let mut auth_iter = headers
-        .get_all(axum::http::header::AUTHORIZATION)
-        .into_iter();
-    let first = auth_iter.next()?;
-    for next in auth_iter {
-        if next != first {
-            tracing::warn!("Conflicting duplicate Authorization headers received in MCP request");
-            return None;
-        }
+/// Resolve the single MCP credential before binding or audit writes.
+/// A body token must never hide malformed or additional Authorization fields.
+fn resolve_remote_mcp_token(headers: &HeaderMap, body_token: Option<String>) -> Result<String> {
+    let mut values = headers.get_all(axum::http::header::AUTHORIZATION).iter();
+    let first = values.next();
+    if values.next().is_some() || (first.is_some() && body_token.is_some()) {
+        return Err(Error::BadRequest(
+            "Exactly one MCP credential transport is allowed".to_string(),
+        ));
     }
-    first
-        .to_str()
-        .ok()
-        .and_then(parse_bearer_token)
-        .map(ToOwned::to_owned)
+    if let Some(value) = first {
+        return value
+            .to_str()
+            .ok()
+            .and_then(parse_bearer_token)
+            .map(ToOwned::to_owned)
+            .ok_or_else(|| Error::Unauthorized("Invalid MCP bearer token".into()));
+    }
+    body_token
+        .filter(|token| !token.trim().is_empty())
+        .ok_or_else(|| Error::Unauthorized("MCP bearer token is required".into()))
 }
 
 fn parse_bearer_token(value: &str) -> Option<&str> {
@@ -998,8 +997,15 @@ fn parse_bearer_token(value: &str) -> Option<&str> {
     if !scheme.eq_ignore_ascii_case("bearer") {
         return None;
     }
-    let token = token.trim().trim_matches('"');
-    (!token.is_empty()).then_some(token)
+    let token = token.trim();
+    let token = if let Some(quoted) = token.strip_prefix('"') {
+        quoted.strip_suffix('"')?
+    } else {
+        token
+    };
+    (!token.is_empty()
+        && token.bytes().all(|byte| byte.is_ascii_graphic() && byte != b'"' && byte != b','))
+    .then_some(token)
 }
 
 enum McpManagementHttpError {
@@ -1315,33 +1321,61 @@ mod tests {
         assert_eq!(parse_bearer_token("Bearer"), None);
         assert_eq!(parse_bearer_token("Bearer   "), None);
         assert_eq!(parse_bearer_token(""), None);
+        for invalid in [
+            "Bearer \"token",
+            "Bearer token\"",
+            "Bearer \"\"token\"\"",
+            "Bearer token,token",
+            "Bearer token token",
+        ] {
+            assert_eq!(parse_bearer_token(invalid), None, "{invalid}");
+        }
     }
 
     #[test]
-    fn bearer_token_from_headers_rejects_conflicting_duplicates() {
-        let mut headers = HeaderMap::new();
-        headers.append(
-            axum::http::header::AUTHORIZATION,
-            "Bearer token-1".parse().unwrap(),
-        );
-        headers.append(
-            axum::http::header::AUTHORIZATION,
-            "Bearer token-2".parse().unwrap(),
-        );
-        assert!(bearer_token_from_headers(&headers).is_none());
+    fn remote_mcp_token_rejects_duplicate_and_mixed_credentials() {
+        use axum::http::header::AUTHORIZATION;
 
-        let mut headers_matching = HeaderMap::new();
-        headers_matching.append(
-            axum::http::header::AUTHORIZATION,
-            "Bearer token-1".parse().unwrap(),
-        );
-        headers_matching.append(
-            axum::http::header::AUTHORIZATION,
-            "Bearer token-1".parse().unwrap(),
-        );
+        for second in ["Bearer token-1", "Bearer token-2"] {
+            let mut headers = HeaderMap::new();
+            headers.append(AUTHORIZATION, "Bearer token-1".parse().unwrap());
+            headers.append(AUTHORIZATION, second.parse().unwrap());
+            assert!(matches!(
+                resolve_remote_mcp_token(&headers, None),
+                Err(Error::BadRequest(_))
+            ));
+            assert!(matches!(
+                resolve_remote_mcp_token(&headers, Some("token-1".to_string())),
+                Err(Error::BadRequest(_))
+            ));
+        }
+
+        let mut headers = HeaderMap::new();
         assert_eq!(
-            bearer_token_from_headers(&headers_matching),
-            Some("token-1".to_string())
+            resolve_remote_mcp_token(&headers, Some("body-token".to_string())).unwrap(),
+            "body-token"
         );
+        assert!(matches!(
+            resolve_remote_mcp_token(&headers, None),
+            Err(Error::Unauthorized(_))
+        ));
+        headers.insert(AUTHORIZATION, "Bearer header-token".parse().unwrap());
+        assert_eq!(
+            resolve_remote_mcp_token(&headers, None).unwrap(),
+            "header-token"
+        );
+        assert!(matches!(
+            resolve_remote_mcp_token(&headers, Some("header-token".to_string())),
+            Err(Error::BadRequest(_))
+        ));
+        headers.insert(AUTHORIZATION, "Basic invalid".parse().unwrap());
+        assert!(matches!(
+            resolve_remote_mcp_token(&headers, Some("body-token".to_string())),
+            Err(Error::BadRequest(_))
+        ));
+        assert!(matches!(
+            resolve_remote_mcp_token(&headers, None),
+            Err(Error::Unauthorized(_))
+        ));
     }
 }

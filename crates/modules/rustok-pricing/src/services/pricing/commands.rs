@@ -781,6 +781,7 @@ impl PricingService {
             let scope = super::queries::base_price_channel_filter(resolved_channel.as_ref());
 
             if price_input.amount < Decimal::ZERO {
+                txn.rollback().await?;
                 return Err(CommerceError::InvalidPrice(
                     "Amount cannot be negative".into(),
                 ));
@@ -788,6 +789,7 @@ impl PricingService {
             if let Some(compare_at) = price_input.compare_at_amount
                 && compare_at < price_input.amount
             {
+                txn.rollback().await?;
                 return Err(CommerceError::InvalidPrice(
                     "Compare at price must be greater than amount".into(),
                 ));

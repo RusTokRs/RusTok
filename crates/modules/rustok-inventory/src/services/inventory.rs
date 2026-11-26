@@ -517,6 +517,7 @@ impl InventoryService {
             || state.level.incoming_quantity < 0
             || state.level.reserved_quantity.checked_add(quantity).is_none()
         {
+            txn.rollback().await?;
             return Err(CommerceError::Validation(
                 "Inventory reserved quantity exceeds the supported range or is inconsistent"
                     .to_string(),
@@ -531,6 +532,7 @@ impl InventoryService {
         ).await?;
         let claimed = claims.get(&state.location.id).copied().unwrap_or(0);
         if claimed > i64::from(state.level.reserved_quantity) {
+            txn.rollback().await?;
             return Err(CommerceError::Validation(
                 "Active reservation claims exceed the saved reserved counter; reconcile saved history".into(),
             ));
@@ -656,6 +658,7 @@ impl InventoryService {
         // INVARIANT: tenant proof above precedes the shared item lock and every ledger read.
         let Some(inventory_item) = find_unique_inventory_item(&txn, variant_id, true).await?
         else {
+            txn.rollback().await?;
             return Err(insufficient_reserved_release_error(quantity, 0));
         };
         let selected = SelectedQuantityRelease::select(
@@ -678,6 +681,7 @@ impl InventoryService {
         };
         let locations = locations_query.all(&txn).await?;
         if locations.len() != location_ids.len() {
+            txn.rollback().await?;
             return Err(CommerceError::Validation(
                 "Anonymous reservation original location is missing or outside the tenant; reconcile without relocation".to_string(),
             ));

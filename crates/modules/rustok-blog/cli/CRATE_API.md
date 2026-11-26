@@ -11,6 +11,8 @@
 ## Public surface
 - `pub struct BlogCommandProvider`: Command provider implementing `CommandProvider` trait for `blog` namespace (`publish-scheduled`, `cleanup-tokens`).
 - `pub fn command_provider(runtime: &RuntimeComposition) -> Box<dyn CommandProvider>`: Registration factory.
+- `PublishScheduledOptions` and `parse_publish_scheduled_options` provide typed options for scheduled publishing.
+- `CleanupTokensOptions` and `parse_cleanup_tokens_options` provide typed options for preview token cleanup.
 
 ## Minimum Contract Set
 

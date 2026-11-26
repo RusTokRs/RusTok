@@ -81,9 +81,11 @@ pub fn materialize_role(
 ) -> Result<RoleMaterializationReceipt, RoleMaterializationError> {
     validate_request(&request)?;
     let staged = layout.deployment_cache_entry(&request.artifact_digest)?;
+    crate::layout::reject_managed_links(layout.root(), &staged)?;
     verify_regular_digest(&staged, &request.artifact_digest)?;
 
     let role_path = layout.platform_role(&request.bundle_digest, &request.role)?;
+    crate::layout::reject_managed_links(layout.root(), &role_path)?;
     let receipt = RoleMaterializationReceipt {
         operation_id: request.operation_id,
         role: request.role.clone(),
@@ -93,10 +95,12 @@ pub fn materialize_role(
         resumed: false,
     };
 
-    let receipt = if role_path.exists() {
-        verify_existing_materialization(&role_path, &receipt)?
-    } else {
-        create_materialization(&role_path, &staged, &receipt)?
+    let receipt = match fs::symlink_metadata(&role_path) {
+        Ok(_) => verify_existing_materialization(&role_path, &receipt)?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            create_materialization(&role_path, &staged, &receipt)?
+        }
+        Err(error) => return Err(io_error(&role_path, error)),
     };
     write_journal(layout, &receipt)?;
     Ok(receipt)
@@ -365,28 +369,38 @@ fn write_journal(
     receipt: &RoleMaterializationReceipt,
 ) -> Result<(), RoleMaterializationError> {
     let journal = layout.deployment_operation_journal(&receipt.operation_id.to_string())?;
+    crate::layout::reject_managed_links(layout.root(), &journal)?;
     fs::create_dir_all(&journal).map_err(|source| io_error(&journal, source))?;
     let path = journal.join(format!("{}.json", receipt.role));
-    if path.exists() {
-        let bytes = fs::read(&path).map_err(|source| io_error(&path, source))?;
-        let stored: RoleMaterializationReceipt =
-            serde_json::from_slice(&bytes).map_err(|source| RoleMaterializationError::Receipt {
-                path: path.display().to_string(),
-                source,
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                return Err(RoleMaterializationError::ExistingMaterializationMismatch(
+                    path.display().to_string(),
+                ));
+            }
+            let bytes = fs::read(&path).map_err(|source| io_error(&path, source))?;
+            let stored: RoleMaterializationReceipt = serde_json::from_slice(&bytes).map_err(|source| {
+                RoleMaterializationError::Receipt {
+                    path: path.display().to_string(),
+                    source,
+                }
             })?;
-        if stored.operation_id == receipt.operation_id
-            && stored.role == receipt.role
-            && stored.bundle_digest == receipt.bundle_digest
-            && stored.artifact_digest == receipt.artifact_digest
-            && stored.materialization_path == receipt.materialization_path
-        {
-            return Ok(());
+            if stored.operation_id == receipt.operation_id
+                && stored.role == receipt.role
+                && stored.bundle_digest == receipt.bundle_digest
+                && stored.artifact_digest == receipt.artifact_digest
+                && stored.materialization_path == receipt.materialization_path
+            {
+                return Ok(());
+            }
+            Err(RoleMaterializationError::ExistingMaterializationMismatch(
+                path.display().to_string(),
+            ))
         }
-        return Err(RoleMaterializationError::ExistingMaterializationMismatch(
-            path.display().to_string(),
-        ));
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => write_new_json(&path, receipt),
+        Err(error) => Err(io_error(&path, error)),
     }
-    write_new_json(&path, receipt)
 }
 
 fn write_new_json<T: Serialize>(path: &Path, value: &T) -> Result<(), RoleMaterializationError> {

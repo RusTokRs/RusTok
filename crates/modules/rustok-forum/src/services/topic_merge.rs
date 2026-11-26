@@ -523,7 +523,6 @@ impl ForumTopicMergeService {
             tenant_id,
             input.operation_id,
             actor_id,
-            target_category_id != source_category_id,
         )
         .await?;
 

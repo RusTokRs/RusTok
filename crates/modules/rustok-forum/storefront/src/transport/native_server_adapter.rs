@@ -1502,6 +1502,35 @@ pub async fn fetch_storefront_reply_current_revision_server(
         .map_err(|error| ApiError::ServerFn(error.to_string()))
 }
 
+pub async fn fetch_storefront_reply_quote_revision_server(
+    reply_id: String,
+    locale: Option<String>,
+) -> Result<Option<String>, ApiError> {
+    storefront_reply_quote_revision_native(reply_id, locale)
+        .await
+        .map_err(|error| ApiError::ServerFn(error.to_string()))
+}
+
+pub async fn report_storefront_topic_server(
+    topic_id: String,
+    reason_code: String,
+    locale: Option<String>,
+) -> Result<String, ApiError> {
+    storefront_report_topic_native(topic_id, reason_code, locale)
+        .await
+        .map_err(|error| ApiError::ServerFn(error.to_string()))
+}
+
+pub async fn report_storefront_reply_server(
+    reply_id: String,
+    reason_code: String,
+    locale: Option<String>,
+) -> Result<String, ApiError> {
+    storefront_report_reply_native(reply_id, reason_code, locale)
+        .await
+        .map_err(|error| ApiError::ServerFn(error.to_string()))
+}
+
 #[server(
     prefix = "/api/fn",
     endpoint = "forum/storefront-topic-current-revision"
@@ -1692,6 +1721,272 @@ async fn storefront_reply_current_revision_native(
         let _ = (reply_id, locale);
         Err(ServerFnError::new(
             "forum/storefront-reply-current-revision requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(
+    prefix = "/api/fn",
+    endpoint = "forum/storefront-reply-quote-revision"
+)]
+async fn storefront_reply_quote_revision_native(
+    reply_id: String,
+    locale: Option<String>,
+) -> Result<Option<String>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use rustok_core::SecurityContext;
+        use rustok_forum::{
+            ForumContentTarget, ForumReplyAudienceReadService, ForumReplyReadOperation,
+            ForumReplyReadTransport, ReplyStatus, RevisionService, SharedForumAudienceFactsPort,
+            reply_read_audience_port_context,
+        };
+        use rustok_outbox::TransactionalEventBus;
+
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let auth = leptos_axum::extract::<OptionalAuthContext>()
+            .await
+            .map_err(ServerFnError::new)?
+            .0;
+        let request = leptos_axum::extract::<RequestContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        if !forum_channel_enabled(&runtime_ctx, tenant.id, &request).await? {
+            return Err(ServerFnError::new(
+                "Forum module is not enabled for this channel",
+            ));
+        }
+        let event_bus = runtime_ctx
+            .shared_get::<TransactionalEventBus>()
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "forum/storefront-reply-quote-revision requires TransactionalEventBus in host runtime context",
+                )
+            })?;
+        let reply_id = uuid::Uuid::parse_str(reply_id.trim())
+            .map_err(|_| ServerFnError::new("reply_id must be a valid UUID"))?;
+        let effective_locale = normalize_locale(
+            locale
+                .as_deref()
+                .or(Some(request.locale.as_str()))
+                .or(Some(tenant.default_locale.as_str())),
+        );
+        let db = runtime_ctx.db_clone();
+        let audience_facts = runtime_ctx.shared_get::<SharedForumAudienceFactsPort>();
+        let reply_audience_service = match audience_facts {
+            Some(facts) => {
+                ForumReplyAudienceReadService::with_audience_facts(db.clone(), event_bus, facts)
+            }
+            None => ForumReplyAudienceReadService::new(db.clone(), event_bus),
+        }
+        .with_settings_providers(super::native_server_adapter::forum_settings_providers(
+            &runtime_ctx,
+        ));
+        let approved_statuses = [ReplyStatus::Approved];
+        let reply = if let Some(auth) = auth.as_ref() {
+            let security =
+                SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+            let context = reply_read_audience_port_context(
+                ForumReplyReadTransport::NativeServer,
+                ForumReplyReadOperation::SelectedReply,
+                tenant.id,
+                auth,
+                Some(&request),
+                effective_locale.as_str(),
+            )
+            .map_err(server_error)?;
+            reply_audience_service
+                .get_authenticated_storefront_visible_with_audience_context(
+                    tenant.id,
+                    security,
+                    context,
+                    reply_id,
+                    Some(tenant.default_locale.as_str()),
+                    Some(&approved_statuses),
+                )
+                .await
+                .map_err(server_error)?
+        } else {
+            reply_audience_service
+                .get_public_storefront_visible_with_locale_fallback(
+                    tenant.id,
+                    reply_id,
+                    effective_locale.as_str(),
+                    Some(tenant.default_locale.as_str()),
+                    request.channel_slug.as_deref(),
+                    Some(&approved_statuses),
+                )
+                .await
+                .map_err(server_error)?
+        };
+        let Some(reply) = reply else {
+            return Ok(None);
+        };
+        let revision = RevisionService::new(db)
+            .current_quote_revision(
+                tenant.id,
+                ForumContentTarget::reply(reply.id),
+                &reply.effective_locale,
+            )
+            .await
+            .map_err(server_error)?;
+        Ok(revision.map(|id| id.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (reply_id, locale);
+        Err(ServerFnError::new(
+            "forum/storefront-reply-quote-revision requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "forum/storefront-report-topic")]
+async fn storefront_report_topic_native(
+    topic_id: String,
+    reason_code: String,
+    locale: Option<String>,
+) -> Result<String, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use rustok_core::SecurityContext;
+        use rustok_forum::{
+            ForumModerationReportService, ForumTopicReadOperation, ForumTopicReadTransport,
+            SharedForumAudienceFactsPort, SharedForumModerationReportPort,
+            topic_read_audience_port_context,
+        };
+
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let auth = leptos_axum::extract::<OptionalAuthContext>()
+            .await
+            .map_err(ServerFnError::new)?
+            .0
+            .ok_or_else(|| ServerFnError::new("Authentication required"))?;
+        let request = leptos_axum::extract::<RequestContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        if !forum_channel_enabled(&runtime_ctx, tenant.id, &request).await? {
+            return Err(ServerFnError::new(
+                "Forum module is not enabled for this channel",
+            ));
+        }
+        let topic_id = uuid::Uuid::parse_str(topic_id.trim())
+            .map_err(|_| ServerFnError::new("topic_id must be a valid UUID"))?;
+        let reason_code = ForumModerationReportService::parse_reason_code(&reason_code)
+            .map_err(server_error)?;
+        let effective_locale = normalize_locale(
+            locale
+                .as_deref()
+                .or(Some(request.locale.as_str()))
+                .or(Some(tenant.default_locale.as_str())),
+        );
+        let audience_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::NativeServer,
+            ForumTopicReadOperation::Report,
+            tenant.id,
+            &auth,
+            Some(&request),
+            effective_locale.as_str(),
+        )
+        .map_err(server_error)?;
+        let security =
+            SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+        let report_id = ForumModerationReportService::new(
+            runtime_ctx.db_clone(),
+            runtime_ctx.shared_get::<SharedForumAudienceFactsPort>(),
+            runtime_ctx.shared_get::<SharedForumModerationReportPort>(),
+        )
+        .report_topic(tenant.id, topic_id, security, audience_context, reason_code)
+        .await
+        .map_err(server_error)?;
+        Ok(report_id.to_string())
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (topic_id, reason_code, locale);
+        Err(ServerFnError::new(
+            "forum/storefront-report-topic requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "forum/storefront-report-reply")]
+async fn storefront_report_reply_native(
+    reply_id: String,
+    reason_code: String,
+    locale: Option<String>,
+) -> Result<String, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use rustok_core::SecurityContext;
+        use rustok_forum::{
+            ForumModerationReportService, ForumTopicReadOperation, ForumTopicReadTransport,
+            SharedForumAudienceFactsPort, SharedForumModerationReportPort,
+            topic_read_audience_port_context,
+        };
+
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let auth = leptos_axum::extract::<OptionalAuthContext>()
+            .await
+            .map_err(ServerFnError::new)?
+            .0
+            .ok_or_else(|| ServerFnError::new("Authentication required"))?;
+        let request = leptos_axum::extract::<RequestContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        if !forum_channel_enabled(&runtime_ctx, tenant.id, &request).await? {
+            return Err(ServerFnError::new(
+                "Forum module is not enabled for this channel",
+            ));
+        }
+        let reply_id = uuid::Uuid::parse_str(reply_id.trim())
+            .map_err(|_| ServerFnError::new("reply_id must be a valid UUID"))?;
+        let reason_code = ForumModerationReportService::parse_reason_code(&reason_code)
+            .map_err(server_error)?;
+        let effective_locale = normalize_locale(
+            locale
+                .as_deref()
+                .or(Some(request.locale.as_str()))
+                .or(Some(tenant.default_locale.as_str())),
+        );
+        let audience_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::NativeServer,
+            ForumTopicReadOperation::Report,
+            tenant.id,
+            &auth,
+            Some(&request),
+            effective_locale.as_str(),
+        )
+        .map_err(server_error)?;
+        let security =
+            SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+        let report_id = ForumModerationReportService::new(
+            runtime_ctx.db_clone(),
+            runtime_ctx.shared_get::<SharedForumAudienceFactsPort>(),
+            runtime_ctx.shared_get::<SharedForumModerationReportPort>(),
+        )
+        .report_reply(tenant.id, reply_id, security, audience_context, reason_code)
+        .await
+        .map_err(server_error)?;
+        Ok(report_id.to_string())
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (reply_id, reason_code, locale);
+        Err(ServerFnError::new(
+            "forum/storefront-report-reply requires the `ssr` feature",
         ))
     }
 }

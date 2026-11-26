@@ -5,7 +5,9 @@
 //! worthless once the whole lineage has expired, and an
 //! invite digest only has to survive until the signed token expires.
 //! Rows are purged 30 days past expiry, so storage stays bounded
-//! without weakening exactly-once acceptance or theft detection. The
+//! without weakening exactly-once acceptance or theft detection. Pending
+//! mailbox-change challenges are deleted as soon as expired: they have no
+//! replay-evidence role after expiry and retain both email addresses. The
 //! host runs this daily via the auth retention worker; the
 //! `auth sessions-cleanup` CLI remains available for one-off runs.
 
@@ -14,7 +16,8 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Transac
 
 use crate::error::Result;
 use crate::models::{
-    auth_invite_consumptions, auth_invites, oauth_authorization_codes, oauth_tokens, sessions,
+    auth_email_change_requests, auth_invite_consumptions, auth_invites, oauth_authorization_codes,
+    oauth_tokens, sessions,
 };
 
 /// How long expired auth artifacts are kept for audit before deletion.
@@ -38,6 +41,7 @@ pub struct AuthRetentionPurge {
     pub sessions: u64,
     pub invite_consumptions: u64,
     pub invites: u64,
+    pub email_change_requests: u64,
     pub oauth_tokens: u64,
     pub oauth_authorization_codes: u64,
 }
@@ -68,6 +72,13 @@ pub async fn purge_expired_auth_artifacts(db: &DatabaseConnection) -> Result<Aut
             .exec(&tx)
             .await?;
 
+        // Match the on-demand cleanup at email-change issuance. Expired
+        // challenges no longer reserve an address or authorize confirmation.
+        let email_change_requests = auth_email_change_requests::Entity::delete_many()
+            .filter(auth_email_change_requests::Column::ExpiresAt.lte(now))
+            .exec(&tx)
+            .await?;
+
         let oauth_tokens = oauth_tokens::Entity::delete_many()
             .filter(oauth_tokens::Column::ExpiresAt.lt(oauth_cutoff))
             .exec(&tx)
@@ -82,6 +93,7 @@ pub async fn purge_expired_auth_artifacts(db: &DatabaseConnection) -> Result<Aut
             sessions: sessions.rows_affected,
             invite_consumptions: invite_consumptions.rows_affected,
             invites: invites.rows_affected,
+            email_change_requests: email_change_requests.rows_affected,
             oauth_tokens: oauth_tokens.rows_affected,
             oauth_authorization_codes: oauth_authorization_codes.rows_affected,
         })
@@ -153,6 +165,58 @@ mod tests {
                 .is_some(),
             "the first delete must roll back if a later delete fails"
         );
+    }
+
+    #[tokio::test]
+    async fn purge_removes_expired_email_change_requests_across_tenants_only() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let now = Utc::now();
+        let mut ids = Vec::new();
+        for (index, expired) in [true, true, false].into_iter().enumerate() {
+            let tenant = tenants::ActiveModel::new(
+                "Email retention tenant",
+                &format!("email-retention-{index}-{}", Uuid::new_v4()),
+            )
+            .insert(&db)
+            .await
+            .expect("tenant");
+            let user = users::ActiveModel::new(tenant.id, "old@example.com", "hash")
+                .insert(&db)
+                .await
+                .expect("user");
+            let expiry = if expired {
+                now - Duration::minutes(1)
+            } else {
+                now + Duration::hours(1)
+            };
+            let pending = auth_email_change_requests::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                tenant_id: Set(tenant.id),
+                user_id: Set(user.id),
+                current_email: Set(user.email),
+                new_email: Set("new@example.com".to_string()),
+                password_changed_at: Set(user.password_changed_at),
+                token_hash: Set(format!("{:064x}", index + 1)),
+                expires_at: Set(expiry.into()),
+                created_at: Set((now - Duration::minutes(30)).into()),
+            }
+            .insert(&db)
+            .await
+            .expect("pending email change");
+            ids.push(pending.id);
+        }
+
+        let purge = purge_expired_auth_artifacts(&db).await.expect("purge");
+        assert_eq!(purge.email_change_requests, 2);
+        for (index, id) in ids.into_iter().enumerate() {
+            let remaining = auth_email_change_requests::Entity::find_by_id(id)
+                .one(&db)
+                .await
+                .expect("lookup after purge");
+            assert_eq!(remaining.is_some(), index == 2);
+        }
+        let second = purge_expired_auth_artifacts(&db).await.expect("repeat purge");
+        assert_eq!(second.email_change_requests, 0);
     }
 
     #[tokio::test]

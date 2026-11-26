@@ -3,8 +3,9 @@ use std::sync::Arc;
 use crate::NotificationSourceEventRef;
 use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::{
-    ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, QueryTrait, TransactionTrait, sea_query::OnConflict,
+    ActiveValue::Set, ColumnTrait, Condition, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
+    TransactionTrait, Value, sea_query::OnConflict,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -175,6 +176,21 @@ pub struct NotificationOutboxIntakeBatchResult {
     pub failures: Vec<NotificationOutboxIntakeFailure>,
 }
 
+/// Exclusive, process-local scan position. Keep the exact database ordering
+/// value so a terminal cursor row can disappear without losing the position.
+#[derive(Clone, Debug)]
+pub struct NotificationOutboxIntakeCursor {
+    created_at: Value,
+    id: Uuid,
+}
+
+#[derive(Clone, Debug)]
+pub struct NotificationOutboxIntakePage {
+    pub event_ids: Vec<Uuid>,
+    /// None means the end of this pass; restart from the oldest pending row.
+    pub next_cursor: Option<NotificationOutboxIntakeCursor>,
+}
+
 #[derive(Clone)]
 pub struct NotificationOutboxIntakeWorker {
     db: DatabaseConnection,
@@ -238,6 +254,16 @@ impl NotificationOutboxIntakeWorker {
     /// Selects one stable bounded page of committed supported outbox envelopes
     /// that have neither an accepted receipt nor a permanent rejection record.
     pub async fn pending_outbox_event_ids(&self) -> NotificationResult<Vec<Uuid>> {
+        Ok(self.pending_outbox_page_after(None).await?.event_ids)
+    }
+
+    /// Visit bounded pages in the canonical created_at/id order. Selection
+    /// does not acknowledge anything: failures remain pending on the next
+    /// wrap, but a persistent failed prefix cannot monopolize the scan.
+    pub async fn pending_outbox_page_after(
+        &self,
+        after: Option<&NotificationOutboxIntakeCursor>,
+    ) -> NotificationResult<NotificationOutboxIntakePage> {
         let receipts = intake_receipt::Entity::find()
             .select_only()
             .column(intake_receipt::Column::OutboxEventId)
@@ -251,15 +277,59 @@ impl NotificationOutboxIntakeWorker {
         if !accepted.is_empty() {
             select = select.filter(outbox_event::Column::EventType.is_in(accepted));
         }
-        let rows = select
+        if let Some(cursor) = after {
+            select = select.filter(
+                Condition::any()
+                    .add(outbox_event::Column::CreatedAt.gt(cursor.created_at.clone()))
+                    .add(
+                        Condition::all()
+                            .add(outbox_event::Column::CreatedAt.eq(cursor.created_at.clone()))
+                            .add(outbox_event::Column::Id.gt(cursor.id)),
+                    ),
+            );
+        }
+        let select = select
             .filter(outbox_event::Column::Id.not_in_subquery(receipts))
             .filter(outbox_event::Column::Id.not_in_subquery(rejections))
+            .select_only()
+            .column(outbox_event::Column::Id)
+            .column(outbox_event::Column::CreatedAt)
             .order_by_asc(outbox_event::Column::CreatedAt)
             .order_by_asc(outbox_event::Column::Id)
-            .limit(self.batch_size as u64)
-            .all(&self.db)
-            .await?;
-        Ok(rows.into_iter().map(|row| row.id).collect())
+            .limit(self.batch_size as u64);
+
+        // SQLite orders its stored timestamp text. Do not round-trip it
+        // through chrono, which can change the offset/format and skip ties.
+        // PostgreSQL uses the native timestamp value for its comparison.
+        let rows: Vec<(Uuid, Value)> = if self.db.get_database_backend() == DatabaseBackend::Sqlite {
+            select
+                .into_tuple::<(Uuid, String)>()
+                .all(&self.db)
+                .await?
+                .into_iter()
+                .map(|(id, created_at)| (id, created_at.into()))
+                .collect()
+        } else {
+            select
+                .into_tuple::<(Uuid, DateTime<Utc>)>()
+                .all(&self.db)
+                .await?
+                .into_iter()
+                .map(|(id, created_at)| (id, created_at.into()))
+                .collect()
+        };
+        let next_cursor = if rows.len() == self.batch_size {
+            rows.last().map(|(id, created_at)| NotificationOutboxIntakeCursor {
+                created_at: created_at.clone(),
+                id: *id,
+            })
+        } else {
+            None
+        };
+        Ok(NotificationOutboxIntakePage {
+            event_ids: rows.into_iter().map(|(id, _)| id).collect(),
+            next_cursor,
+        })
     }
 
     /// Returns a stable keyset page of already-terminal owner receipts. The

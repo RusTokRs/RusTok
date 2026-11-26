@@ -394,12 +394,14 @@ mod tests {
             search: Some("needle".into()),
             order: ForumTopicFeedOrder::Top,
             solved_only: true,
-            unread_only: false,
+            unread_only: true,
         };
+        assert_eq!(selection, selection.clone());
+        assert_ne!(selection, ForumTopicSelection::default());
         assert_eq!(
             serde_json::to_value(selection).unwrap(),
             serde_json::json!({
-                "search": "needle", "order": "TOP", "solvedOnly": true, "unreadOnly": false,
+                "search": "needle", "order": "TOP", "solvedOnly": true, "unreadOnly": true,
             })
         );
         assert_eq!(

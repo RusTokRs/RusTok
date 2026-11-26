@@ -1,9 +1,5 @@
-use std::sync::Arc;
-
 use chrono::{DateTime, Duration, Utc};
-use rustok_core::events::EventTransport;
 use rustok_events::DomainEvent;
-use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter,
     QuerySelect, Set, TransactionTrait, sea_query::Expr,
@@ -14,6 +10,7 @@ use crate::auth::{AuthConfig, decode_invite_token, normalize_email};
 use crate::error::Error;
 use crate::models::{auth_invite_consumptions, auth_invites, users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
+use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -140,8 +137,8 @@ impl AuthLifecycleService {
         password: &str,
         name: Option<String>,
     ) -> Result<AcceptedInvite, InviteAcceptanceError> {
-        // Canonical feature gate for every transport (REST middleware, REST
-        // handler, GraphQL/native provider). Keep the rejection deliberately
+        // Canonical feature gate for every transport (REST handler and
+        // GraphQL/native provider). Keep the rejection deliberately
         // indistinguishable from an invalid token so disabled invites do not
         // become an oracle for token validity.
         if !ctx.settings().features.invites_enabled {
@@ -412,9 +409,7 @@ impl AuthLifecycleService {
             .await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
 
-        let event_bus = TransactionalEventBus::new(
-            Arc::new(OutboxTransport::new(ctx.db_clone())) as Arc<dyn EventTransport>
-        );
+        let event_bus = transactional_event_bus_from_context(ctx);
         event_bus
             .publish_in_tx(
                 &tx,

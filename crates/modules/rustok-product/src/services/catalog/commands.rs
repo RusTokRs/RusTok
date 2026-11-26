@@ -3,7 +3,8 @@ pub(super) mod variant_axes;
 
 use super::attached_localized_storage;
 use super::concurrency::{
-    ensure_expected_revision, ensure_expected_variant_revision, next_revision,
+    ensure_expected_revision, ensure_expected_variant_revision, ensure_variant_parent_matches,
+    next_revision,
     validate_patch_text_length,
 };
 use super::*;
@@ -62,6 +63,55 @@ fn validate_product_variant_count(
     Ok(())
 }
 
+fn validate_variant_input_bounds(
+    axis_values_count: usize,
+    price_rows_count: usize,
+) -> CommerceResult<()> {
+    if axis_values_count > crate::dto::MAX_VARIANT_AXES {
+        return Err(CommerceError::Validation(format!(
+            "A variant can have at most {} axis assignments",
+            crate::dto::MAX_VARIANT_AXES
+        )));
+    }
+    if price_rows_count > crate::dto::MAX_VARIANT_PRICE_ROWS {
+        return Err(CommerceError::Validation(format!(
+            "A variant can have at most {} price rows",
+            crate::dto::MAX_VARIANT_PRICE_ROWS
+        )));
+    }
+    Ok(())
+}
+
+/// Reject oversized nested Product creation batches before Validate walks them
+/// or Shipping Profile performs any owner IO. DTO attributes repeat these bounds
+/// for generated contracts and callers that validate inputs independently.
+fn validate_create_product_input_bounds(
+    input: &crate::dto::CreateProductInput,
+) -> CommerceResult<()> {
+    validate_product_variant_count(0, input.variants.len())?;
+
+    if input.variant_axes.len() > crate::dto::MAX_VARIANT_AXES {
+        return Err(CommerceError::Validation(format!(
+            "A Product can have at most {} variant axes",
+            crate::dto::MAX_VARIANT_AXES
+        )));
+    }
+    if input
+        .variant_axes
+        .iter()
+        .any(|axis| axis.allowed_option_ids.len() > crate::dto::MAX_VARIANT_AXIS_VALUES)
+    {
+        return Err(CommerceError::Validation(format!(
+            "A variant axis can have at most {} allowed options",
+            crate::dto::MAX_VARIANT_AXIS_VALUES
+        )));
+    }
+    for variant in &input.variants {
+        validate_variant_input_bounds(variant.axis_values.len(), variant.prices.len())?;
+    }
+    Ok(())
+}
+
 fn validate_variant_inventory_quantity(quantity: i32) -> CommerceResult<()> {
     if quantity < 0 {
         return Err(CommerceError::Validation(
@@ -82,18 +132,34 @@ fn normalize_variant_inventory_policy(value: &str) -> CommerceResult<String> {
 }
 
 fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
+    if prices.len() > crate::dto::MAX_VARIANT_PRICE_ROWS {
+        return Err(CommerceError::Validation(format!(
+            "A variant can have at most {} price rows",
+            crate::dto::MAX_VARIANT_PRICE_ROWS
+        )));
+    }
+
     let mut seen = HashSet::new();
     for price in prices {
         let currency = price.currency_code.trim().to_ascii_uppercase();
         if currency.len() != 3 || !currency.bytes().all(|byte| byte.is_ascii_uppercase()) {
             return Err(CommerceError::Validation(format!(
-                "Currency code `{}` must contain exactly 3 ASCII letters (ISO 4217)",
+                "Currency code `{}` must contain exactly 3 ASCII letters",
                 price.currency_code
             )));
         }
         if price.channel_id.is_some_and(|channel_id| channel_id.is_nil()) {
             return Err(CommerceError::Validation(
                 "Price channel ID must not be nil".to_owned(),
+            ));
+        }
+        if price
+            .channel_slug
+            .as_deref()
+            .is_some_and(|slug| slug.trim().is_empty())
+        {
+            return Err(CommerceError::Validation(
+                "Price channel slug must not be empty".to_owned(),
             ));
         }
         if price.amount < rust_decimal::Decimal::ZERO
@@ -254,6 +320,7 @@ impl CatalogService {
             "Creating product"
         );
 
+        validate_create_product_input_bounds(&input)?;
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
@@ -483,7 +550,8 @@ impl CatalogService {
                 position: Set(variant_position),
                 created_at: Set(now.into()),
                 updated_at: Set(now.into()),
-                index_revision: sea_orm::ActiveValue::NotSet,
+                revision: Set(1),
+                index_revision: Set(1),
             };
             variant.insert(&txn).await.map_err(|error| {
                 tracing::error!(%error, "variant.insert failed in create_product");
@@ -592,8 +660,7 @@ impl CatalogService {
             )
             .await?;
         if input.publish {
-            schema
-                .validate_product_publish_requirements_in(&txn, tenant_id, product_id)
+            ProductCatalogSchemaService::validate_product_publish_requirements_in(&txn, tenant_id, product_id)
                 .await?;
         }
 
@@ -1023,8 +1090,7 @@ impl CatalogService {
         // Validate the persisted candidate, including its new category and translations.
         // Failure rolls the entire write back before any lifecycle event is committed.
         if remains_active {
-            ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
-                .validate_product_publish_requirements_in(&txn, tenant_id, product_id)
+            ProductCatalogSchemaService::validate_product_publish_requirements_in(&txn, tenant_id, product_id)
                 .await?;
         }
 
@@ -1128,8 +1194,7 @@ impl CatalogService {
             return Ok(result);
         }
 
-        ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
-            .validate_product_publish_requirements_in(&txn, tenant_id, product_id)
+        ProductCatalogSchemaService::validate_product_publish_requirements_in(&txn, tenant_id, product_id)
             .await?;
 
         let next_revision = next_revision(product.revision)?;
@@ -1449,6 +1514,7 @@ impl CatalogService {
     ) -> CommerceResult<VariantResponse> {
         debug!("Creating product variant");
 
+        validate_variant_input_bounds(input.axis_values.len(), input.prices.len())?;
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
@@ -1471,6 +1537,9 @@ impl CatalogService {
         lock_schema_for_product_write(&txn, tenant_id).await?;
 
         let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+        // Membership triggers advance the parent Product revision with the Index watermark.
+        // Refuse exhaustion before any variant or collaborator writes begin.
+        next_revision(product.revision)?;
         let configured_axes =
             load_variant_axis_configuration_in(&txn, tenant_id, product_id).await?;
         validate_variant_axis_values_against_configuration(
@@ -1537,7 +1606,8 @@ impl CatalogService {
             position: Set(next_position),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
-            index_revision: sea_orm::ActiveValue::NotSet,
+            revision: Set(1),
+            index_revision: Set(1),
         };
 
         variant
@@ -1553,8 +1623,7 @@ impl CatalogService {
         if product.status == entities::product::ProductStatus::Active {
             // A newly-created SKU is part of the live Product immediately. Do not commit it
             // unless every required Variant EAV value/localization is present on every SKU.
-            ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
-                .validate_product_publish_requirements_in(&txn, tenant_id, product_id)
+            ProductCatalogSchemaService::validate_product_publish_requirements_in(&txn, tenant_id, product_id)
                 .await?;
         }
 
@@ -1655,6 +1724,10 @@ impl CatalogService {
     ) -> CommerceResult<VariantResponse> {
         debug!("Updating product variant");
 
+        validate_variant_input_bounds(
+            input.axis_values.as_ref().map_or(0, Vec::len),
+            input.prices.as_ref().map_or(0, Vec::len),
+        )?;
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
@@ -1708,6 +1781,7 @@ impl CatalogService {
         let product_id = observed_variant.product_id;
         let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
+        ensure_variant_parent_matches(product_id, variant.product_id)?;
         if input.has_changes() {
             ensure_expected_variant_revision(&variant, input.expected_revision.as_deref())?;
         }
@@ -1921,8 +1995,9 @@ impl CatalogService {
             .await?
             .ok_or(CommerceError::VariantNotFound(variant_id))?;
         let product_id = observed_variant.product_id;
-        let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+        let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
+        ensure_variant_parent_matches(product_id, variant.product_id)?;
         ensure_expected_variant_revision(&variant, Some(&expected_revision))?;
 
         let count = entities::product_variant::Entity::find()
@@ -1933,6 +2008,8 @@ impl CatalogService {
         if count <= 1 {
             return Err(CommerceError::CannotDeleteOnlyVariant);
         }
+        // The membership trigger advances this Product's business revision on DELETE.
+        next_revision(product.revision)?;
 
         self.inventory()
             .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &[variant_id])
@@ -3239,6 +3316,55 @@ mod tests {
     }
 
     #[test]
+    fn create_product_batch_bounds_are_rejected_before_nested_validation() {
+        let variant = || crate::dto::CreateVariantInput {
+            sku: None,
+            barcode: None,
+            shipping_profile_slug: None,
+            axis_values: Vec::new(),
+            prices: Vec::new(),
+            inventory_quantity: 0,
+            inventory_policy: "deny".to_owned(),
+            weight: None,
+            weight_unit: None,
+        };
+        let input = crate::dto::CreateProductInput {
+            variants: vec![variant(); crate::dto::MAX_PRODUCT_VARIANTS + 1],
+            ..Default::default()
+        };
+        assert!(matches!(
+            validate_create_product_input_bounds(&input),
+            Err(CommerceError::Validation(_))
+        ));
+
+        let input = crate::dto::CreateProductInput {
+            variant_axes: vec![
+                crate::dto::VariantAxisInput {
+                    attribute_id: Uuid::new_v4(),
+                    position: 0,
+                    allowed_option_ids: vec![Uuid::new_v4()],
+                };
+                crate::dto::MAX_VARIANT_AXES + 1
+            ],
+            ..Default::default()
+        };
+        assert!(matches!(
+            validate_create_product_input_bounds(&input),
+            Err(CommerceError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn variant_input_nested_bounds_are_checked_before_validation() {
+        assert!(validate_variant_input_bounds(
+            crate::dto::MAX_VARIANT_AXES,
+            crate::dto::MAX_VARIANT_PRICE_ROWS
+        ).is_ok());
+        assert!(validate_variant_input_bounds(crate::dto::MAX_VARIANT_AXES + 1, 0).is_err());
+        assert!(validate_variant_input_bounds(0, crate::dto::MAX_VARIANT_PRICE_ROWS + 1).is_err());
+    }
+
+    #[test]
     fn product_variant_capacity_is_enforced_without_overflow() {
         assert!(validate_product_variant_count(0, 1).is_ok());
         assert!(validate_product_variant_count(0, crate::dto::MAX_PRODUCT_VARIANTS).is_ok());
@@ -3348,6 +3474,46 @@ mod tests {
             compare_at_amount: None,
         }];
         assert!(validate_variant_prices(&prices).is_err());
+    }
+
+    #[test]
+    fn validate_variant_prices_rejects_empty_or_whitespace_channel_slugs() {
+        for channel_slug in ["", "   "] {
+            let prices = vec![PriceInput {
+                currency_code: "USD".to_owned(),
+                channel_id: None,
+                channel_slug: Some(channel_slug.to_owned()),
+                amount: Decimal::new(1000, 2),
+                compare_at_amount: None,
+            }];
+            assert!(matches!(
+                validate_variant_prices(&prices),
+                Err(CommerceError::Validation(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn validate_variant_prices_enforces_the_per_variant_owner_limit() {
+        let prices = |count: usize| {
+            (0..count)
+                .map(|index| PriceInput {
+                    currency_code: "USD".to_owned(),
+                    channel_id: Some(Uuid::from_u128(index as u128 + 1)),
+                    channel_slug: None,
+                    amount: Decimal::new(100, 2),
+                    compare_at_amount: None,
+                })
+                .collect::<Vec<_>>()
+        };
+
+        assert!(
+            validate_variant_prices(&prices(crate::dto::MAX_VARIANT_PRICE_ROWS)).is_ok()
+        );
+        assert!(matches!(
+            validate_variant_prices(&prices(crate::dto::MAX_VARIANT_PRICE_ROWS + 1)),
+            Err(CommerceError::Validation(_))
+        ));
     }
 
     #[test]

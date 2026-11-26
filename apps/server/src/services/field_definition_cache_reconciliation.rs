@@ -144,18 +144,26 @@ fn start_field_definition_cache_generation_reconciliation_with_timing(
         return;
     }
 
-    if let Some(existing) = ctx.shared_get::<FieldDefinitionCacheGenerationReconciliationHandle>() {
-        if existing.is_running() {
-            return;
-        }
-        tracing::warn!(
-            applied_generation = existing.applied_generation(),
-            "Field-definition cache generation reconciler stopped; replacing supervised runtime"
-        );
-        existing.abort();
-    }
+    let previous_generation =
+        if let Some(existing) = ctx.shared_get::<FieldDefinitionCacheGenerationReconciliationHandle>() {
+            if existing.is_running() {
+                return;
+            }
+            let generation = existing.applied_generation();
+            tracing::warn!(
+                applied_generation = generation,
+                "Field-definition cache generation reconciler stopped; replacing supervised runtime"
+            );
+            existing.abort();
+            generation
+        } else {
+            0
+        };
 
-    let state = Arc::new(FieldDefinitionCacheGenerationState::default());
+    let state = Arc::new(FieldDefinitionCacheGenerationState {
+        healthy: AtomicBool::new(false),
+        applied_generation: AtomicU64::new(previous_generation),
+    });
     let db = ctx.db_clone();
     let worker_state = Arc::clone(&state);
     let task = tokio::spawn(async move {
@@ -202,6 +210,10 @@ async fn supervise_field_definition_cache_generation(
         .catch_unwind()
         .await;
 
+        // A live supervisor is not evidence of a healthy inner reconciler.
+        // Withdraw readiness before backoff, including after a caught panic.
+        state.healthy.store(false, Ordering::Release);
+        cache.invalidate_all();
         match outcome {
             Ok(Ok(())) => tracing::error!(
                 "Field-definition cache generation reconciler exited unexpectedly; restarting"
@@ -235,6 +247,18 @@ async fn run_field_definition_cache_generation_once(
             return Err(error.to_string());
         }
     };
+
+    // Preserve the last successfully applied generation across inner-task
+    // restarts. A lower durable value is not a valid new baseline merely
+    // because the supervisor retried the read.
+    let previous = state.applied_generation.load(Ordering::Acquire);
+    if applied < previous {
+        state.healthy.store(false, Ordering::Release);
+        cache.invalidate_all();
+        return Err(format!(
+            "field-definition cache generation regressed from {previous} to {applied}"
+        ));
+    }
 
     // Seed from durable state before trusting any process-local cache contents.
     cache.invalidate_all();

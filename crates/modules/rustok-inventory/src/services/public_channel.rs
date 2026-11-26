@@ -32,12 +32,11 @@ pub fn extract_allowed_channel_slugs(metadata: &Value) -> Vec<String> {
 
     let mut normalized = BTreeSet::new();
     for value in values {
-        if let Some(raw_slug) = value.as_str() {
-            if let Some(slug) = normalize_public_channel_slug(Some(raw_slug))
+        if let Some(raw_slug) = value.as_str()
+            && let Some(slug) = normalize_public_channel_slug(Some(raw_slug))
                 .filter(|slug| slug.as_str() == raw_slug)
-            {
-                normalized.insert(slug);
-            }
+        {
+            normalized.insert(slug);
         }
     }
 
@@ -112,11 +111,11 @@ pub(super) async fn require_tenant_variant_identities<C: ConnectionTrait>(
 /// Minimal location data needed by Inventory quantity projections. Avoid loading
 /// address/contact fields merely to prove a tenant-owned level binding.
 #[derive(Debug, Clone, FromQueryResult)]
-struct TenantLocationProjection {
-    id: Uuid,
-    tenant_id: Uuid,
-    deleted_at: Option<DateTimeWithTimeZone>,
-    metadata: Value,
+pub(super) struct TenantLocationProjection {
+    pub(super) id: Uuid,
+    pub(super) tenant_id: Uuid,
+    pub(super) deleted_at: Option<DateTimeWithTimeZone>,
+    pub(super) metadata: Value,
 }
 
 fn tenant_location_identity_error() -> sea_orm::DbErr {
@@ -411,11 +410,11 @@ pub async fn load_available_inventory_for_variant_in_public_channel(
 #[cfg(test)]
 mod tests {
     use super::{
-        PublicChannelInventoryVariantProjectionInput, check_public_channel_inventory_request,
-        extract_allowed_channel_slugs, is_allowlist_visible_for_public_channel,
-        is_metadata_visible_for_public_channel, normalize_public_channel_slug,
+        PublicChannelInventoryVariantProjectionInput, TenantLocationProjection,
+        check_public_channel_inventory_request, extract_allowed_channel_slugs,
+        is_allowlist_visible_for_public_channel, is_metadata_visible_for_public_channel,
+        load_available_inventory_by_variant_for_public_channel, normalize_public_channel_slug,
         public_channel_inventory_projection_map, validate_tenant_location_rows,
-        TenantLocationProjection,
     };
 
     use std::collections::{BTreeSet, HashMap};

@@ -992,6 +992,7 @@ fn adopt_reservation_error_identity(
     }
 }
 
+#[allow(dead_code)]
 fn adopt_payment_error_identity(
     context: &mut AdminCheckoutOperationErrorContext,
     error: &PaymentError,
@@ -1004,6 +1005,7 @@ fn adopt_payment_error_identity(
     }
 }
 
+#[allow(dead_code)]
 fn adopt_order_error_identity(
     context: &mut AdminCheckoutOperationErrorContext,
     error: &OrderError,

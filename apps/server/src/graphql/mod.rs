@@ -76,7 +76,6 @@ mod artifact_lifecycle;
 pub mod auth_rate_limit;
 #[cfg(feature = "mod-blog")]
 pub mod blog_rate_limit;
-pub mod dashboard_security;
 pub mod forum_principal_security;
 pub mod index_drift_diagnosis;
 pub mod index_drift_source_page_diagnosis;
@@ -232,7 +231,6 @@ mod operation_selection_tests {
 #[cfg(test)]
 mod parsed_document_policy_tests {
     use super::{
-        dashboard_security::GraphqlDashboardSecurityPolicy,
         forum_principal_security::ForumPrincipalPolicy,
         legacy_disable_user::LegacyDisableUserPolicy,
         module_security::GraphqlModuleSecurityPolicy,
@@ -309,15 +307,12 @@ mod parsed_document_policy_tests {
         let security = Schema::build(Query, EmptyMutation, EmptySubscription)
             .extension(GraphqlSecurityPolicy)
             .finish();
-        let dashboard = Schema::build(Query, EmptyMutation, EmptySubscription)
-            .extension(GraphqlDashboardSecurityPolicy)
-            .finish();
         let modules = Schema::build(Query, EmptyMutation, EmptySubscription)
             .extension(GraphqlModuleSecurityPolicy)
             .finish();
         for (schema, query) in [
             (&security, "{ users }"),
-            (&dashboard, "{ dashboardStats }"),
+            (&security, "{ dashboardStats }"),
             (&modules, "{ moduleRegistry }"),
         ] {
             let response = schema.execute(parsed_request(query)).await;

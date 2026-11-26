@@ -123,6 +123,7 @@ impl CartService {
             .all(&txn)
             .await?;
         if line_items.len() > crate::MAX_PRICED_CART_LINES {
+            txn.rollback().await?;
             return Err(CartError::Validation(
                 "Checkout preparation exceeds 1024 observed lines".into(),
             ));

@@ -21,7 +21,9 @@ use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
 use crate::services::server_runtime_context::published_worker_running;
-use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
+use crate::services::stop_handle::{
+    StopHandle, may_admit_next_worker_operation, wait_for_worker_retry_or_stop,
+};
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
@@ -261,7 +263,7 @@ async fn forum_search_contract_consumer_loop(
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!("Forum Search typed invalidation consumer stopped");
             return;
         }
@@ -317,7 +319,7 @@ async fn forum_search_contract_consumer_loop(
                 )
                 .await
             }
-            Ok(None) => !wait_or_stop(config.idle_poll, &mut stop_rx).await,
+            Ok(None) => !wait_for_worker_retry_or_stop(config.idle_poll, &mut stop_rx).await,
             Err(_error) => {
                 tracing::error!(
                     error_code = "forum_search_contract_receive_failed",
@@ -378,7 +380,7 @@ async fn process_contract_event(
                     retry_delay_ms = duration_millis(delay),
                     "Forum Search durable inbox admission failed; retaining broker offset"
                 );
-                if wait_or_stop(delay, stop_rx).await {
+                if wait_for_worker_retry_or_stop(delay, stop_rx).await {
                     return false;
                 }
                 attempt += 1;
@@ -605,7 +607,7 @@ async fn establish_poison_result(
                     retry_delay_ms = duration_millis(delay),
                     "Forum Search poison receipt is owned by another publisher"
                 );
-                if wait_or_stop(delay, stop_rx).await {
+                if wait_for_worker_retry_or_stop(delay, stop_rx).await {
                     return Err(());
                 }
                 attempt += 1;
@@ -660,7 +662,7 @@ async fn establish_poison_result(
                     retry_delay_ms = duration_millis(delay),
                     "Forum Search poison receipt persistence failed; retaining broker offset"
                 );
-                if wait_or_stop(delay, stop_rx).await {
+                if wait_for_worker_retry_or_stop(delay, stop_rx).await {
                     return Err(());
                 }
                 attempt += 1;
@@ -695,7 +697,7 @@ async fn lookup_poison_receipt(
                     retry_delay_ms = duration_millis(delay),
                     "Forum Search poison receipt lookup failed; retaining broker offset"
                 );
-                if wait_or_stop(delay, stop_rx).await {
+                if wait_for_worker_retry_or_stop(delay, stop_rx).await {
                     return Err(());
                 }
                 attempt += 1;
@@ -734,7 +736,7 @@ async fn mark_poison_published(
                     retry_delay_ms = duration_millis(delay),
                     "Forum Search poison bytes were published; retrying durable published state only"
                 );
-                if wait_or_stop(delay, stop_rx).await {
+                if wait_for_worker_retry_or_stop(delay, stop_rx).await {
                     return Err(());
                 }
                 attempt += 1;
@@ -770,7 +772,7 @@ async fn acknowledge_event(
                     retry_delay_ms = duration_millis(delay),
                     "Forum Search durable result exists but broker acknowledgement failed"
                 );
-                if wait_or_stop(delay, stop_rx).await {
+                if wait_for_worker_retry_or_stop(delay, stop_rx).await {
                     return false;
                 }
                 attempt += 1;
@@ -837,7 +839,7 @@ async fn acknowledge_decode_failure_with_receipt(
                     retry_delay_ms = duration_millis(delay),
                     "Forum Search raw poison result exists but broker acknowledgement failed"
                 );
-                if wait_or_stop(delay, stop_rx).await {
+                if wait_for_worker_retry_or_stop(delay, stop_rx).await {
                     return false;
                 }
                 attempt += 1;
@@ -867,13 +869,6 @@ fn retry_delay(config: &ForumSearchContractWorkerConfig, attempt: u32) -> Durati
 
 fn duration_millis(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
-}
-
-async fn wait_or_stop(delay: Duration, stop_rx: &mut tokio::sync::watch::Receiver<bool>) -> bool {
-    tokio::select! {
-        _ = tokio::time::sleep(delay) => false,
-        changed = stop_rx.changed() => changed.is_err() || *stop_rx.borrow(),
-    }
 }
 
 fn parse_bool(name: &str, value: &str) -> std::result::Result<bool, String> {

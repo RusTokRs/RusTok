@@ -9,6 +9,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 
 const BACKEND_LIMIT = 32 * 1024;
 const UI_LIMIT = 40 * 1024;
+const FACADE_DEFINITIONS = /\b(?:async\s+)?fn\s+[A-Za-z_][A-Za-z0-9_]*\s*\(|\b(?:pub\s+)?(?:struct|enum|trait|type|const|static)\b|\bimpl\b/;
 const BACKEND_SLOTS = new Set([
   "domain", "dto", "entities", "services", "ports", "integrations",
   "graphql", "controllers", "rest", "migrations", "tests", "events", "error",
@@ -315,7 +316,7 @@ function keyInSection(source, section, key) {
       continue;
     }
     if (!active) continue;
-    const match = line.match(new RegExp("^\\s*" + key + "\\s*=\\s*\"([^\"]+)\""));
+    const match = line.match(new RegExp("^\\s*" + key + "\\s*=\\s*\"([^\"]*)\""));
     if (match) return match[1];
   }
   return null;
@@ -639,7 +640,7 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   if (/#\s*\[\s*component\s*\]/.test(libCode)) {
     diagnostics.push(relative(root, join(src, "lib.rs")) + ": UI components belong in ui/, not lib.rs");
   }
-  if (/\b(?:async\s+)?fn\s+[A-Za-z_][A-Za-z0-9_]*\s*\(|\b(?:pub\s+)?(?:struct|enum|trait|type|const|static)\b|\bimpl\b/.test(libCode)) {
+  if (FACADE_DEFINITIONS.test(libCode)) {
     diagnostics.push(relative(root, join(src, "lib.rs")) + ": FFA lib.rs must remain a module/re-export facade");
   }
   if (requested) checkNextUiSurface(root, side, manifest, diagnostics);
@@ -680,6 +681,99 @@ function checkSupportPackage(root, moduleRoot, side, manifest, classification, d
   checkSizes(root, join(supportRoot, "src"), UI_LIMIT, diagnostics);
 }
 
+function checkCliLayout(root, moduleRoot, packageName, manifest, diagnostics) {
+  const cliRoot = join(moduleRoot, "cli");
+  if (!checkModulePathNoSymlinks(root, cliRoot, diagnostics)) return;
+
+  const src = join(cliRoot, "src");
+  const count = diagnostics.length;
+  checkNoSymlinks(root, src, diagnostics);
+  if (diagnostics.length !== count) return;
+
+  const expectedPackage = packageName + "-cli";
+  const section = "provides.cli";
+  const factory = keyInSection(manifest, section, "factory");
+  const provider = keyInSection(manifest, section, "provider");
+  const providerPath = factory ?? provider ?? "";
+  const pathParts = providerPath.split("::");
+  if ((factory === null) === (provider === null) || pathParts.length < 2 ||
+      pathParts[0] !== expectedPackage.replaceAll("-", "_") ||
+      pathParts.some((part) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(part))) {
+    diagnostics.push(relative(root, cliRoot) +
+      ": [provides.cli] must select one factory or provider from " + expectedPackage);
+  }
+  const cargoPath = join(cliRoot, "Cargo.toml");
+  const cargo = readRequired(root, cargoPath, diagnostics);
+  if (cargo && keyInSection(cargo, "package", "name") !== expectedPackage) {
+    diagnostics.push(relative(root, cargoPath) + ": Cargo package name must be " + expectedPackage);
+  }
+  if (!isDirectory(src)) {
+    diagnostics.push(relative(root, src) + ": module-local CLI source directory is missing");
+    return;
+  }
+
+  const libPath = join(src, "lib.rs");
+  const lib = maskRustNonCode(readRequired(root, libPath, diagnostics));
+  if (FACADE_DEFINITIONS.test(lib)) {
+    diagnostics.push(relative(root, libPath) + ": CLI lib.rs must remain a module and re-export facade");
+  }
+  for (const name of ["provider", "commands"]) {
+    if (!new RegExp("\\bmod\\s+" + name + "\\s*;").test(lib)) {
+      diagnostics.push(relative(root, libPath) + ": CLI lib.rs must declare " + name);
+    }
+  }
+  const providerFile = join(src, "provider.rs");
+  if (!/\bimpl\s+(?:rustok_cli_core\s*::\s*)?CommandProvider\s+for\b/.test(
+    maskRustNonCode(readRequired(root, providerFile, diagnostics)),
+  )) {
+    diagnostics.push(relative(root, providerFile) + ": CLI provider must implement CommandProvider");
+  }
+  if (hasSource(join(src, "runtime.rs")) && !/\bmod\s+runtime\s*;/.test(lib)) {
+    diagnostics.push(relative(root, libPath) + ": CLI lib.rs must declare the runtime binding");
+  }
+  const dirs = new Set(["commands", "tests"]);
+  const files = new Set(["lib.rs", "provider.rs", "runtime.rs"]);
+  for (const entry of readdirSync(src, { withFileTypes: true })) {
+    if ((entry.isDirectory() && !dirs.has(entry.name)) ||
+        (entry.isFile() && entry.name.endsWith(".rs") && !files.has(entry.name))) {
+      diagnostics.push(relative(root, join(src, entry.name)) + ": noncanonical CLI source slot");
+    }
+  }
+
+  const commandsRoot = join(src, "commands");
+  const commandsPath = join(commandsRoot, "mod.rs");
+  const commands = maskRustNonCode(readRequired(root, commandsPath, diagnostics));
+  const children = new Set(Array.from(commands.matchAll(/\bmod\s+(?:r#)?([a-z_][a-z0-9_]*)\s*;/g),
+    (match) => match[1]));
+  if (children.size === 0) {
+    diagnostics.push(relative(root, commandsPath) + ": CLI commands require an implemented child module");
+  }
+  for (const name of children) {
+    const entries = [join(commandsRoot, name + ".rs"), join(commandsRoot, name, "mod.rs")].filter(hasSource);
+    if (entries.length !== 1 || !maskRustNonCode(readFileSync(entries[0], "utf8")).trim()) {
+      diagnostics.push(relative(root, commandsPath) + ": CLI command module " + name +
+        " requires one nonempty source entrypoint");
+    }
+  }
+  for (const file of rustFiles(commandsRoot)) {
+    const [entry] = relative(commandsRoot, file).split(sep);
+    if (entry !== "mod.rs" && !children.has(entry.replace(/\.rs$/, ""))) {
+      diagnostics.push(relative(root, file) + ": CLI command source is not wired by commands/mod.rs");
+    }
+  }
+
+  const testsPath = join(src, "tests", "mod.rs");
+  if (!/#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]\s*mod\s+tests\s*;/.test(lib) ||
+      !/\bmod\s+contract\s*;/.test(maskRustNonCode(readRequired(root, testsPath, diagnostics)))) {
+    diagnostics.push(relative(root, testsPath) + ": CLI contract tests must be wired through cfg(test) and mod contract");
+  }
+  const contractPath = join(src, "tests", "contract.rs");
+  if (!/#\s*\[\s*(?:tokio::)?test\s*\]/.test(maskRustNonCode(readRequired(root, contractPath, diagnostics)))) {
+    diagnostics.push(relative(root, contractPath) + ": CLI contract test file has no tests");
+  }
+  checkSizes(root, src, BACKEND_LIMIT, diagnostics);
+}
+
 function nativeModuleRegistryEntry(root, slug) {
   const manifest = readFileSync(join(root, "modules.toml"), "utf8");
   const moduleHeader = manifest.match(/^\[modules\]\s*$/m);
@@ -715,7 +809,7 @@ export function resolveNativeModule(root, slug, { embedded = false } = {}) {
   return entry.path;
 }
 
-export function lintNativeModule(root, modulePath, slug, { embedded = false } = {}) {
+export function lintNativeModule(root, modulePath, slug, { embedded = false, cli = false } = {}) {
   const diagnostics = [];
   const repo = resolve(root);
   const moduleRoot = resolve(repo, modulePath);
@@ -777,7 +871,7 @@ export function lintNativeModule(root, modulePath, slug, { embedded = false } = 
   const module = readRequired(repo, join(src, "module.rs"), diagnostics);
   const libCode = maskRustNonCode(lib);
   const moduleCode = maskRustNonCode(module);
-  if (/\b(?:async\s+)?fn\s+[A-Za-z_][A-Za-z0-9_]*\s*\(|\b(?:pub\s+)?(?:struct|enum|trait|type|const|static)\b|\bimpl\b/.test(libCode)) {
+  if (FACADE_DEFINITIONS.test(libCode)) {
     diagnostics.push(relative(repo, join(src, "lib.rs")) + ": lib.rs must remain a thin module/re-export facade");
   }
   if (lib && !/\b(?:pub(?:\([^)]*\))?\s+)?mod\s+module\s*;/.test(libCode)) {
@@ -883,6 +977,8 @@ export function lintNativeModule(root, modulePath, slug, { embedded = false } = 
   const portsSource = join(moduleRoot, "ports", "src");
   checkImports(repo, portsSource, FORBIDDEN_DOMAIN, diagnostics);
   checkSizes(repo, portsSource, BACKEND_LIMIT, diagnostics);
+
+  if (cli) checkCliLayout(repo, moduleRoot, packageName, manifest, diagnostics);
 
   const classification = keyInSection(manifest, "module", "ui_classification");
   const liveProfiles = {

@@ -73,6 +73,7 @@ for (const [name, entry] of Object.entries(contract.owner_entrypoints ?? {})) {
 }
 const dto = read(contract.quote_command?.dto ?? "");
 const service = read(contract.quote_command?.service ?? "");
+const engagementGuard = read("crates/modules/rustok-forum/src/services/topic_engagement_guard.rs");
 const relationTests = read("crates/modules/rustok-forum/src/services/mention_relation_tests.rs");
 const controller = read("crates/modules/rustok-forum/src/controllers/quote_commands.rs");
 const routes = read("crates/modules/rustok-forum/src/controllers/mod.rs");
@@ -385,10 +386,19 @@ requireText(graphql, ".quote_command_service(db.clone())", "GraphQL must use the
 reject(controller + graphql, /ForumQuoteCommandService::new\s*\(/, "quote transports must not bypass the configured owner");
 const admission = service.slice(service.indexOf("async fn enforce_source_edit_in_tx("), service.indexOf("async fn load_source("));
 for (const marker of [
-  "enforce_source_edit_in_tx", "find_topic_for_update_in_tx", "TopicStatus::Archived",
-  "topic.is_locked", "module_settings_in_tx", "enforce_author_edit_window",
+  "enforce_source_edit_in_tx", "find_topic_for_update_in_tx", "enforce_topic_engagement(",
+  "TopicEngagementKind::UpdateTopic", "TopicEngagementKind::UpdateReply",
+  "module_settings_in_tx", "enforce_author_edit_window",
 ]) {
   requireText(admission, marker, `transactional quote admission is missing ${marker}`);
+}
+
+for (const marker of [
+  "TopicStatus::Archived => return Err(ForumError::TopicArchived)",
+  "topic.is_locked && !may_write_locked_topic(security, resource)",
+  "return Err(ForumError::TopicLocked)",
+]) {
+  requireText(engagementGuard, marker, `canonical engagement admission is missing ${marker}`);
 }
 
 if (failures.length > 0) {

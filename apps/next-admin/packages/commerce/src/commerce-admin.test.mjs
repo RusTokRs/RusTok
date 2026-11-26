@@ -388,10 +388,10 @@ test('previewCartPromotion and applyCartPromotion dispatch typed mutations', asy
   const api = createApiModule(async (query, vars) => {
     if (query.includes('CommerceAdminPreviewCartPromotion')) {
       assert.equal(vars.cartId, 'cart-99');
-      assert.equal(vars.input.kind, 'PERCENT');
+      assert.equal(vars.input.kind, 'PERCENTAGE_DISCOUNT');
       return {
         previewAdminCartPromotion: {
-          kind: 'PERCENT',
+          kind: 'PERCENTAGE_DISCOUNT',
           scope: 'CART',
           lineItemId: null,
           currencyCode: 'USD',
@@ -420,14 +420,14 @@ test('previewCartPromotion and applyCartPromotion dispatch typed mutations', asy
   const opts = { token: 'tok', tenantSlug: 'slug', tenantId: 'ten-1' };
   const preview = await api.previewCartPromotion(opts, 'cart-99', {
     sourceId: 'promo1',
-    kind: 'PERCENT',
+    kind: 'PERCENTAGE_DISCOUNT',
     scope: 'CART'
   });
   assert.equal(preview.adjustmentAmount, '15.00');
 
   const applied = await api.applyCartPromotion(opts, 'cart-99', {
     sourceId: 'promo1',
-    kind: 'PERCENT',
+    kind: 'PERCENTAGE_DISCOUNT',
     scope: 'CART'
   });
   assert.equal(applied.totalAmount, '90.00');
@@ -443,6 +443,14 @@ test('GraphQL queries and mutations define expected schema contracts', () => {
   assert.match(api.ORDERS_QUERY, /totalAmount/);
   assert.match(api.ORDERS_QUERY, /lineItems/);
 
+  assert.match(
+    api.CREATE_SHIPPING_PROFILE_MUTATION,
+    /\$input: CreateShippingProfileInput!/
+  );
+  assert.match(
+    api.UPDATE_SHIPPING_PROFILE_MUTATION,
+    /\$input: UpdateShippingProfileInput!/
+  );
   assert.match(
     api.SHIPPING_PROFILES_QUERY,
     /shippingProfiles\(tenantId: \$tenantId/

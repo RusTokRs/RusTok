@@ -12,6 +12,8 @@ For full public interface and web runtime definitions, see [CRATE_API.md](CRATE_
 - Own the two origin rules: inbound acceptance compares `event.origin` against a canonical expected origin (`normalize_expected_origin`, which accepts HTTP(S) origins and `OPAQUE_ORIGIN`, and rejects raw non-origin syntax before URL canonicalization, including paths that normalize away, malformed authority delimiters, credentials, queries and fragments), while outbound delivery translates an opaque destination to `*` (`outbound_target_origin`), because the platform rejects `"null"` as a `postMessage` target.
 - Implement RAII browser event listener handles (`EventListenerHandle`, `CleanupRegistry`).
 - Implement keyboard shortcut translation and resize sessions (`BrowserResizeSession`).
+  Native shortcut resolution ignores IME composition and AltGraph events before applying the
+  framework-neutral shortcut rules.
 - Implement authenticated real-DOM inline edit grants and request validation, including the
   client-side half of the commit contract: only a changed element emits a request, and the
   value is normalized to the plain text the grant accepts before it is bound.
@@ -31,6 +33,9 @@ For full public interface and web runtime definitions, see [CRATE_API.md](CRATE_
   `srcdoc` frame, while `IframeJsonSubscription` validates the canvas-specific envelope,
   source window, origin, instance ID and monotonic sequence. `WindowMessageSubscription`
   remains a lower-level generic utility rather than the Page Builder's typed message contract.
+  An opaque inbound origin (`null`) requires an exact source window even in that generic
+  utility; unrelated sandboxed documents share the same serialized origin. Concrete HTTP(S)
+  origins retain origin-scoped subscription support.
   `IframeMessagePort::post` translates an opaque destination through `outbound_target_origin`;
   passing `"null"` as a `postMessage` target is rejected by the platform.
 - **Peer-write notifications are advisory, not collaboration or idempotency.** They fence a

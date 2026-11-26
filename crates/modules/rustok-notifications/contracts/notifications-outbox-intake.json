@@ -68,7 +68,10 @@
     "anti_joins_receipts": true,
     "anti_joins_rejections": true,
     "committed_pending_dispatched_failed_are_visible": true,
-    "permanent_invalid_does_not_block_later_events": true
+    "permanent_invalid_does_not_block_later_events": true,
+    "process_local_keyset_cursor_wraps": true,
+    "retryable_prefix_does_not_block_later_pages": true,
+    "selection_failure_preserves_cursor": true
   },
   "runtime": {
     "environment_variable": "RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED",

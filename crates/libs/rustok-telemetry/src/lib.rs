@@ -248,10 +248,10 @@ fn init_metrics_handle(metrics: bool) -> Result<Option<Arc<MetricsHandle>>, Tele
     page_builder_provider_metrics::register(registry)?;
     rbac_invalidation_metrics::register(registry)?;
 
-    if let Err(_) = REGISTRY.set(registry.clone()) {
+    if REGISTRY.set(registry.clone()).is_err() {
         tracing::debug!("Prometheus global registry already initialized");
     }
-    if let Err(_) = METRICS_HANDLE.set(handle.clone()) {
+    if METRICS_HANDLE.set(handle.clone()).is_err() {
         tracing::debug!("Prometheus global metrics handle already initialized");
     }
     Ok(Some(handle))

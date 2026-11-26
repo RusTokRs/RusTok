@@ -285,6 +285,7 @@ impl PriceListTranslationService {
         )?;
         let current_target_revision = target.map(locale_revision);
         if request.expected_target_revision != current_target_revision {
+            txn.rollback().await?;
             return Err(PriceListTranslationExactLocaleError::RevisionConflict {
                 revision: "target",
             });

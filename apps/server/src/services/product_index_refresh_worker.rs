@@ -30,7 +30,9 @@ use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::{
     ServerRuntimeContext, ServerRuntimeStartReservation, published_worker_running,
 };
-use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
+use crate::services::stop_handle::{
+    StopHandle, may_admit_next_worker_operation, wait_for_worker_retry_or_stop,
+};
 
 const ENABLE_ENV: &str = "RUSTOK_PRODUCT_INDEX_REFRESH_CONSUMER_ENABLED";
 const IDLE_POLL_ENV: &str = "RUSTOK_PRODUCT_INDEX_REFRESH_CONSUMER_IDLE_POLL_MS";
@@ -339,7 +341,7 @@ async fn product_index_refresh_worker_loop(
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             record_worker_termination("shutdown");
             return;
         }
@@ -390,7 +392,7 @@ async fn product_index_refresh_worker_loop(
                 return;
             }
             Ok(None) => {
-                if wait_or_stop(config.idle_poll, &mut stop_rx).await {
+                if wait_for_worker_retry_or_stop(config.idle_poll, &mut stop_rx).await {
                     record_worker_termination("shutdown");
                     return;
                 }
@@ -491,7 +493,7 @@ async fn process_consumed_delivery(
                     retry_delay_ms = duration_millis(delay),
                     "Product Index refresh processing failed; retrying without committing the broker offset"
                 );
-                if wait_or_stop(delay, stop_rx).await {
+                if wait_for_worker_retry_or_stop(delay, stop_rx).await {
                     record_worker_termination("shutdown_in_flight");
                     return false;
                 }
@@ -602,7 +604,7 @@ async fn acknowledge_unrelated(
                     retry_delay_ms = duration_millis(delay),
                     "Unrelated sealed domain event acknowledgement failed; retrying acknowledgement only"
                 );
-                if wait_or_stop(delay, stop_rx).await {
+                if wait_for_worker_retry_or_stop(delay, stop_rx).await {
                     record_worker_termination("shutdown_in_flight");
                     return false;
                 }
@@ -638,13 +640,6 @@ fn retry_delay(config: &ProductIndexRefreshWorkerConfig, attempt: u32) -> Durati
 
 fn duration_millis(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
-}
-
-async fn wait_or_stop(delay: Duration, stop_rx: &mut tokio::sync::watch::Receiver<bool>) -> bool {
-    tokio::select! {
-        _ = tokio::time::sleep(delay) => *stop_rx.borrow(),
-        changed = stop_rx.changed() => changed.is_err() || *stop_rx.borrow(),
-    }
 }
 
 fn record_worker_termination(reason: &'static str) {

@@ -7,6 +7,8 @@
 //! `rustok-product`, `rustok-blog`, and `rustok-forum`.
 
 use std::collections::BTreeMap;
+#[cfg(feature = "server")]
+use std::collections::HashSet;
 use std::fmt;
 #[cfg(feature = "server")]
 use std::sync::Arc;
@@ -401,7 +403,7 @@ pub fn default_schema_payload_for_slug(slug: &SeoTargetSlug) -> Option<String> {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
+#[serde(try_from = "String", into = "String")]
 pub struct SeoTargetSlug(String);
 
 impl SeoTargetSlug {
@@ -453,6 +455,12 @@ impl TryFrom<String> for SeoTargetSlug {
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Self::new(value)
+    }
+}
+
+impl From<SeoTargetSlug> for String {
+    fn from(value: SeoTargetSlug) -> Self {
+        value.0
     }
 }
 
@@ -719,21 +727,18 @@ impl SeoTargetImageRecord {
     }
 
     pub fn has_size(&self) -> bool {
-        self.width.is_some() && self.height.is_some()
+        matches!((self.width, self.height), (Some(w), Some(h)) if w > 0 && h > 0)
     }
 
     pub fn pixel_count(&self) -> Option<i64> {
-        let width = self.width?;
-        let height = self.height?;
+        let width = self.width.filter(|w| *w > 0)?;
+        let height = self.height.filter(|h| *h > 0)?;
         Some(i64::from(width) * i64::from(height))
     }
 
     pub fn aspect_ratio(&self) -> Option<f64> {
-        let width = f64::from(self.width?);
-        let height = f64::from(self.height?);
-        if height <= 0.0 {
-            return None;
-        }
+        let width = f64::from(self.width.filter(|w| *w > 0)?);
+        let height = f64::from(self.height.filter(|h| *h > 0)?);
         Some(width / height)
     }
 
@@ -1090,6 +1095,7 @@ pub trait SeoTargetProvider: Send + Sync {
         request: SeoTargetBulkListRequest<'_>,
     ) -> SeoTargetResult<Vec<SeoBulkSummaryRecord>> {
         let mut after: Option<String> = None;
+        let mut seen_cursors = HashSet::new();
         let mut summaries = Vec::new();
         loop {
             let page = self
@@ -1107,7 +1113,7 @@ pub trait SeoTargetProvider: Send + Sync {
             summaries.extend(page.items);
             match page.next_cursor {
                 None => return Ok(summaries),
-                Some(next) if after.as_deref() == Some(next.as_str()) => {
+                Some(next) if !seen_cursors.insert(next.clone()) => {
                     return Err(SeoTargetError::NonAdvancingCursor {
                         slug: self.slug().as_str().to_string(),
                     });
@@ -1234,6 +1240,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    #[cfg(feature = "server")]
     struct DummyProvider {
         slug: &'static str,
         display_name: &'static str,
@@ -1241,6 +1248,7 @@ mod tests {
         capabilities: SeoTargetCapabilities,
     }
 
+    #[cfg(feature = "server")]
     #[async_trait]
     impl SeoTargetProvider for DummyProvider {
         fn slug(&self) -> SeoTargetSlug {
@@ -1454,6 +1462,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "server")]
     #[test]
     fn registry_rejects_duplicate_slugs() {
         let mut registry = SeoTargetRegistry::default();
@@ -1483,6 +1492,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "server")]
     #[test]
     fn registry_filters_entries_by_capability() {
         let mut registry = SeoTargetRegistry::default();
@@ -1514,6 +1524,7 @@ mod tests {
         assert_eq!(sitemaps[0].slug.as_str(), builtin_slug::PAGE);
     }
 
+    #[cfg(feature = "server")]
     #[test]
     fn helper_registers_registry_in_runtime_extensions() {
         let mut extensions = ModuleRuntimeExtensions::default();
@@ -1563,6 +1574,32 @@ mod tests {
             ..Default::default()
         };
         assert!(validate_seo_metadata_payload(&invalid).is_err());
+    }
+
+    #[test]
+    fn slug_serde_rejects_invalid_slugs() {
+        assert!(serde_json::from_str::<SeoTargetSlug>(r#""""#).is_err());
+        assert!(serde_json::from_str::<SeoTargetSlug>(r#""Page""#).is_err());
+        assert!(serde_json::from_str::<SeoTargetSlug>(r#"" page ""#).is_err());
+        assert_eq!(
+            serde_json::from_str::<SeoTargetSlug>(r#""blog_post""#).unwrap(),
+            SeoTargetSlug::new("blog_post").unwrap()
+        );
+    }
+
+    #[test]
+    fn image_record_guards_non_positive_dimensions() {
+        let image = SeoTargetImageRecord {
+            media_asset_id: None,
+            url: "https://cdn.test/demo.png".to_string(),
+            alt: None,
+            width: Some(0),
+            height: Some(-10),
+            mime_type: None,
+        };
+        assert!(!image.has_size());
+        assert_eq!(image.pixel_count(), None);
+        assert_eq!(image.aspect_ratio(), None);
     }
 }
 

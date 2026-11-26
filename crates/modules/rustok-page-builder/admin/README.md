@@ -33,12 +33,14 @@ identifier. This enables browser-local recovery in `localStorage`: each tab
 writes immutable per-save records under its own writer identity and records the
 server base revision/document plus the unsaved document. Recovery selects only
 the latest sequence from each writer, while retaining older record references
-for safe cleanup if a tab was interrupted between writing and pruning. The host's
+for safe cleanup if a tab was interrupted between writing and pruning. Before selecting active records, the reader validates the complete persisted supersession graph; any cycle is a fatal recovery error and leaves every record untouched, even when unrelated writers have valid records. The host's
 `on_reload_requested` remains the authoritative
 refresh action; after reload, records from all tabs are reconciled against the
 latest server document using a conservative three-way merge. Object fields are
 merged recursively and arrays of uniquely identified objects are merged by
-stable `id`; simultaneous edits to the same value, ambiguous arrays and
+exact stable `id` without whitespace normalization; blank IDs are not merge keys.
+A replacement with a distinct ID is not an edit of the prior item. Simultaneous
+edits to the same value, ambiguous arrays and
 incompatible reorderings stop in a read-only conflict state. The local copies
 and conflicting paths remain visible until the author copies or explicitly
 discards them. Records are retired only after a confirmed save. Each save uses a fresh immutable
@@ -54,8 +56,15 @@ they are merged on a reload/reconciliation boundary, while BroadcastChannel
 notices remain advisory and server revision checks are authoritative.
 
 When the Pages facade returns `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN`, Dioxus
-keeps the editor read-only and offers an exact same-request retry while mounted.
-The durable local recovery record also makes a full reload recoverable: if the
+keeps the editor read-only and retains the exact submitted page, revision and payload.
+The mounted retry is admitted only if the current draft still matches that request;
+edits made during the original save are preserved and require an authoritative reload
+instead of being submitted as a different retry. A generic retry failure or malformed
+response does not clear the unknown-outcome fence. Reload actions for both unknown
+outcomes and revision conflicts require confirmed browser recovery or an explicit
+copy confirmation for the current working hash and command sequence; a prior copy
+confirmation does not authorize discarding later edits. The durable local recovery
+record also makes a full reload recoverable: if the
 first request committed, the latest server document already contains the
 submitted draft; if it did not, the local draft can be merged against the
 unchanged server base. The server receipt remains the authority for whether a
@@ -122,7 +131,10 @@ they use stubbed endpoints and do not replace a running Pages-server integration
 
 The current canvas supports rendering, geometry, hover, selection, overlays and persistence. It
 also provides the block palette, drag-and-drop insertion, resize handles, keyboard editing,
-traits/styles editors and asset management. Storefront real-DOM editing remains outside this
+traits/styles editors and asset management. The iframe forwards only admitted editor shortcuts;
+ordinary text input, IME composition, AltGraph, repeated save/duplicate and native text editing
+are not dispatched as authoring intents. The nearest contenteditable boundary controls text admission.
+Storefront real-DOM editing remains outside this
 authoring package.
 
 The canvas is a preview surface, not a navigable document: the runtime cancels authored link
@@ -186,7 +198,7 @@ SSR draft session storage (`src/draft_session.rs`):
   storage root by earlier builds are no longer read; `prune` deletes them once they are older than
   one TTL.
 - **A damaged record fails its session for up to one TTL.** Records carry a format version
-  (`PersistentDraftSessionRecord::format`, now `1`) and both stores read them through
+  (`PersistentDraftSessionRecord::format`, now `2`) and both stores read them through
   `PersistentDraftSessionRecord::decode`, so the two causes are distinguishable:
   - A record of a **newer** format than this build understands parses, and is answered with
     `UnsupportedFormat` — a deployment that has to be finished (or rolled back), not damage. The
@@ -405,11 +417,20 @@ Strict Pages saves prepare the edited draft and reserve its generation in the
 existing operation ledger before external I/O. Only the same operation can
 complete the reservation; other writes are fenced. Receipt lookup stays read-only.
 Record format 2 protects prepared operations from older readers; deploy upgraded
-readers before using the new protocol.
+readers before using the new protocol. Persistent readers reject oversized records,
+duplicate operation identities, malformed receipt hashes, out-of-order or future
+receipt generations, and prepared reservations inconsistent with the current
+generation or record format. File and KV reads also verify the embedded token
+against the requested storage key before serving the record. Restored controllers
+must match the document fingerprint and core/UI revision projections, including
+dirty and conflict flags. These consistency checks are not a cryptographic
+authentication mechanism for stored drafts.
 
 Durable draft commits stage candidates outside the memory cache and publish
 only after persistent CAS. Loads return the owner-scoped backend snapshot,
-never a speculative or divergent cached generation. Replacing an existing
+never a speculative or divergent cached generation. Ordinary and receipt-bearing commits
+reject generation exhaustion instead of accepting two writes at the same generation.
+Replacing an existing
 cache entry does not evict an unrelated draft.
 
 Live prepared saves are protected from capacity eviction in memory, file and

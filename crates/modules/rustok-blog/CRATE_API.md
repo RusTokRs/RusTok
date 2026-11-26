@@ -49,6 +49,12 @@ Primary entry points:
 - `BlogQuery` / `BlogMutation`
 - `controllers::axum_router`
 
+`PostService::get_post_by_slug_on_channel` validates tenant and read scope and
+applies publication and channel visibility before building translations. The
+[published read port](ports/CRATE_API.md) exposes the public result to the
+storefront. Missing, unpublished or channel-hidden posts are absent from that
+result. SEO resolution and editorial reads use the same underlying service.
+
 ## Platform Capability Bindings
 
 - **Core Module Registration**: Exposes `BlogModule` implementing `RusToKModule` (slug `"blog"`, dependencies `["content", "taxonomy", "outbox", "channel"]`) and `MigrationSource`.

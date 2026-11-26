@@ -116,6 +116,7 @@ impl PersistentDraftSessionRecord {
     ///   real cause (a build ahead of this binary writing the same store) and the editor would
     ///   keep retrying a session that cannot be served.
     pub fn decode(bytes: &[u8]) -> Result<Self, SsrDraftSessionError> {
+        ensure_record_size(bytes.len())?;
         let value: Value = serde_json::from_slice(bytes)
             .map_err(|error| SsrDraftSessionError::Serialization(error.to_string()))?;
         let format = value.get("format").and_then(Value::as_u64).unwrap_or(0);
@@ -125,8 +126,100 @@ impl PersistentDraftSessionRecord {
                 supported: DRAFT_SESSION_RECORD_FORMAT,
             });
         }
-        serde_json::from_value(value)
-            .map_err(|error| SsrDraftSessionError::Serialization(error.to_string()))
+        let record: Self = serde_json::from_value(value)
+            .map_err(|error| SsrDraftSessionError::Serialization(error.to_string()))?;
+        record.validate()?;
+        Ok(record)
+    }
+
+    /// Validate before both reads and writes so the store never persists a record
+    /// that its own next read would reject. Legacy format 0 is accepted only
+    /// without receipts and is upgraded on its next write.
+    fn validate_storage_key(&self, token: &str) -> Result<(), SsrDraftSessionError> {
+        FileSsrDraftSessionStore::validate_token(&self.token)?;
+        if self.token != token.trim() {
+            return Err(SsrDraftSessionError::Serialization(
+                "draft record token does not match its storage key".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate(&self) -> Result<(), SsrDraftSessionError> {
+        if self.format > DRAFT_SESSION_RECORD_FORMAT {
+            return Err(SsrDraftSessionError::UnsupportedFormat {
+                found: self.format,
+                supported: DRAFT_SESSION_RECORD_FORMAT,
+            });
+        }
+        if self.format == 0 && !self.operation_receipts.is_empty() {
+            return Err(SsrDraftSessionError::Serialization(
+                "legacy draft format cannot contain operation receipts".to_string(),
+            ));
+        }
+        self.validate_receipt_ledger()?;
+        self.validate_controller_revision()
+    }
+
+    /// The document and core revision own the working state. Persisted UI
+    /// projections must agree rather than silently overriding save admission.
+    fn validate_controller_revision(&self) -> Result<(), SsrDraftSessionError> {
+        let editor = self.controller.editor();
+        let revision = editor.revision();
+        if fly::ProjectHash::try_from_document(editor.document()) != Some(revision.project_hash) {
+            return Err(SsrDraftSessionError::Serialization(
+                "draft document does not match its recorded project fingerprint".to_string(),
+            ));
+        }
+        let ui = &self.controller.ui().state.dirty;
+        if ui.project_hash != Some(revision.project_hash)
+            || ui.command_sequence != revision.command_sequence
+            || ui.dirty != revision.dirty
+            || ui.save_failed != revision.save_failed
+            || ui.save_conflict != revision.save_conflict
+            || ui.last_acknowledged_revision != revision.last_acknowledged_revision
+        {
+            return Err(SsrDraftSessionError::Serialization(
+                "draft UI revision does not match the core revision".to_string(),
+            ));
+        }
+        if revision.save_conflict && (!revision.dirty || !revision.save_failed) {
+            return Err(SsrDraftSessionError::Serialization(
+                "draft save conflict has inconsistent save flags".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_receipt_ledger(&self) -> Result<(), SsrDraftSessionError> {
+        let invalid = |message: &str| SsrDraftSessionError::Serialization(message.to_string());
+        if self.generation == 0 {
+            return Err(invalid("draft record has zero generation"));
+        }
+        if self.operation_receipts.len() > MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION {
+            return Err(invalid("draft receipt ledger exceeds capacity"));
+        }
+        let mut operation_ids = BTreeSet::new();
+        let mut previous_generation = 1;
+        for receipt in &self.operation_receipts {
+            validate_operation_receipt_input(
+                &receipt.operation_id, &receipt.request_hash, &receipt.response,
+            ).map_err(|error| invalid(&error.to_string()))?;
+            if !operation_ids.insert(receipt.operation_id.as_str()) {
+                return Err(invalid("duplicate draft operation identity"));
+            }
+            if receipt.generation <= previous_generation || receipt.generation > self.generation {
+                return Err(invalid("invalid draft operation generation"));
+            }
+            if receipt_is_prepared(&receipt.response)
+                && (self.format < 2 || receipt.generation != self.generation
+                    || self.generation == u64::MAX)
+            {
+                return Err(invalid("invalid prepared save generation or format"));
+            }
+            previous_generation = receipt.generation;
+        }
+        Ok(())
     }
 
     /// Reads a record from text; see [`Self::decode`].
@@ -269,6 +362,16 @@ fn validate_operation_receipt_input(
         || !request_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
     {
         return Err(SsrDraftSessionError::InvalidOperationHash);
+    }
+    // The prepared_save field is a reserved internal sentinel, never an arbitrary
+    // response field. Malformed lookalikes must not be replayed as completed saves.
+    if response.get("prepared_save").is_some()
+        && (response.get("prepared_save").and_then(Value::as_bool) != Some(true)
+            || response.as_object().map_or(true, |object| object.len() != 1))
+    {
+        return Err(SsrDraftSessionError::Serialization(
+            "invalid prepared-save receipt marker".to_string(),
+        ));
     }
     let bytes = serde_json::to_vec(response)
         .map_err(|error| SsrDraftSessionError::Serialization(error.to_string()))?
@@ -631,6 +734,8 @@ impl InMemorySsrDraftSessionStore {
                         actual: expected_generation.unwrap_or_default(),
                     });
                 }
+                let generation = entry.generation.checked_add(1)
+                    .ok_or(SsrDraftSessionError::GenerationExhausted)?;
                 entry.controller = controller;
                 if let Some(runtime_context) = runtime_context {
                     entry.runtime_context = runtime_context;
@@ -640,7 +745,7 @@ impl InMemorySsrDraftSessionStore {
                 if owner.is_some() {
                     entry.owner = owner.cloned();
                 }
-                entry.generation = entry.generation.saturating_add(1);
+                entry.generation = generation;
                 entry.expires_at = EntryDeadline::new(self.deadline_from(now));
                 return Ok(SsrDraftSessionSnapshot {
                     token: token.to_string(),
@@ -1330,6 +1435,7 @@ impl FileSsrDraftSessionStore {
                 }
             };
 
+            record.validate_storage_key(token)?;
             if record.expires_at_unix_secs <= current_unix_secs() {
                 if self.collect_dead_record(&file_path, token, lock) == DeadRecord::Replaced {
                     continue;
@@ -1451,6 +1557,10 @@ impl FileSsrDraftSessionStore {
         record: &PersistentDraftSessionRecord,
     ) -> Result<(), SsrDraftSessionError> {
         self.ensure_available()?;
+        record.validate()?;
+        let mut normalized_record = record.clone();
+        normalized_record.format = DRAFT_SESSION_RECORD_FORMAT;
+        let record = &normalized_record;
         Self::validate_token(&record.token)?;
         let json_bytes = serde_json::to_vec_pretty(record)
             .map_err(|e| SsrDraftSessionError::Serialization(e.to_string()))?;
@@ -1636,7 +1746,8 @@ impl FileSsrDraftSessionStore {
                     actual: expected_generation.unwrap_or_default(),
                 });
             }
-            record.generation = record.generation.saturating_add(1);
+            record.generation = record.generation.checked_add(1)
+                .ok_or(SsrDraftSessionError::GenerationExhausted)?;
             record.controller = controller;
             if let Some(runtime_context) = runtime_context {
                 record.runtime_context = runtime_context;
@@ -2330,6 +2441,7 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
             // A record that cannot be parsed is reported, not deleted: the
             // driver removes it when the TTL it was stored with runs out.
             let record = PersistentDraftSessionRecord::decode(&bytes)?;
+            record.validate_storage_key(token)?;
             if record.expires_at_unix_secs > current_unix_secs() {
                 return Ok(Some(record));
             }
@@ -2354,6 +2466,10 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
         &self,
         record: &PersistentDraftSessionRecord,
     ) -> Result<(), SsrDraftSessionError> {
+        record.validate()?;
+        let mut normalized_record = record.clone();
+        normalized_record.format = DRAFT_SESSION_RECORD_FORMAT;
+        let record = &normalized_record;
         FileSsrDraftSessionStore::validate_token(&record.token)?;
         let key = self.key_for_token(&record.token);
         let json_bytes = serde_json::to_vec(record)
@@ -2370,6 +2486,10 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
         expected: Option<&PersistentDraftSessionRecord>,
         new_record: &PersistentDraftSessionRecord,
     ) -> Result<bool, SsrDraftSessionError> {
+        new_record.validate()?;
+        let mut normalized_record = new_record.clone();
+        normalized_record.format = DRAFT_SESSION_RECORD_FORMAT;
+        let new_record = &normalized_record;
         FileSsrDraftSessionStore::validate_token(&new_record.token)?;
         let key = self.key_for_token(&new_record.token);
         let json_bytes = serde_json::to_vec(new_record)
@@ -2672,6 +2792,8 @@ impl DurableSsrDraftSessionStore {
             None
         };
         if let Some(persistent_record) = persistent_record.as_ref() {
+            persistent_record.validate()?;
+            persistent_record.validate_storage_key(tok)?;
             if persistent_record.controller.page_id() != controller.page_id() {
                 return Err(SsrDraftSessionError::PageMismatch {
                     expected: persistent_record.controller.page_id().to_string(),
@@ -2719,6 +2841,7 @@ impl DurableSsrDraftSessionStore {
                 .map(|record| record.operation_receipts.clone())
                 .unwrap_or_default(),
         };
+        record.validate()?;
         // Compare-and-set closes the TOCTOU window: another pod may have
         // committed the same generation between our load and this write
         // (audit §4.1). On a lost race, restore the authoritative record into
@@ -2743,6 +2866,10 @@ impl DurableSsrDraftSessionStore {
                     return Err(error);
                 }
             };
+            if let Some(record) = current.as_ref() {
+                record.validate()?;
+                record.validate_storage_key(&committed.token)?;
+            }
             let current_generation = current
                 .as_ref()
                 .map(|record| record.generation)
@@ -2802,6 +2929,8 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
     ) -> Result<Option<Value>, SsrDraftSessionError> {
         let record = self.backend.load_record(token, owner)?
             .ok_or(SsrDraftSessionError::DraftUnavailable)?;
+        record.validate()?;
+        record.validate_storage_key(token)?;
         if record.controller.page_id() != page_id {
             return Err(SsrDraftSessionError::PageMismatch {
                 expected: record.controller.page_id().to_string(),
@@ -2827,6 +2956,8 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         let Some(record) = self.backend.load_record(token, owner)? else {
             return Ok(None);
         };
+        record.validate()?;
+        record.validate_storage_key(token)?;
         if record.controller.page_id() != page_id {
             return Err(SsrDraftSessionError::PageMismatch {
                 expected: record.controller.page_id().to_string(),
@@ -2859,6 +2990,8 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         let Some(expected_record) = self.backend.load_record(token, owner)? else {
             return Err(SsrDraftSessionError::DraftUnavailable);
         };
+        expected_record.validate()?;
+        expected_record.validate_storage_key(token)?;
         if expected_record.controller.page_id() != controller.page_id() {
             return Err(SsrDraftSessionError::PageMismatch {
                 expected: expected_record.controller.page_id().to_string(),
@@ -2912,6 +3045,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         }
         new_record.expires_at_unix_secs =
             current_unix_secs().saturating_add(self.memory.ttl().as_secs());
+        new_record.validate()?;
         let snapshot = SsrDraftSessionSnapshot {
             token: new_record.token.clone(),
             generation,
@@ -2929,6 +3063,8 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
                     self.memory.evict(token)?;
                     return Err(SsrDraftSessionError::DraftUnavailable);
                 };
+                current.validate()?;
+                current.validate_storage_key(token)?;
                 if current.controller.page_id() != controller_page_id {
                     return Err(SsrDraftSessionError::PageMismatch {
                         expected: current.controller.page_id().to_string(),
@@ -2973,6 +3109,8 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
             self.memory.evict(token)?;
             return Ok(None);
         };
+        record.validate()?;
+        record.validate_storage_key(token)?;
         if record.controller.page_id() != page_id {
             self.memory.evict(token)?;
             return Err(SsrDraftSessionError::PageMismatch {
@@ -3027,6 +3165,8 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         // The backend record is authoritative for ownership: the memory cache
         // may be empty after a restart while the record lives on.
         if let Some(record) = self.backend.load_record(token, owner)? {
+            record.validate()?;
+            record.validate_storage_key(token)?;
             ensure_session_owner(record.owner.as_ref(), owner)?;
         }
         self.memory.remove(token, owner)?;
@@ -4133,6 +4273,109 @@ mod tests {
         ));
     }
 
+    fn assert_exhausted_generation_is_immutable(store: &dyn SsrDraftSessionStore, token: &str) {
+        let before = store.load(token, "home", None).expect("load").expect("session");
+        assert_eq!(before.generation, u64::MAX);
+        let mut edited = before.controller.clone();
+        edited.dispatch(UiIntent::Select(Some("hero".to_string()))).expect("select");
+        for expected in [Some(u64::MAX), None] {
+            assert!(matches!(
+                store.commit_with_context(Some(token), expected, edited.clone(), json!({"changed": true}), None),
+                Err(SsrDraftSessionError::GenerationExhausted)
+            ));
+            let after = store.load(token, "home", None).expect("load").expect("session");
+            assert_eq!(after.generation, before.generation);
+            assert_eq!(after, before, "failed commit changed the stored session");
+        }
+    }
+
+    #[test]
+    fn ordinary_commits_fail_closed_at_exhausted_generation() {
+        let memory = InMemorySsrDraftSessionStore::default();
+        let first = memory.commit(None, None, controller("home"), None).expect("create");
+        memory.entries.write().expect("entries")
+            .get_mut(&first.token).expect("entry").generation = u64::MAX;
+        assert_exhausted_generation_is_immutable(&memory, &first.token);
+
+        let dir = temp_store_dir();
+        let file = file_store(&dir);
+        let first = file.commit(None, None, controller("home"), None).expect("create");
+        let mut record = file.load_record(&first.token, None).expect("load").expect("record");
+        record.generation = u64::MAX;
+        file.save_record(&record).expect("seed exhausted generation");
+        assert_exhausted_generation_is_immutable(&file, &first.token);
+        let durable = DurableSsrDraftSessionStore::new(InMemorySsrDraftSessionStore::default(), file);
+        assert_exhausted_generation_is_immutable(&durable, &first.token);
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    fn assert_receipt_generation_exhaustion_is_immutable(
+        store: &dyn SsrDraftSessionStore,
+        token: &str,
+        generation: u64,
+        operation_id: &str,
+        response: Value,
+    ) {
+        let before = store.load(token, "home", None).expect("load").expect("session");
+        assert_eq!(before.generation, generation);
+        let request_hash = "a".repeat(64);
+        assert!(matches!(
+            store.commit_with_operation_receipt(
+                token,
+                generation,
+                before.controller.clone(),
+                before.runtime_context.clone(),
+                before.owner.as_ref(),
+                operation_id,
+                &request_hash,
+                response,
+            ),
+            Err(SsrDraftSessionError::GenerationExhausted)
+        ));
+        let after = store.load(token, "home", None).expect("load").expect("session");
+        assert_eq!(after, before, "failed receipt commit changed the stored session");
+    }
+
+    #[test]
+    fn receipt_commits_fail_closed_at_generation_exhaustion() {
+        let memory = InMemorySsrDraftSessionStore::default();
+        let first = memory.commit(None, None, controller("home"), None).expect("create");
+        memory.entries.write().expect("entries")
+            .get_mut(&first.token).expect("entry").generation = u64::MAX;
+        assert_receipt_generation_exhaustion_is_immutable(
+            &memory, &first.token, u64::MAX, "overflow-final", json!({"saved": true}),
+        );
+        memory.entries.write().expect("entries")
+            .get_mut(&first.token).expect("entry").generation = u64::MAX - 1;
+        assert_receipt_generation_exhaustion_is_immutable(
+            &memory, &first.token, u64::MAX - 1, "overflow-prepared",
+            json!({"prepared_save": true}),
+        );
+
+        let dir = temp_store_dir();
+        let file = file_store(&dir);
+        let first = file.commit(None, None, controller("home"), None).expect("create");
+        let mut record = file.load_record(&first.token, None).expect("load").expect("record");
+        record.generation = u64::MAX;
+        file.save_record(&record).expect("seed exhausted generation");
+        assert_receipt_generation_exhaustion_is_immutable(
+            &file, &first.token, u64::MAX, "overflow-final", json!({"saved": true}),
+        );
+        record.generation = u64::MAX - 1;
+        file.save_record(&record).expect("seed prepared exhaustion");
+        assert_receipt_generation_exhaustion_is_immutable(
+            &file, &first.token, u64::MAX - 1, "overflow-prepared",
+            json!({"prepared_save": true}),
+        );
+
+        let durable = DurableSsrDraftSessionStore::new(InMemorySsrDraftSessionStore::default(), file);
+        assert_receipt_generation_exhaustion_is_immutable(
+            &durable, &first.token, u64::MAX - 1, "overflow-prepared-durable",
+            json!({"prepared_save": true}),
+        );
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
     #[test]
     fn session_token_cannot_cross_page_boundary() {
         let store = InMemorySsrDraftSessionStore::default();
@@ -5145,6 +5388,179 @@ mod tests {
             PersistentDraftSessionRecord::decode(&serde_json::to_vec(&current).expect("json"))
                 .expect("current record");
         assert_eq!(decoded, current);
+    }
+
+    #[test]
+    fn persisted_receipt_ledgers_reject_corrupt_operation_identities_and_generations() {
+        let mut record = record_json("tokLedger01", 5, 4_000_000_000);
+        let first = json!({
+            "operation_id": "first", "request_hash": "a".repeat(64),
+            "generation": 2, "response": {}
+        });
+        let prepared = json!({
+            "operation_id": "second", "request_hash": "b".repeat(64),
+            "generation": 5, "response": {"prepared_save": true}
+        });
+        record["operation_receipts"] = json!([first, prepared]);
+        let decode = |value: &Value| {
+            PersistentDraftSessionRecord::decode(&serde_json::to_vec(value).expect("json"))
+        };
+        assert!(decode(&record).is_ok());
+        for (path, value) in [
+            ("duplicate_id", json!("first")),
+            ("future_generation", json!(6)),
+            ("older_generation", json!(2)),
+            ("invalid_hash", json!("not-a-hash")),
+            ("oversized_response", json!("x".repeat(MAX_DRAFT_OPERATION_RECEIPT_BYTES))),
+            ("old_format", json!(1)),
+            ("zero_generation", json!(0)),
+        ] {
+            let mut corrupted = record.clone();
+            match path {
+                "duplicate_id" => corrupted["operation_receipts"][1]["operation_id"] = value,
+                "future_generation" | "older_generation" => {
+                    corrupted["operation_receipts"][1]["generation"] = value;
+                }
+                "invalid_hash" => corrupted["operation_receipts"][1]["request_hash"] = value,
+                "oversized_response" => corrupted["operation_receipts"][1]["response"] = value,
+                "old_format" => corrupted["format"] = value,
+                "zero_generation" => {
+                    corrupted["generation"] = value;
+                    corrupted["operation_receipts"] = json!([]);
+                }
+                _ => unreachable!("all corruption cases are named"),
+            }
+            assert!(matches!(decode(&corrupted), Err(SsrDraftSessionError::Serialization(_))), "{path}");
+        }
+    }
+
+    #[test]
+    fn persisted_drafts_reject_inconsistent_document_and_revision_projections() {
+        let record = record_json("tokRevision01", 1, 4_000_000_000);
+        let decode = |value: &Value| {
+            PersistentDraftSessionRecord::decode(&serde_json::to_vec(value).expect("json"))
+        };
+        assert!(decode(&record).is_ok());
+        let mut wrong_hash = record.clone();
+        let hash = wrong_hash["controller"]["editor"]["revision"]["project_hash"]
+            .as_u64().expect("project hash");
+        wrong_hash["controller"]["editor"]["revision"]["project_hash"] = json!(hash ^ 1);
+        wrong_hash["controller"]["ui"]["state"]["dirty"]["project_hash"] = json!(hash ^ 1);
+        assert!(matches!(decode(&wrong_hash), Err(SsrDraftSessionError::Serialization(_))));
+
+        for (field, value) in [
+            ("command_sequence", json!(1)),
+            ("dirty", json!(true)),
+            ("save_conflict", json!(true)),
+            ("save_failed", json!(true)),
+            ("last_acknowledged_revision", json!("different")),
+        ] {
+            let mut corrupted = record.clone();
+            corrupted["controller"]["ui"]["state"]["dirty"][field] = value;
+            assert!(matches!(decode(&corrupted), Err(SsrDraftSessionError::Serialization(_))), "{field}");
+        }
+        let mut invalid_conflict = record.clone();
+        invalid_conflict["controller"]["editor"]["revision"]["save_conflict"] = json!(true);
+        invalid_conflict["controller"]["ui"]["state"]["dirty"]["save_conflict"] = json!(true);
+        assert!(matches!(decode(&invalid_conflict), Err(SsrDraftSessionError::Serialization(_))));
+    }
+
+    #[test]
+    fn prepared_save_receipt_marker_has_one_canonical_shape() {
+        let hash = "a".repeat(64);
+        assert!(validate_operation_receipt_input(
+            "prepared-op", &hash, &json!({ "prepared_save": true }),
+        ).is_ok());
+        for response in [
+            json!({ "prepared_save": false }),
+            json!({ "prepared_save": "true" }),
+            json!({ "prepared_save": true, "extra": 1 }),
+        ] {
+            assert!(matches!(
+                validate_operation_receipt_input("prepared-op", &hash, &response),
+                Err(SsrDraftSessionError::Serialization(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn format_one_final_receipts_remain_readable_and_upgrade_on_write() {
+        let mut legacy = record_json("tokFormatOne", 2, 4_000_000_000);
+        legacy["format"] = json!(1);
+        legacy["operation_receipts"] = json!([{
+            "operation_id": "legacy-final",
+            "request_hash": "b".repeat(64),
+            "generation": 2,
+            "response": { "result": "saved" }
+        }]);
+        let record = PersistentDraftSessionRecord::decode(
+            &serde_json::to_vec(&legacy).expect("json"),
+        ).expect("format 1 record");
+        assert_eq!(record.format, 1);
+
+        let dir = temp_store_dir();
+        let store = file_store(&dir);
+        store.save_record(&record).expect("upgrade legacy record");
+        let upgraded = store.load_record("tokFormatOne", None)
+            .expect("load").expect("record");
+        assert_eq!(upgraded.format, DRAFT_SESSION_RECORD_FORMAT);
+        assert_eq!(upgraded.operation_receipts, record.operation_receipts);
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[test]
+    fn legacy_format_cannot_smuggle_operation_receipts() {
+        let mut legacy = record_json("tokLegacyReceipts", 2, 4_000_000_000);
+        legacy.as_object_mut().expect("object").remove("format");
+        legacy["operation_receipts"] = json!([{
+            "operation_id": "legacy-op",
+            "request_hash": "a".repeat(64),
+            "generation": 2,
+            "response": {}
+        }]);
+        assert!(matches!(
+            PersistentDraftSessionRecord::decode(&serde_json::to_vec(&legacy).expect("json")),
+            Err(SsrDraftSessionError::Serialization(_))
+        ));
+    }
+
+    #[test]
+    fn file_store_rejects_invalid_record_before_persisting_it() {
+        let dir = temp_store_dir();
+        let store = file_store(&dir);
+        let mut corrupted = record_json("tokWriteBad01", 1, 4_000_000_000);
+        let hash = corrupted["controller"]["editor"]["revision"]["project_hash"]
+            .as_u64().expect("project hash");
+        corrupted["controller"]["editor"]["revision"]["project_hash"] = json!(hash ^ 1);
+        corrupted["controller"]["ui"]["state"]["dirty"]["project_hash"] = json!(hash ^ 1);
+        // Deserialize the struct directly to simulate an invalid in-process caller;
+        // the store's write path must enforce the same invariants as its read path.
+        let record: PersistentDraftSessionRecord =
+            serde_json::from_value(corrupted).expect("struct deserializes");
+        assert!(matches!(
+            store.save_record(&record),
+            Err(SsrDraftSessionError::Serialization(_))
+        ));
+        assert!(!dir.join(UNATTRIBUTED_PARTITION).join("tokWriteBad01.json").exists());
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[test]
+    fn file_store_refuses_record_with_a_different_embedded_token() {
+        let dir = temp_store_dir();
+        let store = file_store(&dir);
+        let partition = dir.join(UNATTRIBUTED_PARTITION);
+        fs::create_dir_all(&partition).expect("partition");
+        let path = partition.join("tokExpected01.json");
+        let bytes = serde_json::to_vec(&record_json("tokDifferent01", 1, 4_000_000_000))
+            .expect("json");
+        fs::write(&path, &bytes).expect("record");
+        assert!(matches!(
+            store.load("tokExpected01", "home", None),
+            Err(SsrDraftSessionError::Serialization(_))
+        ));
+        assert_eq!(fs::read(path).expect("record preserved"), bytes);
+        fs::remove_dir_all(dir).expect("cleanup");
     }
 
     /// A future format parses cleanly, so it must not be reported — or treated — as damage. The

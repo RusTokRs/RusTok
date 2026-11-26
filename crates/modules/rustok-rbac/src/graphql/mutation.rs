@@ -185,6 +185,97 @@ fn permission_parts(permission: &Permission) -> (String, String) {
     )
 }
 
+fn normalize_description(value: &str) -> Result<Option<String>> {
+    let trimmed = value.trim();
+    if trimmed.chars().count() > 2000 {
+        return Err(<FieldError as GraphQLError>::bad_user_input(
+            "Role description must be at most 2000 characters",
+        ));
+    }
+    if trimmed.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(trimmed.to_string()))
+    }
+}
+
+async fn grant_role_permissions_in_tx(
+    tx: &sea_orm::DatabaseTransaction,
+    backend: sea_orm::DbBackend,
+    tenant_id: Uuid,
+    role_id: Uuid,
+    permissions: &[Permission],
+) -> Result<Vec<String>> {
+    let mut granted = Vec::with_capacity(permissions.len());
+    for permission in permissions {
+        let (resource, action) = permission_parts(permission);
+        let (resource, action) = (resource.as_str(), action.as_str());
+
+        let find_perm_sql =
+            "SELECT id FROM permissions WHERE tenant_id = ? AND resource = ? AND action = ? LIMIT 1";
+        let perm_row = tx
+            .query_one_raw(prepare_statement(
+                backend,
+                find_perm_sql,
+                vec![tenant_id.into(), resource.into(), action.into()],
+            ))
+            .await
+            .map_err(|e| internal_db_error("rbac role mutation", e))?;
+
+        let perm_id = match perm_row {
+            Some(row) => row
+                .try_get::<Uuid>("", "id")
+                .map_err(|e| internal_db_error("rbac role mutation", e))?,
+            None => {
+                let new_perm_id = rustok_core::generate_id();
+                let ins_perm_sql = "INSERT INTO permissions (id, tenant_id, resource, action, description) VALUES (?, ?, ?, ?, NULL) ON CONFLICT (tenant_id, resource, action) DO NOTHING";
+                tx.execute_raw(prepare_statement(
+                    backend,
+                    ins_perm_sql,
+                    vec![
+                        new_perm_id.into(),
+                        tenant_id.into(),
+                        resource.into(),
+                        action.into(),
+                    ],
+                ))
+                .await
+                .map_err(|e| internal_db_error("rbac role mutation", e))?;
+
+                let persisted_row = tx
+                    .query_one_raw(prepare_statement(
+                        backend,
+                        find_perm_sql,
+                        vec![tenant_id.into(), resource.into(), action.into()],
+                    ))
+                    .await
+                    .map_err(|e| internal_db_error("rbac role mutation", e))?
+                    .ok_or_else(|| {
+                        <FieldError as GraphQLError>::internal_error(
+                            "Permission could not be retrieved after insert",
+                        )
+                    })?;
+                persisted_row
+                    .try_get::<Uuid>("", "id")
+                    .map_err(|e| internal_db_error("rbac role mutation", e))?
+            }
+        };
+
+        let link_id = rustok_core::generate_id();
+        let link_sql = "INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?) ON CONFLICT (role_id, permission_id) DO NOTHING";
+        tx.execute_raw(prepare_statement(
+            backend,
+            link_sql,
+            vec![link_id.into(), role_id.into(), perm_id.into()],
+        ))
+        .await
+        .map_err(|e| internal_db_error("rbac role mutation", e))?;
+
+        granted.push(format!("{resource}:{action}"));
+    }
+    Ok(granted)
+}
+
 #[Object]
 impl RbacMutation {
     /// Create a new custom role with assigned permissions.
@@ -224,15 +315,10 @@ impl RbacMutation {
                 "Role name must be at most 255 characters",
             ));
         }
-        if input
-            .description
-            .as_ref()
-            .is_some_and(|value| value.chars().count() > 2000)
-        {
-            return Err(<FieldError as GraphQLError>::bad_user_input(
-                "Role description must be at most 2000 characters",
-            ));
-        }
+        let normalized_description = match input.description.as_deref() {
+            Some(value) => normalize_description(value)?,
+            None => None,
+        };
         if slug.len() < 2 || slug.len() > 64 {
             return Err(<FieldError as GraphQLError>::bad_user_input(
                 "Role slug must be between 2 and 64 characters",
@@ -271,110 +357,54 @@ impl RbacMutation {
         // The uniqueness check runs inside the creating transaction; the
         // UNIQUE (tenant_id, slug) index remains the final arbiter under
         // concurrency and its violation is reported as a clean conflict.
-        let check_sql = "SELECT id FROM roles WHERE tenant_id = ? AND slug = ? LIMIT 1";
-        let existing = tx
-            .query_one_raw(prepare_statement(
-                backend,
-                check_sql,
-                vec![tenant.id.into(), slug.clone().into()],
-            ))
-            .await
-            .map_err(|e| internal_db_error("rbac role mutation", e))?;
-        if existing.is_some() {
-            return Err(<FieldError as GraphQLError>::bad_user_input(&format!(
-                "A role with slug '{slug}' already exists in this tenant"
-            )));
-        }
-
-        let insert_role_sql = "INSERT INTO roles (id, tenant_id, name, slug, description, is_system) VALUES (?, ?, ?, ?, ?, FALSE)";
-        if let Err(error) = tx
-            .execute_raw(prepare_statement(
-                backend,
-                insert_role_sql,
-                vec![
-                    role_id.into(),
-                    tenant.id.into(),
-                    name.into(),
-                    slug.clone().into(),
-                    input.description.clone().into(),
-                ],
-            ))
-            .await
-        {
-            if is_unique_violation(&error) {
+        let tx_outcome: Result<Vec<String>> = async {
+            let check_sql = "SELECT id FROM roles WHERE tenant_id = ? AND slug = ? LIMIT 1";
+            let existing = tx
+                .query_one_raw(prepare_statement(
+                    backend,
+                    check_sql,
+                    vec![tenant.id.into(), slug.clone().into()],
+                ))
+                .await
+                .map_err(|e| internal_db_error("rbac role mutation", e))?;
+            if existing.is_some() {
                 return Err(<FieldError as GraphQLError>::bad_user_input(&format!(
                     "A role with slug '{slug}' already exists in this tenant"
                 )));
             }
-            return Err(internal_db_error("rbac role mutation", error));
-        }
 
-        let mut granted_permissions = Vec::new();
-        for permission in &validated_permissions {
-            let (resource, action) = permission_parts(permission);
-            let (resource, action) = (resource.as_str(), action.as_str());
-
-            let find_perm_sql = "SELECT id FROM permissions WHERE tenant_id = ? AND resource = ? AND action = ? LIMIT 1";
-            let perm_row = tx
-                .query_one_raw(prepare_statement(
+            let insert_role_sql = "INSERT INTO roles (id, tenant_id, name, slug, description, is_system) VALUES (?, ?, ?, ?, ?, FALSE)";
+            if let Err(error) = tx
+                .execute_raw(prepare_statement(
                     backend,
-                    find_perm_sql,
-                    vec![tenant.id.into(), resource.into(), action.into()],
+                    insert_role_sql,
+                    vec![
+                        role_id.into(),
+                        tenant.id.into(),
+                        name.into(),
+                        slug.clone().into(),
+                        normalized_description.clone().into(),
+                    ],
                 ))
                 .await
-                .map_err(|e| internal_db_error("rbac role mutation", e))?;
-
-            let perm_id = match perm_row {
-                Some(row) => row
-                    .try_get::<Uuid>("", "id")
-                    .map_err(|e| internal_db_error("rbac role mutation", e))?,
-                None => {
-                    let new_perm_id = rustok_core::generate_id();
-                    let ins_perm_sql = "INSERT INTO permissions (id, tenant_id, resource, action, description) VALUES (?, ?, ?, ?, NULL) ON CONFLICT (tenant_id, resource, action) DO NOTHING";
-                    tx.execute_raw(prepare_statement(
-                        backend,
-                        ins_perm_sql,
-                        vec![
-                            new_perm_id.into(),
-                            tenant.id.into(),
-                            resource.into(),
-                            action.into(),
-                        ],
-                    ))
-                    .await
-                    .map_err(|e| internal_db_error("rbac role mutation", e))?;
-
-                    let persisted_row = tx
-                        .query_one_raw(prepare_statement(
-                            backend,
-                            find_perm_sql,
-                            vec![tenant.id.into(), resource.into(), action.into()],
-                        ))
-                        .await
-                        .map_err(|e| internal_db_error("rbac role mutation", e))?
-                            .ok_or_else(|| {
-                                <FieldError as GraphQLError>::internal_error(
-                                    "Permission could not be retrieved after insert",
-                                )
-                            })?;
-                    persisted_row
-                        .try_get::<Uuid>("", "id")
-                        .map_err(|e| internal_db_error("rbac role mutation", e))?
+            {
+                if is_unique_violation(&error) {
+                    return Err(<FieldError as GraphQLError>::bad_user_input(&format!(
+                        "A role with slug '{slug}' already exists in this tenant"
+                    )));
                 }
-            };
+                return Err(internal_db_error("rbac role mutation", error));
+            }
 
-            let link_id = rustok_core::generate_id();
-            let link_sql = "INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?) ON CONFLICT (role_id, permission_id) DO NOTHING";
-            tx.execute_raw(prepare_statement(
-                backend,
-                link_sql,
-                vec![link_id.into(), role_id.into(), perm_id.into()],
-            ))
-            .await
-            .map_err(|e| internal_db_error("rbac role mutation", e))?;
-
-            granted_permissions.push(format!("{resource}:{action}"));
+            grant_role_permissions_in_tx(&tx, backend, tenant.id, role_id, &validated_permissions)
+                .await
         }
+        .await;
+
+        let mut granted_permissions = match tx_outcome {
+            Ok(perms) => perms,
+            Err(err) => return Err(abort_tx(tx, err).await),
+        };
 
         tx.commit()
             .await
@@ -390,7 +420,7 @@ impl RbacMutation {
                 id: Some(role_id.to_string()),
                 slug,
                 display_name: name.to_string(),
-                description: input.description,
+                description: normalized_description,
                 is_system: false,
                 inactive_permissions: dormant_grant_strings(
                     availability.as_ref(),
@@ -515,261 +545,239 @@ impl RbacMutation {
 
         // Lock and read current metadata inside the transaction so concurrent
         // renames/edits or deletes are serialized cleanly with zero TOCTOU.
-        let lock_role_sql = match backend {
-            sea_orm::DbBackend::Sqlite => {
-                "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? RETURNING name, description, is_system"
-            }
-            sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql | _ => {
-                "SELECT name, description, is_system FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE"
-            }
+        let requested_desc_patch: Option<Option<String>> = match input.description {
+            MaybeUndefined::Undefined => None,
+            MaybeUndefined::Null => Some(None),
+            MaybeUndefined::Value(ref value) => Some(normalize_description(value)?),
         };
-        let tx_role = match tx
-            .query_one_raw(prepare_statement(
-                backend,
-                lock_role_sql,
-                vec![tenant.id.into(), role_id.into()],
-            ))
-            .await
-        {
-            Ok(Some(row)) => row,
-            Ok(None) => {
-                return Err(abort_tx(
-                    tx,
-                    <FieldError as GraphQLError>::not_found(&format!("Role '{slug}' not found")),
-                )
-                .await);
-            }
-            Err(e) => return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await),
-        };
+        let requested_name = input.name.map(|n| n.trim().to_string());
+        let permissions_updated = parsed_update_permissions.is_some();
 
-        let current_name: String = match tx_role.try_get("", "name") {
-            Ok(value) => value,
-            Err(e) => return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await),
-        };
-        let current_desc: Option<String> = match tx_role.try_get("", "description") {
-            Ok(value) => value,
-            Err(e) => return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await),
-        };
-        let is_system: bool = match tx_role.try_get("", "is_system") {
-            Ok(value) => value,
-            Err(e) => return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await),
-        };
-
-        if let Some(new_permissions) = parsed_update_permissions.as_ref() {
-            let current_rows = match tx
-                .query_all_raw(prepare_statement(
-                    backend,
-                    "SELECT p.resource, p.action FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = ? AND p.tenant_id = ?",
-                    vec![role_id.into(), tenant.id.into()],
-                ))
-                .await
-            {
-                Ok(rows) => rows,
-                Err(e) => return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await),
-            };
-            let mut current_grants = Vec::with_capacity(current_rows.len());
-            for row in current_rows {
-                let resource: String = match row.try_get("", "resource") {
-                    Ok(value) => value,
-                    Err(e) => {
-                        return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await);
-                    }
-                };
-                let action: String = match row.try_get("", "action") {
-                    Ok(value) => value,
-                    Err(e) => {
-                        return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await);
-                    }
-                };
-                current_grants.push(format!("{resource}:{action}"));
-            }
-            if let Err(err) = authorize_role_permissions(
-                &auth.permissions,
-                availability.as_ref(),
-                new_permissions,
-                &current_grants,
-            ) {
-                return Err(abort_tx(tx, err).await);
-            }
-            if let Err(err) =
-                reject_newly_dormant_grants(availability.as_ref(), new_permissions, &current_grants)
-            {
-                return Err(abort_tx(tx, err).await);
-            }
-        }
-
-        let name_updated = input.name.is_some();
-        let desc_updated = !input.description.is_undefined();
-        let new_name = input
-            .name
-            .map(|n| n.trim().to_string())
-            .unwrap_or(current_name);
-        let new_desc = match input.description {
-            MaybeUndefined::Undefined => current_desc,
-            MaybeUndefined::Null => None,
-            MaybeUndefined::Value(value) => {
-                let trimmed = value.trim();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed.to_string())
+        let tx_outcome: Result<(
+            String,
+            Option<String>,
+            bool,
+            Vec<String>,
+            Option<u64>,
+        )> = async {
+            let lock_role_sql = match backend {
+                sea_orm::DbBackend::Sqlite => {
+                    "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? RETURNING name, description, is_system"
                 }
-            }
-        };
-
-        let update_role_sql = "UPDATE roles SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
-        let update_result = match tx
-            .execute_raw(prepare_statement(
-                backend,
-                update_role_sql,
-                vec![
-                    new_name.clone().into(),
-                    new_desc.clone().into(),
-                    role_id.into(),
-                ],
-            ))
-            .await
-        {
-            Ok(result) => result,
-            Err(e) => return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await),
-        };
-        if update_result.rows_affected() != 1 {
-            return Err(abort_tx(
-                tx,
-                <FieldError as GraphQLError>::not_found(&format!("Role '{slug}' not found")),
-            )
-            .await);
-        }
-
-        if is_system && (name_updated || desc_updated) && slug.parse::<UserRole>().is_ok() {
-            let sync_presentation_sql = "INSERT INTO rbac_localized_presentations (tenant_id, resource_kind, resource_key, locale, name, description, copy_revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (tenant_id, resource_kind, resource_key, locale) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, copy_revision = rbac_localized_presentations.copy_revision + 1, updated_at = CURRENT_TIMESTAMP";
-            if let Err(e) = tx
-                .execute_raw(prepare_statement(
+                sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql | _ => {
+                    "SELECT name, description, is_system FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE"
+                }
+            };
+            let tx_role = tx
+                .query_one_raw(prepare_statement(
                     backend,
-                    sync_presentation_sql,
-                    vec![
-                        tenant.id.into(),
-                        RbacPresentationResourceKind::Role.as_str().into(),
-                        slug.clone().into(),
-                        requested_locale.as_str().into(),
-                        new_name.clone().into(),
-                        new_desc.clone().into(),
-                    ],
+                    lock_role_sql,
+                    vec![tenant.id.into(), role_id.into()],
                 ))
                 .await
-            {
-                return Err(abort_tx(tx, internal_db_error("rbac role presentation", e)).await);
-            }
-        }
+                .map_err(|e| internal_db_error("rbac role mutation", e))?
+                .ok_or_else(|| {
+                    <FieldError as GraphQLError>::not_found(&format!("Role '{slug}' not found"))
+                })?;
 
-        let permissions_updated = input.permissions.is_some();
-        let mut final_permissions = Vec::new();
-        if let Some(new_permissions) = parsed_update_permissions {
-            let del_links_sql = "DELETE FROM role_permissions WHERE role_id = ?";
-            tx.execute_raw(prepare_statement(
-                backend,
-                del_links_sql,
-                vec![role_id.into()],
-            ))
-            .await
-            .map_err(|e| internal_db_error("rbac role mutation", e))?;
+            let current_name: String = tx_role
+                .try_get("", "name")
+                .map_err(|e| internal_db_error("rbac role mutation", e))?;
+            let current_desc: Option<String> = tx_role
+                .try_get("", "description")
+                .map_err(|e| internal_db_error("rbac role mutation", e))?;
+            let is_system: bool = tx_role
+                .try_get("", "is_system")
+                .map_err(|e| internal_db_error("rbac role mutation", e))?;
 
-            for permission in &new_permissions {
-                let (resource, action) = permission_parts(permission);
-                let (resource, action) = (resource.as_str(), action.as_str());
-
-                let find_perm_sql = "SELECT id FROM permissions WHERE tenant_id = ? AND resource = ? AND action = ? LIMIT 1";
-                let perm_row = tx
-                    .query_one_raw(prepare_statement(
+            if let Some(new_permissions) = parsed_update_permissions.as_ref() {
+                let current_rows = tx
+                    .query_all_raw(prepare_statement(
                         backend,
-                        find_perm_sql,
-                        vec![tenant.id.into(), resource.into(), action.into()],
+                        "SELECT p.resource, p.action FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = ? AND p.tenant_id = ?",
+                        vec![role_id.into(), tenant.id.into()],
                     ))
                     .await
                     .map_err(|e| internal_db_error("rbac role mutation", e))?;
+                let mut current_grants = Vec::with_capacity(current_rows.len());
+                for row in current_rows {
+                    let resource: String = row
+                        .try_get("", "resource")
+                        .map_err(|e| internal_db_error("rbac role mutation", e))?;
+                    let action: String = row
+                        .try_get("", "action")
+                        .map_err(|e| internal_db_error("rbac role mutation", e))?;
+                    current_grants.push(format!("{resource}:{action}"));
+                }
+                authorize_role_permissions(
+                    &auth.permissions,
+                    availability.as_ref(),
+                    new_permissions,
+                    &current_grants,
+                )?;
+                reject_newly_dormant_grants(
+                    availability.as_ref(),
+                    new_permissions,
+                    &current_grants,
+                )?;
+            }
 
-                let perm_id = match perm_row {
-                    Some(row) => row
-                        .try_get::<Uuid>("", "id")
-                        .map_err(|e| internal_db_error("rbac role mutation", e))?,
-                    None => {
-                        let new_perm_id = rustok_core::generate_id();
-                        let ins_perm_sql = "INSERT INTO permissions (id, tenant_id, resource, action, description) VALUES (?, ?, ?, ?, NULL) ON CONFLICT (tenant_id, resource, action) DO NOTHING";
-                        tx.execute_raw(prepare_statement(
+            let name_updated = requested_name.is_some();
+            let desc_updated = requested_desc_patch.is_some();
+            let new_name = requested_name.unwrap_or(current_name);
+            let new_desc = match requested_desc_patch {
+                Some(patch) => patch,
+                None => current_desc,
+            };
+
+            let update_role_sql = "UPDATE roles SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
+            let update_result = tx
+                .execute_raw(prepare_statement(
+                    backend,
+                    update_role_sql,
+                    vec![
+                        new_name.clone().into(),
+                        new_desc.clone().into(),
+                        role_id.into(),
+                    ],
+                ))
+                .await
+                .map_err(|e| internal_db_error("rbac role mutation", e))?;
+            if update_result.rows_affected() != 1 {
+                return Err(<FieldError as GraphQLError>::not_found(&format!(
+                    "Role '{slug}' not found"
+                )));
+            }
+
+            let response_display_name =
+                if is_system && (name_updated || desc_updated) && slug.parse::<UserRole>().is_ok()
+                {
+                    let existing_loc = tx
+                        .query_one_raw(prepare_statement(
                             backend,
-                            ins_perm_sql,
+                            "SELECT name, description FROM rbac_localized_presentations WHERE tenant_id = ? AND resource_kind = ? AND resource_key = ? AND locale = ? LIMIT 1",
                             vec![
-                                new_perm_id.into(),
                                 tenant.id.into(),
-                                resource.into(),
-                                action.into(),
+                                RbacPresentationResourceKind::Role.as_str().into(),
+                                slug.clone().into(),
+                                requested_locale.as_str().into(),
                             ],
                         ))
                         .await
-                        .map_err(|e| internal_db_error("rbac role mutation", e))?;
+                        .map_err(|e| internal_db_error("rbac role presentation", e))?;
+                    let (existing_loc_name, existing_loc_desc) = match existing_loc {
+                        Some(row) => (
+                            Some(
+                                row.try_get::<String>("", "name")
+                                    .map_err(|e| internal_db_error("rbac role presentation", e))?,
+                            ),
+                            row.try_get::<Option<String>>("", "description")
+                                .map_err(|e| internal_db_error("rbac role presentation", e))?,
+                        ),
+                        None => (None, None),
+                    };
 
-                        let persisted_row = tx
-                            .query_one_raw(prepare_statement(
-                                backend,
-                                find_perm_sql,
-                                vec![tenant.id.into(), resource.into(), action.into()],
-                            ))
-                            .await
-                            .map_err(|e| internal_db_error("rbac role mutation", e))?
-                            .ok_or_else(|| {
-                                <FieldError as GraphQLError>::internal_error(
-                                    "Permission could not be retrieved after insert",
-                                )
-                            })?;
-                        persisted_row
-                            .try_get::<Uuid>("", "id")
-                            .map_err(|e| internal_db_error("rbac role mutation", e))?
-                    }
+                    // Preserve the existing locale copy for fields omitted from
+                    // this partial update so editing description alone in `ru`
+                    // never overwrites the localized `ru` role title with `en`.
+                    let loc_name = if name_updated {
+                        new_name.clone()
+                    } else {
+                        existing_loc_name.unwrap_or_else(|| new_name.clone())
+                    };
+                    let loc_desc = if desc_updated {
+                        new_desc.clone()
+                    } else {
+                        existing_loc_desc.or_else(|| new_desc.clone())
+                    };
+
+                    let sync_presentation_sql = "INSERT INTO rbac_localized_presentations (tenant_id, resource_kind, resource_key, locale, name, description, copy_revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (tenant_id, resource_kind, resource_key, locale) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, copy_revision = rbac_localized_presentations.copy_revision + 1, updated_at = CURRENT_TIMESTAMP";
+                    tx.execute_raw(prepare_statement(
+                        backend,
+                        sync_presentation_sql,
+                        vec![
+                            tenant.id.into(),
+                            RbacPresentationResourceKind::Role.as_str().into(),
+                            slug.clone().into(),
+                            requested_locale.as_str().into(),
+                            loc_name.clone().into(),
+                            loc_desc.into(),
+                        ],
+                    ))
+                    .await
+                    .map_err(|e| internal_db_error("rbac role presentation", e))?;
+                    loc_name
+                } else {
+                    new_name
                 };
 
-                let link_id = rustok_core::generate_id();
-                let link_sql = "INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?) ON CONFLICT (role_id, permission_id) DO NOTHING";
+            let final_permissions = if let Some(new_permissions) = parsed_update_permissions.as_ref()
+            {
+                let del_links_sql = "DELETE FROM role_permissions WHERE role_id = ?";
                 tx.execute_raw(prepare_statement(
                     backend,
-                    link_sql,
-                    vec![link_id.into(), role_id.into(), perm_id.into()],
+                    del_links_sql,
+                    vec![role_id.into()],
                 ))
                 .await
                 .map_err(|e| internal_db_error("rbac role mutation", e))?;
 
-                final_permissions.push(format!("{resource}:{action}"));
-            }
-        } else {
-            let cur_perms_sql = "SELECT p.resource, p.action FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = ? AND p.tenant_id = ?";
-            let rows = tx
-                .query_all_raw(prepare_statement(
-                    backend,
-                    cur_perms_sql,
-                    vec![role_id.into(), tenant.id.into()],
-                ))
-                .await
-                .map_err(|e| internal_db_error("rbac role mutation", e))?;
-            for row in rows {
-                let resource: String = row
-                    .try_get("", "resource")
-                    .map_err(|e| internal_db_error("rbac role mutation", e))?;
-                let action: String = row
-                    .try_get("", "action")
-                    .map_err(|e| internal_db_error("rbac role mutation", e))?;
-                final_permissions.push(format!("{resource}:{action}"));
-            }
-        }
-
-        // Reserve the recovery watermark in the grant transaction. Supplying
-        // an identical replacement still conservatively advances the generation.
-        let committed_generation = if permissions_updated {
-            Some(
-                crate::reserve_permission_invalidation_generation(&tx)
+                grant_role_permissions_in_tx(&tx, backend, tenant.id, role_id, new_permissions)
+                    .await?
+            } else {
+                let cur_perms_sql = "SELECT p.resource, p.action FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = ? AND p.tenant_id = ?";
+                let rows = tx
+                    .query_all_raw(prepare_statement(
+                        backend,
+                        cur_perms_sql,
+                        vec![role_id.into(), tenant.id.into()],
+                    ))
                     .await
-                    .map_err(|e| internal_db_error("rbac role invalidation generation", e))?,
-            )
-        } else {
-            None
+                    .map_err(|e| internal_db_error("rbac role mutation", e))?;
+                let mut existing_permissions = Vec::with_capacity(rows.len());
+                for row in rows {
+                    let resource: String = row
+                        .try_get("", "resource")
+                        .map_err(|e| internal_db_error("rbac role mutation", e))?;
+                    let action: String = row
+                        .try_get("", "action")
+                        .map_err(|e| internal_db_error("rbac role mutation", e))?;
+                    existing_permissions.push(format!("{resource}:{action}"));
+                }
+                existing_permissions
+            };
+
+            // Reserve the recovery watermark in the grant transaction. Supplying
+            // an identical replacement still conservatively advances the generation.
+            let committed_generation = if permissions_updated {
+                Some(
+                    crate::reserve_permission_invalidation_generation(&tx)
+                        .await
+                        .map_err(|e| internal_db_error("rbac role invalidation generation", e))?,
+                )
+            } else {
+                None
+            };
+
+            Ok((
+                response_display_name,
+                new_desc,
+                is_system,
+                final_permissions,
+                committed_generation,
+            ))
+        }
+        .await;
+
+        let (
+            response_display_name,
+            new_desc,
+            is_system,
+            mut final_permissions,
+            committed_generation,
+        ) = match tx_outcome {
+            Ok(values) => values,
+            Err(err) => return Err(abort_tx(tx, err).await),
         };
 
         tx.commit()
@@ -806,7 +814,7 @@ impl RbacMutation {
             role: Some(RoleInfo {
                 id: Some(role_id.to_string()),
                 slug,
-                display_name: new_name,
+                display_name: response_display_name,
                 description: new_desc,
                 is_system,
                 inactive_permissions: dormant_grant_strings(
@@ -882,106 +890,103 @@ impl RbacMutation {
         // Re-verify the role inside the deleting transaction: the lookup
         // above ran outside it, so a concurrent delete must surface as
         // not-found here instead of a phantom success below.
-        let lock_role_sql = match backend {
-            sea_orm::DbBackend::Sqlite => {
-                "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? RETURNING id"
+        let tx_outcome: Result<()> = async {
+            let lock_role_sql = match backend {
+                sea_orm::DbBackend::Sqlite => {
+                    "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? RETURNING id"
+                }
+                sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql | _ => {
+                    "SELECT id FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE"
+                }
+            };
+            let tx_role = tx
+                .query_one_raw(prepare_statement(
+                    backend,
+                    lock_role_sql,
+                    vec![tenant.id.into(), role_id.into()],
+                ))
+                .await
+                .map_err(|e| internal_db_error("rbac role mutation", e))?;
+            if tx_role.is_none() {
+                return Err(<FieldError as GraphQLError>::not_found(&format!(
+                    "Role '{slug}' not found"
+                )));
             }
-            sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql | _ => {
-                "SELECT id FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE"
-            }
-        };
-        let tx_role = tx
-            .query_one_raw(prepare_statement(
-                backend,
-                lock_role_sql,
-                vec![tenant.id.into(), role_id.into()],
-            ))
-            .await
-            .map_err(|e| internal_db_error("rbac role mutation", e))?;
-        if tx_role.is_none() {
-            return Err(<FieldError as GraphQLError>::not_found(&format!(
-                "Role '{slug}' not found"
-            )));
-        }
 
-        // Integrity invariant, checked inside the deleting transaction so a
-        // concurrent assignment cannot race past it (no TOCTOU window), and a
-        // failed count read fails closed instead of reading as zero.
-        let count_sql = "SELECT COUNT(*) as cnt FROM user_roles WHERE role_id = ?";
-        let count_row = match tx
-            .query_one_raw(prepare_statement(backend, count_sql, vec![role_id.into()]))
-            .await
-        {
-            Ok(Some(row)) => row,
-            Ok(None) => {
-                return Err(abort_tx(
-                    tx,
+            // Integrity invariant, checked inside the deleting transaction so a
+            // concurrent assignment cannot race past it (no TOCTOU window), and a
+            // failed count read fails closed instead of reading as zero.
+            let count_sql = "SELECT COUNT(*) as cnt FROM user_roles WHERE role_id = ?";
+            let count_row = tx
+                .query_one_raw(prepare_statement(backend, count_sql, vec![role_id.into()]))
+                .await
+                .map_err(|e| internal_db_error("rbac role mutation", e))?
+                .ok_or_else(|| {
                     <FieldError as GraphQLError>::internal_error(
                         "Role assignment count query returned no row",
-                    ),
-                )
-                .await);
-            }
-            Err(e) => return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await),
-        };
-        let count: i64 = match count_row.try_get("", "cnt") {
-            Ok(count) => count,
-            Err(e) => return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await),
-        };
-        if count > 0 {
-            return Err(abort_tx(
-                tx,
-                <FieldError as GraphQLError>::bad_user_input(&format!(
+                    )
+                })?;
+            let count: i64 = count_row
+                .try_get("", "cnt")
+                .map_err(|e| internal_db_error("rbac role mutation", e))?;
+            if count > 0 {
+                return Err(<FieldError as GraphQLError>::bad_user_input(&format!(
                     "Cannot delete role '{slug}' because it is currently assigned to {count} user(s). Reassign them first."
-                )),
-            )
-            .await);
-        }
+                )));
+            }
 
-        let del_links_sql = "DELETE FROM role_permissions WHERE role_id = ?";
-        tx.execute_raw(prepare_statement(
-            backend,
-            del_links_sql,
-            vec![role_id.into()],
-        ))
-        .await
-        .map_err(|e| internal_db_error("rbac role mutation", e))?;
-
-        // Artifact grant cleanup is part of the same transaction: if it
-        // fails, the whole delete rolls back instead of leaving orphaned
-        // artifact permissions pointing at a deleted role.
-        let del_artifact_links_sql = "DELETE FROM rbac_artifact_role_permissions WHERE role_id = ?";
-        tx.execute_raw(prepare_statement(
-            backend,
-            del_artifact_links_sql,
-            vec![role_id.into()],
-        ))
-        .await
-        .map_err(|e| internal_db_error("rbac role mutation", e))?;
-
-        let del_artifact_ops_sql =
-            "DELETE FROM rbac_artifact_role_permission_operations WHERE role_id = ?";
-        tx.execute_raw(prepare_statement(
-            backend,
-            del_artifact_ops_sql,
-            vec![role_id.into()],
-        ))
-        .await
-        .map_err(|e| internal_db_error("rbac role mutation", e))?;
-
-        let del_role_sql = "DELETE FROM roles WHERE id = ?";
-        let delete_result = tx
-            .execute_raw(prepare_statement(
+            let del_links_sql = "DELETE FROM role_permissions WHERE role_id = ?";
+            tx.execute_raw(prepare_statement(
                 backend,
-                del_role_sql,
+                del_links_sql,
                 vec![role_id.into()],
             ))
             .await
             .map_err(|e| internal_db_error("rbac role mutation", e))?;
-        if delete_result.rows_affected() != 1 {
-            return Err(<FieldError as GraphQLError>::not_found(&format!(
-                "Role '{slug}' not found"
-            )));
+
+            // Artifact grant cleanup is part of the same transaction: if it
+            // fails, the whole delete rolls back instead of leaving orphaned
+            // artifact permissions pointing at a deleted role.
+            let del_artifact_links_sql =
+                "DELETE FROM rbac_artifact_role_permissions WHERE role_id = ?";
+            tx.execute_raw(prepare_statement(
+                backend,
+                del_artifact_links_sql,
+                vec![role_id.into()],
+            ))
+            .await
+            .map_err(|e| internal_db_error("rbac role mutation", e))?;
+
+            let del_artifact_ops_sql =
+                "DELETE FROM rbac_artifact_role_permission_operations WHERE role_id = ?";
+            tx.execute_raw(prepare_statement(
+                backend,
+                del_artifact_ops_sql,
+                vec![role_id.into()],
+            ))
+            .await
+            .map_err(|e| internal_db_error("rbac role mutation", e))?;
+
+            let del_role_sql = "DELETE FROM roles WHERE id = ?";
+            let delete_result = tx
+                .execute_raw(prepare_statement(
+                    backend,
+                    del_role_sql,
+                    vec![role_id.into()],
+                ))
+                .await
+                .map_err(|e| internal_db_error("rbac role mutation", e))?;
+            if delete_result.rows_affected() != 1 {
+                return Err(<FieldError as GraphQLError>::not_found(&format!(
+                    "Role '{slug}' not found"
+                )));
+            }
+            Ok(())
+        }
+        .await;
+
+        if let Err(err) = tx_outcome {
+            return Err(abort_tx(tx, err).await);
         }
 
         tx.commit()

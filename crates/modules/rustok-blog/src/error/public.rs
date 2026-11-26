@@ -85,6 +85,24 @@ pub(crate) fn to_graphql_error(error: BlogError) -> GraphqlError {
     })
 }
 
+pub(crate) fn port_to_graphql_error(error: rustok_api::PortError) -> GraphqlError {
+    use rustok_api::PortErrorKind;
+
+    let status = match error.kind {
+        PortErrorKind::Validation => 400_u16,
+        PortErrorKind::Forbidden => 403,
+        PortErrorKind::NotFound => 404,
+        PortErrorKind::Conflict => 409,
+        PortErrorKind::InvariantViolation => 500,
+        PortErrorKind::Unavailable => 503,
+        PortErrorKind::Timeout => 504,
+    };
+    GraphqlError::new(error.message).extend_with(|_, extensions| {
+        extensions.set("code", error.code);
+        extensions.set("httpStatus", status);
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

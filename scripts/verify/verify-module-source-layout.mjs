@@ -12,13 +12,14 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 import { lintNativeModule, resolveNativeModule } from "./native-module-layout.mjs";
 
 const parameters = process.argv.slice(2);
-const embedded = parameters[0] === "--embedded";
+const [selector, slug] = parameters;
+const embedded = selector === "--embedded";
 if (parameters.length !== 0 &&
-    (parameters.length !== 2 || (!embedded && parameters[0] !== "--module") || !parameters[1])) {
-  console.error("Usage: node scripts/verify/verify-module-source-layout.mjs [--module <slug> | --embedded <slug>]");
+    (parameters.length !== 2 || !["--module", "--embedded", "--cli"].includes(selector) || !slug)) {
+  console.error("Usage: node scripts/verify/verify-module-source-layout.mjs [--module <slug> | --embedded <slug> | --cli <slug>]");
   process.exit(2);
 }
-const selectedModule = parameters[1] ?? "blog";
+const selectedModule = slug ?? "blog";
 let modulePath;
 try {
   modulePath = resolveNativeModule(repoRoot, selectedModule, { embedded });
@@ -26,7 +27,10 @@ try {
   console.error(error.message);
   process.exit(1);
 }
-const architectureFailures = lintNativeModule(repoRoot, modulePath, selectedModule, { embedded });
+const architectureFailures = lintNativeModule(repoRoot, modulePath, selectedModule, {
+  embedded,
+  cli: selectedModule === "blog" || selector === "--cli",
+});
 if (architectureFailures.length) {
   console.error("Native module architecture verification failed:");
   for (const failure of architectureFailures) console.error("- " + failure);

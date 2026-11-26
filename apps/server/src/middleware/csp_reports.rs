@@ -94,9 +94,15 @@ pub(crate) async fn handle(request: Request) -> Response {
 }
 
 fn content_type_is_supported(request: &Request) -> bool {
-    let Some(value) = request.headers().get(CONTENT_TYPE) else {
+    let mut values = request.headers().get_all(CONTENT_TYPE).iter();
+    let Some(value) = values.next() else {
         return true;
     };
+    // Content-Type is a singleton field, not a list. Selecting the first
+    // value would accept ambiguous or contradictory request metadata.
+    if values.next().is_some() {
+        return false;
+    }
     let Ok(value) = value.to_str() else {
         return false;
     };
@@ -117,8 +123,7 @@ fn parse_reports(body: &[u8]) -> Result<Vec<ParsedCspReport>, CspReportParseErro
         serde_json::from_slice(body).map_err(|_| CspReportParseError::InvalidJson)?;
 
     if let Some(report) = value.get("csp-report") {
-        let violation = serde_json::from_value(report.clone())
-            .map_err(|_| CspReportParseError::UnsupportedShape)?;
+        let violation = parse_violation(report)?;
         return Ok(vec![ParsedCspReport {
             format: "legacy",
             violation,
@@ -140,10 +145,8 @@ fn parse_reports(body: &[u8]) -> Result<Vec<ParsedCspReport>, CspReportParseErro
     {
         let body = entry
             .get("body")
-            .cloned()
             .ok_or(CspReportParseError::UnsupportedShape)?;
-        let violation =
-            serde_json::from_value(body).map_err(|_| CspReportParseError::UnsupportedShape)?;
+        let violation = parse_violation(body)?;
         reports.push(ParsedCspReport {
             format: "reporting_api",
             violation,
@@ -155,6 +158,20 @@ fn parse_reports(body: &[u8]) -> Result<Vec<ParsedCspReport>, CspReportParseErro
     }
 
     Ok(reports)
+}
+
+fn parse_violation(value: &Value) -> Result<CspViolation, CspReportParseError> {
+    // Serde structs also accept positional sequences. Browser reports are
+    // objects, and a payload without a directive is not evidence of a violation.
+    if !value.is_object() {
+        return Err(CspReportParseError::UnsupportedShape);
+    }
+    let violation: CspViolation =
+        serde_json::from_value(value.clone()).map_err(|_| CspReportParseError::UnsupportedShape)?;
+    if selected_directive(&violation).is_none() {
+        return Err(CspReportParseError::UnsupportedShape);
+    }
+    Ok(violation)
 }
 
 fn record_report(report: ParsedCspReport) {
@@ -194,22 +211,35 @@ fn normalized_disposition(value: Option<&str>) -> &'static str {
     }
 }
 
-fn report_directive(violation: &CspViolation) -> &'static str {
+fn selected_directive(violation: &CspViolation) -> Option<&str> {
     // Legacy browser reports can carry both fields. Prefer the actual check.
-    normalized_directive(
-        violation
-            .effective_directive
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-            .or(violation.violated_directive.as_deref()),
-    )
+    violation
+        .effective_directive
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            violation
+                .violated_directive
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+        })
+}
+
+fn report_directive(violation: &CspViolation) -> &'static str {
+    normalized_directive(selected_directive(violation))
 }
 
 fn normalized_directive(value: Option<&str>) -> &'static str {
-    let value = value.unwrap_or_default().trim().to_ascii_lowercase();
-    if value.starts_with("script-src") {
+    // Older violated-directive values may include the directive source list.
+    let value = value
+        .unwrap_or_default()
+        .split_ascii_whitespace()
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if matches!(value.as_str(), "script-src" | "script-src-elem" | "script-src-attr") {
         "script-src"
-    } else if value.starts_with("style-src") {
+    } else if matches!(value.as_str(), "style-src" | "style-src-elem" | "style-src-attr") {
         "style-src"
     } else {
         match value.as_str() {
@@ -240,7 +270,19 @@ fn sanitized_location(value: Option<&str>) -> Option<String> {
     if let Ok(parsed) = url::Url::parse(value) {
         let origin = parsed.origin().ascii_serialization();
         let location = if origin == "null" {
-            parsed.scheme().to_string()
+            let scheme = parsed.scheme();
+            if scheme.len() > MAX_LOGGED_ORIGIN_BYTES {
+                return Some("oversized".to_string());
+            }
+            // An opaque scheme is itself untrusted text, not a browser origin.
+            // Retain only known scheme labels; arbitrary schemes may contain
+            // private identifiers and must not be copied to telemetry.
+            match scheme {
+                "about" | "blob" | "data" | "file" | "filesystem" | "javascript"
+                | "mailto" | "chrome" | "chrome-extension" | "moz-extension"
+                | "resource" => scheme.to_string(),
+                _ => return Some("opaque".to_string()),
+            }
         } else {
             origin
         };
@@ -256,6 +298,52 @@ fn sanitized_location(value: Option<&str>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn rejects_duplicate_content_type_fields_before_collecting_reports() {
+        use axum::{body::Body, http::HeaderValue};
+
+        for second in ["application/csp-report", "text/plain"] {
+            let mut request = axum::http::Request::builder()
+                .method(Method::POST)
+                .uri(CSP_REPORT_PATH)
+                .header(CONTENT_TYPE, "application/csp-report")
+                .body(Body::from(
+                    r#"{"csp-report":{"effective-directive":"script-src"}}"#,
+                ))
+                .expect("report request");
+            request
+                .headers_mut()
+                .append(CONTENT_TYPE, HeaderValue::from_static(second));
+
+            assert_eq!(
+                handle(request).await.status(),
+                StatusCode::UNSUPPORTED_MEDIA_TYPE
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn accepts_single_or_missing_content_type_for_valid_report() {
+        use axum::body::Body;
+
+        for content_type in [
+            None,
+            Some("application/csp-report"),
+            Some("application/json; charset=utf-8"),
+        ] {
+            let mut request = axum::http::Request::builder().method(Method::POST).uri(CSP_REPORT_PATH);
+            if let Some(content_type) = content_type {
+                request = request.header(CONTENT_TYPE, content_type);
+            }
+            let request = request
+                .body(Body::from(
+                    r#"{"csp-report":{"effective-directive":"script-src"}}"#,
+                ))
+                .expect("report request");
+            assert_eq!(handle(request).await.status(), StatusCode::NO_CONTENT);
+        }
+    }
 
     #[test]
     fn parses_legacy_csp_report_without_script_sample() {
@@ -352,10 +440,31 @@ mod tests {
     }
 
     #[test]
+    fn opaque_url_scheme_telemetry_retains_only_known_labels() {
+        for (value, expected) in [
+            ("data:text/plain,private", "data"),
+            ("file:///private/path", "file"),
+            ("about:blank", "about"),
+            ("chrome-extension://private-id/path", "chrome-extension"),
+            ("private-identifier:payload", "opaque"),
+            ("unknown+scheme://private-host/path", "opaque"),
+        ] {
+            assert_eq!(sanitized_location(Some(value)).as_deref(), Some(expected));
+        }
+        assert_eq!(
+            sanitized_location(Some("https://user:password@example.com/path?secret=1#private")).as_deref(),
+            Some("https://example.com")
+        );
+    }
+
+    #[test]
     fn directive_labels_are_bounded() {
         assert_eq!(normalized_directive(Some("script-src-attr")), "script-src");
         assert_eq!(normalized_directive(Some("style-src-elem")), "style-src");
         assert_eq!(normalized_directive(Some("unknown-directive")), "other");
+        assert_eq!(normalized_directive(Some("script-src-unrelated")), "other");
+        assert_eq!(normalized_directive(Some("script-src 'self'")), "script-src");
+        assert_eq!(normalized_directive(Some("style-src-unrelated")), "other");
     }
 
     #[test]
@@ -368,6 +477,31 @@ mod tests {
             sanitized_location(Some("/private/path?token=secret")).as_deref(),
             Some("opaque")
         );
+    }
+
+    #[test]
+    fn rejects_violation_bodies_without_object_shape_or_nonblank_directive() {
+        for body in [
+            r#"{"csp-report":{}}"#,
+            r#"{"csp-report":{"effective-directive":" ","violated-directive":""}}"#,
+            r#"{"csp-report":[null,null,"script-src",null,null,null,null,null,null]}"#,
+            r#"[{"type":"csp-violation","body":{}}]"#,
+            r#"[{"type":"csp-violation","body":[null,null,"script-src",null,null,null,null,null,null]}]"#,
+        ] {
+            assert_eq!(
+                parse_reports(body.as_bytes()).expect_err("malformed violation body"),
+                CspReportParseError::UnsupportedShape
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_unknown_nonblank_directives_without_misclassifying_them() {
+        let reports = parse_reports(
+            br#"{"csp-report":{"effective-directive":"script-src-future"}}"#,
+        )
+        .expect("unknown directive remains observable");
+        assert_eq!(report_directive(&reports[0].violation), "other");
     }
 
     #[test]

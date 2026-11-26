@@ -556,6 +556,7 @@ use super::rbac::{
 };
 use super::reply;
 use super::reply_create_audience_authorization::ForumReplyCreateAudienceAuthorizationService;
+use super::topic_engagement_guard::{TopicEngagementKind, enforce_topic_engagement};
 use super::topic_owner::TopicService;
 use super::topic_reply_create_audience::lock_topic_reply_create_audience_in_tx;
 use super::user_stats::UserStatsService;
@@ -791,12 +792,12 @@ impl ReplyService {
         lock_category_tree_in_tx(&txn, tenant_id).await?;
         let topic =
             TopicService::find_topic_for_update_in_tx(&txn, tenant_id, initial_topic_id).await?;
-        // A restore replays content and possibly a solution. Admit the parent
-        // before either write so ordinary and accepted replies behave alike;
-        // the solution-target guard must not become an incidental API error.
-        if topic.status == TopicStatus::Archived {
-            return Err(ForumError::TopicArchived);
-        }
+        enforce_topic_engagement(
+            &topic,
+            TopicEngagementKind::RestoreReply,
+            &security,
+            Resource::ForumReplies,
+        )?;
         super::topic_solution_lock::lock_topic_solution_scopes_in_tx(
             &txn,
             tenant_id,
@@ -843,6 +844,9 @@ impl ReplyService {
 
         restore_reply_from_delete_snapshot_in_tx(&txn, tenant_id, &reply, &snapshot).await?;
 
+        // Delete of an approved reply decrements public topic/category/author
+        // counters. Restore must reverse that delta; pending/hidden snapshots
+        // never touched those counters and must not bump them here.
         if snapshot.previous_status == ReplyStatus::Approved {
             TopicService::adjust_reply_count_in_tx(&txn, tenant_id, reply.topic_id, 1).await?;
             CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 0, 1)
@@ -1459,15 +1463,12 @@ impl ReplyService {
             .require_in_tx(&txn, tenant_id, &topic, &security, context)
             .await?;
 
-        match topic.status {
-            TopicStatus::Closed => return Err(ForumError::TopicClosed),
-            TopicStatus::Archived => return Err(ForumError::TopicArchived),
-            TopicStatus::Pending => return Err(ForumError::TopicAwaitingModeration),
-            TopicStatus::Open => {}
-        }
-        if topic.is_locked {
-            return Err(ForumError::TopicLocked);
-        }
+        enforce_topic_engagement(
+            &topic,
+            TopicEngagementKind::CreateReply,
+            &security,
+            Resource::ForumReplies,
+        )?;
 
         if let Some(parent_reply_id) = input.parent_reply_id {
             let parent =

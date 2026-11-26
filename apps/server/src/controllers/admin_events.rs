@@ -8,9 +8,9 @@ use rustok_api::{Action, Permission, Resource, has_effective_permission};
 use rustok_outbox::entity::{self, SysEventStatus};
 use rustok_telemetry::metrics;
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, Value,
-    sea_query::{Expr, SimpleExpr},
+    ColumnTrait, Condition, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set,
+    sea_query::Expr,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
@@ -209,7 +209,7 @@ pub async fn replay_dlq_event(
     }))
 }
 
-async fn requeue_failed_event(db: &DatabaseConnection, tenant_id: Uuid, id: Uuid) -> Result<()> {
+async fn requeue_failed_event(db: &impl ConnectionTrait, tenant_id: Uuid, id: Uuid) -> Result<()> {
     // Re-check the canonical envelope tenant in the atomic state transition.
     // A prior tenant-scoped read is not a substitute for a tenant predicate
     // on the write itself.
@@ -258,26 +258,32 @@ fn default_limit() -> u64 {
     100
 }
 
-fn sys_event_tenant_condition(backend: DbBackend, tenant_id: Uuid) -> SimpleExpr {
-    Expr::cust_with_values(
-        sys_event_tenant_sql(backend),
-        vec![Value::from(tenant_id.to_string())],
-    )
+fn sys_event_tenant_condition(backend: DbBackend, tenant_id: Uuid) -> Condition {
+    // Keep the indexed UUID comparison typed independently of the legacy
+    // JSON text comparison. PostgreSQL cannot use one bind parameter as
+    // both UUID and text, and SQLite custom expressions need a plain '?'.
+    Condition::any()
+        .add(entity::Column::TenantId.eq(tenant_id))
+        .add(
+            Condition::all()
+                .add(entity::Column::TenantId.is_null())
+                .add(Expr::cust_with_values(
+                    sys_event_tenant_sql(backend),
+                    [tenant_id.to_string()],
+                )),
+        )
 }
 
 fn sys_event_tenant_sql(backend: DbBackend) -> &'static str {
-    // The denormalised `tenant_id` column is authoritative (and indexed);
-    // new writers always populate it. Rows written before the column was
-    // backfilled fall back to the payload: new envelopes persist their
-    // canonical tenant at the top level, older events can use the nested
-    // legacy event tenant; when both exist, nested data must never grant
-    // access to another tenant.
+    // The indexed tenant column is authoritative. For an unbackfilled row
+    // prefer the canonical JSON tenant, even if its value is null or invalid.
+    // Only a missing canonical key permits the nested legacy fallback.
     match backend {
         DbBackend::Sqlite => {
-            "(tenant_id = ?1 OR (tenant_id IS NULL AND (CASE WHEN json_type(payload, '$.tenant_id') IS NOT NULL THEN json_extract(payload, '$.tenant_id') = ?1 ELSE json_extract(payload, '$.event.tenant_id') = ?1 END)))"
+            "(CASE WHEN json_type(payload, '$.tenant_id') IS NOT NULL THEN json_extract(payload, '$.tenant_id') ELSE json_extract(payload, '$.event.tenant_id') END) = ?"
         }
         _ => {
-            "(tenant_id = $1::uuid OR (tenant_id IS NULL AND (CASE WHEN payload->'tenant_id' IS NOT NULL THEN payload->>'tenant_id' = $1 ELSE payload->'event'->>'tenant_id' = $1 END)))"
+            "(CASE WHEN payload->'tenant_id' IS NOT NULL THEN payload->>'tenant_id' ELSE payload->'event'->>'tenant_id' END) = $1"
         }
     }
 }
@@ -362,10 +368,92 @@ mod tests {
         for backend in [DbBackend::Postgres, DbBackend::Sqlite] {
             let sql = sys_event_tenant_sql(backend);
             assert!(sql.starts_with('('));
-            assert!(sql.ends_with(')'));
+            assert!(sql.ends_with(if backend == DbBackend::Sqlite { " = ?" } else { " = $1" }));
             assert!(sql.contains("tenant_id"));
             assert!(sql.contains("event"));
         }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a PostgreSQL connection via RUSTOK_MIGRATION_SMOKE_ADMIN_URL"]
+    async fn postgres_dlq_scope_uses_independently_typed_binds_and_atomic_requeue() {
+        use sea_orm::{ColumnTrait, ConnectionTrait, PaginatorTrait, QueryFilter, TransactionTrait};
+
+        let url = std::env::var("RUSTOK_MIGRATION_SMOKE_ADMIN_URL")
+            .expect("isolated PostgreSQL test connection");
+        rustok_test_utils::assert_postgres_url(&url);
+        let db = Database::connect(&url).await.expect("connect PostgreSQL");
+        let txn = db.begin().await.expect("begin isolated fixture transaction");
+        // The temporary table shadows any permanent sys_events table on this
+        // connection. All reads and writes below use the same transaction.
+        txn.execute_unprepared(
+            "CREATE TEMP TABLE sys_events (id uuid PRIMARY KEY, tenant_id uuid, \
+             event_type varchar(255) NOT NULL, schema_version smallint NOT NULL, \
+             payload jsonb NOT NULL, status varchar(32) NOT NULL, retry_count integer NOT NULL, \
+             next_attempt_at timestamptz, last_error varchar(2048), claimed_by varchar(128), \
+             claimed_at timestamptz, created_at timestamptz NOT NULL, dispatched_at timestamptz) \
+             ON COMMIT DROP",
+        )
+        .await
+        .expect("create transaction-local outbox fixture");
+
+        let owner = Uuid::new_v4();
+        let foreign = Uuid::new_v4();
+        let mut ids = Vec::new();
+        for (tenant_id, payload) in [
+            (Some(owner), serde_json::json!({"tenant_id": foreign})),
+            (None, serde_json::json!({"tenant_id": owner, "event": {"tenant_id": foreign}})),
+            (None, serde_json::json!({"event": {"tenant_id": owner}})),
+            (None, serde_json::json!({"tenant_id": null, "event": {"tenant_id": foreign}})),
+            (None, serde_json::json!({"tenant_id": "invalid", "event": {"tenant_id": foreign}})),
+        ] {
+            let id = Uuid::new_v4();
+            entity::ActiveModel {
+                id: Set(id),
+                tenant_id: Set(tenant_id),
+                event_type: Set("sample.failed".to_string()),
+                schema_version: Set(1),
+                payload: Set(payload),
+                status: Set(SysEventStatus::Failed),
+                retry_count: Set(1),
+                next_attempt_at: Set(None),
+                last_error: Set(None),
+                claimed_by: Set(None),
+                claimed_at: Set(None),
+                created_at: Set(Utc::now()),
+                dispatched_at: Set(None),
+            }
+            .insert(&txn)
+            .await
+            .expect("insert fixture event");
+            ids.push(id);
+        }
+
+        let scoped = |tenant_id| {
+            entity::Entity::find()
+                .filter(entity::Column::Status.eq(SysEventStatus::Failed))
+                .filter(super::sys_event_tenant_condition(DbBackend::Postgres, tenant_id))
+        };
+        assert_eq!(scoped(owner).count(&txn).await.expect("owner count"), 3);
+        assert_eq!(scoped(foreign).count(&txn).await.expect("foreign count"), 0);
+        for id in &ids {
+            assert!(requeue_failed_event(&txn, foreign, *id).await.is_err());
+        }
+        for id in &ids[..3] {
+            requeue_failed_event(&txn, owner, *id)
+                .await
+                .expect("owner can requeue event");
+        }
+        assert_eq!(scoped(owner).count(&txn).await.expect("remaining DLQ count"), 0);
+        assert_eq!(
+            entity::Entity::find()
+                .filter(entity::Column::Status.eq(SysEventStatus::Pending))
+                .count(&txn)
+                .await
+                .expect("requeued count"),
+            3
+        );
+        txn.rollback().await.expect("rollback temporary fixture");
     }
 
     #[tokio::test]

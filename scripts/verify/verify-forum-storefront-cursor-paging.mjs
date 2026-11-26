@@ -360,6 +360,13 @@ requireText(ui, "category_override.get()", "resource tracks category override");
 requireText(graphql, "unreadOnly: $unreadOnly", "unread mode is an owner predicate");
 requireText(pages, "selection.unread_only", "native continuation unread predicate");
 
+// An upstream/branch reconciliation must not bind both shorthand and named
+// selection props: source wiring can otherwise pass while the Leptos view fails.
+const feedCall = ui.match(/<ForumTopicFeed\b([\s\S]*?)\/>/);
+if (!feedCall || [...feedCall[1].matchAll(/^\s*selection(?:\s*=[^\n]+)?\s*$/gm)].length !== 1) {
+  failures.push("topic feed must bind selection exactly once");
+}
+
 if (failures.length > 0) {
   console.error("forum storefront cursor paging verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);

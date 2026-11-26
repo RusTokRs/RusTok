@@ -156,12 +156,16 @@ pub(crate) async fn complete_receipt<R: Serialize + Clone>(
     receipt: NewPayoutReceipt,
     response: &R,
 ) -> MarketplacePayoutResult<R> {
-    let response_json = serde_json::to_value(response).map_err(|_| {
-        MarketplacePayoutError::Validation(
-            "payout schedule response could not be serialized".to_string(),
-        )
-    })?;
-    let result = schedule_receipt::Entity::update_many()
+    let response_json = match serde_json::to_value(response) {
+        Ok(value) => value,
+        Err(_) => {
+            receipt.transaction.rollback().await?;
+            return Err(MarketplacePayoutError::Validation(
+                "payout schedule response could not be serialized".to_string(),
+            ));
+        }
+    };
+    let result = match schedule_receipt::Entity::update_many()
         .col_expr(
             schedule_receipt::Column::Status,
             sea_orm::sea_query::Expr::value(STATUS_COMPLETED),
@@ -178,7 +182,14 @@ pub(crate) async fn complete_receipt<R: Serialize + Clone>(
         .filter(schedule_receipt::Column::TenantId.eq(receipt.tenant_id))
         .filter(schedule_receipt::Column::Status.eq(STATUS_PENDING))
         .exec(&receipt.transaction)
-        .await?;
+        .await
+    {
+        Ok(result) => result,
+        Err(error) => {
+            receipt.transaction.rollback().await?;
+            return Err(error.into());
+        }
+    };
     if result.rows_affected != 1 {
         receipt.transaction.rollback().await?;
         return Err(MarketplacePayoutError::ReceiptCorrupt);

@@ -37,7 +37,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
-    "test:forum": "node --experimental-strip-types --test packages/forum/src/api/forum.test.mjs packages/forum/src/components/forum-reply-editor.test.mjs packages/forum/src/forum-contract.test.mjs"
+    "test:forum": "node --experimental-strip-types --test packages/forum/src/api/forum.test.mjs packages/forum/src/components/forum-reply-editor.test.mjs packages/forum/src/forum-contract.test.mjs",
+    "test:auth": "node --experimental-strip-types --test src/shared/api/auth-session.test.mjs src/shared/api/graphql.test.mjs"
   },
   "lint-staged": {
     "**/*.{js,jsx,tsx,ts,css,less,scss,sass}": [

@@ -6,8 +6,8 @@ use rustok_seo_targets::{
     SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
     SeoTargetCapabilities, SeoTargetError, SeoTargetLoadRequest, SeoTargetLoadScope,
     SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetResult as AnyResult,
-    SeoTargetRouteResolveRequest, SeoTargetRuntimeContext, SeoTargetSitemapRequest,
-    SeoTargetSlug, SeoTemplateFieldMap, builtin_slug, populate_image_template_fields, schema,
+    SeoTargetRouteResolveRequest, SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug,
+    SeoTemplateFieldMap, builtin_slug, populate_image_template_fields, schema,
 };
 use url::Url;
 use uuid::Uuid;
@@ -109,30 +109,21 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
         let target_kind = blog_target_slug()?;
         let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());
         let post = service
-            .get_post_by_slug_with_locale_fallback(
+            .get_post_by_slug_on_channel(
                 request.tenant_id,
-                SecurityContext::system(),
+                SecurityContext::public_read(),
                 request.locale,
                 slug.as_str(),
                 Some(request.default_locale),
+                request.channel_slug,
             )
             .await
             .map_err(SeoTargetError::provider)?;
 
-        Ok(post
-            .filter(|post| {
-                post.status == BlogPostStatus::Published
-                    && is_post_visible_for_channel(
-                        post.channel_slugs.as_slice(),
-                        request.channel_slug,
-                    )
-            })
-            .map(|post| SeoRouteMatchRecord {
-                // Cloned because the closure borrows the outer binding; the slug is a
-                // small validated key.
-                target_kind: target_kind.clone(),
-                target_id: post.id,
-            }))
+        Ok(post.map(|post| SeoRouteMatchRecord {
+            target_kind,
+            target_id: post.id,
+        }))
     }
 
     async fn list_bulk_summaries_page(

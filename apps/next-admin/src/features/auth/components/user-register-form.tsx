@@ -2,7 +2,6 @@
 import { Button } from '@/shared/ui/shadcn/button';
 import { Input } from '@/shared/ui/shadcn/input';
 import { Label } from '@/shared/ui/shadcn/label';
-import { signUp } from '@/shared/api/auth-api';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -26,17 +25,11 @@ export default function UserRegisterForm() {
     }
     setIsLoading(true);
     try {
-      // Регистрируем через GraphQL
-      await signUp(
-        email.trim(),
-        password,
-        tenantSlug.trim(),
-        name.trim() || undefined
-      );
-      // Затем входим через NextAuth (чтобы получить сессию)
       const result = await signIn('credentials', {
+        action: 'register',
         email: email.trim(),
         password,
+        name: name.trim(),
         tenantSlug: tenantSlug.trim(),
         redirect: false
       });

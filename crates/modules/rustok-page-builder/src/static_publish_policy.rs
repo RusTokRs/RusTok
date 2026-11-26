@@ -8,7 +8,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v11";
+pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v14";
 
 const ALLOWED_TAGS: &[&str] = &[
     "a",
@@ -1359,37 +1359,15 @@ fn safe_css_value(value: &str, policy: &PageBuilderStaticPublishPolicy) -> bool 
         return false;
     }
 
-    // A policy value that lists `url(` keeps the blanket ban; the default (the only policy
-    // a publication runs) does not list it.
     let bans_all_references = policy
         .forbidden_css_tokens
         .iter()
         .any(|token| token == "url(");
-    let mut scanned = if bans_all_references {
-        value.to_string()
-    } else {
-        // Validate and blank out references *before* the delimiter checks. A permitted
-        // `data:image/png;base64,...` legally contains `;`, which the check below would
-        // otherwise reject — the same ordering trap `fly::render::safe_style` had to fix.
-        match strip_validated_css_urls(value, policy) {
-            Some(stripped) => stripped,
-            None => return false,
-        }
-    };
-
-    let resource_string_ranges = match fly::css_resource_string_ranges(&scanned) {
-        Some(ranges) => ranges,
-        None => return false,
-    };
-    if bans_all_references && !resource_string_ranges.is_empty() {
+    let Some(scanned) = fly::strip_css_resource_references(value, |url| {
+        !bans_all_references && validate_url(url, UrlKind::ResourceImage, policy).is_ok()
+    }) else {
         return false;
-    }
-    for range in resource_string_ranges.iter().rev() {
-        if validate_url(&scanned[range.clone()], UrlKind::ResourceImage, policy).is_err() {
-            return false;
-        }
-        scanned.replace_range(range.clone(), "url-ok");
-    }
+    };
 
     let compact = scanned
         .to_ascii_lowercase()
@@ -1417,64 +1395,6 @@ fn safe_css_value(value: &str, policy: &PageBuilderStaticPublishPolicy) -> bool 
         && !scanned.contains("*/")
 }
 
-/// Replace each well-formed `url(...)` with a placeholder, rejecting the declaration when any
-/// referenced URL fails the image-resource rule this policy already applies to `src`.
-fn strip_validated_css_urls(
-    value: &str,
-    policy: &PageBuilderStaticPublishPolicy,
-) -> Option<String> {
-    let lowered = value.to_ascii_lowercase();
-    let mut output = String::with_capacity(value.len());
-    let mut cursor = 0usize;
-
-    while let Some(offset) = lowered[cursor..].find("url(") {
-        let start = cursor + offset;
-        // `blurl(` is not a reference; leave it in place so the caller's scan rejects it.
-        let preceded_by_identifier = value[..start]
-            .chars()
-            .next_back()
-            .is_some_and(|character| character.is_ascii_alphanumeric() || character == '-');
-        if preceded_by_identifier {
-            output.push_str(&value[cursor..start + 4]);
-            cursor = start + 4;
-            continue;
-        }
-
-        let open = start + 4;
-        // An unterminated reference is refused rather than guessed at.
-        let close = value[open..].find(')')? + open;
-        let raw = value[open..close].trim();
-        let unquoted = raw
-            .strip_prefix('"')
-            .and_then(|rest| rest.strip_suffix('"'))
-            .or_else(|| {
-                raw.strip_prefix('\'')
-                    .and_then(|rest| rest.strip_suffix('\''))
-            })
-            .unwrap_or(raw);
-
-        // `;` is legal inside a data URL, but these would still let a reference escape the
-        // declaration or open a comment.
-        if unquoted.is_empty()
-            || unquoted.contains('{')
-            || unquoted.contains('}')
-            || unquoted.contains('<')
-            || unquoted.contains('>')
-            || unquoted.contains("/*")
-            || unquoted.contains("*/")
-            || validate_url(unquoted, UrlKind::ResourceImage, policy).is_err()
-        {
-            return None;
-        }
-
-        output.push_str(&value[cursor..start]);
-        output.push_str("url-ok");
-        cursor = close + 1;
-    }
-
-    output.push_str(&value[cursor..]);
-    Some(output)
-}
 
 fn safe_media_query(query: &str, policy: &PageBuilderStaticPublishPolicy) -> bool {
     let normalized = query.trim().to_ascii_lowercase();
@@ -1710,16 +1630,19 @@ mod tests {
         let mut document = document(json!({
             "id": "root",
             "type": "wrapper",
-            "style": {"background-image": "var(--brand)"}
+            "style": {
+                "background-image": "var(--brand)",
+                "-webkit-box-reflect": "below 0 var(--brand)"
+            }
         }));
         document.project_mut().extensions.insert(
             FLY_THEME_FIELD.to_string(),
             json!({"tokens": {"brand": "#0b5fff"}}),
         );
         let error = validate_static_publish_document(&document).expect_err("resource property var()");
-        assert!(error.diagnostics().iter().any(|diagnostic| {
+        assert_eq!(error.diagnostics().iter().filter(|diagnostic| {
             diagnostic.code == "landing_css_var_reference_resource_property"
-        }));
+        }).count(), 2);
     }
 
     #[test]
@@ -1924,7 +1847,7 @@ mod tests {
     #[test]
     fn policy_rejects_empty_localized_metadata_urls() {
         let mut document = document(json!({ "id": "root", "type": "wrapper" }));
-        document.project().pages[0]
+        document.project_mut().pages[0]
             .extensions
             .get_mut(FLY_PAGE_METADATA_FIELD)
             .and_then(Value::as_object_mut)
@@ -1996,6 +1919,9 @@ mod tests {
         for format in [
             "page_builder_static_publish_policy_v9",
             "page_builder_static_publish_policy_v10",
+            "page_builder_static_publish_policy_v11",
+            "page_builder_static_publish_policy_v12",
+            "page_builder_static_publish_policy_v13",
         ] {
             let evidence = PageBuilderStaticPublishPolicyEvidence {
                 format: format.to_string(),
@@ -2042,6 +1968,35 @@ mod tests {
         ));
         assert!(safe_css_value(
             "cross-fade(image('/fade-start.png'), image('/fade-end.png'))",
+            &policy
+        ));
+    }
+
+    #[test]
+    fn css_references_validate_original_urls_and_token_boundaries() {
+        let policy = PageBuilderStaticPublishPolicy::default();
+        let oversized = format!("image-set('/{}' 1x)", "url(/long-segment)".repeat(130));
+        assert!(!safe_css_value(&oversized, &policy));
+        for value in [
+            "url(/a(b))", "url(/a'broken')", "url('/a.png' extra)",
+            "image-set('/a.png' 1x))", "cross-fade(image('/a.png')",
+        ] {
+            assert!(!safe_css_value(value, &policy), "{value}");
+        }
+        for value in ["url('/hero(1).png')", "image-set('/url(/hero.png)' 1x)"] {
+            assert!(safe_css_value(value, &policy), "{value}");
+        }
+    }
+
+    #[test]
+    fn nested_css_resource_strings_are_checked_without_offset_drift() {
+        let policy = PageBuilderStaticPublishPolicy::default();
+        assert!(safe_css_value(
+            "image-set(image('/é.png') 1x, '/second-long.png' 2x)",
+            &policy
+        ));
+        assert!(!safe_css_value(
+            "image-set(image('/é.png') 1x, 'http://insecure.example/second.png' 2x)",
             &policy
         ));
     }

@@ -328,11 +328,13 @@ impl ForumEngagementMode {
 }
 
 fn parse_forum_settings(value: &Value) -> ForumResult<Option<ForumSettings>> {
-    serde_json::from_value::<ForumSettings>(value.clone())
-        .map(Some)
-        .map_err(|error| {
-            ForumError::Validation(format!("Forum module settings are invalid: {error}"))
-        })
+    let settings = serde_json::from_value::<ForumSettings>(value.clone()).map_err(|error| {
+        ForumError::Validation(format!("Forum module settings are invalid: {error}"))
+    })?;
+    settings.validate().map_err(|error| {
+        ForumError::Validation(format!("Forum module settings are invalid: {error}"))
+    })?;
+    Ok(Some(settings))
 }
 
 fn map_port_error(error: PortError) -> ForumError {

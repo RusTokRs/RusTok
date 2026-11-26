@@ -69,18 +69,13 @@ impl OtelConfig {
             sampling_rate: std::env::var("OTEL_SAMPLING_RATE")
                 .ok()
                 .and_then(|s| s.parse().ok())
-                .map(|r: f64| {
-                    if r.is_nan() || r <= 0.0 {
-                        0.0
-                    } else if r >= 1.0 {
-                        1.0
-                    } else {
-                        r
-                    }
-                })
+                .map(clamp_sampling_rate)
                 .unwrap_or(1.0),
             enabled: std::env::var("OTEL_ENABLED")
-                .map(|v| v == "true" || v == "1")
+                .map(|v| {
+                    let normalized = v.trim().to_ascii_lowercase();
+                    normalized == "true" || normalized == "1"
+                })
                 .unwrap_or(true),
         }
     }
@@ -110,7 +105,7 @@ pub async fn init_tracing(config: OtelConfig) -> Result<(), OtelError> {
     }
 
     let provider = build_tracer_provider(&config)?;
-    if let Err(_) = TRACER_PROVIDER.set(provider.clone()) {
+    if TRACER_PROVIDER.set(provider.clone()).is_err() {
         tracing::debug!("OpenTelemetry tracer provider already initialized");
     }
     global::set_tracer_provider(provider);
@@ -153,7 +148,7 @@ pub fn build_otel_layer(
 
     let provider = build_tracer_provider(config)?;
     let tracer = provider.tracer(config.service_name.clone());
-    if let Err(_) = TRACER_PROVIDER.set(provider.clone()) {
+    if TRACER_PROVIDER.set(provider.clone()).is_err() {
         tracing::debug!("OpenTelemetry tracer provider already initialized");
     }
     global::set_tracer_provider(provider);
@@ -172,10 +167,20 @@ pub async fn init_otel_layer(
 /// Flushes all pending spans before shutdown.
 pub async fn shutdown() {
     tracing::info!("Shutting down OpenTelemetry");
-    if let Some(provider) = TRACER_PROVIDER.get() {
-        if let Err(e) = provider.shutdown() {
-            tracing::warn!(error = %e, "Failed to shutdown OpenTelemetry tracer provider");
-        }
+    if let Some(provider) = TRACER_PROVIDER.get()
+        && let Err(e) = provider.shutdown()
+    {
+        tracing::warn!(error = %e, "Failed to shutdown OpenTelemetry tracer provider");
+    }
+}
+
+fn clamp_sampling_rate(rate: f64) -> f64 {
+    if rate.is_nan() || rate <= 0.0 {
+        0.0
+    } else if rate >= 1.0 {
+        1.0
+    } else {
+        rate
     }
 }
 
@@ -204,13 +209,7 @@ fn build_tracer_provider(config: &OtelConfig) -> Result<SdkTracerProvider, OtelE
         .with_batch_config(batch_config)
         .build();
 
-    let sampling_rate = if config.sampling_rate.is_nan() || config.sampling_rate <= 0.0 {
-        0.0
-    } else if config.sampling_rate >= 1.0 {
-        1.0
-    } else {
-        config.sampling_rate
-    };
+    let sampling_rate = clamp_sampling_rate(config.sampling_rate);
 
     Ok(SdkTracerProvider::builder()
         .with_span_processor(processor)
@@ -274,7 +273,7 @@ mod tests {
         let config = OtelConfig::default();
         assert_eq!(config.service_name, "rustok-server");
         assert_eq!(config.otlp_endpoint, "http://localhost:4317");
-        assert_eq!(config.sampling_rate, 1.0);
+        assert!((config.sampling_rate - 1.0).abs() < f64::EPSILON);
         assert!(config.enabled);
     }
 
@@ -291,7 +290,7 @@ mod tests {
         let config = OtelConfig::from_env();
         assert_eq!(config.service_name, "test-service");
         assert_eq!(config.otlp_endpoint, "http://test:4317");
-        assert_eq!(config.sampling_rate, 0.5);
+        assert!((config.sampling_rate - 0.5).abs() < f64::EPSILON);
         assert_eq!(config.environment, "test");
 
         // Cleanup
@@ -336,13 +335,13 @@ mod tests {
             std::env::set_var("OTEL_SAMPLING_RATE", "2.5");
         }
         let config = OtelConfig::from_env();
-        assert_eq!(config.sampling_rate, 1.0);
+        assert!((config.sampling_rate - 1.0).abs() < f64::EPSILON);
 
         unsafe {
             std::env::set_var("OTEL_SAMPLING_RATE", "-0.5");
         }
         let config_neg = OtelConfig::from_env();
-        assert_eq!(config_neg.sampling_rate, 0.0);
+        assert!(config_neg.sampling_rate.abs() < f64::EPSILON);
 
         unsafe {
             std::env::remove_var("OTEL_SAMPLING_RATE");

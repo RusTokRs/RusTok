@@ -18,7 +18,8 @@ pub enum ForumViewMode {
     Categories,
 }
 use crate::core::{
-    ForumStorefrontCategoryRailLabels, forum_storefront_category_card_view_model,
+    FORUM_STOREFRONT_REPORT_REASON_CODES, ForumStorefrontCategoryRailLabels,
+    forum_storefront_category_card_view_model, forum_storefront_quote_revision,
     forum_storefront_status_badge_class, forum_storefront_topic_accepts_reply, topic_status_class,
 };
 use crate::i18n::{count_message, slug_message, t};
@@ -745,6 +746,7 @@ fn ForumThreadPanel(
                             </span>
                         }
                     })}
+                    <ReportControl is_topic=true target_id=topic_id.clone() />
                 </div>
             </div>
 
@@ -908,6 +910,7 @@ fn ReplyCard(
                     <span dir="ltr" class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                         {reply.effective_locale}
                     </span>
+                    <ReportControl is_topic=false target_id=reply_id.clone() />
                     {can_reply.then(|| {
                         let reply_id = reply_id.clone();
                         let quoted_text = quoted_text.clone();
@@ -922,23 +925,42 @@ fn ReplyCard(
                                     let Some(composer) = use_context::<ComposerSignal>() else {
                                         return;
                                     };
-                                    // The quote relation needs an exact source revision. The
-                                    // storefront reply read model does not carry one, and per-reply
-                                    // revision lookups are owned by the host reaction composition,
-                                    // so the composer quotes the text and leaves the relation
-                                    // unpinned rather than inventing a revision number.
-                                    composer.update(|state| {
-                                        state.open_reply(topic_id.clone(), topic_title.clone(), None);
-                                        state.append_quote(
-                                            ComposerQuote {
-                                                target_kind: "REPLY".to_string(),
-                                                target_id: reply_id.clone(),
-                                                revision_id: None,
-                                                author_handle: None,
-                                                snippet: Some(quoted_text.clone()),
-                                            },
-                                            Some(quoted_text.clone()),
-                                        );
+                                    let reply_id = reply_id.clone();
+                                    let quoted_text = quoted_text.clone();
+                                    let topic_id = topic_id.clone();
+                                    let topic_title = topic_title.clone();
+                                    let locale = route_context.locale.clone();
+                                    // Pin the quote with the selected-reply relation revision.
+                                    // Per-visible-reply fan-out of the reactions content
+                                    // revision stays forbidden; this lookup runs only for
+                                    // the reply the author chose to quote.
+                                    spawn_local(async move {
+                                        let revision_id = match transport::fetch_storefront_reply_quote_revision(
+                                            reply_id.clone(),
+                                            locale,
+                                        )
+                                        .await
+                                        {
+                                            Ok(value) => value
+                                                .and_then(|revision| revision.parse::<i64>().ok())
+                                                .and_then(|revision| {
+                                                    forum_storefront_quote_revision(Some(revision))
+                                                }),
+                                            Err(_) => None,
+                                        };
+                                        composer.update(|state| {
+                                            state.open_reply(topic_id.clone(), topic_title.clone(), None);
+                                            state.append_quote(
+                                                ComposerQuote {
+                                                    target_kind: "REPLY".to_string(),
+                                                    target_id: reply_id.clone(),
+                                                    revision_id,
+                                                    author_handle: None,
+                                                    snippet: Some(quoted_text.clone()),
+                                                },
+                                                Some(quoted_text.clone()),
+                                            );
+                                        });
                                     });
                                 }
                             >
@@ -957,6 +979,118 @@ fn ReplyCard(
                 class="richtext mt-3 text-sm leading-6 text-muted-foreground"
             />
         </article>
+    }
+}
+
+#[component]
+fn ReportControl(is_topic: bool, target_id: String) -> impl IntoView {
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let locale = route_context.locale.clone();
+    let report_label = t(locale.as_deref(), "forum.thread.report", "Report");
+    let report_title = t(
+        locale.as_deref(),
+        "forum.thread.reportTitle",
+        "Report this content",
+    );
+    let reason_label = t(locale.as_deref(), "forum.thread.reportReason", "Reason");
+    let submit_label = t(
+        locale.as_deref(),
+        "forum.thread.reportSubmit",
+        "Send report",
+    );
+    let pending_label = t(locale.as_deref(), "forum.thread.reportPending", "Sending…");
+    let done_label = t(
+        locale.as_deref(),
+        "forum.thread.reportDone",
+        "Report submitted",
+    );
+    let failed_label = t(
+        locale.as_deref(),
+        "forum.thread.reportFailed",
+        "Could not submit the report",
+    );
+    let (open, set_open) = signal(false);
+    let (reason, set_reason) = signal("spam".to_string());
+    let (busy, set_busy) = signal(false);
+    let (status, set_status) = signal(None::<Result<(), String>>);
+
+    view! {
+        <div class="relative">
+            <button
+                type="button"
+                class="rounded-lg border border-border px-2 py-0.5 text-xs text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                title=report_title
+                on:click=move |_| {
+                    set_open.update(|value| *value = !*value);
+                    set_status.set(None);
+                }
+            >
+                {report_label}
+            </button>
+            {move || open.get().then(|| {
+                let target_id = target_id.clone();
+                let locale = locale.clone();
+                let failed_label = failed_label.clone();
+                view! {
+                    <form
+                        class="absolute right-0 z-20 mt-2 w-64 space-y-2 rounded-xl border border-border bg-card p-3 shadow-lg"
+                        on:submit=move |event| {
+                            event.prevent_default();
+                            if busy.get_untracked() {
+                                return;
+                            }
+                            let target_id = target_id.clone();
+                            let reason_code = reason.get_untracked();
+                            let locale = locale.clone();
+                            let failed_label = failed_label.clone();
+                            set_busy.set(true);
+                            set_status.set(None);
+                            spawn_local(async move {
+                                let result = if is_topic {
+                                    transport::report_storefront_topic(target_id, reason_code, locale).await
+                                } else {
+                                    transport::report_storefront_reply(target_id, reason_code, locale).await
+                                };
+                                match result {
+                                    Ok(_) => set_status.set(Some(Ok(()))),
+                                    Err(_) => set_status.set(Some(Err(failed_label))),
+                                }
+                                set_busy.set(false);
+                            });
+                        }
+                    >
+                        <label class="block space-y-1 text-xs font-medium text-foreground">
+                            <span>{reason_label.clone()}</span>
+                            <select
+                                class="w-full rounded-lg border border-border bg-background px-2 py-1 text-xs"
+                                prop:value=move || reason.get()
+                                on:change=move |event| set_reason.set(event_target_value(&event))
+                            >
+                                {FORUM_STOREFRONT_REPORT_REASON_CODES.iter().map(|code| {
+                                    let code = (*code).to_string();
+                                    view! { <option value=code.clone()>{code}</option> }
+                                }).collect_view()}
+                            </select>
+                        </label>
+                        {move || status.get().map(|result| match result {
+                            Ok(()) => view! {
+                                <p class="text-xs text-emerald-700 dark:text-emerald-300">{done_label.clone()}</p>
+                            }.into_any(),
+                            Err(message) => view! {
+                                <p class="text-xs text-destructive">{message}</p>
+                            }.into_any(),
+                        })}
+                        <button
+                            type="submit"
+                            class="w-full rounded-lg bg-primary px-2 py-1 text-xs font-medium text-primary-foreground disabled:opacity-60"
+                            disabled=move || busy.get()
+                        >
+                            {move || if busy.get() { pending_label.clone() } else { submit_label.clone() }}
+                        </button>
+                    </form>
+                }
+            })}
+        </div>
     }
 }
 

@@ -25,6 +25,7 @@ use crate::richtext::project_stored_discussion;
 use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::pending_visibility::reply_owner_read_condition;
 use crate::services::rbac::{enforce_owned_scope, enforce_scope};
+use crate::services::topic_engagement_guard::{TopicEngagementKind, enforce_topic_engagement};
 use crate::services::vote::{VoteService, VoteSummary};
 use crate::state_machine::ReplyStatus;
 
@@ -690,12 +691,12 @@ impl ReplyService {
             initial_topic_id,
         )
         .await?;
-        if locked_topic.status == crate::state_machine::TopicStatus::Archived {
-            return Err(ForumError::TopicArchived);
-        }
-        if locked_topic.is_locked {
-            return Err(ForumError::TopicLocked);
-        }
+        enforce_topic_engagement(
+            &locked_topic,
+            TopicEngagementKind::UpdateReply,
+            &security,
+            Resource::ForumReplies,
+        )?;
         super::topic_solution_lock::lock_topic_solution_scopes_in_tx(
             &txn,
             tenant_id,
@@ -710,7 +711,7 @@ impl ReplyService {
             quote_expectation,
         )
         .await?;
-        let existing = Self::find_reply_in_tx(&txn, tenant_id, reply_id).await?;
+        let existing = Self::find_reply_for_update_in_tx(&txn, tenant_id, reply_id).await?;
         if existing.topic_id != initial_topic_id {
             return Err(ForumError::TopicUpdateConflict(initial_topic_id));
         }

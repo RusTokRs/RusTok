@@ -126,8 +126,12 @@ pub struct CreateProductInput {
     #[validate(nested)]
     pub translations: Vec<ProductTranslationInput>,
     #[serde(default)]
+    // Keep this literal aligned with MAX_VARIANT_AXES in dto/variant_axis.rs.
+    #[validate(length(max = 32, message = "A Product can have at most 32 variant axes"))]
     #[validate(nested)]
     pub variant_axes: Vec<VariantAxisInput>,
+    // Keep this literal aligned with MAX_PRODUCT_VARIANTS in dto/mod.rs.
+    #[validate(length(max = 256, message = "A Product can have at most 256 variants"))]
     #[validate(nested)]
     pub variants: Vec<CreateVariantInput>,
     #[validate(length(max = 100, message = "Seller ID must be max 100 characters"))]
@@ -351,8 +355,12 @@ pub struct PriceResponse {
 
 #[cfg(test)]
 mod tests {
-    use super::ProductTranslationInput;
+    use super::{
+        CreateProductInput, CreateVariantInput, ProductTranslationInput, VariantAxisInput,
+    };
+    use crate::dto::{MAX_PRODUCT_VARIANTS, MAX_VARIANT_AXES};
     use serde_json::json;
+    use uuid::Uuid;
     use validator::Validate;
 
     #[test]
@@ -399,5 +407,56 @@ mod tests {
             meta_description: None,
         };
         assert!(noncanonical_direct.validate().is_err());
+    }
+
+    fn valid_variant() -> CreateVariantInput {
+        CreateVariantInput {
+            sku: None,
+            barcode: None,
+            shipping_profile_slug: None,
+            axis_values: Vec::new(),
+            prices: Vec::new(),
+            inventory_quantity: 0,
+            inventory_policy: "deny".to_owned(),
+            weight: None,
+            weight_unit: None,
+        }
+    }
+
+    fn valid_axis() -> VariantAxisInput {
+        VariantAxisInput {
+            attribute_id: Uuid::new_v4(),
+            position: 0,
+            allowed_option_ids: vec![Uuid::new_v4()],
+        }
+    }
+
+    fn valid_product_input() -> CreateProductInput {
+        CreateProductInput {
+            translations: vec![ProductTranslationInput {
+                locale: "en".to_owned(),
+                title: "Product".to_owned(),
+                handle: None,
+                description: None,
+                meta_title: None,
+                meta_description: None,
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn product_create_dto_bounds_variant_and_axis_batches() {
+        let mut variants = valid_product_input();
+        variants.variants = vec![valid_variant(); MAX_PRODUCT_VARIANTS];
+        assert!(variants.validate().is_ok());
+        variants.variants.push(valid_variant());
+        assert!(variants.validate().is_err());
+
+        let mut axes = valid_product_input();
+        axes.variant_axes = vec![valid_axis(); MAX_VARIANT_AXES];
+        assert!(axes.validate().is_ok());
+        axes.variant_axes.push(valid_axis());
+        assert!(axes.validate().is_err());
     }
 }

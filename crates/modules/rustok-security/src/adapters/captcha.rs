@@ -40,29 +40,30 @@ impl CaptchaVerifierPort for HoneypotVerifier {
         }
 
         // Expected format: "<rendered_timestamp_ms>:<honeypot_field_value>"
-        if let Some((rendered_ts_str, trap_value)) = trimmed.split_once(':') {
-            // Trap must be empty!
-            if !trap_value.is_empty() {
-                return Ok(false);
-            }
+        let (rendered_ts_str, trap_value) = trimmed.split_once(':').ok_or_else(|| {
+            SecurityError::CaptchaFailed(
+                "Malformed honeypot token: expected '<timestamp_ms>:<trap>'".to_string(),
+            )
+        })?;
 
-            let rendered_ts: u64 = rendered_ts_str.parse().map_err(|_| {
-                SecurityError::CaptchaFailed("Malformed timestamp in honeypot".to_string())
-            })?;
-
-            let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
-            let elapsed_ms = now_ms.saturating_sub(rendered_ts);
-
-            if elapsed_ms < self.min_duration_ms {
-                // Form submitted impossibly fast for a human
-                return Ok(false);
-            }
-
-            Ok(true)
-        } else {
-            // Simple presence check fallback
-            Ok(!trimmed.is_empty())
+        // Trap must be empty!
+        if !trap_value.is_empty() {
+            return Ok(false);
         }
+
+        let rendered_ts: u64 = rendered_ts_str.parse().map_err(|_| {
+            SecurityError::CaptchaFailed("Malformed timestamp in honeypot".to_string())
+        })?;
+
+        let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+        let elapsed_ms = now_ms.saturating_sub(rendered_ts);
+
+        if elapsed_ms < self.min_duration_ms {
+            // Form submitted impossibly fast for a human
+            return Ok(false);
+        }
+
+        Ok(true)
     }
 
     fn provider_name(&self) -> &'static str {
@@ -233,5 +234,8 @@ mod tests {
         // Human submitted in 100ms (too fast)
         let token_too_fast = format!("{}:", chrono::Utc::now().timestamp_millis() - 100);
         assert!(!verifier.verify(&token_too_fast, None).await.unwrap());
+
+        // Tokens missing the delimiter cannot bypass trap/timing checks
+        assert!(verifier.verify("arbitrary-token", None).await.is_err());
     }
 }

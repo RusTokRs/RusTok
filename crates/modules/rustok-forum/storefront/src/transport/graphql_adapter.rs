@@ -128,8 +128,10 @@ struct CategoriesVariables {
 
 #[derive(Debug, Serialize)]
 struct TopicsVariables {
-    #[serde(flatten)]
-    selection: crate::model::ForumTopicSelection,
+    search: Option<String>,
+    order: crate::model::ForumTopicFeedOrder,
+    #[serde(rename = "solvedOnly")]
+    solved_only: bool,
     #[serde(rename = "tenantId")]
     tenant_id: Option<String>,
     #[serde(rename = "categoryId")]
@@ -344,7 +346,9 @@ pub async fn fetch_storefront_forum_graphql(
             let response: StorefrontForumAudienceTopicsResponse = request(
                 STOREFRONT_FORUM_AUDIENCE_TOPICS_QUERY,
                 TopicsVariables {
-                    selection: selection.clone(),
+                    search: selection.search.clone(),
+                    order: selection.order,
+                    solved_only: selection.solved_only,
                     tenant_id: None,
                     category_id: resolved_category_id.clone(),
                     locale: locale.clone(),
@@ -452,7 +456,9 @@ pub async fn fetch_storefront_forum_topic_page_graphql(
     let response: StorefrontForumAudienceTopicsResponse = request(
         STOREFRONT_FORUM_AUDIENCE_TOPICS_QUERY,
         TopicsVariables {
-            selection: selection.clone(),
+            search: selection.search.clone(),
+            order: selection.order,
+            solved_only: selection.solved_only,
             tenant_id: None,
             category_id: selected_category_id,
             locale: locale.clone(),
@@ -746,6 +752,9 @@ pub async fn resolve_storefront_topic_route_graphql(
 
 const STOREFRONT_FORUM_TOPIC_CURRENT_REVISION_QUERY: &str = "query StorefrontForumTopicCurrentRevision($tenantId: UUID, $id: UUID!, $locale: String) { forumStorefrontTopicCurrentRevision(tenantId: $tenantId, id: $id, locale: $locale) }";
 const STOREFRONT_FORUM_REPLY_CURRENT_REVISION_QUERY: &str = "query StorefrontForumReplyCurrentRevision($tenantId: UUID, $id: UUID!, $locale: String) { forumStorefrontReplyCurrentRevision(tenantId: $tenantId, id: $id, locale: $locale) }";
+const STOREFRONT_FORUM_REPLY_QUOTE_REVISION_QUERY: &str = "query StorefrontForumReplyQuoteRevision($tenantId: UUID, $id: UUID!, $locale: String) { forumStorefrontReplyQuoteRevision(tenantId: $tenantId, id: $id, locale: $locale) }";
+const REPORT_STOREFRONT_FORUM_TOPIC_MUTATION: &str = "mutation ReportStorefrontForumTopic($tenantId: UUID, $topicId: UUID!, $reasonCode: String!, $locale: String) { reportForumTopic(tenantId: $tenantId, topicId: $topicId, reasonCode: $reasonCode, locale: $locale) }";
+const REPORT_STOREFRONT_FORUM_REPLY_MUTATION: &str = "mutation ReportStorefrontForumReply($tenantId: UUID, $replyId: UUID!, $reasonCode: String!, $locale: String) { reportForumReply(tenantId: $tenantId, replyId: $replyId, reasonCode: $reasonCode, locale: $locale) }";
 
 #[derive(Debug, Serialize)]
 struct StorefrontForumRevisionVariables {
@@ -799,10 +808,102 @@ pub async fn fetch_storefront_reply_current_revision_graphql(
     Ok(response.revision)
 }
 
+#[derive(Debug, Deserialize)]
+struct StorefrontForumReplyQuoteRevisionResponse {
+    #[serde(rename = "forumStorefrontReplyQuoteRevision")]
+    revision: Option<String>,
+}
+
+pub async fn fetch_storefront_reply_quote_revision_graphql(
+    reply_id: String,
+    locale: Option<String>,
+) -> Result<Option<String>, ApiError> {
+    let response: StorefrontForumReplyQuoteRevisionResponse = request(
+        STOREFRONT_FORUM_REPLY_QUOTE_REVISION_QUERY,
+        StorefrontForumRevisionVariables {
+            tenant_id: None,
+            id: reply_id,
+            locale,
+        },
+    )
+    .await?;
+    Ok(response.revision)
+}
+
+#[derive(Debug, Serialize)]
+struct ReportTopicVariables {
+    #[serde(rename = "tenantId")]
+    tenant_id: Option<String>,
+    #[serde(rename = "topicId")]
+    topic_id: String,
+    #[serde(rename = "reasonCode")]
+    reason_code: String,
+    locale: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ReportReplyVariables {
+    #[serde(rename = "tenantId")]
+    tenant_id: Option<String>,
+    #[serde(rename = "replyId")]
+    reply_id: String,
+    #[serde(rename = "reasonCode")]
+    reason_code: String,
+    locale: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReportTopicResponse {
+    #[serde(rename = "reportForumTopic")]
+    report_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReportReplyResponse {
+    #[serde(rename = "reportForumReply")]
+    report_id: String,
+}
+
+pub async fn report_storefront_topic_graphql(
+    topic_id: String,
+    reason_code: String,
+    locale: Option<String>,
+) -> Result<String, ApiError> {
+    let response: ReportTopicResponse = request(
+        REPORT_STOREFRONT_FORUM_TOPIC_MUTATION,
+        ReportTopicVariables {
+            tenant_id: None,
+            topic_id,
+            reason_code,
+            locale,
+        },
+    )
+    .await?;
+    Ok(response.report_id)
+}
+
+pub async fn report_storefront_reply_graphql(
+    reply_id: String,
+    reason_code: String,
+    locale: Option<String>,
+) -> Result<String, ApiError> {
+    let response: ReportReplyResponse = request(
+        REPORT_STOREFRONT_FORUM_REPLY_MUTATION,
+        ReportReplyVariables {
+            tenant_id: None,
+            reply_id,
+            reason_code,
+            locale,
+        },
+    )
+    .await?;
+    Ok(response.report_id)
+}
+
 #[cfg(test)]
 mod revision_tests {
     use super::{
-        STOREFRONT_FORUM_REPLY_CURRENT_REVISION_QUERY,
+        STOREFRONT_FORUM_REPLY_CURRENT_REVISION_QUERY, STOREFRONT_FORUM_REPLY_QUOTE_REVISION_QUERY,
         STOREFRONT_FORUM_TOPIC_CURRENT_REVISION_QUERY,
     };
 
@@ -816,6 +917,17 @@ mod revision_tests {
             assert!(!query.to_lowercase().contains("reaction"));
             assert!(!query.contains("actorId"));
         }
+    }
+
+    #[test]
+    fn quote_revision_query_is_distinct_from_content_revision() {
+        assert!(STOREFRONT_FORUM_REPLY_QUOTE_REVISION_QUERY.contains("QuoteRevision"));
+        assert!(!STOREFRONT_FORUM_REPLY_QUOTE_REVISION_QUERY.contains("CurrentRevision"));
+        assert!(
+            !STOREFRONT_FORUM_REPLY_QUOTE_REVISION_QUERY
+                .to_lowercase()
+                .contains("reaction")
+        );
     }
 }
 

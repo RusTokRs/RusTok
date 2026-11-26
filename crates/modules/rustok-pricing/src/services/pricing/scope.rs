@@ -26,6 +26,19 @@ pub(crate) async fn resolve_channel_id_in_tx(
         .map(|channel| channel.map(|model| model.id))
 }
 
+/// Resolves both persisted channel aliases so transaction participants cannot
+/// store an ID-only or slug-only scope that downstream projections cannot match.
+pub(crate) async fn resolve_channel_scope_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    channel_id: Option<Uuid>,
+    channel_slug: Option<&str>,
+) -> CommerceResult<Option<(Uuid, String)>> {
+    resolve_channel_identity(txn, tenant_id, channel_id, channel_slug)
+        .await
+        .map(|channel| channel.map(|model| (model.id, model.slug)))
+}
+
 /// Resolve both aliases once, without losing the authoritative current slug.
 pub(super) async fn resolve_channel_identity<C: ConnectionTrait>(
     conn: &C,

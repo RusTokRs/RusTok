@@ -55,6 +55,7 @@ pub async fn handle_csp_report(request: Request, next: Next) -> Response {
 
 pub async fn security_headers(mut request: Request, next: Next) -> Response {
     let path = request.uri().path().to_string();
+    let credential_response = is_credential_response_path(&path, request.method());
     tracing::debug!(
         path_group = super::http_stack::trace_path_family(&path),
         "security_headers entry"
@@ -128,7 +129,12 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
     );
     // Operational responses are time-sensitive and may vary by credentials.
     // Set this at the outer edge, including rate-limit/auth/timeout failures.
-    if super::metrics_auth::is_observability_auth_path(&path)
+    if credential_response {
+        // Enforce the policy even when tenant/auth/rate-limit/timeout or
+        // invite acceptance middleware returns without entering a controller.
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+        headers.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+    } else if super::metrics_auth::is_observability_auth_path(&path)
         || matches!(path.as_str(), "/health" | "/health/live")
     {
         headers.insert(
@@ -184,14 +190,27 @@ fn plaintext_websocket_allowed() -> bool {
 }
 
 fn is_api_surface(path: &str) -> bool {
-    path.starts_with("/api/")
-        || path == "/metrics"
-        || path.starts_with("/metrics/")
-        || path.starts_with("/health")
-        || path.starts_with("/swagger")
-        || path.starts_with("/openapi")
-        || path.starts_with("/api/openapi")
-        || path.starts_with("/catalog")
+    // Match reserved route families on segment boundaries. The registry's
+    // mutation API and protocol discovery are not UI documents, while paths
+    // such as /healthcare must retain the normal UI nonce policy.
+    [
+        "/api",
+        "/metrics",
+        "/health",
+        "/swagger",
+        "/openapi",
+        "/catalog",
+        "/v2/catalog",
+        "/.well-known",
+        "/ws/builds",
+    ]
+    .iter()
+    .any(|&root| {
+        path == root
+            || path
+                .strip_prefix(root)
+                .is_some_and(|suffix| suffix.starts_with('/'))
+    })
 }
 
 fn is_richtext_frame_surface(path: &str) -> bool {
@@ -217,6 +236,18 @@ fn is_richtext_frame_surface(path: &str) -> bool {
     hash.len() == 16
         && hash.as_bytes().iter().all(u8::is_ascii_hexdigit)
         && matches!(extension, "js" | "css")
+}
+
+/// Auth and OAuth routes can return credentials or private identity data.
+/// The shared GraphQL POST endpoint can execute the same credential
+/// mutations; playground and schema GET responses are not credential bodies.
+fn is_credential_response_path(path: &str, method: &axum::http::Method) -> bool {
+    ["/api/auth", "/api/oauth"].iter().any(|&root| {
+        path == root
+            || path
+                .strip_prefix(root)
+                .is_some_and(|suffix| suffix.starts_with('/'))
+    }) || (path == "/api/graphql" && *method == axum::http::Method::POST)
 }
 
 fn richtext_cache_control(path: &str) -> Option<&'static str> {
@@ -285,15 +316,51 @@ mod tests {
 
     #[test]
     fn api_and_operator_paths_use_strict_csp() {
-        assert_eq!(select_csp("/api/graphql", None, false), API_CSP);
-        assert_eq!(select_csp("/metrics", None, false), API_CSP);
-        assert_eq!(select_csp("/metrics/", None, false), API_CSP);
-        assert_eq!(select_csp("/health/ready", None, false), API_CSP);
-        assert_eq!(select_csp("/swagger/index.html", None, false), API_CSP);
-        assert_eq!(select_csp("/openapi/v3.json", None, false), API_CSP);
-        assert_eq!(select_csp("/catalog/modules", None, false), API_CSP);
-        assert_eq!(select_report_only_csp("/api/graphql", None), None);
-        assert_eq!(select_report_only_csp("/metrics/", None), None);
+        let nonce = CspNonce::generate();
+        // Passing a nonce makes classification observable rather than merely
+        // exercising the missing-nonce fail-closed fallback.
+        for path in [
+            "/api",
+            "/api/graphql",
+            "/metrics",
+            "/metrics/",
+            "/health/ready",
+            "/swagger/index.html",
+            "/openapi/v3.json",
+            "/catalog/modules",
+            "/v2/catalog/publish",
+            "/v2/catalog/publish/request/platform-build-stage",
+            "/v2/catalog/runner/claim",
+            "/.well-known/openid-configuration",
+            "/.well-known/oauth-authorization-server",
+            "/ws/builds",
+        ] {
+            assert_eq!(select_csp(path, Some(&nonce), false), API_CSP, "{path}");
+            assert_eq!(select_report_only_csp(path, Some(&nonce)), None, "{path}");
+        }
+    }
+
+    #[test]
+    fn similarly_named_ui_paths_are_not_api_surfaces() {
+        let nonce = CspNonce::generate();
+        for path in [
+            "/healthcare",
+            "/catalogue",
+            "/swagger-guide",
+            "/openapi-guide",
+            "/apiculture",
+            "/metrics-dashboard",
+            "/v2/catalogue",
+            "/.well-known-other",
+            "/ws/builds-guide",
+        ] {
+            assert!(
+                select_csp(path, Some(&nonce), false)
+                    .contains(nonce.source_expression().as_str()),
+                "{path}"
+            );
+            assert!(select_report_only_csp(path, Some(&nonce)).is_some(), "{path}");
+        }
     }
 
     #[test]
@@ -420,6 +487,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn credential_surfaces_are_no_store_even_on_early_failures() {
+        use axum::http::{Method, header};
+
+        // This fixture intentionally has no controller-level cache middleware.
+        // The outer edge must override even an explicit cacheable response.
+        let app = Router::new()
+            .fallback(|| async {
+                (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    [(header::CACHE_CONTROL, "public, max-age=60")],
+                )
+            })
+            .layer(middleware::from_fn(security_headers));
+
+        for (method, path, private) in [
+            (Method::POST, "/api/auth/invite/accept", true),
+            (Method::POST, "/api/auth/session/refresh", true),
+            (Method::GET, "/api/auth/me", true),
+            (Method::GET, "/api/oauth/authorize", true),
+            (Method::POST, "/api/oauth/token", true),
+            (Method::POST, "/api/graphql", true),
+            (Method::GET, "/api/graphql", false),
+            (Method::GET, "/api/graphql/schema.graphql", false),
+            (Method::GET, "/api/authors", false),
+            (Method::GET, "/api/oauth-other", false),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri(path)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .expect("edge response");
+            assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS, "{path}");
+            assert_eq!(
+                response.headers().get(header::CACHE_CONTROL).and_then(|v| v.to_str().ok()),
+                Some(if private { "no-store" } else { "public, max-age=60" }),
+                "{path}",
+            );
+            assert_eq!(
+                response.headers().get(header::PRAGMA).and_then(|v| v.to_str().ok()),
+                private.then_some("no-cache"),
+                "{path}",
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn operational_responses_are_never_cacheable() {
         let app = Router::new()
             .route("/health/ready", get(|| async { StatusCode::OK }))
@@ -481,6 +600,42 @@ mod tests {
         .expect("UTF-8 nonce");
 
         assert!(policy.contains(format!("'nonce-{nonce}'").as_str()));
+    }
+
+    #[tokio::test]
+    async fn protocol_routes_do_not_receive_ui_nonce_or_reporting_headers() {
+        let app = Router::new()
+            .fallback(|request: axum::extract::Request| async move {
+                if request.extensions().get::<CspNonce>().is_some() {
+                    StatusCode::BAD_REQUEST
+                } else {
+                    StatusCode::OK
+                }
+            })
+            .layer(middleware::from_fn(security_headers));
+
+        for path in [
+            "/v2/catalog/publish",
+            "/.well-known/openid-configuration",
+            "/ws/builds",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                .await
+                .expect("protocol response");
+            assert_eq!(response.status(), StatusCode::OK, "{path}");
+            assert_eq!(
+                response
+                    .headers()
+                    .get("content-security-policy")
+                    .and_then(|value| value.to_str().ok()),
+                Some(API_CSP),
+                "{path}"
+            );
+            assert!(!response.headers().contains_key("content-security-policy-report-only"));
+            assert!(!response.headers().contains_key("reporting-endpoints"));
+        }
     }
 
     #[tokio::test]

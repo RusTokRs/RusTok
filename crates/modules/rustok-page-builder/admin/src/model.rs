@@ -39,6 +39,7 @@ impl AdminCanvasController {
     ) -> Result<Self, AdminCanvasError> {
         let page_id = page_id.into();
         if page_id.trim().is_empty() {
+            fly::drop_value_iteratively(project_data);
             return Err(AdminCanvasError::InvalidPageId);
         }
         let document = GrapesJsCodec::decode_value(project_data)?;
@@ -171,11 +172,14 @@ impl AdminCanvasController {
         project_data: Value,
     ) -> Result<(), AdminCanvasError> {
         if self.editor.revision().save_conflict {
+            fly::drop_value_iteratively(project_data);
             return Err(AdminCanvasError::Authoring(
                 "reload the conflicting draft before applying a recovered merge".to_string(),
             ));
         }
-        let document = GrapesJsCodec::decode_value(project_data.clone())?;
+        // Consume and preflight the recovered input before any recursive clone or digest.
+        let document = GrapesJsCodec::decode_value(project_data)?;
+        let project_data = GrapesJsCodec::encode_value(&document)?;
         let snapshot = ProjectSnapshot {
             id: format!("local-recovery-{}", Uuid::new_v4()),
             label: "Recovered local draft".to_string(),
@@ -184,11 +188,11 @@ impl AdminCanvasController {
             project_data,
             metadata: Default::default(),
         };
-        let sequence_before = self.editor.revision().command_sequence;
-        let report = self.editor.restore_snapshot(&snapshot)?;
+        // Recovery is a snapshot restore, not a privileged alternative to authoring.
+        // Use the same capability admission, transaction and geometry synchronization as
+        // every other RestoreSnapshot command.
+        self.dispatch(UiIntent::execute(EditorCommand::restore_snapshot(snapshot)))?;
         self.clipboard = None;
-        self.synchronize(report);
-        self.invalidate_geometry_after_document_change(sequence_before);
         Ok(())
     }
 
@@ -196,6 +200,19 @@ impl AdminCanvasController {
         &mut self,
         intent: UiIntent,
     ) -> Result<Vec<AdminCanvasEffect>, AdminCanvasError> {
+        // Lifecycle transitions have to update the revision owner and UI
+        // together. They are not general authoring intents.
+        if matches!(
+            &intent,
+            UiIntent::SaveStarted { .. }
+                | UiIntent::SaveSucceeded { .. }
+                | UiIntent::SaveFailed { .. }
+                | UiIntent::SaveConflict { .. }
+        ) {
+            return Err(AdminCanvasError::Authoring(
+                "save lifecycle events require the correlated controller API".to_string(),
+            ));
+        }
         self.validate_navigation_intent(&intent)?;
         // A late hover from a removed component or a different page is not
         // a valid interaction target in the current canvas.
@@ -204,7 +221,13 @@ impl AdminCanvasController {
             intent => intent,
         };
         let snapshot = self.clone();
-        let effects = self.ui.dispatch(intent)?;
+        let effects = match self.ui.dispatch(intent) {
+            Ok(effects) => effects,
+            Err(error) => {
+                *self = snapshot;
+                return Err(error.into());
+            }
+        };
         let mut outgoing = Vec::new();
 
         for effect in effects {
@@ -249,11 +272,6 @@ impl AdminCanvasController {
         {
             return Err(AdminCanvasError::Authoring(
                 "save request no longer matches the active document snapshot".to_string(),
-            ));
-        }
-        if self.ui.state.has_blocking_diagnostics() {
-            return Err(AdminCanvasError::Authoring(
-                "save blocked by validation diagnostics".to_string(),
             ));
         }
         self.mark_save_started_with_id()
@@ -893,6 +911,42 @@ mod tests {
     }
 
     #[test]
+    fn generic_dispatch_cannot_mutate_save_lifecycle() {
+        let mut controller = controller();
+        let before = controller.clone();
+        assert!(controller.dispatch(UiIntent::SaveStarted {
+            request_id: "unbound".into(),
+        }).is_err());
+        assert_eq!(controller, before);
+
+        let attempt = controller.mark_save_started_with_id().expect("start");
+        let hash = controller.editor().revision().project_hash;
+        let before = controller.clone();
+        for intent in [
+            UiIntent::SaveSucceeded {
+                request_id: attempt.request_id.clone(),
+                revision: "rev-2".into(),
+                project_hash: hash,
+            },
+            UiIntent::SaveFailed { request_id: Some(attempt.request_id.clone()) },
+            UiIntent::SaveConflict {
+                request_id: Some(attempt.request_id.clone()),
+                expected: "rev-1".into(),
+                actual: "rev-2".into(),
+            },
+        ] {
+            assert!(controller.dispatch(intent).is_err());
+            assert_eq!(controller, before);
+        }
+        assert!(controller.acknowledge_save_for_attempt(hash, &attempt, "").is_err());
+        assert_eq!(controller, before);
+        controller.acknowledge_save_for_attempt(hash, &attempt, "rev-2")
+            .expect("correlated acknowledgement");
+        assert_eq!(controller.revision_id(), "rev-2");
+        assert!(!controller.ui().state.dirty.save_in_progress);
+    }
+
+    #[test]
     fn controller_rejects_stale_completions_of_identical_retries() {
         let mut controller = controller();
         let hash = controller.editor().revision().project_hash;
@@ -938,6 +992,52 @@ mod tests {
     }
 
     #[test]
+    fn recovered_merge_obeys_snapshot_restore_capabilities_and_presentation() {
+        let mut controller = controller();
+        let mut recovered =
+            GrapesJsCodec::encode_value(controller.editor().document()).expect("encode");
+        recovered["pages"][0]["component"]["components"][0]["components"][0]["content"] =
+            json!("Recovered edit");
+
+        for capabilities in [
+            fly_ui::CapabilityState::read_only(),
+            fly_ui::CapabilityState {
+                history: false,
+                ..fly_ui::CapabilityState::full()
+            },
+        ] {
+            controller.dispatch(UiIntent::SetEditableCapabilities(capabilities))
+                .expect("host capabilities");
+            let before = controller.clone();
+            assert!(controller.apply_recovered_merge(recovered.clone()).is_err());
+            assert_eq!(controller, before);
+        }
+        controller.dispatch(UiIntent::SetEditableCapabilities(fly_ui::CapabilityState::full()))
+            .expect("host capabilities");
+        controller.dispatch(UiIntent::SetPresentation(Presentation::Preview))
+            .expect("preview presentation");
+        let before = controller.clone();
+        assert!(controller.apply_recovered_merge(recovered).is_err());
+        assert_eq!(controller, before);
+    }
+
+    #[test]
+    fn recovered_merge_rejects_excessive_depth_without_changing_controller() {
+        let mut controller = controller();
+        let before = controller.clone();
+        let mut nested = Value::Null;
+        for _ in 0..50_000 {
+            nested = Value::Array(vec![nested]);
+        }
+        let input = Value::Object(Map::from_iter([("payload".to_string(), nested)]));
+        assert!(matches!(
+            controller.apply_recovered_merge(input),
+            Err(AdminCanvasError::Fly(fly::FlyError::MaximumDepthExceeded { .. }))
+        ));
+        assert_eq!(controller, before);
+    }
+
+    #[test]
     fn peer_write_conflict_fences_an_idle_controller_too() {
         let mut controller = controller();
         controller
@@ -965,6 +1065,14 @@ mod tests {
         let recovered = GrapesJsCodec::encode_value(controller.editor().document())
             .expect("recovery document");
         assert!(controller.apply_recovered_merge(recovered).is_err());
+        let mut nested = Value::Null;
+        for _ in 0..50_000 {
+            nested = Value::Array(vec![nested]);
+        }
+        assert!(matches!(
+            controller.apply_recovered_merge(nested),
+            Err(AdminCanvasError::Authoring(_))
+        ));
         assert_eq!(controller, before);
     }
 

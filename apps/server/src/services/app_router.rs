@@ -409,17 +409,19 @@ pub fn compose_application_router(
 
     // Release binaries retain production security gates even with a staging/development label.
     let is_production = crate::common::is_production_security_mode();
-    let allowed_origins = middleware::cors::resolve_cors_allowed_origins_from_env().or_else(|| {
-        settings_snapshot
-            .pointer("/rustok/cors/allowed_origins")
-            .and_then(|val| val.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(ToOwned::to_owned))
-                    .collect::<Vec<String>>()
-            })
-            .filter(|list| !list.is_empty())
-    });
+    let settings_origins = settings_snapshot
+        .pointer("/rustok/cors/allowed_origins")
+        .map(|value| {
+            value
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(ToOwned::to_owned))
+                        .collect::<Vec<String>>()
+                })
+                .unwrap_or_default()
+        });
+    let allowed_origins = middleware::cors::resolve_cors_allowed_origins(settings_origins);
     let timeout_seconds = middleware::http_stack::resolve_http_timeout_seconds();
 
     // Keep CSP reporting unauthenticated and tenant-independent, but behind the public API

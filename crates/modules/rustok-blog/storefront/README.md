@@ -40,6 +40,8 @@ Leptos storefront UI package for the `rustok-blog` module.
 
 - Consumed by `apps/storefront` via manifest-driven `build.rs` code generation.
 - Uses native `#[server] -> HostRuntimeContext -> PostService/CommentService -> owner ports` on the SSR/hydrate path and the `rustok-blog` GraphQL post adapter on the headless/CSR path.
+- Public slug reads use the [Blog read port](../ports/README.md) so the owner
+  applies publication and channel visibility before resolving translations.
 - GraphQL exposes approved public comments as the nested `GqlPost.publicComments` field, while the native adapter maps the same owner projection into `BlogPostDetail.publicComments`.
 - Both transports receive the normalized comment page and use the same fixed page size. GraphQL serializes bounded `commentsPage/commentsPerPage`; native passes the same values into the owner list filter.
 - The `rustok-comments-storefront-support` component owns editor/form state and submits a canonical `RichTextDocument`; Blog supplies only its exact post-bound action and selected reply parent.

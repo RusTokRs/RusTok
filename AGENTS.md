@@ -151,9 +151,11 @@ Before implementing helpers, formatters, validators, data transformers, UI compo
 
 Do not patch the first visible caller until the owning contract and affected surfaces are understood.
 
-### 2.2 Optional codebase intelligence tooling (CodeGraph)
+### 2.2 Optional codebase intelligence tooling (CodeGraph and GitNexus)
 
 In environments where CodeGraph is available (as an MCP tool `codegraph_explore` or CLI `codegraph`), contributors and agents SHOULD prioritize it for codebase exploration, cross-module call flow discovery, and blast radius analysis before falling back to manual grep/read loops over indexed code. When CodeGraph is not present in the runtime environment (e.g. CI or environments without local CodeGraph indexes), agents MUST transparently fall back to standard repository search and inspection tools without failing or attempting to force CodeGraph initialization.
+
+GitNexus graph-specific requirements apply only when a usable MCP service or local CLI/index is available in the current environment. When unavailable (including GitHub connector-only environments), ordinary development and non-GitNexus audits MUST continue with manual source, reference, dependency and diff inspection. Report unavailable graph checks and any unresolved impact explicitly; never claim graph evidence that was not obtained. No installation or index bootstrap is mandatory solely to unblock ordinary work. This fallback does not waive domain invariants, concurrency safeguards or other applicable verification, and does not authorize advancing the specialized GitNexus audit ledger (§2.1.3) without its required evidence. This section governs the GitNexus guidance below, including any regenerated guidance.
 
 ## 3. Multi-agent and Git concurrency protocol
 
@@ -734,3 +736,51 @@ All automated agents MUST follow the complete repository governance above and ad
 8. Keep module-owned UI and transport boundaries aligned with docs/modules/module-authoring.md, FFA rules in §5, and frontend-local rules. In particular, never leak domain logic, state machines, or validation into UI framework templates, components, and signals.
 9. Do not treat required parallel platform surfaces as legacy merely because more than one transport or host exists; distinguish intentional target surfaces from obsolete duplicate implementations.
 10. Communicate concrete blockers and unverified checks explicitly rather than hiding them with stubs, fallbacks, compatibility layers, or optimistic completion claims.
+
+<!-- gitnexus:start -->
+# GitNexus — Code Intelligence
+
+This project is indexed by GitNexus as **RusTok** (878737 symbols, 1958008 relationships, 622 execution flows).
+
+> Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
+
+## Always Do
+
+The graph-specific instructions in this section are conditional on GitNexus availability under §2.2. Otherwise perform manual impact analysis before editing and review the complete affected diff before committing.
+
+- **When available, MUST run impact before editing.** Use `impact({target: "symbolName", direction: "upstream"})` or `node .gitnexus/run.cjs impact "symbolName" --direction upstream --repo .`; report callers, processes, and risk. Do not substitute grep for available graph analysis; use manual inspection when the graph is unavailable under §2.2. For unified PDG impact, add `mode: "pdg"` with optional `line: <N>` — it returns statement-level `affectedStatements` over CDG + REACHING_DEF and inter-procedural symbols in `interproceduralByDepth`/`byDepth`; no-layer/degraded PDG results are UNKNOWN-risk notes (`--pdg` layer). CLI equivalent: `node .gitnexus/run.cjs impact "symbolName" --direction upstream --mode pdg --line <N> --repo .`.
+- **When available, MUST analyze graph changes before committing.** Use `detect_changes({scope: "all"})` (MCP) or `node .gitnexus/run.cjs detect-changes --scope all --repo .` (CLI fallback). `partial: true` or `truncated: true` is not a clean check — a zero means unseen, not unaffected; re-run it. For regression review: `detect_changes({scope: "compare", base_ref: "main"})` or `node .gitnexus/run.cjs detect-changes --scope compare --base-ref "main" --repo .`.
+- MUST warn on HIGH/CRITICAL `risk` pre-edit; never use `riskSharedAxes` to waive a HIGH/CRITICAL `risk` warning. Compare File/symbol: MCP File omits axes; Graph-RAG expands File.
+- **MUST treat `risk: UNKNOWN` as unresolved, not as low.** An empty caller set is not evidence the symbol is unused — it can also mean the callers are not resolvable by the index (plain-object property access, dynamic dispatch, cross-language calls). `impact` pairs `UNKNOWN` with a `riskNote` saying so. Confirm with a text search before treating the symbol as safe to change or delete; do not proceed on the strength of a zero.
+- **MUST use `query({search_query: "concept"})` for concepts/flows, `context({name: "symbolName"})` for a named symbol, or `impact` for blast radius, on read-only callers, dependencies, imports, or execution flow.** Graph first when available; text search for empty/`UNKNOWN`/literals or when graph tooling is unavailable.
+- For security review, `explain({target: "fileOrSymbol"})` lists taint findings (source→sink flows; needs `analyze --pdg`).
+- For control/data dependence, `pdg_query({mode: "controls", target: "fileOrSymbol"})` answers "under what condition does X run?" (CDG, incl. guard clauses) and `pdg_query({mode: "flows", target, variable})` traces "where does variable Y flow?" (REACHING_DEF). `--pdg` layer.
+
+## Never Do
+
+- NEVER edit a function, class, or method before impact analysis (MCP/CLI when available, manual analysis otherwise).
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis, and never read `UNKNOWN` as an all-clear — it means the walk could not answer, which is the one verdict that requires confirming by other means.
+- NEVER blindly rename symbols with find-and-replace — use graph-aware `rename` when available; otherwise inspect all references and verify the complete rename manually.
+- NEVER commit before reviewing the affected changes (MCP/CLI graph analysis when available, manual diff and dependency review otherwise).
+
+## Resources
+
+| Resource | Use for |
+| --- | --- |
+| `gitnexus://repo/RusTok/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/RusTok/clusters` | All functional areas |
+| `gitnexus://repo/RusTok/processes` | All execution flows |
+| `gitnexus://repo/RusTok/process/{name}` | Step-by-step execution trace |
+
+## CLI
+
+| Task | Read this skill file |
+| --- | --- |
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus-cli/SKILL.md` |
+
+<!-- gitnexus:end -->

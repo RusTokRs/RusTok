@@ -284,6 +284,7 @@ impl MarketplaceSellerTranslationService {
             .await?
             .ok_or(MarketplaceSellerTranslationExactLocaleError::SellerNotFound(seller_id))?;
         if seller.status == "closed" {
+            txn.rollback().await?;
             return Err(MarketplaceSellerTranslationExactLocaleError::Validation(
                 "closed marketplace seller presentation cannot be translated".to_string(),
             ));
@@ -309,6 +310,7 @@ impl MarketplaceSellerTranslationService {
         )?;
         let current_target_revision = target.map(locale_revision);
         if request.expected_target_revision != current_target_revision {
+            txn.rollback().await?;
             return Err(
                 MarketplaceSellerTranslationExactLocaleError::RevisionConflict {
                     revision: "target",

@@ -237,9 +237,9 @@ impl FlyUiStateMachine {
                     .active_candidate()
                     .ok_or_else(|| UiError::IllegalDrop("no active drop candidate".to_string()))?;
                 let command = command_for_drop(drag.source.clone(), candidate)?;
+                self.mark_dirty()?;
                 self.state.drag = None;
                 self.state.overlays.insertion = None;
-                self.mark_dirty();
                 vec![
                     UiEffect::Command(Box::new(command)),
                     UiEffect::Announce("Component dropped".to_string()),
@@ -266,12 +266,12 @@ impl FlyUiStateMachine {
                         "cut requires a selected component".to_string(),
                     ));
                 }
-                self.mark_dirty();
+                self.mark_dirty()?;
                 vec![UiEffect::CutSelection]
             }
             UiIntent::PasteClipboard => {
                 self.require_edit_capability(EditorCapability::Clipboard)?;
-                self.mark_dirty();
+                self.mark_dirty()?;
                 vec![UiEffect::PasteClipboard]
             }
             UiIntent::Execute(command) => {
@@ -286,19 +286,19 @@ impl FlyUiStateMachine {
                         ));
                     }
                     if !matches!(command.as_ref(), EditorCommand::Batch { commands } if commands.is_empty()) {
-                        self.mark_dirty();
+                        self.mark_dirty()?;
                     }
                 }
                 vec![UiEffect::Command(command)]
             }
             UiIntent::Undo => {
                 self.require_edit_capability(EditorCapability::History)?;
-                self.mark_dirty();
+                self.mark_dirty()?;
                 vec![UiEffect::Undo]
             }
             UiIntent::Redo => {
                 self.require_edit_capability(EditorCapability::History)?;
-                self.mark_dirty();
+                self.mark_dirty()?;
                 vec![UiEffect::Redo]
             }
             UiIntent::RequestSave => {
@@ -306,46 +306,17 @@ impl FlyUiStateMachine {
                 // requires the edit capability (pages:update at the
                 // permission layer), not the publish capability. Real
                 // publication is a separate flow with its own gate.
-                self.require_edit_capability(EditorCapability::Edit)?;
-                if self.state.has_blocking_diagnostics() {
-                    return Err(UiError::CapabilityUnavailable(
-                        "save blocked by validation diagnostics".to_string(),
-                    ));
-                }
-                if self.state.dirty.save_conflict {
-                    return Err(UiError::CapabilityUnavailable(
-                        "save blocked by unresolved revision conflict".to_string(),
-                    ));
-                }
-                if self.state.dirty.save_in_progress
-                    || self.state.dirty.save_started_request_id.is_some()
-                {
-                    return Err(UiError::CapabilityUnavailable(
-                        "save already in progress".to_string(),
-                    ));
-                }
+                self.require_save_admission()?;
                 vec![UiEffect::Persist {
                     expected_hash: self.state.dirty.project_hash,
                     command_sequence: self.state.dirty.command_sequence,
                 }]
             }
             UiIntent::SaveStarted { request_id } => {
-                self.require_edit_capability(EditorCapability::Edit)?;
+                self.require_save_admission()?;
                 if request_id.trim().is_empty() || request_id.len() > 128 {
                     return Err(UiError::CapabilityUnavailable(
                         "save request identity is missing or invalid".to_string(),
-                    ));
-                }
-                if self.state.dirty.save_conflict {
-                    return Err(UiError::CapabilityUnavailable(
-                        "save blocked by unresolved revision conflict".to_string(),
-                    ));
-                }
-                if self.state.dirty.save_in_progress
-                    || self.state.dirty.save_started_request_id.is_some()
-                {
-                    return Err(UiError::CapabilityUnavailable(
-                        "save already in progress".to_string(),
                     ));
                 }
                 self.state.dirty.save_started_request_id = Some(request_id);
@@ -375,6 +346,11 @@ impl FlyUiStateMachine {
                         "save response does not match the submitted project hash".to_string(),
                     ));
                 }
+                if revision.trim().is_empty() {
+                    return Err(UiError::CapabilityUnavailable(
+                        "save response revision is empty".to_string(),
+                    ));
+                }
                 self.state.dirty.save_started_hash = None;
                 self.state.dirty.save_started_request_id = None;
                 // The server acknowledged the snapshot that existed at SaveStarted, not
@@ -385,7 +361,8 @@ impl FlyUiStateMachine {
                     .dirty
                     .save_started_sequence
                     .take()
-                    .is_some_and(|sequence| sequence != self.state.dirty.command_sequence);
+                    .is_some_and(|sequence| sequence != self.state.dirty.command_sequence)
+                    || self.state.dirty.project_hash.is_some_and(|hash| hash != project_hash);
                 self.state.dirty.dirty = newer_edits;
                 self.state.dirty.save_in_progress = false;
                 self.state.dirty.save_failed = false;
@@ -469,6 +446,28 @@ impl FlyUiStateMachine {
         Ok(effects)
     }
 
+    fn require_save_admission(&self) -> UiResult<()> {
+        self.require_edit_capability(EditorCapability::Edit)?;
+        if self.state.has_blocking_diagnostics() {
+            return Err(UiError::CapabilityUnavailable(
+                "save blocked by validation diagnostics".to_string(),
+            ));
+        }
+        if self.state.dirty.save_conflict {
+            return Err(UiError::CapabilityUnavailable(
+                "save blocked by unresolved revision conflict".to_string(),
+            ));
+        }
+        if self.state.dirty.save_in_progress
+            || self.state.dirty.save_started_request_id.is_some()
+        {
+            return Err(UiError::CapabilityUnavailable(
+                "save already in progress".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     fn refresh_effective_capabilities(&mut self) {
         let capabilities = if self.state.presentation.is_editable()
             && !self.state.dirty.save_conflict
@@ -509,9 +508,13 @@ impl FlyUiStateMachine {
 
     /// Mirrors `RevisionState::mark_changed`: an edit after a failed save keeps `save_failed`
     /// set, because the changes are still unsaved. `SaveStarted` and `SaveSucceeded` clear it.
-    fn mark_dirty(&mut self) {
+    fn mark_dirty(&mut self) -> UiResult<()> {
+        let sequence = self.state.dirty.command_sequence.checked_add(1).ok_or_else(|| {
+            UiError::CapabilityUnavailable("document command sequence is exhausted".to_string())
+        })?;
         self.state.dirty.dirty = true;
-        self.state.dirty.command_sequence = self.state.dirty.command_sequence.saturating_add(1);
+        self.state.dirty.command_sequence = sequence;
+        Ok(())
     }
 }
 

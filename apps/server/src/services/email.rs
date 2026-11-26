@@ -38,6 +38,18 @@ pub struct EmailVerificationEmail {
     pub verification_token: String,
 }
 
+#[derive(Clone)]
+pub struct EmailChangeConfirmationEmail {
+    pub to: String,
+    pub token: String,
+}
+
+#[derive(Clone)]
+pub struct EmailChangeNotificationEmail {
+    pub to: String,
+    pub new_email: String,
+}
+
 #[async_trait]
 pub trait BuiltInAuthEmailSender: Send + Sync {
     async fn send_password_reset(
@@ -48,6 +60,16 @@ pub trait BuiltInAuthEmailSender: Send + Sync {
     async fn send_email_verification(
         &self,
         email: EmailVerificationEmail,
+    ) -> std::result::Result<(), EmailError>;
+
+    async fn send_email_change_confirmation(
+        &self,
+        email: EmailChangeConfirmationEmail,
+    ) -> std::result::Result<(), EmailError>;
+
+    async fn send_email_change_notification(
+        &self,
+        email: EmailChangeNotificationEmail,
     ) -> std::result::Result<(), EmailError>;
 }
 
@@ -125,6 +147,32 @@ mod templates {
         include_str!("../mailers/auth/email_verification/ru/text.t");
     pub const EMAIL_VERIFICATION_RU_HTML: &str =
         include_str!("../mailers/auth/email_verification/ru/html.t");
+
+    pub const EMAIL_CHANGE_CONFIRMATION_EN_SUBJECT: &str =
+        include_str!("../mailers/auth/email_change_confirmation/en/subject.t");
+    pub const EMAIL_CHANGE_CONFIRMATION_EN_TEXT: &str =
+        include_str!("../mailers/auth/email_change_confirmation/en/text.t");
+    pub const EMAIL_CHANGE_CONFIRMATION_EN_HTML: &str =
+        include_str!("../mailers/auth/email_change_confirmation/en/html.t");
+    pub const EMAIL_CHANGE_CONFIRMATION_RU_SUBJECT: &str =
+        include_str!("../mailers/auth/email_change_confirmation/ru/subject.t");
+    pub const EMAIL_CHANGE_CONFIRMATION_RU_TEXT: &str =
+        include_str!("../mailers/auth/email_change_confirmation/ru/text.t");
+    pub const EMAIL_CHANGE_CONFIRMATION_RU_HTML: &str =
+        include_str!("../mailers/auth/email_change_confirmation/ru/html.t");
+
+    pub const EMAIL_CHANGE_NOTIFICATION_EN_SUBJECT: &str =
+        include_str!("../mailers/auth/email_change_notification/en/subject.t");
+    pub const EMAIL_CHANGE_NOTIFICATION_EN_TEXT: &str =
+        include_str!("../mailers/auth/email_change_notification/en/text.t");
+    pub const EMAIL_CHANGE_NOTIFICATION_EN_HTML: &str =
+        include_str!("../mailers/auth/email_change_notification/en/html.t");
+    pub const EMAIL_CHANGE_NOTIFICATION_RU_SUBJECT: &str =
+        include_str!("../mailers/auth/email_change_notification/ru/subject.t");
+    pub const EMAIL_CHANGE_NOTIFICATION_RU_TEXT: &str =
+        include_str!("../mailers/auth/email_change_notification/ru/text.t");
+    pub const EMAIL_CHANGE_NOTIFICATION_RU_HTML: &str =
+        include_str!("../mailers/auth/email_change_notification/ru/html.t");
 }
 
 type AuthTemplateTriple = (&'static str, &'static str, &'static str);
@@ -206,6 +254,74 @@ pub fn render_email_verification(
     })
 }
 
+pub fn render_email_change_confirmation(
+    locale: &str,
+    token: &str,
+) -> std::result::Result<RenderedEmail, EmailError> {
+    use rustok_email::template::render_tera_string;
+
+    let vars = serde_json::json!({ "token": token });
+    let (subject, text, html) = localized_auth_templates(
+        locale,
+        (
+            templates::EMAIL_CHANGE_CONFIRMATION_EN_SUBJECT,
+            templates::EMAIL_CHANGE_CONFIRMATION_EN_TEXT,
+            templates::EMAIL_CHANGE_CONFIRMATION_EN_HTML,
+        ),
+        (
+            templates::EMAIL_CHANGE_CONFIRMATION_RU_SUBJECT,
+            templates::EMAIL_CHANGE_CONFIRMATION_RU_TEXT,
+            templates::EMAIL_CHANGE_CONFIRMATION_RU_HTML,
+        ),
+    );
+
+    Ok(RenderedEmail {
+        subject: render_tera_string(subject.trim(), &vars)?,
+        text: render_tera_string(text, &vars)?,
+        html: render_tera_string(html, &vars)?,
+    })
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+pub fn render_email_change_notification(
+    locale: &str,
+    new_email: &str,
+) -> std::result::Result<RenderedEmail, EmailError> {
+    use rustok_email::template::render_tera_string;
+
+    let vars = serde_json::json!({
+        "new_email": new_email,
+        "new_email_html": escape_html(new_email),
+    });
+    let (subject, text, html) = localized_auth_templates(
+        locale,
+        (
+            templates::EMAIL_CHANGE_NOTIFICATION_EN_SUBJECT,
+            templates::EMAIL_CHANGE_NOTIFICATION_EN_TEXT,
+            templates::EMAIL_CHANGE_NOTIFICATION_EN_HTML,
+        ),
+        (
+            templates::EMAIL_CHANGE_NOTIFICATION_RU_SUBJECT,
+            templates::EMAIL_CHANGE_NOTIFICATION_RU_TEXT,
+            templates::EMAIL_CHANGE_NOTIFICATION_RU_HTML,
+        ),
+    );
+
+    Ok(RenderedEmail {
+        subject: render_tera_string(subject.trim(), &vars)?,
+        text: render_tera_string(text, &vars)?,
+        html: render_tera_string(html, &vars)?,
+    })
+}
+
 // ── SMTP mailer adapter ──────────────────────────────────────────────────────
 
 /// SMTP bridge that preserves app-level localized templates while reusing the
@@ -240,6 +356,24 @@ impl BuiltInAuthEmailSender for DisabledBuiltInAuthEmailSender {
         _email: EmailVerificationEmail,
     ) -> std::result::Result<(), EmailError> {
         tracing::info!("Email verification provider disabled; skipping outbound send");
+        record_email_send_skipped();
+        Ok(())
+    }
+
+    async fn send_email_change_confirmation(
+        &self,
+        _email: EmailChangeConfirmationEmail,
+    ) -> std::result::Result<(), EmailError> {
+        tracing::info!("Email change confirmation provider disabled; skipping outbound send");
+        record_email_send_skipped();
+        Ok(())
+    }
+
+    async fn send_email_change_notification(
+        &self,
+        _email: EmailChangeNotificationEmail,
+    ) -> std::result::Result<(), EmailError> {
+        tracing::info!("Email change notification provider disabled; skipping outbound send");
         record_email_send_skipped();
         Ok(())
     }
@@ -280,6 +414,40 @@ impl BuiltInAuthEmailSender for TemplatedSmtpMailerAdapter {
         record_email_send_result(&result);
         result
     }
+
+    async fn send_email_change_confirmation(
+        &self,
+        email: EmailChangeConfirmationEmail,
+    ) -> std::result::Result<(), EmailError> {
+        let rendered = match render_email_change_confirmation(&self.locale, &email.token) {
+            Ok(rendered) => rendered,
+            Err(error) => {
+                let result = Err(error);
+                record_email_send_result(&result);
+                return result;
+            }
+        };
+        let result = self.sender.send_rendered(&email.to, &rendered).await;
+        record_email_send_result(&result);
+        result
+    }
+
+    async fn send_email_change_notification(
+        &self,
+        email: EmailChangeNotificationEmail,
+    ) -> std::result::Result<(), EmailError> {
+        let rendered = match render_email_change_notification(&self.locale, &email.new_email) {
+            Ok(rendered) => rendered,
+            Err(error) => {
+                let result = Err(error);
+                record_email_send_result(&result);
+                return result;
+            }
+        };
+        let result = self.sender.send_rendered(&email.to, &rendered).await;
+        record_email_send_result(&result);
+        result
+    }
 }
 
 // ── Factory ──────────────────────────────────────────────────────────────────
@@ -289,6 +457,9 @@ pub const EMAIL_VERIFICATION_TOKEN_TTL_SECS: u64 = 24 * 60 * 60;
 
 /// Password-reset token lifetime shared by REST and GraphQL flows.
 pub const PASSWORD_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
+
+/// Email-change confirmation challenges are short-lived and one-time.
+pub const EMAIL_CHANGE_TOKEN_TTL_SECS: u64 = 30 * 60;
 
 /// Tracks best-effort authentication email sends in the host runtime. The
 /// registry remains installed after shutdown so a concurrent request cannot
@@ -496,6 +667,40 @@ pub fn spawn_email_verification_send(
     })
 }
 
+/// Spawns a monitored email-change confirmation message.
+pub fn spawn_email_change_confirmation_send(
+    ctx: &ServerRuntimeContext,
+    email_service: Box<dyn BuiltInAuthEmailSender>,
+    recipient: String,
+    token: String,
+) -> tokio::task::JoinHandle<()> {
+    spawn_auth_email_task(ctx, "send_email_change_confirmation", move || async move {
+        email_service
+            .send_email_change_confirmation(EmailChangeConfirmationEmail {
+                to: recipient,
+                token,
+            })
+            .await
+    })
+}
+
+/// Spawns a monitored notification to the previously verified mailbox.
+pub fn spawn_email_change_notification_send(
+    ctx: &ServerRuntimeContext,
+    email_service: Box<dyn BuiltInAuthEmailSender>,
+    recipient: String,
+    new_email: String,
+) -> tokio::task::JoinHandle<()> {
+    spawn_auth_email_task(ctx, "send_email_change_notification", move || async move {
+        email_service
+            .send_email_change_notification(EmailChangeNotificationEmail {
+                to: recipient,
+                new_email,
+            })
+            .await
+    })
+}
+
 /// Best-effort verification email used by registration flows when the
 /// platform requires verified addresses. Failures are logged, never
 /// surfaced: the account exists and the resend endpoint stays available.
@@ -545,6 +750,11 @@ pub fn spawn_email_verification(
 /// Dispatches on `email.provider`:
 /// - `smtp` (default) → localized SMTP adapter over cached `SmtpEmailSender`
 /// - `none` → `EmailService::Disabled`
+pub fn auth_email_delivery_enabled(ctx: &ServerRuntimeContext) -> bool {
+    let settings = ctx.settings();
+    settings.email.enabled && matches!(settings.email.provider, EmailProvider::Smtp)
+}
+
 pub fn email_service_from_ctx(
     ctx: &ServerRuntimeContext,
     locale: &str,
@@ -700,6 +910,29 @@ mod tests {
         assert_eq!(regional.html, base.html);
     }
 
+    #[test]
+    fn render_email_change_confirmation_uses_token_in_both_locales() {
+        let en_token = "a".repeat(64);
+        let ru_token = "b".repeat(64);
+        let en = render_email_change_confirmation("en", &en_token).unwrap();
+        let ru = render_email_change_confirmation("ru-RU", &ru_token).unwrap();
+        assert!(en.text.contains(en_token.as_str()));
+        assert!(en.html.contains(en_token.as_str()));
+        assert!(ru.text.contains(ru_token.as_str()));
+        assert!(ru.html.contains(ru_token.as_str()));
+        assert_ne!(en.subject, ru.subject);
+    }
+
+    #[test]
+    fn render_email_change_notification_escapes_html_content() {
+        let rendered =
+            render_email_change_notification("en", "new&<script>@example.test").unwrap();
+        assert!(rendered.text.contains("new&<script>@example.test"));
+        assert!(rendered.html.contains("new&amp;&lt;script&gt;@example.test"));
+        assert!(!rendered.html.contains("<script>"));
+        assert!(!rendered.subject.trim().is_empty());
+    }
+
     #[tokio::test]
     async fn disabled_email_sender_records_skipped_metric() {
         let sender = DisabledBuiltInAuthEmailSender;
@@ -719,9 +952,23 @@ mod tests {
             })
             .await
             .unwrap();
+        sender
+            .send_email_change_confirmation(EmailChangeConfirmationEmail {
+                to: "new@example.test".to_string(),
+                token: "email-change-token".to_string(),
+            })
+            .await
+            .unwrap();
+        sender
+            .send_email_change_notification(EmailChangeNotificationEmail {
+                to: "old@example.test".to_string(),
+                new_email: "new@example.test".to_string(),
+            })
+            .await
+            .unwrap();
 
         let after = email_delivery_metrics_snapshot();
-        assert_eq!(after.skipped_total, before.skipped_total + 2);
+        assert_eq!(after.skipped_total, before.skipped_total + 4);
         assert_eq!(after.success_total, before.success_total);
         assert_eq!(after.failure_total, before.failure_total);
     }

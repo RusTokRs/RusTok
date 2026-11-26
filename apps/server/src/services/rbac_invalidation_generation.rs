@@ -168,6 +168,22 @@ where
         .map_err(|error| Error::Cache(error.to_string()))
 }
 
+/// A failed durable read cannot establish that cached permission snapshots
+/// are still current. Fence the cache even when no generation can be
+/// acknowledged. Callers hold the runtime reconciliation gate.
+pub(crate) async fn read_rbac_invalidation_generation_for_cache_recovery(
+    db: &DatabaseConnection,
+) -> Result<u64> {
+    match read_rbac_invalidation_generation(db).await {
+        Ok(generation) => Ok(generation),
+        Err(error) => {
+            invalidate_all_user_permissions_cache().await;
+            rbac_invalidation_metrics::record_full_clear("generation_read_failed");
+            Err(error)
+        }
+    }
+}
+
 async fn run_rbac_invalidation_generation_watchdog(
     db: DatabaseConnection,
     state: RbacInvalidationGenerationState,
@@ -179,7 +195,7 @@ async fn run_rbac_invalidation_generation_watchdog(
     loop {
         interval.tick().await;
         let _reconciliation = state.lock_reconciliation().await;
-        match read_rbac_invalidation_generation(&db).await {
+        match read_rbac_invalidation_generation_for_cache_recovery(&db).await {
             Ok(generation) => {
                 let applied_before = state.current();
                 rbac_invalidation_metrics::update_generations(generation, applied_before);
@@ -232,10 +248,10 @@ async fn run_rbac_invalidation_generation_watchdog(
                     "Durable RBAC invalidation state is not installed yet; watchdog will retry"
                 );
             }
-            Err(error) => {
+            Err(_) => {
                 tracing::error!(
-                    %error,
-                    "Failed to read durable RBAC invalidation generation"
+                    error_code = "rbac_generation_read_failed",
+                    "Failed to read durable RBAC invalidation generation; cleared permission snapshots"
                 );
                 rustok_telemetry::metrics::record_event_error(
                     RBAC_DURABLE_GENERATION_CHANNEL,

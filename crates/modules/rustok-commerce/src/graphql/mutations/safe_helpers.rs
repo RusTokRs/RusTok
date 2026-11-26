@@ -279,7 +279,7 @@ pub(crate) fn cart_port_error(error: PortError) -> async_graphql::Error {
         PortErrorKind::Unavailable | PortErrorKind::Timeout => (
             "Cart is temporarily unavailable",
             "CART_TEMPORARILY_UNAVAILABLE",
-            true,
+            error.retryable,
         ),
         PortErrorKind::InvariantViolation => (
             "Cart operation could not be completed safely",

@@ -1,12 +1,12 @@
 # Direct Session Refresh History
 
 - Date: 2026-11-25
-- Decision status: Accepted
+- Decision status: Superseded
 - Implementation status: In progress
 - Owners: platform / auth
 - Extends: [Auth lifecycle invalidation](./2026-02-26-auth-lifecycle-unification-session-invalidation.md)
 - Supersedes: None
-- Superseded by: None
+- Superseded by: [Proof-bound direct session refresh recovery](./2026-11-26-session-refresh-retry-proof.md)
 
 ## Context
 
@@ -19,8 +19,12 @@ credential could not trigger lineage revocation.
 Persist each outgoing refresh digest and rotation timestamp in
 `session_refresh_history` in the same transaction as replacement. Every
 recorded digest remains invalid for refresh. Replay of a recorded digest after
-the 30-second per-token grace revokes the live session. Missing or future
-rotation timestamps never grant grace. The current-token and previous-cookie
+the 30-second per-token grace revokes the live session. A replay inside grace
+returns an explicit already-rotated conflict without revoking the live session.
+Host BFFs must preserve cookies on this conflict and mark the unforwarded
+operation retryable: clearing cookies can race with the successful response
+from the replica that won rotation. Missing or future rotation timestamps
+never grant grace. The current-token and previous-cookie
 logout contracts and absolute 90-day lifetime remain unchanged.
 
 ## Sources of truth and ownership

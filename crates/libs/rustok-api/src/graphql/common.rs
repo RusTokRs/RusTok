@@ -96,17 +96,15 @@ impl PaginationInput {
             .transpose()?;
 
         const MAX_LIMIT: i64 = 100;
-        let mut offset = self.offset;
-        if let Some(after) = after {
-            offset = after
+        let min_offset = if let Some(after) = after {
+            after
                 .checked_add(1)
-                .ok_or_else(|| pagination_cursor_error("after"))?;
-        }
+                .ok_or_else(|| pagination_cursor_error("after"))?
+        } else {
+            self.offset
+        };
 
-        if let Some(before) = before {
-            offset = offset.min(before);
-        }
-
+        let mut offset = min_offset;
         let mut limit = self.limit.min(MAX_LIMIT);
         if let Some(first) = self.first {
             limit = first.min(MAX_LIMIT);
@@ -114,9 +112,17 @@ impl PaginationInput {
 
         if let Some(last) = self.last {
             let last = last.min(MAX_LIMIT);
+            limit = last;
             if let Some(before) = before {
-                offset = (before - last).max(0);
-                limit = last;
+                offset = before.saturating_sub(last).max(min_offset);
+            }
+        }
+
+        if let Some(before) = before {
+            if offset >= before {
+                limit = 0;
+            } else {
+                limit = limit.min(before - offset);
             }
         }
 
@@ -481,6 +487,54 @@ mod tests {
 
         assert_eq!(error.message, "Provide only one of `first` or `last`");
         assert_eq!(error_code(&error), Some(&Value::from("BAD_USER_INPUT")));
+    }
+
+    #[test]
+    fn pagination_enforces_exclusive_before_and_after_bounds() {
+        let clamped_backward = PaginationInput {
+            last: Some(10),
+            before: Some(encode_cursor(3)),
+            ..Default::default()
+        };
+        assert_eq!(
+            clamped_backward.normalize().expect("valid bounded backward"),
+            (0, 3)
+        );
+
+        let before_zero = PaginationInput {
+            last: Some(10),
+            before: Some(encode_cursor(0)),
+            ..Default::default()
+        };
+        assert_eq!(before_zero.normalize().expect("empty prefix"), (0, 0));
+
+        let overlapping_window = PaginationInput {
+            after: Some(encode_cursor(10)),
+            before: Some(encode_cursor(15)),
+            last: Some(10),
+            ..Default::default()
+        };
+        assert_eq!(
+            overlapping_window.normalize().expect("window intersection"),
+            (11, 4)
+        );
+
+        let empty_window = PaginationInput {
+            after: Some(encode_cursor(10)),
+            before: Some(encode_cursor(5)),
+            first: Some(10),
+            ..Default::default()
+        };
+        assert_eq!(empty_window.normalize().expect("crossed cursors"), (11, 0));
+
+        let last_without_before = PaginationInput {
+            last: Some(5),
+            ..Default::default()
+        };
+        assert_eq!(
+            last_without_before.normalize().expect("last sets limit"),
+            (0, 5)
+        );
     }
 
     #[test]

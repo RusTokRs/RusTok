@@ -5,11 +5,11 @@
 - `PageBuilderAdmin`: Primary Leptos visual page builder presentation shell.
 - `PageBuilderAdminHostContext`: Context container for canvas controller and admin facade injection.
 - `PageBuilderAdminWithController`: Pre-wired component binding a specific `AdminCanvasController`.
-- `DioxusPageBuilderAdminHostContext`: Dioxus host context; `with_draft_recovery_scope` enables page- and actor-scoped browser-local recovery when configured with an opaque stable scope. The direct controller component exposes the equivalent `draft_recovery_scope` prop.
+- `DioxusPageBuilderAdminHostContext`: Dioxus host context; `with_draft_recovery_scope` enables page- and actor-scoped browser-local recovery when configured with an opaque stable scope. The direct controller component exposes the equivalent `draft_recovery_scope` prop. Three-way recovery compares reorder constraints on surviving base component identities; movement of an item deleted by the other writer does not conflict with an independent reorder of surviving items.
 - `ConsumerPropertiesPanel`: Property inspector component for editing consumer properties.
 
 ### Canvas & Controller
-- `AdminCanvasController`: Manages iframe canvas lifecycle, selection, hover, and overlay geometry. `active_page_project` produces the one-page project used by both server-preview entrypoints without changing editor state; a missing active page or encoding failure is returned as a `FlyError`, not an empty document. `apply_recovered_merge` installs a validated local recovery snapshot as one undoable Fly command while preserving the server revision token for the next compare-and-set save.
+- `AdminCanvasController`: Manages iframe canvas lifecycle, selection, hover, and overlay geometry. `active_page_project` produces the one-page project used by both server-preview entrypoints without changing editor state; a missing active page or encoding failure is returned as a `FlyError`, not an empty document. `apply_recovered_merge` installs a validated local recovery snapshot as one undoable Fly command through normal snapshot-restore capability admission (including the history capability and editable presentation), while preserving the server revision token for the next compare-and-set save. Rejected editor intents leave matching server previews and release evaluations intact; acknowledging an earlier save reports newer unsaved edits rather than a clean save.
 - `AdminCanvasEffect`: Side-effects produced by canvas interactions (geometry updates, postMessage framing).
 - `AdminCanvasError`: Typed error representing canvas interaction failures.
 

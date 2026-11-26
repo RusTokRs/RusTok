@@ -34,15 +34,19 @@
   const acceptsTextInput = (target) => {
     if (!(target instanceof Element)) return false;
     const tag = target.tagName.toLowerCase();
-    return ['input', 'textarea', 'select'].includes(tag)
-      || target.isContentEditable
-      || Boolean(target.closest('[contenteditable="true"]'));
+    if (['input', 'textarea', 'select'].includes(tag)) return true;
+    for (let element = target; element; element = element.parentElement) {
+      const value = element.getAttribute('contenteditable')?.toLowerCase();
+      if (value === '' || value === 'true' || value === 'plaintext-only') return true;
+      if (value === 'false') return false;
+    }
+    return false;
   };
 
   // Physical-key token for a `KeyboardEvent.code`, mirroring `fly_ui::physical_key`.
   const physicalKey = (code) => {
     if (typeof code !== 'string' || code.length === 0) return null;
-    if (code.startsWith('Key') && code.length === 4) return code.slice(3).toLowerCase();
+    if (/^Key[\x00-\x7f]$/.test(code)) return code.slice(3).toLowerCase();
     return {
       Escape: 'escape',
       Delete: 'delete',
@@ -59,18 +63,26 @@
   // when the character did not match, so a layout that does produce a matching character — QWERTZ
   // reports `key: 'z'` with `code: 'KeyY'` — keeps its current behaviour.
   const editorShortcut = (event, editingText) => {
+    // Rust str::trim uses Unicode White_Space, not ECMAScript trim (which
+    // includes BOM but excludes NEL). Match Rust's ASCII-only case folding too.
+    const key = event.key.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, '')
+      .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+    if (event.isComposing || event.getModifierState('AltGraph')
+      || ['dead', 'process', 'unidentified'].includes(key)) return false;
     const primary = event.ctrlKey || event.metaKey;
-    const matches = (key) => {
-      if (key === 'escape') return true;
-      if (primary && key === 's') return true;
-      if (editingText) return false;
-      if (primary && ['z', 'y', 'c', 'x', 'v', 'd'].includes(key)) return true;
-      if (!primary && ['delete', 'backspace'].includes(key)) return true;
-      return event.altKey && ['arrowup', 'arrowdown'].includes(key);
+    const match = (token) => {
+      if (token === 'escape') return 'escape';
+      if (primary && ['s', 'z', 'y', 'c', 'x', 'v', 'd'].includes(token)) return token;
+      if (!primary && ['delete', 'backspace'].includes(token)) return token;
+      if (event.altKey && ['arrowup', 'arrowdown'].includes(token)) return token;
+      return null;
     };
-    if (matches(event.key.toLowerCase())) return true;
-    const physical = physicalKey(event.code);
-    return physical === null ? false : matches(physical);
+    // Select the character binding before applying text/repeat restrictions.
+    // Falling back after a restriction could select a different physical binding.
+    const shortcut = match(key) ?? match(physicalKey(event.code));
+    if (shortcut === null) return false;
+    if (editingText && !['s', 'escape'].includes(shortcut)) return false;
+    return !(event.repeat && ['s', 'd'].includes(shortcut));
   };
 
   const reportViewport = () => send('viewport_changed', {
@@ -241,7 +253,8 @@
   });
   document.addEventListener('keydown', (event) => {
     const editingText = acceptsTextInput(event.target);
-    if (editorShortcut(event, editingText)) event.preventDefault();
+    if (!editorShortcut(event, editingText)) return;
+    event.preventDefault();
     send('key_stroke', {
       stroke: {
         key: event.key,

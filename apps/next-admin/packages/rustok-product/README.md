@@ -13,6 +13,25 @@ This package provides the administration workspace for comprehensive product cat
 - **Product Bundles**: Create and manage bundle collections with individual item quantities and overrides.
 - **Idempotent Writes & Journaling**: Built-in write journaling (`write-journal.ts`, `write-attempt.ts`) ensuring crash-resilient write attempts, lock serialization, and recovery against network timeouts.
 
+## Product editor write recovery (2026-11-26; source only)
+
+Product save/status/delete/axis/variant operations and all four media mutations (add,
+update, delete, reorder) share the Product write journal. Each media attempt persists
+the exact request, idempotency key, tenant and actor scope before the server action runs.
+An unknown result can therefore be resumed after reload with the same owner request and
+key; the server action revalidates the original scope and forwards the key to GraphQL.
+The media card no longer owns ephemeral per-dialog retry keys.
+
+EAV save batches are constrained to the currently loaded effective Product form, excluding
+disabled and variant-only attributes. Saving is blocked while the selected category form is
+unavailable. Integer controls reject fractional and unsafe values instead of truncating
+them, and datetime-local controls convert between local wall time and ISO instants without
+displaying UTC as local time.
+
+Focused regressions cover image write recovery, category-schema filtering, integer parsing,
+and datetime-local round trips. They are authored but unrun; no build or browser behavior
+is certified.
+
 ## Architecture
 
 - **Host Integration**: Registers `/dashboard/product`, `/dashboard/product/categories`, `/dashboard/product/attributes`, and `/dashboard/product/bundles` under `modulePlugins` via `@/modules/registry`.

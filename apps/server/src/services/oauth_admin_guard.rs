@@ -389,6 +389,7 @@ mod tests {
     use crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider;
     use crate::services::oauth_app::{CreateOAuthAppInput, OAuthAppService};
     use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
+    use crate::services::server_runtime_context::ServerRuntimeContext;
     use rustok_api::Permission;
     use rustok_auth::{AuthAdminMutationContext, AuthAdminMutationError, OAuthAdminPort};
     use rustok_core::UserRole;
@@ -427,7 +428,7 @@ mod tests {
         .await
         .expect("create OAuth app");
         let inner = Arc::new(ServerAuthAdminMutationProvider::new(
-            db.clone(),
+            &ServerRuntimeContext::new(db.clone(), Default::default()),
             crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
         ));
         let guarded = GuardedOAuthAdminProvider::new(db.clone(), inner);
@@ -498,7 +499,7 @@ mod tests {
         let original_secret = created.client_secret;
         let app_id = created.app.id;
         let inner = Arc::new(ServerAuthAdminMutationProvider::new(
-            db.clone(),
+            &ServerRuntimeContext::new(db.clone(), Default::default()),
             crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
         ));
         let guarded = GuardedOAuthAdminProvider::new(db.clone(), inner);
@@ -656,7 +657,7 @@ mod tests {
         let guard = GuardedOAuthAdminProvider::new(
             db.clone(),
             Arc::new(ServerAuthAdminMutationProvider::new(
-                db.clone(),
+                &ServerRuntimeContext::new(db.clone(), Default::default()),
                 crate::auth::test_auth_config("test-secret-key-for-oauth-rotation-race-at-least-32-bytes".to_string()),
             )),
         );

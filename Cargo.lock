@@ -14211,20 +14211,26 @@ dependencies = [
  "axum",
  "futures-util",
  "gloo-storage",
+ "hex",
+ "hmac 0.13.0",
  "js-sys",
  "leptos",
  "leptos-use",
  "leptos_axum",
  "leptos_router",
+ "rand_core 0.6.4",
  "reqwest 0.13.5",
  "rustok-graphql",
  "rustok-ui-auth",
  "rustok-ui-transport",
+ "send_wrapper",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+ "wasm-bindgen-futures",
  "web-sys",
 ]
 
@@ -14309,7 +14315,9 @@ dependencies = [
  "rand 0.10.4",
  "rustok-api",
  "rustok-auth",
+ "rustok-blog-ports",
  "rustok-channel",
+ "rustok-channel-ports",
  "rustok-comments",
  "rustok-content",
  "rustok-content-orchestration",
@@ -14401,6 +14409,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-blog-ports"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "serde",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-blog-storefront"
 version = "0.1.0"
 dependencies = [
@@ -14410,6 +14429,7 @@ dependencies = [
  "rustok-api",
  "rustok-auth-ui",
  "rustok-blog",
+ "rustok-blog-ports",
  "rustok-channel",
  "rustok-comments-storefront-support",
  "rustok-core",

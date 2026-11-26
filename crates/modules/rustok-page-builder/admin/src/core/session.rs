@@ -398,7 +398,16 @@ impl EditorSessionState {
         ) {
             Ok(()) => {
                 self.last_error = None;
-                self.announce(self.save_succeeded.clone());
+                if self.controller.editor().revision().dirty {
+                    // Fly UI already recorded the partial-save announcement when it
+                    // acknowledged the submitted snapshot. Do not claim the newer
+                    // working changes were saved.
+                    if let Some(message) = self.controller.ui().state.announcements.last().cloned() {
+                        self.announce(message);
+                    }
+                } else {
+                    self.announce(self.save_succeeded.clone());
+                }
                 Ok(())
             }
             Err(error) => {
@@ -495,14 +504,18 @@ impl EditorSessionState {
     }
 
     pub fn dispatch_intent(&mut self, intent: UiIntent) -> Result<Vec<AdminCanvasEffect>, String> {
-        if intent.mutates_document() || matches!(&intent, UiIntent::ActivatePage { .. }) {
-            self.runtime_publish_gate_evaluation = None;
-            self.server_preview_html = None;
-            self.preview_request = None;
-            self.preview_in_progress = false;
-        }
+        let invalidates_preview =
+            intent.mutates_document() || matches!(&intent, UiIntent::ActivatePage { .. });
         match self.controller.dispatch(intent) {
             Ok(effects) => {
+                // The controller rolls back rejected intents. Keep its matching preview
+                // and release evaluation until an intent actually succeeds.
+                if invalidates_preview {
+                    self.runtime_publish_gate_evaluation = None;
+                    self.server_preview_html = None;
+                    self.preview_request = None;
+                    self.preview_in_progress = false;
+                }
                 self.last_error = None;
                 for effect in &effects {
                     if let AdminCanvasEffect::Announce(msg) = effect {
@@ -768,6 +781,33 @@ mod tests {
     }
 
     #[test]
+    fn earlier_save_acknowledgement_does_not_announce_newer_edits_as_saved() {
+        let mut session = EditorSessionState::new(sample_controller(), "Missing", "Saved");
+        let hash = session.controller.editor().revision().project_hash;
+        let attempt = session.mark_save_started_with_id().expect("save started");
+        session.dispatch_intent(UiIntent::execute(fly::EditorCommand::Insert {
+            parent_id: None,
+            index: 0,
+            component: fly::ComponentNode::object("section"),
+        })).expect("new edit");
+        session.handle_publish_response_for_attempt("home", "rev-2", Some(hash), &attempt)
+            .expect("earlier save acknowledged");
+
+        assert!(session.controller.editor().revision().dirty);
+        assert_eq!(session.controller.revision_id(), "rev-2");
+        assert_eq!(
+            session.last_announcement.as_deref(),
+            Some("Earlier edits saved; newer changes remain unsaved")
+        );
+        let latest_hash = session.controller.editor().revision().project_hash;
+        let latest = session.mark_save_started_with_id().expect("save latest");
+        session.handle_publish_response_for_attempt("home", "rev-3", Some(latest_hash), &latest)
+            .expect("latest save acknowledged");
+        assert!(!session.controller.editor().revision().dirty);
+        assert_eq!(session.last_announcement.as_deref(), Some("Saved"));
+    }
+
+    #[test]
     fn server_revision_conflict_retires_only_the_matching_attempt_and_fences_edits() {
         let controller = sample_controller();
         let mut session = EditorSessionState::new(controller, "Missing", "Saved");
@@ -942,6 +982,30 @@ mod tests {
 
         assert!(!state.preview_in_progress);
         assert!(state.preview_request.is_none());
+    }
+
+    #[test]
+    fn rejected_intent_keeps_matching_preview_and_active_request() {
+        let mut state = EditorSessionState::new(sample_controller(), "Missing", "Saved");
+        state.server_preview_html = Some("<main>previous</main>".to_string());
+        state.prepare_server_preview_request().expect("preview");
+        let attempt = state.preview_request.as_ref().expect("attempt").id;
+        assert!(state.dispatch_intent(UiIntent::ActivatePage {
+            page_id: Some("missing".to_string()),
+            page_index: usize::MAX,
+        }).is_err());
+        assert!(state.preview_attempt_active(attempt));
+        assert_eq!(state.server_preview_html.as_deref(), Some("<main>previous</main>"));
+        assert!(state.dispatch_intent(UiIntent::execute(fly::EditorCommand::Remove {
+            component_id: "missing".to_string(),
+        })).is_err());
+        assert!(state.preview_attempt_active(attempt));
+        state.handle_preview_response(attempt, &PreviewPageBuilderResult {
+            page_id: "home".to_string(),
+            html: "<main>current</main>".to_string(),
+            runtime_scenario_id: None,
+        }).expect("still-current preview");
+        assert_eq!(state.server_preview_html.as_deref(), Some("<main>current</main>"));
     }
 
     #[test]

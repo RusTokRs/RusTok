@@ -599,7 +599,7 @@ mod tests {
 
         // Accept some events
         for _ in 0..50 {
-            let _ = controller.try_acquire();
+            assert!(controller.try_acquire().is_ok());
         }
 
         let metrics = controller.metrics();
@@ -616,12 +616,12 @@ mod tests {
 
         // Fill to critical
         for _ in 0..90 {
-            let _ = controller.try_acquire();
+            assert!(controller.try_acquire().is_ok());
         }
 
         // Try to add more (should reject)
         for _ in 0..10 {
-            let _ = controller.try_acquire();
+            assert!(controller.try_acquire().is_err());
         }
 
         let metrics = controller.metrics();
@@ -641,7 +641,7 @@ mod tests {
 
         // Transition to Warning
         for _ in 0..70 {
-            let _ = controller.try_acquire();
+            assert!(controller.try_acquire().is_ok());
         }
         assert_eq!(controller.state(), BackpressureState::Warning);
         assert!(controller.state().is_degraded());
@@ -649,7 +649,7 @@ mod tests {
 
         // Transition to Critical
         for _ in 0..20 {
-            let _ = controller.try_acquire();
+            assert!(controller.try_acquire().is_ok());
         }
         assert_eq!(controller.state(), BackpressureState::Critical);
         assert!(controller.state().is_degraded());
@@ -682,7 +682,7 @@ mod tests {
             let controller = Arc::clone(&controller);
             handles.push(thread::spawn(move || {
                 for _ in 0..10 {
-                    let _ = controller.try_acquire();
+                    drop(controller.try_acquire());
                 }
             }));
         }
@@ -713,7 +713,7 @@ mod tests {
             let ctrl = Arc::clone(&controller);
             handles.push(thread::spawn(move || {
                 for _ in 0..50 {
-                    let _ = ctrl.try_acquire();
+                    assert!(ctrl.try_acquire().is_ok());
                 }
             }));
         }

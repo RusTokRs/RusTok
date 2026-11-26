@@ -38,3 +38,6 @@ uuid.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Location", "Window"] }
+
+[lints]
+workspace = true

@@ -86,6 +86,49 @@ fn style_patch_merges_and_can_remove_individual_properties() {
 }
 
 #[test]
+fn serialized_patch_conflicts_remove_values_and_round_trip_through_history() {
+    let mut editor = editor();
+    editor.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default()
+            .set_attribute("title", json!("Original"))
+            .set_field("content", json!("Original")),
+    }).expect("initial values");
+    let before = editor.document().clone();
+    let sequence = editor.revision().command_sequence;
+    let patch: ComponentPatch = serde_json::from_value(json!({
+        "attributes": { "title": "Replacement", "aria-label": "Keep" },
+        "remove_attributes": ["title"],
+        "fields": { "content": "Replacement" },
+        "remove_fields": ["content"],
+        "style": { "color": "blue" },
+        "remove_style_properties": ["color"]
+    })).expect("deserialize patch");
+    editor.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch,
+    }).expect("apply");
+    let after = editor.document().clone();
+    let component = after.component("hero").expect("component");
+    assert!(!component.attributes.contains_key("title"));
+    assert_eq!(component.attributes["aria-label"], "Keep");
+    assert!(!component.extensions.contains_key("content"));
+    assert!(component.style.as_ref().unwrap().get("color").is_none());
+    assert_eq!(editor.revision().command_sequence, sequence + 1);
+
+    let inverse = editor.history().undo_entries().last()
+        .and_then(|entry| entry.inverse()).expect("local inverse").clone();
+    let mut replay = FlyEditor::new(after.clone(), editor.registries().clone());
+    replay.apply(inverse).expect("apply inverse");
+    assert_eq!(replay.document(), &before);
+
+    editor.undo().expect("undo");
+    assert_eq!(editor.document(), &before);
+    editor.redo().expect("redo");
+    assert_eq!(editor.document(), &after);
+}
+
+#[test]
 fn composed_style_replacement_is_atomic_and_reversible() {
     let mut editor = editor();
     let before = editor.document().clone();
@@ -360,6 +403,59 @@ fn style_inverse_restores_absent_and_replaced_style_slots() {
 }
 
 #[test]
+fn asset_removal_only_has_local_inverse_when_it_preserves_order() {
+    let mut document = editor().document().clone();
+    document.project_mut().assets = vec![
+        json!({ "id": "first", "src": "/first.png" }),
+        json!({ "id": "last", "src": "/last.png" }),
+    ];
+    let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+    let before = editor.document().clone();
+    let remove = |id: &str| EditorCommand::Asset {
+        command: AssetCommand::Remove { asset_id: id.to_string() },
+    };
+    assert!(invert_command(&before, &remove("first")).is_none());
+    editor.apply(remove("first")).expect("remove first");
+    assert!(editor.history().undo_entries().last().unwrap().inverse().is_none());
+    editor.undo().expect("restore exact order");
+    assert_eq!(editor.document(), &before);
+    let inverse = invert_command(&before, &remove("last")).expect("tail inverse");
+    editor.apply(remove("last")).expect("remove last");
+    editor.apply(inverse).expect("append last");
+    assert_eq!(editor.document(), &before);
+}
+
+#[test]
+fn theme_inverse_does_not_claim_to_restore_normalized_or_rewritten_data() {
+    let mut document = editor().document().clone();
+    document.project_mut().extensions.insert(
+        crate::FLY_THEME_FIELD.to_string(),
+        json!({ "tokens": { "brand": " red " }, "future": true }),
+    );
+    let update = EditorCommand::Theme {
+        command: crate::ThemeCommand::Upsert {
+            token: crate::DesignToken { name: "brand".into(), value: "blue".into() },
+        },
+    };
+    assert!(invert_command(&document, &update).is_none());
+
+    document.project_mut().extensions.insert(
+        crate::FLY_THEME_FIELD.to_string(),
+        json!({ "tokens": { "brand": "red" } }),
+    );
+    let rename = EditorCommand::Theme {
+        command: crate::ThemeCommand::Rename { old_name: "brand".into(), new_name: "primary".into() },
+    };
+    assert!(invert_command(&document, &rename).is_none());
+    assert!(invert_command(&document, &update).is_some());
+    let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+    let before = editor.document().clone();
+    editor.apply(rename).expect("rename");
+    editor.undo().expect("snapshot undo");
+    assert_eq!(editor.document(), &before);
+}
+
+#[test]
 fn content_patch_that_removes_text_children_has_no_local_inverse() {
     let document = GrapesJsCodec::decode_value(json!({
         "pages": [{"id": "home", "component": {"id": "root", "type": "wrapper",
@@ -445,6 +541,60 @@ fn snapshot_restore_is_hash_verified_and_participates_in_history() {
     );
 }
 
+fn deep_snapshot_value() -> Value {
+    let mut value = Value::Null;
+    for _ in 0..50_000 {
+        value = Value::Array(vec![value]);
+    }
+    value
+}
+
+#[test]
+fn borrowed_snapshot_restore_checks_depth_before_cloning() {
+    let mut editor = editor();
+    let before = editor.clone();
+    let mut snapshots = SnapshotCatalog::default();
+    let mut snapshot = snapshots
+        .capture("Initial", editor.document(), Map::new())
+        .expect("snapshot")
+        .clone();
+
+    snapshot.metadata.insert("deep".into(), deep_snapshot_value());
+    let result = editor.restore_snapshot(&snapshot);
+    crate::drop_value_iteratively(Value::Object(std::mem::take(&mut snapshot.metadata)));
+    assert!(matches!(result, Err(FlyError::MaximumDepthExceeded { .. })));
+    snapshot.project_data = deep_snapshot_value();
+    let result = editor.restore_snapshot(&snapshot);
+    crate::drop_value_iteratively(std::mem::take(&mut snapshot.project_data));
+    assert!(matches!(result, Err(FlyError::MaximumDepthExceeded { .. })));
+    assert_eq!(editor, before);
+}
+
+#[test]
+fn owned_batch_rejects_deep_snapshot_payloads_even_after_an_earlier_invalid_command() {
+    let mut editor = editor();
+    let before = editor.clone();
+    let mut snapshots = SnapshotCatalog::default();
+    let snapshot = snapshots
+        .capture("Initial", editor.document(), Map::new())
+        .expect("snapshot")
+        .clone();
+    let mut deep_metadata = snapshot.clone();
+    deep_metadata.metadata.insert("deep".into(), deep_snapshot_value());
+    let mut deep_payload = snapshot;
+    deep_payload.project_data = deep_snapshot_value();
+
+    let result = editor.apply(EditorCommand::batch([
+        EditorCommand::Remove { component_id: "missing".into() },
+        EditorCommand::batch([
+            EditorCommand::restore_snapshot(deep_metadata),
+            EditorCommand::restore_snapshot(deep_payload),
+        ]),
+    ]));
+    assert!(matches!(result, Err(FlyError::MaximumDepthExceeded { .. })));
+    assert_eq!(editor, before);
+}
+
 #[test]
 fn tampered_snapshot_does_not_change_document_or_history() {
     let mut editor = editor();
@@ -505,6 +655,32 @@ fn history_evicts_oldest_entries_once_the_entry_limit_is_reached() {
 }
 
 #[test]
+fn changing_history_limit_preserves_budget_and_nearest_transitions() {
+    let mut editor = editor().with_history_memory_budget(1_000_000);
+    for step in 1..=3 {
+        editor.apply(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().set_attribute("data-step", json!(step)),
+        }).expect("edit");
+    }
+    editor.undo().expect("undo third edit");
+    let before = editor.document().clone();
+    let revision = editor.revision().clone();
+    let mut editor = editor.with_history_limit(2);
+    assert_eq!(editor.history().memory_budget_bytes(), 1_000_000);
+    assert_eq!(editor.history().undo_len(), 1);
+    assert_eq!(editor.history().redo_len(), 1);
+    assert_eq!(editor.document(), &before);
+    assert_eq!(editor.revision(), &revision);
+    editor.undo().expect("nearest undo");
+    assert_eq!(editor.document().component("hero").unwrap().attributes["data-step"], 1);
+    editor.redo().expect("nearest redo");
+    assert_eq!(editor.document(), &before);
+    editor.redo().expect("third edit remains");
+    assert_eq!(editor.document().component("hero").unwrap().attributes["data-step"], 3);
+}
+
+#[test]
 fn history_respects_its_memory_budget_but_always_keeps_one_entry() {
     let mut editor = editor().with_history_memory_budget(1);
 
@@ -555,7 +731,7 @@ fn retained_bytes_include_redo_after_undoing_everything() {
 fn history_budget_counts_snapshots_even_for_a_small_invertible_patch() {
     let mut document = editor().document().clone();
     document
-        .project()
+        .project_mut()
         .extensions
         .insert("large".to_string(), json!("x".repeat(50_000)));
     let serialized_size = serde_json::to_vec(&document).expect("document json").len();
@@ -990,6 +1166,24 @@ fn an_identical_retry_has_a_new_attempt_identity() {
         .acknowledge_submitted_attempt(same_hash, second, "rev-new")
         .expect("current attempt");
     assert_eq!(editor.revision().last_acknowledged_revision.as_deref(), Some("rev-new"));
+}
+
+#[test]
+fn empty_revision_cannot_acknowledge_an_active_save() {
+    let mut editor = editor();
+    let hash = editor.revision().project_hash;
+    let attempt = editor.revision_mut().begin_save_with_id().expect("start");
+    let before = editor.revision().clone();
+    for revision in ["", " \t"] {
+        assert!(editor.revision_mut()
+            .acknowledge_submitted_attempt(hash, attempt, revision)
+            .is_err());
+        assert_eq!(editor.revision(), &before);
+    }
+    editor.revision_mut()
+        .acknowledge_submitted_attempt(hash, attempt, "rev-2")
+        .expect("valid acknowledgement");
+    assert_eq!(editor.revision().last_acknowledged_revision.as_deref(), Some("rev-2"));
 }
 
 #[test]
@@ -1450,6 +1644,35 @@ fn undo_and_redo_reject_disconnected_deserialized_history_without_mutation() {
         assert!(matches!(error, FlyError::Validation(ref diagnostics)
             if diagnostics.iter().any(|d| d.code == "history_base_mismatch")));
         assert_eq!(restored, before);
+    }
+}
+
+#[test]
+fn exhausted_command_sequence_rejects_mutations_without_changing_history() {
+    let mut original = editor();
+    original.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().merge_style(json!({"color": "blue"})),
+    }).expect("edit");
+    let mut redo = original.clone();
+    redo.undo().expect("undo");
+    for (mut source, operation) in [(original.clone(), "apply"), (original, "undo"), (redo, "redo")] {
+        source.revision_mut().command_sequence = u64::MAX;
+        let before = source.clone();
+        let result = match operation {
+            "apply" => source.apply(EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: ComponentPatch::default().merge_style(json!({"color": "green"})),
+            }).map(|_| ()),
+            "undo" => source.undo().map(|_| ()),
+            _ => source.redo().map(|_| ()),
+        };
+        assert!(matches!(result, Err(FlyError::Validation(ref diagnostics))
+            if diagnostics.iter().any(|d| d.code == "command_sequence_exhausted")));
+        assert_eq!(source, before);
+        source.apply(EditorCommand::batch([])).expect("no-op remains valid");
+        assert_eq!(source.revision(), before.revision());
+        assert_eq!(source.history(), before.history());
     }
 }
 

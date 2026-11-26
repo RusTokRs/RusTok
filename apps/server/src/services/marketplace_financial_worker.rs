@@ -6,6 +6,7 @@ use tokio::task::JoinHandle;
 use tokio::time::{MissedTickBehavior, interval};
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::stop_handle::may_admit_next_worker_operation;
 
 static MARKETPLACE_FINANCIAL_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 const MARKETPLACE_FINANCIAL_SWEEP_INTERVAL: Duration = Duration::from_secs(10);
@@ -86,7 +87,7 @@ async fn worker_loop(
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!(
                 worker = "marketplace_financial_recovery",
                 instance_id,
@@ -145,19 +146,19 @@ where
     P: FnOnce() -> PF,
     PF: Future<Output = ()>,
 {
-    if *stop_rx.borrow() {
+    if !may_admit_next_worker_operation(stop_rx) {
         return false;
     }
     adapt().await;
-    if *stop_rx.borrow() {
+    if !may_admit_next_worker_operation(stop_rx) {
         return false;
     }
     reversal().await;
-    if *stop_rx.borrow() {
+    if !may_admit_next_worker_operation(stop_rx) {
         return false;
     }
     paid().await;
-    !*stop_rx.borrow()
+    may_admit_next_worker_operation(stop_rx)
 }
 
 async fn adapt_reversal_events(
@@ -296,6 +297,21 @@ mod tests {
                 "cycle completion after stop during phase {stop_during:?}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn closed_stop_channel_fences_remaining_recovery_phases() {
+        let (stop, stop_rx) = crate::services::stop_handle::StopHandle::new();
+        let completed = run_recovery_phases(
+            &stop_rx,
+            || async move {
+                drop(stop);
+                tokio::task::yield_now().await;
+            },
+            || async { panic!("reversal must not start after stop channel closure") },
+            || async { panic!("paid events must not start after stop channel closure") },
+        ).await;
+        assert!(!completed);
     }
 
     #[test]

@@ -131,9 +131,13 @@ impl TestDatabase {
 
 impl Drop for TestDatabase {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
-        let _ = std::fs::remove_file(self.path.with_extension("sqlite-shm"));
-        let _ = std::fs::remove_file(self.path.with_extension("sqlite-wal"));
+        for path in [
+            &self.path,
+            &self.path.with_extension("sqlite-shm"),
+            &self.path.with_extension("sqlite-wal"),
+        ] {
+            drop(std::fs::remove_file(path));
+        }
     }
 }
 

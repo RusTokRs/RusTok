@@ -86,12 +86,7 @@ pub async fn load_recent_user_activity(
     tenant_id: Uuid,
     limit: u64,
 ) -> Result<Vec<DashboardActivityUser>, DbErr> {
-    let users = UsersEntity::find()
-        .filter(UsersColumn::TenantId.eq(tenant_id))
-        .order_by_desc(UsersColumn::CreatedAt)
-        .limit(limit)
-        .all(db)
-        .await?;
+    let users = recent_user_activity_query(tenant_id, limit).all(db).await?;
 
     Ok(users
         .into_iter()
@@ -102,4 +97,37 @@ pub async fn load_recent_user_activity(
             created_at: user.created_at,
         })
         .collect())
+}
+
+fn recent_user_activity_query(tenant_id: Uuid, limit: u64) -> sea_orm::Select<UsersEntity> {
+    UsersEntity::find()
+        .filter(UsersColumn::TenantId.eq(tenant_id))
+        .order_by_desc(UsersColumn::CreatedAt)
+        .order_by_desc(UsersColumn::Id)
+        .limit(limit)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sea_orm::QueryTrait;
+
+    #[test]
+    fn recent_activity_uses_a_unique_tie_breaker_on_both_backends() {
+        for backend in [DbBackend::Sqlite, DbBackend::Postgres] {
+            let sql = recent_user_activity_query(Uuid::new_v4(), 8)
+                .build(backend)
+                .to_string();
+            let order = sql.split("ORDER BY").nth(1).expect("activity ordering");
+            assert!(
+                order.contains("\"created_at\" DESC"),
+                "{sql}"
+            );
+            assert!(
+                order.contains("\"id\" DESC"),
+                "{sql}"
+            );
+            assert!(order.find("created_at") < order.find("\"id\""), "{sql}");
+        }
+    }
 }

@@ -14,6 +14,7 @@ use crate::ports::BruteForceTrackerPort;
 use async_trait::async_trait;
 use chrono::Utc;
 use moka::future::Cache;
+use moka::ops::compute::{CompResult, Op};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -66,15 +67,21 @@ impl BruteForceTrackerPort for MokaBruteForceTracker {
         let now_secs = Utc::now().timestamp().max(0) as u64;
 
         if let Some(record) = self.cache.get(&key).await {
-            if let Some(until) = record.locked_until_secs
-                && until > now_secs
-            {
-                let remaining = until - now_secs;
+            if let Some(until) = record.locked_until_secs {
+                if until > now_secs {
+                    let remaining = until - now_secs;
+                    return Ok(LockoutDecision {
+                        is_locked: true,
+                        failed_attempts: record.failed_count,
+                        max_attempts: record.failed_count,
+                        remaining_lockout_secs: Some(remaining),
+                    });
+                }
                 return Ok(LockoutDecision {
-                    is_locked: true,
-                    failed_attempts: record.failed_count,
-                    max_attempts: record.failed_count,
-                    remaining_lockout_secs: Some(remaining),
+                    is_locked: false,
+                    failed_attempts: 0,
+                    max_attempts: 0,
+                    remaining_lockout_secs: None,
                 });
             }
             Ok(LockoutDecision {
@@ -103,47 +110,66 @@ impl BruteForceTrackerPort for MokaBruteForceTracker {
     ) -> SecurityResult<LockoutDecision> {
         let key = Self::key(tenant_id, identity, ip);
         let now_secs = Utc::now().timestamp().max(0) as u64;
+        let result = self
+            .cache
+            .entry_by_ref(&key)
+            .and_compute_with(|maybe_entry| async move {
+                let mut record = maybe_entry
+                    .map(|entry| entry.into_value())
+                    .unwrap_or(AttemptRecord {
+                        failed_count: 0,
+                        locked_until_secs: None,
+                    });
 
-        let mut record = self.cache.get(&key).await.unwrap_or(AttemptRecord {
-            failed_count: 0,
-            locked_until_secs: None,
-        });
+                if let Some(until) = record.locked_until_secs {
+                    if until > now_secs {
+                        return Op::Nop;
+                    }
+                    // Reset stale attempts once the previous lockout window has expired.
+                    record = AttemptRecord {
+                        failed_count: 0,
+                        locked_until_secs: None,
+                    };
+                }
 
-        // Check if currently locked
-        if let Some(until) = record.locked_until_secs
-            && until > now_secs
-        {
-            let remaining = until - now_secs;
-            return Ok(LockoutDecision {
-                is_locked: true,
-                failed_attempts: record.failed_count,
-                max_attempts,
-                remaining_lockout_secs: Some(remaining),
-            });
-        }
-
-        record.failed_count += 1;
-
-        if record.failed_count >= max_attempts {
-            let until = now_secs + lockout_duration_secs;
-            record.locked_until_secs = Some(until);
-            self.cache.insert(key, record.clone()).await;
-
-            Ok(LockoutDecision {
-                is_locked: true,
-                failed_attempts: record.failed_count,
-                max_attempts,
-                remaining_lockout_secs: Some(lockout_duration_secs),
+                record.failed_count = record.failed_count.saturating_add(1);
+                if record.failed_count >= max_attempts {
+                    record.locked_until_secs = Some(now_secs.saturating_add(lockout_duration_secs));
+                }
+                Op::Put(record)
             })
-        } else {
-            self.cache.insert(key, record.clone()).await;
+            .await;
 
-            Ok(LockoutDecision {
+        match result {
+            CompResult::Unchanged(entry) => {
+                let record = entry.into_value();
+                let remaining = record
+                    .locked_until_secs
+                    .map(|until| until.saturating_sub(now_secs))
+                    .filter(|secs| *secs > 0);
+                Ok(LockoutDecision {
+                    is_locked: remaining.is_some(),
+                    failed_attempts: record.failed_count,
+                    max_attempts,
+                    remaining_lockout_secs: remaining,
+                })
+            }
+            CompResult::Inserted(entry) | CompResult::ReplacedWith(entry) => {
+                let record = entry.into_value();
+                let is_locked = record.locked_until_secs.is_some();
+                Ok(LockoutDecision {
+                    is_locked,
+                    failed_attempts: record.failed_count,
+                    max_attempts,
+                    remaining_lockout_secs: is_locked.then_some(lockout_duration_secs),
+                })
+            }
+            CompResult::StillNone(_) | CompResult::Removed(_) => Ok(LockoutDecision {
                 is_locked: false,
-                failed_attempts: record.failed_count,
+                failed_attempts: 0,
                 max_attempts,
                 remaining_lockout_secs: None,
-            })
+            }),
         }
     }
 
@@ -209,5 +235,31 @@ mod tests {
         let d_after = tracker.check_lockout(tenant_id, user, &ip).await.unwrap();
         assert!(!d_after.is_locked);
         assert_eq!(d_after.failed_attempts, 0);
+    }
+
+    #[tokio::test]
+    async fn test_brute_force_resets_after_expired_lockout() {
+        let tracker = MokaBruteForceTracker::default();
+        let tenant_id = Uuid::new_v4();
+        let ip: IpAddr = "192.168.1.51".parse().unwrap();
+        let user = "expired@example.com";
+
+        let locked = tracker
+            .record_failure(tenant_id, user, &ip, 1, 0)
+            .await
+            .unwrap();
+        assert!(locked.is_locked);
+        assert_eq!(locked.failed_attempts, 1);
+
+        let checked = tracker.check_lockout(tenant_id, user, &ip).await.unwrap();
+        assert!(!checked.is_locked);
+        assert_eq!(checked.failed_attempts, 0);
+
+        let fresh = tracker
+            .record_failure(tenant_id, user, &ip, 3, 60)
+            .await
+            .unwrap();
+        assert!(!fresh.is_locked);
+        assert_eq!(fresh.failed_attempts, 1);
     }
 }

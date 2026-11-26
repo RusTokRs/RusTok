@@ -565,14 +565,13 @@ impl BuyerCartController {
             .save_checkpoint(&scope, BuyerCartCheckpoint::default())
             .is_err()
         {
-            if self.current_generation(&scope, generation) {
-                if self
+            if self.current_generation(&scope, generation)
+                && self
                     .state
                     .try_update(|session| session.fail(BuyerCartError::Restore))
                     .is_none()
-                {
-                    tracing::trace!("state signal disposed during reset_reference");
-                }
+            {
+                tracing::trace!("state signal disposed during reset_reference");
             }
             guard.finish();
             return;
@@ -1169,7 +1168,7 @@ mod tests {
             assert!(controller.begin_operation(false).is_none());
             assert!(controller.begin_operation(true).is_none());
             controller.reset_reference();
-            assert_eq!(controller.busy.get_untracked(), true);
+            assert!(controller.busy.get_untracked());
             assert!(guard.finish());
 
             controller
@@ -1265,8 +1264,8 @@ mod tests {
     #[test]
     fn selection_callback_cannot_acknowledge_a_disposed_owner() {
         init_test_executor();
-        let callback_owner = Owner::new();
-        let owner = Owner::new();
+        let root = Owner::new();
+        let (callback_owner, owner) = root.with(|| (Owner::new(), Owner::new()));
         let owner_to_dispose = owner.clone();
         let callback = callback_owner.with(|| {
             Callback::new(move |href: String| {

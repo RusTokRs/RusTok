@@ -167,7 +167,9 @@ crates/ui/fly/
   charset is the backstop. `ensure_stable_ids` rewrites non-conforming ids rather than preserving
   them, so a bad id can never deadlock the editor.
 - **Decode is depth-bounded.** `GrapesJsCodec` rejects payloads nested deeper than
-  `MAXIMUM_DECODE_DEPTH` before any recursive code touches them.
+  `MAXIMUM_DECODE_DEPTH` before any recursive code touches them. Bundle value imports
+  preflight the full envelope, and snapshot restoration/digest computation and bundle hashing
+  preflight their payloads before recursive work.
 - **Rendering escapes at every sink.** HTML text, attribute values, CSS attribute selectors and the
   `<style>` element body each have their own escape; URLs are filtered by `RenderPolicy`.
   Action, attribute and head URL checks share parsed HTTP(S) authority validation. SSR and
@@ -177,12 +179,52 @@ crates/ui/fly/
   literal URL commas as %2C. CSS url(), image(), src(),
   image-set() and -webkit-image-set() resource strings are checked against the same
   resource policy, including nested image functions; escaped or malformed strings fail closed.
+  Original quoted resource URLs are validated before token masking, and SSR and static
+  publication share a single source-order resource scan with atomic URL tokens.
+  Masking uses disjoint original UTF-8 ranges without rescanning modified text. CSS variable substitution is also blocked
+  in reflection masks (`-webkit-box-reflect`).
 
 ## Runtime locale selection
 
 Runtime values, localized page routes, internal page links and navigation actions share the
-same ordered locale fallback chain. Coverage summary lookup also uses the resolver's chain;
+same ordered locale fallback chain. Outgoing navigation selects the authored slug with the
+runtime value resolver (including explicit field fallback or a single translation), then
+checks that the inbound route resolves to the intended page under the same locale. A
+shadowed or ambiguous slug is unresolved, not an invitation to use a fallback URL.
+A missing translation may use an explicit fallback URL, never an arbitrary first locale.
+The runtime pipeline retains the authored route catalog separately from rendered metadata.
+Coverage summary lookup also uses the resolver's chain;
 required translation coverage still requires an exact locale entry, never a fallback.
+A localized value map with two keys that normalize to the same locale is invalid,
+even if the values agree. Authoring rejects such translation entries, imported maps
+remain lossless but unresolved, and coverage does not count ambiguous maps. Ambiguous
+localized slugs are excluded from inbound routing and reject outbound navigation
+without using the interaction fallback URL. A malformed locale key likewise invalidates
+the entire map: no exact or fallback translation is selected, no required coverage is
+credited, and neither inbound nor outbound navigation uses its slugs. Runtime translation
+projection removes stale caller values for these invalid entries. Metadata key errors
+and collisions are diagnosed even when no project locale policy is configured. Required-locale coverage and collision checks
+share the PageMetadata text-field inventory, including Open Graph type and Twitter Card,
+title, description and image. Plain, non-localized metadata is not counted as a translation gap.
+The authoring metadata projection may show a sample translation for editing, but HTML head
+rendering and plain slug selection only use resolved text. Call the runtime locale resolver
+before rendering localized metadata; unresolved wrappers remain lossless and are not emitted
+as an arbitrary language in the rendered head.
+Translation IDs are exact, nonempty ASCII alphanumeric, hyphen or underscore identities:
+surrounding whitespace is invalid on authoring and validation, and removal addresses the
+exact stored ID so an invalid imported entry can be removed without deleting a different
+entry. Duplicate decoded IDs never resolve at lookup or runtime, cannot satisfy required
+coverage, and cannot be silently overwritten by upsert. Explicit removal clears all
+decoded entries with that exact ID so it can be recreated unambiguously. A present
+non-array `flyTranslations` block is a blocking diagnostic and catalog
+mutations reject it without changing the source document; opaque array entries remain
+preserved.
+A page-targeting interaction requires a unique page ID. Duplicate imported page IDs are
+reported as ambiguous by both link and action validation/materialization, and cannot
+produce an href even when a fallback URL is configured.
+Link, action and form materialization removes all ASCII case variants of the HTML
+attributes it owns before validation or regeneration; an authored uppercase spelling
+cannot retain a stale destination, method or runtime action marker.
 
 ## Runtime binding ownership
 
@@ -264,6 +306,9 @@ Consumers must honor runtime error diagnostics before publishing.
 Page identities remain optional for legacy documents, but a page patch that sets `id` must supply a non-empty string; use `PagePatch.remove_fields` to clear an ID. Public document mutation helpers invalidate the cached project hash and component index, and compound theme/symbol commands publish changes only after validation succeeds.
 
 Mutating commands, including component patches, run the same full project validation before committing. A cached report is reused only for selection or an empty transaction; it cannot authorize a changed document. The patch-target validation API delegates to the canonical validator until dependency-complete incremental verification is available.
+Typed patch builders reconcile set/remove operations in call order. If a raw serialized
+patch contains both a set and a removal for the same exact attribute, field or style
+property, removal wins; unrelated writes remain in the same validated transaction.
 
 Snapshot comparisons fingerprint the actual document payload and retain the order and repeated identities of pages, assets and style rules. An entry whose position or payload changes appears in the corresponding changed collection (including shifted siblings); opaque entries retain their positions.
 
@@ -274,7 +319,13 @@ Batch transactions and content patches that remove scalar text children do not c
 local inverse; undo and redo restore the retained before/after snapshots only when
 the entry is connected to the current document and the destination satisfies current validation
 limits and provider policy. Rejection leaves both stacks, selection and revision unchanged. Style inverses
-restore the complete original style slot, including absence.
+restore the complete original style slot, including absence. Updating the entry limit
+preserves the configured byte budget and nearest contiguous undo/redo entries.
+Document mutations, undo and redo reject an exhausted command sequence before changing the
+working copy, history, selection or revision; validated no-ops remain allowed.
+Asset removal has a local inverse only for a unique tail entry. Theme renames and
+theme edits that normalize the original raw representation rely on snapshot history
+rather than an inexact local inverse.
 
 Snapshot capture verifies canonical payload round-trip, derives the fingerprint from that
 payload rather than a cached document hash, and commits its sequence only on success.
@@ -365,7 +416,9 @@ the owner of the missing half.
   configure the same registry on `FlyEditor::with_embed_registry`, and pass it to
   `render_page_with_embed_registry` or `render_page_with_runtime_context_with_embed_registry`.
   URLs are parsed as HTTPS, credentials and non-default ports are rejected, and normalized paths
-  must remain within an exact provider path boundary. The iframe sandbox permits scripts and
+  must remain within an exact provider path boundary. Literal dot segments and encoded
+  separators/dots are rejected in the authored path before URL parser normalization;
+  query and fragment parameters are not treated as path segments. The iframe sandbox permits scripts and
   same-origin access for player compatibility, so custom registrations must use dedicated
   cross-origin provider hosts and must never include the storefront/admin origin. Static publishing
   refuses `fly_embed` explicitly — embeds go through dynamic routes. Arbitrary unregistered embeds

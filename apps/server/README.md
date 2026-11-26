@@ -195,6 +195,9 @@ CIDRs narrow, including only proxies under operator control.
 In production, refresh-session cookies are always marked `Secure`, even
 when forwarded-protocol headers are absent or not trusted. Outside production,
 the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
+Cookie-session login/register issue a canonical HttpOnly token/seed envelope;
+refresh derives the generation-bound proof server-side. Deploy with the
+matching BFFs and revoke pre-cutover sessions; bare cookies are rejected.
 
 ## Docs
 
@@ -246,12 +249,14 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
 - First-party in-place refresh rotation records each superseded refresh-token
   digest in `session_refresh_history` in the same transaction as the rotation.
   Reuse of any recorded generation after the 30-second concurrency grace
-  revokes the session; a replay inside that grace window is rejected without
-  revoking the live session. The migration backfills only the last previous
-  digest retained by legacy session rows, so older pre-migration generations
-  cannot be reconstructed. The server still does not replay a successful
-  refresh response after a lost acknowledgement; idempotent response recovery
-  and incident reconciliation remain open; see the implementation plan.
+  revokes the session. During grace, a matching independent operation proof
+  can recover the still-current successor, including when the new cookie
+  arrived but the response body did not. Other duplicates conflict without
+  revoking the live session. Recovery does not extend the refresh deadline.
+  The migration backfills only the last available old digest; overwritten
+  pre-migration generations cannot be reconstructed. Built-in client proof
+  persistence/forwarding, API reference updates and runtime evidence remain
+  open; see the [Auth plan](../../crates/modules/rustok-auth/docs/implementation-plan.md).
 - OAuth refresh-token reuse now propagates failed revocation persistence as
   `server_error`, allowing the caller to retry after a storage outage instead of
   falsely reporting only an invalid grant. Its 30-second grace window suppresses

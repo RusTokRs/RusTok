@@ -108,7 +108,7 @@ requireArrayIncludes(
   [
     "this source-ready slice does not claim that the verifier SQLite test Cargo checks formatting workflows or CI ran",
     "this source-ready slice does not promote the canonical FORUM-21 status before maintainer execution",
-    "this slice does not add a public REST GraphQL native admin or storefront topic-move transport",
+    "this slice does not add a public REST native or storefront topic-move transport; GraphQL moveForumTopic and the Leptos admin move page are the manager transport",
     "this slice does not create canonical URL aliases redirects or route tombstones",
     "this slice does not merge split fork or move reply ranges",
     "this slice does not provide PostgreSQL concurrency runtime evidence",

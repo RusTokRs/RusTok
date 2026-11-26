@@ -8,6 +8,7 @@ use tokio::task::JoinHandle;
 use tokio::time::{MissedTickBehavior, interval};
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::stop_handle::may_admit_next_worker_operation;
 
 static PAYMENT_PROVIDER_EVENT_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 const PAYMENT_PROVIDER_EVENT_SWEEP_INTERVAL: Duration = Duration::from_secs(10);
@@ -77,7 +78,7 @@ async fn worker_loop(
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!(
                 worker = "payment_provider_event_recovery",
                 instance_id,
@@ -87,6 +88,7 @@ async fn worker_loop(
         }
 
         tokio::select! {
+            biased;
             changed = stop_rx.changed() => {
                 if changed.is_err() || *stop_rx.borrow() {
                     tracing::info!(
@@ -115,7 +117,7 @@ async fn sweep_tenants(
 ) {
     let mut after_tenant_id = None;
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(stop_rx) {
             // Finish the current durable recovery call, then stop before
             // selecting more tenants or starting new provider work.
             return;
@@ -143,7 +145,7 @@ async fn sweep_tenants(
             return;
         };
         for tenant in items {
-            if *stop_rx.borrow() {
+            if !may_admit_next_worker_operation(stop_rx) {
                 return;
             }
             let worker_id = format!(
@@ -151,10 +153,11 @@ async fn sweep_tenants(
                 tenant.id
             );
             match recovery
-                .run(
+                .run_with_admission(
                     tenant.id,
                     worker_id.as_str(),
                     Some(PAYMENT_PROVIDER_EVENT_SWEEP_BATCH),
+                    || may_admit_next_worker_operation(stop_rx),
                 )
                 .await
             {

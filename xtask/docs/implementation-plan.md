@@ -296,6 +296,8 @@ read-only and disposable-fixture verification can proceed earlier.
 - [ ] After the reference examples pass, define explicit input for the actual
   owner operation, schema and builder contribution before enabling capability
   generation. Reuse the existing native plan, preview and recovery path.
+- [ ] Add [module-local CLI generation](#module-local-cli-generation) for a real
+  owner operation and prove discovery and execution through `rustok-cli`.
 - [ ] Use the same file placement and applicable evidence when normalizing an
   existing module. Extend `module lint` with precise diagnostics for provable
   paths and wiring; use owner review for semantic moves, preserved API behavior,
@@ -379,6 +381,36 @@ targets. The checks ran against isolated in-memory SQLite databases.
 
 The pilot covers owner service and storage behavior. UI form hydration,
 transport parity, and PostgreSQL are separate evidence for the same contract.
+
+#### Module-local CLI generation
+
+Module-specific operational commands use the existing
+[CLI adapter boundary](../../docs/backend/module-backend-implementation.md#cli-adapters).
+CLI is optional and independent of UI, storage and Page Builder. Start with an
+explicit owner operation, its typed input and result, and the runtime and
+authority it requires. The identity scaffold leaves out `cli/` until a command
+can call that operation. The first generated adapter should bind an existing
+operation and preserve the owner's runtime sources and public API.
+
+- Generate `cli/` as the separate `rustok-<module>-cli` package with a thin
+  `src/lib.rs` exporting `command_provider`, a `src/provider.rs` for descriptors
+  and dispatch, and `src/commands/<operation>.rs` for each implemented command.
+  Put adapter contract tests in `src/tests/` and keep business rules and
+  persistence in the owner API. Use `rustok-cli-core` for the command contract.
+  Reuse `cargo xtask module lint <slug> --cli` for the generated package. The
+  same check covers the existing Blog adapter and generic layout fixtures.
+  The built platform CLI listed `blog cleanup-tokens` and `blog publish-scheduled`
+  through `list --namespace blog --json` before the Blog read-port migration.
+- Plan Cargo registration, the module's `[provides.cli]` metadata and generated
+  registry changes together when the command is selected. Reuse the existing
+  CLI registry generator, native preview and recoverable apply. Keep provider
+  dependencies on the CLI side of the platform composition boundary.
+- Use the [Blog CLI source layout](../../crates/modules/rustok-blog/cli/README.md#source-layout)
+  as the existing reference and prove generation in a disposable checkout.
+  Verify command discovery, a real owner call, typed failure and structured
+  output through `rustok-cli`. For a command declaring dry-run support, verify
+  that its preview leaves owner state and events unchanged. Check the workspace
+  without the CLI capability for the absence of its package and provider wiring.
 
 ### 4. Owner implementation and optional publication — P2, per module
 

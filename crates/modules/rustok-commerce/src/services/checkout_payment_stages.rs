@@ -40,6 +40,7 @@ mod payment_execution_boundary {
     pub(crate) struct BoundaryPortError {
         pub(crate) kind: PortErrorKind,
         pub(crate) code: String,
+        #[allow(dead_code)]
         pub(crate) message: String,
         pub(crate) retryable: bool,
     }

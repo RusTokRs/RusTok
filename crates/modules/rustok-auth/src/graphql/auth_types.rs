@@ -111,6 +111,28 @@ pub struct UpdateProfileInput {
 }
 
 #[derive(Debug, Clone, InputObject)]
+pub struct RequestEmailChangeInput {
+    pub new_email: String,
+    pub current_password: String,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct ConfirmEmailChangeInput {
+    pub token: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct RequestEmailChangePayload {
+    pub success: bool,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct ConfirmEmailChangePayload {
+    pub success: bool,
+    pub email: String,
+}
+
+#[derive(Debug, Clone, InputObject)]
 pub struct ChangePasswordInput {
     pub current_password: String,
     pub new_password: String,

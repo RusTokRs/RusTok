@@ -466,7 +466,7 @@ async fn admin_facets(
         .map(|code| (*code).to_string())
         .collect::<Vec<_>>();
     Ok(service(db)
-        .admin_catalog_facets(TENANT_A, locale, Some("en-US"), query, &codes)
+        .admin_catalog_facets(TENANT_A, locale, Some("en-US"), query, None, &codes)
         .await?)
 }
 
@@ -1029,6 +1029,7 @@ async fn run_request_validation_checks() -> Result<(), Box<dyn std::error::Error
                 "en-US",
                 Some("en-US"),
                 &admin_query(None, None, None, &[]),
+                None,
                 &["nosuch".to_string()],
             )
             .await

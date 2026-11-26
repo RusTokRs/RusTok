@@ -17,6 +17,7 @@ const restRuntime = `${forum}/src/controllers/mod.rs`;
 const contract = JSON.parse(readFileSync(path.join(repoRoot, boundary), "utf8"));
 const files = new Set([
   boundary, service, composition, resolver, graphqlRuntime, restRuntime,
+  `${forum}/src/services/topic_engagement_guard.rs`,
   `${forum}/CRATE_API.md`, `${forum}/README.md`, `${forum}/src/mentions.rs`,
   `${forum}/src/services/mention_relation.rs`, `${forum}/src/services/mention_relation_tests.rs`,
   `${forum}/src/services/topic_facade.rs`, `${forum}/src/services/reply_facade.rs`,
@@ -119,4 +120,16 @@ test("quote guard rejects removing the source lock from preserved-quote CAS", ()
 
 test("quote guard pins the current exact-locale replacement contract", () => {
   rejects(({ replace }) => replace(`${forum}/CRATE_API.md`, "exact source locale", "unspecified source locale"), /canonical quote API contract/);
+});
+
+
+test("quote guard requires both edits to use the canonical engagement policy", () => {
+  rejects(({ replace }) => replace(service,
+    "enforce_topic_engagement(\n", "removed_engagement_admission(\n"), /transactional quote admission/);
+});
+
+test("quote guard rejects losing the shared archived-parent refusal", () => {
+  rejects(({ replace }) => replace(`${forum}/src/services/topic_engagement_guard.rs`,
+    "TopicStatus::Archived => return Err(ForumError::TopicArchived)",
+    "TopicStatus::Archived => return Ok(())"), /canonical engagement admission/);
 });

@@ -456,20 +456,23 @@ wrappers. Each one has an owner decision or a follow-up task in
   [`DECISIONS/2026-10-09-forum-topic-pre-moderation.md`](../../../DECISIONS/2026-10-09-forum-topic-pre-moderation.md) and
   [`DECISIONS/2026-10-09-forum-reply-pre-moderation-setting.md`](../../../DECISIONS/2026-10-09-forum-reply-pre-moderation-setting.md).
 - `show_locked_topics_in_lists = false` hides locked topics from the storefront topic list. The widget preview
-  (`forum.topic_list`) does not apply it yet, and owner and moderator lists are not filtered.
+  (`forum.topic_list`) uses the same storefront audience gate (open topic, route channel, inherited
+  category floor, richer layers) and honours this flag. Owner and moderator lists are not filtered.
 - Topic and reply creates enforce the per-author cooldowns `rate_limit_new_topic_seconds` and
   `rate_limit_new_reply_seconds` (`0` disables each). A create inside the cooldown returns `FORUM_RATE_LIMITED`
   (HTTP 429). Only user actors are limited. System and service actors, including the starter import and
   the starter driver, are exempt. The cooldown does not count window limits; see
   [`DECISIONS/2026-10-09-forum-posting-rate-limits.md`](../../../DECISIONS/2026-10-09-forum-posting-rate-limits.md).
-  The posting policy evaluator (`posting_policy_evaluator.rs`) is not yet wired into the write path, so its
-  window rules are not enforced.
+  The posting policy evaluator (`posting_policy_evaluator.rs`) is intentionally not wired into the write
+  path until ADR `2026-10-09-forum-posting-rate-limits.md` is superseded; live creates are limited only
+  by `posting_rate.rs`.
 - User reports on topics and replies are filed with the Moderation owner through the `reportForumTopic` and
   `reportForumReply` GraphQL mutations, which return the report id. Forum checks the reporter's read audience, rejects
   self-reports, and pins the current subject revision; the host adapter forwards the report through
-  `ForumModerationReportPort`. Without that adapter the mutations fail closed. Not yet implemented: automatic flags
-  (a `rustok-moderation` policy, not a forum setting), free-text descriptions, report rate limits, REST transport, and the storefront report
-  action. See [`DECISIONS/2026-10-09-forum-user-reports-via-moderation.md`](../../../DECISIONS/2026-10-09-forum-user-reports-via-moderation.md).
+  `ForumModerationReportPort`. Without that adapter the mutations fail closed. The Leptos storefront
+  files the same mutations from topic and reply report actions. Not yet implemented: automatic flags
+  (a `rustok-moderation` policy, not a forum setting), free-text descriptions, report rate limits, and REST transport.
+  See [`DECISIONS/2026-10-09-forum-user-reports-via-moderation.md`](../../../DECISIONS/2026-10-09-forum-user-reports-via-moderation.md).
 - Reply notifications are delivered. `forum.topic.replied` is claimed by the host outbox
   intake decoder, described against the approved reply, and fanned out to topic-level
   watchers first and to the owning category's watchers second: an explicit topic-level row

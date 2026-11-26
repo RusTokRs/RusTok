@@ -27,6 +27,8 @@ use super::edit_window::enforce_author_edit_window;
 use super::engagement_mode::ForumSettingsProviders;
 use super::mention_relation::MentionRelationService;
 use super::rbac::enforce_owned_scope;
+use super::topic_engagement_guard::{TopicEngagementKind, enforce_topic_engagement};
+use super::topic_facade::TopicService;
 
 #[derive(Clone, Copy)]
 enum ForumQuoteSource {
@@ -179,19 +181,19 @@ impl ForumQuoteCommandService {
                     .topic_id
             }
         };
-        let topic = super::topic_facade::TopicService::find_topic_for_update_in_tx(
-            txn, tenant_id, topic_id,
-        )
-        .await?;
-        if topic.status == crate::state_machine::TopicStatus::Archived {
-            return Err(ForumError::TopicArchived);
-        }
+        let topic = TopicService::find_topic_for_update_in_tx(txn, tenant_id, topic_id).await?;
+        enforce_topic_engagement(
+            &topic,
+            match source {
+                ForumQuoteSource::Topic(_) => TopicEngagementKind::UpdateTopic,
+                ForumQuoteSource::Reply(_) => TopicEngagementKind::UpdateReply,
+            },
+            security,
+            source.resource(),
+        )?;
         let (owner_id, created_at) = match source {
             ForumQuoteSource::Topic(_) => (topic.author_id, topic.created_at),
             ForumQuoteSource::Reply(id) => {
-                if topic.is_locked {
-                    return Err(ForumError::TopicLocked);
-                }
                 let reply = super::reply_facade::ReplyService::find_reply_for_update_in_tx(
                     txn, tenant_id, id,
                 )

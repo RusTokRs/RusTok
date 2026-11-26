@@ -54,6 +54,45 @@ fn strict_draft_operation_identity_survives_reload_and_is_reconciled_without_aut
 }
 
 #[test]
+fn strict_mount_uses_server_rendered_draft_identity_not_stale_storage() {
+    let source = include_str!("../assets/fly-browser.js");
+    assert!(source.contains(
+        "this.requiresOperationReceipts = root.dataset.flyDraftContract ==="
+    ));
+    assert!(source.contains("authoritative: root.dataset.flyDraftBinding ==="));
+    assert!(source.contains("readDraftSession(this.pageId, {"));
+    assert!(source.contains("token: root.dataset.flyRenderedDraftToken"));
+    assert!(source.contains("generation: root.dataset.flyRenderedDraftGeneration"));
+    let rendered = source.find("renderedBinding.required === true").expect("strict binding");
+    let storage = source.find("globalThis.sessionStorage?.getItem(draftStorageKey(pageId))")
+        .expect("legacy storage fallback");
+    assert!(rendered < storage, "strict mounts must not consult stale storage first");
+    assert!(source.contains("this.root.dataset.flyRenderedDraftGeneration = String(this.draftSession.generation)"));
+}
+
+#[test]
+fn strict_requests_require_a_page_id_before_they_can_be_sent() {
+    let source = include_str!("../assets/fly-browser.js");
+    assert!(source.contains("!nonEmptyString(request.page_id)"));
+    assert!(source.contains("!nonEmptyString(pendingRequest.page_id)"));
+}
+
+#[test]
+fn committed_receipts_are_bound_to_the_original_page_and_draft() {
+    let source = include_str!("../assets/fly-browser.js");
+    let start = source.find("function isCommittedOperationReceipt")
+        .expect("committed receipt validator");
+    let end = source[start..].find("\n}\n")
+        .map(|offset| start + offset)
+        .expect("validator end");
+    let validator = &source[start..end];
+    assert!(validator.contains("nonEmptyString(request.page_id) !== null"));
+    assert!(validator.contains("state.page_id === request.page_id"));
+    assert!(validator.contains("result.draft_token === request.draft_token"));
+    assert!(validator.contains("result.operation_id === request.operation_id"));
+}
+
+#[test]
 fn every_non_mutating_rust_intent_is_read_only_in_the_browser_receipt_policy() {
     let source = include_str!("../assets/fly-browser.js");
     let start = source

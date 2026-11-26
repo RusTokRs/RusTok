@@ -59,3 +59,15 @@ for (const [before, after, diagnostic] of [
     assert.match(result.stderr, diagnostic);
   });
 }
+
+
+for (const binding of ["", "selection\n                                selection=selection"]) {
+  test(`paging guard rejects missing/duplicate selection prop: ${binding || 'missing'}`, () => {
+    const result = runMutation(
+      "<ForumTopicFeed\n                                topics=topics_page\n                                selection\n",
+      `<ForumTopicFeed\n                                topics=topics_page\n                                ${binding}\n`,
+    );
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /topic feed must bind selection exactly once/);
+  });
+}

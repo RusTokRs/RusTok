@@ -88,10 +88,14 @@ pub enum AuthLifecycleMutationError {
     AccountLocked,
     EmailNotVerified,
     InvalidRefreshToken,
+    RefreshAlreadyRotated,
+    SessionLineageMismatch,
     SessionExpired,
     UserNotFound,
     InvalidResetToken,
     InvalidInviteToken,
+    InvalidEmailChangeToken,
+    EmailDeliveryUnavailable,
     Unauthorized,
     Validation(String),
     Internal(String),
@@ -106,10 +110,14 @@ impl std::fmt::Display for AuthLifecycleMutationError {
             Self::AccountLocked => f.write_str("account is temporarily locked"),
             Self::EmailNotVerified => f.write_str("email address is not verified"),
             Self::InvalidRefreshToken => f.write_str("invalid refresh token"),
+            Self::RefreshAlreadyRotated => f.write_str("refresh attempt already rotated"),
+            Self::SessionLineageMismatch => f.write_str("session lineage mismatch"),
             Self::SessionExpired => f.write_str("session expired"),
             Self::UserNotFound => f.write_str("user not found"),
             Self::InvalidResetToken => f.write_str("invalid reset token"),
             Self::InvalidInviteToken => f.write_str("invalid invite token"),
+            Self::InvalidEmailChangeToken => f.write_str("invalid or expired email change token"),
+            Self::EmailDeliveryUnavailable => f.write_str("email delivery is not configured"),
             Self::Unauthorized => f.write_str("authentication required"),
             Self::Validation(message) | Self::Internal(message) => f.write_str(message),
         }
@@ -173,6 +181,8 @@ pub trait AuthLifecyclePort: Send + Sync {
         &self,
         context: &AuthLifecycleContext,
         refresh_token: String,
+        retry_key: Option<crate::AuthRefreshRetryKey>,
+        expected_session_id: Option<Uuid>,
     ) -> Result<AuthTokenRecord, AuthLifecycleMutationError>;
 
     async fn forgot_password(
@@ -186,6 +196,19 @@ pub trait AuthLifecyclePort: Send + Sync {
         context: &AuthLifecycleContext,
         name: Option<String>,
     ) -> Result<AuthUserRecord, AuthLifecycleMutationError>;
+
+    async fn request_email_change(
+        &self,
+        context: &AuthLifecycleContext,
+        new_email: String,
+        current_password: String,
+    ) -> Result<(), AuthLifecycleMutationError>;
+
+    async fn confirm_email_change(
+        &self,
+        context: &AuthLifecycleContext,
+        token: String,
+    ) -> Result<String, AuthLifecycleMutationError>;
 
     async fn change_password(
         &self,

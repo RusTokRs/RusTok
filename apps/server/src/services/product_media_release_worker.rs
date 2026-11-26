@@ -1,6 +1,6 @@
 //! Restart-safe delivery of Product-owned committed Media removals.
 use crate::services::server_runtime_context::ServerRuntimeContext;
-use crate::services::stop_handle::run_admitted_worker_operation;
+use crate::services::stop_handle::{may_admit_next_worker_operation, run_admitted_worker_operation};
 use std::time::Duration;
 use tokio::{
     task::JoinHandle,
@@ -33,12 +33,21 @@ pub fn spawn_product_media_release_worker(
             let mut ticker = interval(Duration::from_secs(5));
             ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
             loop {
-                if *stop.borrow() {
+                if !may_admit_next_worker_operation(&stop) {
                     break;
                 }
                 tokio::select! {
-                    changed = stop.changed() => {if changed.is_err() || *stop.borrow() {break;} continue;},
+                    biased;
+                    changed = stop.changed() => {
+                        if changed.is_err() || !may_admit_next_worker_operation(&stop) {
+                            break;
+                        }
+                        continue;
+                    }
                     _ = ticker.tick() => {},
+                }
+                if !may_admit_next_worker_operation(&stop) {
+                    break;
                 }
                 // Read one owner snapshot for the entire batch. Its CatalogService
                 // binds Product persistence and Media authority together; shared host
@@ -79,5 +88,34 @@ pub fn spawn_product_media_release_worker(
                 }
             }
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::settings::RustokSettings;
+
+    #[tokio::test]
+    async fn stopped_or_closed_watch_terminates_worker_without_catalog_runtime() {
+        for closed in [false, true] {
+            let ctx = ServerRuntimeContext::new(
+                sea_orm::DatabaseConnection::default(),
+                RustokSettings::default(),
+            );
+            let (sender, receiver) = tokio::sync::watch::channel(!closed);
+            let sender = if closed {
+                drop(sender);
+                None
+            } else {
+                Some(sender)
+            };
+            let worker = spawn_product_media_release_worker(ctx, receiver);
+            tokio::time::timeout(Duration::from_secs(1), worker.join())
+                .await
+                .expect("terminal shutdown watch must stop the worker")
+                .expect("worker must join successfully");
+            drop(sender);
+        }
     }
 }

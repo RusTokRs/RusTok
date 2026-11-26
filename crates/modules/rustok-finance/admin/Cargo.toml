@@ -55,3 +55,6 @@ tracing.workspace = true
 
 [package.metadata.cargo-udeps.ignore]
 normal = ["rustok-auth-ui", "rustok-ui-leptos", "leptos-ui-routing", "leptos_axum", "leptos_router", "rustok-api", "rustok-core", "rustok-finance", "rustok-graphql", "rustok-ui-core", "rustok-ui-transport", "uuid"]
+
+[lints]
+workspace = true

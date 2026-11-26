@@ -749,6 +749,39 @@ likewise exits 127. Do not treat this as a passing gate or compiled verification
 No adapter-only/source result closes this boundary. Inheritance acceptance
 remains in progress; the README limitations mirror the unresolved evidence gates.
 
+#### Upstream reconciliation for PR #4825 (2026-11-26)
+
+Integrated `main` at `7a2b6c72687e760f785571dd976476f21e43464c` on the
+existing task branch. Resolved the twelve conflicted files semantically:
+
+- Keep the canonical upstream engagement gate for reply edits/restores and quote
+  edits, while retaining the transaction-local ownership/edit-window checks,
+  solution lock ordering and selected Taxonomy lifecycle checks from this branch.
+- Preserve both settings and Taxonomy capabilities in widget owners/factories.
+- Preserve upstream report actions and selected-reply quote revisions, while
+  retaining submitted/localized feed controls, complete request-key fencing and
+  owner-selected continuation. Remove the duplicate Leptos selection prop created
+  by the automatic merge; a guard and mutation fixtures now reject recurrence.
+- Quote guards follow the shared engagement owner rather than requiring duplicated
+  status logic inside the quote writer; mutation coverage rejects loss of the
+  shared archived-parent refusal or the call from the writer.
+
+Post-reconciliation local evidence: **904/904** scoped Forum/DB-multilingual Node
+cases, **31/31** targeted Forum source guards, and **14/14** extracted-SQL SQLite
+cases (`verify-forum-reply-restore.py` / `verify-forum-topic-repair.py`) pass.
+Rust checks remain blocked by missing Cargo; none of this proves Rust compilation,
+real owner execution, concurrency, mounted transport or production migration DDL.
+
+The existing remote API compatibility run failed while exporting its **base**
+revision, before exporting this PR. Local policy checks reproduce an expired
+`RUSTSEC-2026-0253` exception (2026-11-01) and a release Dockerfile/policy mismatch
+(`release image config must not contain symlinks`). Those policy/Dockerfile files
+are unchanged by this PR. No exception renewal, CI rewrite, security waiver or
+check override is introduced by this reconciliation. Full remote logs could not
+be downloaded: PowerShell is absent and the Actions log archive host is outside
+the environment's outbound allowlist; job steps and annotations were inspected
+through the GitHub API instead.
+
 Required maintainer checks before integration:
 
 ```bash

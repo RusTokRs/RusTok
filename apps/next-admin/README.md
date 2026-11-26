@@ -61,3 +61,18 @@ Docker uses the repository root as its build context:
 The npm-only stages retain local file dependency paths, build richtext assets,
 and copy the standalone app plus those assets into the image. The old Bun
 lockfile is removed. Docker image build/runtime still require external verification.
+
+## Known Limitations / Pending Implementation
+
+Proof-bound BFF refresh relays the Auth-owned HttpOnly token/seed envelope
+with bounded same-operation retry. Revoke old sessions before the coordinated
+backend/BFF cutover and require a new sign-in. Mounted
+browser/BFF/backend response-loss and replica-race verification, including
+late cookie delivery and Auth.js logout failure handling, remain pending.
+See [session lifecycle](docs/README.md#authentication-and-session-lifecycle).
+
+Auth.js identities are bound to the Auth-issued direct session ID and tenant
+UUID. Old Auth.js identities require fresh sign-in. Expected-lineage conflicts
+refuse refresh/logout and GraphQL dispatch without clearing cookies. Auth.js
+event-driven sign-out cannot gate its own session clearing; explicit confirmed
+logout remains pending.

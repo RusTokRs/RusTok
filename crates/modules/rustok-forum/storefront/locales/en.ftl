@@ -64,6 +64,13 @@ forum-thread-openTitle = Open a thread
 forum-thread-pageFailed = Could not load the next replies page
 forum-thread-quote = Quote
 forum-thread-quoteTitle = Quote this reply
+forum-thread-report = Report
+forum-thread-reportTitle = Report this content
+forum-thread-reportReason = Reason
+forum-thread-reportSubmit = Send report
+forum-thread-reportPending = Sending…
+forum-thread-reportDone = Report submitted
+forum-thread-reportFailed = Could not submit the report
 forum-thread-repliesTitle = Replies
 # plural-exempt: adjectival 'N total' is invariant in English
 forum-thread-repliesTotal = { $count } total

@@ -141,3 +141,43 @@ for (const animation of ['constructor', 'toString', '__proto__', 'unknown']) {
     }
   });
 }
+
+test('stale stop handles cannot unregister a replacement document adapter', () => {
+  const { actions } = fixture();
+  function mockDocument() {
+    const listeners = new Map();
+    return {
+      listeners,
+      addEventListener(type, listener) {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type).add(listener);
+      },
+      removeEventListener(type, listener) {
+        listeners.get(type)?.delete(listener);
+      },
+    };
+  }
+
+  const doc = mockDocument();
+  const otherDoc = mockDocument();
+  const first = actions.start(doc);
+  const other = actions.start(otherDoc);
+  assert.strictEqual(actions.start(doc), first);
+  first.stop();
+  for (const listeners of doc.listeners.values()) assert.equal(listeners.size, 0);
+
+  const replacement = actions.start(doc);
+  assert.notStrictEqual(replacement, first);
+  first.stop();
+  assert.strictEqual(actions.start(doc), replacement);
+  assert.strictEqual(actions.start(otherDoc), other);
+  assert.equal(doc.listeners.size, 4);
+  for (const listeners of doc.listeners.values()) assert.equal(listeners.size, 1);
+  for (const listeners of otherDoc.listeners.values()) assert.equal(listeners.size, 1);
+
+  replacement.stop();
+  replacement.stop();
+  for (const listeners of doc.listeners.values()) assert.equal(listeners.size, 0);
+  other.stop();
+  for (const listeners of otherDoc.listeners.values()) assert.equal(listeners.size, 0);
+});

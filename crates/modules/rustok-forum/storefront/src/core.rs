@@ -235,6 +235,29 @@ pub fn forum_storefront_quote_revision(revision_id: Option<i64>) -> Option<i64> 
     revision_id.filter(|value| *value > 0)
 }
 
+/// Reason codes the storefront report action may send. These match the
+/// Moderation owner vocabulary; unknown values fail closed in the Forum report
+/// service instead of being rewritten here.
+pub const FORUM_STOREFRONT_REPORT_REASON_CODES: &[&str] = &[
+    "spam",
+    "fraud",
+    "harassment",
+    "hate_or_abuse",
+    "threats",
+    "sexual_content",
+    "violence",
+    "illegal_goods",
+    "counterfeit",
+    "misinformation",
+    "personal_data_exposure",
+    "copyright",
+    "impersonation",
+    "manipulated_rating",
+    "off_topic",
+    "duplicate_content",
+    "other",
+];
+
 /// True when the composer text carries something the owner can store. An empty
 /// discussion document is rejected by the owner contract, so the composer keeps
 /// the submit action disabled rather than sending a doomed write.

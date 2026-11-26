@@ -1,7 +1,7 @@
 use crate::dto::{BuilderTreeNode, PageBuilderCapabilityRequest};
 use crate::transport::{PageBuilderTransportError, PageBuilderTransportSuccess};
 use fly::{
-    ComponentNode, GrapesJsCodec, ProjectDocument, RegistrySet, ValidationDiagnostic,
+    ComponentNode, ComponentObject, GrapesJsCodec, ProjectDocument, RegistrySet, ValidationDiagnostic,
     ValidationLimits, ValidationReport, validate_project,
 };
 use serde::{Deserialize, Serialize};
@@ -47,7 +47,7 @@ impl FlyProjectInspection {
         registries: &RegistrySet,
         limits: ValidationLimits,
     ) -> FlyProjectAdapterResult<Self> {
-        let document = GrapesJsCodec::decode_value(project_data.clone())
+        let document = GrapesJsCodec::decode_ref(project_data)
             .map_err(|error| FlyProjectAdapterError::Decode(error.to_string()))?;
         let validation = validate_project(&document, registries, limits);
         Ok(Self {
@@ -93,10 +93,13 @@ impl FlyProjectInspection {
 
     /// Return the lossless serialized properties for one component, excluding its child list so a
     /// property panel cannot accidentally replace the component subtree.
+    /// Anonymous components can be addressed by the snapshot-local path IDs returned by
+    /// `tree_nodes`; those IDs are not persistent component identities.
     pub fn component_properties(&self, component_id: &str) -> FlyProjectAdapterResult<Value> {
         let component = self
             .document
             .component(component_id)
+            .or_else(|| anonymous_component_at_tree_id(&self.document, component_id))
             .ok_or_else(|| FlyProjectAdapterError::ComponentNotFound(component_id.to_string()))?;
         let mut value = serde_json::to_value(component)
             .map_err(|error| FlyProjectAdapterError::Encode(error.to_string()))?;
@@ -140,6 +143,36 @@ fn component_to_tree(component: &ComponentNode, path: &str) -> Option<BuilderTre
         label,
         children,
     })
+}
+
+// The brackets in this namespace cannot occur in a valid explicit Fly component ID.
+// Resolve only canonical paths emitted by component_to_tree, without treating a path
+// as an alternative ID for an already identified component or for an opaque node.
+fn anonymous_component_at_tree_id<'a>(
+    document: &'a ProjectDocument,
+    tree_id: &str,
+) -> Option<&'a ComponentObject> {
+    fn index_and_tail(value: &str) -> Option<(usize, &str)> {
+        let (digits, tail) = value.split_once(']')?;
+        let index = digits.parse::<usize>().ok()?;
+        (index.to_string() == digits).then_some((index, tail))
+    }
+
+    let (page_index, tail) = index_and_tail(tree_id.strip_prefix("fly:pages[")?)?;
+    let mut tail = tail.strip_prefix(".component")?;
+    let mut component = document
+        .project()
+        .pages
+        .get(page_index)?
+        .component
+        .as_ref()?
+        .as_object()?;
+    while !tail.is_empty() {
+        let (index, rest) = index_and_tail(tail.strip_prefix(".components[")?)?;
+        component = component.children().get(index)?.as_object()?;
+        tail = rest;
+    }
+    component.id().is_none().then_some(component)
 }
 
 pub type FlyProjectAdapterResult<T> = Result<T, FlyProjectAdapterError>;
@@ -302,6 +335,77 @@ mod tests {
         assert_eq!(properties["type"], "section");
         assert_eq!(properties["attributes"]["class"], "rtk-hero");
         assert!(properties.get("components").is_none());
+    }
+
+    #[test]
+    fn tree_ids_resolve_anonymous_components_without_aliasing_named_or_opaque_nodes() {
+        let project = json!({
+            "pages": [
+                {
+                    "id": "home",
+                    "component": {
+                        "type": "wrapper",
+                        "components": [
+                            "opaque text",
+                            {
+                                "type": "section",
+                                "attributes": { "class": "anonymous" },
+                                "components": [{ "id": "title", "type": "text" }]
+                            }
+                        ]
+                    }
+                },
+                {
+                    "id": "other",
+                    "component": { "type": "wrapper" }
+                }
+            ]
+        });
+        let inspection = FlyProjectInspection::decode(&project).expect("decode");
+        inspection.require_valid().expect("anonymous nodes are allowed");
+        let tree = inspection.tree_nodes();
+        assert_eq!(tree[0].id, "fly:pages[0].component");
+        let section_id = &tree[0].children[0].id;
+        assert_eq!(section_id, "fly:pages[0].component.components[1]");
+        let properties = inspection.component_properties(section_id).expect("section");
+        assert_eq!(properties["attributes"]["class"], "anonymous");
+        assert!(properties.get("components").is_none());
+        assert!(properties.get("id").is_none());
+        for root in &tree {
+            assert_eq!(
+                inspection.component_properties(&root.id).expect("root")["type"],
+                "wrapper"
+            );
+        }
+        assert_eq!(inspection.component_properties("title").expect("named")["type"], "text");
+        for invalid in [
+            "fly:pages[0].component.components[0]",
+            "fly:pages[0].component.components[1].components[0]",
+            "fly:pages[0].component.components[2]",
+            "fly:pages[00].component",
+            "fly:pages[9].component",
+            "fly:pages[0].component.extra",
+        ] {
+            assert!(matches!(
+                inspection.component_properties(invalid),
+                Err(FlyProjectAdapterError::ComponentNotFound(_))
+            ), "unexpectedly resolved {invalid}");
+        }
+    }
+
+    #[test]
+    fn fly_inspection_rejects_excessive_json_depth() {
+        let mut nested = Value::Null;
+        for _ in 0..256 {
+            nested = Value::Array(vec![nested]);
+        }
+        let project = Value::Object(serde_json::Map::from_iter([
+            ("payload".to_string(), nested),
+        ]));
+        assert!(matches!(
+            FlyProjectInspection::decode(&project),
+            Err(FlyProjectAdapterError::Decode(_))
+        ));
     }
 
     #[test]

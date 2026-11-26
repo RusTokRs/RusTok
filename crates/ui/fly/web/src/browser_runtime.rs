@@ -27,7 +27,7 @@ impl std::fmt::Display for BrowserRuntimeError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidTargetOrigin => {
-                formatter.write_str("iframe target origin must be explicit and must not be `*`")
+                formatter.write_str("iframe origin must be explicit and must not be `*`; an opaque inbound origin requires a source window")
             }
             Self::MissingWindow => formatter.write_str("browser window is unavailable"),
             Self::MissingDocument => formatter.write_str("browser document is unavailable"),
@@ -150,6 +150,8 @@ pub struct WindowMessageSubscription {
 }
 
 impl WindowMessageSubscription {
+    /// An opaque expected origin requires an exact source window; concrete
+    /// HTTP(S) origins may still be used for origin-scoped generic messages.
     pub fn subscribe(
         window: &Window,
         expected_source: Option<&Window>,
@@ -157,7 +159,11 @@ impl WindowMessageSubscription {
         expected_instance_id: impl Into<String>,
         mut handler: impl FnMut(IframeBridgeEnvelope) + 'static,
     ) -> Result<Self, BrowserRuntimeError> {
-        let expected_origin = validate_origin(expected_origin)?;
+        let expected_origin = crate::origin::normalize_subscription_origin(
+            &expected_origin.into(),
+            expected_source.is_some(),
+        )
+        .ok_or(BrowserRuntimeError::InvalidTargetOrigin)?;
         let expected_source = expected_source.map(|window| JsValue::from(window.clone()));
         let expected_instance_id = expected_instance_id.into();
         let last_sequence = Rc::new(Cell::new(None));

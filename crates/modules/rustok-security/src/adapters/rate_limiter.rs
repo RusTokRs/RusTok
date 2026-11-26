@@ -14,13 +14,21 @@ use crate::ports::RateLimiterPort;
 use async_trait::async_trait;
 use chrono::Utc;
 use moka::future::Cache;
+use moka::ops::compute::{CompResult, Op};
 use std::sync::Arc;
 use std::time::Duration;
+
+#[derive(Clone, Copy, Debug)]
+struct RateLimitEntry {
+    bucket: u64,
+    window_secs: u64,
+    count: u32,
+}
 
 /// Lightweight in-memory rate limiter backed by Moka concurrent cache.
 #[derive(Clone)]
 pub struct MokaRateLimiter {
-    cache: Arc<Cache<String, u32>>,
+    cache: Arc<Cache<String, RateLimitEntry>>,
 }
 
 impl MokaRateLimiter {
@@ -54,39 +62,56 @@ impl RateLimiterPort for MokaRateLimiter {
         let now_secs = Utc::now().timestamp().max(0) as u64;
         let safe_window = window_secs.max(1);
         let window_bucket = now_secs / safe_window;
-        let cache_key = format!("{}:{}", key, window_bucket);
-
-        let current = self.cache.get(&cache_key).await.unwrap_or(0);
         let retry_after_secs = safe_window.saturating_sub(now_secs % safe_window).max(1);
 
-        if current >= limit {
-            Ok(RateLimitDecision {
-                allowed: false,
-                current_count: current,
-                limit,
-                retry_after_secs: Some(retry_after_secs),
+        let result = self
+            .cache
+            .entry_by_ref(key)
+            .and_compute_with(|maybe_entry| async move {
+                let current = maybe_entry
+                    .map(|entry| entry.into_value())
+                    .filter(|entry| {
+                        entry.bucket == window_bucket && entry.window_secs == safe_window
+                    })
+                    .map(|entry| entry.count)
+                    .unwrap_or(0);
+
+                if current >= limit {
+                    Op::Nop
+                } else {
+                    Op::Put(RateLimitEntry {
+                        bucket: window_bucket,
+                        window_secs: safe_window,
+                        count: current.saturating_add(1),
+                    })
+                }
             })
-        } else {
-            let next_count = current + 1;
-            self.cache.insert(cache_key, next_count).await;
-            Ok(RateLimitDecision {
+            .await;
+
+        match result {
+            CompResult::Inserted(entry) | CompResult::ReplacedWith(entry) => Ok(RateLimitDecision {
                 allowed: true,
-                current_count: next_count,
+                current_count: entry.into_value().count,
                 limit,
                 retry_after_secs: None,
-            })
+            }),
+            CompResult::Unchanged(entry) => Ok(RateLimitDecision {
+                allowed: false,
+                current_count: entry.into_value().count,
+                limit,
+                retry_after_secs: Some(retry_after_secs),
+            }),
+            CompResult::StillNone(_) | CompResult::Removed(_) => Ok(RateLimitDecision {
+                allowed: false,
+                current_count: 0,
+                limit,
+                retry_after_secs: Some(retry_after_secs),
+            }),
         }
     }
 
     async fn reset(&self, key: &str) -> SecurityResult<()> {
-        let now_secs = Utc::now().timestamp().max(0) as u64;
-        // Invalidate current and previous window bucket
-        for offset in 0..=2 {
-            let window_bucket = now_secs.saturating_sub(offset);
-            self.cache
-                .invalidate(&format!("{}:{}", key, window_bucket))
-                .await;
-        }
+        self.cache.invalidate(key).await;
         Ok(())
     }
 }
@@ -128,5 +153,17 @@ mod tests {
         // key2 is unaffected
         let d2_allow = limiter.check_rate_limit(key2, 1, 60).await.unwrap();
         assert!(d2_allow.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_moka_rate_limiter_reset_clears_active_bucket() {
+        let limiter = MokaRateLimiter::default();
+        let key = "test:ip:10.0.0.99";
+
+        assert!(limiter.check_rate_limit(key, 1, 60).await.unwrap().allowed);
+        assert!(!limiter.check_rate_limit(key, 1, 60).await.unwrap().allowed);
+
+        limiter.reset(key).await.unwrap();
+        assert!(limiter.check_rate_limit(key, 1, 60).await.unwrap().allowed);
     }
 }
