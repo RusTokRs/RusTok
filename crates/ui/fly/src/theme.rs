@@ -38,6 +38,14 @@ impl DesignToken {
 /// Decode and validate the project's design tokens, sorted by name. A project without a
 /// `flyTheme` extension has no tokens; a malformed one is an error, never a partial theme.
 pub fn decode_theme_tokens(document: &ProjectDocument) -> Result<Vec<DesignToken>, String> {
+    let decoded = decode_token_definitions(document)?;
+    validate_token_dependencies(&decoded)?;
+    Ok(decoded)
+}
+
+// A speculative batch may temporarily contain unresolved references. Decode
+// the token definitions independently, while keeping the public decoder strict.
+fn decode_token_definitions(document: &ProjectDocument) -> Result<Vec<DesignToken>, String> {
     let Some(theme) = document.project().extensions.get(FLY_THEME_FIELD) else {
         return Ok(Vec::new());
     };
@@ -64,13 +72,16 @@ pub fn decode_theme_tokens(document: &ProjectDocument) -> Result<Vec<DesignToken
         });
     }
     decoded.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(decoded)
+}
 
+fn validate_token_dependencies(decoded: &[DesignToken]) -> Result<(), String> {
     let allowed_references = decoded
         .iter()
         .map(|token| format!("--{}", token.name))
         .collect::<std::collections::BTreeSet<_>>();
     let mut reference_graph = std::collections::BTreeMap::new();
-    for token in &decoded {
+    for token in decoded {
         let references = crate::css_var_references(&token.value).ok_or_else(|| {
             format!("design token {} contains a malformed var() reference", token.name)
         })?;
@@ -91,7 +102,7 @@ pub fn decode_theme_tokens(document: &ProjectDocument) -> Result<Vec<DesignToken
         validate_token_reference_cycles(name, &reference_graph, &mut visiting, &mut visited)?;
     }
 
-    Ok(decoded)
+    Ok(())
 }
 
 fn validate_token_reference_cycles(
@@ -636,18 +647,21 @@ pub fn apply_theme_command(
     Ok(())
 }
 
-fn apply_theme_command_inner(
+// Only call on a private candidate whose complete dependency graph will be
+// validated before publication. The editor already owns such a candidate.
+pub(crate) fn apply_theme_command_inner(
     document: &mut ProjectDocument,
     command: &ThemeCommand,
 ) -> crate::FlyResult<()> {
-    let mut tokens = decode_theme_tokens(document)
-        .map_err(|message| crate::FlyError::Decode(format!("invalid flyTheme: {message}")))?;
+    // Replacement is also the recovery operation for a malformed stored theme.
+    // It must not require the old token set to be valid or even decodable.
+    let mut tokens = match command {
+        ThemeCommand::Replace { tokens } => tokens.clone(),
+        _ => decode_token_definitions(document)
+            .map_err(|message| crate::FlyError::Decode(format!("invalid flyTheme: {message}")))?,
+    };
     match command {
-        ThemeCommand::Replace {
-            tokens: replacement,
-        } => {
-            tokens = replacement.clone();
-        }
+        ThemeCommand::Replace { .. } => {}
         ThemeCommand::Upsert { token } => {
             validate_token_name(&token.name)
                 .and_then(|_| validate_token_value(&token.name, &token.value))
@@ -1045,6 +1059,71 @@ mod command_tests {
             assert_eq!(document, before);
             assert_eq!(document.hash(), hash);
         }
+    }
+
+    #[test]
+    fn theme_replace_can_repair_malformed_stored_definitions() {
+        let mut document = document_with_theme(json!({ "tokens": ["malformed"] }));
+        assert!(decode_theme_tokens(&document).is_err());
+        let before = document.clone();
+        let invalid = ThemeCommand::Replace {
+            tokens: vec![DesignToken {
+                name: "brand".into(),
+                value: "var(--missing)".into(),
+            }],
+        };
+        assert!(apply_theme_command(&mut document, &invalid).is_err());
+        assert_eq!(document, before);
+        let repair = ThemeCommand::Replace {
+            tokens: vec![DesignToken {
+                name: "brand".into(),
+                value: "#123456".into(),
+            }],
+        };
+        apply_theme_command(&mut document, &repair).expect("repair malformed theme");
+        assert_eq!(decode_theme_tokens(&document).expect("valid tokens")[0].value, "#123456");
+
+        let mut editor = FlyEditor::new(before, RegistrySet::with_builtins());
+        assert!(!editor.validate().is_valid());
+        editor.apply(EditorCommand::Theme { command: repair }).expect("repair via editor");
+        assert!(editor.validate().is_valid());
+    }
+
+    #[test]
+    fn theme_batch_validates_final_graph_and_preserves_atomic_history() {
+        fn upsert(name: &str, value: &str) -> EditorCommand {
+            EditorCommand::Theme {
+                command: ThemeCommand::Upsert {
+                    token: DesignToken { name: name.into(), value: value.into() },
+                },
+            }
+        }
+        let mut editor = FlyEditor::new(
+            document_with_theme(json!({ "tokens": {} })),
+            RegistrySet::with_builtins(),
+        );
+        let before = editor.document().clone();
+        let before_hash = editor.revision().project_hash;
+        assert!(editor.apply(upsert("accent", "var(--brand)")).is_err());
+        assert_eq!(editor.revision().project_hash, before_hash);
+        assert_eq!(editor.history().undo_len(), 0);
+
+        editor.apply(EditorCommand::batch([
+            upsert("accent", "var(--brand)"),
+            upsert("brand", "#123456"),
+        ])).expect("forward dependency resolved by the same batch");
+        let after = editor.document().clone();
+        assert_eq!(editor.history().undo_len(), 1);
+        assert_eq!(decode_theme_tokens(&after).expect("valid theme").len(), 2);
+
+        let state = editor.clone();
+        assert!(editor.apply(EditorCommand::batch([
+            upsert("brand", "var(--accent)"),
+            upsert("other", "1rem"),
+        ])).is_err());
+        assert_eq!(editor, state);
+        assert_eq!(editor.undo().expect("undo"), &before);
+        assert_eq!(editor.redo().expect("redo"), &after);
     }
 
     #[test]

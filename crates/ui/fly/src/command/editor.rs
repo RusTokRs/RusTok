@@ -354,7 +354,9 @@ impl FlyEditor {
             EditorCommand::Asset { command } => apply_asset_command(document, command),
             EditorCommand::Symbol { command } => apply_symbol_command(document, command),
             EditorCommand::StyleRule { command } => apply_style_rule_command(document, command),
-            EditorCommand::Theme { command } => crate::apply_theme_command(document, command),
+            // The outer transaction validates the final theme graph. Intermediate
+            // batch members may introduce references resolved by later members.
+            EditorCommand::Theme { command } => crate::theme::apply_theme_command_inner(document, command),
             EditorCommand::Page { command } => apply_page_command(document, command),
             EditorCommand::Dynamic { command } => apply_dynamic_command(document, command),
             EditorCommand::Binding { command } => apply_binding_command(document, command),
