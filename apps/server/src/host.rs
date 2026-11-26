@@ -490,19 +490,12 @@ fn validate_database_deployment(database_uri: &str, production: bool) -> Result<
         || host
             .parse::<std::net::IpAddr>()
             .is_ok_and(|address| address.is_loopback());
-    let default_port = match parsed.scheme() {
-        "postgres" | "postgresql" => Some(5432),
-        "mysql" => Some(3306),
-        _ => None,
-    };
-    let port = parsed.port().or(default_port);
     let database_name = decode_percent_encoded_component(parsed.path().trim_matches('/'))
         .ok_or_else(|| {
             Error::BadRequest("Production database URI contains invalid percent-encoding".to_string())
         })?;
-    let uses_local_development_database = host_is_local
-        && port == Some(5432)
-        && database_name.eq_ignore_ascii_case("rustok_dev");
+    let uses_local_development_database =
+        host_is_local && database_name.eq_ignore_ascii_case("rustok_dev");
 
     if uses_development_credentials
         || uses_local_development_database
@@ -545,6 +538,7 @@ fn decode_hex_digit(value: u8) -> Option<u8> {
         _ => None,
     }
 }
+
 fn application_router(
     host_mode: crate::common::settings::RuntimeHostMode,
     settings: &crate::common::settings::RustokSettings,
@@ -1276,7 +1270,7 @@ mod tests {
     #[test]
     fn production_rejects_percent_encoded_local_development_database_name() {
         let error = super::validate_database_deployment(
-            "postgres://app_user:strong-secret@localhost:5432/rustok%5Fdev",
+            "postgres://app_user:strong-secret@localhost:5433/rustok%5Fdev",
             true,
         )
         .expect_err("URL-encoded local development database names must be rejected");
