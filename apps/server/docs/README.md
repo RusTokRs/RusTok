@@ -826,14 +826,18 @@ SQLite write fence before read), so a concurrent refresh cannot be overwritten
 by a stale ActiveModel snapshot. A cookie containing the
 immediately previous refresh token (for example, when a rotation response
 was lost) also revokes its still-live successor session under the same row
-lock. Refresh-reuse detection also resolves the immediately previous
-digest under that same backend-specific row lock before revoking the session,
-so a stale ActiveModel snapshot cannot overwrite a concurrent rotation. A replay
-inside the 30-second race window is rejected without revoking the live session,
-but this is not an idempotent response replay: a lost successful response still
-cannot be recovered from the old cookie. Older generations are not represented
-in the in-place session row and remain an open incident-detection gap. Multiple
-cookies with the
+lock. Refresh-reuse detection retains every recorded outgoing digest in
+session-owned history and acquires the user fence before the session lock.
+During the exclusive 30-second grace, only the immediately previous digest
+with the original secret retry proof may recover its current successor;
+a retry with the already-updated cookie and matching proof also recovers it.
+Recovery preserves the history and refresh deadline and signs a fresh RS256
+access JWT. Other duplicates conflict without revocation in grace; post-grace
+historical replay revokes the lineage. No raw token or proof is persisted.
+REST and GraphQL HTTP use the same `x-rustok-refresh-retry-key` header;
+built-in client proof handling and multi-replica evidence remain pending.
+See the [Auth owner contract](../../../crates/modules/rustok-auth/docs/README.md#direct-session-refresh-history-and-recovery).
+Multiple cookies with the
 `rustok-session` name are rejected, including across repeated Cookie headers,
 rather than selecting an order-dependent token. First-party session validity,
 new issuance and refresh rotation enforce the original 90-day absolute expiry

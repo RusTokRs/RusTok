@@ -4,7 +4,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use rustok_auth::{
     AcceptInviteRecord, AuthLifecycleContext, AuthLifecycleMutationError, AuthLifecyclePort,
-    AuthSessionRecord, AuthTokenRecord, AuthUserBackfillDbReader, AuthUserBackfillReadPort,
+    AuthRefreshRetryKey, AuthSessionRecord, AuthTokenRecord, AuthUserBackfillDbReader, AuthUserBackfillReadPort,
     AuthUserBackfillReadRequest, AuthUserBackfillRecord, AuthUserRecord,
 };
 
@@ -38,9 +38,8 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError 
         AuthLifecycleError::UserInactive => AuthLifecycleMutationError::UserInactive,
         AuthLifecycleError::AccountLocked => AuthLifecycleMutationError::AccountLocked,
         AuthLifecycleError::EmailNotVerified => AuthLifecycleMutationError::EmailNotVerified,
-        AuthLifecycleError::InvalidRefreshToken | AuthLifecycleError::RefreshAlreadyRotated => {
-            AuthLifecycleMutationError::InvalidRefreshToken
-        },
+        AuthLifecycleError::InvalidRefreshToken => AuthLifecycleMutationError::InvalidRefreshToken,
+        AuthLifecycleError::RefreshAlreadyRotated => AuthLifecycleMutationError::RefreshAlreadyRotated,
         AuthLifecycleError::SessionExpired => AuthLifecycleMutationError::SessionExpired,
         AuthLifecycleError::UserNotFound => AuthLifecycleMutationError::UserNotFound,
         AuthLifecycleError::InvalidResetToken => AuthLifecycleMutationError::InvalidResetToken,
@@ -279,6 +278,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         &self,
         context: &AuthLifecycleContext,
         refresh_token: String,
+        retry_key: Option<AuthRefreshRetryKey>,
     ) -> Result<AuthTokenRecord, AuthLifecycleMutationError> {
         let (user, tokens) = AuthLifecycleService::refresh_runtime(
             &self.runtime_ctx,
@@ -286,6 +286,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             context.tenant_id,
             &refresh_token,
             self.runtime_ctx.settings().features.email_verification,
+            retry_key.as_ref(),
         )
         .await
         .map_err(map_lifecycle_error)?;

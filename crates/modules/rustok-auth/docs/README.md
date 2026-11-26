@@ -648,20 +648,41 @@ less than 30 seconds. Source regression definitions are unrun.
 
 ## Direct session concurrency
 
-The host uses user-before-session locking for direct refresh and bulk self-service
-revocation, matching credential changes. Refresh revalidates the digest and subject
-under the locks; historical replay locks the session only and never acquires a user
-lock afterward. Bulk self-service revocation requires a still-active current session.
-SQLite history-only replay acquires the writer before reading the history.
+The host uses user-before-session locking for direct refresh (including history-only
+recovery and replay) and bulk self-service revocation, matching credential changes.
+Refresh revalidates the digest and subject under the locks. Bulk self-service
+revocation requires a still-active current session. SQLite acquires its writer
+at the user fence before transactional reads.
 
-## Direct session refresh history
+## Direct session refresh history and recovery
 
-The host records each rotated refresh digest and its timestamp in `session_refresh_history`
-inside the refresh transaction. The session remains the tenant and revocation authority;
-all historical digests are rejected, and replay outside the 30-second per-token grace
-revokes a live session. The previous-token columns are a last-rotation projection for
-logout with a stale cookie, not the replay authority. History cascades on session deletion.
-See [the ADR](../../../../DECISIONS/2026-11-25-session-refresh-history.md).
+The host records each rotated refresh digest and timestamp in
+`session_refresh_history` inside the refresh transaction. The session remains
+the tenant and revocation authority; replay outside the exclusive 30-second
+per-token grace revokes the live lineage. The previous-token columns are a
+last-rotation projection for recovery and logout with a stale cookie, not the
+replay authority. History cascades on session deletion.
+
+An optional secret `x-rustok-refresh-retry-key` header (one nonzero 256-bit
+CSPRNG value in exactly 64 lowercase hex characters) is accepted by raw and
+cookie REST refresh and GraphQL HTTP refresh. Auth uses the independent host
+MAC root with the distinct HKDF/HMAC purpose `session-refresh-retry` to derive
+one opaque successor per tenant, session and operation key. The host checks
+the derived digest against current state and immutable rotation evidence.
+Only the immediately previous credential with the matching proof may recover
+the current successor during grace; a retry with the already-updated cookie
+and the same proof also returns it. Recovery never changes rotation history
+or extends the refresh deadline; it issues a fresh RS256 access token with
+current authority. Missing or incorrect proofs do not allow historical
+refresh. Proof reuse cannot resurrect a historical digest. Unrecoverable
+duplicates return REST 409 / GraphQL CONFLICT. No proof or plaintext token is
+stored, and the key must not be logged.
+
+Clients must generate and persist the secret before the request, reuse it
+only for that attempt, and discard it on resolution. Without client support,
+lost responses still cannot be recovered. Built-in Leptos/Next.js and native
+client integration and runtime verification remain pending.
+See [the ADR](../../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
 
 ## GraphQL credential throttling
 

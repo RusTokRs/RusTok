@@ -47,11 +47,13 @@ impl AuthMutation {
         ctx: &Context<'_>,
         input: RefreshTokenInput,
     ) -> Result<AuthPayload> {
+        let retry_key = super::refresh_retry_key(ctx)?;
         auth_runtime(ctx)?
             .port()
             .refresh_token(
                 &auth_lifecycle_context(ctx, optional_auth_context(ctx))?,
                 input.refresh_token,
+                retry_key,
             )
             .await
             .map(AuthPayload::from)

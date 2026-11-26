@@ -320,9 +320,9 @@ regressions authored; compilation and runtime verification remain pending.
 ## Direct session mutation ordering (source only)
 
 Refresh and bulk session revocation use the shared tenant-scoped user mutation
-fence before acquiring session locks. Bulk self-service revocation checks the
-current session again under lock. SQLite history-only replay reserves its writer
-before reading the evidence. Regressions exercise lock ordering and stale current
+fence before acquiring session locks, including history-only recovery and
+replay. Bulk self-service revocation checks the current session again under
+lock. SQLite reserves its writer at the user fence before reading the evidence. Regressions exercise lock ordering and stale current
 session rejection; PostgreSQL contention, compilation and the remediation gate
 remain maintainer-run.
 
@@ -335,6 +335,24 @@ session and previous-cookie logout contract are preserved. Older overwritten dig
 cannot be recovered. Apply the migration before deploying the new host, with old host
 writers stopped. Regression definitions, PostgreSQL backfill, cascade, rollback and
 concurrency checks remain unrun.
+
+## Proof-bound direct session refresh recovery (source only)
+
+The host accepts the owner-defined secret retry header for raw/cookie REST
+refresh and GraphQL HTTP refresh, derives the opaque successor under the
+independent MAC root, verifies the current digest and history under the
+user/session fences, and preserves the original refresh deadline and history
+on recovery. The GraphQL provider preserves rotation conflicts as CONFLICT.
+See [the recovery ADR](../../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
+
+Remaining implementation: client-generated CSPRNG proof persistence before
+send, forwarding and resolution in the shared Leptos direct/native and Next.js
+BFF/SSR paths, mobile/native consumers, and generated API header reference
+updates. Verify header secrecy in proxies and telemetry. No proof-bearing
+client is claimed complete. OAuth refresh-family recovery is separate.
+Run scoped Auth and server compilation, retry-proof and lifecycle tests,
+mounted REST/GraphQL/CORS contracts, PostgreSQL contention and cross-replica
+lost-response injection, plus the remediation gate. None has been executed.
 
 ## Password recovery parity (source only)
 

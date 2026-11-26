@@ -197,14 +197,24 @@ async fn login(
     }))
 }
 
+fn parse_refresh_retry_key(headers: &axum::http::HeaderMap) -> Result<Option<rustok_auth::AuthRefreshRetryKey>> {
+    rustok_auth::AuthRefreshRetryKey::from_header_values(
+        headers.get_all(rustok_auth::REFRESH_RETRY_KEY_HEADER).iter().map(|value| value.as_bytes()),
+    )
+    .map_err(AuthLifecycleError::from)
+    .map_err(Error::from)
+}
+
 #[utoipa::path(post, path = "/api/auth/refresh", tag = "auth", request_body = RefreshRequest,
     responses((status = 200, description = "Token refreshed", body = AuthResponse),(status = 401, description = "Invalid or expired refresh token"),(status = 409, description = "Refresh token was already rotated by another concurrent request")))]
 async fn refresh(
     State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
+    headers: axum::http::HeaderMap,
     Json(params): Json<RefreshRequest>,
 ) -> Result<Response> {
     tracing::debug!("auth::refresh entry");
+    let retry_key = parse_refresh_retry_key(&headers)?;
     let runtime_ctx = ctx.runtime_ctx();
     let config = ctx
         .auth_config()
@@ -216,6 +226,7 @@ async fn refresh(
         tenant.id,
         &params.refresh_token,
         runtime_ctx.settings().features.email_verification,
+        retry_key.as_ref(),
     )
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
@@ -473,6 +484,7 @@ async fn session_refresh(
 ) -> Result<Response> {
     tracing::debug!("auth::session_refresh entry");
     require_session_request_header(&headers)?;
+    let retry_key = parse_refresh_retry_key(&headers)?;
     let refresh_token = parse_session_cookie(&headers)?
         .ok_or_else(|| Error::Unauthorized("Invalid refresh token".into()))?;
 
@@ -487,6 +499,7 @@ async fn session_refresh(
         tenant.id,
         &refresh_token,
         runtime_ctx.settings().features.email_verification,
+        retry_key.as_ref(),
     )
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
