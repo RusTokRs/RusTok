@@ -27,6 +27,9 @@ struct LateClockStore {
     db: DatabaseConnection,
     source_backend: DbBackend,
     sqlite_binding: Option<String>,
+    // Pin the observed PostgreSQL routing identity for this process, not
+    // merely equality between two pools at one observation.
+    postgres_identity: Option<String>,
 }
 static LATE_CLOCK_STORE: OnceLock<LateClockStore> = OnceLock::new();
 
@@ -209,10 +212,11 @@ pub async fn configure_late_observation_store(
         db.execute_unprepared("PRAGMA synchronous = FULL").await?;
         Some(binding)
     } else { None };
-    let store = LateClockStore { db, source_backend, sqlite_binding };
+    let mut store = LateClockStore { db, source_backend, sqlite_binding, postgres_identity: None };
     // Refuse missing, stale or wrongly routed stores at startup. No automatic
     // initialization or fallback after an explicitly configured store fails.
-    observe_durably(source, &store, application_clock()).await?;
+    let initial = observe_durably(source, &store, application_clock()).await?;
+    store.postgres_identity = initial.postgres_identity;
     LATE_CLOCK_STORE.set(store).map_err(|_| clock_unavailable())
 }
 
@@ -257,6 +261,25 @@ async fn sqlite_main_file(db: &DatabaseConnection) -> Result<std::path::PathBuf,
     Err(clock_unavailable())
 }
 
+/// FULL/EXTRA alone is insufficient with an in-memory or disabled rollback
+/// journal. Check both properties on the actual transaction connection, even
+/// after pool reconnection. Never repair a changed journal mode at runtime.
+async fn require_sqlite_sidecar_durability(db: &impl ConnectionTrait) -> Result<(), DbErr> {
+    let sync = db.query_one_raw(Statement::from_string(DbBackend::Sqlite,
+        "PRAGMA synchronous".to_string(),
+    )).await?.ok_or_else(clock_unavailable)?;
+    let journal = db.query_one_raw(Statement::from_string(DbBackend::Sqlite,
+        "PRAGMA journal_mode".to_string(),
+    )).await?.ok_or_else(clock_unavailable)?;
+    let mode: String = journal.try_get("", "journal_mode")?;
+    if sync.try_get::<i64>("", "synchronous")? < 2
+        || !matches!(mode.to_ascii_lowercase().as_str(), "delete" | "truncate" | "persist" | "wal")
+    {
+        return Err(clock_unavailable());
+    }
+    Ok(())
+}
+
 async fn persist_observation(
     db: &DatabaseConnection, clock: &ClockGuard,
     prior: Option<&ClockObservation>, source_floor: Option<ClockFloor>,
@@ -269,13 +292,7 @@ async fn persist_observation(
         if sqlite_binding(&tx).await?.as_deref() != expected_binding || expected_binding.is_none() {
             return Err(clock_unavailable());
         }
-        // Sidecar connections must use FULL (or EXTRA) synchronous commit.
-        let row = tx.query_one_raw(Statement::from_string(DbBackend::Sqlite,
-            "PRAGMA synchronous".to_string(),
-        )).await?.ok_or_else(clock_unavailable)?;
-        if row.try_get::<i64>("", "synchronous")? < 2 {
-            return Err(clock_unavailable());
-        }
+        require_sqlite_sidecar_durability(&tx).await?;
     }
     // Acquire the serialization fence before sampling to avoid stale writes.
     let floor = read_floor(&tx, true).await?;
@@ -287,6 +304,7 @@ async fn persist_observation(
     let mut sample = observe(&tx, clock).await?;
     if let Some(prior) = prior {
         if prior.postgres_identity != sample.postgres_identity {
+            clock.trip();
             return Err(clock_unavailable());
         }
         if sample.database_now < prior.database_now {
@@ -329,13 +347,22 @@ async fn observe_durably(
     }
     // Sample the supplied connection BEFORE acquiring the independent clock
     // lock. Never acquire a domain connection/lock while holding that lock.
+    // A floor read before the source sample cannot be newer than that
+    // sample merely because a concurrent writer advanced the singleton.
+    // Detect an observed rollback even if the writer clock catches up later.
+    let floor_before = read_floor(source, false).await?;
     let prior = observe(source, clock).await?;
+    if store.postgres_identity.as_ref().is_some_and(|pinned| prior.postgres_identity.as_ref() != Some(pinned)) {
+        clock.trip();
+        return Err(clock_unavailable());
+    }
+    check_floor(floor_before, &prior, clock)?;
     let source_floor = if store.source_backend == DbBackend::Sqlite {
         if sqlite_binding(source).await?.as_deref() != store.sqlite_binding.as_deref()
             || store.sqlite_binding.is_none() {
             return Err(clock_unavailable());
         }
-        Some(read_floor(source, false).await?)
+        Some(floor_before)
     } else { None };
     persist_observation(&store.db, clock, Some(&prior), source_floor, store.sqlite_binding.as_deref()).await
 }
@@ -432,7 +459,17 @@ mod tests {
     #[tokio::test]
     async fn separate_writer_persists_late_sample_despite_domain_rollback() {
         let source = Database::connect("sqlite::memory:").await.unwrap();
-        let independent = Database::connect("sqlite::memory:").await.unwrap();
+        // The sidecar contract requires a real persistent file with a durable
+        // journal. In-memory SQLite cannot exercise that contract.
+        struct TestDir(std::path::PathBuf);
+        impl Drop for TestDir {
+            fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); }
+        }
+        let dir = TestDir(std::env::temp_dir().join(format!("rustok-clock-{}", uuid::Uuid::new_v4())));
+        std::fs::create_dir(&dir.0).unwrap();
+        let mut options = ConnectOptions::new(format!("sqlite://{}?mode=rwc", dir.0.join("clock.db").display()));
+        options.max_connections(1);
+        let independent = Database::connect(options).await.unwrap();
         for db in [&source, &independent] {
             db.execute_unprepared("CREATE TABLE auth_application_clock (id INTEGER PRIMARY KEY, host_ms BIGINT NOT NULL, database_ms BIGINT NOT NULL)").await.unwrap();
             db.execute_unprepared("INSERT INTO auth_application_clock VALUES (1, 0, 0)").await.unwrap();
@@ -442,7 +479,7 @@ mod tests {
         }
         source.execute_unprepared("CREATE TABLE domain_value (id INTEGER PRIMARY KEY)").await.unwrap();
         let store = LateClockStore { db: independent.clone(), source_backend: DbBackend::Sqlite,
-            sqlite_binding: Some("f04286fc-6b01-4c91-b79d-0b987cbb6a02".into()) };
+            sqlite_binding: Some("f04286fc-6b01-4c91-b79d-0b987cbb6a02".into()), postgres_identity: None };
         assert!(ensure_legacy_allowed(&source).await.is_err());
         let tx = source.begin().await.unwrap();
         tx.execute_unprepared("INSERT INTO domain_value VALUES (1)").await.unwrap();
@@ -452,6 +489,17 @@ mod tests {
         assert_eq!(floor.host_ms, sample.host_after.timestamp_millis());
         assert_eq!(floor.database_ms, sample.database_now.timestamp_millis());
         assert_eq!(read_floor(&source, false).await.unwrap().host_ms, 0);
+        independent.execute_unprepared("PRAGMA journal_mode = MEMORY").await.unwrap();
+        assert!(observe_durably(&source, &store, &ClockGuard::new()).await.is_err());
+        independent.execute_unprepared("PRAGMA journal_mode = DELETE").await.unwrap();
+        assert!(observe_durably(&source, &store, &ClockGuard::new()).await.is_ok());
+        let before = read_floor(&independent, false).await.unwrap();
+        source.execute_unprepared("UPDATE auth_application_clock SET database_ms = 9000000000000").await.unwrap();
+        let source_fault = ClockGuard::new();
+        assert!(observe_durably(&source, &store, &source_fault).await.is_err());
+        assert!(source_fault.faulted());
+        assert_eq!(read_floor(&independent, false).await.unwrap().database_ms, before.database_ms);
+        source.execute_unprepared("UPDATE auth_application_clock SET database_ms = 0").await.unwrap();
         independent.execute_unprepared("UPDATE auth_application_clock_sidecar_binding SET binding_id = 'f04286fc-6b01-4c91-b79d-0b987cbb6a03'").await.unwrap();
         assert!(observe_durably(&source, &store, &ClockGuard::new()).await.is_err());
         independent.execute_unprepared("UPDATE auth_application_clock_sidecar_binding SET binding_id = 'f04286fc-6b01-4c91-b79d-0b987cbb6a02'").await.unwrap();

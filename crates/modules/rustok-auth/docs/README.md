@@ -887,8 +887,9 @@ cleanup remains with the retention worker. Reset, verification, email change and
 acceptance recheck deadlines after transactional side effects and before
 requesting commit; email-change confirmation also rechecks the proving
 session. Recovery now uses the shared corroborated application clock and
-commits an independent admission sample; later checks are not independently
-durable and do not guarantee database commit-time deadlines.
+commits an independent admission sample; later checks also persist their
+observations when the independent application clock writer is configured.
+Neither mode guarantees database commit-time deadlines.
 Source regressions and PostgreSQL/SQLite migration execution remain pending.
 
 ## Direct session refresh history and recovery
@@ -1071,7 +1072,8 @@ remain unverified; this is not distributed atomic cookie delivery.
 The existing authenticated rollback-witness checkpoint now includes a
 nonnegative authority DB millisecond floor. Checked authority reads
 commit its advance before returning; time-sensitive mutations recheck
-under both locks, while emergency key revocation preserves the floor
+under both locks. Checked zero-row CAS operations retain the clock evidence
+without incrementing the ledger revision, while emergency key revocation preserves the floor
 without relying on clock health. The independent clock latch still
 fences installed leases. Stop old binaries and drain leases before
 first use of the extended checkpoint format. See the clock and witness
@@ -1083,8 +1085,12 @@ regression evidence; WAL and contention costs remain unmeasured.
 
 The host and session cleanup CLI configure a dedicated clock writer pool on
 the same PostgreSQL primary; late verified observations commit separately
-from domain transactions. SQLite optionally uses an offline-bound distinct
-persistent file, never another writer to the application file. Unbound
+from domain transactions. PostgreSQL pins the startup routing identity and
+checks the source floor before sampling; routing mismatch or observed DB
+rollback fences locally. SQLite optionally uses an offline-bound distinct
+persistent file, never another writer to the application file. The actual
+sidecar transaction requires FULL/EXTRA sync and persistent journal or WAL;
+MEMORY/OFF journaling is refused. Unbound
 SQLite and unmanaged embedders retain admission-only durability. See the
 [clock ADR](../../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md) for
 sidecar provisioning, fail-closed behavior and limits. Exact commit-time

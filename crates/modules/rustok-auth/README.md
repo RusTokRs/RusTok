@@ -261,7 +261,8 @@ contention and restart/runtime evidence remain open. See the [clock ADR](../../.
 
 Witnessed authority reads and mutations now maintain an authenticated
 DB-time floor in the existing witness payload, with synchronous commit
-before exposing checked time. Emergency revocation preserves it. Stop
+before exposing checked time, including a zero-row checked CAS without a
+ledger revision change. Emergency revocation preserves it. Stop
 old writers and drain leases before format cutover; never strip the floor.
 Application late observations and request-path clock durability remain
 open. See the [clock ADR](../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md).
@@ -270,8 +271,11 @@ open. See the [clock ADR](../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.
 
 Host and session-cleanup CLI wire a dedicated PostgreSQL clock writer pool.
 Late verified samples commit independently of domain rollback; uncertain
-commit outcomes fence the process. SQLite can use a separately provisioned,
-bound persistent clock file, otherwise remains admission-only. See the
+commit outcomes fence the process. PostgreSQL routing identity is pinned
+at startup and source rollback is checked before the independent write.
+SQLite can use a separately provisioned, bound persistent clock file with
+FULL/EXTRA sync and a persistent rollback journal or WAL, otherwise remains
+admission-only when unbound. See the
 [clock ADR](../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md) for
 configuration, recovery and limits. Source implementation only; runtime,
 contention and failover evidence remain pending.

@@ -3099,6 +3099,11 @@ match connection {
   writer, sample again under the clock singleton lock, and commit the monotonic
   observation before using it. Fence uncertain commit outcomes. Refuse missing
   bound-store configuration or mismatched bindings rather than reseeding.
+  Pin PostgreSQL routing identity at startup and check a source floor read
+  before observing source time. Verify FULL/EXTRA and persistent journal mode
+  on each sidecar transaction; synchronous alone cannot make MEMORY/OFF durable.
+  Persist checked witness clock evidence even when a CAS affects zero rows,
+  retaining the domain revision and using the clock-only commit guard.
 - **Evidence:** [application clock](../../crates/modules/rustok-auth/src/application_clock.rs),
   [clock ADR](../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md).
   Source regressions authored; actual pool saturation, crash/failover,
