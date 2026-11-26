@@ -553,7 +553,13 @@ impl RevisionState {
                 "save response does not match the active submitted attempt".to_string(),
             ));
         }
-        self.last_acknowledged_revision = Some(revision.into());
+        let revision = revision.into();
+        if revision.trim().is_empty() {
+            return Err(FlyError::InvalidSaveState(
+                "save response revision is empty".to_string(),
+            ));
+        }
+        self.last_acknowledged_revision = Some(revision);
         self.dirty = self.command_sequence != saving_sequence
             || self.project_hash != submitted_hash;
         self.saving_snapshot = None;

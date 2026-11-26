@@ -601,6 +601,40 @@ fn blocking_diagnostics_prevent_save() {
         }]))
         .expect("replace diagnostics");
     assert!(machine.dispatch(UiIntent::RequestSave).is_err());
+    let before = machine.clone();
+    assert!(machine.dispatch(UiIntent::SaveStarted {
+        request_id: "req-1".into(),
+    }).is_err());
+    assert_eq!(machine, before);
+}
+
+#[test]
+fn save_success_requires_nonblank_revision_and_preserves_changed_hash() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    let submitted = fly::ProjectHash::from_bytes(b"submitted");
+    let current = fly::ProjectHash::from_bytes(b"current");
+    machine.state.dirty.project_hash = Some(submitted);
+    machine.dispatch(UiIntent::SaveStarted {
+        request_id: "req-1".into(),
+    }).expect("start");
+    let before = machine.clone();
+    assert!(machine.dispatch(UiIntent::SaveSucceeded {
+        request_id: "req-1".into(),
+        revision: " ".into(),
+        project_hash: submitted,
+    }).is_err());
+    assert_eq!(machine, before);
+
+    // The host may synchronize a new working hash before its sequence projection.
+    machine.state.dirty.project_hash = Some(current);
+    machine.dispatch(UiIntent::SaveSucceeded {
+        request_id: "req-1".into(),
+        revision: "rev-2".into(),
+        project_hash: submitted,
+    }).expect("submitted snapshot acknowledged");
+    assert!(machine.state.dirty.dirty);
+    assert_eq!(machine.state.dirty.project_hash, Some(current));
+    assert!(!machine.state.dirty.save_in_progress);
 }
 
 #[test]

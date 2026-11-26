@@ -1072,6 +1072,24 @@ fn an_identical_retry_has_a_new_attempt_identity() {
 }
 
 #[test]
+fn empty_revision_cannot_acknowledge_an_active_save() {
+    let mut editor = editor();
+    let hash = editor.revision().project_hash;
+    let attempt = editor.revision_mut().begin_save_with_id().expect("start");
+    let before = editor.revision().clone();
+    for revision in ["", " \t"] {
+        assert!(editor.revision_mut()
+            .acknowledge_submitted_attempt(hash, attempt, revision)
+            .is_err());
+        assert_eq!(editor.revision(), &before);
+    }
+    editor.revision_mut()
+        .acknowledge_submitted_attempt(hash, attempt, "rev-2")
+        .expect("valid acknowledgement");
+    assert_eq!(editor.revision().last_acknowledged_revision.as_deref(), Some("rev-2"));
+}
+
+#[test]
 fn successful_save_of_an_earlier_snapshot_retains_newer_local_edits() {
     let mut editor = editor();
     editor.apply(EditorCommand::Patch {
