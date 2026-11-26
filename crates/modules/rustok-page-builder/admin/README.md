@@ -391,8 +391,9 @@ Undo and redo also reject disconnected or currently invalid history snapshots wi
 changing the controller's document, revision, or history.
 
 A successful document mutation, including undo, redo and recovered merges,
-invalidates active drag/drop candidates and their insertion overlay. Failed and
-idempotent commands preserve the existing interaction so it can be retried.
+invalidates active drag/drop candidates and all measured selection, hover and insertion
+geometry. Surviving component identities are preserved, but hover IDs outside the active page
+are cleared. Failed and idempotent commands preserve the existing interaction so it can be retried.
 
 Receipt-bearing SSR operations preflight the owner-scoped receipt ledger,
 expected generation and receipt capacity before consumer I/O. This read-only

@@ -67,6 +67,10 @@ Drop rechecks the current presentation and drag capability at commit time, inclu
 restored state contains a drag started under a different policy. Command construction also
 rejects illegal or malformed candidates, so direct callers and restored state cannot bypass
 candidate validation. Starting another drag clears the preceding insertion overlay.
+Selection and hover transitions invalidate the previous component's rectangle, and selection
+changes also clear resize handles and the property-editor identity. A rectangle without a
+corresponding selection or hover is discarded. Hosts must invalidate measured geometry after
+document changes and supply a fresh canvas snapshot.
 
 A save success is accepted only during an active `SaveStarted` transition and only when its
 request ID matches the active attempt. A stale success or failure, uncorrelated failure, or

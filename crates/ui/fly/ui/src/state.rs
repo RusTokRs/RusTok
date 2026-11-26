@@ -302,6 +302,31 @@ impl FlyUiState {
         self.presentation.is_editable() && self.capabilities.edit
     }
 
+    /// Selection geometry belongs to the selected component, not to the selection slot.
+    pub fn set_selected_component(&mut self, component_id: Option<String>) {
+        if self.selection.component_id != component_id || component_id.is_none() {
+            self.overlays.selected = None;
+            self.overlays.resize_handles_visible = false;
+            self.selection.property_editor_id = None;
+        }
+        self.selection.component_id = component_id;
+    }
+
+    /// A hover rectangle is invalid once its component changes or disappears.
+    pub fn set_hovered_component(&mut self, component_id: Option<String>) {
+        if self.selection.hovered_component_id != component_id || component_id.is_none() {
+            self.overlays.hovered = None;
+        }
+        self.selection.hovered_component_id = component_id;
+    }
+
+    /// Geometry and insertion slots were measured against the previous document.
+    /// Keep surviving selection identities but require fresh geometry.
+    pub fn invalidate_document_geometry(&mut self) {
+        self.overlays = OverlayState::default();
+        self.drag = None;
+    }
+
     pub fn set_diagnostics(&mut self, diagnostics: Vec<ValidationDiagnostic>) {
         self.diagnostics = diagnostics;
     }

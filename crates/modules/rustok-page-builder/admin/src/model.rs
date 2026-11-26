@@ -188,7 +188,7 @@ impl AdminCanvasController {
         let report = self.editor.restore_snapshot(&snapshot)?;
         self.clipboard = None;
         self.synchronize(report);
-        self.invalidate_drag_after_document_change(sequence_before);
+        self.invalidate_geometry_after_document_change(sequence_before);
         Ok(())
     }
 
@@ -197,6 +197,12 @@ impl AdminCanvasController {
         intent: UiIntent,
     ) -> Result<Vec<AdminCanvasEffect>, AdminCanvasError> {
         self.validate_navigation_intent(&intent)?;
+        // A late hover from a removed component or a different page is not
+        // a valid interaction target in the current canvas.
+        let intent = match intent {
+            UiIntent::Hover(Some(id)) if !self.component_on_active_page(&id) => UiIntent::Hover(None),
+            intent => intent,
+        };
         let snapshot = self.clone();
         let effects = self.ui.dispatch(intent)?;
         let mut outgoing = Vec::new();
@@ -207,17 +213,20 @@ impl AdminCanvasController {
                 return Err(error);
             }
         }
-        self.invalidate_drag_after_document_change(snapshot.editor.revision().command_sequence);
+        self.invalidate_geometry_after_document_change(snapshot.editor.revision().command_sequence);
         Ok(outgoing)
     }
 
-    /// Drop candidates refer to insertion slots in the previous document.
-    /// Even if the target ID survives undo/redo, its children or location may not.
-    fn invalidate_drag_after_document_change(&mut self, sequence_before: u64) {
+    /// All canvas geometry refers to the previous document, even when IDs survive.
+    fn invalidate_geometry_after_document_change(&mut self, sequence_before: u64) {
         if self.editor.revision().command_sequence != sequence_before {
-            self.ui.state.drag = None;
-            self.ui.state.overlays.insertion = None;
+            self.ui.state.invalidate_document_geometry();
         }
+    }
+
+    fn component_on_active_page(&self, component_id: &str) -> bool {
+        self.editor.document().component_location(component_id)
+            .is_some_and(|location| location.page_index == self.active_page_index())
     }
 
     /// Bind a transport attempt to the exact emitted persistence effect.
@@ -689,7 +698,12 @@ impl AdminCanvasController {
                 tracing::warn!(error = ?err, "Failed to deselect out-of-scope component");
             }
         }
-        self.ui.state.selection.component_id = selection;
+        self.ui.state.set_selected_component(selection);
+        if self.ui.state.selection.hovered_component_id.as_deref()
+            .is_some_and(|id| !self.component_on_active_page(id))
+        {
+            self.ui.state.set_hovered_component(None);
+        }
         self.ui.state.set_diagnostics(report.diagnostics);
         self.synchronize_revision();
     }
@@ -802,6 +816,34 @@ mod tests {
             }),
         )
         .expect("controller")
+    }
+
+    #[test]
+    fn geometry_is_invalidated_on_document_changes_but_not_rejected_commands() {
+        let mut controller = controller();
+        let rect = fly_ui::CanvasRect { x: 0.0, y: 0.0, width: 100.0, height: 40.0 };
+        controller.dispatch(UiIntent::Select(Some("hero".into()))).unwrap();
+        controller.dispatch(UiIntent::Hover(Some("copy-me".into()))).unwrap();
+        controller.dispatch(UiIntent::SetSelectedOverlay(Some(rect))).unwrap();
+        controller.dispatch(UiIntent::SetHoveredOverlay(Some(rect))).unwrap();
+        let before = controller.clone();
+        assert!(controller.dispatch(UiIntent::execute(EditorCommand::Remove {
+            component_id: "missing".into(),
+        })).is_err());
+        assert_eq!(controller, before);
+
+        controller.dispatch(UiIntent::execute(EditorCommand::Remove {
+            component_id: "copy-me".into(),
+        })).unwrap();
+        assert!(controller.ui().state.selection.hovered_component_id.is_none());
+        assert_eq!(controller.ui().state.overlays, fly_ui::OverlayState::default());
+        controller.dispatch(UiIntent::Hover(Some("copy-me".into()))).unwrap();
+        assert!(controller.ui().state.selection.hovered_component_id.is_none());
+
+        controller.dispatch(UiIntent::Select(Some("hero".into()))).unwrap();
+        controller.dispatch(UiIntent::SetSelectedOverlay(Some(rect))).unwrap();
+        controller.dispatch(UiIntent::Undo).unwrap();
+        assert_eq!(controller.ui().state.overlays, fly_ui::OverlayState::default());
     }
 
     #[test]
