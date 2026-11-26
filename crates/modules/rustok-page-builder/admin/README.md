@@ -38,7 +38,9 @@ for safe cleanup if a tab was interrupted between writing and pruning. Before se
 refresh action; after reload, records from all tabs are reconciled against the
 latest server document using a conservative three-way merge. Object fields are
 merged recursively and arrays of uniquely identified objects are merged by
-stable `id`; simultaneous edits to the same value, ambiguous arrays and
+exact stable `id` without whitespace normalization; blank IDs are not merge keys.
+A replacement with a distinct ID is not an edit of the prior item. Simultaneous
+edits to the same value, ambiguous arrays and
 incompatible reorderings stop in a read-only conflict state. The local copies
 and conflicting paths remain visible until the author copies or explicitly
 discards them. Records are retired only after a confirmed save. Each save uses a fresh immutable

@@ -830,8 +830,10 @@ fn merge_arrays_by_id(
         let mut order = Vec::with_capacity(values.len());
         let mut items = BTreeMap::new();
         for value in values {
-            let id = value.get("id")?.as_str()?.trim();
-            if id.is_empty() || items.contains_key(id) {
+            // Identity is exact. Trimming here aliases different authored IDs
+            // and can turn a delete/insert into an edit of the previous item.
+            let id = value.get("id")?.as_str()?;
+            if id.trim().is_empty() || items.contains_key(id) {
                 return None;
             }
             order.push(id.to_string());
@@ -1153,6 +1155,29 @@ mod tests {
         assert_eq!(merged, Some(json!({"components":[
             {"id":"a","content":"server"},
             {"id":"b","content":"local"}
+        ]})));
+    }
+
+    #[test]
+    fn three_way_merge_never_aliases_ids_that_differ_by_whitespace() {
+        let base = json!({"items":[{"id":"a","content":"original"}]});
+        let server = json!({"items":[{"id":" a ","content":"original"}]});
+        let local = json!({"items":[{"id":"a","content":"local edit"}]});
+        let mut conflicts = Vec::new();
+        let _ = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts);
+        assert!(conflicts.iter().any(|path| path.contains("id=a")));
+
+        // Independent insertions with distinct exact IDs must not be collapsed.
+        let base = json!({"items":[]});
+        let server = json!({"items":[{"id":"a","content":"server"}]});
+        let local = json!({"items":[{"id":" a ","content":"local"}]});
+        let mut conflicts = Vec::new();
+        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts)
+            .expect("merge");
+        assert!(conflicts.is_empty());
+        assert_eq!(merged, Some(json!({"items":[
+            {"id":"a","content":"server"},
+            {"id":" a ","content":"local"}
         ]})));
     }
 
