@@ -63,6 +63,47 @@ fn validate_product_variant_count(
     Ok(())
 }
 
+/// Reject oversized nested Product creation batches before Validate walks them
+/// or Shipping Profile performs any owner IO. DTO attributes repeat these bounds
+/// for generated contracts and callers that validate inputs independently.
+fn validate_create_product_input_bounds(
+    input: &crate::dto::CreateProductInput,
+) -> CommerceResult<()> {
+    validate_product_variant_count(0, input.variants.len())?;
+
+    if input.variant_axes.len() > crate::dto::MAX_VARIANT_AXES {
+        return Err(CommerceError::Validation(format!(
+            "A Product can have at most {} variant axes",
+            crate::dto::MAX_VARIANT_AXES
+        )));
+    }
+    if input
+        .variant_axes
+        .iter()
+        .any(|axis| axis.allowed_option_ids.len() > crate::dto::MAX_VARIANT_AXIS_VALUES)
+    {
+        return Err(CommerceError::Validation(format!(
+            "A variant axis can have at most {} allowed options",
+            crate::dto::MAX_VARIANT_AXIS_VALUES
+        )));
+    }
+    for variant in &input.variants {
+        if variant.axis_values.len() > crate::dto::MAX_VARIANT_AXES {
+            return Err(CommerceError::Validation(format!(
+                "A variant can have at most {} axis assignments",
+                crate::dto::MAX_VARIANT_AXES
+            )));
+        }
+        if variant.prices.len() > crate::dto::MAX_VARIANT_PRICE_ROWS {
+            return Err(CommerceError::Validation(format!(
+                "A variant can have at most {} price rows",
+                crate::dto::MAX_VARIANT_PRICE_ROWS
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn validate_variant_inventory_quantity(quantity: i32) -> CommerceResult<()> {
     if quantity < 0 {
         return Err(CommerceError::Validation(
@@ -271,6 +312,7 @@ impl CatalogService {
             "Creating product"
         );
 
+        validate_create_product_input_bounds(&input)?;
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
@@ -3260,6 +3302,45 @@ mod tests {
         assert!(validate_variant_weight(Some(&Decimal::new(100, 2))).is_ok());
         assert!(matches!(
             validate_variant_weight(Some(&Decimal::new(-1, 2))),
+            Err(CommerceError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn create_product_batch_bounds_are_rejected_before_nested_validation() {
+        let variant = || crate::dto::CreateVariantInput {
+            sku: None,
+            barcode: None,
+            shipping_profile_slug: None,
+            axis_values: Vec::new(),
+            prices: Vec::new(),
+            inventory_quantity: 0,
+            inventory_policy: "deny".to_owned(),
+            weight: None,
+            weight_unit: None,
+        };
+        let input = crate::dto::CreateProductInput {
+            variants: vec![variant(); crate::dto::MAX_PRODUCT_VARIANTS + 1],
+            ..Default::default()
+        };
+        assert!(matches!(
+            validate_create_product_input_bounds(&input),
+            Err(CommerceError::Validation(_))
+        ));
+
+        let input = crate::dto::CreateProductInput {
+            variant_axes: vec![
+                crate::dto::VariantAxisInput {
+                    attribute_id: Uuid::new_v4(),
+                    position: 0,
+                    allowed_option_ids: vec![Uuid::new_v4()],
+                };
+                crate::dto::MAX_VARIANT_AXES + 1
+            ],
+            ..Default::default()
+        };
+        assert!(matches!(
+            validate_create_product_input_bounds(&input),
             Err(CommerceError::Validation(_))
         ));
     }

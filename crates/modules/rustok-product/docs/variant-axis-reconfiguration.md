@@ -110,11 +110,12 @@ axis assignments, every supplied price/compare-at, and explicit inventory quanti
 Prices use exact nonnegative decimal strings; blank price means absent, not a zero-priced row.
 The client bounds are 100 characters per optional text field, 32 distinct axis assignments,
 64 prices per variant and canonical decimal strings up to 64 characters. The Product owner enforces
-the same per-variant price-row cap at DTO and command boundaries, including every initial variant
-in Product creation. It independently rejects negative `i32` stock and accepts only the normalized
-`deny`/`continue` inventory policies. It enforces one shared maximum of 256 SKUs for initial and standalone creation,
-consistent with complete reads, axis reconfiguration and deletion. A no-axis Product still has
-exactly one default SKU. The owner remains responsible for current schema/tuple/uniqueness
+256 variants per Product, 32 axes, 256 allowed options per axis, 32 assignments per SKU and 64
+price rows per SKU at DTO and command boundaries. Initial Product creation rejects oversized
+nested batches before nested validation or collaborator IO; standalone axis reconfiguration
+applies the same bounds before opening its transaction. The owner independently rejects negative
+`i32` stock and accepts only the normalized `deny`/`continue` inventory policies. A no-axis Product
+still has exactly one default SKU. The owner remains responsible for current schema/tuple/uniqueness
 admission.
 
 Both clients persist and read back the full request, original locale, caller key and authenticated

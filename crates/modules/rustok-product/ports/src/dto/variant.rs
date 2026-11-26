@@ -19,6 +19,8 @@ pub struct CreateVariantInput {
     ))]
     pub shipping_profile_slug: Option<String>,
     #[serde(default)]
+    // Keep this literal aligned with MAX_VARIANT_AXES in dto/variant_axis.rs.
+    #[validate(length(max = 32, message = "A variant can have at most 32 axis assignments"))]
     #[validate(nested)]
     pub axis_values: Vec<VariantAxisValueInput>,
     // Keep this literal aligned with MAX_VARIANT_PRICE_ROWS in dto/mod.rs.
@@ -154,7 +156,7 @@ pub struct AdjustInventoryInput {
 #[cfg(test)]
 mod patch_tests {
     use super::*;
-    use super::super::MAX_VARIANT_PRICE_ROWS;
+    use super::super::{MAX_VARIANT_AXES, MAX_VARIANT_PRICE_ROWS};
 
     fn valid_variant_prices(count: usize) -> Vec<PriceInput> {
         (0..count)
@@ -166,6 +168,40 @@ mod patch_tests {
                 compare_at_amount: None,
             })
             .collect()
+    }
+
+    fn valid_axis_values(count: usize) -> Vec<VariantAxisValueInput> {
+        (0..count)
+            .map(|index| VariantAxisValueInput {
+                attribute_id: Uuid::from_u128(index as u128 + 1),
+                option_id: Uuid::from_u128(index as u128 + 10_000),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn create_variant_axis_assignment_count_is_bounded() {
+        let create_input = |axis_values| CreateVariantInput {
+            sku: None,
+            barcode: None,
+            shipping_profile_slug: None,
+            axis_values,
+            prices: Vec::new(),
+            inventory_quantity: 0,
+            inventory_policy: "deny".to_owned(),
+            weight: None,
+            weight_unit: None,
+        };
+        assert!(
+            create_input(valid_axis_values(MAX_VARIANT_AXES))
+                .validate()
+                .is_ok()
+        );
+        assert!(
+            create_input(valid_axis_values(MAX_VARIANT_AXES + 1))
+                .validate()
+                .is_err()
+        );
     }
 
     #[test]
