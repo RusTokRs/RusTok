@@ -1467,11 +1467,13 @@ mod tests {
             default_locale: "en".to_string(),
             owner: None,
         };
+        let mut capabilities = CapabilityState::full();
+        capabilities.edit = false;
         let result = dispatch_pages_browser_intent_with_store(
             snapshot,
             envelope,
             &store,
-            CapabilityState::read_only(),
+            capabilities,
         )
         .await;
         assert!(matches!(
