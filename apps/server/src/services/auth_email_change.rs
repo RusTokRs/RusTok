@@ -250,7 +250,7 @@ impl AuthLifecycleService {
         authenticated_user_id: Option<Uuid>,
         current_session_id: Option<Uuid>,
     ) -> Result<ConfirmedEmailChange, AuthLifecycleError> {
-        let now = Utc::now();
+        let observed_at = Utc::now();
 
         // Read only the owner ID before opening the transaction. Every
         // mutation then locks user first and challenge second, matching the
@@ -258,7 +258,7 @@ impl AuthLifecycleService {
         let observed_request = AuthEmailChangeRequests::find()
             .filter(auth_email_change_requests::Column::TenantId.eq(tenant_id))
             .filter(auth_email_change_requests::Column::TokenHash.eq(token_hash))
-            .filter(auth_email_change_requests::Column::ExpiresAt.gt(now.clone()))
+            .filter(auth_email_change_requests::Column::ExpiresAt.gt(observed_at))
             .one(db)
             .await
             .map_err(AuthLifecycleError::from)?
@@ -282,13 +282,17 @@ impl AuthLifecycleService {
         .map_err(AuthLifecycleError::from)?
         .ok_or(AuthLifecycleError::InvalidEmailChangeToken)?;
 
+        // Re-evaluate expiry after acquiring the user mutation fence. A
+        // request that waited behind another mutation must not be accepted
+        // using the timestamp captured before that lock wait.
+        let confirmation_now = Utc::now();
         let request = lock_email_change_request(
             &tx,
             tenant_id,
             observed_request.id,
             observed_request.user_id,
             token_hash,
-            now.clone(),
+            confirmation_now,
         )
         .await?
         .ok_or(AuthLifecycleError::InvalidEmailChangeToken)?;
@@ -330,7 +334,7 @@ impl AuthLifecycleService {
         let new_email = request.new_email.clone();
         let mut active: users::ActiveModel = user.clone().into();
         active.email = Set(new_email.clone());
-        let updated_at: chrono::DateTime<chrono::FixedOffset> = now.clone().into();
+        let updated_at: chrono::DateTime<chrono::FixedOffset> = confirmation_now.into();
         active.email_verified_at = Set(Some(updated_at.clone()));
         active.updated_at = Set(updated_at);
         active.update(&tx).await.map_err(|error| {
@@ -356,7 +360,7 @@ impl AuthLifecycleService {
         .await?;
         let _revoked_oauth_tokens =
             crate::services::oauth_token_service::revoke_user_delegated_tokens_in_tx(
-                &tx, tenant_id, user.id, now,
+                &tx, tenant_id, user.id, confirmation_now,
             )
             .await
             .map_err(AuthLifecycleError::from)?;
@@ -532,7 +536,7 @@ mod tests {
             .await
             .expect("user");
         let token_hash = "a".repeat(64);
-        let first_session = sessions::ActiveModel::new(
+        let _first_session = sessions::ActiveModel::new(
             tenant.id,
             user.id,
             "first-session-hash".to_string(),
