@@ -31,7 +31,10 @@ implementation owned by this crate. It uses:
 
 - `PageBuilderProjectStore` for tenant-scoped project persistence;
 - `PageBuilderPreviewRenderingPort` for contextual preview rendering after Fly validation;
-- `PageBuilderRuntimeTelemetry` for started, succeeded and failed operation evidence;
+- `PageBuilderRuntimeTelemetry` for started, succeeded and failed operation evidence; construct
+  evidence through its operation constructors and derive terminal evidence from that start.
+  The process-local `call_id()` distinguishes concurrent invocations even when request correlation,
+  tenant, page and revision are identical. It does not change the serialized evidence or metric labels;
 - `PageBuilderScenarioBaselineStore` and `RuntimeScenarioReleasePolicy` for optional release gates;
 - canonical DTOs and transport envelopes from `rustok-page-builder`.
 
