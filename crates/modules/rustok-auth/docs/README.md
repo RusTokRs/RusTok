@@ -63,6 +63,13 @@ transaction that persists a replacement refresh token. The former controller-loc
 and `OAuthAppService` token issuance paths have been deleted, so router middleware
 ordering cannot re-enable a non-transactional replay path.
 
+Invite acceptance uses an unlocked ledger lookup only to locate the issuer,
+then locks the issuer before the exact invitation and revalidates the digest,
+account epoch and revocation under those fences. This avoids the inverse
+issuer-delete/FK SET NULL lock order; committed consumption is rejected before
+module/RBAC locks, with the unique receipt insert retained as final authority.
+SQLite starts with the user write fence. PostgreSQL contention is unverified.
+
 Invite acceptance and administrative revocation serialize on the same
 `auth_invites` issuance row. PostgreSQL/MySQL use a locking read; SQLite acquires
 its write fence before rereading the row. A revocation committed first makes

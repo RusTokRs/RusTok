@@ -187,6 +187,13 @@ and cross-replica verification pending.
 
 ## Recovery credential lifecycle (2026-11-26)
 
+Invite acceptance uses an unlocked ledger lookup only to locate the issuer,
+then locks the issuer before the exact invitation and revalidates the digest,
+account epoch and revocation under those fences. This avoids the inverse
+issuer-delete/FK SET NULL lock order; committed consumption is rejected before
+module/RBAC locks, with the unique receipt insert retained as final authority.
+SQLite starts with the user write fence. PostgreSQL contention is unverified.
+
 Before invoking the email sender, the host re-reads the active account and
 checks the JWT's exact recipient, tenant, user and recovery revision. Reset
 also checks its password-hash MAC; already-verified accounts skip verification

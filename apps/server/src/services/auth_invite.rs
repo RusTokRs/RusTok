@@ -74,6 +74,29 @@ where
     }
 }
 
+/// The unlocked observation is only a locator. Lock the issuer before the
+/// invite: deleting an issuer locks its user row before the FK SET NULL
+/// update of its invitations. Never follow a changed issuer while holding
+/// the invite fence. SQLite also acquires its writer before any tx read.
+async fn lock_invite_for_acceptance(
+    tx: &sea_orm::DatabaseTransaction,
+    tenant_id: uuid::Uuid,
+    observed: &auth_invites::Model,
+) -> Result<Option<auth_invites::Model>, sea_orm::DbErr> {
+    let Some(issuer_id) = observed.issued_by else {
+        return Ok(None);
+    };
+    let Some(issuer) = AuthLifecycleService::lock_user_for_mutation(tx, tenant_id, issuer_id).await? else {
+        return Ok(None);
+    };
+    let current = lock_invite_for_mutation(tx, tenant_id, InviteLookup::Id(observed.id)).await?;
+    Ok(current.filter(|invite| {
+        invite.token_hash == observed.token_hash
+            && invite.revoked_at.is_none()
+            && invite_issuer_matches_account(invite, &issuer)
+    }))
+}
+
 #[derive(Debug)]
 pub enum InviteAcceptanceError {
     InvalidToken,
@@ -171,6 +194,24 @@ impl AuthLifecycleService {
         // single-use invite and Argon2 never runs inside the transaction.
         let email =
             normalize_email(&claims.sub).map_err(|_| InviteAcceptanceError::InvalidToken)?;
+        let role = claims.role;
+        let custom_role_slug = claims.custom_role_slug.clone();
+        let ledger_role = custom_role_slug.clone().unwrap_or_else(|| role.to_string());
+        let token_hash = invite_token_hash(token);
+        // Read outside the transaction only to locate the issuer and exact
+        // ledger row. Reject clearly invalid invitations before Argon2;
+        // neither this snapshot nor its authority is trusted in the tx.
+        let observed = auth_invites::Entity::find()
+            .filter(auth_invites::Column::TenantId.eq(tenant_id))
+            .filter(auth_invites::Column::TokenHash.eq(&token_hash))
+            .one(ctx.db())
+            .await
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
+            .filter(|invite| invite.issued_by.is_some() && invite.revoked_at.is_none()
+                && invite.role == ledger_role
+                && invite_ledger_matches_claims(invite, &email, expires_at, admitted_at))
+            .ok_or(InviteAcceptanceError::InvalidToken)?;
+
         let prepared = AuthLifecycleService::prepare_new_user(
             &email,
             password,
@@ -179,10 +220,6 @@ impl AuthLifecycleService {
         )
         .await
         .map_err(map_lifecycle_error)?;
-        let role = claims.role;
-        let custom_role_slug = claims.custom_role_slug.clone();
-        let ledger_role = custom_role_slug.clone().unwrap_or_else(|| role.to_string());
-        let token_hash = invite_token_hash(token);
         let consumption_id = uuid::Uuid::new_v4();
 
         let registry = ctx.shared_get::<rustok_core::ModuleRegistry>();
@@ -196,20 +233,12 @@ impl AuthLifecycleService {
             .await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
 
-        // Fail closed on the issuance ledger: only tokens an
-        // administrator actually issued (and has not revoked) are
-        // acceptable, even if the signature verifies.
-        let issued = lock_invite_for_mutation(
-            &tx,
-            tenant_id,
-            InviteLookup::TokenHash(&token_hash),
-        )
-        .await
-        .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-        let issued = match issued {
-            Some(invite) if invite.revoked_at.is_none() => invite,
-            _ => return Err(InviteAcceptanceError::InvalidToken),
-        };
+        // Issuer -> invite -> module policy -> ordered role grants.
+        // Revocation still uses the same invite-row fence.
+        let issued = lock_invite_for_acceptance(&tx, tenant_id, &observed)
+            .await
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
+            .ok_or(InviteAcceptanceError::InvalidToken)?;
         // Argon2 preparation and lock acquisition may take time. Recheck
         // expiration after the invite row is locked; it is checked once more
         // immediately before the unique consumption reservation below.
@@ -223,6 +252,20 @@ impl AuthLifecycleService {
         }
         let invite_id = issued.id;
 
+        // Under the ledger fence a committed receipt is terminal. Avoid
+        // taking module/RBAC locks for a replay. Keep the unique insert as
+        // the final authority even if another writer bypasses this fence.
+        if auth_invite_consumptions::Entity::find()
+            .filter(auth_invite_consumptions::Column::TenantId.eq(tenant_id))
+            .filter(auth_invite_consumptions::Column::TokenHash.eq(&token_hash))
+            .one(&tx)
+            .await
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
+            .is_some()
+        {
+            return Err(InviteAcceptanceError::InvalidToken);
+        }
+
         // Role grants, module availability, and the issuer's authority can
         // change while an invite is outstanding. Re-check the issuer's active
         // invite permission, hierarchy, and current grant ceiling before
@@ -232,11 +275,8 @@ impl AuthLifecycleService {
         let issuer_id = issued
             .issued_by
             .ok_or(InviteAcceptanceError::InvalidToken)?;
-        let _issuer = AuthLifecycleService::lock_user_for_mutation(&tx, tenant_id, issuer_id)
-            .await
-            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
-            .filter(|issuer| invite_issuer_matches_account(&issued, issuer))
-            .ok_or(InviteAcceptanceError::InvalidToken)?;
+        // The issuer mutation fence and account epoch were validated by
+        // lock_invite_for_acceptance and remain held through commit.
         let (module_policy_binding, availability) =
             crate::services::rbac_module_availability::lock_invite_module_policy(
                 ctx.db(), &tx, registry.as_ref(), tenant_id,
@@ -670,6 +710,62 @@ mod tests {
         .expect("invite still exists");
         assert!(current.revoked_at.is_some());
         tx.rollback().await.expect("release invite lock");
+    }
+
+    #[tokio::test]
+    async fn acceptance_rereads_invite_after_locking_observed_issuer() {
+        use crate::models::tenants;
+        use rustok_migrations::SqliteTestMigrator;
+        use rustok_test_utils::db::setup_test_db_with_migrations;
+
+        let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
+        let tenant = tenants::ActiveModel::new("Tenant", "invite-lock-order")
+            .insert(&db).await.unwrap();
+        let issuer = users::ActiveModel::new(tenant.id, "issuer@example.test", "hash")
+            .insert(&db).await.unwrap();
+        let other = users::ActiveModel::new(tenant.id, "other@example.test", "hash")
+            .insert(&db).await.unwrap();
+        let now = Utc::now();
+        let observed = auth_invites::ActiveModel {
+            id: Set(uuid::Uuid::new_v4()),
+            tenant_id: Set(tenant.id),
+            token_hash: Set("a".repeat(64)),
+            email: Set("invitee@example.test".to_string()),
+            role: Set("customer".to_string()),
+            issued_by: Set(Some(issuer.id)),
+            issuer_recovery_revision: Set(Some(issuer.recovery_revision)),
+            issuer_membership_revision: Set(None),
+            role_grant_binding: Set(None),
+            module_policy_binding: Set(None),
+            expires_at: Set((now + Duration::hours(1)).into()),
+            revoked_at: Set(None),
+            created_at: Set(now.into()),
+        }.insert(&db).await.unwrap();
+
+        let tx = db.begin().await.unwrap();
+        assert!(lock_invite_for_acceptance(&tx, tenant.id, &observed)
+            .await.unwrap().is_some());
+        tx.rollback().await.unwrap();
+
+        // The unlocked locator must not authorize a different issuer.
+        auth_invites::ActiveModel {
+            id: Set(observed.id), issued_by: Set(Some(other.id)),
+            ..Default::default()
+        }.update(&db).await.unwrap();
+        let tx = db.begin().await.unwrap();
+        assert!(lock_invite_for_acceptance(&tx, tenant.id, &observed)
+            .await.unwrap().is_none());
+        tx.rollback().await.unwrap();
+
+        // A revocation committed after the preflight remains terminal.
+        auth_invites::ActiveModel {
+            id: Set(observed.id), issued_by: Set(Some(issuer.id)),
+            revoked_at: Set(Some(now.into())), ..Default::default()
+        }.update(&db).await.unwrap();
+        let tx = db.begin().await.unwrap();
+        assert!(lock_invite_for_acceptance(&tx, tenant.id, &observed)
+            .await.unwrap().is_none());
+        tx.rollback().await.unwrap();
     }
 
     #[tokio::test]
