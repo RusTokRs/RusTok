@@ -437,6 +437,19 @@ pub mod module_event_dispatcher {
             ))
         })?;
 
+        #[cfg(all(feature = "mod-product", feature = "mod-translation"))]
+        if let Some(runtime) =
+            runtime_ctx.shared_get::<rustok_product::ProductCatalogCommandRuntime>()
+        {
+            runtime
+                .register_translation_target_providers(&mut extensions)
+                .map_err(|error| {
+                    Error::Message(format!(
+                        "Product Translation target provider registration failed: {error}"
+                    ))
+                })?;
+        }
+
         #[cfg(feature = "mod-seo")]
         {
             let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
