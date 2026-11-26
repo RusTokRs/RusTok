@@ -817,8 +817,12 @@ reconciliation and durable watchdog recovery through one runtime-owned gate.
 A tracker offset from before a database restore cannot advance a lower
 durable checkpoint; events beyond the recovered checkpoint trigger a full
 cache clear against the database generation until the tracker catches up.
-This protects local checkpoint ordering, not in-flight request snapshots
-or cross-replica delivery latency.
+If the durable read itself fails, both listener recovery/reconciliation and
+the watchdog clear permission snapshots and advance cache fill tokens without
+acknowledging an unknown generation. The error remains visible and the last
+confirmed checkpoint is preserved; the watchdog also retries pre-install
+missing state. This protects local checkpoint ordering, not in-flight request
+snapshots or cross-replica delivery latency. Source regression authored, unrun.
 
 GraphQL request-preparation policies classify only the operation selected by
 `operationName` (or the sole operation when no name is required). The selected
