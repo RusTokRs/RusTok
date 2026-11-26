@@ -799,9 +799,8 @@ pub fn build_shared_runtime_extensions_with_host_providers(
 
     let auth_admin_provider = Arc::new(
         crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider::new(
-            db.clone(),
+            &runtime_ctx,
             auth_config.clone(),
-            crate::services::cache_runtime::ensure_cache_service(&runtime_ctx),
         ),
     );
     let oauth_admin_provider = Arc::new(

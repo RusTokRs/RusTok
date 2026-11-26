@@ -7,10 +7,8 @@ use rustok_auth::{
     IssuedUserInviteResult, UpdateUserCommand, UserAdminMutationPort, UserInviteRecord,
     UserMutationRecord,
 };
-use rustok_core::events::EventTransport;
 use rustok_core::{UserRole, UserStatus};
 use rustok_events::DomainEvent;
-use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_rbac::{
     RbacCustomRoleAssignmentPlan, RbacCustomRoleAssignmentRequest, RbacRoleMutationOutcome,
     RbacRoleMutationPlan, RbacRoleMutationPolicyError, RbacUserRoleMutationRequest,
@@ -22,7 +20,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
-use std::{str::FromStr, sync::Arc};
+use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::auth::{AuthConfig, hash_password_async};
@@ -263,9 +261,7 @@ impl ServerAuthAdminMutationProvider {
         context: &AuthAdminMutationContext,
         event: DomainEvent,
     ) -> Result<(), AuthAdminMutationError> {
-        let event_bus = TransactionalEventBus::new(
-            Arc::new(OutboxTransport::new(self.db.clone())) as Arc<dyn EventTransport>
-        );
+        let event_bus = &self.event_bus;
         event_bus
             .publish_in_tx(tx, context.tenant_id, Some(context.actor_id), event)
             .await
@@ -890,9 +886,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             None
         };
 
-        let event_bus = TransactionalEventBus::new(
-            Arc::new(OutboxTransport::new(self.db.clone())) as Arc<dyn EventTransport>
-        );
+        let event_bus = &self.event_bus;
 
         if let Some(plan) = role_mutation_plan.as_ref() {
             let generation = durable_generation.ok_or_else(|| {
@@ -975,9 +969,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         )
         .await?;
 
-        let event_bus = TransactionalEventBus::new(
-            Arc::new(OutboxTransport::new(self.db.clone())) as Arc<dyn EventTransport>
-        );
+        let event_bus = &self.event_bus;
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
         let user = lock_user_for_mutation(&tx, context.tenant_id, user_id).await?;
         let current_role = self.user_role(&tx, context.tenant_id, user.id).await?;
@@ -1253,6 +1245,106 @@ mod tests {
     use rustok_auth::AuthAdminMutationError;
     use rustok_core::{UserRole, UserStatus};
     use rustok_rbac::RbacRoleMutationPolicyError;
+
+    #[tokio::test]
+    async fn invite_revocation_rolls_back_when_runtime_event_transport_fails() {
+        use crate::models::{auth_invites, tenants};
+        use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
+        use crate::services::server_runtime_context::ServerRuntimeContext;
+        use rustok_api::Permission;
+        use rustok_auth::{AuthAdminMutationContext, UserAdminMutationPort};
+        use rustok_core::events::{EventTransport, ReliabilityLevel};
+        use rustok_events::EventEnvelope;
+        use rustok_migrations::SqliteTestMigrator;
+        use rustok_test_utils::db::setup_test_db_with_migrations;
+        use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+        use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+        use uuid::Uuid;
+
+        #[derive(Default)]
+        struct FailingTransport(AtomicUsize);
+
+        #[async_trait::async_trait]
+        impl EventTransport for FailingTransport {
+            async fn publish(&self, _event: EventEnvelope) -> rustok_core::Result<()> {
+                panic!("admin events must remain transactional");
+            }
+
+            fn supports_transactional_writes(&self) -> bool {
+                true
+            }
+
+            async fn write_root_in_transaction(
+                &self,
+                _transaction: &sea_orm::DatabaseTransaction,
+                _event: EventEnvelope,
+            ) -> rustok_core::Result<()> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Err(rustok_core::Error::Validation("injected outbox failure".to_string()))
+            }
+
+            fn reliability_level(&self) -> ReliabilityLevel {
+                ReliabilityLevel::Outbox
+            }
+
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+
+        let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
+        let tenant = tenants::ActiveModel::new("Admin event tenant", "admin-event-tenant")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let actor_id = Uuid::new_v4();
+        let invite_id = Uuid::new_v4();
+        let now = chrono::Utc::now();
+        auth_invites::ActiveModel {
+            id: Set(invite_id),
+            tenant_id: Set(tenant.id),
+            token_hash: Set("a".repeat(64)),
+            email: Set("invitee@example.test".to_string()),
+            role: Set("customer".to_string()),
+            issued_by: Set(None),
+            expires_at: Set((now + chrono::Duration::hours(1)).into()),
+            revoked_at: Set(None),
+            created_at: Set(now.into()),
+        }
+        .insert(&db)
+        .await
+        .expect("invite");
+        let runtime = ServerRuntimeContext::new(db.clone(), Default::default());
+        let failing = Arc::new(FailingTransport::default());
+        runtime.shared_insert(failing.clone() as Arc<dyn EventTransport>);
+        let provider = super::ServerAuthAdminMutationProvider::new(
+            &runtime,
+            crate::auth::test_auth_config("aB3!zY7@qW8#eR2$".repeat(4)),
+        );
+        let context = AuthAdminMutationContext {
+            actor_id,
+            tenant_id: tenant.id,
+            request_id: None,
+            locale: Some("en".to_string()),
+            principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
+        };
+        let scope = RbacRequestScope::new(
+            tenant.id, actor_id, vec![Permission::USERS_MANAGE], UserRole::Admin,
+        );
+
+        let result = with_rbac_request_scope(Some(scope), async {
+            provider.revoke_user_invite(&context, invite_id).await
+        })
+        .await;
+        assert!(matches!(result, Err(AuthAdminMutationError::Internal(_))));
+        assert_eq!(failing.0.load(Ordering::SeqCst), 1);
+        let persisted = auth_invites::Entity::find_by_id(invite_id)
+            .one(&db)
+            .await
+            .expect("read invite")
+            .expect("invite retained");
+        assert!(persisted.revoked_at.is_none());
+    }
 
     #[test]
     fn invite_ledger_expiration_matches_signed_jwt_second_precision() {
