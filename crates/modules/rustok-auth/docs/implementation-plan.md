@@ -562,6 +562,7 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 
 ## Recovery lifecycle continuation (2026-11-26)
 
+- Tracked recovery email dispatch independently admits application time, revalidates signed reset/verification JWTs against the live keyring, and carries the committed opaque email-change deadline. Clock/expiry/credential denial skips the sender with a fixed diagnostic and skipped metric; old-mailbox notifications are unaffected. Source deadline, dispatch and stored-expiry regressions authored, unrun. Account-state revalidation, SMTP latency and durable delivery are separate open boundaries.
 - Reset, verification and invite JWT issuance now share the access-token post-signing live-clock and signed NumericDate deadline check. A deterministic regression covers fractional-second expiry, equality, backwards observation and epoch-zero issuance. Source regression unrun; application-domain publication and commit-time guarantees remain separate.
 - Email-change issuance and confirmation bind the existing user recovery revision; the Auth migration invalidates pre-cutover pending challenges. Mailbox ABA and stale issuance source regressions are authored.
 - Reset, verification, email change and invite acceptance recheck credential deadlines after transactional writes, immediately before requesting commit; authenticated email change also rechecks the locked proving session. Invite acceptance checks signed and ledger expiry.

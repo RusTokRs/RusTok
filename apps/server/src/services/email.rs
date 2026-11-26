@@ -15,6 +15,7 @@ use uuid::Uuid;
 pub struct SharedSmtpEmailService(pub Arc<rustok_email::SmtpEmailSender>);
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use rustok_email::{EmailError, RenderedEmail};
 
 use crate::common::settings::EmailProvider;
@@ -578,6 +579,63 @@ where
     F: FnOnce() -> Fut + Send + 'static,
     Fut: std::future::Future<Output = std::result::Result<(), EmailError>> + Send + 'static,
 {
+    spawn_email_task(ctx, task_name, None, future_factory)
+}
+
+/// Credentials are checked at dispatch, not at task registration. JWTs are
+/// revalidated against the current keyring; opaque challenges carry the
+/// committed deadline. Never log the credential.
+enum RecoveryEmailCredential {
+    PasswordReset { config: crate::auth::AuthConfig, token: String },
+    Verification { config: crate::auth::AuthConfig, token: String },
+    EmailChange { expires_at: DateTime<Utc> },
+}
+
+fn recovery_email_deadline_live(
+    verified_at: DateTime<Utc>,
+    observed_at: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+) -> bool {
+    verified_at <= observed_at && observed_at < expires_at
+}
+
+async fn recovery_email_admitted(
+    db: &sea_orm::DatabaseConnection,
+    credential: RecoveryEmailCredential,
+) -> bool {
+    // Independent admission; no domain transaction or business row locks.
+    let Ok(verified_at) = rustok_auth::application_clock::admit_now(db).await else {
+        return false;
+    };
+    let expires_at = match credential {
+        RecoveryEmailCredential::PasswordReset { config, token } => {
+            crate::auth::decode_password_reset_token(&config, &token)
+                .map(|claims| claims.expires_at).ok()
+        }
+        RecoveryEmailCredential::Verification { config, token } => {
+            crate::auth::decode_email_verification_token(&config, &token)
+                .map(|claims| claims.expires_at).ok()
+        }
+        RecoveryEmailCredential::EmailChange { expires_at } => Some(expires_at),
+    };
+    // A later observation may reject, but cannot extend the verified window.
+    let observed_at = Utc::now();
+    rustok_auth::application_clock::check_local().is_ok()
+        && expires_at.is_some_and(|expires_at|
+            recovery_email_deadline_live(verified_at, observed_at, expires_at))
+}
+
+fn spawn_email_task<F, Fut>(
+    ctx: &ServerRuntimeContext,
+    task_name: &'static str,
+    credential: Option<RecoveryEmailCredential>,
+    future_factory: F,
+) -> tokio::task::JoinHandle<()>
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = std::result::Result<(), EmailError>> + Send + 'static,
+{
+    let db = ctx.db_clone();
     let stop_handle = crate::services::app_lifecycle::StopHandle::ensure(ctx);
     let registry = ctx.shared_get_or_insert_with(|| Arc::new(AuthEmailTaskRegistry::new()));
     let mut state = registry
@@ -606,14 +664,29 @@ where
 
         // Include future construction in the panic boundary: FnOnce itself
         // can panic before returning the asynchronous operation.
-        let result = AssertUnwindSafe(async move { future_factory().await })
-            .catch_unwind()
-            .await;
+        let result = AssertUnwindSafe(async move {
+            if let Some(credential) = credential {
+                if !recovery_email_admitted(&db, credential).await {
+                    return None;
+                }
+            }
+            Some(future_factory().await)
+        })
+        .catch_unwind()
+        .await;
         match result {
-            Ok(Ok(())) => {
+            Ok(None) => {
+                record_email_send_skipped();
+                tracing::warn!(
+                    task = task_name,
+                    error_code = "auth_email_credential_not_admitted",
+                    "Skipping recovery email without a currently admissible credential"
+                );
+            }
+            Ok(Some(Ok(()))) => {
                 tracing::debug!(task = task_name, "Background email delivered successfully");
             }
-            Ok(Err(_error)) => {
+            Ok(Some(Err(_error))) => {
                 tracing::warn!(
                     task = task_name,
                     error_code = "auth_email_delivery_failed",
@@ -639,8 +712,11 @@ pub fn spawn_password_reset_email(
     email_service: Box<dyn BuiltInAuthEmailSender>,
     recipient: String,
     reset_url: String,
+    config: &crate::auth::AuthConfig,
+    token: String,
 ) -> tokio::task::JoinHandle<()> {
-    spawn_auth_email_task(ctx, "send_password_reset", move || async move {
+    let credential = RecoveryEmailCredential::PasswordReset { config: config.clone(), token };
+    spawn_email_task(ctx, "send_password_reset", Some(credential), move || async move {
         email_service
             .send_password_reset(PasswordResetEmail {
                 to: recipient,
@@ -656,8 +732,12 @@ pub fn spawn_email_verification_send(
     email_service: Box<dyn BuiltInAuthEmailSender>,
     recipient: String,
     verification_token: String,
+    config: &crate::auth::AuthConfig,
 ) -> tokio::task::JoinHandle<()> {
-    spawn_auth_email_task(ctx, "send_email_verification", move || async move {
+    let credential = RecoveryEmailCredential::Verification {
+        config: config.clone(), token: verification_token.clone(),
+    };
+    spawn_email_task(ctx, "send_email_verification", Some(credential), move || async move {
         email_service
             .send_email_verification(EmailVerificationEmail {
                 to: recipient,
@@ -673,8 +753,10 @@ pub fn spawn_email_change_confirmation_send(
     email_service: Box<dyn BuiltInAuthEmailSender>,
     recipient: String,
     token: String,
+    expires_at: DateTime<Utc>,
 ) -> tokio::task::JoinHandle<()> {
-    spawn_auth_email_task(ctx, "send_email_change_confirmation", move || async move {
+    let credential = RecoveryEmailCredential::EmailChange { expires_at };
+    spawn_email_task(ctx, "send_email_change_confirmation", Some(credential), move || async move {
         email_service
             .send_email_change_confirmation(EmailChangeConfirmationEmail {
                 to: recipient,
@@ -735,7 +817,7 @@ pub fn spawn_email_verification(
         }
     };
     let recipient = user.email.clone();
-    let _task = spawn_email_verification_send(ctx, email_service, recipient, token);
+    let _task = spawn_email_verification_send(ctx, email_service, recipient, token, config);
 }
 
 /// Build a localized built-in auth email sender from server runtime context.
@@ -967,6 +1049,51 @@ mod tests {
         assert_eq!(after.skipped_total, before.skipped_total + 4);
         assert_eq!(after.success_total, before.success_total);
         assert_eq!(after.failure_total, before.failure_total);
+    }
+
+    #[test]
+    fn recovery_email_deadline_is_exclusive_and_rejects_backwards_observation() {
+        let verified = DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap();
+        let expiry = verified + chrono::Duration::seconds(1);
+        assert!(recovery_email_deadline_live(verified, verified, expiry));
+        assert!(!recovery_email_deadline_live(verified, expiry, expiry));
+        assert!(!recovery_email_deadline_live(
+            verified, verified - chrono::Duration::milliseconds(1), expiry,
+        ));
+    }
+
+    #[tokio::test]
+    async fn recovery_email_dispatch_requires_clock_admission_and_live_deadline() {
+        use crate::common::settings::RustokSettings;
+        use rustok_migrations::SqliteTestMigrator;
+        use rustok_test_utils::db::setup_test_db_with_migrations;
+
+        let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        for (expires_at, expected) in [
+            (Utc::now() - chrono::Duration::minutes(5), false),
+            (Utc::now() + chrono::Duration::minutes(5), true),
+        ] {
+            let (called_tx, mut called_rx) = tokio::sync::mpsc::channel(1);
+            let credential = RecoveryEmailCredential::EmailChange { expires_at };
+            spawn_email_task(&ctx, "test_recovery", Some(credential), move || async move {
+                called_tx.send(()).await.unwrap();
+                Ok(())
+            }).await.unwrap();
+            assert_eq!(called_rx.try_recv().is_ok(), expected);
+        }
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let (called_tx, mut called_rx) = tokio::sync::mpsc::channel(1);
+        let credential = RecoveryEmailCredential::EmailChange {
+            expires_at: Utc::now() + chrono::Duration::minutes(5),
+        };
+        spawn_email_task(&ctx, "test_missing_clock", Some(credential), move || async move {
+            called_tx.send(()).await.unwrap();
+            Ok(())
+        }).await.unwrap();
+        assert!(called_rx.try_recv().is_err());
     }
 
     #[tokio::test]

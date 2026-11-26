@@ -78,7 +78,7 @@ impl AuthLifecycleService {
         let token = generate_refresh_token().map_err(AuthLifecycleError::from)?;
         let token_hash = hash_refresh_token(&token);
 
-        Self::create_email_change_request_db(
+        let expires_at = Self::create_email_change_request_db(
             ctx.db(),
             tenant_id,
             user_id,
@@ -94,6 +94,7 @@ impl AuthLifecycleService {
             email_service,
             new_email,
             token,
+            expires_at,
         );
         Ok(())
     }
@@ -155,7 +156,7 @@ impl AuthLifecycleService {
         observed_user: &users::Model,
         new_email: &str,
         token_hash: &str,
-    ) -> Result<(), AuthLifecycleError> {
+    ) -> Result<chrono::DateTime<Utc>, AuthLifecycleError> {
         // Reclaim only the requested mailbox, before locking the requester.
         // Never hold two user mutation fences in one issuance transaction.
         reclaim_stale_mailbox_reservation(db, tenant_id, user_id, new_email).await?;
@@ -242,7 +243,7 @@ impl AuthLifecycleService {
             created_at: Set(now.into()),
         };
 
-        request.insert(&tx).await.map_err(|error| {
+        let stored = request.insert(&tx).await.map_err(|error| {
             if matches!(
                 error.sql_err(),
                 Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
@@ -253,6 +254,7 @@ impl AuthLifecycleService {
             }
         })?;
 
+        let expires_at = expires_at.min(stored.expires_at.with_timezone(&Utc));
         // A competing mailbox claim may also delay the insert itself. Do
         // not commit a challenge that is already unusable or was issued by
         // a session that expired during the wait. Rollback preserves any
@@ -265,7 +267,7 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::InvalidEmailChangeToken);
         }
         tx.commit().await.map_err(AuthLifecycleError::from)?;
-        Ok(())
+        Ok(expires_at)
     }
 
     async fn confirm_email_change_db(
@@ -760,7 +762,7 @@ mod tests {
         insert_pending_request(&db, tenant.id, &user, "previous@example.com", &old_hash).await;
 
         let before = Utc::now();
-        AuthLifecycleService::create_email_change_request_db(
+        let dispatch_deadline = AuthLifecycleService::create_email_change_request_db(
             &db, tenant.id, user.id, session.id, &user, "new@example.com", &new_hash,
         )
         .await
@@ -776,6 +778,7 @@ mod tests {
         assert_eq!(requests.len(), 1);
         let request = &requests[0];
         assert_eq!(request.token_hash, new_hash);
+        assert!(dispatch_deadline <= request.expires_at.with_timezone(&Utc));
         assert_eq!(request.new_email, "new@example.com");
         assert_eq!(request.recovery_revision, Some(user.recovery_revision));
         assert!(request.created_at.with_timezone(&Utc) >= before - Duration::milliseconds(1));

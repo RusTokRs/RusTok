@@ -804,6 +804,14 @@ timestamps and does not rewrite previously revoked rows.
 
 ## Account recovery revision
 
+Before dispatching a recovery email, the tracked host task independently
+admits application time, revalidates reset/verification JWTs using the live
+keyring, or checks the committed email-change deadline. Expired credentials,
+clock failures and invalid JWTs skip the sender and count as skipped sends.
+Old-mailbox security notifications are not credential-gated. This is a
+best-effort pre-sender check, not delivery-time validity, account-state
+revalidation, or durable email recovery. Source regressions are unrun.
+
 All JWT issuers, including reset, verification and invite, sample the live
 credential clock before preparing claims and recheck it after RSA signing.
 Reject backward time or an elapsed exclusive signed whole-second expiry;

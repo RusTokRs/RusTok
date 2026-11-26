@@ -841,6 +841,7 @@ async fn request_verification(
             email_service,
             recipient,
             verification_token,
+            &config,
         );
     }
 

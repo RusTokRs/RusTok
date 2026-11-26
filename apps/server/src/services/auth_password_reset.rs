@@ -46,11 +46,11 @@ impl AuthLifecycleService {
             )?;
             let service = email_service_from_ctx(ctx, locale)?;
             let url = password_reset_url(ctx, &token)?;
-            Ok::<_, crate::error::Error>((service, url))
+            Ok::<_, crate::error::Error>((service, url, token))
         })();
         match prepared {
-            Ok((service, url)) => {
-                let _task = spawn_password_reset_email(ctx, service, user.email, url);
+            Ok((service, url, token)) => {
+                let _task = spawn_password_reset_email(ctx, service, user.email, url, config, token);
             }
             Err(_) => {
                 tracing::warn!(
