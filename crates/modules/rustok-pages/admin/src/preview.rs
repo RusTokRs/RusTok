@@ -248,6 +248,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn preview_requires_a_verified_owner_before_reading_a_draft_token() {
+        use rustok_page_builder_admin::InMemorySsrDraftSessionStore;
+        let snapshot = crate::builder::PagesBuilderSaveSnapshot {
+            token: None,
+            tenant_slug: None,
+            page_id: "home".to_string(),
+            default_locale: "en".to_string(),
+            owner: None,
+        };
+        let result = super::render_server_preview(
+            snapshot,
+            &InMemorySsrDraftSessionStore::editor_default(),
+            Some("legacy-token"),
+            serde_json::json!({}),
+            None,
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(crate::browser_intent::PagesBrowserIntentError::Draft(
+                rustok_page_builder_admin::SsrDraftSessionError::OwnerMismatch
+            ))
+        ));
+    }
+
+    #[tokio::test]
     async fn preview_refuses_missing_draft_instead_of_showing_saved_document() {
         use rustok_page_builder_admin::InMemorySsrDraftSessionStore;
         let snapshot = crate::builder::PagesBuilderSaveSnapshot {
