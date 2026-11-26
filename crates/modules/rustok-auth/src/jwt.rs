@@ -438,7 +438,7 @@ fn encoding_key(config: &AuthConfig, purpose: JwtPurpose) -> Result<&EncodingKey
 struct AuthJwtHeader {
     alg: Algorithm,
     typ: String,
-    kid: String,
+    kid: Option<String>,
 }
 
 fn auth_jwt_header(token: &str) -> Result<AuthJwtHeader> {
