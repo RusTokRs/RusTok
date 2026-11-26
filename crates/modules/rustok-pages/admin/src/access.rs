@@ -124,11 +124,7 @@ mod tests {
     #[test]
     fn publish_grant_without_update_keeps_the_page_builder_read_only() {
         let permissions = pages_editor_permissions_from_effective(&["pages:publish".to_string()]);
-        assert!(!permissions.edit);
-        assert!(!permissions.publish);
-        assert!(!permissions.properties);
-        assert!(!permissions.assets);
-        assert!(permissions.publish);
+        assert_eq!(permissions, CapabilityState::read_only());
     }
 
     #[test]
