@@ -623,21 +623,36 @@ test('strict pending storage cannot be overwritten by another mounted root or cl
     // reserved its successor before the original HTTP response arrives.
     const successor = JSON.parse(parked);
     successor.request.operation_id = 'successor';
-    successor.request.draft_generation = 2;
+    successor.request.draft_generation = 3;
     sessionStorage.setItem(pendingKey, JSON.stringify(successor));
+    sessionStorage.setItem(draftKey, JSON.stringify({ token: 'draft-1', generation: 3 }));
+    const oldResponses: unknown[] = [];
+    root.addEventListener('fly:browser-intent-response', (event) => {
+      oldResponses.push((event as CustomEvent).detail);
+    });
     finish(new Response(JSON.stringify({
       operation_id: requests[0].operation_id, operation_status: 'committed',
-      result: { revision_id: 'rev-1', project_hash: 'hash-1', dirty: false },
+      result: { revision_id: 'rev-old', project_hash: 'hash-old', dirty: false },
       draft_token: 'draft-1', draft_generation: 2
     }), { status: 200, headers: { 'content-type': 'application/json' } }));
-    await firstSave;
+    const oldResult = await firstSave;
     const after = JSON.parse(sessionStorage.getItem(pendingKey)!).request.operation_id;
+    await first.resolvePendingOperation();
     await second.retryPendingOperation();
+    await second.resolvePendingOperation();
+    const revision = root.dataset.flyRevision;
+    const hash = root.dataset.flyProjectHash;
+    const draft = JSON.parse(sessionStorage.getItem(draftKey)!);
     first.stop();
     second.stop();
-    return { preserved, after, emitted, posted: requests.map((request) => request.intent) };
+    return { preserved, after, emitted, posted: requests.map((request) => request.intent),
+      oldResult, oldResponses, revision, hash, draft };
   });
-  expect(observed).toEqual({ preserved: true, after: 'successor', emitted: [], posted: ['save'] });
+  expect(observed).toEqual({
+    preserved: true, after: 'successor', emitted: [], posted: ['save'],
+    oldResult: null, oldResponses: [], revision: 'rev-1', hash: 'hash-1',
+    draft: { token: 'draft-1', generation: 3 }
+  });
 });
 
 test('a matching operation ID with a different draft or unchanged generation is not a receipt', async ({ page }) => {

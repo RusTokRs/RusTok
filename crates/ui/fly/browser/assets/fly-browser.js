@@ -1734,7 +1734,8 @@ export class FlyBrowserAdapter {
     this.pendingOperationUnresolved = true;
     // Never resolve an old envelope against a different draft's receipt namespace.
     if (pendingRequest.page_id !== this.pageId ||
-        pendingRequest.draft_token !== this.draftSession?.token) {
+        pendingRequest.draft_token !== this.draftSession?.token ||
+        !samePendingRequest(readPendingOperation(this.pageId)?.request, pendingRequest)) {
       showPendingOperationNotice(this, "unavailable");
       return null;
     }
@@ -1958,6 +1959,7 @@ export class FlyBrowserAdapter {
       request.operation_id !== this.pendingOperation.request.operation_id ||
       request.page_id !== this.pendingOperation.request.page_id ||
       request.draft_token !== this.pendingOperation.request.draft_token ||
+      !samePendingRequest(readPendingOperation(this.pageId)?.request, this.pendingOperation.request) ||
       this.pendingResolutionInFlight || this.authoritativeInFlight
     )) return null;
 
@@ -2142,6 +2144,19 @@ export class FlyBrowserAdapter {
           INTENT_REQUEST_ABORTED_CODE,
           "Editor request completed after cancellation.",
         );
+      }
+      // A different root may have resolved this operation and reserved a
+      // successor while the HTTP response was in flight. Ownership of the
+      // shared slot fences *all* response side effects, not just removal.
+      // Keep this stale mount read-only until a fresh server-bound reload.
+      if (this.requiresOperationReceipts && (authoritative || resolvesOperation) &&
+          !samePendingRequest(readPendingOperation(this.pageId)?.request, this.pendingOperation?.request)) {
+        this.pendingOperationUnresolved = true;
+        showPendingOperationNotice(this, "unavailable");
+        if (this.lifecycleState !== ADAPTER_LIFECYCLE.STOPPED) {
+          updateNetworkIndicator(this.root, "error", "OPERATION_OUTCOME_UNKNOWN");
+        }
+        return null;
       }
       const responseState = isObject(result)
         ? (isObject(result.result) ? result.result : result)
