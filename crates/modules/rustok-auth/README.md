@@ -120,7 +120,8 @@ All JWT purposes require an exact key ID; missing-ID access and raw-root
 verification bridges are removed. Access grant type/scopes and invite nonce
 are mandatory; previously accepted missing fields are rejected.
 The keyring document uses one unversioned format with a bounded monotonic
-generation and contains no algorithm field or alternate key source. Password-reset credential binding and OAuth consent MAC proofs use one
+generation and contains no algorithm field or alternate key source.
+Password-reset credential binding and OAuth consent MAC proofs use one
 unversioned canonical format. Zero-legacy cleanup remains open for other
 unreleased token formats and broader config compatibility. Ambiguous or empty RSA key sources
 are rejected.

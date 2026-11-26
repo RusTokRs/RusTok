@@ -226,8 +226,6 @@ is available. Only explicitly disposable development state may be replaced
 together with fresh keys and invalidation of old tokens.
 The cutover does not authorize data deletion.
 
-The cutover does not authorize data deletion.
-
 ### Isolated development and test provisioning
 
 On POSIX systems with Python 3.9+ and OpenSSL, explicitly create a new

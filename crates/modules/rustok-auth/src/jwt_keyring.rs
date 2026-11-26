@@ -328,7 +328,6 @@ impl ValidatedJwtKeyrings {
         let now = chrono::Utc::now().timestamp();
         for purpose in JwtPurpose::ALL {
             let old = self.for_purpose(purpose);
-            let new = next.for_purpose(purpose);
             let old_keys = std::iter::once((
                 old.active_kid.as_str(), old.active_identity, old.active_verification_identity, None,
             )).chain(old.history.iter().map(|(kid, key)| {
