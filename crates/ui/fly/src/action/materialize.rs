@@ -319,10 +319,9 @@ fn apply_action(
             fragment,
             fallback_href,
         } => {
-            let Some(page_index) = resolution.routes.page_index(page_id) else {
-                return AppliedAction::Unresolved(format!(
-                    "target page `{page_id}` does not exist"
-                ));
+            let page_index = match resolution.routes.page_index(page_id) {
+                Ok(index) => index,
+                Err(error) => return AppliedAction::Unresolved(error.to_string()),
             };
             let href = match resolution
                 .routes

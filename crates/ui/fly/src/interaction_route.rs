@@ -1,6 +1,4 @@
-use crate::{
-    LocalizedPageRouteEntry, ProjectDocument, localized_page_route_index,
-};
+use crate::{LocalizedPageRouteEntry, ProjectDocument, localized_page_route_index};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Shared route catalog used by every authoring interaction that targets a page.
@@ -10,21 +8,31 @@ use std::collections::{BTreeMap, BTreeSet};
 /// validation, and storefront runtime from producing different navigation URLs.
 pub(crate) struct InteractionRouteCatalog {
     entries: Vec<LocalizedPageRouteEntry>,
-    page_ids: BTreeMap<String, usize>,
+    page_ids: BTreeMap<String, Option<usize>>,
     routed_pages: BTreeSet<usize>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum PageTargetError {
+    #[error("target page `{0}` does not exist")]
+    Missing(String),
+    #[error("target page `{0}` is ambiguous: duplicate page id")]
+    Ambiguous(String),
 }
 
 impl InteractionRouteCatalog {
     pub(crate) fn from_document(document: &ProjectDocument) -> Self {
         let entries = localized_page_route_index(document);
         let routed_pages = entries.iter().map(|entry| entry.page_index).collect();
-        let page_ids = document
-            .project()
-            .pages
-            .iter()
-            .enumerate()
-            .filter_map(|(index, page)| page.id.as_deref().map(|id| (id.to_string(), index)))
-            .collect();
+        let mut page_ids = BTreeMap::new();
+        for (index, page) in document.project().pages.iter().enumerate() {
+            if let Some(id) = &page.id {
+                page_ids
+                    .entry(id.clone())
+                    .and_modify(|entry| *entry = None)
+                    .or_insert(Some(index));
+            }
+        }
         Self {
             entries,
             page_ids,
@@ -32,8 +40,12 @@ impl InteractionRouteCatalog {
         }
     }
 
-    pub(crate) fn page_index(&self, page_id: &str) -> Option<usize> {
-        self.page_ids.get(page_id).copied()
+    pub(crate) fn page_index(&self, page_id: &str) -> Result<usize, PageTargetError> {
+        match self.page_ids.get(page_id) {
+            Some(Some(index)) => Ok(*index),
+            Some(None) => Err(PageTargetError::Ambiguous(page_id.to_string())),
+            None => Err(PageTargetError::Missing(page_id.to_string())),
+        }
     }
 
     pub(crate) fn has_route(&self, page_index: usize) -> bool {
@@ -137,6 +149,73 @@ mod tests {
                 "/traditional",
                 "{locale}"
             );
+        }
+    }
+
+    #[test]
+    fn duplicate_page_identity_cannot_materialize_either_navigation_contract() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "link",
+                        "type": "link",
+                        "attributes": { "href": "/stale" },
+                        "flyPageLink": { "page_id": "about", "fallback_href": "/fallback" }
+                    }, {
+                        "id": "action",
+                        "type": "button",
+                        "attributes": { "href": "/stale" },
+                        "flyAction": {
+                            "kind": "navigate_page", "page_id": "about",
+                            "fallback_href": "/fallback"
+                        }
+                    }]
+                }
+            }, {
+                "id": "about",
+                "flyPageMeta": { "slug": "first" },
+                "component": { "id": "first-root", "type": "wrapper" }
+            }, {
+                "id": "about",
+                "flyPageMeta": { "slug": "second" },
+                "component": { "id": "second-root", "type": "wrapper" }
+            }, {
+                "id": "about",
+                "flyPageMeta": { "slug": "third" },
+                "component": { "id": "third-root", "type": "wrapper" }
+            }]
+        }))
+        .expect("imported project");
+        let catalog = InteractionRouteCatalog::from_document(&document);
+        assert!(matches!(
+            catalog.page_index("about"),
+            Err(PageTargetError::Ambiguous(_))
+        ));
+        assert!(matches!(
+            catalog.page_index("missing"),
+            Err(PageTargetError::Missing(_))
+        ));
+        assert!(crate::validate_internal_page_links(&document).iter().any(|diagnostic| {
+            diagnostic.code == "internal_page_link_target_ambiguous"
+                && diagnostic.severity == crate::ValidationSeverity::Error
+        }));
+        assert!(crate::validate_component_actions(&document).iter().any(|diagnostic| {
+            diagnostic.code == "action_definition_invalid"
+                && diagnostic.severity == crate::ValidationSeverity::Error
+                && diagnostic.message.contains("ambiguous")
+        }));
+        let materialized = crate::materialize_project_with_runtime_context(&document, &json!({}));
+        assert_eq!(materialized.unresolved_internal_links, 1);
+        assert_eq!(materialized.unresolved_actions, 1);
+        assert_eq!(materialized.fallback_internal_links, 0);
+        assert_eq!(materialized.fallback_actions, 0);
+        for id in ["link", "action"] {
+            assert!(!materialized.document.component(id).unwrap().attributes.contains_key("href"));
+            assert_eq!(document.component(id).unwrap().attributes["href"], "/stale");
         }
     }
 

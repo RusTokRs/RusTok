@@ -261,10 +261,10 @@ pub(super) fn validate_action_contract(
                 Ok(())
             })
             .and_then(|_| match routes.page_index(page_id) {
-                Some(page_index) if routes.has_route(page_index) => Ok(()),
-                Some(_) if fallback_href.is_some() => Ok(()),
-                Some(_) => Err(format!("target page `{page_id}` has no explicit slug")),
-                None => Err(format!("target page `{page_id}` does not exist")),
+                Ok(page_index) if routes.has_route(page_index) => Ok(()),
+                Ok(_) if fallback_href.is_some() => Ok(()),
+                Ok(_) => Err(format!("target page `{page_id}` has no explicit slug")),
+                Err(error) => Err(error.to_string()),
             }),
         ComponentAction::NavigateUrl { href, .. } => validate_safe_url(href, "navigation href"),
         ComponentAction::SubmitForm { form_id } => validate_identifier(form_id, "form id")

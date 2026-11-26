@@ -183,6 +183,9 @@ crates/ui/fly/
 Runtime values, localized page routes, internal page links and navigation actions share the
 same ordered locale fallback chain. Coverage summary lookup also uses the resolver's chain;
 required translation coverage still requires an exact locale entry, never a fallback.
+A page-targeting interaction requires a unique page ID. Duplicate imported page IDs are
+reported as ambiguous by both link and action validation/materialization, and cannot
+produce an href even when a fallback URL is configured.
 
 ## Runtime binding ownership
 
