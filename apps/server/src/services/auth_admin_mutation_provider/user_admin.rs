@@ -26,7 +26,7 @@ use std::{str::FromStr, sync::Arc};
 use uuid::Uuid;
 
 use crate::auth::{AuthConfig, hash_password_async};
-use crate::models::{auth_invite_consumptions, auth_invites, sessions, users};
+use crate::models::{auth_email_change_requests, auth_invite_consumptions, auth_invites, sessions, users};
 use crate::services::auth_invite::{InviteLookup, invite_token_hash, lock_invite_for_mutation};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
@@ -857,6 +857,12 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         // credentials in the same transaction as the identity change.
         if password_changed || status_disables_user || email_changed {
             revoke_active_sessions(&tx, context.tenant_id, user.id).await?;
+            auth_email_change_requests::Entity::delete_many()
+                .filter(auth_email_change_requests::Column::TenantId.eq(context.tenant_id))
+                .filter(auth_email_change_requests::Column::UserId.eq(user.id))
+                .exec(&tx)
+                .await
+                .map_err(super::internal_admin_error)?;
         }
         if let (Some(locale), Some(values)) = (
             prepared.locale.as_deref(),
@@ -991,6 +997,12 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         .await
         .map_err(super::internal_admin_error)?;
         revoke_active_sessions(&tx, context.tenant_id, user.id).await?;
+        auth_email_change_requests::Entity::delete_many()
+            .filter(auth_email_change_requests::Column::TenantId.eq(context.tenant_id))
+            .filter(auth_email_change_requests::Column::UserId.eq(user.id))
+            .exec(&tx)
+            .await
+            .map_err(super::internal_admin_error)?;
         let durable_generation = reserve_rbac_invalidation_generation(&tx)
             .await
             .map_err(super::internal_admin_error)?;

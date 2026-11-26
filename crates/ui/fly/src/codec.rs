@@ -21,16 +21,30 @@ impl GrapesJsCodec {
     }
 
     pub fn decode_value(value: Value) -> FlyResult<ProjectDocument> {
-        if !value.is_object() {
-            drop_value_iteratively(value);
-            return Err(FlyError::InvalidProjectRoot);
-        }
         // Check before model construction. On rejection, dismantle the Value iteratively too:
         // its ordinary destructor follows nested arrays/objects recursively.
-        if let Err(error) = ensure_depth_within_limit(&value, MAXIMUM_DECODE_DEPTH) {
+        if let Err(error) = Self::validate_input(&value) {
             drop_value_iteratively(value);
             return Err(error);
         }
+        Self::decode_checked_value(value)
+    }
+
+    /// Decode borrowed JSON without cloning an unchecked, potentially deeply nested value.
+    /// The caller retains ownership, including responsibility for dropping rejected input.
+    pub fn decode_ref(value: &Value) -> FlyResult<ProjectDocument> {
+        Self::validate_input(value)?;
+        Self::decode_checked_value(value.clone())
+    }
+
+    fn validate_input(value: &Value) -> FlyResult<()> {
+        if !value.is_object() {
+            return Err(FlyError::InvalidProjectRoot);
+        }
+        ensure_depth_within_limit(value, MAXIMUM_DECODE_DEPTH)
+    }
+
+    fn decode_checked_value(value: Value) -> FlyResult<ProjectDocument> {
         let project: GrapesProject =
             serde_json::from_value(value).map_err(|error| FlyError::Decode(error.to_string()))?;
         Ok(ProjectDocument::new(project))
@@ -60,7 +74,7 @@ impl GrapesJsCodec {
  * nesting recursively. A value rejected by the depth guard (or root-shape check) must
  * therefore be dismantled iteratively before returning the error.
  */
-fn drop_value_iteratively(value: Value) {
+pub(crate) fn drop_value_iteratively(value: Value) {
     let mut pending = vec![value];
     while let Some(value) = pending.pop() {
         match value {
@@ -299,12 +313,47 @@ mod tests {
         for _ in 0..50_000 {
             nested = serde_json::Value::Array(vec![nested]);
         }
-        let project = json!({ "payload": nested });
+        // json! would serialize the deeply nested Value before reaching the guard.
+        let project = Value::Object(serde_json::Map::from_iter([
+            ("payload".to_string(), nested),
+        ]));
         assert!(matches!(
             GrapesJsCodec::decode_value(project),
             Err(FlyError::MaximumDepthExceeded {
                 maximum: MAXIMUM_DECODE_DEPTH
             })
+        ));
+    }
+
+    #[test]
+    fn borrowed_decoder_checks_depth_before_cloning() {
+        let mut nested = Value::Null;
+        for _ in 0..50_000 {
+            nested = Value::Array(vec![nested]);
+        }
+        let project = Value::Object(Map::from_iter([("payload".to_string(), nested)]));
+        let result = GrapesJsCodec::decode_ref(&project);
+        drop_value_iteratively(project);
+        assert!(matches!(
+            result,
+            Err(FlyError::MaximumDepthExceeded {
+                maximum: MAXIMUM_DECODE_DEPTH
+            })
+        ));
+    }
+
+    #[test]
+    fn borrowed_decoder_matches_owned_decoder() {
+        let project = json!({"pages": [], "custom": {"opaque": true}});
+        let borrowed = GrapesJsCodec::decode_ref(&project).expect("borrowed decode");
+        let owned = GrapesJsCodec::decode_value(project).expect("owned decode");
+        assert_eq!(
+            GrapesJsCodec::encode_value(&borrowed).unwrap(),
+            GrapesJsCodec::encode_value(&owned).unwrap()
+        );
+        assert!(matches!(
+            GrapesJsCodec::decode_ref(&Value::Null),
+            Err(FlyError::InvalidProjectRoot)
         ));
     }
 

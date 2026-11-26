@@ -175,7 +175,9 @@ impl AdminCanvasController {
                 "reload the conflicting draft before applying a recovered merge".to_string(),
             ));
         }
-        let document = GrapesJsCodec::decode_value(project_data.clone())?;
+        // Consume and preflight the recovered input before any recursive clone or digest.
+        let document = GrapesJsCodec::decode_value(project_data)?;
+        let project_data = GrapesJsCodec::encode_value(&document)?;
         let snapshot = ProjectSnapshot {
             id: format!("local-recovery-{}", Uuid::new_v4()),
             label: "Recovered local draft".to_string(),
@@ -184,11 +186,11 @@ impl AdminCanvasController {
             project_data,
             metadata: Default::default(),
         };
-        let sequence_before = self.editor.revision().command_sequence;
-        let report = self.editor.restore_snapshot(&snapshot)?;
+        // Recovery is a snapshot restore, not a privileged alternative to authoring.
+        // Use the same capability admission, transaction and geometry synchronization as
+        // every other RestoreSnapshot command.
+        self.dispatch(UiIntent::execute(EditorCommand::restore_snapshot(snapshot)))?;
         self.clipboard = None;
-        self.synchronize(report);
-        self.invalidate_geometry_after_document_change(sequence_before);
         Ok(())
     }
 
@@ -985,6 +987,52 @@ mod tests {
 
         controller.dispatch(UiIntent::Undo).expect("undo recovery");
         assert_eq!(controller.editor().revision().project_hash, original_hash);
+    }
+
+    #[test]
+    fn recovered_merge_obeys_snapshot_restore_capabilities_and_presentation() {
+        let mut controller = controller();
+        let mut recovered =
+            GrapesJsCodec::encode_value(controller.editor().document()).expect("encode");
+        recovered["pages"][0]["component"]["components"][0]["components"][0]["content"] =
+            json!("Recovered edit");
+
+        for capabilities in [
+            fly_ui::CapabilityState::read_only(),
+            fly_ui::CapabilityState {
+                history: false,
+                ..fly_ui::CapabilityState::full()
+            },
+        ] {
+            controller.dispatch(UiIntent::SetEditableCapabilities(capabilities))
+                .expect("host capabilities");
+            let before = controller.clone();
+            assert!(controller.apply_recovered_merge(recovered.clone()).is_err());
+            assert_eq!(controller, before);
+        }
+        controller.dispatch(UiIntent::SetEditableCapabilities(fly_ui::CapabilityState::full()))
+            .expect("host capabilities");
+        controller.dispatch(UiIntent::SetPresentation(Presentation::Preview))
+            .expect("preview presentation");
+        let before = controller.clone();
+        assert!(controller.apply_recovered_merge(recovered).is_err());
+        assert_eq!(controller, before);
+    }
+
+    #[test]
+    fn recovered_merge_rejects_excessive_depth_without_changing_controller() {
+        let mut controller = controller();
+        let before = controller.clone();
+        let mut nested = Value::Null;
+        for _ in 0..50_000 {
+            nested = Value::Array(vec![nested]);
+        }
+        let input = Value::Object(Map::from_iter([("payload".to_string(), nested)]));
+        assert!(matches!(
+            controller.apply_recovered_merge(input),
+            Err(AdminCanvasError::Fly(fly::FlyError::MaximumDepthExceeded { .. }))
+        ));
+        assert_eq!(controller, before);
     }
 
     #[test]

@@ -8,7 +8,7 @@ Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, de
 - `FlyEditor`: Command processor and state coordinator managing document revisions, transaction batches, undo/redo history, and host embed-provider validation (`with_embed_registry`). The embed registry is host runtime policy and is not serialized with the project.
 - `ProjectDocument`: Root document tree containing components, style rules, symbols, and asset registries.
 - `ComponentNode`: Individual component node representing HTML elements, text nodes, or custom blocks with typed and opaque attribute storage.
-- `GrapesJsCodec`: Lossless bidirectional serializer and deserializer for GrapesJS project schemas.
+- `GrapesJsCodec`: Lossless bidirectional serializer and deserializer for GrapesJS project schemas. Use `decode_ref` for borrowed JSON values; it validates root shape and depth before cloning, with the same limits as `decode_value`.
 - `History`, `HistoryEntry`: Undo/redo history manager with configurable serialized-size budget (`DEFAULT_HISTORY_MEMORY_BUDGET_BYTES`), accounting for both snapshot stacks and commands.
 - `ProjectDocument::clone_as_page(&mut IdGenerator) -> FlyResult<ProjectDocument>` and `ProjectFragment::remap_ids(&mut IdGenerator) -> FlyResult<BTreeMap<String, String>>`: reissue owned identities and references; ambiguous source identities fail before consuming the generator.
 - `EditorCommand`: Atomic document manipulation commands (`InsertComponent`, `RemoveComponent`, `UpdateAttributes`, `PatchStyleRule`, etc.).
@@ -53,7 +53,7 @@ Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, de
 ## 3. Error Handling & Edge Cases
 - All errors are strongly typed via `FlyError` without panic or stringly-typed swallowing.
 - `switch_slide` actions require exactly one navigation selector (`target_slide`, `direction`, or `index`); malformed direction/index form values and ambiguous selectors are rejected.
-- `ThemeCommand::Replace` rejects duplicate token names rather than silently keeping one value.
+- `ThemeCommand::Replace` rejects duplicate token names rather than silently keeping one value. Direct `apply_theme_command` calls also validate the resulting token dependency graph before committing the candidate, so undeclared references and cycles leave the document unchanged. Usage inspection and rename traverse the same component style slots, including opaque component nodes and children, without inspecting unrelated provider payloads.
 - Computed format expressions validate every `{{path}}` placeholder; empty and unclosed placeholders are blocking validation errors even when earlier placeholders are valid.
 - Validation failures produce structured diagnostics (`ValidationDiagnostic`, `AuditDiagnostic`) with explicit severity levels (`ValidationSeverity`, `AuditSeverity`).
 - Invalid or colliding generated component IDs are reissued with bounded retries and a deterministic fallback. Ambiguous existing form/HTML/component identities are reported instead of silently choosing an owner.
@@ -65,7 +65,7 @@ Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, de
 - Safe URL validation (`validate_component_public_urls`, `validate_embed_url`) forbids `javascript:`, executable data URIs, HTTP(S) userinfo credentials, embed non-default ports, and paths that escape registered provider surfaces.
 - Theme-token rename and inline-only rendering semantics are recorded in [the Fly theme-token reference ADR](../../../DECISIONS/2026-11-25-fly-theme-token-reference-and-inline-rendering.md).
 - HTML sanitization and safe SSR rendering prevent injection of executable script tags or malicious event handlers.
-- Multi-tenant bundle export/import validates cryptographic SHA-256 digests (`bundle_hash`, `sha256_hex`, `constant_time_eq`) under strict policy enforcement.
+- Multi-tenant bundle export/import checks SHA-256 content digests under strict policy enforcement. `require_content_digest` cannot be bypassed by enabling raw-project fallback; a permissively imported raw project reports no verified input digest (`digest_matches=None`). `bundle_hash` remains the cheap project fingerprint, not an integrity check.
 - Strict iframe sandboxing for embedded providers (`EMBED_IFRAME_SANDBOX`).
 
 ## 5. Contract Tests & Verification

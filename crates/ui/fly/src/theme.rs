@@ -224,7 +224,7 @@ mod tests {
     use crate::GrapesJsCodec;
     use serde_json::json;
 
-    fn document_with_theme(theme: serde_json::Value) -> ProjectDocument {
+    pub(super) fn document_with_theme(theme: serde_json::Value) -> ProjectDocument {
         GrapesJsCodec::decode_value(json!({
             "flyTheme": theme,
             "pages": [{ "id": "home", "component": { "id": "root", "type": "wrapper" } }]
@@ -359,36 +359,10 @@ pub fn replace_token_in_css_value(value: &str, old_name: &str, new_name: &str) -
 pub fn find_token_usages(document: &ProjectDocument, token_name: &str) -> Vec<TokenUsage> {
     let mut usages = Vec::new();
 
-    // 1. Component inline styles
-    document.project().visit_components(|component, _, _| {
-        let comp_id = component
-            .id
-            .clone()
-            .unwrap_or_else(|| "anonymous".to_string());
-        if let Some(Value::Object(map)) = &component.style {
-            for (prop, val) in map {
-                if let Some(css_val) = val.as_str() {
-                    let (_, count) = replace_token_in_css_value(css_val, token_name, token_name);
-                    if count > 0 {
-                        usages.push(TokenUsage {
-                            location: TokenUsageLocation::ComponentStyle {
-                                component_id: comp_id.clone(),
-                                property: prop.clone(),
-                            },
-                            snippet: format!("{prop}: {css_val}"),
-                        });
-                    }
-                }
-            }
-        }
-        if let ComponentChildren::Opaque(val) = &component.components {
-            find_usages_in_opaque_value(val, token_name, &mut usages, &comp_id);
-        }
-    });
-
+    // 1. Walk the same structural component slots as rename_token_references.
     for page in &document.project().pages {
-        if let Some(ComponentNode::Opaque(val)) = &page.component {
-            find_usages_in_opaque_value(val, token_name, &mut usages, "opaque-page-root");
+        if let Some(root) = &page.component {
+            find_usages_in_component_tree(root, token_name, &mut usages);
         }
     }
 
@@ -430,6 +404,85 @@ pub fn find_token_usages(document: &ProjectDocument, token_name: &str) -> Vec<To
     }
 
     usages
+}
+
+fn find_usages_in_component_tree(
+    node: &ComponentNode,
+    token_name: &str,
+    usages: &mut Vec<TokenUsage>,
+) {
+    match node {
+        ComponentNode::Object(object) => {
+            let component_id = object.id.as_deref().unwrap_or("anonymous");
+            if let Some(style) = &object.style {
+                find_usages_in_style(style, component_id, token_name, usages);
+            }
+            match &object.components {
+                ComponentChildren::Nodes(children) => {
+                    for child in children {
+                        find_usages_in_component_tree(child, token_name, usages);
+                    }
+                }
+                ComponentChildren::Opaque(value) => {
+                    find_usages_in_opaque_value(value, token_name, usages, component_id);
+                }
+            }
+        }
+        ComponentNode::Opaque(value) => {
+            find_usages_in_opaque_value(value, token_name, usages, "anonymous");
+        }
+    }
+}
+
+fn find_usages_in_style(
+    style: &Value,
+    component_id: &str,
+    token_name: &str,
+    usages: &mut Vec<TokenUsage>,
+) {
+    let Some(map) = style.as_object() else {
+        return;
+    };
+    for (property, value) in map {
+        let Some(css_value) = value.as_str() else {
+            continue;
+        };
+        let (_, count) = replace_token_in_css_value(css_value, token_name, token_name);
+        if count > 0 {
+            usages.push(TokenUsage {
+                location: TokenUsageLocation::ComponentStyle {
+                    component_id: component_id.to_string(),
+                    property: property.clone(),
+                },
+                snippet: format!("{property}: {css_value}"),
+            });
+        }
+    }
+}
+
+fn find_usages_in_opaque_value(
+    value: &Value,
+    token_name: &str,
+    usages: &mut Vec<TokenUsage>,
+    fallback_id: &str,
+) {
+    match value {
+        Value::Object(map) => {
+            let component_id = map.get("id").and_then(Value::as_str).unwrap_or(fallback_id);
+            if let Some(style) = map.get("style") {
+                find_usages_in_style(style, component_id, token_name, usages);
+            }
+            if let Some(children) = map.get("components") {
+                find_usages_in_opaque_value(children, token_name, usages, component_id);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                find_usages_in_opaque_value(item, token_name, usages, fallback_id);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Rewrites all `var(--{old_name})` occurrences to `var(--{new_name})` across component styles,
@@ -576,6 +629,8 @@ pub fn apply_theme_command(
 ) -> crate::FlyResult<()> {
     let mut candidate = document.clone();
     apply_theme_command_inner(&mut candidate, command)?;
+    // Direct callers must obey the same token dependency graph as the editor.
+    decode_theme_tokens(&candidate).map_err(crate::FlyError::Decode)?;
     candidate.invalidate_caches();
     *document = candidate;
     Ok(())
@@ -616,15 +671,15 @@ fn apply_theme_command_inner(
             }
         }
         ThemeCommand::Rename { old_name, new_name } => {
-            if old_name == new_name {
-                return Ok(());
-            }
             validate_token_name(new_name).map_err(crate::FlyError::Decode)?;
             let Some(pos) = tokens.iter().position(|t| t.name == *old_name) else {
                 return Err(crate::FlyError::Decode(format!(
                     "design token `{old_name}` does not exist"
                 )));
             };
+            if old_name == new_name {
+                return Ok(());
+            }
             if tokens.iter().any(|t| t.name == *new_name) {
                 return Err(crate::FlyError::Decode(format!(
                     "design token `{new_name}` already exists"
@@ -673,6 +728,7 @@ fn apply_theme_command_inner(
 
 #[cfg(test)]
 mod command_tests {
+    use super::tests::document_with_theme;
     use super::*;
     use crate::{
         EditorCommand, FlyEditor, GrapesJsCodec, PageSelection, RegistrySet, RenderPolicy,
@@ -905,6 +961,90 @@ mod command_tests {
             rewritten,
             r#"content: "--brand"; font-family: "--brand"; color: VAR( --primary ); border-color: var(--other, var(--primary)); /* var(--brand) */"#
         );
+    }
+
+    #[test]
+    fn usage_discovery_matches_rename_in_opaque_component_slots() {
+        let mut document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root", "type": "wrapper",
+                    "components": [
+                        {
+                            "id": "opaque-child",
+                            "traits": {"provider": true},
+                            "style": {"color": "var(--brand)"},
+                            "components": [{
+                                "id": "nested",
+                                "style": {"color": "var(--brand)"}
+                            }],
+                            "providerData": {"style": {"color": "var(--brand)"}}
+                        },
+                        {
+                            "id": "opaque-children-parent", "type": "section",
+                            "components": {
+                                "id": "opaque-children",
+                                "style": {"color": "var(--brand)"}
+                            }
+                        }
+                    ]
+                }
+            }, {
+                "component": {
+                    "id": "opaque-root",
+                    "traits": {"provider": true},
+                    "style": {"color": "var(--brand)"}
+                }
+            }]
+        })).expect("document");
+        let usages = find_token_usages(&document, "brand");
+        assert_eq!(usages.len(), 4);
+        for id in ["opaque-child", "nested", "opaque-children", "opaque-root"] {
+            assert!(usages.iter().any(|usage| usage.location == TokenUsageLocation::ComponentStyle {
+                component_id: id.to_string(),
+                property: "color".to_string(),
+            }), "missing usage for {id}");
+        }
+        assert_eq!(rename_token_references(&mut document, "brand", "primary"), 4);
+        assert!(find_token_usages(&document, "brand").is_empty());
+        assert_eq!(find_token_usages(&document, "primary").len(), 4);
+        let raw = serde_json::to_value(document.project()).expect("project");
+        assert_eq!(
+            raw["pages"][0]["component"]["components"][0]["providerData"]["style"]["color"],
+            json!("var(--brand)")
+        );
+    }
+
+    #[test]
+    fn direct_theme_commands_reject_invalid_dependency_graph_atomically() {
+        let mut document = document_with_theme(json!({
+            "tokens": {"brand": "#0b5fff", "accent": "var(--brand)"}
+        }));
+        let before = document.clone();
+        let hash = document.hash();
+        for command in [
+            ThemeCommand::Remove { name: "brand".to_string() },
+            ThemeCommand::Upsert {
+                token: DesignToken {
+                    name: "brand".to_string(),
+                    value: "var(--accent)".to_string(),
+                },
+            },
+            ThemeCommand::Replace {
+                tokens: vec![DesignToken {
+                    name: "brand".to_string(),
+                    value: "var(--missing)".to_string(),
+                }],
+            },
+            ThemeCommand::Rename {
+                old_name: "missing".to_string(),
+                new_name: "missing".to_string(),
+            },
+        ] {
+            assert!(apply_theme_command(&mut document, &command).is_err(), "{command:?}");
+            assert_eq!(document, before);
+            assert_eq!(document.hash(), hash);
+        }
     }
 
     #[test]

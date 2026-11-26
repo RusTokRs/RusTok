@@ -21,6 +21,9 @@ FFA package and framework-neutral session models in `rustok-ui-auth`.
   operation and traverses root fragments without recursion or repeated expansion.
 - Enforce tenant-composite integrity for OAuth apps, tokens, authorization codes,
   consents, and their user subjects at both database and query boundaries.
+- Self-service email changes require current-password reauthentication, a short-lived
+  one-time mailbox challenge, transactional identity/session updates, and a notice to
+  the previous mailbox.
 - Fail auth configuration fast for malformed or mismatched RS256 keys and keep
   OAuth code exchange and refresh rotation on one transactional execution path.
 

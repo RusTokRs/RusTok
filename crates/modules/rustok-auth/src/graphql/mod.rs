@@ -190,6 +190,13 @@ fn map_auth_lifecycle_error(ctx: &Context<'_>, error: AuthLifecycleMutationError
         AuthLifecycleMutationError::InvalidResetToken => {
             unauthenticated_auth_error(&t("auth.invalid_reset_token"))
         }
+        AuthLifecycleMutationError::InvalidEmailChangeToken => {
+            unauthenticated_auth_error("Invalid or expired email change token")
+        }
+        AuthLifecycleMutationError::EmailDeliveryUnavailable => {
+            tracing::error!("email change requested without an available email delivery provider");
+            <FieldError as GraphQLError>::internal_error("Email delivery is unavailable")
+        }
         AuthLifecycleMutationError::InvalidInviteToken => {
             FieldError::new(t("auth.invalid_invite_token"))
         }

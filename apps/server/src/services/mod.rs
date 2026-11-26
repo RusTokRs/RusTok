@@ -11,6 +11,7 @@ pub mod artifact_runtime;
 pub mod artifact_ui;
 pub mod auth_admin_mutation_provider;
 pub mod auth_email_verification;
+pub mod auth_email_change;
 pub mod auth_invite;
 pub mod auth_lifecycle;
 pub mod auth_lifecycle_provider;
@@ -435,6 +436,19 @@ pub mod module_event_dispatcher {
                 "OAuth application Translation target provider registration failed: {error}"
             ))
         })?;
+
+        #[cfg(all(feature = "mod-product", feature = "mod-translation"))]
+        if let Some(runtime) =
+            runtime_ctx.shared_get::<rustok_product::ProductCatalogCommandRuntime>()
+        {
+            runtime
+                .register_translation_target_providers(&mut extensions)
+                .map_err(|error| {
+                    Error::Message(format!(
+                        "Product Translation target provider registration failed: {error}"
+                    ))
+                })?;
+        }
 
         #[cfg(feature = "mod-seo")]
         {

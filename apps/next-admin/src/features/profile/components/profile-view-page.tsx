@@ -30,6 +30,21 @@ mutation ChangePassword($input: ChangePasswordInput!) {
   }
 }`;
 
+const REQUEST_EMAIL_CHANGE_MUTATION = `
+mutation RequestEmailChange($input: RequestEmailChangeInput!) {
+  requestEmailChange(input: $input) {
+    success
+  }
+}`;
+
+const CONFIRM_EMAIL_CHANGE_MUTATION = `
+mutation ConfirmEmailChange($input: ConfirmEmailChangeInput!) {
+  confirmEmailChange(input: $input) {
+    success
+    email
+  }
+}`;
+
 export default function ProfileViewPage() {
   const { data: session, update } = useSession();
   const user = session?.user;
@@ -37,6 +52,12 @@ export default function ProfileViewPage() {
 
   const [name, setName] = useState(user?.name ?? '');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  const [newEmail, setNewEmail] = useState('');
+  const [emailChangePassword, setEmailChangePassword] = useState('');
+  const [emailChangeToken, setEmailChangeToken] = useState('');
+  const [isRequestingEmailChange, setIsRequestingEmailChange] = useState(false);
+  const [isConfirmingEmailChange, setIsConfirmingEmailChange] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -61,6 +82,74 @@ export default function ProfileViewPage() {
       );
     } finally {
       setIsSavingProfile(false);
+    }
+  };
+
+  const handleRequestEmailChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !tenantSlug) return;
+    if (!newEmail.trim() || !emailChangePassword) {
+      toast.error('Enter a new email address and your current password');
+      return;
+    }
+
+    setIsRequestingEmailChange(true);
+    try {
+      await graphqlRequest<object, { requestEmailChange: { success: boolean } }>(
+        REQUEST_EMAIL_CHANGE_MUTATION,
+        {
+          input: {
+            newEmail: newEmail.trim(),
+            currentPassword: emailChangePassword
+          }
+        },
+        undefined,
+        tenantSlug
+      );
+      setEmailChangePassword('');
+      toast.success('A confirmation token was sent to the new email address');
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to request email change'
+      );
+    } finally {
+      setIsRequestingEmailChange(false);
+    }
+  };
+
+  const handleConfirmEmailChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !tenantSlug) return;
+    if (!emailChangeToken.trim()) {
+      toast.error('Enter the confirmation token from your email');
+      return;
+    }
+
+    setIsConfirmingEmailChange(true);
+    try {
+      const result = await graphqlRequest<
+        object,
+        { confirmEmailChange: { success: boolean; email: string } }
+      >(
+        CONFIRM_EMAIL_CHANGE_MUTATION,
+        { input: { token: emailChangeToken.trim() } },
+        undefined,
+        tenantSlug
+      );
+      if (!result.confirmEmailChange.success) {
+        throw new Error('Email change confirmation was not accepted');
+      }
+      toast.success(
+        'Email changed to ' + result.confirmEmailChange.email +
+        '. Sign in again with the new address.'
+      );
+      await signOut({ callbackUrl: '/auth/sign-in' });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to confirm email change'
+      );
+    } finally {
+      setIsConfirmingEmailChange(false);
     }
   };
 
@@ -140,6 +229,62 @@ export default function ProfileViewPage() {
                 </div>
                 <Button type='submit' disabled={isSavingProfile}>
                   {isSavingProfile ? 'Saving...' : 'Save changes'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Change Email</CardTitle>
+              <CardDescription>
+                Confirm ownership of the new mailbox. Your current address remains active until confirmation.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className='space-y-5'>
+              <form onSubmit={handleRequestEmailChange} className='space-y-4'>
+                <div>
+                  <Label htmlFor='new-email'>New Email Address</Label>
+                  <Input
+                    id='new-email'
+                    type='email'
+                    autoComplete='email'
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder='name@example.com'
+                    disabled={isRequestingEmailChange || isConfirmingEmailChange}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor='email-change-password'>Current Password</Label>
+                  <Input
+                    id='email-change-password'
+                    type='password'
+                    autoComplete='current-password'
+                    value={emailChangePassword}
+                    onChange={(e) => setEmailChangePassword(e.target.value)}
+                    placeholder='********'
+                    disabled={isRequestingEmailChange || isConfirmingEmailChange}
+                  />
+                </div>
+                <Button type='submit' disabled={isRequestingEmailChange || isConfirmingEmailChange}>
+                  {isRequestingEmailChange ? 'Sending...' : 'Send confirmation token'}
+                </Button>
+              </form>
+              <form onSubmit={handleConfirmEmailChange} className='space-y-4 border-t pt-4'>
+                <div>
+                  <Label htmlFor='email-change-token'>Confirmation Token</Label>
+                  <Input
+                    id='email-change-token'
+                    value={emailChangeToken}
+                    onChange={(e) => setEmailChangeToken(e.target.value)}
+                    placeholder='Paste the token from your email'
+                    autoComplete='one-time-code'
+                    disabled={isRequestingEmailChange || isConfirmingEmailChange}
+                  />
+                </div>
+                <Button type='submit' disabled={isRequestingEmailChange || isConfirmingEmailChange}>
+                  {isConfirmingEmailChange ? 'Confirming...' : 'Confirm new email'}
                 </Button>
               </form>
             </CardContent>

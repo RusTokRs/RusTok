@@ -24,7 +24,7 @@ it then trusts for authorisation decisions, Fly cannot help.
 | CSS selectors built from ids | Allow-list escape, not a deny-list, at every writer: the renderer and the selection rule of the `fly-leptos` canvas | `render.rs::escape_css_attribute` (public) |
 | Component and page ids | `[A-Za-z0-9_.:-]`, non-empty, ≤128 bytes | `validation.rs::validate_identifier` |
 | URLs | One policy module; per-slot scheme allow-list with a shared 2048-byte limit, including stored actions | `safe_url.rs` |
-| Decode depth | Bounded to the parser ceiling; raw embed/rich-text/symbol values are checked before clone/deserialization | `codec.rs::MAXIMUM_DECODE_DEPTH` |
+| Decode depth | Bounded to the parser ceiling; raw embed/rich-text/symbol values, bundle envelopes and snapshot payloads are checked before recursive clone, deserialization or digest computation | `codec.rs::MAXIMUM_DECODE_DEPTH` |
 | Render traversal | Component depth, node count (including opaque children), page/asset/style-rule counts, and raw extension depth checked iteratively before recursive render helpers | `render.rs::ensure_render_component_limits` |
 | Document size | Bounded component/page/asset/style-rule counts and nesting depth | `validation.rs::ValidationLimits`, `DEFAULT_MAXIMUM_PAGES`, `DEFAULT_MAXIMUM_ASSETS`, `DEFAULT_MAXIMUM_STYLE_RULES` |
 | Undo history | Bounded by entry count *and* retained bytes | `command/model.rs::History` |
@@ -46,8 +46,12 @@ prevent.
   Parsing and deserialization enforce the same algorithm and lowercase hexadecimal format;
   malformed encodings are rejected even in bundle recovery mode. A well-formed but nonmatching
   digest may be tolerated only through the explicit forensic bundle policy.
-  This is the integrity primitive. `ProjectSnapshot::restore` verifies it before anything else;
-  `BundleDecodePolicy::verified()` additionally requires it to be present.
+  This is the integrity primitive. `ProjectSnapshot::restore` verifies it after the resource-depth preflight and before decoding;
+  `BundleDecodePolicy::verified()` additionally requires it to be present. Any policy with
+  `require_content_digest=true` rejects raw imports even if `allow_raw_project=true`.
+  Permissive raw import computes a digest for subsequent export, but reports `digest_matches=None`
+  because the original input supplied no digest to compare. A digest is not a signature or proof
+  of the identity of the bundle author.
 
 `ProjectHash` is retained because its `u64` is embedded in signed inline-edit claims and in
 migration baselines, so its representation cannot change without a data migration.

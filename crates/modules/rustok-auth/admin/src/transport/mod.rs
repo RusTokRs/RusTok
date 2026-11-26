@@ -474,6 +474,116 @@ async fn update_profile_graphql(
     Ok(response.update_profile)
 }
 
+pub const REQUEST_EMAIL_CHANGE_MUTATION: &str = r#"
+mutation RequestEmailChange($input: RequestEmailChangeInput!) {
+    requestEmailChange(input: $input) {
+        success
+    }
+}
+"#;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RequestEmailChangeVariables {
+    input: RequestEmailChangeInput,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RequestEmailChangeInput {
+    new_email: String,
+    current_password: String,
+}
+
+#[derive(Deserialize)]
+struct RequestEmailChangeResponse {
+    #[serde(rename = "requestEmailChange")]
+    request_email_change: native_server_adapter::SuccessPayload,
+}
+
+pub async fn request_email_change(
+    token: String,
+    tenant: String,
+    new_email: String,
+    current_password: String,
+) -> Result<(), String> {
+    let response = request::<RequestEmailChangeVariables, RequestEmailChangeResponse>(
+        REQUEST_EMAIL_CHANGE_MUTATION,
+        RequestEmailChangeVariables {
+            input: RequestEmailChangeInput {
+                new_email,
+                current_password,
+            },
+        },
+        Some(token),
+        Some(tenant),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+
+    if response.request_email_change.success {
+        Ok(())
+    } else {
+        Err("Email change request was not accepted".to_string())
+    }
+}
+
+pub const CONFIRM_EMAIL_CHANGE_MUTATION: &str = r#"
+mutation ConfirmEmailChange($input: ConfirmEmailChangeInput!) {
+    confirmEmailChange(input: $input) {
+        success
+        email
+    }
+}
+"#;
+
+#[derive(Serialize)]
+struct ConfirmEmailChangeVariables {
+    input: ConfirmEmailChangeInput,
+}
+
+#[derive(Serialize)]
+struct ConfirmEmailChangeInput {
+    token: String,
+}
+
+#[derive(Deserialize)]
+struct ConfirmEmailChangeResponse {
+    #[serde(rename = "confirmEmailChange")]
+    confirm_email_change: ConfirmEmailChangePayload,
+}
+
+#[derive(Deserialize)]
+struct ConfirmEmailChangePayload {
+    success: bool,
+    email: String,
+}
+
+pub async fn confirm_email_change(
+    token: Option<String>,
+    tenant: String,
+    confirmation_token: String,
+) -> Result<String, String> {
+    let response = request::<ConfirmEmailChangeVariables, ConfirmEmailChangeResponse>(
+        CONFIRM_EMAIL_CHANGE_MUTATION,
+        ConfirmEmailChangeVariables {
+            input: ConfirmEmailChangeInput {
+                token: confirmation_token,
+            },
+        },
+        token,
+        Some(tenant),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+
+    if response.confirm_email_change.success {
+        Ok(response.confirm_email_change.email)
+    } else {
+        Err("Email change confirmation was not accepted".to_string())
+    }
+}
+
 pub const CHANGE_PASSWORD_MUTATION: &str = r#"
 mutation ChangePassword($input: ChangePasswordInput!) {
     changePassword(input: $input) {

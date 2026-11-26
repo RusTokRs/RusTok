@@ -198,7 +198,7 @@ async fn login(
 }
 
 #[utoipa::path(post, path = "/api/auth/refresh", tag = "auth", request_body = RefreshRequest,
-    responses((status = 200, description = "Token refreshed", body = AuthResponse),(status = 401, description = "Invalid or expired refresh token")))]
+    responses((status = 200, description = "Token refreshed", body = AuthResponse),(status = 401, description = "Invalid or expired refresh token"),(status = 409, description = "Refresh token was already rotated by another concurrent request")))]
 async fn refresh(
     State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
@@ -462,7 +462,7 @@ async fn session_register(
 }
 
 #[utoipa::path(post, path = "/api/auth/session/refresh", tag = "auth",
-    responses((status = 200, description = "Session refreshed; cookie rotated", body = CookieSessionResponse),(status = 401, description = "Invalid or expired session cookie")))]
+    responses((status = 200, description = "Session refreshed; cookie rotated", body = CookieSessionResponse),(status = 401, description = "Invalid or expired session cookie"),(status = 409, description = "Refresh token was already rotated by another concurrent request")))]
 async fn session_refresh(
     State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,

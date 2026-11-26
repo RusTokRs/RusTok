@@ -97,6 +97,15 @@ fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
                 "Price channel ID must not be nil".to_owned(),
             ));
         }
+        if price
+            .channel_slug
+            .as_deref()
+            .is_some_and(|slug| slug.trim().is_empty())
+        {
+            return Err(CommerceError::Validation(
+                "Price channel slug must not be empty".to_owned(),
+            ));
+        }
         if price.amount < rust_decimal::Decimal::ZERO
             || price
                 .compare_at_amount
@@ -3358,6 +3367,23 @@ mod tests {
             compare_at_amount: None,
         }];
         assert!(validate_variant_prices(&prices).is_err());
+    }
+
+    #[test]
+    fn validate_variant_prices_rejects_empty_or_whitespace_channel_slugs() {
+        for channel_slug in ["", "   "] {
+            let prices = vec![PriceInput {
+                currency_code: "USD".to_owned(),
+                channel_id: None,
+                channel_slug: Some(channel_slug.to_owned()),
+                amount: Decimal::new(1000, 2),
+                compare_at_amount: None,
+            }];
+            assert!(matches!(
+                validate_variant_prices(&prices),
+                Err(CommerceError::Validation(_))
+            ));
+        }
     }
 
     #[test]

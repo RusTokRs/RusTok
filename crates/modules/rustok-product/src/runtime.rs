@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
 use rustok_api::PortError;
+use rustok_core::ModuleRuntimeExtensions;
 use rustok_outbox_storage::TransactionalEventBus;
+use rustok_translation_targets::{
+    register_translation_target_provider, TranslationTargetRegistryError,
+};
 use rustok_product_ports::{ProductAttachedValuesReadPort, ProductAttachedValuesWritePort};
 use sea_orm::DatabaseConnection;
 
@@ -349,6 +353,47 @@ impl ProductCatalogCommandRuntime {
         self.schema_write_port.clone()
     }
 
+    /// Registers Translation targets only for the embedded owner services this runtime
+    /// actually holds. External command/schema owners must register their own targets.
+    pub fn register_translation_target_providers(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> Result<(), TranslationTargetRegistryError> {
+        if let Some(catalog) = self.embedded_catalog.as_ref() {
+            let catalog = Arc::new(catalog.clone());
+            register_translation_target_provider(
+                extensions,
+                crate::ProductTranslationTargetProvider::new(catalog.clone()),
+            )?;
+            register_translation_target_provider(
+                extensions,
+                crate::ProductVariantTranslationTargetProvider::new(catalog.clone()),
+            )?;
+            register_translation_target_provider(
+                extensions,
+                crate::ProductImageTranslationTargetProvider::new(catalog),
+            )?;
+        }
+
+        if let Some(schema_service) = self.embedded_schema_write_service.as_ref() {
+            let schema_service = Arc::new(schema_service.clone());
+            register_translation_target_provider(
+                extensions,
+                ProductCatalogSchemaService::attribute_value_translation_target_provider(
+                    schema_service.clone(),
+                ),
+            )?;
+            register_translation_target_provider(
+                extensions,
+                ProductCatalogSchemaService::variant_attribute_value_translation_target_provider(
+                    schema_service,
+                ),
+            )?;
+        }
+
+        Ok(())
+    }
+
     /// The consumer boundary is installed inside the embedded owner, never in a
     /// decorator in front of receipt replay. An external owner enforces its own policy.
     pub fn with_media_reference_port(
@@ -464,6 +509,26 @@ mod tests {
     use crate::ports::{NoopProductTaxonomyPort, ProductTaxonomyPort};
     use rustok_test_utils::mock_transactional_event_bus;
     use sea_orm::Database;
+
+    #[tokio::test]
+    async fn embedded_runtime_registers_product_variant_image_and_eav_translation_targets() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database should connect");
+        let runtime = ProductCatalogCommandRuntime::in_process(
+            database,
+            mock_transactional_event_bus(),
+        );
+        let mut extensions = ModuleRuntimeExtensions::default();
+
+        runtime
+            .register_translation_target_providers(&mut extensions)
+            .expect("embedded Product translation targets should register");
+
+        let registry = rustok_translation_targets::translation_target_registry(&extensions)
+            .expect("Product Translation target registry should be created");
+        assert_eq!(registry.descriptors().len(), 5);
+    }
 
     #[tokio::test]
     async fn taxonomy_builder_recomposes_the_embedded_schema_writer() {

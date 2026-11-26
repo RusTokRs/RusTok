@@ -553,6 +553,11 @@ fn ensure_refresh_family_live(
     family: &RefreshTokenFamily,
     now: chrono::DateTime<Utc>,
 ) -> Result<(), OAuthTokenProtocolError> {
+    if family.created_at > now {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Refresh token family has a future creation timestamp",
+        ));
+    }
     if now >= refresh_family_deadline(family.created_at)? {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Refresh token family exceeded its maximum lifetime",
@@ -564,8 +569,9 @@ fn ensure_refresh_family_live(
 /// Resolve the lineage of the presented refresh token. Pre-migration
 /// rows have no family id and start their own family rooted at
 /// themselves. A referenced root that is missing or belongs to another
-/// client/tenant/subject fails closed: falling back to the current token
-/// would let an orphaned row reset the absolute lineage lifetime cap.
+/// client/tenant/subject fails closed. A referenced row must itself be a
+/// root of the same authorization-code lineage and cannot postdate the
+/// descendant: accepting a different or newer root could reset the cap.
 async fn resolve_refresh_family<C>(
     db: &C,
     current: &oauth_tokens::Model,
@@ -574,6 +580,11 @@ where
     C: ConnectionTrait,
 {
     let family_id = current.family_id.unwrap_or(current.id);
+    if family_id.is_nil() {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Refresh token family identity is invalid",
+        ));
+    }
     let created_at = if family_id == current.id {
         current.created_at.with_timezone(&Utc)
     } else {
@@ -591,6 +602,14 @@ where
             .ok_or_else(|| {
                 OAuthTokenProtocolError::invalid_grant("Refresh token family root is unavailable")
             })?;
+        if root.family_id.unwrap_or(root.id) != root.id
+            || root.authorization_code_id != current.authorization_code_id
+            || root.created_at > current.created_at
+        {
+            return Err(OAuthTokenProtocolError::invalid_grant(
+                "Refresh token family root is inconsistent",
+            ));
+        }
         root.created_at.with_timezone(&Utc)
     };
 
@@ -2165,6 +2184,30 @@ mod tests {
     }
 
     #[test]
+    fn refresh_family_lifetime_rejects_future_and_exact_deadline() {
+        let now = Utc::now();
+        let mut family = super::RefreshTokenFamily {
+            family_id: Uuid::new_v4(),
+            created_at: now + chrono::Duration::seconds(1),
+        };
+        assert_eq!(
+            super::ensure_refresh_family_live(&family, now).unwrap_err().error,
+            "invalid_grant"
+        );
+        family.created_at = now;
+        let deadline = refresh_family_deadline(now).unwrap();
+        assert!(super::ensure_refresh_family_live(
+            &family,
+            deadline - chrono::Duration::nanoseconds(1),
+        )
+        .is_ok());
+        assert_eq!(
+            super::ensure_refresh_family_live(&family, deadline).unwrap_err().error,
+            "invalid_grant"
+        );
+    }
+
+    #[test]
     fn refresh_scope_is_never_widened_and_supports_narrowing() {
         let original = vec!["profile:read".to_string(), "email:read".to_string()];
 
@@ -2612,7 +2655,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn refresh_family_with_missing_root_fails_closed() {
+    async fn refresh_family_requires_a_consistent_root() {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("connect sqlite");
@@ -2665,5 +2708,56 @@ mod tests {
             .await
             .expect_err("missing family root must not reset the absolute lifetime cap");
         assert_eq!(error.error, "invalid_grant");
+
+        let root_id = token.family_id.expect("referenced root identity");
+        let mut root: oauth_tokens::ActiveModel = token.clone().into();
+        root.id = Set(root_id);
+        root.token_hash = Set("family-root".to_string());
+        root.family_id = Set(Some(Uuid::new_v4()));
+        root.created_at = Set((now - chrono::Duration::days(1)).into());
+        let root = root.insert(&db).await.expect("insert referenced row");
+        assert_eq!(
+            super::resolve_refresh_family(&db, &token).await.unwrap_err().error,
+            "invalid_grant",
+            "a descendant cannot serve as another family's root"
+        );
+
+        let mut root: oauth_tokens::ActiveModel = root.into();
+        root.family_id = Set(Some(root_id));
+        root.created_at = Set((now + chrono::Duration::days(1)).into());
+        let root = root.update(&db).await.expect("update referenced row");
+        assert_eq!(
+            super::resolve_refresh_family(&db, &token).await.unwrap_err().error,
+            "invalid_grant",
+            "a root cannot be newer than its descendant"
+        );
+
+        let mut root: oauth_tokens::ActiveModel = root.into();
+        root.created_at = Set((now - chrono::Duration::days(1)).into());
+        root.authorization_code_id = Set(Some(Uuid::new_v4()));
+        let root = root.update(&db).await.expect("change root code");
+        assert_eq!(
+            super::resolve_refresh_family(&db, &token).await.unwrap_err().error,
+            "invalid_grant",
+            "a root must retain the original authorization-code identity"
+        );
+
+        let mut root: oauth_tokens::ActiveModel = root.into();
+        root.authorization_code_id = Set(token.authorization_code_id);
+        // Pre-migration roots used NULL rather than a self reference.
+        root.family_id = Set(None);
+        let root = root.update(&db).await.expect("restore valid legacy root");
+        let family = super::resolve_refresh_family(&db, &token)
+            .await
+            .expect("valid legacy root");
+        assert_eq!(family.family_id, root_id);
+        assert_eq!(family.created_at, root.created_at.with_timezone(&Utc));
+
+        let mut malformed = token;
+        malformed.family_id = Some(Uuid::nil());
+        assert_eq!(
+            super::resolve_refresh_family(&db, &malformed).await.unwrap_err().error,
+            "invalid_grant"
+        );
     }
 }
