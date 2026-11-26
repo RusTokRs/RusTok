@@ -128,6 +128,10 @@ and surface read errors. Runtime and browser verification remain required.
   across separate instances can still require a fresh login. Unknown refresh
   outcomes are not retried automatically because a GraphQL mutation may not be
   safe to replay.
+- Self-service email changes require the current password and a one-time token
+  sent to the new mailbox. The old address remains active until confirmation;
+  confirmation verifies the new address, revokes other sessions and delegated
+  OAuth tokens, and notifies the previous mailbox.
 - HMAC-SHA256/HKDF-SHA256 and Argon2id are not JWT signing alternatives; the
   backend JWT runtime is RS256-only.
 

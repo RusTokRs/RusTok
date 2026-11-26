@@ -9,7 +9,7 @@ use crate::auth::{
     AuthConfig, decode_password_reset_token, encode_password_reset_token, hash_password_async,
     mask_auth_lookup_timing, password_reset_credential_matches, validate_password_policy,
 };
-use crate::models::{sessions, users};
+use crate::models::{auth_email_change_requests, sessions, users};
 use crate::services::email::{
     PASSWORD_RESET_TOKEN_TTL_SECS, email_service_from_ctx, password_reset_url,
     spawn_password_reset_email,
@@ -127,6 +127,12 @@ impl AuthLifecycleService {
             crate::services::oauth_token_service::revoke_user_delegated_tokens_in_tx(
                 &tx, tenant_id, user.id, now,
             )
+            .await
+            .map_err(AuthLifecycleError::from)?;
+        auth_email_change_requests::Entity::delete_many()
+            .filter(auth_email_change_requests::Column::TenantId.eq(tenant_id))
+            .filter(auth_email_change_requests::Column::UserId.eq(user.id))
+            .exec(&tx)
             .await
             .map_err(AuthLifecycleError::from)?;
 

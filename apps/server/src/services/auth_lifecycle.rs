@@ -15,7 +15,7 @@ use crate::auth::{
     hash_refresh_token, normalize_display_name, normalize_email, password_hash_needs_rehash,
     validate_password_policy, verify_password_async, MAX_PASSWORD_LENGTH_BYTES,
 };
-use crate::models::{_entities::session_refresh_history, sessions, users};
+use crate::models::{_entities::session_refresh_history, auth_email_change_requests, sessions, users};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use std::sync::{
     Arc,
@@ -53,6 +53,8 @@ pub enum AuthLifecycleError {
     UserNotFound,
     InvalidResetToken,
     InvalidVerificationToken,
+    InvalidEmailChangeToken,
+    EmailDeliveryUnavailable,
     Validation(String),
     Internal(Error),
 }
@@ -75,6 +77,12 @@ impl std::fmt::Display for AuthLifecycleError {
             AuthLifecycleError::InvalidResetToken => formatter.write_str("invalid reset token"),
             AuthLifecycleError::InvalidVerificationToken => {
                 formatter.write_str("invalid verification token")
+            }
+            AuthLifecycleError::InvalidEmailChangeToken => {
+                formatter.write_str("invalid or expired email change token")
+            }
+            AuthLifecycleError::EmailDeliveryUnavailable => {
+                formatter.write_str("email delivery is not configured")
             }
             AuthLifecycleError::Validation(message) => formatter.write_str(message),
             AuthLifecycleError::Internal(err) => write!(formatter, "{err}"),
@@ -129,6 +137,12 @@ impl From<AuthLifecycleError> for Error {
             }
             AuthLifecycleError::InvalidVerificationToken => {
                 Error::Unauthorized("Invalid verification token".into())
+            }
+            AuthLifecycleError::InvalidEmailChangeToken => {
+                Error::Unauthorized("Invalid or expired email change token".into())
+            }
+            AuthLifecycleError::EmailDeliveryUnavailable => {
+                Error::Message("Email delivery is not configured".into())
             }
             AuthLifecycleError::Validation(message) => Error::BadRequest(message),
             AuthLifecycleError::Internal(err) => err,
@@ -1132,7 +1146,7 @@ impl AuthLifecycleService {
             .map_err(AuthLifecycleError::from)
     }
 
-    async fn find_current_session_for_password_change_in_tx(
+    pub(crate) async fn find_current_session_for_password_change_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: uuid::Uuid,
         user_id: uuid::Uuid,
@@ -1250,6 +1264,12 @@ impl AuthLifecycleService {
             crate::services::oauth_token_service::revoke_user_delegated_tokens_in_tx(
                 &txn, tenant_id, user_id, now,
             )
+            .await
+            .map_err(AuthLifecycleError::from)?;
+        auth_email_change_requests::Entity::delete_many()
+            .filter(auth_email_change_requests::Column::TenantId.eq(tenant_id))
+            .filter(auth_email_change_requests::Column::UserId.eq(user_id))
+            .exec(&txn)
             .await
             .map_err(AuthLifecycleError::from)?;
         Self::publish_user_event_in_tx(
@@ -1559,7 +1579,7 @@ impl AuthLifecycleService {
         limit.clamp(1, MAX_SESSION_LIST_LIMIT)
     }
 
-    async fn revoke_user_sessions_db_with_connection<C>(
+    pub(crate) async fn revoke_user_sessions_db_with_connection<C>(
         db: &C,
         tenant_id: uuid::Uuid,
         user_id: uuid::Uuid,

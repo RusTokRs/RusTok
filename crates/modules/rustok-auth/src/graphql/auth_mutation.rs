@@ -5,7 +5,8 @@ use super::{
     AcceptInviteInput, AcceptInvitePayload, AuthPayload, ChangePasswordInput,
     ChangePasswordPayload, ForgotPasswordInput, ForgotPasswordPayload, RefreshTokenInput,
     ResetPasswordInput, ResetPasswordPayload, RevokeAllSessionsPayload, RevokeSessionPayload,
-    SignInInput, SignOutPayload, SignUpInput, UpdateProfileInput, auth_lifecycle_context,
+    SignInInput, SignOutPayload, SignUpInput, UpdateProfileInput, RequestEmailChangeInput,
+    RequestEmailChangePayload, ConfirmEmailChangeInput, ConfirmEmailChangePayload, auth_lifecycle_context,
     auth_runtime, optional_auth_context,
 };
 
@@ -88,6 +89,43 @@ impl AuthMutation {
             .await
             .map(super::AuthUser::from)
             .map_err(|error| super::map_auth_lifecycle_error(ctx, error))
+    }
+
+    async fn request_email_change(
+        &self,
+        ctx: &Context<'_>,
+        input: RequestEmailChangeInput,
+    ) -> Result<RequestEmailChangePayload> {
+        let auth = super::require_auth_context(ctx)?;
+        auth_runtime(ctx)?
+            .port()
+            .request_email_change(
+                &auth_lifecycle_context(ctx, Some(auth))?,
+                input.new_email,
+                input.current_password,
+            )
+            .await
+            .map_err(|error| super::map_auth_lifecycle_error(ctx, error))?;
+        Ok(RequestEmailChangePayload { success: true })
+    }
+
+    async fn confirm_email_change(
+        &self,
+        ctx: &Context<'_>,
+        input: ConfirmEmailChangeInput,
+    ) -> Result<ConfirmEmailChangePayload> {
+        let email = auth_runtime(ctx)?
+            .port()
+            .confirm_email_change(
+                &auth_lifecycle_context(ctx, optional_auth_context(ctx))?,
+                input.token,
+            )
+            .await
+            .map_err(|error| super::map_auth_lifecycle_error(ctx, error))?;
+        Ok(ConfirmEmailChangePayload {
+            success: true,
+            email,
+        })
     }
 
     async fn change_password(

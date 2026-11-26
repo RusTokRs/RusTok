@@ -45,6 +45,12 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError 
         AuthLifecycleError::InvalidVerificationToken => {
             AuthLifecycleMutationError::Validation("Invalid verification token".to_string())
         }
+        AuthLifecycleError::InvalidEmailChangeToken => {
+            AuthLifecycleMutationError::InvalidEmailChangeToken
+        }
+        AuthLifecycleError::EmailDeliveryUnavailable => {
+            AuthLifecycleMutationError::EmailDeliveryUnavailable
+        }
         AuthLifecycleError::Validation(message) => AuthLifecycleMutationError::Validation(message),
         AuthLifecycleError::Internal(err) => AuthLifecycleMutationError::Internal(err.to_string()),
     }
@@ -331,6 +337,52 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             status: updated.status.to_string(),
             permissions: permission_strings_from_context(context),
         })
+    }
+
+    async fn request_email_change(
+        &self,
+        context: &AuthLifecycleContext,
+        new_email: String,
+        current_password: String,
+    ) -> Result<(), AuthLifecycleMutationError> {
+        AuthLifecycleService::request_email_change_runtime(
+            &self.runtime_ctx,
+            context.tenant_id,
+            Self::require_direct_user_id(context)?,
+            Self::require_direct_session_id(context)?,
+            &current_password,
+            &new_email,
+            context.locale.as_str(),
+        )
+        .await
+        .map_err(map_lifecycle_error)
+    }
+
+    async fn confirm_email_change(
+        &self,
+        context: &AuthLifecycleContext,
+        token: String,
+    ) -> Result<String, AuthLifecycleMutationError> {
+        let (user_id, session_id) = match context.principal_kind.as_ref() {
+            Some(&AuthPrincipalKind::DirectUser) => (
+                Some(Self::require_direct_user_id(context)?),
+                Some(Self::require_direct_session_id(context)?),
+            ),
+            Some(_) => return Err(AuthLifecycleMutationError::Unauthorized),
+            None if context.user_id.is_none() && context.session_id.is_none() => (None, None),
+            None => return Err(AuthLifecycleMutationError::Unauthorized),
+        };
+
+        AuthLifecycleService::confirm_email_change_runtime(
+            &self.runtime_ctx,
+            context.tenant_id,
+            &token,
+            user_id,
+            session_id,
+            context.locale.as_str(),
+        )
+        .await
+        .map_err(map_lifecycle_error)
     }
 
     async fn change_password(

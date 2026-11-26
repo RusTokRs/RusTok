@@ -6,7 +6,7 @@ type directly rather than defining another lifecycle enum.
 
 `rustok-auth` is the core authentication module of the platform. It holds JWT lifecycle,
 The `AuthLifecycleContext` carries the trusted optional `AuthPrincipalKind` classification; lifecycle self-service operations that depend on a direct user session must reject delegated OAuth and service principals rather than deriving principal kind from transport fields.
-credential hashing, refresh/reset/invite/email-verification token flows and
+credential hashing, refresh/reset/invite/email-verification/email-change token flows and
 runtime RBAC surface `users:*`.
 
 Auth lifecycle GraphQL (`AuthQuery`, `AuthMutation`) and OAuth GraphQL (`OAuthQuery`,
@@ -27,9 +27,9 @@ controller modules re-export or import those owner DTOs only for OpenAPI/route c
 ## Scope
 
 - auth configuration, complete RS256 keyring-document validation, and host policy assembly/validation;
-- encode/decode helpers for access/reset/invite/email-verification token flows; JWT encoders reject TTL values that cannot be represented safely as a checked `chrono` duration;
+- encode/decode helpers for access/reset/invite/email-verification token flows; self-service email changes use 256-bit random one-time tokens stored only as SHA-256 digests; JWT encoders reject TTL values that cannot be represented safely as a checked `chrono` duration;
 - password hashing, password verification and refresh-token helpers; refresh-token generation uses the OS RNG and propagates RNG failures as a typed `AuthError::RefreshTokenGenerationFailed` instead of panicking;
-- auth-owned migrations;
+- auth-owned migrations, including tenant-scoped one-time email-change challenges with unique pending mailbox reservations;
 - auth-owned auth/OAuth/users REST DTO/OpenAPI schema surface in `rest.rs`, with host controllers
   limited to transport extraction, persistence adapters and response mapping;
 - publication of permission surface `users:*` via `AUTH_USER_PERMISSIONS` and `RusToKModule::permissions()`.
@@ -37,6 +37,7 @@ controller modules re-export or import those owner DTOs only for OpenAPI/route c
 - `AuthUserBackfillDbReader` implements a tenant-scoped identity projection with a strict `1..=500` batch bound, checked SQL-limit conversion, deterministic `created_at,id` ordering, and redacted storage/row-read errors for owner-owned profile backfill.
 - `AuthUserBootstrapDbWriter` owns tenant-scoped idempotent identity provisioning for installer workflows; email lookup is case-normalized, supported backends are `Postgres`/`Sqlite`, unsupported backends fail closed without panics, and storage/row-decoding failures are exposed only as stable owner errors. Caller-owned transactions remain supported for atomic identity+RBAC installation.
 - owner-owned OAuth GraphQL query/mutation/types behind `graphql` feature; `apps/server` only implements the runtime port over the DB and connects roots into the common schema;
+- self-service email change is exposed through `AuthLifecyclePort` and Auth GraphQL; request reauthenticates the direct user with the current password, and confirmation consumes a short-lived SHA-256-digested opaque token before atomically updating the verified address and revoking other sessions/delegated grants;
 - browser OAuth authorization is a host transport flow: cookie-authenticated GET requests are side-effect-free and always render a short-lived HMAC-CSRF confirmation form, even when prior consent exists or the app type does not require consent. Authorization codes are issued only after the CSRF-validated POST; explicit non-ambient Authorization-header requests may retain the pre-authorized fast path.
 
 OAuth persistence is tenant-composite rather than a set of independent foreign
