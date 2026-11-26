@@ -47,7 +47,8 @@ pub struct BundleDecodePolicy {
     pub allow_raw_project: bool,
     /// Tolerate a stale cheap fingerprint. Says nothing about integrity.
     pub allow_hash_mismatch: bool,
-    /// Tolerate a wrong collision-resistant digest. Only for forensic/recovery tooling.
+    /// Tolerate a well-formed but nonmatching collision-resistant digest.
+    /// Only for forensic/recovery tooling; malformed digest encodings always fail decoding.
     pub allow_digest_mismatch: bool,
     /// Reject bundles that carry no digest at all, for trust boundaries that must not accept
     /// pre-digest or hand-written payloads.

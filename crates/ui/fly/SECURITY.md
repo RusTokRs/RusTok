@@ -43,6 +43,9 @@ prevent.
   produce a collision on demand. **Never** use it to answer "is this the payload that was
   approved?".
 * **`ContentDigest`** is SHA-256, serialized as `sha256:<64 hex>` and compared in constant time.
+  Parsing and deserialization enforce the same algorithm and lowercase hexadecimal format;
+  malformed encodings are rejected even in bundle recovery mode. A well-formed but nonmatching
+  digest may be tolerated only through the explicit forensic bundle policy.
   This is the integrity primitive. `ProjectSnapshot::restore` verifies it before anything else;
   `BundleDecodePolicy::verified()` additionally requires it to be present.
 
