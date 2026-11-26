@@ -56,7 +56,11 @@ credential with its already-used key conflicts, without revoking the valid
 session. Revoked or expired sessions never recover. Unknown credentials and
 cross-tenant lookups fail closed. Store and issuance failures propagate.
 
-Recovery returns the identical refresh credential, without a second history
+Recovery rechecks immutable rotation evidence after history lookup and again
+before signing and commit preparation. A retry admitted within grace that
+outlasts the window conflicts without revoking the lineage; a new historical
+presentation outside grace still revokes it. No recovered credential is
+prepared for return outside grace. Recovery returns the identical refresh credential, without a second history
 insert, sliding expiry extension or change to rotation time. It signs a
 fresh access JWT with the currently authorized role and permissions, rather
 than reproducing stale access claims or the old signing key. This is

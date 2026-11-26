@@ -1043,19 +1043,19 @@ impl AuthLifecycleService {
             .await?
             .ok_or(AuthLifecycleError::UserNotFound)?;
 
-        let (session, historical) = match Self::find_refresh_session_for_update_in_tx(
+        let (session, historical_rotation) = match Self::find_refresh_session_for_update_in_tx(
             &txn, tenant_id, &token_hash,
         )
         .await?
         {
-            Some(session) if session.id == observed.id && session.user_id == user.id => (session, false),
+            Some(session) if session.id == observed.id && session.user_id == user.id => (session, None),
             Some(_) => return Err(AuthLifecycleError::InvalidRefreshToken),
             None => {
                 let eligible = Self::detect_refresh_reuse_in_tx(
                     &txn, tenant_id, observed.id, user.id, &token_hash,
                 ).await?;
                 match eligible {
-                    Some(session) => (session, true),
+                    Some((session, rotated_at)) => (session, Some(rotated_at)),
                     None => {
                         // Commit a possible lineage revocation before reporting
                         // an invalid historical credential.
@@ -1088,11 +1088,11 @@ impl AuthLifecycleService {
         let new_refresh_token = match retry_key {
             Some(key) => key.derive_token(config, tenant_id, session.id)
                 .map_err(AuthLifecycleError::from)?,
-            None if historical => return Err(AuthLifecycleError::RefreshAlreadyRotated),
+            None if historical_rotation.is_some() => return Err(AuthLifecycleError::RefreshAlreadyRotated),
             None => generate_refresh_token().map_err(AuthLifecycleError::from)?,
         };
         let new_token_hash = hash_refresh_token(&new_refresh_token);
-        let recovered = if historical {
+        let recovery_rotation = if let Some(rotated_at) = historical_rotation {
             // A correct proof alone does not authorize an older generation.
             // Only the exact immediately preceding digest may recover the
             // current successor; history is the grace authority.
@@ -1101,7 +1101,7 @@ impl AuthLifecycleService {
             {
                 return Err(AuthLifecycleError::RefreshAlreadyRotated);
             }
-            true
+            Some(rotated_at)
         } else if new_token_hash == session.token_hash {
             // A cookie may have been applied before the response body was
             // lost. Recognize the same operation with the new credential too,
@@ -1114,10 +1114,10 @@ impl AuthLifecycleService {
             let history = session_refresh_history::Entity::find_by_id(previous.clone())
                 .filter(session_refresh_history::Column::SessionId.eq(session.id))
                 .one(&txn).await.map_err(AuthLifecycleError::from)?;
-            if !history.is_some_and(|history| Self::refresh_rotation_within_grace(history.rotated_at, now)) {
-                return Err(AuthLifecycleError::RefreshAlreadyRotated);
-            }
-            true
+            let rotated_at = history
+                .and_then(|history| history.rotated_at)
+                .ok_or(AuthLifecycleError::RefreshAlreadyRotated)?;
+            Some(rotated_at)
         } else {
             // Reusing an operation key must never resurrect a historical
             // digest as a new active credential.
@@ -1126,11 +1126,19 @@ impl AuthLifecycleService {
             {
                 return Err(AuthLifecycleError::RefreshAlreadyRotated);
             }
-            false
+            None
         };
 
+        // History lookups can outlast the observed session or retry window.
+        // Recheck at the transition, not at a timestamp taken before IO.
+        let now = Utc::now();
+        if now >= absolute_deadline || now >= session.expires_at {
+            return Err(AuthLifecycleError::SessionExpired);
+        }
+        Self::ensure_refresh_recovery_within_grace(recovery_rotation, now)?;
+
         let session_id = session.id;
-        let expires_at = if recovered {
+        let expires_at = if recovery_rotation.is_some() {
             session.expires_at.with_timezone(&Utc).min(absolute_deadline)
         } else {
             let expires_at = Self::session_expiration(now, config.refresh_expiration)?
@@ -1161,9 +1169,15 @@ impl AuthLifecycleService {
         let effective_role = Self::resolve_effective_role(&txn, tenant_id, user.id).await?;
         let effective_permissions =
             Self::resolve_effective_permission_strings(&txn, tenant_id, user.id).await?;
+        Self::ensure_refresh_recovery_within_grace(recovery_rotation, Utc::now())?;
         let access_token = encode_access_token(
             config, user.id, tenant_id, effective_role.clone(), session_id,
         ).map_err(AuthLifecycleError::from)?;
+        // Do not disclose a recovered credential after the exclusive window
+        // closes during RBAC or signing. This operation was admitted during
+        // grace; only a new historical presentation outside grace revokes.
+        let finished_at = Utc::now();
+        Self::ensure_refresh_recovery_within_grace(recovery_rotation, finished_at)?;
         let tokens = PreparedSessionTokens {
             access_token,
             refresh_token: new_refresh_token,
@@ -1172,10 +1186,20 @@ impl AuthLifecycleService {
             effective_role,
             permissions: effective_permissions,
         }
-        .finish(Utc::now())?;
+        .finish(finished_at)?;
         txn.commit().await.map_err(AuthLifecycleError::from)?;
 
         Ok((user, tokens))
+    }
+
+    fn ensure_refresh_recovery_within_grace(
+        rotated_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+        now: chrono::DateTime<Utc>,
+    ) -> Result<(), AuthLifecycleError> {
+        if rotated_at.is_some() && !Self::refresh_rotation_within_grace(rotated_at, now) {
+            return Err(AuthLifecycleError::RefreshAlreadyRotated);
+        }
+        Ok(())
     }
 
     fn refresh_rotation_within_grace(
@@ -1197,7 +1221,7 @@ impl AuthLifecycleService {
         session_id: uuid::Uuid,
         user_id: uuid::Uuid,
         token_hash: &str,
-    ) -> std::result::Result<Option<sessions::Model>, AuthLifecycleError> {
+    ) -> std::result::Result<Option<(sessions::Model, chrono::DateTime<chrono::FixedOffset>)>, AuthLifecycleError> {
         let history = session_refresh_history::Entity::find_by_id(token_hash.to_owned())
             .filter(session_refresh_history::Column::SessionId.eq(session_id))
             .inner_join(sessions::Entity)
@@ -1215,8 +1239,10 @@ impl AuthLifecycleService {
             return Ok(None);
         }
         let now = Utc::now();
-        if Self::refresh_rotation_within_grace(history.rotated_at, now) {
-            return Ok(Some(session));
+        if let Some(rotated_at) = history.rotated_at
+            && Self::refresh_rotation_within_grace(Some(rotated_at), now)
+        {
+            return Ok(Some((session, rotated_at)));
         }
 
         tracing::warn!(
@@ -3347,6 +3373,25 @@ mod tests {
         );
     }
 
+    #[test]
+    fn refresh_recovery_rechecks_the_exclusive_window_at_completion() {
+        let rotated_at = Utc::now();
+        let evidence = Some(rotated_at.fixed_offset());
+        let cutoff = rotated_at + Duration::seconds(REFRESH_REUSE_GRACE_SECONDS);
+
+        for now in [rotated_at, cutoff - Duration::nanoseconds(1)] {
+            assert!(AuthLifecycleService::ensure_refresh_recovery_within_grace(evidence, now).is_ok());
+        }
+        for now in [rotated_at - Duration::nanoseconds(1), cutoff, cutoff + Duration::seconds(1)] {
+            assert!(matches!(
+                AuthLifecycleService::ensure_refresh_recovery_within_grace(evidence, now),
+                Err(AuthLifecycleError::RefreshAlreadyRotated)
+            ));
+        }
+        // A new operation has no recovery window to enforce.
+        assert!(AuthLifecycleService::ensure_refresh_recovery_within_grace(None, cutoff).is_ok());
+    }
+
     #[tokio::test]
     async fn refresh_retry_proof_recovers_both_cookie_outcomes_without_rotating_again() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
@@ -3411,6 +3456,20 @@ mod tests {
         let mut aged: session_refresh_history::ActiveModel = history.into();
         aged.rotated_at = Set(Some((Utc::now() - Duration::seconds(60)).into()));
         aged.update(&db).await.unwrap();
+        // The current credential and its used proof must conflict outside
+        // grace without revoking the lineage. Age its own history evidence.
+        let second_hash = hash_refresh_token(&rotated.refresh_token);
+        let mut second_history: session_refresh_history::ActiveModel =
+            session_refresh_history::Entity::find_by_id(second_hash)
+                .one(&db).await.unwrap().unwrap().into();
+        second_history.rotated_at = Set(Some((Utc::now() - Duration::seconds(60)).into()));
+        second_history.update(&db).await.unwrap();
+        let result = AuthLifecycleService::refresh_with_config_db(
+            &db, &config, tenant.id, &next.refresh_token, false, Some(&wrong), None,
+        ).await;
+        assert!(matches!(result, Err(AuthLifecycleError::RefreshAlreadyRotated)));
+        let live = sessions::Entity::find_by_id(session_id).one(&db).await.unwrap().unwrap();
+        assert!(live.is_active());
         let result = AuthLifecycleService::refresh_with_config_db(
             &db, &config, tenant.id, &first.refresh_token, false, Some(&proof), None,
         ).await;

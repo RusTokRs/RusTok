@@ -680,7 +680,10 @@ one opaque successor per tenant, session and operation key. The host checks
 the derived digest against current state and immutable rotation evidence.
 Only the immediately previous credential with the matching proof may recover
 the current successor during grace; a retry with the already-updated cookie
-and the same proof also returns it. Recovery never changes rotation history
+and the same proof also returns it. Both paths recheck the immutable rotation
+time after history lookup and immediately before commit preparation. An admitted
+retry that outlasts grace conflicts without revocation; a new historical
+presentation outside grace still revokes the lineage. Recovery never changes rotation history
 or extends the refresh deadline; it issues a fresh RS256 access token with
 current authority. Missing or incorrect proofs do not allow historical
 refresh. Proof reuse cannot resurrect a historical digest. Unrecoverable
