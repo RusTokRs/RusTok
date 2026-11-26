@@ -25,7 +25,6 @@ struct PeerWriteMessage {
     revision: String,
     hash: String,
     /// Shared by every channel instance in one document, but unique across tabs.
-    #[serde(default)]
     sender_id: String,
 }
 
@@ -64,6 +63,7 @@ impl PeerWriteBase {
             || self.conflicted
             || validate_field("revision", &message.revision).is_err()
             || validate_field("project hash", &message.hash).is_err()
+            || validate_field("sender id", &message.sender_id).is_err()
         {
             return None;
         }
@@ -215,11 +215,13 @@ mod browser {
             let callback_base = Rc::clone(&base);
             let callback = Closure::<dyn FnMut(MessageEvent)>::new(move |event| {
                 let data = event.data();
-                let serialized = data.as_string().or_else(|| {
-                    js_sys::JSON::stringify(&data)
-                        .ok()
-                        .and_then(|value| value.as_string())
-                });
+                // Both producers send structured objects, not serialized JSON strings.
+                if !data.is_object() || js_sys::Array::is_array(&data) {
+                    return;
+                }
+                let serialized = js_sys::JSON::stringify(&data)
+                    .ok()
+                    .and_then(|value| value.as_string());
                 let Some(serialized) = serialized else {
                     return;
                 };
@@ -431,6 +433,40 @@ mod tests {
             })
             .is_none()
         );
+    }
+
+    #[test]
+    fn malformed_sender_cannot_fence_or_advance_baseline() {
+        let mut base = base();
+        for sender_id in [
+            String::new(),
+            " \u{85}".to_string(),
+            "é".repeat(MAX_PEER_WRITE_FIELD_BYTES / 2 + 1),
+        ] {
+            assert!(base.observe(PeerWriteMessage {
+                kind: "confirmed-write".to_string(),
+                page_id: "page-1".to_string(),
+                revision: "revision-2".to_string(),
+                hash: "hash-2".to_string(),
+                sender_id,
+            }).is_none());
+            assert!(!base.conflicted);
+            assert_eq!(base.revision, "revision-1");
+            assert_eq!(base.project_hash, "hash-1");
+        }
+        assert!(serde_json::from_value::<PeerWriteMessage>(serde_json::json!({
+            "kind": "confirmed-write",
+            "pageId": "page-1",
+            "revision": "revision-2",
+            "hash": "hash-2"
+        })).is_err());
+        assert!(base.observe(PeerWriteMessage {
+            kind: "confirmed-write".to_string(),
+            page_id: "page-1".to_string(),
+            revision: "revision-2".to_string(),
+            hash: "hash-2".to_string(),
+            sender_id: "document-b".to_string(),
+        }).is_some());
     }
 
     #[test]

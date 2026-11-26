@@ -16,6 +16,9 @@ const PENDING_INTENT_LIMIT_CODE = "PENDING_INTENT_LIMIT";
 const UNSENT_INTENTS_CODE = "INTENT_QUEUE_DISCARDED";
 const PEER_WRITE_CONFLICT_CODE = "FLY_PEER_WRITE_CONFLICT";
 const PEER_WRITE_CHANNEL_NAME = "fly:page-authoring-writes:v1";
+// Match fly-web/src/peer_write.rs: bounds are UTF-8 bytes, not UTF-16 units.
+const MAX_PEER_WRITE_FIELD_BYTES = 256;
+const MAX_PEER_WRITE_MESSAGE_BYTES = 1024;
 const INTENT_REQUEST_TIMEOUT_CODE = "INTENT_REQUEST_TIMEOUT";
 const INTENT_REQUEST_ABORTED_CODE = "INTENT_REQUEST_ABORTED";
 const NETWORK_ERROR_CODE = "NETWORK_ERROR";
@@ -83,6 +86,27 @@ function normalizedTransportOptions(value) {
 
 function nonEmptyString(value) {
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+function validPeerWriteField(value) {
+  return typeof value === "string" &&
+    value.length <= MAX_PEER_WRITE_FIELD_BYTES &&
+    !/^\p{White_Space}*$/u.test(value) &&
+    !/[\uD800-\uDFFF]/u.test(value) &&
+    utf8ByteLength(value) <= MAX_PEER_WRITE_FIELD_BYTES;
+}
+
+function validPeerWriteMessage(message) {
+  if (!isObject(message) || message.kind !== "confirmed-write" ||
+      ![message.pageId, message.revision, message.hash, message.senderId]
+        .every(validPeerWriteField)) return false;
+  try {
+    const serialized = JSON.stringify(message);
+    return typeof serialized === "string" &&
+      utf8ByteLength(serialized) <= MAX_PEER_WRITE_MESSAGE_BYTES;
+  } catch (_) {
+    return false;
+  }
 }
 
 function getPeerWriteDocumentId() {
@@ -1770,17 +1794,14 @@ export class FlyBrowserAdapter {
   onPeerWrite(message) {
     if (
       this.lifecycleState !== ADAPTER_LIFECYCLE.STARTED ||
-      !isObject(message) ||
-      message.kind !== "confirmed-write" ||
       !this.pageId ||
+      this.peerWriteConflict ||
+      !validPeerWriteMessage(message) ||
       message.pageId !== this.pageId
     ) return;
 
-    const revision = nonEmptyString(message.revision);
-    const hash = nonEmptyString(message.hash);
-    if (!revision || !hash || revision.length > 256 || hash.length > 256 ||
-        this.peerWriteConflict) return;
-    if (nonEmptyString(message.senderId) === this.peerWriteSenderId) {
+    const { revision, hash, senderId } = message;
+    if (senderId === this.peerWriteSenderId) {
       // The Leptos/Rust and classic JS adapters may each own a channel in this
       // document. Their own confirmed writes advance the shared baseline.
       this.root.dataset.flyRevision = revision;
@@ -2234,13 +2255,16 @@ export class FlyBrowserAdapter {
           !isObject(result.save_failure);
         if (confirmedWrite && this.pageId) {
           try {
-            this.peerWriteChannel?.postMessage({
+            const message = {
               kind: "confirmed-write",
               pageId: this.pageId,
               revision: state.revision_id,
               hash: state.project_hash,
               senderId: this.peerWriteSenderId,
-            });
+            };
+            if (validPeerWriteMessage(message)) {
+              this.peerWriteChannel?.postMessage(message);
+            }
           } catch (_) {
             // Optional peer notification failure never changes save outcome.
           }

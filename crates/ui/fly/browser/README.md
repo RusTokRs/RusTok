@@ -67,7 +67,10 @@ emits `fly:browser-peer-write` and a visible `FLY_PEER_WRITE_CONFLICT` problem, 
 subsequent mutations before DOM intent emission or POST and discards unsent queued writes with the existing
 `fly:browser-intents-discarded` notice. The warning survives read-only responses
 until remount/reload; the adapter never reloads automatically or silently merges
-unsaved changes. The channel carries only page ID, confirmed revision and hash.
+unsaved changes. The structured channel message carries only page ID, confirmed revision,
+hash and editor-scoped sender ID. Both adapters require nonblank metadata, at most 256 UTF-8
+bytes per field and 1024 UTF-8 bytes for the serialized message; malformed notifications are
+ignored without advancing the baseline or fencing the editor.
 Browsers without cross-tab messaging still rely on server-side CAS. This is a
 conservative page-level guard (including editors on different locales), not
 cross-tab ordering, server-recognized idempotency or recovery for an aborted

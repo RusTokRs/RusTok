@@ -161,6 +161,46 @@ test('same-document Rust and JS channels advance one baseline without a false co
   );
 });
 
+test('malformed peer notifications neither fence nor advance the editor baseline', async ({ page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  await mountEditor(page, 'same-page', source);
+
+  await page.evaluate(() => {
+    const senderId = document.querySelector('#fly-root')
+      ?.getAttribute('data-fly-peer-write-sender-id');
+    const channel = new BroadcastChannel('fly:page-authoring-writes:v1');
+    const message = {
+      kind: 'confirmed-write',
+      pageId: 'same-page',
+      revision: 'rev-invalid',
+      hash: 'hash-invalid',
+    };
+    channel.postMessage(message);
+    channel.postMessage({ ...message, senderId: ' \u0085' });
+    channel.postMessage({ ...message, senderId: 'é'.repeat(129) });
+    channel.postMessage({ ...message, senderId: 'peer', revision: 'é'.repeat(129) });
+    channel.postMessage({ ...message, senderId: 'peer', extra: 'x'.repeat(1024) });
+    channel.postMessage(JSON.stringify({ ...message, senderId: 'peer' }));
+    // A same-sender write on the same channel acts as a delivery barrier:
+    // all earlier notifications must have been processed before this one.
+    channel.postMessage({ ...message, revision: 'rev-2', hash: 'hash-2', senderId });
+    channel.close();
+  });
+  await expect(page.locator('#fly-root')).toHaveAttribute('data-fly-revision', 'rev-2');
+  await expect(page.locator('#fly-root')).toHaveAttribute('data-fly-project-hash', 'hash-2');
+  await expect(page.locator('#fly-root')).not.toHaveAttribute('data-fly-peer-write-conflict', 'true');
+
+  await page.evaluate(() => {
+    const channel = new BroadcastChannel('fly:page-authoring-writes:v1');
+    channel.postMessage({
+      kind: 'confirmed-write', pageId: 'same-page',
+      revision: 'rev-3', hash: 'hash-3', senderId: 'peer',
+    });
+    channel.close();
+  });
+  await expect(page.locator('#fly-root')).toHaveAttribute('data-fly-peer-write-conflict', 'true');
+});
+
 test('server revision conflicts fence the browser editor without BroadcastChannel', async ({ page }) => {
   const source = await readFile(adapterPath, 'utf8');
   await mountEditor(page, 'same-page', source);
