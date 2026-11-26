@@ -1,6 +1,6 @@
 {
   "current_round": 2,
-  "round_started_at": "2026-11-09T16:51:05Z",
+  "round_started_at": "2026-11-26T21:30:04Z",
   "completed_rounds": [
     {
       "round": 1,
@@ -15,101 +15,98 @@
       "name": "rustok-api",
       "path": "crates/libs/rustok-api",
       "category": "libs",
-      "files": 35,
-      "loc": 7691,
-      "completed": true,
-      "completed_at": "2026-11-11T20:03:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: BCP 47 locale normalization, candidate hierarchy and script-level fallback in locale.rs; fixed-work constant-time SHA-256 digest comparison and RFC 2104 HMAC in digest.rs; typed ChannelContext, TenantContext, and HostAuthority in context/; bidirectional Display/FromStr platform resource mapping and effective permission calculation in permissions.rs; fail-closed port deadline semantics, trimmed whitespace idempotency validation and sanitized technical messages in ports.rs",
-      "last_audited": "2026-11-11"
+      "files": 39,
+      "loc": 8277,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/libs/rustok-core": {
       "name": "rustok-core",
       "path": "crates/libs/rustok-core",
       "category": "libs",
-      "files": 66,
-      "loc": 18566,
-      "completed": true,
-      "completed_at": "2026-11-11T19:43:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: ISO 4217 canonical money exponents and rounding in money.rs; flex custom fields schema validation, transparent array depth parsing, and regexes in field_schema.rs; 64-stripe write-locked CAS in cache_atomic.rs; event bus schema validation, backpressure controller and memory transport in events/; epoch-aware half-open probes and bounded failure/success thresholds in resilience/circuit_breaker.rs; clamped non-zero concurrency and non-panicking batch_size.max(1) in async_utils/mod.rs; non-panicking division-by-zero protection in security/rate_limit.rs TokenBucket::retry_after(); slug and RFC 1035 hostname validation in tenant_validation.rs",
-      "last_audited": "2026-11-11"
+      "files": 68,
+      "loc": 20353,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/libs/rustok-events": {
       "name": "rustok-events",
       "path": "crates/libs/rustok-events",
       "category": "libs",
       "files": 37,
-      "loc": 12838,
-      "completed": true,
-      "completed_at": "2026-11-11T20:19:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: root DomainEvent and sealed ContractEventPayload families, correlation/causation tracking, strict non-nil UUID validation in EventEnvelope, RFC 3339 / microsecond serde timestamp formats, registered schema version consistency guards, and sealed event delivery requirements",
-      "last_audited": "2026-11-11"
+      "loc": 13077,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/libs/rustok-fba": {
       "name": "rustok-fba",
       "path": "crates/libs/rustok-fba",
       "category": "libs",
       "files": 2,
-      "loc": 186,
-      "completed": true,
-      "completed_at": "2026-11-11T22:38:00Z",
-      "notes": "Verified neutral backend topology and transport profile descriptors, added validation against empty identifiers and empty transport profiles"
+      "loc": 267,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/libs/rustok-runtime": {
       "name": "rustok-runtime",
       "path": "crates/libs/rustok-runtime",
       "category": "libs",
       "files": 5,
-      "loc": 2548,
-      "completed": true,
-      "completed_at": "2026-11-11T20:44:00Z",
-      "notes": "Verified host-neutral composition, deployment role materialization, layout safety and hardened ModuleWorkScheduler with non-panicking interval and whitespace slug rejection"
+      "loc": 2695,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/libs/rustok-telemetry": {
       "name": "rustok-telemetry",
       "path": "crates/libs/rustok-telemetry",
       "category": "libs",
       "files": 15,
-      "loc": 3383,
-      "completed": true,
-      "completed_at": "2026-11-11T22:04:00Z",
-      "notes": "Verified Prometheus registry, MetricsHandle, runtime collectors, bounded label cardinality across domain metrics, clamped OpenTelemetry sampling rate against NaN and bounds"
+      "loc": 3443,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/libs/rustok-web": {
       "name": "rustok-web",
       "path": "crates/libs/rustok-web",
       "category": "libs",
       "files": 3,
-      "loc": 1023,
-      "completed": true,
-      "completed_at": "2026-11-12T01:07:00Z",
-      "notes": "Verified CSP nonce generator, content-addressed strong ETags, BrowserAssetRegistry dual N/N+1 retention with strict 404 nosniff, and safe port-to-http error mapping with blank code fallback"
+      "loc": 1030,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/alloy": {
       "name": "alloy",
       "path": "crates/modules/alloy",
       "category": "modules",
       "files": 79,
-      "loc": 25285,
-      "completed": true,
-      "completed_at": "2026-11-14T18:50:00Z",
-      "notes": "Verified Rhai sandbox runtime limits, SeaORM authoring and execution log CAS revision concurrency, scheduler evidence sweep, and static runtime contract matrix"
+      "loc": 25316,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/flex": {
       "name": "flex",
       "path": "crates/modules/flex",
       "category": "modules",
-      "files": 53,
-      "loc": 17299,
-      "completed": true,
-      "completed_at": "2026-11-14T18:50:00Z",
-      "notes": "Verified standalone schema and entry CAS/partitioning, attached field definition lifecycle delegations, reorder validation in owner registry, and multilingual contract boundaries"
+      "files": 64,
+      "loc": 18444,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-ai": {
       "name": "rustok-ai",
       "path": "crates/modules/rustok-ai",
       "category": "modules",
       "files": 77,
-      "loc": 43059,
+      "loc": 43397,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -119,7 +116,7 @@
       "path": "crates/modules/rustok-ai/admin",
       "category": "modules",
       "files": 18,
-      "loc": 8566,
+      "loc": 8601,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -129,7 +126,7 @@
       "path": "crates/modules/rustok-ai-alloy",
       "category": "modules",
       "files": 2,
-      "loc": 423,
+      "loc": 458,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -139,7 +136,7 @@
       "path": "crates/modules/rustok-ai-athanor",
       "category": "modules",
       "files": 3,
-      "loc": 595,
+      "loc": 601,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -149,7 +146,7 @@
       "path": "crates/modules/rustok-ai-content",
       "category": "modules",
       "files": 2,
-      "loc": 370,
+      "loc": 400,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -159,7 +156,7 @@
       "path": "crates/modules/rustok-ai-media",
       "category": "modules",
       "files": 2,
-      "loc": 113,
+      "loc": 131,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -169,7 +166,7 @@
       "path": "crates/modules/rustok-ai-order",
       "category": "modules",
       "files": 2,
-      "loc": 303,
+      "loc": 342,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -179,7 +176,7 @@
       "path": "crates/modules/rustok-ai-product",
       "category": "modules",
       "files": 2,
-      "loc": 358,
+      "loc": 398,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -189,7 +186,7 @@
       "path": "crates/modules/rustok-ai-translation",
       "category": "modules",
       "files": 2,
-      "loc": 1702,
+      "loc": 1707,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -198,329 +195,321 @@
       "name": "rustok-auth",
       "path": "crates/modules/rustok-auth",
       "category": "modules",
-      "files": 62,
-      "loc": 15066,
-      "completed": true,
-      "completed_at": "2026-11-12T07:55:00Z",
-      "notes": "verified across 6 Universal Logic Dimensions: password policy, bounds and Argon2id hashing, secure 256-bit refresh token generation with SHA-256 storage, strict zero-leeway JWT validation, nil UUID guards across token encoders/decoders and OAuth GraphQL mutations/queries, safe backfill database backend validation, token/secret redaction in Debug representations across REST, admin commands, and GraphQL payload types; unit tests added; verified with cargo check -p rustok-auth and cargo check -p rustok-auth --features graphql"
+      "files": 92,
+      "loc": 24467,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-auth/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-auth/admin",
       "category": "modules",
       "files": 21,
-      "loc": 7404,
-      "completed": true,
-      "completed_at": "2026-11-12T08:30:00Z",
-      "notes": "verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID tenant scope matching, non-nil UUID checks in native server endpoints, permission gates, bounded pagination limits; unit tests updated; verified with cargo check -p rustok-auth-admin and cargo check -p rustok-auth-admin --features ssr"
+      "loc": 7614,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-auth/cli": {
       "name": "cli",
       "path": "crates/modules/rustok-auth/cli",
       "category": "modules",
       "files": 2,
-      "loc": 376,
-      "completed": true,
-      "completed_at": "2026-11-12T08:42:00Z",
-      "notes": "verified across 6 Universal Logic Dimensions: non-nil UUID tenant ID guard in required_tenant_id, name and slug bounds (<= 255 chars), transactional multi-backend OAuth app creation with secure secret hashing, expired sessions cleanup; unit tests added; verified with cargo check -p rustok-auth-cli"
+      "loc": 566,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-blog": {
       "name": "rustok-blog",
       "path": "crates/modules/rustok-blog",
       "category": "modules",
-      "files": 225,
-      "loc": 57208,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified 6 Universal Logic Dimensions: decoupled BlogTaxonomyPort, non-nil UUIDs, TransactionalEventBus, search projection",
-      "last_audited": "2026-11-01"
+      "files": 254,
+      "loc": 57952,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-blog/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-blog/admin",
       "category": "modules",
-      "files": 37,
-      "loc": 11285,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified FFA separation, non-nil tenant/actor guards, RBAC gates, target-only article richtext editor",
-      "last_audited": "2026-11-01"
+      "files": 43,
+      "loc": 11449,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-blog/storefront": {
       "name": "storefront",
       "path": "crates/modules/rustok-blog/storefront",
       "category": "modules",
       "files": 27,
-      "loc": 4988,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified FFA separation, non-nil UUIDs, comments outage disclosure, public post and comment projection",
-      "last_audited": "2026-11-01"
+      "loc": 5015,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-brand": {
       "name": "rustok-brand",
       "path": "crates/modules/rustok-brand",
       "category": "modules",
       "files": 33,
-      "loc": 4996,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: brand slug validation and length bounds (max 100), website_url max 512, translation validation, category and product associations, transactional delete with explicit brand_category cleanup, defensive pagination with div_ceil; verified with cargo check -p rustok-brand"
+      "loc": 5069,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-brand/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-brand/admin",
       "category": "modules",
       "files": 10,
-      "loc": 2226,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: Leptos SSR brand admin UI, loaded_resource Serialize/Deserialize bounds, core presentation view models and validations, native and GraphQL dual transport; verified with cargo check -p rustok-brand-admin --features ssr and verify-standalone-admin-editor-delivery"
+      "loc": 2234,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-cache": {
       "name": "rustok-cache",
       "path": "crates/modules/rustok-cache",
       "category": "modules",
       "files": 51,
-      "loc": 18760,
-      "completed": true,
-      "completed_at": "2026-11-12T12:45:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: exact consumption in postcard decoding for durable invalidations rejecting unconsumed trailing garbage bytes, deterministic FNV-1a TTL jitter with upper-bound caps, fail-closed degraded write and pending invalidation tracking, token-owned distributed leases with compare-and-delete/expire Lua scripts, bounded monotonic namespace generations with automatic catch-up healing, request coalescing anti-stampede loader with timeout bounds; unit tests added; verified with cargo check -p rustok-cache and cargo check -p rustok-cache --no-default-features"
+      "loc": 18996,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-cart": {
       "name": "rustok-cart",
       "path": "crates/modules/rustok-cart",
       "category": "modules",
-      "files": 67,
-      "loc": 20185,
-      "completed": true,
-      "completed_at": "2026-11-13T23:25:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards in create_cart_with_channel, load_cart_in_tx, load_cart_for_update_in_tx; pessimistic row locking (load_cart_for_update_in_tx) for TOCTOU prevention; checked integer math (checked_mul, saturating_sub) for marketplace and line item pricing; ISO-4217 currency validation; verified with cargo check -p rustok-cart"
+      "files": 72,
+      "loc": 21516,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-cart/storefront": {
       "name": "storefront",
       "path": "crates/modules/rustok-cart/storefront",
       "category": "modules",
-      "files": 23,
-      "loc": 4922,
-      "completed": true,
-      "completed_at": "2026-11-13T23:25:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID guards in parse_cart_id and parse_line_item_id, robust error mapping in native server functions, customer session resolution; verified with cargo check -p rustok-cart-storefront and cargo check -p rustok-cart-storefront --features ssr"
+      "files": 27,
+      "loc": 6062,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-channel": {
       "name": "rustok-channel",
       "path": "crates/modules/rustok-channel",
       "category": "modules",
-      "files": 52,
-      "loc": 12916,
-      "completed": true,
-      "completed_at": "2026-11-12T18:55:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: cross-tenant isolation enforcement in policy resolution, non-nil UUID guards in ResolutionAction and OAuthAppEquals predicates, non-nil tenant ID validation in ChannelReadPort parse_tenant_id, slug/name bounds (<= 255 chars) in create_channel and create_resolution_policy_set, nil UUID guards across service operations, atomic transactional reordering; verified with cargo check -p rustok-channel."
+      "files": 62,
+      "loc": 14509,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-channel/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-channel/admin",
       "category": "modules",
       "files": 15,
-      "loc": 5527,
-      "completed": true,
-      "completed_at": "2026-11-12T18:55:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation with pure-logic core.rs, strict non-nil tenant scope matching and non-nil user_id validation in ensure_manage_permission across all 16 native server functions, non-nil UUID validation in parse_uuid, dual SETTINGS_MANAGE/MODULES_MANAGE permission checks; verified with cargo check -p rustok-channel-admin and cargo check -p rustok-channel-admin --features ssr."
+      "loc": 5552,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-comments": {
       "name": "rustok-comments",
       "path": "crates/modules/rustok-comments",
       "category": "modules",
-      "files": 46,
-      "loc": 11514,
-      "completed": true,
-      "completed_at": "2026-11-14T08:05:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards across tenant_id, target_id, author_id, comment_id, parent_comment_id; parent comment thread boundary validation; transactional position allocation with tenant lock and counter updates; canonical richtext validation and serialization; public approved-only read projection; target deletion event handler; verified with cargo check -p rustok-comments and verification scripts."
+      "files": 47,
+      "loc": 11563,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-comments/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-comments/admin",
       "category": "modules",
       "files": 9,
-      "loc": 1891,
-      "completed": true,
-      "completed_at": "2026-11-14T08:05:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, clamped pagination (page >= 1, per_page clamped to [1, 100]), non-nil UUID validation on thread_id and comment_id, moderation workspace for thread and comment status changes; verified with cargo check -p rustok-comments-admin --features ssr and verification scripts."
+      "loc": 1900,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-commerce": {
       "name": "rustok-commerce",
       "path": "crates/modules/rustok-commerce",
       "category": "modules",
-      "files": 323,
-      "loc": 155694,
-      "completed": true,
-      "completed_at": "2026-11-13T22:45:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards in StagedCheckoutService, RecoveringStagedCheckoutService, PaymentOrchestrationService, OrderChangeOrchestrationService, ReturnCompletionOrchestrationService, and FulfillmentOrchestrationService; strict CheckedTransition state machine in checkout_operation.rs with terminal parking state ReconciliationRequired; bounded compensation attempts (MAX_CHECKOUT_COMPENSATION_ATTEMPTS = 8) and lease seconds; checked integer math on fulfillment line items; verified with cargo check -p rustok-commerce"
+      "files": 321,
+      "loc": 153740,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-commerce/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-commerce/admin",
       "category": "modules",
       "files": 22,
-      "loc": 6412,
-      "completed": true,
-      "completed_at": "2026-11-13T22:45:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID guards in parse_uuid, parse_cart_id, and parse_optional_line_item_id, RBAC permission verification in ensure_permission, promotion context extraction and decimal validation; verified with cargo check -p rustok-commerce-admin and cargo check -p rustok-commerce-admin --features ssr"
+      "loc": 6481,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-commerce/storefront": {
       "name": "storefront",
       "path": "crates/modules/rustok-commerce/storefront",
       "category": "modules",
       "files": 17,
-      "loc": 2983,
-      "completed": true,
-      "completed_at": "2026-11-13T22:45:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation in shared_adapter::parse_cart_id, robust error mapping in native server functions, locale resolution and fallback; verified with cargo check -p rustok-commerce-storefront and cargo check -p rustok-commerce-storefront --features ssr"
+      "loc": 3005,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-commerce-foundation": {
       "name": "rustok-commerce-foundation",
       "path": "crates/modules/rustok-commerce-foundation",
       "category": "modules",
       "files": 17,
-      "loc": 2126,
-      "completed": true,
-      "completed_at": "2026-11-13T15:55:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: SQL LIKE wildcard escaping (escape_like_pattern for %, _, \\) in product translation title search conditions, query length truncation (MAX_SEARCH_QUERY_LEN = 255), decimal price non-negativity and ISO-4217 3-letter currency code validation, non-nil channel_id/variant_id UUID guards, inventory quantity non-negativity and non-zero adjustment validation; unit tests added; verified with cargo check -p rustok-commerce-foundation"
+      "loc": 2167,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-content": {
       "name": "rustok-content",
       "path": "crates/modules/rustok-content",
       "category": "modules",
       "files": 46,
-      "loc": 6465,
-      "completed": true,
-      "completed_at": "2026-11-14T07:05:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards across tenant_id, topic_id, post_id, category_id, actor_id, idempotent content orchestration bridge with transactional audit logging, canonical route resolver port with normalized route invariants, transactional event bus publishing for promotion/demotion/split/merge events; verified with cargo check -p rustok-content and verify-content-orchestration-contract.mjs."
+      "loc": 6270,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-content-orchestration": {
       "name": "rustok-content-orchestration",
       "path": "crates/modules/rustok-content-orchestration",
       "category": "modules",
-      "files": 19,
-      "loc": 3412,
-      "completed": true,
-      "completed_at": "2026-11-14T07:05:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: bridge implementation between Blog and Forum, atomic comment and topic move semantics, slug parameter validation, route prefix matching, non-nil tenant and entity guards, typed error mapping; verified with cargo check -p rustok-content-orchestration and verification scripts."
+      "files": 21,
+      "loc": 4663,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-customer": {
       "name": "rustok-customer",
       "path": "crates/modules/rustok-customer",
       "category": "modules",
       "files": 29,
-      "loc": 6207,
-      "completed": true,
-      "completed_at": "2026-11-14T03:51:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards on tenant_id, customer_id, user_id; unique email and user constraints in ensure_email_available and ensure_user_available; pagination clamps [1, 100] and bounded search length (256); CustomerReadPort policy enforcement",
-      "last_audited": "2026-11-14"
+      "loc": 6429,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-customer/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-customer/admin",
       "category": "modules",
       "files": 10,
-      "loc": 3177,
-      "completed": true,
-      "completed_at": "2026-11-14T03:51:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation in parse_uuid and parse_optional_uuid, RBAC permission verification in ensure_permission, server functions for customer list, detail, create, and update",
-      "last_audited": "2026-11-14"
+      "loc": 3204,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-distribution": {
       "name": "rustok-distribution",
       "path": "crates/modules/rustok-distribution",
       "category": "modules",
-      "files": 40,
-      "loc": 16364,
-      "completed": true,
-      "completed_at": "2026-11-14T03:37:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: compile-time module registry assembly across core and optional modules, deterministic composition identity hashing, validation in build_runtime_extensions and materialize_index_schema_sources, static distribution artifact generation",
-      "last_audited": "2026-11-14"
+      "files": 47,
+      "loc": 17212,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-email": {
       "name": "rustok-email",
       "path": "crates/modules/rustok-email",
       "category": "modules",
       "files": 8,
-      "loc": 1131,
-      "completed": true,
-      "completed_at": "2026-11-13T14:40:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: non-empty tenant_id validation in require_email_delivery_policy, length bounds in validate_delivery_request (template_id <= 128, locale <= 35, to <= 320), control character injection guards (\\r, \\n), Lettre mailbox parsing, JSON object vars validation, html escaping in password reset and SMTP relay configuration; verified with cargo check -p rustok-email"
+      "loc": 1140,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-events-module": {
       "name": "rustok-events-module",
       "path": "crates/modules/rustok-events-module",
       "category": "modules",
       "files": 13,
-      "loc": 883,
-      "completed": true,
-      "completed_at": "2026-11-13T05:39:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: runtime registration adapter for platform event capability, cycle-free dependency decoupling, module health lifecycle delegation, and contract validation; verified with cargo check -p rustok-events-module."
+      "loc": 904,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-events-module/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-events-module/admin",
       "category": "modules",
       "files": 9,
-      "loc": 781,
-      "completed": true,
-      "completed_at": "2026-11-13T05:39:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation with pure-logic core.rs (0 UI framework imports), HostAuthority permissions gate with non-nil actor_id validation in native_server_adapter, input validation of event delivery profiles via is_known_profile across native server functions and GraphQL adapters, dual-transport parity, and localized summary view model; verified with cargo check -p rustok-events-admin and cargo check -p rustok-events-admin --features ssr."
+      "loc": 802,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-forum": {
       "name": "rustok-forum",
       "path": "crates/modules/rustok-forum",
       "category": "modules",
-      "files": 614,
-      "loc": 181014,
-      "completed": true,
-      "completed_at": "2026-11-14T06:30:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: decoupled ForumTaxonomyPort architecture per ADR 2026-11-12, non-nil UUID guards across tenant_id, category_id, topic_id, reply_id, user_id, actor_id, transactional outbox domain events, topic & reply lifecycle state machines, thread locking, pinning, solution marking/unmarking, anonymous discovery enforcement with cross-module search protection, 16-hex short_id topic routing; verified with cargo check -p rustok-forum and verification scripts."
+      "files": 623,
+      "loc": 184246,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-forum/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-forum/admin",
       "category": "modules",
-      "files": 36,
-      "loc": 13498,
-      "completed": true,
-      "completed_at": "2026-11-14T06:30:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil tenant and actor guards, RBAC permission verification across server functions (categories:manage, topics:moderate, replies:moderate), category hierarchy tree management, topic fork, merge, split, and slug rename operations; verified with cargo check -p rustok-forum-admin --features ssr and verification scripts."
+      "files": 39,
+      "loc": 14212,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-forum/storefront": {
       "name": "storefront",
       "path": "crates/modules/rustok-forum/storefront",
       "category": "modules",
       "files": 20,
-      "loc": 7854,
-      "completed": true,
-      "completed_at": "2026-11-14T06:30:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID and session resolution, topic and reply cursor pagination, channel-scoped storefront enablement, content-locale bidi isolation with LTR route markers, rich text html projection; verified with cargo check -p rustok-forum-storefront --features ssr and verification scripts."
+      "loc": 8439,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-fulfillment": {
       "name": "rustok-fulfillment",
       "path": "crates/modules/rustok-fulfillment",
       "category": "modules",
       "files": 86,
-      "loc": 31472,
-      "completed": true,
-      "completed_at": "2026-11-14T03:25:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID validation in ShippingSelectionPort and FulfillmentService; typed status transitions in FulfillmentStatusKind (can_ship, can_deliver, is_terminal); atomic shipment stock movement via ShipmentStockPort with replay protection; provider operation journaling and reconciliation; checkout fulfillment identity anchor",
-      "last_audited": "2026-11-14"
+      "loc": 31613,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-fulfillment/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-fulfillment/admin",
       "category": "modules",
       "files": 9,
-      "loc": 2077,
-      "completed": true,
-      "completed_at": "2026-11-14T03:25:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, shipping option grid definition with bilingual filters (ru/en), normalized request pagination bounds, robust error mapping",
-      "last_audited": "2026-11-14"
+      "loc": 2082,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-fulfillment/storefront": {
       "name": "storefront",
@@ -528,47 +517,46 @@
       "category": "modules",
       "files": 13,
       "loc": 1730,
-      "completed": true,
-      "completed_at": "2026-11-14T03:25:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation in parse_optional_uuid and storefront_fulfillment_select_shipping_option_native, bounded selection updates, safe error reporting",
-      "last_audited": "2026-11-14"
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-groups": {
       "name": "rustok-groups",
       "path": "crates/modules/rustok-groups",
       "category": "modules",
-      "files": 117,
-      "loc": 34525,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 completed"
+      "files": 118,
+      "loc": 34709,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-groups/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-groups/admin",
       "category": "modules",
       "files": 35,
-      "loc": 9142,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 completed"
+      "loc": 9007,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-groups/storefront": {
       "name": "storefront",
       "path": "crates/modules/rustok-groups/storefront",
       "category": "modules",
       "files": 18,
-      "loc": 3357,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 completed"
+      "loc": 3365,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-iggy": {
       "name": "rustok-iggy",
       "path": "crates/modules/rustok-iggy",
       "category": "modules",
       "files": 32,
-      "loc": 8363,
+      "loc": 8402,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -578,7 +566,7 @@
       "path": "crates/modules/rustok-iggy-connector",
       "category": "modules",
       "files": 19,
-      "loc": 4769,
+      "loc": 5020,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -588,7 +576,7 @@
       "path": "crates/modules/rustok-iggy-connector/admin",
       "category": "modules",
       "files": 9,
-      "loc": 705,
+      "loc": 784,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -597,51 +585,51 @@
       "name": "rustok-index",
       "path": "crates/modules/rustok-index",
       "category": "modules",
-      "files": 142,
-      "loc": 60081,
-      "completed_at": "2026-11-15",
-      "notes": "Verified queue leases, heartbeat replay, non-nil tenant guards, zero defects"
+      "files": 151,
+      "loc": 65606,
+      "completed_at": null,
+      "notes": "",
+      "completed": false
     },
     "crates/modules/rustok-index/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-index/admin",
       "category": "modules",
-      "files": 10,
-      "loc": 2989,
-      "completed_at": "2026-11-15",
-      "notes": "Hardened require_index_admin_tenant_scope with non-nil tenant, user and auth guards"
+      "files": 13,
+      "loc": 4056,
+      "completed_at": null,
+      "notes": "",
+      "completed": false
     },
     "crates/modules/rustok-inventory": {
       "name": "rustok-inventory",
       "path": "crates/modules/rustok-inventory",
       "category": "modules",
-      "files": 66,
-      "loc": 22218,
-      "completed": true,
-      "completed_at": "2026-11-14T03:08:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards in validate_request, check_variant_availability, check_variant_availability_for_channel, reserve, release_reservation_quantity; bounded level queries (STOCK_LEVEL_READ_LIMIT, QUANTITY_RESERVATION_ROW_LIMIT); checked integer arithmetic on stocked/reserved levels; replay-safe identity reservations via external_id; pessimistic row locking on item and location levels",
-      "last_audited": "2026-11-14"
+      "files": 67,
+      "loc": 23866,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-inventory/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-inventory/admin",
       "category": "modules",
       "files": 11,
-      "loc": 4908,
-      "completed": true,
-      "completed_at": "2026-11-14T03:08:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation in parse_uuid, synchronized DTO status mapping with rustok_product::ProductStatus, RBAC permission verification in ensure_permission, server functions for quantity adjustment and reservation management",
-      "last_audited": "2026-11-14"
+      "loc": 4918,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-marketplace": {
       "name": "rustok-marketplace",
       "path": "crates/modules/rustok-marketplace",
       "category": "modules",
       "files": 12,
-      "loc": 2144,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified 6 Universal Logic Dimensions: financial orchestration, non-nil UUID guards, idempotency derivation"
+      "loc": 2149,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-marketplace-allocation": {
       "name": "rustok-marketplace-allocation",
@@ -649,76 +637,76 @@
       "category": "modules",
       "files": 14,
       "loc": 1797,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified 6 Universal Logic Dimensions: immutable allocation, mathematical checks, non-nil UUIDs, idempotency"
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-marketplace-commission": {
       "name": "rustok-marketplace-commission",
       "path": "crates/modules/rustok-marketplace-commission",
       "category": "modules",
       "files": 18,
-      "loc": 3101,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified 6 Universal Logic Dimensions: versioned rules, i128 precision math, float-free arithmetic, rule specificity"
+      "loc": 3104,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-marketplace-listing": {
       "name": "rustok-marketplace-listing",
       "path": "crates/modules/rustok-marketplace-listing",
       "category": "modules",
       "files": 34,
-      "loc": 6905,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified 6 Universal Logic Dimensions: terms, lifecycle, eligibility, re-exported permissions"
+      "loc": 6981,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-marketplace-listing/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-marketplace-listing/admin",
       "category": "modules",
       "files": 10,
-      "loc": 2010,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified FFA separation, non-nil tenant/user guards, RBAC gates"
+      "loc": 2020,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-marketplace-payout": {
       "name": "rustok-marketplace-payout",
       "path": "crates/modules/rustok-marketplace-payout",
       "category": "modules",
       "files": 15,
-      "loc": 2051,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified 6 Universal Logic Dimensions: payout batches, status lifecycle, float-free arithmetic, non-nil UUIDs"
+      "loc": 2052,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-marketplace-seller": {
       "name": "rustok-marketplace-seller",
       "path": "crates/modules/rustok-marketplace-seller",
       "category": "modules",
       "files": 51,
-      "loc": 11075,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified 6 Universal Logic Dimensions: lifecycle, onboarding, rosters, non-nil UUIDs"
+      "loc": 11134,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-marketplace-seller/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-marketplace-seller/admin",
       "category": "modules",
       "files": 14,
-      "loc": 2508,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified FFA separation, non-nil tenant guards, RBAC gates, event timeline"
+      "loc": 2557,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-mcp": {
       "name": "rustok-mcp",
       "path": "crates/modules/rustok-mcp",
       "category": "modules",
-      "files": 27,
-      "loc": 7106,
+      "files": 43,
+      "loc": 11987,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -728,7 +716,7 @@
       "path": "crates/modules/rustok-mcp/admin",
       "category": "modules",
       "files": 8,
-      "loc": 1970,
+      "loc": 1745,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -737,21 +725,21 @@
       "name": "rustok-media",
       "path": "crates/modules/rustok-media",
       "category": "modules",
-      "files": 48,
-      "loc": 14287,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards across tenant_id, asset_id, blob_id, session_id; magic-number binary MIME verification across JPEG, PNG, GIF, WebP, BMP, TIFF, AVIF, MP4, QuickTime, WebM, AVI, MP3, WAV, OGG, FLAC, AAC, PDF; 50MB size clamp; image processing pipeline with dimension, pixel, and decoded bytes limits; mandatory EXIF/metadata stripping for user privacy; atomic transactional metadata persistence with storage compensation; asset reference retention guard preventing deletion of referenced assets; verified with cargo check -p rustok-media and verification scripts"
+      "files": 60,
+      "loc": 17570,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-media/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-media/admin",
       "category": "modules",
       "files": 11,
-      "loc": 2445,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, pure core view models and formatting in core.rs, busy key deduplication per media item (Delete, Upload, Translation), RBAC permission gates (media:list, media:read, media:create, media:delete), non-nil tenant and actor guards; verified with cargo check -p rustok-media-admin --features ssr and verification scripts"
+      "loc": 2453,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-media/cli": {
       "name": "cli",
@@ -759,59 +747,59 @@
       "category": "modules",
       "files": 2,
       "loc": 422,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: operational command adapter for storage reconciliation, non-nil UUID validation on --tenant-id, limit validation and clamping, dry-run rejection, clean separation of CLI adapter from domain service; verified with cargo check -p rustok-media-cli"
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-media/ports": {
       "name": "rustok-media-ports",
       "path": "crates/modules/rustok-media/ports",
       "category": "modules",
-      "files": 7,
-      "loc": 2393,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: transport-neutral FBA read/write ports (MediaAssetReadPort, MediaAssetWritePort, MediaPublicImageReadPort), non-nil UUID guards, cursor pagination validation (after_reference_id non-nil), duplicate reference ID rejection, reconciliation and list limit clamping [1, 1000] and [1, 100], idempotency lease integration; verified with cargo check -p rustok-media-ports --all-features and verification scripts"
+      "files": 10,
+      "loc": 2892,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-moderation": {
       "name": "rustok-moderation",
       "path": "crates/modules/rustok-moderation",
       "category": "modules",
       "files": 40,
-      "loc": 10727,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 completed"
+      "loc": 10764,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-modules": {
       "name": "rustok-modules",
       "path": "crates/modules/rustok-modules",
       "category": "modules",
-      "files": 284,
-      "loc": 159027,
-      "completed": true,
-      "completed_at": "2026-11-13T05:15:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: module control plane with strict ModuleCommandContext validation (non-nil actor_id, non-empty trace_id <= 512 chars, non-nil correlation_id/idempotency_key, and non-nil tenant_id when scoped), non-nil snapshot tenant_id guards in translation adapter (validated_sorted_snapshot_fields, prepare_apply_plan), artifact CAS, and tenant policy revisions; verified with cargo check -p rustok-modules."
+      "files": 293,
+      "loc": 164979,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-modules/cli": {
       "name": "cli",
       "path": "crates/modules/rustok-modules/cli",
       "category": "modules",
       "files": 2,
-      "loc": 1905,
-      "completed": true,
-      "completed_at": "2026-11-13T05:15:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: whitespace-trimmed input validation and non-empty checks in NormalizedArgs required_option and one_positional, strict non-nil UUID parsing in parse_uuid_option, deterministic source archive builder with length-framed limits, and remote build/publish command contracts; verified with cargo check -p rustok-modules-cli."
+      "loc": 1912,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-navigation": {
       "name": "rustok-navigation",
       "path": "crates/modules/rustok-navigation",
       "category": "modules",
       "files": 43,
-      "loc": 5894,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: menu hierarchy depth bounds (MAX_MENU_DEPTH = 16), translation limits (max 50 locales, max 1000 items), negative position guards, channel slot binding validation, translation evidence recording in transaction; verified with cargo check -p rustok-navigation"
+      "loc": 5904,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-navigation/storefront": {
       "name": "storefront",
@@ -819,19 +807,19 @@
       "category": "modules",
       "files": 10,
       "loc": 652,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: Leptos SSR navigation storefront slots (Header/Footer), context snapshot provider, dual native server function and GraphQL transports; verified with cargo check -p rustok-navigation-storefront --features ssr"
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-notifications": {
       "name": "rustok-notifications",
       "path": "crates/modules/rustok-notifications",
       "category": "modules",
       "files": 83,
-      "loc": 24134,
-      "completed": true,
-      "completed_at": "2026-11-14T07:45:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards across tenant_id, recipient_id, notification_id, actor_id, outbox_event_id, durably accepted source event intake with permanent rejection recording, idempotent candidate processing with dedupe constraints, optimistic concurrency lease worker with timeout checks, notification state machine enforcing read_at requires seen_at, transport-neutral NotificationInboxStorefrontPort; verified with cargo check -p rustok-notifications and verification scripts."
+      "loc": 24467,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-notifications/admin": {
       "name": "admin",
@@ -839,119 +827,119 @@
       "category": "modules",
       "files": 7,
       "loc": 293,
-      "completed": true,
-      "completed_at": "2026-11-14T07:45:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, notifications admin status & phase lifecycle (SourceRegistry, Persistence, Delivery), typed item status (Ready, Unavailable, Planned) with i18n keys, Leptos admin UI components; verified with cargo check -p rustok-notifications-admin --features ssr."
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-notifications/storefront": {
       "name": "storefront",
       "path": "crates/modules/rustok-notifications/storefront",
       "category": "modules",
       "files": 17,
-      "loc": 3300,
-      "completed": true,
-      "completed_at": "2026-11-14T07:45:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, dual transport path (NativeServer / GraphQL), grouped notification inbox, unread badge, navigation header actions, state command dispatch (mark_read, mark_unread, archive), cursor pagination; verified with cargo check -p rustok-notifications-storefront --features ssr."
+      "loc": 3354,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-order": {
       "name": "rustok-order",
       "path": "crates/modules/rustok-order",
       "category": "modules",
       "files": 90,
-      "loc": 23881,
-      "completed": true,
-      "completed_at": "2026-11-14T00:45:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards in create_order_with_channel_internal, find_order_for_update_in_tx, find_order_change_for_update_in_tx, and find_order_return_for_update_in_tx; dialect-specific pessimistic row locking for TOCTOU prevention; financial bounds checking on adjustments, subtotal, shipping, and tax lines; post-order work refused on cancelled orders; verified with cargo check -p rustok-order"
+      "loc": 23952,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-order/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-order/admin",
       "category": "modules",
       "files": 15,
-      "loc": 3206,
-      "completed": true,
-      "completed_at": "2026-11-14T00:45:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation in server functions, RBAC permission verification, robust error mapping; verified with cargo check -p rustok-order-admin and cargo check -p rustok-order-admin --features ssr"
+      "loc": 3219,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-order/storefront": {
       "name": "storefront",
       "path": "crates/modules/rustok-order/storefront",
       "category": "modules",
       "files": 13,
-      "loc": 2333,
-      "completed": true,
-      "completed_at": "2026-11-14T00:45:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation, tenant and buyer session isolation; verified with cargo check -p rustok-order-storefront and cargo check -p rustok-order-storefront --features ssr"
+      "loc": 2334,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-outbox": {
       "name": "rustok-outbox",
       "path": "crates/modules/rustok-outbox",
       "category": "modules",
-      "files": 29,
-      "loc": 5559,
-      "completed": true,
-      "completed_at": "2026-11-13T04:42:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: non-nil tenant and lease UUID guards in durable idempotency receipts (admit, complete, fail, release_retryable), idempotent drop in drop_owner_operation_receipts_table via if_exists, relay worker config bounds (worker_id length <= 128, backoff_base > 0, backoff_max >= backoff_base), 2048-char safe truncation on last_error preventing DB VARCHAR overflow, non-nil UUID guards in write_contract_envelope_once_in_tx, acknowledge, and TransactionalEventBus; verified with cargo check -p rustok-outbox."
+      "files": 26,
+      "loc": 4536,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-outbox/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-outbox/admin",
       "category": "modules",
       "files": 9,
-      "loc": 580,
-      "completed": true,
-      "completed_at": "2026-11-13T04:42:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation with pure-logic core.rs (0 UI framework imports), strict non-nil UUID tenant scope matching and non-nil user_id validation in native_server_adapter (auth_tenant_id == resolved_tenant_id && !auth_tenant_id.is_nil() && !resolved_tenant_id.is_nil()), defensive validation of status filter in query_status_count, and dual-backend (Postgres/Sqlite) tenant isolation; verified with cargo check -p rustok-outbox-admin and cargo check -p rustok-outbox-admin --features ssr."
+      "loc": 664,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-page-builder": {
       "name": "rustok-page-builder",
       "path": "crates/modules/rustok-page-builder",
       "category": "modules",
-      "files": 123,
-      "loc": 39760,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: document size and preview runtime limits, static publish policy allowlists, SHA-256 integrity proofs, stack-based non-recursive tree traversal, capability guards with write idempotency and read deadline policies; verified with cargo check -p rustok-page-builder and all 19 FBA baseline verification suites"
+      "files": 129,
+      "loc": 54442,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-page-builder/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-page-builder/admin",
       "category": "modules",
-      "files": 67,
-      "loc": 22326,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: Leptos SSR visual editor, sandboxed canvas postMessage sequencing, session owner verification (DraftSessionOwner) preventing draft token hijacking, memory/disk limits (MAX_DRAFT_SESSION_RECORD_BYTES 20MB, MAX_DRAFT_SESSIONS_PER_OWNER 8), format versioning and migration compatibility; verified with cargo check -p rustok-page-builder-admin --features ssr"
+      "files": 71,
+      "loc": 34922,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-pages": {
       "name": "rustok-pages",
       "path": "crates/modules/rustok-pages",
       "category": "modules",
-      "files": 205,
-      "loc": 60760,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: page version monotonic increments and optimistic locking, strict tenant-scoped cascade deletions in transaction, state machine lifecycle transitions (draft -> published -> unpublished -> archived) with CAS guards, scheduled publication worker with lease reaper and tenant fairness cursor; verified with cargo check -p rustok-pages and verify-pages-* verification scripts"
+      "files": 221,
+      "loc": 73166,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-pages/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-pages/admin",
       "category": "modules",
-      "files": 28,
-      "loc": 9748,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: Leptos SSR page admin and visual navigator, fixed closure type inference for on_select callback and borrow of moved value in layout options, role=alert error status display, full keyboard and ARIA navigation; verified with cargo check -p rustok-pages-admin --features ssr"
+      "files": 29,
+      "loc": 12662,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-pages/storefront": {
       "name": "storefront",
       "path": "crates/modules/rustok-pages/storefront",
       "category": "modules",
-      "files": 18,
-      "loc": 5076,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: Leptos SSR storefront rendering, scoped CSS encapsulation, localized routing, CSP nonce propagation, error boundary fallback; verified with cargo check -p rustok-pages-storefront --features ssr"
+      "files": 19,
+      "loc": 4950,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-payment": {
       "name": "rustok-payment",
@@ -959,41 +947,39 @@
       "category": "modules",
       "files": 91,
       "loc": 24533,
-      "completed": true,
-      "completed_at": "2026-11-14T01:05:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: validate_non_nil checks across all ports and PaymentService methods; idempotency via PaymentProviderOperationJournal; positive amount validation (amount > 0) and ISO-4217 currency normalization; atomic refund creation with replay protection; state transitions enforced across payment collections and refunds; verified with cargo check -p rustok-payment"
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-payment/storefront": {
       "name": "storefront",
       "path": "crates/modules/rustok-payment/storefront",
       "category": "modules",
       "files": 12,
-      "loc": 1397,
-      "completed": true,
-      "completed_at": "2026-11-14T01:05:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation (order_id, cart_id) across server functions, context extraction and error mapping; verified with cargo check -p rustok-payment-storefront and cargo check -p rustok-payment-storefront --features ssr"
+      "loc": 1399,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-pricing": {
       "name": "rustok-pricing",
       "path": "crates/modules/rustok-pricing",
       "category": "modules",
       "files": 89,
-      "loc": 24188,
-      "completed": true,
-      "completed_at": "2026-11-14T02:45:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards on tenant_id, actor_id, variant_id, price_list_id, channel_id in set_price_list_percentage_rule, set_price_list_scope, apply_percentage_discount_with_channel, apply_price_list_percentage_discount_with_channel, set_scoped_price_tier, set_prices, resolve_price_snapshot, list_active_price_lists_for_channel, and find_canonical_price_row; non-negative price amount and discount percentage validation; ISO-4217 currency normalization; row locking for update in tx",
-      "last_audited": "2026-11-14"
+      "loc": 25176,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-pricing/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-pricing/admin",
       "category": "modules",
       "files": 27,
-      "loc": 8619,
-      "completed": true,
-      "completed_at": "2026-11-14T02:45:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation in parse_optional_uuid_string, normalized_region_id, normalized_price_list_id, RBAC permission verification in ensure_permission, server functions for discount rules and price list scoping",
-      "last_audited": "2026-11-14"
+      "loc": 8624,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-pricing/storefront": {
       "name": "storefront",
@@ -1001,67 +987,56 @@
       "category": "modules",
       "files": 12,
       "loc": 2777,
-      "completed": true,
-      "completed_at": "2026-11-14T02:45:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation in parse_optional_uuid_string and StorefrontPricingQuery, channel slug sanitization, currency validation, locale fallback",
-      "last_audited": "2026-11-14"
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-product": {
       "name": "rustok-product",
       "path": "crates/modules/rustok-product",
       "category": "modules",
-      "files": 240,
-      "loc": 102317,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: Product catalog commands, catalog schema write/read ports, write transactions with idempotency leases, variant axes and EAV attribute filtering, category hierarchy with ProductTaxonomyPort integration, error classification without payload leaks; verified with cargo check -p rustok-product and full verify scripts suite"
+      "files": 285,
+      "loc": 121314,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-product/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-product/admin",
       "category": "modules",
-      "files": 52,
-      "loc": 28526,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: Leptos SSR catalog admin UI, native and GraphQL admin transports with bounded GraphQLReadContext error safety, attribute lifecycle and fallback mutations, catalog controls sync; verified with cargo check -p rustok-product-admin --features ssr"
+      "files": 53,
+      "loc": 31179,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-product/storefront": {
       "name": "storefront",
       "path": "crates/modules/rustok-product/storefront",
       "category": "modules",
-      "files": 16,
-      "loc": 5584,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: Leptos storefront catalog UI, facet filters, native list and GraphQL adapter error boundary safety; verified with cargo check -p rustok-product-storefront --features ssr"
+      "files": 17,
+      "loc": 5730,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-product-bundles": {
       "name": "rustok-product-bundles",
       "path": "crates/modules/rustok-product-bundles",
       "category": "modules",
       "files": 28,
-      "loc": 7122,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: bundle service, idempotent receipt management with BUNDLE_CALLER_IDEMPOTENCY_NAMESPACE, bundle items and variant parent integrity migrations, dual-db SQLite support; verified with cargo check -p rustok-product-bundles"
+      "loc": 7088,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-product-bundles/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-product-bundles/admin",
       "category": "modules",
       "files": 10,
-      "loc": 2961,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: Leptos admin UI for bundles, loaded_resource Serialize/Deserialize bounds, native server adapter and GraphQL adapter error safety; verified with cargo check -p rustok-product-bundles-admin --features ssr"
-    },
-    "crates/modules/rustok-product-catalog-service": {
-      "name": "rustok-product-catalog-service",
-      "path": "crates/modules/rustok-product-catalog-service",
-      "category": "modules",
-      "files": 2,
-      "loc": 544,
+      "loc": 2966,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1071,164 +1046,167 @@
       "path": "crates/modules/rustok-product-relations",
       "category": "modules",
       "files": 30,
-      "loc": 4491,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: product relations service, idempotent receipt commands with RELATION_CALLER_IDEMPOTENCY_NAMESPACE framing, atomic FK cleanup migrations, dual-db SQLite support; verified with cargo check -p rustok-product-relations"
+      "loc": 4462,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-product-relations/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-product-relations/admin",
       "category": "modules",
       "files": 11,
-      "loc": 1851,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: Leptos admin UI for relations, loaded_resource bounds, native server adapter and GraphQL adapter error safety; verified with cargo check -p rustok-product-relations-admin --features ssr"
+      "loc": 1856,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-product/ports": {
       "name": "rustok-product-ports",
       "path": "crates/modules/rustok-product/ports",
       "category": "modules",
-      "files": 9,
-      "loc": 3261,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: standalone FBA ports layout, ProductAttributeFilter, ProductCatalogReadPort, ProductTaxonomyPort, gRPC client/server contracts; verified with cargo check -p rustok-product-ports"
+      "files": 17,
+      "loc": 4837,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-profiles": {
       "name": "rustok-profiles",
       "path": "crates/modules/rustok-profiles",
       "category": "modules",
       "files": 59,
-      "loc": 9706,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 completed"
+      "loc": 9823,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-profiles/cli": {
       "name": "cli",
       "path": "crates/modules/rustok-profiles/cli",
       "category": "modules",
       "files": 2,
-      "loc": 484,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 completed"
+      "loc": 511,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-profiles/storefront": {
       "name": "storefront",
       "path": "crates/modules/rustok-profiles/storefront",
       "category": "modules",
       "files": 10,
-      "loc": 1492,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 completed"
+      "loc": 1509,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-rbac": {
       "name": "rustok-rbac",
       "path": "crates/modules/rustok-rbac",
       "category": "modules",
       "files": 59,
-      "loc": 15499,
-      "completed": true,
-      "completed_at": "2026-11-12T10:30:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: policy-based user role mutations preventing demotion/removal of last super admin, request authority ceiling enforcement, non-nil UUID guards in permission decision ports and role assignment mutations, non-nil tenant guard in require_direct_control_plane_user, early non-nil tenant guard in repair, non-empty name validation in update_role; verified with cargo check -p rustok-rbac and cargo check -p rustok-rbac --features graphql"
+      "loc": 16621,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-rbac/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-rbac/admin",
       "category": "modules",
       "files": 9,
-      "loc": 984,
-      "completed": true,
-      "completed_at": "2026-11-12T10:45:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation with pure-logic core.rs, non-nil user_id guard in fetch_bootstrap_native, non-nil tenant ID validation via require_direct_control_plane_user, SETTINGS_READ permission gate, deduplicated and sorted permission/role listings, localized DataGrid integration; verified with cargo check -p rustok-rbac-admin and cargo check -p rustok-rbac-admin --features ssr"
+      "loc": 1052,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-rbac/cli": {
       "name": "cli",
       "path": "crates/modules/rustok-rbac/cli",
       "category": "modules",
       "files": 2,
-      "loc": 372,
-      "completed": true,
-      "completed_at": "2026-11-12T10:50:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID tenant ID guard in repair-system-roles, mutually exclusive flag validation (--tenant-id vs --all-tenants), invalid UUID rejection, transactional execution with automatic rollback on error, durable invalidation generation reservation; unit tests added; verified with cargo check -p rustok-rbac-cli"
+      "loc": 398,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-reactions": {
       "name": "rustok-reactions",
       "path": "crates/modules/rustok-reactions",
       "category": "modules",
       "files": 20,
-      "loc": 5650,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards across tenant_id, subject_id, command_id, actor_id; safe integer conversions (u64_to_i64, i64_to_u64); string segment and catalog bounds; selection policy (Single/Multiple/Remove) with atomic deltas; compound tenant-subject foreign keys with cascade deletion; TransactionalEventBus publishing (ActorStateChanged, SubjectReconciled); idempotent command leasing and failure recording; pessimistic subject locking; verified with cargo check -p rustok-reactions and verification scripts"
+      "loc": 5668,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-region": {
       "name": "rustok-region",
       "path": "crates/modules/rustok-region",
       "category": "modules",
-      "files": 54,
-      "loc": 9829,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified 6 Universal Logic Dimensions: non-nil UUID guards, tax rate bounds, cursor validation"
+      "files": 67,
+      "loc": 9911,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-region/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-region/admin",
       "category": "modules",
-      "files": 9,
-      "loc": 3095,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified FFA separation, non-nil tenant_id guards, RBAC permission verification"
+      "files": 17,
+      "loc": 3133,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-region/storefront": {
       "name": "storefront",
       "path": "crates/modules/rustok-region/storefront",
       "category": "modules",
-      "files": 10,
-      "loc": 1783,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified FFA separation, non-nil tenant_id guards, error status mapping and DOM attributes"
+      "files": 12,
+      "loc": 1780,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-search": {
       "name": "rustok-search",
       "path": "crates/modules/rustok-search",
       "category": "modules",
-      "files": 94,
-      "loc": 35047,
-      "completed_at": "2026-11-15",
-      "notes": "Hardened pg_engine, projector_core, projection_driver, suggestions, analytics, diagnostics, dictionaries and GraphQL resolvers against nil UUIDs"
+      "files": 97,
+      "loc": 35539,
+      "completed_at": null,
+      "notes": "",
+      "completed": false
     },
     "crates/modules/rustok-search/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-search/admin",
       "category": "modules",
       "files": 21,
-      "loc": 10161,
-      "completed_at": "2026-11-15",
-      "notes": "Verified admin tenant scoping and normalization with non-nil checks"
+      "loc": 9989,
+      "completed_at": null,
+      "notes": "",
+      "completed": false
     },
     "crates/modules/rustok-search/storefront": {
       "name": "storefront",
       "path": "crates/modules/rustok-search/storefront",
       "category": "modules",
       "files": 10,
-      "loc": 3267,
-      "completed_at": "2026-11-15",
-      "notes": "Hardened storefront search tenant validation and normalization"
+      "loc": 3312,
+      "completed_at": null,
+      "notes": "",
+      "completed": false
     },
     "crates/modules/rustok-seo": {
       "name": "rustok-seo",
       "path": "crates/modules/rustok-seo",
       "category": "modules",
       "files": 79,
-      "loc": 36932,
+      "loc": 37065,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1238,7 +1216,7 @@
       "path": "crates/modules/rustok-seo/admin",
       "category": "modules",
       "files": 16,
-      "loc": 4606,
+      "loc": 4617,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1248,57 +1226,57 @@
       "path": "crates/modules/rustok-social-graph",
       "category": "modules",
       "files": 40,
-      "loc": 9812,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 completed"
+      "loc": 9864,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-tax": {
       "name": "rustok-tax",
       "path": "crates/modules/rustok-tax",
       "category": "modules",
       "files": 15,
-      "loc": 1847,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified 6 Universal Logic Dimensions: float-free arithmetic, decimal rounding, nil channel handling"
+      "loc": 1851,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-taxonomy": {
       "name": "rustok-taxonomy",
       "path": "crates/modules/rustok-taxonomy",
       "category": "modules",
-      "files": 55,
-      "loc": 15143,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: Category hierarchy tree closure, cycle detection, advisory locking in transaction, route key registry with unique constraint conflict resolution, ProductTaxonomyPort and GroupTaxonomyPort error mapping to typed domain classes, translation evidence recording; verified with cargo check -p rustok-taxonomy and all verification scripts"
+      "files": 63,
+      "loc": 17182,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-tenant": {
       "name": "rustok-tenant",
       "path": "crates/modules/rustok-tenant",
       "category": "modules",
       "files": 32,
-      "loc": 4633,
-      "completed": true,
-      "completed_at": "2026-11-12T05:20:00+03:00",
-      "notes": "Verified across 6 Universal Logic Dimensions: RFC 1035 host and reserved slug validation via TenantIdentifierValidator, settings schema validation on tenant_module, nil UUID guards across service and port context, atomic locale policy CAS revisions and outbox event publishing. Verified with cargo check."
+      "loc": 5277,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-tenant/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-tenant/admin",
       "category": "modules",
       "files": 9,
-      "loc": 867,
-      "completed": true,
-      "completed_at": "2026-11-12T06:20:00+03:00",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID tenant scope matching, dual read permissions (tenant + modules), effective policy resolution with manifest defaults and tenant overrides, and BCP 47 i18n copy. Verified with cargo check --features ssr."
+      "loc": 874,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-translation": {
       "name": "rustok-translation",
       "path": "crates/modules/rustok-translation",
       "category": "modules",
       "files": 86,
-      "loc": 46706,
+      "loc": 46767,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1308,7 +1286,7 @@
       "path": "crates/modules/rustok-translation/admin",
       "category": "modules",
       "files": 10,
-      "loc": 14268,
+      "loc": 14320,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1317,28 +1295,28 @@
       "name": "rustok-workflow",
       "path": "crates/modules/rustok-workflow",
       "category": "modules",
-      "files": 55,
-      "loc": 7817,
-      "completed": true,
-      "completed_at": "2026-11-13T14:30:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID tenant_id and workflow_id checks across read/write ports, services (create, get, list, update, delete, add_step, update_step, delete_step, load_steps, trigger_manual, record_failure, list_executions, get_execution, trigger_by_webhook, list_versions, get_version, restore_version, create_from_template, reset_failure_count), workflow name bounds (1..=255 chars), exclusive row locking with dialect-specific statements, webhook secret length validation (32..=128 bytes) and constant-time HMAC-SHA256 signature verification; verified with cargo check -p rustok-workflow"
+      "files": 60,
+      "loc": 10826,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-workflow/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-workflow/admin",
       "category": "modules",
       "files": 15,
-      "loc": 1533,
-      "completed": true,
-      "completed_at": "2026-11-13T14:30:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, strict non-nil tenant scope matching (auth.tenant_id == tenant.id && !auth.tenant_id.is_nil()) and non-nil user_id validation across native server functions, RBAC permission gates (workflows:list, workflows:create, workflows:read), sanitized template_id (1..=128 chars) and name bounds (1..=255 chars); verified with cargo check -p rustok-workflow-admin and cargo check -p rustok-workflow-admin --features ssr"
+      "loc": 1563,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/ui/fly": {
       "name": "fly",
       "path": "crates/ui/fly",
       "category": "ui",
-      "files": 117,
-      "loc": 45535,
+      "files": 119,
+      "loc": 58433,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1378,7 +1356,7 @@
       "path": "crates/ui/rustok-ui-core",
       "category": "ui",
       "files": 10,
-      "loc": 2476,
+      "loc": 2581,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1387,8 +1365,8 @@
       "name": "rustok-ui-forms",
       "path": "crates/ui/rustok-ui-forms",
       "category": "ui",
-      "files": 24,
-      "loc": 9549,
+      "files": 26,
+      "loc": 10461,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1397,8 +1375,8 @@
       "name": "rustok-forms-dioxus",
       "path": "crates/ui/rustok-ui-forms/dioxus",
       "category": "ui",
-      "files": 7,
-      "loc": 2296,
+      "files": 8,
+      "loc": 2687,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1407,8 +1385,8 @@
       "name": "rustok-forms-leptos",
       "path": "crates/ui/rustok-ui-forms/leptos",
       "category": "ui",
-      "files": 7,
-      "loc": 3207,
+      "files": 8,
+      "loc": 3728,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1438,7 +1416,7 @@
       "path": "crates/utils/rustok-build",
       "category": "utils",
       "files": 14,
-      "loc": 3158,
+      "loc": 3159,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1468,7 +1446,7 @@
       "path": "crates/utils/rustok-cli",
       "category": "utils",
       "files": 4,
-      "loc": 1548,
+      "loc": 1562,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1488,7 +1466,7 @@
       "path": "crates/utils/rustok-cli-platform",
       "category": "utils",
       "files": 4,
-      "loc": 602,
+      "loc": 613,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1508,7 +1486,7 @@
       "path": "crates/utils/rustok-installer",
       "category": "utils",
       "files": 12,
-      "loc": 5264,
+      "loc": 5663,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1518,7 +1496,7 @@
       "path": "crates/utils/rustok-installer-cli",
       "category": "utils",
       "files": 2,
-      "loc": 984,
+      "loc": 994,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1527,8 +1505,8 @@
       "name": "rustok-installer-persistence",
       "path": "crates/utils/rustok-installer-persistence",
       "category": "utils",
-      "files": 10,
-      "loc": 2267,
+      "files": 11,
+      "loc": 3354,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1537,8 +1515,8 @@
       "name": "rustok-migrations",
       "path": "crates/utils/rustok-migrations",
       "category": "utils",
-      "files": 66,
-      "loc": 15995,
+      "files": 69,
+      "loc": 16525,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1578,7 +1556,7 @@
       "path": "crates/utils/rustok-storage",
       "category": "utils",
       "files": 5,
-      "loc": 1034,
+      "loc": 1088,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1587,8 +1565,8 @@
       "name": "rustok-test-utils",
       "path": "crates/utils/rustok-test-utils",
       "category": "utils",
-      "files": 7,
-      "loc": 1952,
+      "files": 8,
+      "loc": 2082,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1608,7 +1586,7 @@
       "path": "crates/workers/rustok-artifact-node-agent",
       "category": "workers",
       "files": 9,
-      "loc": 2557,
+      "loc": 2784,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1668,7 +1646,7 @@
       "path": "crates/workers/rustok-module-build-worker",
       "category": "workers",
       "files": 9,
-      "loc": 4297,
+      "loc": 4307,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1688,7 +1666,7 @@
       "path": "crates/workers/rustok-sandbox",
       "category": "workers",
       "files": 28,
-      "loc": 8426,
+      "loc": 8475,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1698,7 +1676,7 @@
       "path": "crates/workers/rustok-sandbox-transport",
       "category": "workers",
       "files": 6,
-      "loc": 1470,
+      "loc": 1480,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1718,7 +1696,7 @@
       "path": "crates/workers/rustok-static-distribution-worker",
       "category": "workers",
       "files": 11,
-      "loc": 3692,
+      "loc": 3694,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1757,8 +1735,8 @@
       "name": "admin",
       "path": "apps/admin",
       "category": "apps",
-      "files": 102,
-      "loc": 24752,
+      "files": 103,
+      "loc": 26695,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1767,8 +1745,8 @@
       "name": "next-admin",
       "path": "apps/next-admin",
       "category": "apps",
-      "files": 577,
-      "loc": 93716,
+      "files": 619,
+      "loc": 106705,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1777,8 +1755,8 @@
       "name": "blog",
       "path": "apps/next-admin/packages/blog",
       "category": "apps",
-      "files": 22,
-      "loc": 3671,
+      "files": 24,
+      "loc": 4001,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1788,7 +1766,7 @@
       "path": "apps/next-admin/packages/cache",
       "category": "apps",
       "files": 6,
-      "loc": 528,
+      "loc": 536,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1797,8 +1775,8 @@
       "name": "commerce",
       "path": "apps/next-admin/packages/commerce",
       "category": "apps",
-      "files": 13,
-      "loc": 2822,
+      "files": 26,
+      "loc": 5220,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1808,7 +1786,7 @@
       "path": "apps/next-admin/packages/email",
       "category": "apps",
       "files": 5,
-      "loc": 363,
+      "loc": 378,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1818,7 +1796,7 @@
       "path": "apps/next-admin/packages/rbac",
       "category": "apps",
       "files": 13,
-      "loc": 2249,
+      "loc": 2420,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1847,8 +1825,8 @@
       "name": "rustok-product",
       "path": "apps/next-admin/packages/rustok-product",
       "category": "apps",
-      "files": 55,
-      "loc": 17630,
+      "files": 62,
+      "loc": 20923,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1858,7 +1836,7 @@
       "path": "apps/next-admin/packages/search",
       "category": "apps",
       "files": 2,
-      "loc": 2952,
+      "loc": 2955,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1878,7 +1856,7 @@
       "path": "apps/next-admin/packages/workflow",
       "category": "apps",
       "files": 13,
-      "loc": 1606,
+      "loc": 1631,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1887,8 +1865,8 @@
       "name": "next-frontend",
       "path": "apps/next-frontend",
       "category": "apps",
-      "files": 191,
-      "loc": 28708,
+      "files": 207,
+      "loc": 32171,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1898,11 +1876,10 @@
       "path": "apps/next-frontend/packages/rustok-blog",
       "category": "apps",
       "files": 22,
-      "loc": 2753,
+      "loc": 2760,
       "completed": false,
       "completed_at": null,
-      "notes": "",
-      "last_audited": "2026-10-17"
+      "notes": ""
     },
     "apps/next-frontend/packages/rustok-comments": {
       "name": "rustok-comments",
@@ -1910,16 +1887,16 @@
       "category": "apps",
       "files": 2,
       "loc": 123,
-      "completed": true,
-      "completed_at": "2026-11-14T08:05:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: dual Leptos ↔ Next.js storefront parity, CommentComposer with @rustok/richtext comment profile, commandId retry idempotency preservation on retry / invalidation on edit, auth gate; verified with Node test runner (3/3 tests passed)."
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "apps/next-frontend/packages/rustok-product": {
       "name": "rustok-product",
       "path": "apps/next-frontend/packages/rustok-product",
       "category": "apps",
       "files": 13,
-      "loc": 3359,
+      "loc": 3367,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1938,19 +1915,18 @@
       "name": "server",
       "path": "apps/server",
       "category": "apps",
-      "files": 498,
-      "loc": 207960,
-      "completed": true,
-      "completed_at": "2026-11-11T17:48:00Z",
-      "notes": "Phase FS-01 complete: all 33 tracks audited and verified across 6 Universal Logic Dimensions (FS-01.01 through FS-01.33: bootstrap, host, runtime context, lifecycle, routes/error, middleware pipeline [tenant, channel, locale, auth_context, rbac, rate_limit, security_headers, http_stack, registry, idempotency, cache_control], controllers [health, metrics, graphql, auth, oauth, installer, registry, permissions, users, flex, mcp, admin_events, channel, swagger], and services [event_bus, outbox_retention, watchdog, settings, rbac_runtime])",
-      "last_audited": "2026-11-11"
+      "files": 493,
+      "loc": 235863,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "apps/storefront": {
       "name": "storefront",
       "path": "apps/storefront",
       "category": "apps",
-      "files": 36,
-      "loc": 6511,
+      "files": 39,
+      "loc": 7590,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1960,97 +1936,97 @@
       "path": "crates/integration/rustok-content-revisions",
       "category": "integration",
       "files": 7,
-      "loc": 1256,
-      "completed": true,
-      "completed_at": "2026-11-14T07:05:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: unified cross-module content revision history, non-nil tenant_id and content_id guards, SeaORM revision backend integration, conditional tracking filters, revision retention policy enforcement; verified with cargo check --manifest-path crates/integration/rustok-content-revisions/Cargo.toml."
+      "loc": 1257,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/libs/rustok-content-portability": {
       "name": "rustok-content-portability",
       "path": "crates/libs/rustok-content-portability",
       "category": "libs",
       "files": 12,
-      "loc": 1476,
-      "completed": true,
-      "completed_at": "2026-11-12T01:35:00+03:00",
-      "notes": "Verified JSON/CSV format parsing/serialization handlers, streaming progress callbacks, non-nil UUID validation on tenant_id and user_id in ImportContext and ExportContext to prevent multi-tenant isolation breaches. Unit tests added. Verified with cargo check."
+      "loc": 1591,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-accounting": {
       "name": "rustok-accounting",
       "path": "crates/modules/rustok-accounting",
       "category": "modules",
       "files": 15,
-      "loc": 1809,
-      "completed": true,
-      "completed_at": "2026-11-13T14:57:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: strict float-free integer arithmetic (#![deny(clippy::float_arithmetic)]), balanced double-entry validation (validate_transaction_balance) with checked integer math for debits and credits per currency, line count bounds (2..=1000), non-nil UUID guards on party_id, contract_id, item_id, warehouse_id, and document_id across posting items and transactions, closing balance calculations with turnover checks, and canonical Chart of Accounts; verified with cargo check -p rustok-accounting"
+      "loc": 1860,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-cache/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-cache/admin",
       "category": "modules",
       "files": 8,
-      "loc": 1248,
-      "completed": true,
-      "completed_at": "2026-11-12T12:50:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation with pure-logic core.rs, strict non-nil UUID tenant scope matching and non-nil user_id validation in native_server_adapter, dual SETTINGS_READ/SETTINGS_MANAGE permission and host-authority checks, exact settings payload validation rejecting silent defaults, dual-path GraphQL and native server function transport parity; verified with cargo check -p rustok-cache-admin and cargo check -p rustok-cache-admin --features ssr"
+      "loc": 1337,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-docs": {
       "name": "rustok-docs",
       "path": "crates/modules/rustok-docs",
       "category": "modules",
       "files": 23,
-      "loc": 3821,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: collaborative CRDT document editing using Loro with compaction threshold (50 updates), parent-child tree hierarchy without cycles, tenant-scoped slug and parent validation, transactional snapshots and updates; verified with cargo check -p rustok-docs"
+      "loc": 3859,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-forms": {
       "name": "rustok-forms",
       "path": "crates/modules/rustok-forms",
       "category": "modules",
       "files": 21,
-      "loc": 2419,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: payload size limits (MAX_FORM_PAYLOAD_BYTES 16KB, fields <= 50, field name <= 64, value <= 4096), honeypot trap with silent spam classification, rate limiting (10min window, 5 submissions max), SHA-256 IP hashing, transactional outbox publishing and transactional email notifications; verified with cargo check -p rustok-forms"
+      "loc": 2457,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-forms/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-forms/admin",
       "category": "modules",
       "files": 6,
-      "loc": 582,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: Leptos SSR submissions review workspace, state triage transitions (new -> handled -> spam), accessible status filtering, tenant-scoped data fetching; verified with cargo check -p rustok-forms-admin --features ssr"
+      "loc": 585,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-marketplace-balance": {
       "name": "rustok-marketplace-balance",
       "path": "crates/modules/rustok-marketplace-balance",
       "category": "modules",
       "files": 31,
-      "loc": 7110,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified 6 Universal Logic Dimensions: double-entry subledger, bucket lifecycle, float-free math, non-nil UUIDs"
+      "loc": 7111,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-newsletter": {
       "name": "rustok-newsletter",
       "path": "crates/modules/rustok-newsletter",
       "category": "modules",
       "files": 26,
-      "loc": 3376,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 completed"
+      "loc": 3454,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-seo/panel": {
       "name": "panel",
       "path": "crates/modules/rustok-seo/panel",
       "category": "modules",
       "files": 7,
-      "loc": 2834,
+      "loc": 2869,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2069,8 +2045,8 @@
       "name": "browser",
       "path": "crates/ui/fly/browser",
       "category": "ui",
-      "files": 13,
-      "loc": 1707,
+      "files": 14,
+      "loc": 2059,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2080,7 +2056,7 @@
       "path": "crates/ui/fly/dioxus",
       "category": "ui",
       "files": 3,
-      "loc": 739,
+      "loc": 1326,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2090,7 +2066,7 @@
       "path": "crates/ui/fly/leptos",
       "category": "ui",
       "files": 6,
-      "loc": 2965,
+      "loc": 3906,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2100,7 +2076,7 @@
       "path": "crates/ui/fly/ui",
       "category": "ui",
       "files": 23,
-      "loc": 6426,
+      "loc": 7756,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2109,8 +2085,8 @@
       "name": "web",
       "path": "crates/ui/fly/web",
       "category": "ui",
-      "files": 7,
-      "loc": 2307,
+      "files": 8,
+      "loc": 3042,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2120,7 +2096,7 @@
       "path": "crates/ui/rustok-grid",
       "category": "ui",
       "files": 31,
-      "loc": 7285,
+      "loc": 7361,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2130,7 +2106,7 @@
       "path": "crates/ui/rustok-grid/dioxus",
       "category": "ui",
       "files": 9,
-      "loc": 1798,
+      "loc": 1821,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2140,7 +2116,7 @@
       "path": "crates/ui/rustok-grid/leptos",
       "category": "ui",
       "files": 9,
-      "loc": 1587,
+      "loc": 1640,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2149,8 +2125,8 @@
       "name": "rustok-ui",
       "path": "crates/ui/rustok-ui",
       "category": "ui",
-      "files": 49,
-      "loc": 5501,
+      "files": 53,
+      "loc": 7034,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2160,7 +2136,7 @@
       "path": "crates/ui/rustok-ui/dioxus",
       "category": "ui",
       "files": 21,
-      "loc": 1373,
+      "loc": 1659,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2169,8 +2145,8 @@
       "name": "rustok-ui-leptos",
       "path": "crates/ui/rustok-ui/leptos",
       "category": "ui",
-      "files": 21,
-      "loc": 2161,
+      "files": 24,
+      "loc": 3355,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2180,7 +2156,7 @@
       "path": "crates/utils/rustok-starter",
       "category": "utils",
       "files": 12,
-      "loc": 1482,
+      "loc": 1485,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2210,10 +2186,10 @@
       "path": "apps/next-admin/packages/events",
       "category": "apps",
       "files": 7,
-      "loc": 423,
-      "completed": true,
-      "completed_at": "2026-11-13T05:39:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: dual Next.js and Leptos admin client parity, profile validation in saveEventDeliveryProfile matching known profiles ('outbox', 'outbox_iggy'), evaluateProfileSelection decision flow with Iggy unconfigured handling and restart requirements; verified."
+      "loc": 427,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "apps/next-admin/packages/forum": {
       "name": "forum",
@@ -2221,9 +2197,9 @@
       "category": "apps",
       "files": 19,
       "loc": 4927,
-      "completed": true,
-      "completed_at": "2026-11-14T06:30:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: dual Next.js and Leptos admin client parity, category tree admin dialog, topic and reply editor dialogs, topic fork, merge, split, and slug rename operations with i18n support; verified."
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "apps/next-admin/packages/iggy-connector": {
       "name": "iggy-connector",
@@ -2240,7 +2216,7 @@
       "path": "apps/next-frontend/packages/rustok-cart",
       "category": "apps",
       "files": 8,
-      "loc": 2564,
+      "loc": 2772,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2251,9 +2227,9 @@
       "category": "apps",
       "files": 23,
       "loc": 4775,
-      "completed": true,
-      "completed_at": "2026-11-14T06:30:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: dual Next.js and Leptos storefront parity, category overview hierarchy, topic detail, thread navigation, timeline scroller, topic feed, member card, and composer context with draft storage; verified."
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "apps/next-frontend/packages/rustok-notifications": {
       "name": "rustok-notifications",
@@ -2261,16 +2237,16 @@
       "category": "apps",
       "files": 7,
       "loc": 916,
-      "completed": true,
-      "completed_at": "2026-11-14T07:45:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: dual Leptos ↔ Next.js storefront parity, GraphQL queries/mutations matching backend schema (unread count, group summaries, group items, apply group state), notification group card, item row, unread badge, inbox page; verified with Node test runner (4/4 tests passed)."
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "apps/next-frontend/packages/rustok-order": {
       "name": "rustok-order",
       "path": "apps/next-frontend/packages/rustok-order",
       "category": "apps",
       "files": 5,
-      "loc": 1361,
+      "loc": 1369,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2290,7 +2266,7 @@
       "path": "apps/next-frontend/packages/rustok-profiles",
       "category": "apps",
       "files": 8,
-      "loc": 803,
+      "loc": 817,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2310,47 +2286,47 @@
       "path": "crates/libs/rustok-manifest",
       "category": "libs",
       "files": 7,
-      "loc": 1045,
-      "completed": true,
-      "completed_at": "2026-11-11T21:30:00Z",
-      "notes": "Verified slug rules, Kahn topological dependency resolution, UI classification invariants, wired snapshot module with deterministic SHA-256 hash and validated non-empty app name and module name/version"
+      "loc": 1104,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-messenger": {
       "name": "rustok-messenger",
       "path": "crates/modules/rustok-messenger",
       "category": "modules",
       "files": 64,
-      "loc": 11408,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 completed"
+      "loc": 11501,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-messenger/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-messenger/admin",
       "category": "modules",
       "files": 10,
-      "loc": 1226,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 completed"
+      "loc": 1231,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-page-builder/storefront": {
       "name": "storefront",
       "path": "crates/modules/rustok-page-builder/storefront",
       "category": "modules",
-      "files": 7,
-      "loc": 1846,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: Leptos SSR storefront page renderer, @scope CSS containment, CSP nonce forwarding, data-fly-action script attachment, accessible bridge feedback and alert roles without panic branches; verified with cargo check -p rustok-page-builder-storefront --features ssr"
+      "files": 9,
+      "loc": 2739,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "apps/next-admin/packages/forms": {
       "name": "forms",
       "path": "apps/next-admin/packages/forms",
       "category": "apps",
       "files": 5,
-      "loc": 234,
+      "loc": 237,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2360,7 +2336,7 @@
       "path": "apps/next-admin/packages/media",
       "category": "apps",
       "files": 5,
-      "loc": 281,
+      "loc": 275,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2369,8 +2345,8 @@
       "name": "pages",
       "path": "apps/next-admin/packages/pages",
       "category": "apps",
-      "files": 6,
-      "loc": 532,
+      "files": 8,
+      "loc": 1189,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2380,7 +2356,7 @@
       "path": "apps/next-frontend/packages/rustok-pages",
       "category": "apps",
       "files": 8,
-      "loc": 676,
+      "loc": 1006,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2391,16 +2367,16 @@
       "category": "modules",
       "files": 10,
       "loc": 1972,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 completed"
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/libs/rustok-seo-targets": {
       "name": "rustok-seo-targets",
       "path": "crates/libs/rustok-seo-targets",
       "category": "libs",
       "files": 2,
-      "loc": 1516,
+      "loc": 1622,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2410,7 +2386,7 @@
       "path": "crates/libs/rustok-translation-targets",
       "category": "libs",
       "files": 4,
-      "loc": 1780,
+      "loc": 1804,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2419,8 +2395,8 @@
       "name": "rustok-billing",
       "path": "crates/modules/rustok-billing",
       "category": "modules",
-      "files": 18,
-      "loc": 987,
+      "files": 19,
+      "loc": 1049,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2430,7 +2406,7 @@
       "path": "crates/modules/rustok-billing/admin",
       "category": "modules",
       "files": 6,
-      "loc": 324,
+      "loc": 351,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2439,8 +2415,8 @@
       "name": "rustok-blog-cli",
       "path": "crates/modules/rustok-blog/cli",
       "category": "modules",
-      "files": 2,
-      "loc": 606,
+      "files": 11,
+      "loc": 666,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2509,11 +2485,11 @@
       "name": "storefront",
       "path": "crates/modules/rustok-comments/storefront",
       "category": "modules",
-      "files": 4,
-      "loc": 382,
-      "completed": true,
-      "completed_at": "2026-11-14T08:05:00Z",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, CommentComposer component, richtext blankness validation (empty document, whitespace-only, nested empty nodes), submission gate; verified with cargo check -p rustok-comments-storefront-support --features ssr."
+      "files": 5,
+      "loc": 413,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-deal": {
       "name": "rustok-deal",
@@ -2560,7 +2536,7 @@
       "path": "crates/modules/rustok-party",
       "category": "modules",
       "files": 22,
-      "loc": 1734,
+      "loc": 1982,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2570,7 +2546,7 @@
       "path": "crates/modules/rustok-party/admin",
       "category": "modules",
       "files": 6,
-      "loc": 325,
+      "loc": 342,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2580,17 +2556,17 @@
       "path": "crates/modules/rustok-reactions/storefront",
       "category": "modules",
       "files": 8,
-      "loc": 1061,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, ReactionSubjectUiRef segment and revision validation, ReactionBar component with reactive session ownership and cancellation, pure core control and settlement logic, GraphQL wire representation with non-leaking tenant/actor context; verified with cargo check -p rustok-reactions-storefront --features ssr, Next.js tests, and verification scripts"
+      "loc": 1066,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-security": {
       "name": "rustok-security",
       "path": "crates/modules/rustok-security",
       "category": "modules",
       "files": 33,
-      "loc": 3028,
+      "loc": 3164,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2621,9 +2597,9 @@
       "category": "modules",
       "files": 2,
       "loc": 506,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 completed"
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-tasks": {
       "name": "rustok-tasks",
@@ -2650,7 +2626,7 @@
       "path": "apps/next-admin/packages/pricing",
       "category": "apps",
       "files": 3,
-      "loc": 56,
+      "loc": 57,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2659,8 +2635,78 @@
       "name": "rustok-doctor",
       "path": "crates/utils/rustok-doctor",
       "category": "utils",
-      "files": 10,
-      "loc": 2543,
+      "files": 13,
+      "loc": 5247,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
+    },
+    "crates/libs/rustok-outbox-storage": {
+      "name": "rustok-outbox-storage",
+      "path": "crates/libs/rustok-outbox-storage",
+      "category": "libs",
+      "files": 7,
+      "loc": 3399,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
+    },
+    "crates/modules/flex/ports": {
+      "name": "ports",
+      "path": "crates/modules/flex/ports",
+      "category": "modules",
+      "files": 8,
+      "loc": 713,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
+    },
+    "crates/modules/rustok-auth/ui": {
+      "name": "ui",
+      "path": "crates/modules/rustok-auth/ui",
+      "category": "modules",
+      "files": 19,
+      "loc": 3486,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
+    },
+    "crates/modules/rustok-blog/ports": {
+      "name": "ports",
+      "path": "crates/modules/rustok-blog/ports",
+      "category": "modules",
+      "files": 4,
+      "loc": 202,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
+    },
+    "crates/modules/rustok-cart/ports": {
+      "name": "ports",
+      "path": "crates/modules/rustok-cart/ports",
+      "category": "modules",
+      "files": 1,
+      "loc": 29,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
+    },
+    "crates/modules/rustok-channel/ports": {
+      "name": "ports",
+      "path": "crates/modules/rustok-channel/ports",
+      "category": "modules",
+      "files": 6,
+      "loc": 564,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
+    },
+    "crates/modules/rustok-taxonomy/ports": {
+      "name": "ports",
+      "path": "crates/modules/rustok-taxonomy/ports",
+      "category": "modules",
+      "files": 5,
+      "loc": 506,
       "completed": false,
       "completed_at": null,
       "notes": ""
