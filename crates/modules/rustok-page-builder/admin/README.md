@@ -189,7 +189,7 @@ SSR draft session storage (`src/draft_session.rs`):
   storage root by earlier builds are no longer read; `prune` deletes them once they are older than
   one TTL.
 - **A damaged record fails its session for up to one TTL.** Records carry a format version
-  (`PersistentDraftSessionRecord::format`, now `1`) and both stores read them through
+  (`PersistentDraftSessionRecord::format`, now `2`) and both stores read them through
   `PersistentDraftSessionRecord::decode`, so the two causes are distinguishable:
   - A record of a **newer** format than this build understands parses, and is answered with
     `UnsupportedFormat` — a deployment that has to be finished (or rolled back), not damage. The

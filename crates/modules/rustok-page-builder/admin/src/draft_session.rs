@@ -128,9 +128,27 @@ impl PersistentDraftSessionRecord {
         }
         let record: Self = serde_json::from_value(value)
             .map_err(|error| SsrDraftSessionError::Serialization(error.to_string()))?;
-        record.validate_receipt_ledger()?;
-        record.validate_controller_revision()?;
+        record.validate()?;
         Ok(record)
+    }
+
+    /// Validate before both reads and writes so the store never persists a record
+    /// that its own next read would reject. Legacy format 0 is accepted only
+    /// without receipts and is upgraded on its next write.
+    fn validate(&self) -> Result<(), SsrDraftSessionError> {
+        if self.format > DRAFT_SESSION_RECORD_FORMAT {
+            return Err(SsrDraftSessionError::UnsupportedFormat {
+                found: self.format,
+                supported: DRAFT_SESSION_RECORD_FORMAT,
+            });
+        }
+        if self.format == 0 && !self.operation_receipts.is_empty() {
+            return Err(SsrDraftSessionError::Serialization(
+                "legacy draft format cannot contain operation receipts".to_string(),
+            ));
+        }
+        self.validate_receipt_ledger()?;
+        self.validate_controller_revision()
     }
 
     /// The document and core revision own the working state. Persisted UI
@@ -1523,6 +1541,10 @@ impl FileSsrDraftSessionStore {
         record: &PersistentDraftSessionRecord,
     ) -> Result<(), SsrDraftSessionError> {
         self.ensure_available()?;
+        record.validate()?;
+        let mut normalized_record = record.clone();
+        normalized_record.format = DRAFT_SESSION_RECORD_FORMAT;
+        let record = &normalized_record;
         Self::validate_token(&record.token)?;
         let json_bytes = serde_json::to_vec_pretty(record)
             .map_err(|e| SsrDraftSessionError::Serialization(e.to_string()))?;
@@ -2432,6 +2454,10 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
         &self,
         record: &PersistentDraftSessionRecord,
     ) -> Result<(), SsrDraftSessionError> {
+        record.validate()?;
+        let mut normalized_record = record.clone();
+        normalized_record.format = DRAFT_SESSION_RECORD_FORMAT;
+        let record = &normalized_record;
         FileSsrDraftSessionStore::validate_token(&record.token)?;
         let key = self.key_for_token(&record.token);
         let json_bytes = serde_json::to_vec(record)
@@ -2448,6 +2474,10 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
         expected: Option<&PersistentDraftSessionRecord>,
         new_record: &PersistentDraftSessionRecord,
     ) -> Result<bool, SsrDraftSessionError> {
+        new_record.validate()?;
+        let mut normalized_record = new_record.clone();
+        normalized_record.format = DRAFT_SESSION_RECORD_FORMAT;
+        let new_record = &normalized_record;
         FileSsrDraftSessionStore::validate_token(&new_record.token)?;
         let key = self.key_for_token(&new_record.token);
         let json_bytes = serde_json::to_vec(new_record)
@@ -5296,7 +5326,11 @@ mod tests {
                 "invalid_hash" => corrupted["operation_receipts"][1]["request_hash"] = value,
                 "oversized_response" => corrupted["operation_receipts"][1]["response"] = value,
                 "old_format" => corrupted["format"] = value,
-                _ => corrupted["generation"] = value,
+                "zero_generation" => {
+                    corrupted["generation"] = value;
+                    corrupted["operation_receipts"] = json!([]);
+                }
+                _ => unreachable!("all corruption cases are named"),
             }
             assert!(matches!(decode(&corrupted), Err(SsrDraftSessionError::Serialization(_))), "{path}");
         }
@@ -5331,6 +5365,43 @@ mod tests {
         invalid_conflict["controller"]["editor"]["revision"]["save_conflict"] = json!(true);
         invalid_conflict["controller"]["ui"]["state"]["dirty"]["save_conflict"] = json!(true);
         assert!(matches!(decode(&invalid_conflict), Err(SsrDraftSessionError::Serialization(_))));
+    }
+
+    #[test]
+    fn legacy_format_cannot_smuggle_operation_receipts() {
+        let mut legacy = record_json("tokLegacyReceipts", 2, 4_000_000_000);
+        legacy.as_object_mut().expect("object").remove("format");
+        legacy["operation_receipts"] = json!([{
+            "operation_id": "legacy-op",
+            "request_hash": "a".repeat(64),
+            "generation": 2,
+            "response": {}
+        }]);
+        assert!(matches!(
+            PersistentDraftSessionRecord::decode(&serde_json::to_vec(&legacy).expect("json")),
+            Err(SsrDraftSessionError::Serialization(_))
+        ));
+    }
+
+    #[test]
+    fn file_store_rejects_invalid_record_before_persisting_it() {
+        let dir = temp_store_dir();
+        let store = file_store(&dir);
+        let mut corrupted = record_json("tokWriteBad01", 1, 4_000_000_000);
+        let hash = corrupted["controller"]["editor"]["revision"]["project_hash"]
+            .as_u64().expect("project hash");
+        corrupted["controller"]["editor"]["revision"]["project_hash"] = json!(hash ^ 1);
+        corrupted["controller"]["ui"]["state"]["dirty"]["project_hash"] = json!(hash ^ 1);
+        // Deserialize the struct directly to simulate an invalid in-process caller;
+        // the store's write path must enforce the same invariants as its read path.
+        let record: PersistentDraftSessionRecord =
+            serde_json::from_value(corrupted).expect("struct deserializes");
+        assert!(matches!(
+            store.save_record(&record),
+            Err(SsrDraftSessionError::Serialization(_))
+        ));
+        assert!(!dir.join(UNATTRIBUTED_PARTITION).join("tokWriteBad01.json").exists());
+        fs::remove_dir_all(dir).expect("cleanup");
     }
 
     #[test]
