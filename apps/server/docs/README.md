@@ -1179,7 +1179,10 @@ tests for long chains and context-sensitive cycles are present but unrun.
   even without a subsequent email-change attempt. A two-second clock margin
   delays edge-of-expiry cleanup; live challenges are preserved, and committed
   counts are included in worker diagnostics. The session-only CLI uses the
-  same 30-day retention horizon.
+  same 30-day retention horizon. OAuth credential mutations and common
+  access extraction share the same application-clock latch and fresh DB
+  corroboration; the independent JWT authority is not used as the application
+  database's time source. Source assumes one trusted primary per process.
   A successful run keeps its daily cadence; a failed purge retries after
   15 minutes instead of deferring every affected cleanup for another full day.
   The failure log is a fixed machine code, not a raw database error.

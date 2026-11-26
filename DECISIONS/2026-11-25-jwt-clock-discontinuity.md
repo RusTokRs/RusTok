@@ -67,14 +67,26 @@ water mark. Browser confirmation MAC issuance and verification and all code
 issuance paths use the live credential clock. The verified confirmation expiry
 survives into the locked mutation, which checks it before consent/code writes
 and commit. Code publication rechecks the gate and code expiry after commit.
-Standalone consent grants and application DB time at credential-admission
-boundaries remain follow-up work.
+Application DB corroboration uses the same bounded ClockGuard observation
+rules in a separate process-lifetime application latch shared by retention,
+OAuth and common access extraction. The clock read uses fresh database wall
+time (not PostgreSQL transaction-start time). OAuth checks before expiry-based
+admission/classification, on the locked mutation connection and before commit;
+standalone consent uses the corroborated host time. Access extraction verifies
+the DB clock after policy IO and rejects future-dated OAuth registrations.
+Post-commit code/token publication rechecks the local application latch, not
+another fallible DB read. Explicit security-reducing mutations are unchanged.
+A database fault does not mutate or fence the independent JWT authority.
+This assumes one trusted application primary per process. It does not order
+DB observations across independent processes or rule out a rollback within
+the allowed skew or between observations. Other direct login/refresh and
+recovery mutation boundaries remain follow-up work.
 
 ## Destructive retention extension
 
 Auth retention is a separate time-sensitive operation, not JWT signing. The
 worker and session-only CLI use one owner implementation with a process-lifetime
-ClockGuard and bounded application DB clock observations inside the purge
+application ClockGuard and bounded application DB clock observations inside the purge
 transaction before deletion and before commit. The cutoff is fixed from the
 earlier of the first host/DB observations minus two seconds. A later observation
 cannot move the cutoff forward; a detected rollback or inconclusive sample

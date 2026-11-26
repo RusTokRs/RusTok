@@ -338,13 +338,17 @@ Browser confirmation verification now returns the authenticated expiry and
 the code-issuance transaction rechecks it with the shared credential clock
 after locks, before consent, before code insert and before commit. Code issuance
 also verifies its persisted expiry before response; a post-commit fault
-suppresses publication rather than undoing a durable grant. Application DB clock
-credential-admission checks, standalone consent grants and durable
-cross-restart/replica rollback remain open. The Auth owner now shares retention
-between the worker and session-only CLI, corroborates host and application DB
-clock before deletion and commit, uses a conservative fixed cutoff, and
-rolls back on invalid time. Clock faults remain latched across sweeps in the
-process; independent processes still require reliable time. Source regressions unrun.
+suppresses publication rather than undoing a durable grant. The shared
+application clock now corroborates DB time at OAuth admission, time-dependent
+replay classification, locked consent/code/token mutations and pre-commit,
+and final common access extraction. Standalone consent grants use the verified
+host timestamp; future-dated access registrations fail closed. Retention and
+credential paths share one process-local application-clock latch, independent
+of JWT signing authority. Retention retains the fixed conservative cutoff;
+the post-commit response checks the local latch without another DB round trip.
+Direct login/refresh, other recovery mutations, durable cross-restart and
+cross-replica rollback remain open. Independent processes require reliable
+time and a single trusted primary. Source regressions unrun.
 
 ## OAuth family lifetime and replay evidence (source only)
 

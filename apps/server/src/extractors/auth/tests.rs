@@ -301,6 +301,32 @@ async fn oauth_service_token_intersects_app_permissions_with_scopes() {
 }
 
 #[tokio::test]
+async fn oauth_service_token_rejects_future_registration() {
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    ensure_oauth_apps_table(&db).await;
+    let tenant = tenants::ActiveModel::new("Future registration tenant", &format!("tenant-{}", Uuid::new_v4()))
+        .insert(&db).await.expect("tenant");
+    let app = insert_oauth_app(&db, tenant.id, "service", &["client_credentials"], true).await;
+    let runtime = test_auth_runtime(db.clone());
+    let token = registered_service_token(
+        &db, runtime.require_auth_config().unwrap(), &app, &["forum:*".to_string()],
+    ).await;
+    assert!(resolve_current_user_from_access_token(&runtime, tenant.id, &token).await.is_ok());
+
+    let row = oauth_tokens::Entity::find()
+        .filter(oauth_tokens::Column::TokenHash.eq(crate::auth::hash_refresh_token(&token)))
+        .one(&db).await.unwrap().unwrap();
+    let mut changed: oauth_tokens::ActiveModel = row.into();
+    changed.created_at = Set((Utc::now() + Duration::minutes(1)).into());
+    changed.update(&db).await.expect("set future registration creation");
+    let error = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await.expect_err("future registration must not authorize access");
+    assert_eq!(error, (axum::http::StatusCode::UNAUTHORIZED, "OAuth access token revoked or unknown"));
+}
+
+#[tokio::test]
 async fn oauth_service_token_rejects_corrupt_or_mismatched_registered_scopes() {
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 

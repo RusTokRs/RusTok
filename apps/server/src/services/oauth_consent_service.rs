@@ -62,13 +62,14 @@ impl OAuthAppService {
 
         let scopes_json = serde_json::to_value(&normalized)
             .map_err(|_| Error::InternalServerError)?;
+        let now = rustok_auth::application_clock::verified_now(&tx).await?;
         OAuthAppService::grant_consent_in_transaction(
             &tx,
             app.id,
             user.id,
             tenant_id,
             &scopes_json,
-            chrono::Utc::now(),
+            now,
         )
         .await
         .map_err(|attempt| match attempt {
@@ -77,6 +78,7 @@ impl OAuthAppService {
             ),
             GrantConsentAttempt::Fatal(error) => error,
         })?;
+        rustok_auth::application_clock::verified_now(&tx).await?;
         tx.commit().await?;
         Ok(())
     }

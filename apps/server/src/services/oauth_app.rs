@@ -711,6 +711,7 @@ impl OAuthAppService {
         .map_err(|_| Error::InternalServerError)?
         .filter(|session| session.user_id == user.id)
         .ok_or_else(|| Error::Unauthorized("OAuth authorization session is no longer active".to_string()))?;
+        rustok_auth::application_clock::verified_now(&tx).await?;
         subject.ensure_live(&session, clock()?)?;
 
         if app.requires_user_consent() {
@@ -732,6 +733,7 @@ impl OAuthAppService {
                 }
                 let scopes_json = serde_json::to_value(&scopes)
                     .map_err(|_| Error::InternalServerError)?;
+                rustok_auth::application_clock::verified_now(&tx).await?;
                 let now = clock()?;
                 subject.ensure_live(&session, now)?;
                 Self::grant_consent_in_transaction(
@@ -756,6 +758,7 @@ impl OAuthAppService {
         let code = general_purpose::URL_SAFE_NO_PAD.encode(random_bytes);
         let code_hash = auth::hash_refresh_token(&code);
 
+        rustok_auth::application_clock::verified_now(&tx).await?;
         let now = clock()?;
         subject.ensure_live(&session, now)?;
         let expires_at = now.checked_add_signed(chrono::Duration::minutes(10))
@@ -779,6 +782,7 @@ impl OAuthAppService {
         .map_err(|_| Error::InternalServerError)?;
         // Recheck immediately before attempting commit; a slow code write
         // must not pass a stale authorization decision. The session stays locked.
+        rustok_auth::application_clock::verified_now(&tx).await?;
         let now = clock()?;
         subject.ensure_live(&session, now)?;
         if !stored.is_active_at(now) {
@@ -787,6 +791,7 @@ impl OAuthAppService {
         tx.commit().await.map_err(|_| Error::InternalServerError)?;
         // A committed code cannot be rolled back after acknowledgement.
         // Refuse publication if the clock fence closed or the code expired.
+        rustok_auth::application_clock::check_local()?;
         if !stored.is_active_at(clock()?) {
             return Err(Error::Unauthorized("OAuth authorization code expired before response".to_string()));
         }
@@ -995,7 +1000,8 @@ impl OAuthAppService {
         }
 
         let scopes_json = serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?;
-        Self::grant_consent_in_transaction(&tx, app_id, user_id, tenant_id, &scopes_json, Utc::now())
+        let now = rustok_auth::application_clock::verified_now(&tx).await?;
+        Self::grant_consent_in_transaction(&tx, app_id, user_id, tenant_id, &scopes_json, now)
             .await
             .map_err(|attempt| match attempt {
                 GrantConsentAttempt::UniqueRace => Error::Conflict(
@@ -1003,6 +1009,7 @@ impl OAuthAppService {
                 ),
                 GrantConsentAttempt::Fatal(error) => error,
             })?;
+        rustok_auth::application_clock::verified_now(&tx).await?;
         tx.commit().await.map_err(|_| Error::InternalServerError)?;
         Ok(())
     }

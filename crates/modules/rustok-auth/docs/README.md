@@ -676,9 +676,24 @@ admission time. The code's own expiry is checked before commit and after its
 acknowledgement; no code is published if the gate closes after commit (the
 committed grant cannot be rolled back at that point). Non-browser bearer
 authorization also uses this gate without gaining consent-grant authority.
-This is process-local observed rollback protection, not durable rollback
-protection across restarts or independent replicas. Credential-admission
-application DB time validation and standalone consent grants still require additional work.
+Application DB clock corroboration now lives in `rustok_auth::application_clock`.
+OAuth code/refresh admission and time-based replay classification sample it
+before deciding expiry; code issuance, standalone consent grants and all token
+issuance/rotation/recovery writes recheck it on the same transaction before
+mutation and commit. Recovery also rechecks the prepared access deadline after
+insertion. The common access extractor samples the application DB after policy
+resolution before returning authority, and rejects future-dated OAuth access
+registrations. Credential timestamps remain host UTC; DB time corroborates
+rather than extends them. Publication after commit rechecks the local latch
+without another potentially failing DB round trip. Explicit revocations do not
+require this clock check.
+
+The application clock latch is shared with retention within one process,
+assuming a single trusted application primary; it is independent of the
+JWT authority latch. Slow/inconclusive DB observations deny the operation
+without asserting a discontinuity; observed faults remain sticky. This is
+not durable rollback protection across restarts or independent replicas.
+Direct login/refresh and other recovery mutations still require coverage.
 
 Auth retention is now owned by `rustok_auth::retention`. Both the daily sweep
 and session-only CLI corroborate fresh application DB wall time with bounded
@@ -688,8 +703,9 @@ sample aborts, a detected clock fault is sticky for the process, and any
 pre-commit failure rolls back the full sweep. The CLI observes the same 30-day
 session horizon as the worker, including cascading refresh evidence, and
 rejects dry-run. The worker preserves its existing 120-day OAuth family/code
-windows and complete-lineage predicate. This clock guard is independent of
-JWT signing lease availability: the CLI does not need signing material.
+windows and complete-lineage predicate. The shared application clock guard
+is independent of JWT signing lease availability: the CLI does not need signing
+material.
 The same bounded-clock assumptions apply; a fresh process with coherently
 incorrect host and DB time is not protected. No durable time watermark exists.
 Source regressions are authored, not executed.

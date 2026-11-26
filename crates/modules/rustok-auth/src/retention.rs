@@ -9,12 +9,11 @@
 
 //! Authentication artifact retention shared by the host worker and operator CLI.
 //! Destructive expiry decisions need corroborated time, not signing authority.
-use std::sync::OnceLock;
-
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr, Statement, TransactionTrait};
 
-use crate::jwt_clock::{ClockGuard, ClockSample};
+use crate::application_clock::{application_clock, clock_unavailable, observe};
+use crate::jwt_clock::ClockGuard;
 
 pub const AUTH_ARTIFACT_RETENTION_DAYS: i64 = 30;
 pub const OAUTH_TOKEN_RETENTION_DAYS: i64 = 120;
@@ -23,10 +22,6 @@ pub const OAUTH_AUTHORIZATION_CODE_RETENTION_DAYS: i64 = OAUTH_TOKEN_RETENTION_D
 // Do not delete at the edge of the documented host/DB skew and sample
 // uncertainty. A small delay is safer than losing replay evidence.
 const RETENTION_CLOCK_MARGIN_MS: i64 = 2_000;
-
-// Retain the fault latch across worker restarts and sweeps in this process.
-// CLI is a separate process: it must corroborate its own clock with the DB.
-static RETENTION_CLOCK: OnceLock<ClockGuard> = OnceLock::new();
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct AuthRetentionPurge {
@@ -38,10 +33,6 @@ pub struct AuthRetentionPurge {
     pub oauth_authorization_codes: u64,
 }
 
-fn clock_unavailable() -> DbErr {
-    DbErr::Custom("Auth retention clock unavailable".into())
-}
-
 fn parameter(backend: DbBackend) -> Result<&'static str, DbErr> {
     match backend {
         DbBackend::Postgres => Ok("$1"),
@@ -51,23 +42,8 @@ fn parameter(backend: DbBackend) -> Result<&'static str, DbErr> {
 }
 
 async fn verified_now(tx: &DatabaseTransaction, clock: &ClockGuard) -> Result<DateTime<Utc>, DbErr> {
-    let backend = tx.get_database_backend();
-    let expression = match backend {
-        DbBackend::Postgres => "CAST(EXTRACT(EPOCH FROM clock_timestamp()) * 1000 AS BIGINT)",
-        DbBackend::Sqlite => "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)",
-        _ => return Err(clock_unavailable()),
-    };
-    let before = clock.credential_sample(ClockSample::now).ok_or_else(clock_unavailable)?;
-    let row = tx.query_one_raw(Statement::from_string(
-        backend, format!("SELECT {expression} AS now_ms"),
-    )).await?;
-    let after = clock.credential_sample(ClockSample::now).ok_or_else(clock_unavailable)?;
-    let db_ms: i64 = row.ok_or_else(clock_unavailable)?.try_get("", "now_ms")?;
-    if !clock.validate_db(before, after, db_ms) {
-        return Err(clock_unavailable());
-    }
-    let db_now = DateTime::<Utc>::from_timestamp_millis(db_ms).ok_or_else(clock_unavailable)?;
-    conservative_now(before.utc().ok_or_else(clock_unavailable)?, db_now)
+    let sample = observe(tx, clock).await?;
+    conservative_now(sample.host_before, sample.database_now)
 }
 
 fn conservative_now(host_before: DateTime<Utc>, db_now: DateTime<Utc>) -> Result<DateTime<Utc>, DbErr> {
@@ -172,13 +148,13 @@ async fn purge(db: &DatabaseConnection, clock: &ClockGuard, sessions_only: bool)
 
 /// Complete transactional worker sweep, with a process-lifetime clock latch.
 pub async fn purge_expired_auth_artifacts(db: &DatabaseConnection) -> Result<AuthRetentionPurge, DbErr> {
-    purge(db, RETENTION_CLOCK.get_or_init(ClockGuard::new), false).await
+    purge(db, application_clock(), false).await
 }
 
 /// Operator session-only cleanup. Uses the same replay-evidence retention
 /// horizon and time checks as the worker; does not sweep unrelated tables.
 pub async fn purge_expired_sessions(db: &DatabaseConnection) -> Result<u64, DbErr> {
-    Ok(purge(db, RETENTION_CLOCK.get_or_init(ClockGuard::new), true).await?.sessions)
+    Ok(purge(db, application_clock(), true).await?.sessions)
 }
 
 #[cfg(test)]
