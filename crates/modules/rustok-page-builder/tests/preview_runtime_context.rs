@@ -261,6 +261,28 @@ async fn publish_rejects_deep_project_and_preserves_identity_error_precedence() 
 }
 
 #[tokio::test]
+async fn properties_rejects_missing_page_instead_of_acknowledging_unverified_values() {
+    use rustok_page_builder::dto::BuilderNodePropertiesInput;
+    use rustok_page_builder::service::PageBuilderServiceError;
+
+    let service = FlyAdapterBackedPageBuilderService::new(NoopStore, RecordingRenderer::default());
+    let error = service.properties(
+        &port_context(),
+        BuilderNodePropertiesInput {
+            page_id: "missing".into(),
+            node_id: "unverified-node".into(),
+            properties: json!({ "title": "must not be acknowledged" }),
+        },
+    ).await.expect_err("missing page must not produce a successful properties response");
+
+    assert!(matches!(
+        error,
+        PageBuilderServiceError::Validation(message)
+            if message == "page `missing` was not found"
+    ));
+}
+
+#[tokio::test]
 async fn properties_rejects_deep_payload() {
     use rustok_page_builder::dto::BuilderNodePropertiesInput;
     use rustok_page_builder::service::PageBuilderServiceError;
