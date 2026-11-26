@@ -662,8 +662,17 @@ that expiry, with the original refresh-family deadline applied before signing.
 Responses derive remaining whole seconds after usage telemetry, and prepared
 credentials dated after the current clock fail closed. Existing access rows
 retain their stored expiry; validation still takes the earlier signed/durable
-deadline. This is not durable OAuth clock-rollback protection across requests
-or replicas. Source regressions are authored, not executed.
+deadline. The live Auth runtime serializes credential wall-clock observations and
+latches any observed backward step, even inside the JWT lease's divergence
+tolerance. OAuth token admission, refresh replay classification, locked rotation,
+recovery and pre-commit/response checks use that clock; access extraction samples
+before signature validation and after asynchronous policy reads. The gate also
+rechecks the managed lease and emergency/shutdown fences. Fixed embedders retain
+their existing behavior. Explicit revocation is not disabled by this gate.
+This is process-local observed rollback protection, not durable rollback
+protection across restarts or independent replicas. Browser code issuance,
+application DB time validation and retention still require additional work.
+Source regressions are authored, not executed.
 
 Re-granting consent durably revokes existing access and refresh credentials
 and invalidates pending authorization codes for the same app, subject and

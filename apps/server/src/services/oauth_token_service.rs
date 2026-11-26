@@ -90,6 +90,8 @@ impl OAuthTokenProtocolError {
     }
 }
 
+type OAuthClock<'a> = dyn Fn() -> Result<chrono::DateTime<Utc>, OAuthTokenProtocolError> + Send + Sync + 'a;
+
 pub struct OAuthTokenService;
 
 impl OAuthTokenService {
@@ -112,6 +114,10 @@ impl OAuthTokenService {
         let auth_config = runtime.auth_config().ok_or_else(|| {
             OAuthTokenProtocolError::server_error("OAuth signing configuration is unavailable")
         })?;
+        let clock = || auth_config.credential_now().map_err(|_| {
+            OAuthTokenProtocolError::server_error("OAuth credential clock or signing authority unavailable")
+        });
+        clock()?;
         let db = runtime.runtime_ctx().db();
         let require_email_verification = runtime.runtime_ctx().settings().features.email_verification;
         let app = resolve_client(db, tenant_id, request).await?;
@@ -130,9 +136,9 @@ impl OAuthTokenService {
                 require_grant(&current_app, CLIENT_CREDENTIALS_GRANT)?;
                 let scopes = validate_requested_scopes(&current_app, request.scope.as_deref())?;
                 let prepared = prepare_service_access_token(&current_app, auth_config, &scopes)?;
-                validate_prepared_deadlines(&prepared, Utc::now(), None)?;
+                validate_prepared_deadlines(&prepared, clock()?, None)?;
                 persist_prepared_tokens(&tx, &prepared).await?;
-                validate_prepared_deadlines(&prepared, Utc::now(), None)?;
+                validate_prepared_deadlines(&prepared, clock()?, None)?;
                 tx.commit().await.map_err(|_| {
                     OAuthTokenProtocolError::server_error(
                         "Failed to commit client-credentials exchange",
@@ -152,7 +158,7 @@ impl OAuthTokenService {
                     "code_verifier is required",
                 )?;
                 let authorization =
-                    validate_authorization_code(db, &app, tenant_id, code, redirect_uri, verifier)
+                    validate_authorization_code(db, &app, tenant_id, code, redirect_uri, verifier, &clock)
                         .await?;
                 let scopes = authorization.scopes_list().map_err(|_| {
                     OAuthTokenProtocolError::invalid_grant("Authorization code scopes are invalid")
@@ -167,6 +173,7 @@ impl OAuthTokenService {
                     None,
                     Some(authorization.id),
                     None,
+                    &clock,
                 )
                 .await?;
 
@@ -176,6 +183,7 @@ impl OAuthTokenService {
                     &authorization,
                     &prepared,
                     require_email_verification,
+                    &clock,
                 )
                 .await?;
                 (prepared, scopes)
@@ -188,12 +196,12 @@ impl OAuthTokenService {
                     "refresh_token is required",
                 )?;
                 let current =
-                    validate_refresh_token(db, &app, tenant_id, raw_refresh_token, retry_key.is_some()).await?;
+                    validate_refresh_token(db, &app, tenant_id, raw_refresh_token, retry_key.is_some(), &clock).await?;
                 let user_id = current.user_id.ok_or_else(|| {
                     OAuthTokenProtocolError::invalid_grant("Refresh token has no associated user")
                 })?;
-                let family = resolve_refresh_family(db, &current).await?;
-                ensure_refresh_family_live(&family, Utc::now())?;
+                let family = resolve_refresh_family(db, &current, &clock).await?;
+                ensure_refresh_family_live(&family, clock()?)?;
                 // OAuth refresh requests may narrow an existing grant, never widen it.
                 // An omitted scope retains the original grant; a supplied empty
                 // scope must not silently restore the full set of permissions.
@@ -214,6 +222,7 @@ impl OAuthTokenService {
                     Some(&family),
                     current.authorization_code_id,
                     derived_refresh,
+                    &clock,
                 )
                 .await?;
 
@@ -224,11 +233,13 @@ impl OAuthTokenService {
                     &prepared,
                     require_email_verification,
                     retry_key.is_some(),
+                    &clock,
                 )
                 .await?;
                 if let Some(window) = recovery {
-                    let response = prepared.into_response(&scopes)?;
-                    window.ensure_live(Utc::now())?;
+                    let now = clock()?;
+                    window.ensure_live(now)?;
+                    let response = prepared.into_response(&scopes, now)?;
                     // Recovery is not another rotation; do not extend deadlines.
                     return Ok(response);
                 }
@@ -248,7 +259,7 @@ impl OAuthTokenService {
 
         // Usage telemetry is asynchronous: calculate the lifetime only
         // after it finishes, not from the pre-telemetry response.
-        prepared.into_response(&scopes)
+        prepared.into_response(&scopes, clock()?)
     }
 }
 
@@ -262,8 +273,8 @@ struct PreparedOAuthTokens {
 }
 
 impl PreparedOAuthTokens {
-    fn into_response(self, scopes: &[String]) -> Result<TokenResponse, OAuthTokenProtocolError> {
-        let expires_in = prepared_access_lifetime(&self.access_model, Utc::now(), self.expires_in)?;
+    fn into_response(self, scopes: &[String], now: chrono::DateTime<Utc>) -> Result<TokenResponse, OAuthTokenProtocolError> {
+        let expires_in = prepared_access_lifetime(&self.access_model, now, self.expires_in)?;
         Ok(TokenResponse {
             access_token: self.access_token,
             token_type: "Bearer".to_string(),
@@ -410,6 +421,7 @@ async fn validate_authorization_code(
     raw_code: &str,
     redirect_uri: &str,
     verifier: &str,
+    clock: &OAuthClock<'_>,
 ) -> Result<oauth_codes::Model, OAuthTokenProtocolError> {
     let code_hash = hex::encode(Sha256::digest(raw_code.as_bytes()));
     let code = oauth_codes::Entity::find()
@@ -459,7 +471,7 @@ async fn validate_authorization_code(
             "Authorization code is invalid, expired, or already used",
         ));
     }
-    if !code.is_active_at(Utc::now()) {
+    if !code.is_active_at(clock()?) {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Authorization code is invalid, expired, or already used",
         ));
@@ -500,6 +512,7 @@ async fn validate_refresh_token(
     tenant_id: Uuid,
     raw_token: &str,
     allow_recovery: bool,
+    clock: &OAuthClock<'_>,
 ) -> Result<oauth_tokens::Model, OAuthTokenProtocolError> {
     let token_hash = auth::hash_refresh_token(raw_token);
     let token = OAuthTokens::find()
@@ -511,15 +524,18 @@ async fn validate_refresh_token(
         .one(db)
         .await
         .map_err(|_| OAuthTokenProtocolError::server_error("Failed to validate refresh token"))?;
+    let now = clock()?;
     let token = match token {
-        Some(token) if token.is_active()
-            || (allow_recovery && within_refresh_rotation_grace(&token, Utc::now())) => token,
+        Some(token) if (token.revoked_at.is_none()
+            && token.created_at.with_timezone(&Utc) <= now
+            && token.expires_at.with_timezone(&Utc) > now)
+            || (allow_recovery && within_refresh_rotation_grace(&token, now)) => token,
         _ => {
             // No admissible live or recoverable token holds this hash. If it is a rotated-away
             // token replayed after the grace window, that is theft
             // evidence: revoke the whole family before failing closed
             // (RFC 9700 refresh-token reuse guidance).
-            detect_oauth_refresh_reuse(db, app, tenant_id, &token_hash).await?;
+            detect_oauth_refresh_reuse(db, app, tenant_id, &token_hash, clock).await?;
             return Err(OAuthTokenProtocolError::invalid_grant(
                 "Refresh token is invalid, expired, or already used",
             ));
@@ -683,14 +699,16 @@ fn within_refresh_rotation_grace(
 async fn resolve_refresh_family<C>(
     db: &C,
     current: &oauth_tokens::Model,
+    clock: &OAuthClock<'_>,
 ) -> Result<RefreshTokenFamily, OAuthTokenProtocolError>
 where
     C: ConnectionTrait,
 {
+    let now = clock()?;
     let family_id = current.family_id;
     if family_id.is_nil() || current.id.is_nil()
         || current.user_id.is_none_or(|id| id.is_nil())
-        || current.created_at.with_timezone(&Utc) > Utc::now()
+        || current.created_at.with_timezone(&Utc) > now
     {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Refresh token family identity or creation time is invalid",
@@ -713,11 +731,12 @@ where
             .ok_or_else(|| {
                 OAuthTokenProtocolError::invalid_grant("Refresh token family root is unavailable")
             })?;
+        let now = clock()?;
         if root.family_id != root.id
             || root.authorization_code_id != current.authorization_code_id
             || root.consent_granted_at != current.consent_granted_at
             || root.created_at > current.created_at
-            || committed_refresh_rotation_at(&root).is_none_or(|at| at > Utc::now())
+            || committed_refresh_rotation_at(&root).is_none_or(|at| at > now)
         {
             return Err(OAuthTokenProtocolError::invalid_grant(
                 "Refresh token family root is inconsistent",
@@ -779,6 +798,7 @@ async fn detect_oauth_refresh_reuse(
     authenticated_app: &oauth_apps::Model,
     tenant_id: Uuid,
     token_hash: &str,
+    clock: &OAuthClock<'_>,
 ) -> Result<(), OAuthTokenProtocolError> {
     let app_id = authenticated_app.id;
     // Reject unknown tokens without taking an app mutation lock. A recognized
@@ -833,7 +853,13 @@ async fn detect_oauth_refresh_reuse(
         })?;
         return Ok(());
     };
-    if within_refresh_rotation_grace(&stale, Utc::now()) {
+    let now = clock()?;
+    // A rotation recorded in the future is not elapsed-grace evidence.
+    // Do not destroy a lineage because another replica's clock is ahead.
+    if committed_refresh_rotation_at(&stale).is_some_and(|at| at > now) {
+        return Err(OAuthTokenProtocolError::server_error("OAuth rotation time is in the future"));
+    }
+    if within_refresh_rotation_grace(&stale, now) {
         // Do not keep the SQLite writer reserved until a detached Drop rollback
         // completes; release it before the caller returns invalid_grant.
         tx.rollback().await.map_err(|_| {
@@ -853,7 +879,6 @@ async fn detect_oauth_refresh_reuse(
         "OAuth refresh token reuse detected; revoking token family"
     );
 
-    let now = Utc::now();
     let result = OAuthTokens::update_many()
         .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
         .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
@@ -878,6 +903,7 @@ async fn detect_oauth_refresh_reuse(
             "Failed to revoke replayed refresh-token family",
         ));
     }
+    clock()?;
     tx.commit().await.map_err(|error| {
         tracing::error!(%error, family_id = %family_id, "Failed to commit OAuth refresh replay revocation");
         OAuthTokenProtocolError::server_error("Failed to commit refresh-token reuse revocation")
@@ -1226,6 +1252,7 @@ async fn prepare_user_tokens(
     family: Option<&RefreshTokenFamily>,
     authorization_code_id: Option<Uuid>,
     derived_refresh: Option<String>,
+    clock: &OAuthClock<'_>,
 ) -> Result<PreparedOAuthTokens, OAuthTokenProtocolError> {
     let (_user, consent_granted_at) =
         validate_active_subject_and_consent(db, app, app.tenant_id, user_id, scopes).await?;
@@ -1235,7 +1262,7 @@ async fn prepare_user_tokens(
             OAuthTokenProtocolError::server_error("Failed to resolve current user permissions")
         })?;
     let role = infer_user_role_from_permissions(&permissions);
-    let now = Utc::now();
+    let now = clock()?;
     let token_id = Uuid::new_v4();
     let (family_id, family_created_at) = match family {
         Some(family) => {
@@ -1349,6 +1376,7 @@ async fn commit_authorization_code_exchange(
     code: &oauth_codes::Model,
     prepared: &PreparedOAuthTokens,
     require_email_verification: bool,
+    clock: &OAuthClock<'_>,
 ) -> Result<(), OAuthTokenProtocolError> {
     let tx = db.begin().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to begin authorization-code exchange")
@@ -1392,7 +1420,7 @@ async fn commit_authorization_code_exchange(
     )
     .await?;
 
-    let now = Utc::now();
+    let now = clock()?;
     validate_prepared_deadlines(prepared, now, None)?;
     if !consume_authorization_code(&tx, code, now).await? {
         // A concurrent exchange won the CAS. If the code is now marked used,
@@ -1427,7 +1455,7 @@ async fn commit_authorization_code_exchange(
         ));
     }
     persist_prepared_tokens(&tx, prepared).await?;
-    validate_prepared_deadlines(prepared, Utc::now(), None)?;
+    validate_prepared_deadlines(prepared, clock()?, None)?;
 
     tx.commit().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to commit authorization-code exchange")
@@ -1456,10 +1484,11 @@ async fn recover_refresh_in_tx<C: ConnectionTrait>(
     stale: &oauth_tokens::Model,
     family: &RefreshTokenFamily,
     prepared: &PreparedOAuthTokens,
+    clock: &OAuthClock<'_>,
 ) -> Result<OAuthRecoveryWindow, OAuthTokenProtocolError> {
     let invalid = || OAuthTokenProtocolError::invalid_grant("OAuth refresh recovery unavailable");
     let rotated_at = committed_refresh_rotation_at(stale).ok_or_else(invalid)?;
-    let now = Utc::now();
+    let now = clock()?;
     if !within_refresh_rotation_grace(stale, now) {
         return Err(invalid());
     }
@@ -1489,7 +1518,7 @@ async fn recover_refresh_in_tx<C: ConnectionTrait>(
     {
         return Err(invalid());
     }
-    let successor_family = resolve_refresh_family(db, &successor).await?;
+    let successor_family = resolve_refresh_family(db, &successor, clock).await?;
     if successor_family.family_id != family.family_id || successor_family.created_at != family.created_at {
         return Err(invalid());
     }
@@ -1504,16 +1533,16 @@ async fn recover_refresh_in_tx<C: ConnectionTrait>(
             .min(successor.expires_at.with_timezone(&Utc))
             .min(absolute_deadline),
     };
-    window.ensure_live(Utc::now())?;
-    ensure_single_live_refresh(db, &successor, family, Utc::now()).await?;
-    let now = Utc::now();
+    window.ensure_live(clock()?)?;
+    ensure_single_live_refresh(db, &successor, family, clock()?).await?;
+    let now = clock()?;
     window.ensure_live(now)?;
     validate_prepared_deadlines(prepared, now, Some(absolute_deadline))?;
     // Fresh access JWT, same refresh bearer. Never insert the prepared
     // refresh model or update the successor's lifetime during recovery.
     prepared.access_model.clone().insert(db).await
         .map_err(|_| OAuthTokenProtocolError::server_error("Failed to register recovered OAuth access token"))?;
-    window.ensure_live(Utc::now())?;
+    window.ensure_live(clock()?)?;
     Ok(window)
 }
 
@@ -1524,6 +1553,7 @@ async fn commit_refresh_rotation(
     prepared: &PreparedOAuthTokens,
     require_email_verification: bool,
     allow_recovery: bool,
+    clock: &OAuthClock<'_>,
 ) -> Result<Option<OAuthRecoveryWindow>, OAuthTokenProtocolError> {
     let tx = db.begin().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to begin refresh-token rotation")
@@ -1571,8 +1601,8 @@ async fn commit_refresh_rotation(
     if expected != stored {
         return Err(OAuthTokenProtocolError::invalid_grant("OAuth refresh credential changed"));
     }
-    let family = resolve_refresh_family(&tx, &stored).await?;
-    let now = Utc::now();
+    let family = resolve_refresh_family(&tx, &stored, clock).await?;
+    let now = clock()?;
     ensure_refresh_family_live(&family, now)?;
     validate_prepared_deadlines(prepared, now, Some(refresh_family_deadline(family.created_at)?))?;
     ensure_single_live_refresh(&tx, &stored, &family, now).await?;
@@ -1581,13 +1611,13 @@ async fn commit_refresh_rotation(
         // If the request ages out while waiting, refuse recovery without
         // converting the admitted request into theft evidence. New post-grace
         // presentations are handled by validate_refresh_token at admission.
-        let window = recover_refresh_in_tx(&tx, &stored, &family, prepared).await?;
+        let window = recover_refresh_in_tx(&tx, &stored, &family, prepared, clock).await?;
         tx.commit().await.map_err(|_| OAuthTokenProtocolError::server_error("Failed to commit OAuth refresh recovery"))?;
-        window.ensure_live(Utc::now())?;
+        window.ensure_live(clock()?)?;
         return Ok(Some(window));
     }
     // The lineage queries can consume the last portion of the lifetime.
-    let now = Utc::now();
+    let now = clock()?;
     ensure_refresh_family_live(&family, now)?;
     validate_prepared_deadlines(prepared, now, Some(refresh_family_deadline(family.created_at)?))?;
     let consumed = OAuthTokens::update_many()
@@ -1613,6 +1643,7 @@ async fn commit_refresh_rotation(
             authenticated_app,
             current.tenant_id,
             &current.token_hash,
+            clock,
         )
         .await?;
         return Err(OAuthTokenProtocolError::invalid_grant(
@@ -1621,7 +1652,7 @@ async fn commit_refresh_rotation(
     }
 
     persist_prepared_tokens(&tx, prepared).await?;
-    validate_prepared_deadlines(prepared, Utc::now(), Some(refresh_family_deadline(family.created_at)?))?;
+    validate_prepared_deadlines(prepared, clock()?, Some(refresh_family_deadline(family.created_at)?))?;
     tx.commit().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to commit refresh-token rotation")
     })?;
@@ -1704,6 +1735,10 @@ mod tests {
         QueryFilter, Schema, Set, TransactionTrait, prelude::DateTimeWithTimeZone,
     };
     use uuid::Uuid;
+
+    fn test_clock() -> Result<chrono::DateTime<Utc>, super::OAuthTokenProtocolError> {
+        Ok(Utc::now())
+    }
 
     #[tokio::test]
     async fn oauth_subject_lock_requires_verified_email_when_enabled() {
@@ -2136,7 +2171,7 @@ mod tests {
         .expect_err("a changed consent epoch must reject in-flight issuance");
         assert_eq!(stale_epoch.error, "invalid_grant");
 
-        let commit_error = super::commit_refresh_rotation(&db, &client, &current, &prepared, false, false)
+        let commit_error = super::commit_refresh_rotation(&db, &client, &current, &prepared, false, false, &test_clock)
             .await
             .expect_err("refresh commit must revalidate consent under app/subject locks");
         assert_eq!(commit_error.error, "invalid_grant");
@@ -2272,7 +2307,7 @@ mod tests {
 
         let mut stale_client = client.clone();
         stale_client.client_secret_hash = Some("superseded-hash".to_string());
-        let error = super::validate_refresh_token(&db, &stale_client, tenant_id, raw_stale_token, false)
+        let error = super::validate_refresh_token(&db, &stale_client, tenant_id, raw_stale_token, false, &test_clock)
             .await
             .expect_err("stale client cannot authorize refresh replay revocation");
         assert_eq!(error.error, "invalid_client");
@@ -2291,7 +2326,7 @@ mod tests {
         .await
         .expect("create fault injection");
 
-        let error = super::validate_refresh_token(&db, &client, tenant_id, raw_stale_token, false)
+        let error = super::validate_refresh_token(&db, &client, tenant_id, raw_stale_token, false, &test_clock)
             .await
             .expect_err("real token validation must surface revocation failure");
         assert_eq!(error.error, "server_error");
@@ -2308,7 +2343,7 @@ mod tests {
         db.execute_unprepared("DROP TRIGGER fail_refresh_reuse_revocation")
             .await
             .expect("remove fault injection");
-        let retry = super::validate_refresh_token(&db, &client, tenant_id, raw_stale_token, false)
+        let retry = super::validate_refresh_token(&db, &client, tenant_id, raw_stale_token, false, &test_clock)
             .await
             .expect_err("already-revoked stale token still cannot be used");
         assert_eq!(retry.error, "invalid_grant");
@@ -2808,7 +2843,26 @@ mod tests {
             expires_in: 900,
         };
 
-        commit_refresh_rotation(&db, &client, &current, &replacement("replacement-1"), false, true)
+        // The final clock sample fails after both replacement rows were
+        // written. Neither consumption nor the replacement may survive.
+        let samples = std::sync::atomic::AtomicUsize::new(0);
+        let failing_clock = || {
+            if samples.fetch_add(1, std::sync::atomic::Ordering::SeqCst) >= 3 {
+                Err(super::OAuthTokenProtocolError::server_error("injected clock fault"))
+            } else {
+                test_clock()
+            }
+        };
+        let error = commit_refresh_rotation(
+            &db, &client, &current, &replacement("clock-fault"), false, true, &failing_clock,
+        ).await.expect_err("clock fault before commit must abort rotation");
+        assert_eq!(error.error, "server_error");
+        assert_eq!(samples.load(std::sync::atomic::Ordering::SeqCst), 4);
+        assert_eq!(oauth_tokens::Entity::find().count(&db).await.unwrap(), 1);
+        assert!(oauth_tokens::Entity::find_by_id(current.id)
+            .one(&db).await.unwrap().unwrap().revoked_at.is_none());
+
+        commit_refresh_rotation(&db, &client, &current, &replacement("replacement-1"), false, true, &test_clock)
             .await
             .expect("first rotation");
 
@@ -2826,7 +2880,7 @@ mod tests {
         fork.token_hash = Set("forked-refresh".to_string());
         fork.insert(&db).await.expect("insert inconsistent live branch");
         let error = commit_refresh_rotation(
-            &db, &client, &successor, &replacement("replacement-forked"), false, false,
+            &db, &client, &successor, &replacement("replacement-forked"), false, false, &test_clock,
         )
         .await
         .expect_err("a forked lineage must not rotate either live branch");
@@ -2855,7 +2909,7 @@ mod tests {
             &successor,
             &replacement("replacement-expired-family"),
             false,
-            false,
+            false, &test_clock,
         )
         .await
         .expect_err("rotation must recheck the absolute family deadline under lock");
@@ -2876,7 +2930,7 @@ mod tests {
         );
         let nearly_expired_root = root.update(&db).await.expect("shorten family lifetime");
         let error = commit_refresh_rotation(
-            &db, &client, &successor, &replacement("replacement-over-deadline"), false, false,
+            &db, &client, &successor, &replacement("replacement-over-deadline"), false, false, &test_clock,
         )
         .await
         .expect_err("prepared credentials must not exceed the current absolute cap");
@@ -2899,7 +2953,7 @@ mod tests {
         explicitly_revoked.last_used_at = None;
         assert!(!super::within_refresh_rotation_grace(&explicitly_revoked, rotated_at));
 
-        let replay = commit_refresh_rotation(&db, &client, &current, &replacement("replacement-2"), false, false)
+        let replay = commit_refresh_rotation(&db, &client, &current, &replacement("replacement-2"), false, false, &test_clock)
             .await
             .expect_err("refresh token replay must fail");
 
@@ -2913,18 +2967,18 @@ mod tests {
         );
 
         let wrong = commit_refresh_rotation(
-            &db, &client, &current, &replacement("wrong-proof"), false, true,
+            &db, &client, &current, &replacement("wrong-proof"), false, true, &test_clock,
         ).await.expect_err("wrong proof must not recover");
         assert_eq!(wrong.error, "invalid_grant");
         let mut altered_scope = replacement("replacement-1");
         altered_scope.access_model.scopes = Set(serde_json::json!(["other"]));
         assert!(commit_refresh_rotation(
-            &db, &client, &current, &altered_scope, false, true,
+            &db, &client, &current, &altered_scope, false, true, &test_clock,
         ).await.is_err());
         let mut recovery = replacement("replacement-1");
         recovery.access_model.token_hash = Set("recovered-access-hash".to_string());
         let window = commit_refresh_rotation(
-            &db, &client, &current, &recovery, false, true,
+            &db, &client, &current, &recovery, false, true, &test_clock,
         ).await.expect("matching proof recovers").expect("recovery window");
         assert!(window.ensure_live(window.rotated_at).is_ok());
         assert!(window.ensure_live(window.deadline).is_err());
@@ -2938,10 +2992,10 @@ mod tests {
 
         // Once B rotates to C, the proof for A cannot recover B or C.
         let next_hash = "next-generation-refresh";
-        commit_refresh_rotation(&db, &client, &successor, &replacement(next_hash), false, false)
+        commit_refresh_rotation(&db, &client, &successor, &replacement(next_hash), false, false, &test_clock)
             .await.expect("rotate successor");
         let error = commit_refresh_rotation(
-            &db, &client, &current, &replacement("replacement-1"), false, true,
+            &db, &client, &current, &replacement("replacement-1"), false, true, &test_clock,
         ).await.expect_err("superseded successor must not recover");
         assert_eq!(error.error, "invalid_grant");
         let next = oauth_tokens::Entity::find()
@@ -2958,7 +3012,7 @@ mod tests {
         old.last_used_at = Set(Some(past));
         let old = old.update(&db).await.expect("age historical rotation");
         let delayed = commit_refresh_rotation(
-            &db, &client, &old, &replacement("replacement-1"), false, true,
+            &db, &client, &old, &replacement("replacement-1"), false, true, &test_clock,
         ).await.expect_err("admitted recovery must not succeed beyond grace");
         assert_eq!(delayed.error, "invalid_grant");
         assert!(oauth_tokens::Entity::find_by_id(next.id)
@@ -3005,7 +3059,7 @@ mod tests {
             &pre_change,
             &replacement("replacement-after-password-change"),
             false,
-            false,
+            false, &test_clock,
         )
         .await
         .expect_err("refresh issued before password change must fail");
@@ -3235,7 +3289,7 @@ mod tests {
         .await
         .expect("insert token");
 
-        let error = super::resolve_refresh_family(&db, &token)
+        let error = super::resolve_refresh_family(&db, &token, &test_clock)
             .await
             .expect_err("missing family root must not reset the absolute lifetime cap");
         assert_eq!(error.error, "invalid_grant");
@@ -3248,7 +3302,7 @@ mod tests {
         root.created_at = Set((now - chrono::Duration::days(1)).into());
         let root = root.insert(&db).await.expect("insert referenced row");
         assert_eq!(
-            super::resolve_refresh_family(&db, &token).await.unwrap_err().error,
+            super::resolve_refresh_family(&db, &token, &test_clock).await.unwrap_err().error,
             "invalid_grant",
             "a descendant cannot serve as another family's root"
         );
@@ -3258,7 +3312,7 @@ mod tests {
         root.created_at = Set((now + chrono::Duration::days(1)).into());
         let root = root.update(&db).await.expect("update referenced row");
         assert_eq!(
-            super::resolve_refresh_family(&db, &token).await.unwrap_err().error,
+            super::resolve_refresh_family(&db, &token, &test_clock).await.unwrap_err().error,
             "invalid_grant",
             "a root cannot be newer than its descendant"
         );
@@ -3268,7 +3322,7 @@ mod tests {
         root.authorization_code_id = Set(Some(Uuid::new_v4()));
         let root = root.update(&db).await.expect("change root code");
         assert_eq!(
-            super::resolve_refresh_family(&db, &token).await.unwrap_err().error,
+            super::resolve_refresh_family(&db, &token, &test_clock).await.unwrap_err().error,
             "invalid_grant",
             "a root must retain the original authorization-code identity"
         );
@@ -3278,7 +3332,7 @@ mod tests {
         root.family_id = Set(root_id);
         let root = root.update(&db).await.expect("restore root identity");
         assert_eq!(
-            super::resolve_refresh_family(&db, &token).await.unwrap_err().error,
+            super::resolve_refresh_family(&db, &token, &test_clock).await.unwrap_err().error,
             "invalid_grant",
             "a live root cannot have a live descendant"
         );
@@ -3290,7 +3344,7 @@ mod tests {
         root.consent_granted_at = Set(Some(rotated_at));
         let root = root.update(&db).await.expect("inject a foreign consent epoch");
         assert_eq!(
-            super::resolve_refresh_family(&db, &token).await.unwrap_err().error,
+            super::resolve_refresh_family(&db, &token, &test_clock).await.unwrap_err().error,
             "invalid_grant",
             "a descendant cannot adopt another consent epoch"
         );
@@ -3299,7 +3353,7 @@ mod tests {
         root.scopes = Set(serde_json::json!(["profile"]));
         let root = root.update(&db).await.expect("inject widened descendant scopes");
         assert_eq!(
-            super::resolve_refresh_family(&db, &token).await.unwrap_err().error,
+            super::resolve_refresh_family(&db, &token, &test_clock).await.unwrap_err().error,
             "invalid_grant",
             "a descendant cannot exceed the original family scopes"
         );
@@ -3308,7 +3362,7 @@ mod tests {
         root.scopes = Set(token.scopes.clone());
         root.family_id = Set(root_id);
         let root = root.update(&db).await.expect("restore valid canonical root");
-        let family = super::resolve_refresh_family(&db, &token)
+        let family = super::resolve_refresh_family(&db, &token, &test_clock)
             .await
             .expect("valid canonical root");
         assert_eq!(family.family_id, root_id);
@@ -3317,7 +3371,7 @@ mod tests {
         let mut malformed = token;
         malformed.family_id = Uuid::nil();
         assert_eq!(
-            super::resolve_refresh_family(&db, &malformed).await.unwrap_err().error,
+            super::resolve_refresh_family(&db, &malformed, &test_clock).await.unwrap_err().error,
             "invalid_grant"
         );
     }

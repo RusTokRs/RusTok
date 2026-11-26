@@ -446,6 +446,8 @@ pub async fn resolve_current_user_from_access_token(
     ))?;
     let db = ctx.runtime_ctx().db();
 
+    auth_config.credential_now()
+        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Credential authority unavailable"))?;
     let claims = decode_access_token(auth_config, access_token)
         .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))?;
     let expiry_seconds = i64::try_from(claims.exp)
@@ -662,7 +664,8 @@ pub async fn resolve_current_user_from_access_token(
     ensure_access_token_not_expired(
         access_token_expires_at,
         durable_credential_expires_at,
-        chrono::Utc::now(),
+        auth_config.credential_now()
+            .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Credential authority unavailable"))?,
     )?;
 
     Ok(CurrentUser {

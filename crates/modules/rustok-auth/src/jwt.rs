@@ -160,7 +160,7 @@ pub fn issue_oauth_access_token(
         grant_type = %input.grant_type,
         "Encoding OAuth access token"
     );
-    let now = Utc::now();
+    let now = config.credential_now()?;
     let configured_expiry = token_expiration(now, input.expires_in_secs)?;
     let bounded_expiry = deadline.map_or(configured_expiry, |cap| configured_expiry.min(cap));
     // NumericDate has whole-second precision. Floor the absolute bound,
@@ -190,7 +190,7 @@ pub fn issue_oauth_access_token(
         return Err(AuthError::TokenEncodingFailed);
     }
     let token = encode_for_purpose(config, JwtPurpose::Access, &claims)?;
-    let after = Utc::now();
+    let after = config.credential_now()?;
     if after < now || after >= expires_at {
         return Err(AuthError::TokenEncodingFailed);
     }

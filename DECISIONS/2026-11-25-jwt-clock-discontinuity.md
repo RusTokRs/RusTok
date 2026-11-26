@@ -51,6 +51,20 @@ record the positive DB timestamp from the raw row; the receipt's wall-clock
 values must not be interpreted as trustworthy elapsed time during an
 incident. Do not use a clock fault as a reason to remove outstanding grants.
 
+## Credential admission extension
+
+The live runtime serializes credential-admission clock samples and latches any
+observed backward wall step, even within the lease's one-second tolerance.
+OAuth token exchange uses the shared gate at initial admission, after async
+reads, before one-shot mutations and commit, and at response creation. Refresh
+recovery and replay classification use the same samples. Access extraction
+samples before signature verification and after asynchronous policy resolution.
+The gate checks the managed lease and emergency/shutdown fences without holding
+a synchronous lock across async work. Fixed embedders retain their contract;
+explicit security-reducing revocations do not require this admission gate.
+This does not establish a durable application DB clock or cross-restart high
+water mark. Browser authorization issuance and retention remain follow-up work.
+
 ## Recovery and limits
 
 The existing host supervisor terminates on authority read errors; local

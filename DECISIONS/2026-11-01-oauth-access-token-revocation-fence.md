@@ -106,6 +106,13 @@ consent-presence check alone could not distinguish an old epoch from a new grant
     hosts before applying the migration. The application has no NULL
     fallback. Downgrade does not undo the truthful identity backfill.
 
+15. Token exchange and access admission use the live Auth credential clock
+    at time-sensitive admission and mutation boundaries. Observed backward
+    wall steps latch the existing local clock fault; refresh recovery and
+    replay classification fail closed if the clock/lease cannot authorize the
+    observation. Explicit revocation remains independent of this gate. This is
+    not a durable cross-restart or cross-replica time authority.
+
 ## Sources of truth and ownership
 
 - Canonical owner: `rustok-auth` owns JWT claims and auth migrations;

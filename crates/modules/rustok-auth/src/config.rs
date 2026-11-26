@@ -297,7 +297,25 @@ impl AuthConfig {
         }
     }
 
-    /// Only JWT operations use the lease gate; candidate validation and
+    /// Recheck the live runtime at a credential admission boundary after
+    /// async work, without dummy crypto or a synchronous lock across await.
+    /// Fixed embedders retain their existing contract.
+    pub fn credential_now(&self) -> Result<chrono::DateTime<chrono::Utc>> {
+        match &self.key_state {
+            JwtKeySource::Fixed(_) => Ok(chrono::Utc::now()),
+            JwtKeySource::Live(current) => {
+                let guard = current.read().map_err(|_| keyring_runtime_error())?;
+                let now = guard.clock.credential_sample(ClockSample::now)
+                    .ok_or_else(keyring_runtime_error)?;
+                if !guard.permits_crypto_at(now) {
+                    return Err(keyring_runtime_error());
+                }
+                now.utc().ok_or_else(keyring_runtime_error)
+            }
+        }
+    }
+
+    /// JWT operations use the lease gate; candidate validation and
     /// metadata inspection never require a request-serving lease.
     pub(crate) fn with_jwt_operation<T>(
         &self, operation: impl FnOnce(&ValidatedJwtKeyrings) -> Result<T>,

@@ -329,7 +329,12 @@ use that exact deadline; response lifetime is calculated after usage telemetry.
 Future-dated prepared credentials fail closed. Old registrations retain their
 stored expiry and the extractor continues taking the earlier deadline.
 Boundary regressions are authored; compilation and transaction tests remain open.
-Durable OAuth clock rollback across requests/replicas remains open.
+Live-runtime OAuth exchange and access extraction now use the shared Auth
+credential clock at admission, locked mutation and response boundaries. Strict
+serialized wall observations latch backward steps, including subsecond steps;
+refresh replay classification fails without mutating on an unavailable clock.
+Browser code issuance, application DB clock checks, retention and durable
+cross-restart/replica rollback remain open. Source regression unrun.
 
 ## OAuth family lifetime and replay evidence (source only)
 
