@@ -14311,6 +14311,7 @@ dependencies = [
  "rustok-auth",
  "rustok-blog-ports",
  "rustok-channel",
+ "rustok-channel-ports",
  "rustok-comments",
  "rustok-content",
  "rustok-content-orchestration",

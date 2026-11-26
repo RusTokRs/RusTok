@@ -5,7 +5,7 @@
 - **Status:** ACTIVE
 - **Active Cycle:** Round 2 (Fresh Start from Scratch)
 - **Active Phase:** Phase GN-03 — Commerce, Financial & Marketplace Modules (20 модулей)
-- **Next Pending Component:** [`crates/modules/rustok-pricing`](../../crates/modules/rustok-pricing) *(note: `crates/modules/rustok-auth` пропущен по запросу пользователя — глобальный рефакторинг)*
+- **Next Pending Component:** [`crates/modules/rustok-marketplace`](../../crates/modules/rustok-marketplace) *(note: `crates/modules/rustok-auth` пропущен по запросу пользователя — глобальный рефакторинг)*
 - **Current main SHA:** `c7f032b462`
 - **Active Branch:** `main`
 
@@ -215,14 +215,14 @@ flowchart TD
 | `rustok-cart` | `crates/modules/rustok-cart` | [x] | [x] | [x] | [x] |
 | `rustok-order` | `crates/modules/rustok-order` | [x] | [x] | [x] | [x] |
 | `rustok-payment` | `crates/modules/rustok-payment` | [x] | [x] | [x] | [x] |
-| `rustok-pricing` | `crates/modules/rustok-pricing` | [ ] | [ ] | [ ] | [ ] |
-| `rustok-tax` | `crates/modules/rustok-tax` | [ ] | [ ] | [ ] | [ ] |
-| `rustok-billing` | `crates/modules/rustok-billing` | [ ] | [ ] | [ ] | [ ] |
-| `rustok-finance` | `crates/modules/rustok-finance` | [ ] | [ ] | [ ] | [ ] |
-| `rustok-accounting` | `crates/modules/rustok-accounting` | [ ] | [ ] | [ ] | [ ] |
-| `rustok-fulfillment` | `crates/modules/rustok-fulfillment` | [ ] | [ ] | [ ] | [ ] |
-| `rustok-inventory` | `crates/modules/rustok-inventory` | [ ] | [ ] | [ ] | [ ] |
-| `rustok-distribution` | `crates/modules/rustok-distribution` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-pricing` | `crates/modules/rustok-pricing` | [x] | [x] | [x] | [x] |
+| `rustok-tax` | `crates/modules/rustok-tax` | [x] | [x] | [x] | [x] |
+| `rustok-billing` | `crates/modules/rustok-billing` | [x] | [x] | [x] | [x] |
+| `rustok-finance` | `crates/modules/rustok-finance` | [x] | [x] | [x] | [x] |
+| `rustok-accounting` | `crates/modules/rustok-accounting` | [x] | [x] | [x] | [x] |
+| `rustok-fulfillment` | `crates/modules/rustok-fulfillment` | [x] | [x] | [x] | [x] |
+| `rustok-inventory` | `crates/modules/rustok-inventory` | [x] | [x] | [x] | [x] |
+| `rustok-distribution` | `crates/modules/rustok-distribution` | [x] | [x] | [x] | [x] |
 | `rustok-marketplace` | `crates/modules/rustok-marketplace` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-marketplace-seller` | `crates/modules/rustok-marketplace-seller` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-marketplace-listing` | `crates/modules/rustok-marketplace-listing` | [ ] | [ ] | [ ] | [ ] |

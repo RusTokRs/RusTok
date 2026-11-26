@@ -4,7 +4,8 @@ use rustok_fulfillment::entities::{
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Schema};
 
-pub async fn ensure_fulfillment_schema(db: &DatabaseConnection) {
+#[allow(dead_code)]
+pub async fn ensure_fulfillment_base_schema(db: &DatabaseConnection) {
     if db.get_database_backend() != DbBackend::Sqlite {
         return;
     }
@@ -48,13 +49,6 @@ pub async fn ensure_fulfillment_schema(db: &DatabaseConnection) {
         schema.create_table_from_entity(provider_operation::Entity),
     )
     .await;
-    rustok_fulfillment::migrations::migrations()
-        .into_iter()
-        .find(|migration| migration.name() == "m20261101_000121_enforce_provider_effect_admission")
-        .expect("provider admission migration is registered")
-        .up(&sea_orm_migration::SchemaManager::new(db))
-        .await
-        .expect("provider effect admission guard");
 
     create_entity_table(
         db,
@@ -153,6 +147,22 @@ pub async fn ensure_fulfillment_schema(db: &DatabaseConnection) {
     db.execute_raw(builder.build(&idx_target_seq))
         .await
         .expect("failed to create idx_shipping_option_translation_change_target_seq");
+}
+
+#[allow(dead_code)]
+pub async fn ensure_fulfillment_schema(db: &DatabaseConnection) {
+    ensure_fulfillment_base_schema(db).await;
+    if db.get_database_backend() != DbBackend::Sqlite {
+        return;
+    }
+
+    rustok_fulfillment::migrations::migrations()
+        .into_iter()
+        .find(|migration| migration.name() == "m20261101_000121_enforce_provider_effect_admission")
+        .expect("provider admission migration is registered")
+        .up(&sea_orm_migration::SchemaManager::new(db))
+        .await
+        .expect("provider effect admission guard");
 }
 
 async fn create_entity_table(

@@ -105,7 +105,7 @@ async fn insert_test_order(
 #[tokio::test]
 async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconciliation() {
     let db = setup_test_db().await;
-    support::ensure_fulfillment_schema(&db).await;
+    support::ensure_fulfillment_base_schema(&db).await;
     ensure_provider_journal_guards(&db).await;
     let tenant_id = Uuid::new_v4();
     let fulfillment_id = Uuid::new_v4();
@@ -240,7 +240,7 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
 #[tokio::test]
 async fn provider_result_writer_rejects_mismatched_journal_identity() {
     let db = setup_test_db().await;
-    support::ensure_fulfillment_schema(&db).await;
+    support::ensure_fulfillment_base_schema(&db).await;
     ensure_provider_journal_guards(&db).await;
 
     let tenant_id = Uuid::new_v4();
@@ -430,7 +430,7 @@ async fn provider_result_writer_rejects_mismatched_journal_identity() {
 #[tokio::test]
 async fn provider_reconciliation_rollback_blocks_unresolved_external_outcomes() {
     let db = setup_test_db().await;
-    support::ensure_fulfillment_schema(&db).await;
+    support::ensure_fulfillment_base_schema(&db).await;
     ensure_provider_journal_guards(&db).await;
 
     let tenant_id = Uuid::new_v4();
@@ -501,7 +501,7 @@ async fn provider_reconciliation_rollback_blocks_unresolved_external_outcomes() 
 #[tokio::test]
 async fn checkout_label_payment_rollback_blocks_retryable_unpaid_operation() {
     let db = setup_test_db().await;
-    support::ensure_fulfillment_schema(&db).await;
+    support::ensure_fulfillment_base_schema(&db).await;
 
     let tenant_id = Uuid::new_v4();
     let order_id = Uuid::new_v4();
@@ -600,7 +600,7 @@ async fn checkout_label_payment_rollback_blocks_retryable_unpaid_operation() {
 #[tokio::test]
 async fn cancelled_order_quarantines_existing_executing_checkout_label_on_migration_upgrade() {
     let db = setup_test_db().await;
-    support::ensure_fulfillment_schema(&db).await;
+    support::ensure_fulfillment_base_schema(&db).await;
 
     let tenant_id = Uuid::new_v4();
     let order_id = Uuid::new_v4();
@@ -699,7 +699,7 @@ async fn cancelled_order_quarantines_existing_executing_checkout_label_on_migrat
 #[tokio::test]
 async fn cancelled_order_quarantines_executing_checkout_label() {
     let db = setup_test_db().await;
-    support::ensure_fulfillment_schema(&db).await;
+    support::ensure_fulfillment_base_schema(&db).await;
 
     let tenant_id = Uuid::new_v4();
     let order_id = Uuid::new_v4();
@@ -815,7 +815,7 @@ async fn cancelled_order_quarantines_executing_checkout_label() {
 #[tokio::test]
 async fn premature_checkout_label_insert_requires_paid_order() {
     let db = setup_test_db().await;
-    support::ensure_fulfillment_schema(&db).await;
+    support::ensure_fulfillment_base_schema(&db).await;
 
     let tenant_id = Uuid::new_v4();
     let order_id = Uuid::new_v4();
@@ -881,7 +881,7 @@ async fn premature_checkout_label_insert_requires_paid_order() {
 #[tokio::test]
 async fn premature_checkout_label_migration_quarantines_existing_unpaid_execution() {
     let db = setup_test_db().await;
-    support::ensure_fulfillment_schema(&db).await;
+    support::ensure_fulfillment_base_schema(&db).await;
 
     let tenant_id = Uuid::new_v4();
     let order_id = Uuid::new_v4();
@@ -968,7 +968,7 @@ async fn premature_checkout_label_migration_quarantines_existing_unpaid_executio
 #[tokio::test]
 async fn premature_checkout_label_rollback_requires_execution_quiescence() {
     let db = setup_test_db().await;
-    support::ensure_fulfillment_schema(&db).await;
+    support::ensure_fulfillment_base_schema(&db).await;
 
     let tenant_id = Uuid::new_v4();
     let order_id = Uuid::new_v4();
@@ -1048,7 +1048,7 @@ async fn premature_checkout_label_rollback_requires_execution_quiescence() {
 #[tokio::test]
 async fn manual_success_reconciliation_validates_provider_identity() {
     let db = setup_test_db().await;
-    support::ensure_fulfillment_schema(&db).await;
+    support::ensure_fulfillment_base_schema(&db).await;
     ensure_provider_journal_guards(&db).await;
     let tenant_id = Uuid::new_v4();
     let fulfillment_id = Uuid::new_v4();
@@ -1139,7 +1139,7 @@ async fn manual_success_reconciliation_validates_provider_identity() {
 #[tokio::test]
 async fn provider_operation_insert_cannot_cross_fulfillment_tenant_boundary() {
     let db = setup_test_db().await;
-    support::ensure_fulfillment_schema(&db).await;
+    support::ensure_fulfillment_base_schema(&db).await;
     ensure_provider_journal_guards(&db).await;
 
     let tenant_id = Uuid::new_v4();
@@ -1177,25 +1177,12 @@ async fn provider_operation_insert_cannot_cross_fulfillment_tenant_boundary() {
 #[tokio::test]
 async fn non_provider_delivery_cannot_commit_provider_operation_from_metadata_patch() {
     let db = setup_test_db().await;
-    support::ensure_fulfillment_schema(&db).await;
+    support::ensure_fulfillment_base_schema(&db).await;
     ensure_provider_journal_guards(&db).await;
 
     let tenant_id = Uuid::new_v4();
     let fulfillment_id = Uuid::new_v4();
     insert_test_fulfillment(&db, tenant_id, fulfillment_id).await;
-
-    let fulfillment_model = fulfillment::Entity::find_by_id(fulfillment_id)
-        .one(&db)
-        .await
-        .expect("load fulfillment")
-        .expect("fulfillment exists");
-    let mut fulfillment_active: fulfillment::ActiveModel = fulfillment_model.into();
-    fulfillment_active.status = Set("shipped".to_string());
-    fulfillment_active.updated_at = Set(Utc::now().fixed_offset());
-    fulfillment_active
-        .update(&db)
-        .await
-        .expect("mark fulfillment shipped");
 
     let journal = FulfillmentProviderOperationJournal::new(db.clone());
     let operation = journal
@@ -1213,25 +1200,19 @@ async fn non_provider_delivery_cannot_commit_provider_operation_from_metadata_pa
         })
         .await
         .expect("journal operation");
-    journal
-        .claim_execution(tenant_id, operation.id)
+
+    let fulfillment_model = fulfillment::Entity::find_by_id(fulfillment_id)
+        .one(&db)
         .await
-        .expect("claim")
-        .expect("claimed");
-    journal
-        .mark_provider_succeeded(
-            tenant_id,
-            operation.id,
-            Some("shipment-delivery-guard".to_string()),
-            serde_json::json!({
-                "provider_id": "carrier",
-                "external_reference": "shipment-delivery-guard",
-                "tracking_number": "TRACK-GUARD",
-                "metadata": {}
-            }),
-        )
+        .expect("load fulfillment")
+        .expect("fulfillment exists");
+    let mut fulfillment_active: fulfillment::ActiveModel = fulfillment_model.into();
+    fulfillment_active.status = Set("shipped".to_string());
+    fulfillment_active.updated_at = Set(Utc::now().fixed_offset());
+    fulfillment_active
+        .update(&db)
         .await
-        .expect("provider success");
+        .expect("mark fulfillment shipped");
 
     let service = FulfillmentService::new(db.clone());
     service
@@ -1258,8 +1239,8 @@ async fn non_provider_delivery_cannot_commit_provider_operation_from_metadata_pa
         .await
         .expect("provider operation remains readable");
     assert_eq!(
-        current.status, PROVIDER_OPERATION_SUCCEEDED,
-        "delivery metadata must not commit a provider operation"
+        current.status, PROVIDER_OPERATION_PENDING,
+        "delivery metadata must not alter a provider operation"
     );
 
     service
@@ -1285,8 +1266,8 @@ async fn non_provider_delivery_cannot_commit_provider_operation_from_metadata_pa
         .await
         .expect("provider operation remains readable after reopen");
     assert_eq!(
-        current.status, PROVIDER_OPERATION_SUCCEEDED,
-        "reopen metadata must not commit a provider operation"
+        current.status, PROVIDER_OPERATION_PENDING,
+        "reopen metadata must not alter a provider operation"
     );
 
     let fulfillment = fulfillment::Entity::find_by_id(fulfillment_id)
@@ -1312,12 +1293,65 @@ async fn non_provider_delivery_cannot_commit_provider_operation_from_metadata_pa
             .and_then(serde_json::Value::as_str),
         Some("ordinary reopen metadata")
     );
+
+    // An unresolved succeeded provider operation fences local progress transitions too and must
+    // still remain un-committed when callers attempt metadata injection.
+    journal
+        .claim_execution(tenant_id, operation.id)
+        .await
+        .expect("claim")
+        .expect("claimed");
+    journal
+        .mark_provider_succeeded(
+            tenant_id,
+            operation.id,
+            Some("shipment-delivery-guard".to_string()),
+            serde_json::json!({
+                "provider_id": "carrier",
+                "external_reference": "shipment-delivery-guard",
+                "tracking_number": "TRACK-GUARD",
+                "metadata": {}
+            }),
+        )
+        .await
+        .expect("provider success");
+
+    let fenced_delivery = service
+        .deliver_fulfillment(
+            tenant_id,
+            fulfillment_id,
+            DeliverFulfillmentInput {
+                delivered_note: Some("delivered".to_string()),
+                items: None,
+                metadata: serde_json::json!({
+                    "provider_operation": {
+                        "id": operation.id,
+                        "operation": "ship"
+                    },
+                    "operator_note": "fenced delivery metadata"
+                }),
+            },
+        )
+        .await;
+    assert!(
+        fenced_delivery.is_err(),
+        "unresolved provider success must fence local delivery"
+    );
+
+    let current = journal
+        .get(tenant_id, operation.id)
+        .await
+        .expect("provider operation remains readable after fenced delivery");
+    assert_eq!(
+        current.status, PROVIDER_OPERATION_SUCCEEDED,
+        "fenced delivery metadata must not commit a provider operation"
+    );
 }
 
 #[tokio::test]
 async fn fulfillment_metadata_commits_provider_operation_in_the_same_database_write() {
     let db = setup_test_db().await;
-    support::ensure_fulfillment_schema(&db).await;
+    support::ensure_fulfillment_base_schema(&db).await;
     ensure_provider_journal_guards(&db).await;
     let tenant_id = Uuid::new_v4();
     let fulfillment_id = Uuid::new_v4();

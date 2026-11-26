@@ -305,6 +305,7 @@ impl ShippingOptionTranslationService {
         )?;
         let current_target_revision = target.map(locale_revision);
         if request.expected_target_revision != current_target_revision {
+            txn.rollback().await?;
             return Err(
                 ShippingOptionTranslationExactLocaleError::RevisionConflict { revision: "target" },
             );
@@ -327,6 +328,7 @@ impl ShippingOptionTranslationService {
                     .exec(&txn)
                     .await?;
                 if update_result.rows_affected != 1 {
+                    txn.rollback().await?;
                     return Err(ShippingOptionTranslationExactLocaleError::Database(
                         sea_orm::DbErr::RecordNotUpdated,
                     ));

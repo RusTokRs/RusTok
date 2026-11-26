@@ -52,3 +52,6 @@ rustok-product.workspace = true
 rustok-test-utils.workspace = true
 rustok-taxonomy-ports = { workspace = true, features = ["grpc-client"] }
 tokio.workspace = true
+
+[lints]
+workspace = true

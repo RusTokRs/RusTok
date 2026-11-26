@@ -165,3 +165,6 @@ normal = ["rustok-groups", "rustok-content-orchestration", "rustok-social-graph"
 
 [package.metadata.cargo-machete]
 ignored = ["hex", "rustok-content-orchestration", "rustok-groups", "rustok-social-graph", "flex", "rustok-docs"]
+
+[lints]
+workspace = true

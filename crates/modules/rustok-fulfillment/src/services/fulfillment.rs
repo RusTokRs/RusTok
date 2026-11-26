@@ -537,6 +537,7 @@ impl FulfillmentService {
                 )
             })?;
             if !existing_indices.insert(index) {
+                txn.rollback().await?;
                 return Err(FulfillmentError::Validation(
                     "checkout fulfillment identity contains duplicate indexes".to_string(),
                 ));
@@ -550,6 +551,7 @@ impl FulfillmentService {
                 || row.customer_id != customer_id
                 || persisted_plan_hash.as_deref() != Some(checkout_plan_hash.as_str())
             {
+                txn.rollback().await?;
                 return Err(FulfillmentError::Validation(
                     "checkout fulfillment child identity does not match the operation anchor"
                         .to_string(),
@@ -561,6 +563,7 @@ impl FulfillmentService {
             .iter()
             .any(|index| !requested_indices.contains(index))
         {
+            txn.rollback().await?;
             return Err(FulfillmentError::Validation(
                 "checkout fulfillment set already contains an index outside the requested immutable plan"
                     .to_string(),
@@ -1030,12 +1033,14 @@ impl FulfillmentService {
                 | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
                 | PROVIDER_OPERATION_COMMITTED
         ) {
+            txn.rollback().await?;
             return Err(FulfillmentError::InvalidTransition {
                 from: operation.status,
                 to: PROVIDER_OPERATION_COMMITTED.to_string(),
             });
         }
         if operation.provider_id != result.provider_id {
+            txn.rollback().await?;
             return Err(FulfillmentError::ProviderResultInvalid(
                 "create_label provider result does not match the journaled provider".to_string(),
             ));
@@ -1047,6 +1052,7 @@ impl FulfillmentService {
         if let Some(stored_operation_id) = create_label_provider_operation_id(&fulfillment.metadata)
             && stored_operation_id != operation_id
         {
+            txn.rollback().await?;
             return Err(FulfillmentError::InvalidTransition {
                 from: format!("create_label:{stored_operation_id}"),
                 to: format!("create_label:{operation_id}"),
@@ -1273,6 +1279,7 @@ impl FulfillmentService {
         }
 
         if !matches!(fulfillment.status.as_str(), STATUS_PENDING | STATUS_SHIPPED) {
+            txn.rollback().await?;
             return Err(FulfillmentError::InvalidTransition {
                 from: fulfillment.status,
                 to: STATUS_SHIPPED.to_string(),
@@ -1465,6 +1472,7 @@ impl FulfillmentService {
         self.assert_progress_not_fenced(&txn, tenant_id, fulfillment_id, None)
             .await?;
         if fulfillment.status != STATUS_SHIPPED {
+            txn.rollback().await?;
             return Err(FulfillmentError::InvalidTransition {
                 from: fulfillment.status,
                 to: STATUS_DELIVERED.to_string(),
@@ -1914,6 +1922,7 @@ impl FulfillmentService {
         }
 
         if fulfillment.status != STATUS_DELIVERED {
+            txn.rollback().await?;
             return Err(FulfillmentError::InvalidTransition {
                 from: fulfillment.status,
                 to: STATUS_SHIPPED.to_string(),
@@ -2195,6 +2204,7 @@ impl FulfillmentService {
         }
 
         if fulfillment.status == STATUS_DELIVERED || fulfillment.status == STATUS_CANCELLED {
+            txn.rollback().await?;
             return Err(FulfillmentError::InvalidTransition {
                 from: fulfillment.status,
                 to: STATUS_CANCELLED.to_string(),
