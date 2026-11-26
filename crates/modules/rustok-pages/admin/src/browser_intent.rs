@@ -162,6 +162,39 @@ pub fn pages_browser_default_durable_store() -> &'static DurableSsrDraftSessionS
     DEFAULT_STORE.get_or_init(DurableSsrDraftSessionStore::editor_default)
 }
 
+fn validate_browser_page_binding(
+    actual_page_id: Option<&str>,
+    expected_page_id: &str,
+) -> Result<(), PagesBrowserIntentError> {
+    if actual_page_id == Some(expected_page_id) {
+        return Ok(());
+    }
+    Err(PagesBrowserIntentError::PageMismatch {
+        expected: expected_page_id.to_string(),
+        actual: actual_page_id.unwrap_or_default().to_string(),
+    })
+}
+
+#[cfg(test)]
+mod page_binding_tests {
+    use super::{PagesBrowserIntentError, validate_browser_page_binding};
+
+    #[test]
+    fn browser_intent_requires_the_exact_endpoint_page_id() {
+        assert!(validate_browser_page_binding(Some("home"), "home").is_ok());
+        assert!(matches!(
+            validate_browser_page_binding(None, "home"),
+            Err(PagesBrowserIntentError::PageMismatch { expected, actual })
+                if expected == "home" && actual.is_empty()
+        ));
+        assert!(matches!(
+            validate_browser_page_binding(Some("other"), "home"),
+            Err(PagesBrowserIntentError::PageMismatch { expected, actual })
+                if expected == "home" && actual == "other"
+        ));
+    }
+}
+
 pub async fn dispatch_pages_browser_intent(
     snapshot: PagesBuilderSaveSnapshot,
     envelope: BrowserIntentEnvelope,
@@ -185,16 +218,7 @@ pub async fn dispatch_pages_browser_intent_with_store(
     let envelope = envelope
         .normalized()
         .map_err(BrowserIntentDispatchError::from)?;
-    if envelope
-        .page_id
-        .as_deref()
-        .is_some_and(|page_id| page_id != snapshot.page_id)
-    {
-        return Err(PagesBrowserIntentError::PageMismatch {
-            expected: snapshot.page_id,
-            actual: envelope.page_id.unwrap_or_default(),
-        });
-    }
+    validate_browser_page_binding(envelope.page_id.as_deref(), &snapshot.page_id)?;
 
     // Receipt resolution is read-only. It never resubmits the original command:
     // a missing receipt remains an unknown outcome until the user explicitly retries.

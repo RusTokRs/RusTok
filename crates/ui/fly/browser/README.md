@@ -126,7 +126,12 @@ Recovery refuses a different draft token, and the parked conflict retains the ex
 revision across reloads. Confirmed clean writes notify peers
 even when the SSR response requires reload; dirty draft-only changes do not.
 HTTP revision-conflict responses fence the editor, and late responses cannot replace
-a peer-write warning. The host must render an owner-bound draft token before
-enabling edits and bind that token into the route. This protocol is currently
+a peer-write warning. The host must render an explicit draft-binding marker for every Pages workspace.
+When a session exists, it also renders the owner-bound token and generation before
+enabling edits. Strict mounts use those server-rendered values as authoritative;
+stale \`sessionStorage\` metadata must never replace them. A rendered no-session
+binding must also suppress legacy storage fallback. The adapter advances the
+rendered binding only after a correlated receipt, and a missing page/session identity
+fails closed. This protocol is currently
 implemented by the Pages SSR host; other hosts must not opt into the strict
 contract without matching server-side atomic receipts.
