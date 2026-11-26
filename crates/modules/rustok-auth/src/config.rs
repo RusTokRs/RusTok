@@ -46,19 +46,6 @@ struct Rs256KeyPairProbe {
     probe: String,
 }
 
-/// JWT signing algorithm selector.
-///
-/// - `HS256` (default): explicit symmetric signing material or a purpose-derived key.
-/// - `RS256`: RSA-SHA256, asymmetric — set `rsa_private_key_pem` for signing,
-///   `rsa_public_key_pem` for verification.
-#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum JwtAlgorithm {
-    #[default]
-    HS256,
-    RS256,
-}
-
 /// Auth configuration — framework-agnostic.
 ///
 /// The server is responsible for constructing this from whatever config source
@@ -82,13 +69,12 @@ struct JwtKeyState {
     prepared: OnceLock<Result<ValidatedJwtKeyrings>>,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub(crate) struct JwtKeyInputs {
     pub(crate) jwt_keyring: JwtKeyring,
     pub(crate) special_jwt_keyrings: SpecialJwtKeyrings,
-    pub(crate) algorithm: JwtAlgorithm,
-    pub(crate) rsa_private_key_pem: Option<String>,
-    pub(crate) rsa_public_key_pem: Option<String>,
+    pub(crate) rsa_private_key_pem: String,
+    pub(crate) rsa_public_key_pem: String,
 }
 
 #[derive(Clone)]
@@ -180,17 +166,10 @@ impl JwtKeyringDocument {
             return Err(invalid_rotation());
         }
         let doc: Self = serde_json::from_slice(bytes).map_err(|_| invalid_rotation())?;
-        if doc.generation == 0
-            || i64::try_from(doc.generation).is_err()
-            || doc.access.algorithm != JwtAlgorithm::RS256
-            || doc.password_reset.algorithm != JwtAlgorithm::RS256
-            || doc.email_verification.algorithm != JwtAlgorithm::RS256
-            || doc.invite.algorithm != JwtAlgorithm::RS256
-        {
+        if doc.generation == 0 || i64::try_from(doc.generation).is_err() {
             return Err(invalid_rotation());
         }
         Ok((doc.generation, JwtKeyInputs {
-            algorithm: doc.access.algorithm,
             jwt_keyring: doc.access.keyring,
             rsa_private_key_pem: doc.access.rsa_private_key_pem,
             rsa_public_key_pem: doc.access.rsa_public_key_pem,
@@ -244,7 +223,7 @@ impl std::fmt::Debug for AuthConfig {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("AuthConfig")
-            .field("secret", &"<redacted>")
+            .field("mac_root", &"<redacted>")
             .field("key_material", &"<redacted>")
             .field("access_expiration", &self.access_expiration)
             .field("refresh_expiration", &self.refresh_expiration)
@@ -268,11 +247,6 @@ impl AuthConfig {
                 .map(|current| current.keys.clone())
                 .map_err(|_| keyring_runtime_error()),
         }
-    }
-
-    /// Inspect current access algorithm without retaining a stale raw configuration.
-    pub fn algorithm(&self) -> Result<JwtAlgorithm> {
-        Ok(self.key_snapshot()?.inputs.algorithm.clone())
     }
 
     /// Run a synchronous cryptographic operation under a read fence.
@@ -332,30 +306,6 @@ impl AuthConfig {
     pub(crate) fn from_test_document_unvalidated(root: String, bytes: &[u8]) -> Self {
         let (_, inputs) = JwtKeyringDocument::parse(bytes).unwrap();
         Self::from_key_inputs(root, inputs)
-    }
-
-    fn edit_key_inputs(&mut self, edit: impl FnOnce(&mut JwtKeyInputs)) -> Result<()> {
-        if let JwtKeySource::Live(current) = &self.key_state {
-            if current.read().map_err(|_| keyring_runtime_error())?.lease_required {
-                return Err(invalid_rotation());
-            }
-        }
-        let mut keys = self.key_snapshot()?;
-        let state = Arc::make_mut(&mut keys);
-        state.prepared = OnceLock::new();
-        edit(&mut state.inputs);
-        self.key_state = JwtKeySource::Fixed(keys);
-        Ok(())
-    }
-
-    #[cfg(test)]
-    pub(crate) fn set_test_jwt_keyring(&mut self, ring: JwtKeyring) {
-        self.edit_key_inputs(|inputs| inputs.jwt_keyring = ring).unwrap();
-    }
-
-    #[cfg(test)]
-    pub(crate) fn new(secret: String) -> Self {
-        Self::from_key_inputs(secret, JwtKeyInputs::default())
     }
 
     fn from_key_inputs(secret: String, inputs: JwtKeyInputs) -> Self {
@@ -617,6 +567,9 @@ impl JwtKeyringPublisher {
             guard.keys.prepared(self.config.secret())?.validate_successor(next)?;
         }
         let lease_required = guard.lease_required;
+        if lease_required && deadline.is_none() {
+            return Err(invalid_rotation());
+        }
         if lease_required {
             let now = ClockSample::now();
             if !guard.clock_healthy_at(now) {
@@ -709,7 +662,6 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
     tracing::debug!(
         issuer = %config.issuer,
         audience = %config.audience,
-        algorithm = ?config.algorithm()?,
         "Validating auth configuration"
     );
     if config.issuer.trim().is_empty() {
@@ -762,7 +714,7 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
 
 pub(crate) fn validate_rs256_key_pair(private_key_pem: &str, public_key_pem: &str) -> Result<()> {
     let encoding_key = rsa_signing_key(private_key_pem, public_key_pem)?;
-    let decoding_key = verification_key(&JwtAlgorithm::RS256, public_key_pem)?;
+    let decoding_key = verification_key(public_key_pem)?;
     let token = encode(
         &Header::new(Algorithm::RS256),
         &Rs256KeyPairProbe {
@@ -854,6 +806,19 @@ mod tests {
         publisher.revoke_lease();
         assert!(!readiness.is_ready());
         assert!(config.with_jwt_operation(|_| Ok(())).is_err());
+    }
+
+    #[test]
+    fn cluster_runtime_rejects_publication_without_a_durable_grant() {
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let (config, publisher) = rsa_config(secret(), &fixture).into_cluster_jwt(1).unwrap();
+        let next = RsaKeyPairFixture::generate().unwrap();
+        let document = document(&fixture, 2, "access-next", &next);
+        let (_, candidate) = config.prepare_jwt_document(&document).unwrap();
+
+        assert!(publisher.publish(2, candidate).is_err());
+        assert_eq!(publisher.generation().unwrap(), 1);
+        assert!(!publisher.lease_readiness().unwrap().is_ready());
     }
 
     #[test]
@@ -1036,26 +1001,30 @@ mod tests {
     }
 
     #[test]
-    fn generation_bearing_document_rejects_non_rs256_purpose_rings() {
+    fn generation_bearing_document_requires_four_complete_rsa_purpose_rings() {
         let fixture = JwtKeyringFixture::generate().unwrap();
         let document = fixture.document(1);
+        assert!(build_auth_config_from_document(
+            secret(), 900, Default::default(), document.to_string().as_bytes(),
+        ).is_ok());
+
         for purpose in ["access", "password_reset", "email_verification", "invite"] {
-            let mut legacy = document.clone();
-            legacy[purpose]["algorithm"] = serde_json::json!("HS256");
+            let mut incomplete = document.clone();
+            incomplete.as_object_mut().unwrap().remove(purpose);
             assert!(
                 build_auth_config_from_document(
-                    secret(), 900, Default::default(), legacy.to_string().as_bytes(),
+                    secret(), 900, Default::default(), incomplete.to_string().as_bytes(),
                 ).is_err(),
-                "{purpose} must reject HS256",
+                "{purpose} must be required",
             );
 
-            let mut missing = document.clone();
-            missing[purpose].as_object_mut().unwrap().remove("algorithm");
+            let mut marked = document.clone();
+            marked[purpose]["algorithm"] = serde_json::json!("RS256");
             assert!(
                 build_auth_config_from_document(
-                    secret(), 900, Default::default(), missing.to_string().as_bytes(),
+                    secret(), 900, Default::default(), marked.to_string().as_bytes(),
                 ).is_err(),
-                "{purpose} must require an explicit RS256 declaration",
+                "{purpose} must not carry an algorithm selector or marker",
             );
         }
     }

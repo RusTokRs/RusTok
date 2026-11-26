@@ -463,7 +463,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn witness_rejects_algorithm_change_and_preserves_revocation_history() {
+    async fn witness_rejects_stale_keyring_and_preserves_revocation_history() {
         let keys = FenceKeys::generate();
         let (authority, witness_db, id, fence) = deployment().await;
         let until = chrono::Utc::now().timestamp() + 3600;
@@ -475,7 +475,7 @@ mod tests {
         assert_eq!(fence.admit(2, &staged).await.unwrap(), JwtAdmission::Admitted);
         assert_eq!(fence.admit(3, &promoted).await.unwrap(), JwtAdmission::Admitted);
         let before = fence.load().await.unwrap();
-        assert!(fence.admit(4, &crate::AuthConfig::new(ROOT.into())).await.is_err());
+        assert!(fence.admit(4, &first).await.is_err());
         let after = fence.load().await.unwrap();
         assert_eq!(before.revision, after.revision);
         assert_eq!(before.payload, after.payload);

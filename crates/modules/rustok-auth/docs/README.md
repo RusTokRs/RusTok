@@ -140,17 +140,14 @@ material.
 
 The current unversioned document schema requires four entries: `access`,
 `password_reset`, `email_verification` and `invite`. Each entry requires
-an explicit `algorithm: RS256` marker (a fixed transitional schema field,
-not a runtime choice), a `keyring`, `rsa_private_key_pem` and
-`rsa_public_key_pem`. The four RSA moduli must be distinct. Each keyring
-accepts:
+a `keyring`, `rsa_private_key_pem` and `rsa_public_key_pem`; no algorithm
+field is accepted. The four RSA moduli must be distinct. Each keyring accepts:
 
 - `active_kid`: 1–64 ASCII letters, digits, hyphens or underscores.
 - `verification_keys`: up to 16 objects with `kid`, public RSA PEM
-  `material`, and exclusive Unix-second `verify_until`. If a historical
-  `algorithm` marker is present, it must be RS256.
-- No `active_hs256_secret` is accepted. The independent MAC root is never
-  used or HKDF-derived as JWT key material.
+  `material`, and exclusive Unix-second `verify_until`.
+- No symmetric key material, algorithm override or fallback field is accepted.
+  The independent MAC root is never used or HKDF-derived as JWT key material.
 
 RSA keys must parse as actual public/private RSA material with a modulus of at
 least 2048 bits. The signing boundary checks that the private key matches the
@@ -219,16 +216,16 @@ browser-smoke and reference-artifact CI host jobs provision fresh isolated
 RSA keyrings in runner temporary storage and remove them after use; private
 keys are not placed in the repository, logs, artifacts or caches.
 
-Legacy library constructors and the durable authenticated metadata still
-contain transitional algorithm representation. They are not executable host
-fallbacks. The algorithm enum, HS256 derivation, secret inventory and remaining
-mixed crypto branches still require removal. Persisted durable metadata must
-not be rewritten until an explicitly authorized authenticated offline
-converter preserves all security history and prevents old HS256 tokens from
-being accepted. No such converter is delivered here. Never reset authority or
+The durable authenticated metadata retains its fixed `RS256` assertion only
+for state continuity; it is not a selector, and persisted `HS256` metadata is
+rejected. Removing that marker requires a separately authorized authenticated
+offline converter preserving tombstones, revoked identities, generation and
+witness revision. No converter is delivered here. Never reset authority or
 witness to bypass admission; block retained-state deployments until conversion
 is available. Only explicitly disposable development state may be replaced
 together with fresh keys and invalidation of old tokens.
+The cutover does not authorize data deletion.
+
 The cutover does not authorize data deletion.
 
 ### Isolated development and test provisioning
@@ -286,25 +283,21 @@ Example shape (replace every placeholder with a distinct, matching RSA key pair)
 {
   "generation": 1,
   "access": {
-    "algorithm": "RS256",
     "keyring": { "active_kid": "access-1" },
     "rsa_private_key_pem": "<access-private-pem>",
     "rsa_public_key_pem": "<access-public-pem>"
   },
   "password_reset": {
-    "algorithm": "RS256",
     "keyring": { "active_kid": "reset-1" },
     "rsa_private_key_pem": "<reset-private-pem>",
     "rsa_public_key_pem": "<reset-public-pem>"
   },
   "email_verification": {
-    "algorithm": "RS256",
     "keyring": { "active_kid": "verify-1" },
     "rsa_private_key_pem": "<verification-private-pem>",
     "rsa_public_key_pem": "<verification-public-pem>"
   },
   "invite": {
-    "algorithm": "RS256",
     "keyring": { "active_kid": "invite-1" },
     "rsa_private_key_pem": "<invite-private-pem>",
     "rsa_public_key_pem": "<invite-public-pem>"
@@ -330,10 +323,10 @@ The Auth-owned fence migration inventory is shared by application schema
 installation, the independent authority import and Auth regression fixtures.
 The durable fence, authority, witness and observability regressions use fresh
 independent RSA pairs per isolated ledger, with stable identity across its
-generations and public-only history. Explicit negative algorithm-change
-scenarios remain in the source tests until the internal algorithm model is
-removed. The durable authenticated metadata is unchanged by the runtime
-bootstrap cutover.
+generations and public-only history. Source checks require the fixed RS256
+metadata assertion and reject HS256 snapshots. The marker is persisted only
+for authenticated-state continuity; it never selects a verifier. Removing it
+requires the separately authorized retained-state converter.
 These source regressions have not been executed.
 The three pending migration identities remain append-only until the
 [consolidation admission guide](../../../../docs/guides/safe-database-migrations-and-squashing.md)
@@ -700,11 +693,10 @@ The executable host assembles `AuthConfig` only through
 `build_auth_config_from_document`, which consumes the mandatory complete
 generation-bearing file. `AuthSettingsOverrides` is policy-only: issuer,
 audience, refresh TTL and password policy cannot select or supply JWT keys.
-Generic default builders, environment-backed key sources, inline RSA PEM
-overrides and the `with_rs256` builder have been removed. Unknown algorithm
-or key-source fields fail deserialization. The `AuthConfig::new` constructor
-is compiled only for crate tests and is not a production API. The complete
-generation-bearing document is the sole production source of JWT material.
+There is no default AuthConfig constructor, algorithm selector, symmetric
+JWT signer or alternate key source. Unknown algorithm and key-source fields
+fail deserialization. The complete generation-bearing document is the sole
+production source of JWT material.
 
  and signs and verifies a probe at
 startup. Malformed or mismatched key pairs therefore fail configuration assembly
@@ -751,7 +743,7 @@ Primary owner for auth/JWT/RBAC incidents — Platform security/auth on-call. Es
 On auth degradation:
 
 1. Check `/health/ready`, `email_backend` and recent auth/API errors without logging secrets, reset/invite tokens or refresh tokens.
-2. Verify effective `AuthConfig`: algorithm/key pairing, issuer, audience, TTL bounds and production policy.
+2. Verify effective `AuthConfig`: all four RSA key pairs and purpose isolation, issuer, audience, TTL bounds and production policy.
 3. If the issue relates to email reset/verification delivery, escalate also to the owner of host email transport.
 4. If the issue relates to RBAC, verify `AUTH_USER_PERMISSIONS`, server registry/security hints and actual transport guards.
 5. After rollback preserve evidence: artifact id, config snapshot without secrets, affected flows, health snapshot and list of revoked/rotated credentials if rotation was performed.

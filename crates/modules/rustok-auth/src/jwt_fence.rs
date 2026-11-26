@@ -10,8 +10,10 @@ use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, State
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use crate::{AuthConfig, AuthError, JwtAlgorithm, JwtKeyringPublisher};
+use crate::{AuthConfig, AuthError, JwtKeyringPublisher};
 use crate::error::Result;
+
+pub(crate) const RS256_ALGORITHM_MARKER: &str = "RS256";
 
 mod authority;
 mod observability;
@@ -75,13 +77,13 @@ pub(crate) struct KeyMetadata {
     pub(crate) identity: String,
     pub(crate) verification_identity: String,
     pub(crate) verify_until: Option<i64>,
-    pub(crate) algorithm: JwtAlgorithm,
+    pub(crate) algorithm: String,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RingMetadata {
-    pub(crate) algorithm: JwtAlgorithm,
+    pub(crate) algorithm: String,
     pub(crate) keys: BTreeMap<String, KeyMetadata>,
 }
 
@@ -96,7 +98,10 @@ impl KeyMetadata {
 pub(crate) type Snapshot = BTreeMap<String, RingMetadata>;
 
 fn homogeneous_snapshot(snapshot: &Snapshot) -> bool {
-    snapshot.values().all(|ring| ring.keys.values().all(|key| key.algorithm == ring.algorithm))
+    snapshot.values().all(|ring| {
+        ring.algorithm == RS256_ALGORITHM_MARKER
+            && ring.keys.values().all(|key| key.algorithm == RS256_ALGORITHM_MARKER)
+    })
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -860,46 +865,41 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn algorithm_change_is_rejected_without_mutating_authority() {
+    #[test]
+    fn durable_snapshot_rejects_non_rs256_markers() {
         let keys = FenceKeys::generate();
-        // HS256 exists only as the intentionally incompatible candidate in
-        // this regression until the coordinated removal of that algorithm.
-        let hs = AuthConfig::new(ROOT.into());
-        let rsa = keys.config(ROOT, "old", keys.old(), None);
-        for (initial, candidate) in [(hs.clone(), rsa.clone()), (rsa, hs)] {
-            let fence = JwtGenerationFence::new(database().await);
-            assert_eq!(fence.admit(1, &initial).await.unwrap(), JwtAdmission::Admitted);
-            let (_, publisher) = initial.clone().into_cluster_jwt(1).unwrap();
-            assert!(fence.renew(&publisher).await.unwrap());
-            let before = fence.load().await.unwrap();
-            assert!(fence.admit(2, &candidate).await.is_err());
-            let after = fence.load().await.unwrap();
-            assert_eq!(before.generation, after.generation);
-            assert_eq!(before.payload, after.payload);
-            assert_eq!(before.tag, after.tag);
-            assert_eq!(before.drain_until_ms, after.drain_until_ms);
-            assert_eq!(before.replica_grants, after.replica_grants);
-        }
+        let config = keys.config(ROOT, "old", keys.old(),
+            Some(("new", &keys.next, 4_000_000_000)));
+        let mac = FenceMac::new(ROOT).unwrap();
+        let snapshot = config.fence_snapshot(|identity| mac.identity(identity)).unwrap();
+        assert!(homogeneous_snapshot(&snapshot));
+
+        let mut ring_marker = snapshot.clone();
+        ring_marker.get_mut("JWT").unwrap().algorithm = "HS256".to_string();
+        assert!(!homogeneous_snapshot(&ring_marker));
+
+        let mut key_marker = snapshot;
+        key_marker.get_mut("JWT").unwrap().keys.get_mut("new").unwrap().algorithm = "HS256".to_string();
+        assert!(!homogeneous_snapshot(&key_marker));
     }
 
     #[test]
-    fn key_metadata_requires_explicit_algorithm() {
+    fn durable_key_metadata_requires_the_fixed_rs256_marker() {
         let old = r#"{"identity":"material","verification_identity":"verifier","verify_until":null}"#;
         assert!(serde_json::from_str::<KeyMetadata>(old).is_err());
         let null = r#"{"identity":"material","verification_identity":"verifier","verify_until":null,"algorithm":null}"#;
         assert!(serde_json::from_str::<KeyMetadata>(null).is_err());
         let canonical = r#"{"identity":"material","verification_identity":"verifier","verify_until":null,"algorithm":"RS256"}"#;
         let key: KeyMetadata = serde_json::from_str(canonical).unwrap();
-        assert!(key.algorithm == JwtAlgorithm::RS256);
+        assert_eq!(key.algorithm, RS256_ALGORITHM_MARKER);
         assert_eq!(serde_json::to_string(&key).unwrap(), canonical);
         let mut different = key.clone();
-        different.algorithm = JwtAlgorithm::HS256;
+        different.algorithm = "HS256".to_string();
         assert!(!key.same_verifier(&different));
     }
 
     #[test]
-    fn prepared_snapshot_records_every_key_algorithm() {
+    fn prepared_snapshot_records_only_rs256_metadata() {
         let keys = FenceKeys::generate();
         let cfg = keys.config(ROOT, "old", keys.old(), Some(("new", &keys.next, 4_000_000_000)));
         let mac = FenceMac::new(ROOT).unwrap();
@@ -911,8 +911,8 @@ mod tests {
             .flat_map(|ring| ring.keys.values().map(|key| key.identity.as_str()))
             .collect();
         assert_eq!(identities.len(), 5);
-        assert!(snapshot.values().all(|ring| ring.algorithm == JwtAlgorithm::RS256
-            && ring.keys.values().all(|key| key.algorithm == JwtAlgorithm::RS256)));
+        assert!(snapshot.values().all(|ring| ring.algorithm == RS256_ALGORITHM_MARKER
+            && ring.keys.values().all(|key| key.algorithm == RS256_ALGORITHM_MARKER)));
         let serialized = serde_json::to_string(&snapshot).unwrap();
         let decoded: Snapshot = serde_json::from_str(&serialized).unwrap();
         assert!(snapshot == decoded);

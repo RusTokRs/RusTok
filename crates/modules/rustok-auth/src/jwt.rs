@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use jsonwebtoken::{EncodingKey, decode_header};
 use uuid::Uuid;
 
-use crate::config::{AuthConfig, JwtAlgorithm};
+use crate::config::AuthConfig;
 use crate::error::{AuthError, Result};
 use crate::jwt_keyring::{JwtPurpose, ValidatedJwtKeyring};
 
@@ -404,15 +404,8 @@ fn token_expiration(now: chrono::DateTime<Utc>, ttl_seconds: u64) -> Result<chro
 
 // ─── Key helpers ─────────────────────────────────────────────────────
 
-fn jwt_algorithm(algorithm: &JwtAlgorithm) -> Algorithm {
-    match algorithm {
-        JwtAlgorithm::HS256 => Algorithm::HS256,
-        JwtAlgorithm::RS256 => Algorithm::RS256,
-    }
-}
-
 fn prepared_header(ring: &ValidatedJwtKeyring, purpose: JwtPurpose) -> Header {
-    let mut header = Header::new(jwt_algorithm(ring.algorithm()));
+    let mut header = Header::new(Algorithm::RS256);
     header.kid = Some(ring.active_kid().to_string());
     header.typ = Some(purpose.typ().to_string());
     header
@@ -469,17 +462,12 @@ fn decode_for_purpose<T: DeserializeOwned>(
     let header = auth_jwt_header(token)?;
     config.with_jwt_operation(|prepared| {
         let selected = prepared.for_purpose(purpose);
-        if header.typ != purpose.typ() {
+        if header.typ != purpose.typ() || header.alg != Algorithm::RS256 {
             return Err(AuthError::InvalidAccessToken);
         }
-        let (algorithm, key, cutoff) = selected.select(&header.kid, Utc::now().timestamp())
+        let (key, cutoff) = selected.select(&header.kid, Utc::now().timestamp())
             .ok_or(AuthError::InvalidAccessToken)?;
-        // The trusted purpose and exact kid determine the algorithm. The
-        // untrusted JOSE alg is an equality check, never a key selector.
-        if header.alg != jwt_algorithm(algorithm) {
-            return Err(AuthError::InvalidAccessToken);
-        }
-        let validation = strict_jwt_validation(config, algorithm);
+        let validation = strict_jwt_validation(config);
         let claims = decode::<T>(token, key, &validation)
             .map_err(|_| AuthError::InvalidAccessToken)?.claims;
         if cutoff.is_some_and(|until| Utc::now().timestamp() >= until) {
@@ -498,8 +486,8 @@ fn valid_token_times(iat: usize, exp: usize) -> bool {
     iat > 0 && iat <= now && iat < exp && now < exp
 }
 
-fn strict_jwt_validation(config: &AuthConfig, algorithm: &JwtAlgorithm) -> Validation {
-    let mut validation = Validation::new(jwt_algorithm(algorithm));
+fn strict_jwt_validation(config: &AuthConfig) -> Validation {
+    let mut validation = Validation::new(Algorithm::RS256);
     validation.set_required_spec_claims(&["exp", "iss", "aud", "sub"]);
     validation.validate_exp = true;
     validation.validate_nbf = true;
@@ -648,28 +636,31 @@ mod tests {
     }
 
     #[test]
-    fn raw_host_root_cannot_verify_jwt_or_enter_history() {
+    fn non_rs256_jose_header_and_raw_root_history_are_rejected() {
         use serde_json::json;
         let old = test_config();
         let tenant = Uuid::new_v4();
         let access = encode_access_token(&old, Uuid::new_v4(), tenant, UserRole::Customer, Uuid::new_v4()).unwrap();
-        let claims = decode_access_token(&old, &access).unwrap();
-        let mut header = jwt_header(&old, JwtPurpose::Access);
-        header.alg = Algorithm::HS256;
-        let root_key = EncodingKey::from_secret(old.secret().as_bytes());
-        let forged = encode(&header, &claims, &root_key).unwrap();
+        let mut segments = access.split('.');
+        let _original_header = segments.next().unwrap();
+        let payload = segments.next().unwrap();
+        let signature = segments.next().unwrap();
+        assert!(segments.next().is_none());
+        let forged_header = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&json!({
+            "alg": "HS256", "typ": JwtPurpose::Access.typ(), "kid": "access"
+        })).unwrap());
+        let forged = format!("{forged_header}.{payload}.{signature}");
         assert!(decode_access_token(&old, &forged).is_err());
 
-        let mut candidate = old.clone();
-        candidate.set_test_jwt_keyring(crate::jwt_keyring::JwtKeyring::from_json(&json!({
-            "active_kid": "access-next",
-            "verification_keys": [{
-                "kid": "access", "material": old.secret(),
-                "verify_until": Utc::now().timestamp() + 3600
-            }]
-        }).to_string()).unwrap());
-        assert!(crate::config::validate_auth_config(&candidate).is_err());
-        assert!(decode_access_token(&candidate, &forged).is_err());
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let mut document = fixture.document(2);
+        document["access"]["keyring"]["verification_keys"] = json!([{
+            "kid": "mac-root", "material": old.secret(),
+            "verify_until": Utc::now().timestamp() + 3600
+        }]);
+        assert!(crate::build_auth_config_from_document(
+            old.secret().to_string(), 900, Default::default(), document.to_string().as_bytes(),
+        ).is_err());
     }
 
     #[test]
@@ -752,32 +743,6 @@ mod tests {
         assert!(decode_password_reset_token(&retired, &reset).is_ok());
         // Immutable snapshots continue to behave according to their own cutoffs.
         assert!(decode_access_token(&promoted, &old_token).is_ok());
-    }
-
-    #[test]
-    fn mixed_algorithm_history_is_rejected_before_crypto() {
-        use serde_json::json;
-        use crate::jwt_keyring::JwtKeyring;
-        let cutoff = Utc::now().timestamp() + 3600;
-        let fixture = JwtKeyringFixture::generate().unwrap();
-        let mut rsa = config_from_document(&fixture.document(1));
-        rsa.set_test_jwt_keyring(JwtKeyring::from_json(&json!({
-            "active_kid":"rsa",
-            "verification_keys":[{"kid":"hs","algorithm":"HS256",
-                "material":"independent-hmac-material-at-least-32-bytes","verify_until":cutoff}]
-        }).to_string()).unwrap());
-        assert!(crate::validate_auth_config(&rsa).is_err());
-        let mut hs = AuthConfig::new(ROOT.into());
-        hs.set_test_jwt_keyring(JwtKeyring::from_json(&json!({
-            "active_kid":"hs",
-            "verification_keys":[{"kid":"rsa","algorithm":"RS256",
-                "material":fixture.access.public_pem(),"verify_until":cutoff}]
-        }).to_string()).unwrap());
-        assert!(crate::validate_auth_config(&hs).is_err());
-        for config in [rsa, hs] {
-            assert!(encode_access_token(&config, Uuid::new_v4(), Uuid::new_v4(),
-                UserRole::Customer, Uuid::new_v4()).is_err());
-        }
     }
 
     #[test]
@@ -910,21 +875,6 @@ mod tests {
         assert_eq!(claims.sub, user_id);
         assert_eq!(claims.tenant_id, tenant_id);
         assert_eq!(claims.session_id, session_id);
-    }
-
-    #[test]
-    fn rs256_access_token_is_not_accepted_as_hs256() {
-        let rs256_config = test_config();
-        let token = encode_access_token(
-            &rs256_config,
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            UserRole::Customer,
-            Uuid::new_v4(),
-        )
-        .unwrap();
-
-        assert!(decode_access_token(&AuthConfig::new(ROOT.into()), &token).is_err());
     }
 
     #[test]

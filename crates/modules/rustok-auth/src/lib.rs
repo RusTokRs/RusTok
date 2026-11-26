@@ -52,7 +52,7 @@ pub use admin_mutations::{
 pub use backfill::AuthUserBackfillDbReader;
 pub use bootstrap::{AuthUserBootstrapDbWriter, AuthUserBootstrapRecord, AuthUserBootstrapRequest};
 pub use config::{
-    AuthConfig, AuthSettingsOverrides, JwtAlgorithm, JwtKeyringPublisher, JwtLeaseReadiness,
+    AuthConfig, AuthSettingsOverrides, JwtKeyringPublisher, JwtLeaseReadiness,
     MAX_JWT_KEYRING_DOCUMENT_BYTES, build_auth_config_from_document, validate_auth_config,
 };
 pub use credentials::{

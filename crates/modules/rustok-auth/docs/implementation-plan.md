@@ -50,57 +50,20 @@ static grants and malformed registry identifiers, latch observed lease expiry,
 and validate authority before application migration. Focused regressions unrun.
 
 RS256-only JWT target: [accepted ADR](../../../../DECISIONS/2026-11-25-rs256-only-jwt.md).
-Mixed histories, mixed persisted snapshots/grants and cross-algorithm
-promotion are rejected in source. Next implement the coordinated four-RSA-pair
-bootstrap and all consumer/fixture cutover. A one-time POSIX dev/test tool
-now provisions four independent RSA pairs outside the checkout without
-replacing an existing keyring or touching persisted security state. Its
-source regression is authored but unrun; host/test consumers still need
-coordinated migration. The shared `rustok-test-utils` JWT feature generates
-fresh independent RSA pairs in memory without embedded private keys or
-external executables. Auth document bootstrap and server reset/verification
-regressions use it. Durable fence, rolling admission, revocation, authority,
-witness and observability scenarios now use fresh RSA pairs per isolated
-ledger and public-only history. Explicit cross-algorithm negative coverage is
-retained until the algorithm removal. Local lease gates, immutable snapshot concurrency and process-local
-rotation now exercise the same RSA fixture contract. JWT primitive tests now use independent RSA fixtures for positive signing
-and verification, including exact JOSE checks and cross-purpose rejection.
-Embedded test RSA keys in the Auth owner sources are removed. Generic Auth
-builders, environment-backed key sources and inline RSA overrides are removed;
-the complete generation-bearing document is the sole production key source.
-Explicit HS256 negative coverage remains until physical algorithm removal.
-Server host-policy, runtime-context, OAuth confirmation and extractor tests
-now exercise complete RSA fixtures, with issuance using the same runtime's
-configuration. Full development Compose now mounts the explicitly
-provisioned dedicated keyring directory read-only and the dev launch script
-requires an existing readable file before starting migrations. Browser smoke
-CI, remaining constructors and mandatory executable source admission still
-need coordinated migration. Follow-up source review corrected a stale optional
-JOSE kid assertion, added distinct keyed snapshot identity assertions, and
-hardened one-time provisioning directory durability and dev mount scope.
-Scoped execution remains pending. The file-source entry point now
-constructs and validates only the actual complete candidate, without
-instantiating default signing inputs; the complete generation-bearing file is
-the only production JWT key source. `AuthSettingsOverrides` is policy-only;
-algorithm selectors, inline PEM values and environment-backed key references
-are not accepted. Independent MAC root validation now rejects PEM key material
-and weak roots at preparation, host proofs and fence MAC derivation; durable
-domains are unchanged. Candidate activation rejects mismatched local policy and
-unmanaged publishers before grant mutation. Remove the remaining HS256 JWT
-implementation and canonicalize persisted RSA-only metadata. Retained-state
-conversion and verification are explicit blockers to deployment where needed.
+All repository-owned JWT signing and verification now use RS256 exclusively.
+The mandatory generation-bearing file is the only key source; the document
+contains no algorithm marker or alternate key source. JOSE verification pins
+RS256 before exact kid lookup. The shared test fixture and POSIX dev/test
+provisioner produce four independent RSA purpose pairs; no HS256 signer,
+verifier, derivation, secret inventory, algorithm enum or default key
+constructor remains. Durable fence and witness metadata retain a fixed RS256
+assertion for authenticated-state continuity; any HS256 metadata is rejected.
+Removing that marker requires a separately authorized offline conversion
+preserving tombstones, revoked identities, generation and witness revision.
 Scoped compilation, regression execution and independent-replica rollout
-remain pending. Before root MAC rotation, complete the remaining pre-release
-zero-legacy cleanup: remaining canonical unreleased token contracts and review
-of configuration defaults/aliases. No inline or environment-backed JWT key
-sources remain; a complete document is required for every production runtime.
-The keyring document has no schema-version
-tag and enforces the same generation range as the durable fence. Mandatory kid for
-every purpose and removal of raw-root JWT history are source-implemented.
-Access grant type and scopes are now required; invite issuance nonce is
-a mandatory non-nil UUID. Source regressions reject missing and null claims. Preserve key rotation, terminal tombstones,
-lease fencing and witness security. Do not silently reset non-disposable
-authority or witness state; follow the owner cutover contract.
+evidence remain pending. Do not reset non-disposable authority or witness
+state; retained-state deployment remains blocked until the converter is
+available.
 
 JWT migration consolidation is blocked by the repository-wide
 [admission guide](../../../../docs/guides/safe-database-migrations-and-squashing.md).

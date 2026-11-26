@@ -1,7 +1,7 @@
 // Re-export types from rustok-auth (these don't need error conversion).
 pub use rustok_auth::{
     AuthConfig, AuthError, AuthSettingsOverrides, Claims, DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
-    InviteClaims, JwtAlgorithm, MIN_PASSWORD_LENGTH_FLOOR_CHARS, normalize_display_name,
+    InviteClaims, MIN_PASSWORD_LENGTH_FLOOR_CHARS, normalize_display_name,
     normalize_email, password_hash_needs_rehash, validate_password_policy,
 };
 
@@ -345,7 +345,6 @@ mod tests {
         ).expect("auth config");
 
         assert_eq!(generation, 7);
-        assert_eq!(config.algorithm().unwrap(), JwtAlgorithm::RS256);
         assert_eq!(config.access_expiration, 900);
         assert_eq!(config.refresh_expiration, 60 * 60 * 24 * 30);
     }
