@@ -267,34 +267,15 @@ impl AuthLifecycleService {
             );
             return Err(InviteAcceptanceError::InvalidToken);
         }
-        let authority_check = if let Some(slug) = custom_role_slug.as_deref() {
-            rustok_rbac::validate_custom_role_grant_on(
-                &tx,
-                tenant_id,
-                &issuer_role,
-                &issuer_permissions,
-                slug,
-            )
-            .await
-        } else {
-            async {
-                // Issuance enforces both the persisted role hierarchy and
-                // permission ceiling. Re-check both: an issuer demoted while
-                // the invite was pending must not retain the old role's
-                // assignment authority just because grants still overlap.
-                if role != rustok_core::UserRole::Customer {
-                    rustok_rbac::require_role_assignment(&issuer_role, &role)?;
-                }
-                rustok_rbac::validate_persisted_role_grant_on(
-                    &tx,
-                    tenant_id,
-                    &issuer_permissions,
-                    &role.to_string(),
-                )
-                .await
-            }
-            .await
-        };
+        let authority_check = validate_invite_role_grant_on(
+            &tx,
+            tenant_id,
+            &issuer_role,
+            &issuer_permissions,
+            &role,
+            custom_role_slug.as_deref(),
+        )
+        .await;
         if let Err(error) = authority_check {
             tracing::warn!(
                 %error,
@@ -455,7 +436,7 @@ impl AuthLifecycleService {
     }
 }
 
-fn issuer_may_issue_invite(
+pub(crate) fn issuer_may_issue_invite(
     permissions: &[rustok_api::Permission],
     role: &rustok_core::UserRole,
     is_custom_role: bool,
@@ -467,6 +448,34 @@ fn issuer_may_issue_invite(
     } else {
         rustok_rbac::has_effective_permission_in_set(permissions, &Permission::USERS_CREATE)
             || rustok_rbac::has_effective_permission_in_set(permissions, &Permission::USERS_MANAGE)
+    }
+}
+
+/// Validate delegation against one authority view. Issuance uses both the
+/// request-bound ceiling and freshly read persisted authority; acceptance
+/// uses freshly read persisted authority. Existing target roles stay locked
+/// until the caller's transaction ends.
+pub(crate) async fn validate_invite_role_grant_on(
+    tx: &sea_orm::DatabaseTransaction,
+    tenant_id: uuid::Uuid,
+    actor_role: &rustok_core::UserRole,
+    actor_permissions: &[rustok_api::Permission],
+    role: &rustok_core::UserRole,
+    custom_role_slug: Option<&str>,
+) -> Result<String, rustok_rbac::RbacRolePersistenceError> {
+    if let Some(slug) = custom_role_slug {
+        rustok_rbac::validate_custom_role_grant_on(
+            tx, tenant_id, actor_role, actor_permissions, slug,
+        )
+        .await
+    } else {
+        if role != &rustok_core::UserRole::Customer {
+            rustok_rbac::require_role_assignment(actor_role, role)?;
+        }
+        rustok_rbac::validate_persisted_role_grant_on(
+            tx, tenant_id, actor_permissions, &role.to_string(),
+        )
+        .await
     }
 }
 

@@ -70,6 +70,11 @@ acceptance fail as invalid, an acceptance committed first cannot be retroactivel
 revoked, and repeated revocation does not emit duplicate lifecycle events. The
 unique `auth_invite_consumptions.token_hash` constraint remains the independent
 single-use replay fence.
+Issuance locks and reloads the active issuer, reads persisted grants and
+hierarchy, and requires both the authenticated request ceiling and current
+persisted authority to allow the same target role before signing. Acceptance
+shares the delegation validator. This does not establish a durable history of
+issuer or role-policy changes, nor a transaction-spanning module-policy fence.
 
 The host additionally composition-gates the OAuth protocol surface and discovery metadata with
 `settings.rustok.features.oauth_enabled`; when the gate is closed the routes are not mounted and
