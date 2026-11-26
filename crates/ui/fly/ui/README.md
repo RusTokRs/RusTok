@@ -18,6 +18,14 @@ The crate defines:
 - a framework-neutral contribution adapter contract;
 - a deterministic state machine suitable for mock-adapter tests.
 
+## Keyboard shortcut parity
+
+`fixtures/keyboard-shortcuts.json` is shared by the Rust shortcut resolver tests and the Page
+Builder iframe Playwright scenarios. It records the expected semantic shortcut (or no shortcut);
+the browser checks admission and the exact forwarded stroke. Native composition and editable DOM
+boundaries are exercised separately in the browser. Extend the shared cases whenever the shortcut
+contract changes.
+
 ## Capability policy
 
 `EditorCapabilityPolicy` evaluates the intersection of requested product features, tenant policy,

@@ -11,6 +11,23 @@ const canvasRuntimePath = resolve(
   '../../crates/modules/rustok-page-builder/admin/src/editor/canvas_runtime.js'
 );
 
+const shortcutCasesPath = resolve(
+  process.cwd(),
+  '../../crates/ui/fly/ui/fixtures/keyboard-shortcuts.json'
+);
+
+type ShortcutCase = {
+  name: string;
+  stroke: {
+    key: string;
+    code: string | null;
+    modifiers: { shift: boolean; alt: boolean; control: boolean; meta: boolean };
+    repeat: boolean;
+    editing_text: boolean;
+  };
+  expected: string | null;
+};
+
 type RuntimeEvent = {
   type: string;
   sequence?: number;
@@ -208,6 +225,42 @@ async function dispatchFlyIntent(
 }
 
 test.describe('Fly Editor Authoring Scenarios', () => {
+  test('shared Rust shortcut cases match canvas admission and payloads', async ({ page }) => {
+    const cases = JSON.parse(await readFile(shortcutCasesPath, 'utf8')) as ShortcutCase[];
+    expect(cases.length).toBeGreaterThan(0);
+    await mountEditorWorkspace(page, '<input id="shortcut-input">');
+    const results = await page.frameLocator('#canvas-main-frame').locator('body').evaluate(
+      (body, cases) => cases.map(({ name, stroke }) => {
+        const target = stroke.editing_text ? body.querySelector('#shortcut-input')! : body;
+        const event = new KeyboardEvent('keydown', {
+          bubbles: true,
+          cancelable: true,
+          key: stroke.key,
+          code: stroke.code ?? '',
+          shiftKey: stroke.modifiers.shift,
+          altKey: stroke.modifiers.alt,
+          ctrlKey: stroke.modifiers.control,
+          metaKey: stroke.modifiers.meta,
+          repeat: stroke.repeat
+        });
+        target.dispatchEvent(event);
+        return { name, prevented: event.defaultPrevented };
+      }),
+      cases
+    );
+    expect(results).toEqual(cases.map(({ name, expected }) => ({
+      name, prevented: expected !== null
+    })));
+    const expectedStrokes = cases.filter(({ expected }) => expected !== null).map(({ stroke }) => stroke);
+    // postMessage preserves order; the final admitted sentinel also flushes preceding cases.
+    await expect.poll(() => page.evaluate(() => {
+      const events = (globalThis as typeof globalThis & {
+        __flyRuntimeEvents?: RuntimeEvent[];
+      }).__flyRuntimeEvents ?? [];
+      return events.filter((event) => event.messageType === 'key_stroke').map((event) => event.message?.stroke);
+    })).toEqual(expectedStrokes);
+  });
+
   test('canvas forwards only admitted editor shortcuts', async ({ page }) => {
     await mountEditorWorkspace(
       page,

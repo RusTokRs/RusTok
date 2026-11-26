@@ -63,7 +63,10 @@
   // when the character did not match, so a layout that does produce a matching character — QWERTZ
   // reports `key: 'z'` with `code: 'KeyY'` — keeps its current behaviour.
   const editorShortcut = (event, editingText) => {
-    const key = event.key.trim().toLowerCase();
+    // Rust str::trim uses Unicode White_Space, not ECMAScript trim (which
+    // includes BOM but excludes NEL). Match Rust's ASCII-only case folding too.
+    const key = event.key.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, '')
+      .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
     if (event.isComposing || event.getModifierState('AltGraph')
       || ['dead', 'process', 'unidentified'].includes(key)) return false;
     const primary = event.ctrlKey || event.metaKey;

@@ -139,6 +139,29 @@ fn normalize_key(key: &str) -> String {
 mod tests {
     use super::*;
 
+    #[derive(Deserialize)]
+    struct ShortcutCase {
+        name: String,
+        stroke: KeyStroke,
+        expected: Option<EditorShortcut>,
+    }
+
+    #[test]
+    fn shared_shortcut_cases_match_the_owner_contract() {
+        let cases: Vec<ShortcutCase> =
+            serde_json::from_str(include_str!("../fixtures/keyboard-shortcuts.json"))
+                .expect("shared keyboard shortcut fixtures");
+        assert!(!cases.is_empty());
+        for case in cases {
+            assert_eq!(
+                resolve_editor_shortcut(&case.stroke),
+                case.expected,
+                "{}",
+                case.name
+            );
+        }
+    }
+
     fn stroke(key: &str, modifiers: ModifierState) -> KeyStroke {
         KeyStroke {
             key: key.to_string(),
