@@ -465,7 +465,8 @@ fn decode_for_purpose<T: DeserializeOwned>(
         if header.typ != purpose.typ() || header.alg != Algorithm::RS256 {
             return Err(AuthError::InvalidAccessToken);
         }
-        let (key, cutoff) = selected.select(&header.kid, Utc::now().timestamp())
+        let kid = header.kid.as_deref().ok_or(AuthError::InvalidAccessToken)?;
+        let (key, cutoff) = selected.select(kid, Utc::now().timestamp())
             .ok_or(AuthError::InvalidAccessToken)?;
         let validation = strict_jwt_validation(config);
         let claims = decode::<T>(token, key, &validation)
