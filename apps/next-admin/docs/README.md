@@ -113,12 +113,12 @@ and surface read errors. Runtime and browser verification remain required.
 ## Authentication and session lifecycle
 
 - First-party login and registration use the Rustok cookie-session REST endpoints.
-  The backend issues a rotating refresh token in an HttpOnly cookie; the host
-  stores it together with an independent 256-bit CSPRNG retry seed in one
-  HttpOnly, SameSite=Lax envelope cookie scoped to `/api`, and stores the
+  The backend issues an HttpOnly envelope containing the rotating token and
+  independent 256-bit seed. The BFF relays the exact owner-issued envelope
+  in an HttpOnly, SameSite=Lax cookie scoped to `/api`, and stores the
   short-lived access token in an HttpOnly cookie scoped to `/api/rustok`.
   Both are Secure in production. The seed never enters JavaScript, Auth.js
-  session claims, the upstream cookie or logs.
+  session claims or logs.
 - Auth.js contains identity and tenant scope only. Rustok access/refresh tokens
   are not exposed by the Auth.js session endpoint or client components.
 - Browser GraphQL requests use the same-origin BFF. It ignores browser bearer
@@ -126,11 +126,11 @@ and surface read errors. Runtime and browser verification remain required.
   access credentials server-side, and forwards only the server-held access
   token. Cross-origin requests are rejected.
 - Logout revokes the backend refresh session and clears host cookies.
-  The BFF derives a generation-specific HMAC-SHA256 operation proof from the
-  retained seed, tenant slug and presented refresh credential and sends only
-  that proof and the bare token to the Auth backend. All replicas derive the
-  same proof without a process-local cache; an ambiguous upstream outcome is
-  retried once with identical inputs. A browser retry with the unchanged
+  The Auth backend derives a generation-specific HMAC-SHA256 operation proof
+  from the retained seed, resolved tenant UUID and presented refresh token.
+  The BFF forwards the envelope unchanged and checks returned seed continuity.
+  All replicas derive the same proof without a process-local cache; an
+  ambiguous upstream outcome is retried once with identical inputs. A browser retry with the unchanged
   envelope recovers the current successor during the server's 30-second
   grace. If the successor cookie was already applied, the next refresh uses
   a fresh generation-specific proof. Only refresh is retried automatically,
@@ -139,8 +139,9 @@ and surface read errors. Runtime and browser verification remain required.
   Only a definitive backend 401 clears cookies in this path. Refresh responses
   must match the Auth.js subject before being persisted. Backend redirects are
   refused to avoid forwarding credentials to another destination.
-  Cutover requires stopping old BFF writers and revoking/re-signing-in old
-  bare-cookie sessions; the new BFF does not accept legacy bare cookies.
+  Cutover requires stopping old backend and BFF writers and revoking/re-signing-in
+  old sessions; the new backend does not accept legacy bare cookies or explicit
+  cookie refresh proof headers. A successful logout requires the explicit ok body.
   Full browser/BFF/backend failure injection and cross-replica tests remain
   pending; post-grace recovery and stale response ordering are not guaranteed.
 - Self-service email changes require the current password and a one-time token

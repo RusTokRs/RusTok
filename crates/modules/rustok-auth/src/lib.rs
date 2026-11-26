@@ -61,7 +61,7 @@ pub use credentials::{
     password_hash_needs_rehash, validate_password_policy, verify_password,
 };
 pub use crypto::{
-    AuthMacPurpose, AuthRefreshRetryKey, REFRESH_RETRY_KEY_HEADER, auth_purpose_mac,
+    AuthMacPurpose, AuthRefreshCookie, AuthRefreshRetryKey, REFRESH_RETRY_KEY_HEADER, auth_purpose_mac,
     is_canonical_auth_mac_tag,
 };
 pub use error::AuthError;

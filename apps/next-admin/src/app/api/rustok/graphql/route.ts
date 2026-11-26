@@ -152,7 +152,7 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    if (!stored.accessToken && !stored.refreshToken) {
+    if (!stored.accessToken && !stored.refreshCredential) {
       return graphQLError(
         'UNAUTHORIZED',
         'Rustok session is unavailable. Sign in again.',
@@ -233,7 +233,7 @@ export async function POST(request: Request): Promise<Response> {
     upstreamHeaders.set('x-tenant-slug', tenantSlug);
     if (tenantId) upstreamHeaders.set('x-tenant-id', tenantId);
   } else {
-    if (stored.accessToken || stored.refreshToken) {
+    if (stored.accessToken || stored.refreshCredential) {
       await clearRustokSessionCookies();
       return graphQLError(
         'UNAUTHORIZED',

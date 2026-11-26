@@ -64,9 +64,9 @@ lockfile is removed. Docker image build/runtime still require external verificat
 
 ## Known Limitations / Pending Implementation
 
-Proof-bound BFF refresh is source-wired using an independent HttpOnly seed and
-one generation-bound proof, with bounded same-operation retry. Revoke old bare-cookie
-sessions before the coordinated cutover and require a new sign-in. Mounted
+Proof-bound BFF refresh relays the Auth-owned HttpOnly token/seed envelope
+with bounded same-operation retry. Revoke old sessions before the coordinated
+backend/BFF cutover and require a new sign-in. Mounted
 browser/BFF/backend response-loss and replica-race verification, including
 late cookie delivery and Auth.js logout failure handling, remain pending.
 See [session lifecycle](docs/README.md#authentication-and-session-lifecycle).

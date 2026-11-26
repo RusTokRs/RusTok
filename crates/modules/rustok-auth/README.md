@@ -101,12 +101,12 @@ it never provisions a service or adds grants. Human transport authentication is 
 ### Known Limitations / Pending Implementation
 
 Direct first-party refresh has source-level proof-bound recovery through the
-raw and cookie REST endpoints and GraphQL HTTP transport. Clients without
-an independently generated, retained retry key still cannot recover a lost
-rotation response. Next Admin and shared Leptos native/SSR BFF source-wire
-generation-bound proofs with independent HttpOnly login seeds and bounded
-retry. Direct Leptos CSR, standalone Storefront SSR composition, Next
-Storefront, mobile/native proof handling, generated API header documentation, compilation
+raw and cookie REST endpoints and GraphQL HTTP transport. The cookie
+REST owner issues an HttpOnly token/seed envelope and derives its proof;
+Next Admin relays that envelope and direct Leptos CSR coordinates cooperating
+tabs with Web Locks. Shared Leptos native/SSR BFF uses the raw proof scheme.
+All use bounded ambiguous refresh retry. Standalone Storefront SSR composition,
+Next Storefront, mobile/native proof handling, generated API header documentation, compilation
 and multi-replica runtime evidence remain pending. See the
 [proof-bound refresh ADR](../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
 

@@ -338,22 +338,22 @@ concurrency checks remain unrun.
 
 ## Proof-bound direct session refresh recovery (source only)
 
-The host accepts the owner-defined secret retry header for raw/cookie REST
-refresh and GraphQL HTTP refresh, derives the opaque successor under the
+The host accepts the owner-defined secret retry header for raw REST and
+GraphQL HTTP refresh, and derives the cookie REST proof from its envelope; derives the opaque successor under the
 independent MAC root, verifies the current digest and history under the
 user/session fences, and preserves the original refresh deadline and history
 on recovery. The GraphQL provider preserves rotation conflicts as CONFLICT.
 See [the recovery ADR](../../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
 
-Next Admin BFF source-wires a 256-bit independent login seed in the same
-HttpOnly envelope as the refresh token, deriving the per-generation proof
-with HMAC-SHA256 over tenant slug and presented token. The original envelope
-survives loss of an upstream or BFF response, and replicas derive the same
-proof. One bounded automatic retry handles ambiguous upstream refresh results;
-the domain GraphQL operation is never automatically replayed. The BFF
-rejects duplicate/malformed cookies and redirects, checks the refreshed
-subject and does not clear cookies on transient refresh failures. Existing
-bare-cookie sessions require coordinated revocation and new sign-in.
+The cookie-session REST owner now issues one canonical HttpOnly token/seed
+envelope and derives the proof from the seed, resolved tenant UUID and
+presented token. Next Admin relays the owner envelope unchanged; its former
+local derivation has been removed. One bounded automatic retry handles
+ambiguous upstream refresh results; the domain GraphQL operation is never
+automatically replayed. The BFF rejects duplicate/malformed cookies and
+redirects, checks the refreshed subject and seed continuity, and does not
+clear cookies on transient refresh failures. Logout requires explicit ok.
+Existing sessions require coordinated revocation and new sign-in.
 
 Leptos shared native SSR/hydrate and Admin SSR middleware now source-wire
 a canonical HttpOnly envelope, independently generated OS CSPRNG seed,
@@ -365,8 +365,17 @@ Old native bare cookies require coordinated session revocation and new sign-in.
 Scoped proof, cookie admission, status and mock HTTP retry regressions are
 authored and unrun. Only native/SSR cryptographic dependencies are enabled.
 
-Remaining implementation: direct Leptos CSR proof retention and coordination,
-standalone Storefront SSR validated composition,
+Direct Leptos CSR now uses the Auth-owned HttpOnly envelope with no
+JavaScript-readable secret storage. A shared exclusive Web Lock bounds
+cookie mutation admission and serializes cooperating tabs through response
+parsing and one ambiguous refresh retry. The secure-context browser
+transport refuses redirects, uses no-store and same-origin Fetch, and
+requires Web Locks/AbortSignal.timeout. Cookie admission, proof derivation,
+retry and storage regressions are source-authored; mounted browser and
+failure-injection verification remain unrun. Out-of-order noncooperating
+responses, stale intents and cross-tab provider projections remain open.
+
+Remaining implementation: standalone Storefront SSR validated composition,
 Next Storefront (currently observation-only, without its own refresh flow),
 mobile/native consumers, generated API header reference updates, and
 header secrecy in proxies/telemetry. Next Admin browser/runtime and

@@ -124,9 +124,101 @@ impl AuthRefreshRetryKey {
     }
 }
 
+/// The cookie endpoint owns this independent seed. Never log or serialize the
+/// envelope in JSON. One HttpOnly cookie carries both secrets atomically.
+#[derive(Clone, PartialEq, Eq)]
+pub struct AuthRefreshCookie {
+    token: String,
+    seed: String,
+}
+
+impl std::fmt::Debug for AuthRefreshCookie {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("AuthRefreshCookie(<redacted>)")
+    }
+}
+
+impl AuthRefreshCookie {
+    fn valid_secret(value: &str) -> bool {
+        is_canonical_auth_mac_tag(value) && value.bytes().any(|byte| byte != b'0')
+    }
+
+    pub fn generate_seed() -> Result<String> {
+        let seed = crate::credentials::generate_refresh_token()?;
+        if !Self::valid_secret(&seed) {
+            return Err(AuthError::RefreshTokenGenerationFailed);
+        }
+        Ok(seed)
+    }
+
+    pub fn new(token: &str, seed: String) -> Result<Self> {
+        if !Self::valid_secret(token) || !Self::valid_secret(&seed) {
+            return Err(AuthError::Validation("Invalid session cookie".into()));
+        }
+        Ok(Self { token: token.into(), seed })
+    }
+
+    pub fn parse(value: &str) -> Result<Self> {
+        let (token, seed) = value.split_once('.')
+            .ok_or_else(|| AuthError::Validation("Invalid session cookie".into()))?;
+        Self::new(token, seed.into())
+    }
+
+    pub fn token(&self) -> &str {
+        &self.token
+    }
+
+    pub fn cookie_value(&self) -> String {
+        format!("{}.{}", self.token, self.seed)
+    }
+
+    pub fn rotated(&self, token: &str) -> Result<Self> {
+        Self::new(token, self.seed.clone())
+    }
+
+    /// Each generation and tenant has a distinct operation proof. The bare
+    /// bearer alone cannot reproduce the key.
+    pub fn retry_key(&self, tenant_id: uuid::Uuid) -> Result<AuthRefreshRetryKey> {
+        if tenant_id.is_nil() {
+            return Err(AuthError::Internal("Invalid refresh tenant identity".into()));
+        }
+        let seed = hex::decode(&self.seed)
+            .map_err(|_| AuthError::Internal("Invalid cookie retry seed".into()))?;
+        let mut payload = b"rustok/auth/cookie-refresh-retry\0".to_vec();
+        payload.extend_from_slice(tenant_id.as_bytes());
+        payload.extend_from_slice(self.token.as_bytes());
+        let key = hmac_sha256(&seed, &payload)?;
+        if key == [0; 32] {
+            return Err(AuthError::Internal("Invalid cookie retry key".into()));
+        }
+        Ok(AuthRefreshRetryKey(key))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cookie_envelope_is_canonical_redacted_and_generation_bound() {
+        let token = "a1".repeat(32);
+        let seed = "b2".repeat(32);
+        let cookie = AuthRefreshCookie::new(&token, seed.clone()).unwrap();
+        assert_eq!(AuthRefreshCookie::parse(&cookie.cookie_value()).unwrap(), cookie);
+        let debug = format!("{cookie:?}");
+        assert!(!debug.contains(&token) && !debug.contains(&seed));
+        let tenant = uuid::Uuid::new_v4();
+        let proof = cookie.retry_key(tenant).unwrap().0;
+        assert_eq!(proof, AuthRefreshCookie::parse(&cookie.cookie_value()).unwrap().retry_key(tenant).unwrap().0);
+        assert_ne!(proof, cookie.rotated(&"c3".repeat(32)).unwrap().retry_key(tenant).unwrap().0);
+        assert_ne!(proof, cookie.retry_key(uuid::Uuid::new_v4()).unwrap().0);
+        assert_ne!(proof, AuthRefreshCookie::new(&token, "d4".repeat(32)).unwrap().retry_key(tenant).unwrap().0);
+        assert!(cookie.retry_key(uuid::Uuid::nil()).is_err());
+        for malformed in [token.clone(), format!("{token}.{}", "0".repeat(64)), format!("{token}.{seed}.extra"), format!("{}.{}", "A1".repeat(32), seed), String::new()] {
+            assert!(AuthRefreshCookie::parse(&malformed).is_err());
+        }
+        assert_ne!(AuthRefreshCookie::generate_seed().unwrap(), AuthRefreshCookie::generate_seed().unwrap());
+    }
 
     #[test]
     fn hmac_matches_rfc_4231_sha256_vector() {

@@ -314,29 +314,40 @@ fn build_session_cookie(refresh_token: &str, max_age_secs: u64, secure: bool) ->
     cookie
 }
 
-fn parse_session_cookie(headers: &axum::http::HeaderMap) -> Result<Option<String>> {
-    let mut token: Option<String> = None;
+fn parse_session_cookie(headers: &axum::http::HeaderMap) -> Result<Option<rustok_auth::AuthRefreshCookie>> {
+    let mut credential = None;
     for header in headers.get_all(axum::http::header::COOKIE).iter() {
         let value = header
             .to_str()
             .map_err(|_| Error::BadRequest("Invalid session Cookie header".into()))?;
         for part in value.split(';') {
             let Some((name, value)) = part.trim().split_once('=') else {
+                if part.trim() == SESSION_COOKIE_NAME {
+                    return Err(Error::BadRequest("Invalid session cookie".into()));
+                }
                 continue;
             };
-            if name != SESSION_COOKIE_NAME {
+            if name.trim() != SESSION_COOKIE_NAME {
                 continue;
             }
             // Multiple cookies with the same name can originate from
             // different paths. Picking the first is order-dependent and
             // would let logout report success without revoking the real token.
-            if token.is_some() {
+            if credential.is_some() {
                 return Err(Error::BadRequest("Ambiguous session cookie".into()));
             }
-            token = Some(value.trim().to_string());
+            credential = Some(rustok_auth::AuthRefreshCookie::parse(value)
+                .map_err(|_| Error::BadRequest("Invalid session cookie".into()))?);
         }
     }
-    Ok(token.filter(|value| !value.is_empty()))
+    Ok(credential)
+}
+
+fn reject_explicit_cookie_retry_key(headers: &axum::http::HeaderMap) -> Result<()> {
+    if headers.contains_key(rustok_auth::REFRESH_RETRY_KEY_HEADER) {
+        return Err(Error::BadRequest("Cookie refresh owns its retry proof".into()));
+    }
+    Ok(())
 }
 
 fn require_session_request_header(headers: &axum::http::HeaderMap) -> Result<()> {
@@ -363,6 +374,7 @@ fn with_session_cookie(mut response: Response, cookie: &str) -> Result<Response>
         Error::InternalServerError
     })?;
     value.set_sensitive(true);
+    response.headers_mut().insert(CACHE_CONTROL, axum::http::HeaderValue::from_static("no-store"));
     response
         .headers_mut()
         .append(axum::http::header::SET_COOKIE, value);
@@ -395,6 +407,7 @@ async fn session_login(
 ) -> Result<Response> {
     let email = params.email.trim();
     tracing::debug!("auth::session_login entry");
+    let seed = rustok_auth::AuthRefreshCookie::generate_seed().map_err(AuthLifecycleError::from)?;
     let user_agent = headers
         .get(USER_AGENT)
         .and_then(|value| value.to_str().ok())
@@ -418,8 +431,10 @@ async fn session_login(
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
+    let credential = rustok_auth::AuthRefreshCookie::new(&tokens.refresh_token, seed)
+        .map_err(|_| Error::InternalServerError)?;
     let cookie = build_session_cookie(
-        &tokens.refresh_token,
+        &credential.cookie_value(),
         tokens.refresh_expires_in,
         session_cookie_is_secure(&headers, addr.ip(), runtime_ctx.settings()),
     );
@@ -439,6 +454,7 @@ async fn session_register(
     let email = params.email.trim();
     tracing::debug!("auth::session_register entry");
     ensure_registration_enabled(ctx.runtime_ctx().settings())?;
+    let seed = rustok_auth::AuthRefreshCookie::generate_seed().map_err(AuthLifecycleError::from)?;
 
     let runtime_ctx = ctx.runtime_ctx();
     let config = ctx
@@ -467,8 +483,10 @@ async fn session_register(
         );
     }
 
+    let credential = rustok_auth::AuthRefreshCookie::new(&tokens.refresh_token, seed)
+        .map_err(|_| Error::InternalServerError)?;
     let cookie = build_session_cookie(
-        &tokens.refresh_token,
+        &credential.cookie_value(),
         tokens.refresh_expires_in,
         session_cookie_is_secure(&headers, addr.ip(), runtime_ctx.settings()),
     );
@@ -485,9 +503,10 @@ async fn session_refresh(
 ) -> Result<Response> {
     tracing::debug!("auth::session_refresh entry");
     require_session_request_header(&headers)?;
-    let retry_key = parse_refresh_retry_key(&headers)?;
-    let refresh_token = parse_session_cookie(&headers)?
+    reject_explicit_cookie_retry_key(&headers)?;
+    let credential = parse_session_cookie(&headers)?
         .ok_or_else(|| Error::Unauthorized("Invalid refresh token".into()))?;
+    let retry_key = credential.retry_key(tenant.id).map_err(AuthLifecycleError::from)?;
 
     let runtime_ctx = ctx.runtime_ctx();
     let config = ctx
@@ -498,15 +517,17 @@ async fn session_refresh(
         runtime_ctx,
         &config,
         tenant.id,
-        &refresh_token,
+        credential.token(),
         runtime_ctx.settings().features.email_verification,
-        retry_key.as_ref(),
+        Some(&retry_key),
     )
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
+    let rotated = credential.rotated(&tokens.refresh_token)
+        .map_err(|_| Error::InternalServerError)?;
     let cookie = build_session_cookie(
-        &tokens.refresh_token,
+        &rotated.cookie_value(),
         tokens.refresh_expires_in,
         session_cookie_is_secure(&headers, addr.ip(), runtime_ctx.settings()),
     );
@@ -539,11 +560,11 @@ async fn session_logout(
     // An absent or already-revoked cookie is an idempotent logout.
     // A persistence or event-publication failure is not: the refresh token
     // might still be live, so never report a successful server-side logout.
-    if let Some(refresh_token) = parse_session_cookie(&headers)? {
+    if let Some(credential) = parse_session_cookie(&headers)? {
         let revocation = AuthLifecycleService::logout_by_refresh_token_runtime(
             ctx.runtime_ctx(),
             tenant.id,
-            &refresh_token,
+            credential.token(),
         )
         .await;
         cookie_logout_revocation_result(revocation)?;
@@ -1336,48 +1357,36 @@ mod tests {
     #[test]
     fn session_cookie_parser_rejects_duplicate_names_instead_of_guessing() {
         use axum::http::{HeaderMap, HeaderValue, header};
-
+        let token = "a1".repeat(32);
+        let wire = format!("rustok-session={token}.{}", "b2".repeat(32));
         let mut headers = HeaderMap::new();
-        headers.append(
-            header::COOKIE,
-            HeaderValue::from_static("other=1; rustok-session=token-one"),
-        );
-        assert_eq!(
-            super::parse_session_cookie(&headers).unwrap(),
-            Some("token-one".to_string())
-        );
-
-        headers.append(
-            header::COOKIE,
-            HeaderValue::from_static("rustok-session=token-two"),
-        );
-        assert!(matches!(
-            super::parse_session_cookie(&headers),
-            Err(super::Error::BadRequest(_))
-        ));
-
-        let mut repeated = HeaderMap::new();
-        repeated.insert(
-            header::COOKIE,
-            HeaderValue::from_static("rustok-session=one; rustok-session=two"),
-        );
-        assert!(matches!(
-            super::parse_session_cookie(&repeated),
-            Err(super::Error::BadRequest(_))
-        ));
+        headers.append(header::COOKIE, HeaderValue::from_str(&format!("other=1; {wire}")).unwrap());
+        assert_eq!(super::parse_session_cookie(&headers).unwrap().unwrap().token(), token);
+        headers.append(header::COOKIE, HeaderValue::from_str(&wire).unwrap());
+        assert!(matches!(super::parse_session_cookie(&headers), Err(super::Error::BadRequest(_))));
+        headers.clear();
+        headers.insert(header::COOKIE, HeaderValue::from_str(&format!("{wire}; {wire}")).unwrap());
+        assert!(matches!(super::parse_session_cookie(&headers), Err(super::Error::BadRequest(_))));
     }
 
     #[test]
-    fn session_cookie_parser_preserves_absent_cookie_logout() {
+    fn only_absent_cookie_is_idempotent_absence() {
         use axum::http::{HeaderMap, HeaderValue, header};
         let mut headers = HeaderMap::new();
         assert_eq!(super::parse_session_cookie(&headers).unwrap(), None);
+        for malformed in ["rustok-session".to_string(), "rustok-session=".to_string(), format!("rustok-session={}", "a1".repeat(32)), format!("rustok-session={}.{}", "a1".repeat(32), "0".repeat(64))] {
+            headers.insert(header::COOKIE, HeaderValue::from_str(&malformed).unwrap());
+            assert!(super::parse_session_cookie(&headers).is_err());
+        }
+    }
 
-        headers.insert(
-            header::COOKIE,
-            HeaderValue::from_static("session=other; rustok-session="),
-        );
-        assert_eq!(super::parse_session_cookie(&headers).unwrap(), None);
+    #[test]
+    fn cookie_refresh_refuses_caller_supplied_proof() {
+        use axum::http::{HeaderMap, HeaderValue};
+        let mut headers = HeaderMap::new();
+        assert!(super::reject_explicit_cookie_retry_key(&headers).is_ok());
+        headers.insert(rustok_auth::REFRESH_RETRY_KEY_HEADER, HeaderValue::from_str(&"a1".repeat(32)).unwrap());
+        assert!(super::reject_explicit_cookie_retry_key(&headers).is_err());
     }
 
     #[test]

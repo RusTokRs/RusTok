@@ -59,6 +59,12 @@ impl RefreshCredential {
         Self::parse(&format!("{tenant}.{token}.{seed}"))
     }
 
+    /// The API logout cookie has no BFF-local tenant prefix.
+    #[cfg(feature = "ssr")]
+    pub(crate) fn api_cookie_value(&self) -> String {
+        format!("{}.{}", self.token, self.seed)
+    }
+
     #[cfg(feature = "ssr")]
     pub(crate) fn token(&self) -> &str {
         &self.token

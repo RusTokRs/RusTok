@@ -62,10 +62,11 @@ fresh access JWT with the currently authorized role and permissions, rather
 than reproducing stale access claims or the old signing key. This is
 idempotent session state, not byte-identical HTTP response replay.
 
-REST raw and cookie refresh endpoints and GraphQL HTTP refresh mutations
-accept the same header. A malformed or repeated header is a bad request,
-not permission to rotate without proof. The cookie endpoint retains the
-existing CSRF header requirement. Unrecoverable concurrency conflicts remain
+Raw REST refresh and GraphQL HTTP refresh mutations accept the same
+optional secret header. A malformed or repeated header is a bad request,
+not permission to rotate without proof. The cookie endpoint derives its
+proof from its Auth-issued envelope and rejects a caller-supplied proof;
+it retains the existing CSRF header requirement. Unrecoverable concurrency conflicts remain
 REST 409 and GraphQL CONFLICT rather than an authentication failure. No
 OAuth token-family semantics are changed.
 
@@ -82,18 +83,35 @@ root rotation and session-store rollback remain separately governed work.
 Clients must retain the secret and presented credential (or cookie) until
 the response is known, retry only the same operation during grace, and
 discard the proof after resolution. A new operation uses a fresh key.
-For an HttpOnly BFF, the seed and bearer may be retained in one canonical
-cookie envelope. The Next Admin BFF generates a fresh seed before sign-in,
-derives one proof with HMAC-SHA256 over the fixed client purpose, tenant
-slug and presented refresh token, and forwards only the bare token and
-derived proof. It retains the seed when the bearer rotates. The fixed
-purpose and JSON array framing separate the inputs; each presented
-generation has an independent pseudorandom proof, shared across BFF
-replicas without a result cache. A lost BFF response carrying the successor
-can be retried with the unchanged envelope within grace. A browser that
-already received the new envelope starts a new operation if refresh is
-needed. A coordinated BFF cutover must revoke old bare-cookie sessions
-and establish fresh ones; do not parse them as recovery-capable envelopes.
+For the cookie-session REST transport, Auth issues one canonical HttpOnly
+`token.seed` envelope. Login and registration sample the independent
+256-bit seed before mutation. Each cookie refresh derives an HMAC-SHA256
+proof under that seed over the fixed purpose
+`rustok/auth/cookie-refresh-retry` followed by NUL, tenant UUID bytes, and
+the fixed-width lowercase hex presented token. The same envelope produces
+the same proof on every replica; only the token component rotates. No
+secret is exposed to browser JavaScript or a JSON response. This supersedes
+Next Admin's BFF-local seed/proof calculation: the BFF now relays the exact
+Auth envelope unchanged, verifies seed continuity and retries one ambiguous
+upstream outcome. Cookie logout validates the complete envelope, then
+revokes using the bare token; only actual absence counts as no cookie.
+Cookie mutation responses use no-store. Bare cookie credentials are
+rejected and require coordinated revocation and fresh sign-in.
+
+The direct Leptos CSR transport uses the browser's origin-wide exclusive
+Web Lock for login/register/refresh/logout, including the complete response
+body and at most one ambiguous refresh retry. Lock admission is bounded
+by a 25-second AbortSignal, network operations by a 10-second AbortSignal.
+The browser must support secure-context Web Locks and AbortSignal.timeout;
+otherwise mutation fails before network I/O. Fetch uses same-origin mode
+and credentials, no-store, and redirect:error. If the original cookie
+remains installed, a retry within grace recovers the same successor; if
+the new cookie was applied already, a fresh proof is derived for that
+generation. This does not serialize unrelated scripts, other clients,
+SSR navigation or arbitrary delayed delivery after a document is destroyed.
+Cross-tab provider projection invalidation and stale intent admission
+remain separate from the network fence.
+
 The Leptos native/SSR BFF uses the same strategy with its own purpose
 `rustok/leptos-bff/refresh-retry` followed by NUL, the tenant bytes, NUL,
 and the fixed-width hex bearer. Its typed, non-serializable envelope is
@@ -102,14 +120,15 @@ marks the proof sensitive and forbids redirects. Admin SSR and native auth
 functions share the same exchange; middleware does not exchange before
 an Auth server function or override its cookie mutation. Access expiry
 must not initiate refresh-session revocation.
-The seed must never leave the BFF cookie except in protected process memory.
+The seed is transmitted only in the protected HttpOnly cookie envelope
+and trusted server-side memory, never in client-readable storage or logs.
 A stolen bearer token alone cannot recover the committed successor; theft of
 both bearer and proof is still credential compromise. This is not
 sender-constrained authentication. TLS, client storage discipline, avoiding
 header logging and normal credential revocation remain required. Client
-integration across direct Leptos CSR, standalone Storefront SSR host
-composition, Next Storefront and mobile/other native paths, BFF
-mounted/cross-replica verification, generated API header
+integration across standalone Storefront SSR host composition, Next
+Storefront and mobile/other native paths, mounted browser/BFF/cross-replica
+verification, generated API header
 documentation, and failure-injection verification remain pending. Without a proof-bearing
 client, a lost response is not recoverable.
 

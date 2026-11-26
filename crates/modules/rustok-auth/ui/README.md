@@ -78,8 +78,7 @@ logout retains the in-memory identity for explicit retry but leaves the client s
 admin callers display failure rather than silently treating it as a guest. Direct-cookie logout
 also requires the API's explicit `ok` response rather than accepting any 2xx body. Direct-cookie
 session operations reject a cross-origin API before sending and reject a changed final response
-URL. Browser fetch may have already followed a redirect, so this is not a redirect-prevention
-guarantee. These changes need real-service and mounted UI verification, including cross-tab
+URL. The direct WASM Fetch path now rejects redirects before following them. These changes need real-service and mounted UI verification, including cross-tab
 refresh/logout races. Admin SSR
 inspects every Cookie header and preserves the cookie on an unclassified exchange failure; it
 still renders an anonymous snapshot on failure, not proof of guest identity.
@@ -105,6 +104,12 @@ passes while a tab sleeps. Admin SSR excludes Auth server functions from its
 own exchange and refuses to overwrite explicit handler cookie mutations;
 cookie-bearing responses are private/no-store. Old bare BFF cookies are rejected:
 stop old writers, revoke prior sessions and require a fresh sign-in before cutover.
-Direct CSR still needs proof retention and cross-tab coordination; standalone
-Storefront SSR still needs validated host composition. Late response ordering,
-mounted browser verification and real backend/replica failure injection remain open.
+Direct CSR uses the Auth-owned token/seed envelope. Its exclusive origin-wide
+Web Lock serializes cooperating login/register/refresh/logout calls until
+response parsing and bounded retry complete. The browser must support Web
+Locks and AbortSignal.timeout in a secure context. Fetch uses same-origin
+mode/credentials, redirect:error, no-store, and a 10-second timeout.
+Standalone Storefront SSR still needs validated host composition. Late
+noncooperating response ordering, stale intent/projection invalidation,
+mounted browser verification and real backend/replica failure injection
+remain open.

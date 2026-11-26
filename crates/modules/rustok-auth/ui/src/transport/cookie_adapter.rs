@@ -115,19 +115,26 @@ async fn post_session(
     is_login: bool,
 ) -> Result<CookieSessionResponse, AuthError> {
     let endpoint = cookie_session_endpoint(&get_api_url(), path)?;
-    let mut request = HTTP_CLIENT.post(endpoint.clone()).header("X-Tenant-ID", tenant);
-    #[cfg(target_arch = "wasm32")]
-    {
-        request = request.fetch_credentials_same_origin();
-    }
+    request_session(endpoint, tenant, body, session_request, is_login).await
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn request_session<T: serde::de::DeserializeOwned>(
+    endpoint: reqwest::Url,
+    tenant: &str,
+    body: Option<serde_json::Value>,
+    session_request: bool,
+    is_login: bool,
+) -> Result<T, AuthError> {
+    let mut request = HTTP_CLIENT.post(endpoint.clone())
+        .timeout(std::time::Duration::from_secs(10))
+        .header("X-Tenant-ID", tenant);
     if session_request {
-        // CSRF barrier required by the cookie-authenticated endpoints.
         request = request.header("x-rustok-session-request", "1");
     }
     if let Some(body) = body {
         request = request.json(&body);
     }
-
     let response = request.send().await.map_err(|_| AuthError::Network)?;
     if response.url() != &endpoint {
         return Err(AuthError::Network);
@@ -135,11 +142,52 @@ async fn post_session(
     if !response.status().is_success() {
         return Err(AuthError::from_status(response.status().as_u16(), is_login));
     }
+    response.json::<T>().await.map_err(|_| AuthError::Network)
+}
 
-    response
-        .json::<CookieSessionResponse>()
-        .await
-        .map_err(|_| AuthError::Network)
+#[cfg(target_arch = "wasm32")]
+async fn request_session<T: serde::de::DeserializeOwned>(
+    endpoint: reqwest::Url,
+    tenant: &str,
+    body: Option<serde_json::Value>,
+    session_request: bool,
+    is_login: bool,
+) -> Result<T, AuthError> {
+    use leptos::wasm_bindgen::{JsCast, JsValue};
+    use wasm_bindgen_futures::JsFuture;
+    let window = web_sys::window().ok_or(AuthError::Network)?;
+    let headers = web_sys::Headers::new().map_err(|_| AuthError::Network)?;
+    headers.set("X-Tenant-ID", tenant).map_err(|_| AuthError::Network)?;
+    if session_request {
+        headers.set("x-rustok-session-request", "1").map_err(|_| AuthError::Network)?;
+    }
+    let init = web_sys::RequestInit::new();
+    init.set_method("POST");
+    init.set_mode(web_sys::RequestMode::SameOrigin);
+    init.set_credentials(web_sys::RequestCredentials::SameOrigin);
+    init.set_redirect(web_sys::RequestRedirect::Error);
+    init.set_cache(web_sys::RequestCache::NoStore);
+    let signal = super::browser_lock::timeout_signal(10_000)?;
+    init.set_signal(Some(&signal));
+    if let Some(body) = body {
+        headers.set("content-type", "application/json").map_err(|_| AuthError::Network)?;
+        init.set_body(&JsValue::from_str(&body.to_string()));
+    }
+    init.set_headers(headers.as_ref());
+    let request = web_sys::Request::new_with_str_and_init(endpoint.as_str(), &init)
+        .map_err(|_| AuthError::Network)?;
+    let response = JsFuture::from(window.fetch_with_request(&request)).await
+        .map_err(|_| AuthError::Network)?
+        .dyn_into::<web_sys::Response>().map_err(|_| AuthError::Network)?;
+    if response.redirected() || response.url() != endpoint.as_str() {
+        return Err(AuthError::Network);
+    }
+    if !response.ok() {
+        return Err(AuthError::from_status(response.status(), is_login));
+    }
+    let text = JsFuture::from(response.text().map_err(|_| AuthError::Network)?).await
+        .map_err(|_| AuthError::Network)?.as_string().ok_or(AuthError::Network)?;
+    serde_json::from_str(&text).map_err(|_| AuthError::Network)
 }
 
 pub(super) async fn sign_in_cookie(
@@ -178,7 +226,15 @@ pub(super) async fn sign_up_cookie(
 pub(super) async fn refresh_session_cookie(
     tenant: String,
 ) -> Result<(AuthSession, AuthUser), AuthError> {
-    let payload = post_session("/api/auth/session/refresh", &tenant, None, true, false).await?;
+    // The API owns the proof in the HttpOnly envelope. If the old cookie
+    // is still present, an ambiguous response can recover the same successor.
+    // If Set-Cookie was already applied, the retry starts from the new generation.
+    let first = post_session("/api/auth/session/refresh", &tenant, None, true, false).await;
+    let payload = match first {
+        Err(AuthError::Network | AuthError::Http(500..=599)) =>
+            post_session("/api/auth/session/refresh", &tenant, None, true, false).await?,
+        other => other?,
+    };
     let (user, session) = to_user_session(payload, tenant);
     Ok((session, user))
 }
@@ -228,25 +284,7 @@ pub(super) async fn sign_out_cookie(tenant: String) -> Result<(), AuthError> {
 
 async fn sign_out_cookie_at(api_url: &str, tenant: String) -> Result<(), AuthError> {
     let endpoint = cookie_session_endpoint(api_url, "/api/auth/session/logout")?;
-    let request = HTTP_CLIENT
-        .post(endpoint.clone())
-        .header("X-Tenant-ID", tenant)
-        .header("x-rustok-session-request", "1");
-    #[cfg(target_arch = "wasm32")]
-    let request = request.fetch_credentials_same_origin();
-    let response = request.send().await.map_err(|_| AuthError::Network)?;
-    // Browser fetch can follow redirects; an unrelated final endpoint cannot confirm logout.
-    if response.url() != &endpoint {
-        return Err(AuthError::Network);
-    }
-    if !response.status().is_success() {
-        return Err(AuthError::from_status(response.status().as_u16(), false));
-    }
-    // A 2xx HTML page or unrelated JSON is not evidence that the session was revoked.
-    let payload = response
-        .json::<StatusResponse>()
-        .await
-        .map_err(|_| AuthError::Network)?;
+    let payload: StatusResponse = request_session(endpoint, &tenant, None, true, false).await?;
     confirmed_logout(payload)
 }
 

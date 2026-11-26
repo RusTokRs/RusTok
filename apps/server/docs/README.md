@@ -841,8 +841,14 @@ a retry with the already-updated cookie and matching proof also recovers it.
 Recovery preserves the history and refresh deadline and signs a fresh RS256
 access JWT. Other duplicates conflict without revocation in grace; post-grace
 historical replay revokes the lineage. No raw token or proof is persisted.
-REST and GraphQL HTTP use the same `x-rustok-refresh-retry-key` header;
-built-in client proof handling and multi-replica evidence remain pending.
+Raw REST and GraphQL HTTP use the same `x-rustok-refresh-retry-key` header.
+Cookie REST instead issues one HttpOnly token/seed envelope and derives the
+generation-specific proof from the independent seed, resolved tenant UUID
+and presented bearer; caller-provided proof headers are rejected. Next Admin
+relays this envelope and direct Leptos CSR uses browser Web Locks. Cookie
+mutation responses are no-store; malformed/empty/bare cookies are rejected
+rather than treated as absence. Coordinate server and BFF deployment and
+revoke old sessions. Mounted browser and multi-replica evidence remain pending.
 See the [Auth owner contract](../../../crates/modules/rustok-auth/docs/README.md#direct-session-refresh-history-and-recovery).
 Multiple cookies with the
 `rustok-session` name are rejected, including across repeated Cookie headers,

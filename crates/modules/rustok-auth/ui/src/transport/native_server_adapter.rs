@@ -231,7 +231,7 @@ pub(super) async fn sign_out_native(tenant: String) -> Result<(), ServerFnError>
             // Use the API's idempotent cookie-session logout contract: an already expired
             // or revoked refresh token is a completed logout, while persistence failures
             // remain errors. This Cookie header is server-to-server only, never rendered.
-            auth_rest_cookie_logout(&tenant, credential.token()).await?;
+            auth_rest_cookie_logout(&tenant, &credential.api_cookie_value()).await?;
         }
         clear_refresh_cookie(&headers)?;
         Ok(())
@@ -374,19 +374,12 @@ pub(super) async fn current_user_native(
 }
 
 #[cfg(feature = "ssr")]
-fn api_session_cookie(refresh_token: &str) -> Result<reqwest::header::HeaderValue, ServerFnError> {
-    // Only RFC 6265 cookie-octets can be forwarded without changing the meaning of the
-    // Cookie header. This is syntax validation, not validation of the refresh credential.
-    if refresh_token.is_empty()
-        || refresh_token.len() > 4096
-        || !refresh_token.bytes().all(
-            |byte| matches!(byte, 0x21 | 0x23..=0x2b | 0x2d..=0x3a | 0x3c..=0x5b | 0x5d..=0x7e),
-        )
-    {
-        return Err(ServerFnError::new("Invalid authentication cookie"));
-    }
+fn api_session_cookie(envelope: &str) -> Result<reqwest::header::HeaderValue, ServerFnError> {
+    // Reuse the strict envelope parser before formatting the API cookie.
+    RefreshCredential::parse(&format!("logout.{envelope}"))
+        .map_err(|_| ServerFnError::new("Invalid authentication cookie"))?;
     let mut cookie =
-        reqwest::header::HeaderValue::from_str(&format!("rustok-session={refresh_token}"))
+        reqwest::header::HeaderValue::from_str(&format!("rustok-session={envelope}"))
             .map_err(|_| ServerFnError::new("Invalid authentication cookie"))?;
     cookie.set_sensitive(true);
     Ok(cookie)
@@ -649,23 +642,27 @@ mod tests {
         assert_eq!(requests.await.unwrap().len(), 1);
     }
 
+    fn logout_envelope() -> String {
+        format!("{}.{}", "a1".repeat(32), "b2".repeat(32))
+    }
+
     #[tokio::test]
     async fn native_logout_uses_cookie_session_contract_and_requires_confirmation() {
         let (url, received) = mock_logout_api(http_reply("200 OK", r#"{"status":"ok"}"#, "")).await;
         assert!(
-            auth_rest_cookie_logout_at(&url, "shop", "fake-token")
+            auth_rest_cookie_logout_at(&url, "shop", &logout_envelope())
                 .await
                 .is_ok()
         );
         let request = received.await.unwrap().to_ascii_lowercase();
         assert!(request.starts_with("post /api/auth/session/logout http/1.1\r\n"));
-        assert!(request.contains("\r\ncookie: rustok-session=fake-token\r\n"));
+        assert!(request.contains(&format!("\r\ncookie: rustok-session={}\r\n", logout_envelope())));
         assert!(request.contains("\r\nx-tenant-id: shop\r\n"));
         assert!(request.contains("\r\nx-rustok-session-request: 1\r\n"));
 
         let (url, received) =
             mock_logout_api(http_reply("503 Service Unavailable", "fake-token", "")).await;
-        let error = auth_rest_cookie_logout_at(&url, "shop", "fake-token")
+        let error = auth_rest_cookie_logout_at(&url, "shop", &logout_envelope())
             .await
             .unwrap_err();
         assert!(!error.to_string().contains("fake-token"));
@@ -674,7 +671,7 @@ mod tests {
         let (url, received) =
             mock_logout_api(http_reply("200 OK", r#"{"status":"unknown"}"#, "")).await;
         assert!(
-            auth_rest_cookie_logout_at(&url, "shop", "fake-token")
+            auth_rest_cookie_logout_at(&url, "shop", &logout_envelope())
                 .await
                 .is_err()
         );
@@ -689,7 +686,7 @@ mod tests {
             "location: http://127.0.0.1:1/not-the-auth-service\r\n",
         ))
         .await;
-        let error = auth_rest_cookie_logout_at(&url, "shop", "fake-token")
+        let error = auth_rest_cookie_logout_at(&url, "shop", &logout_envelope())
             .await
             .unwrap_err();
         assert!(error.to_string().contains("status 307"));
@@ -698,9 +695,9 @@ mod tests {
 
     #[test]
     fn logout_forwarding_is_sensitive_and_never_accepts_cookie_injection() {
-        let cookie = api_session_cookie("abc-123_~.token").unwrap();
+        let cookie = api_session_cookie(&logout_envelope()).unwrap();
         assert!(cookie.is_sensitive());
-        assert_eq!(cookie.to_str().unwrap(), "rustok-session=abc-123_~.token");
+        assert_eq!(cookie.to_str().unwrap(), format!("rustok-session={}", logout_envelope()));
         for invalid in ["", "has space", "x;other=y", "x,y", "x\"y", "x\\y", "x\ny"] {
             assert!(api_session_cookie(invalid).is_err());
         }

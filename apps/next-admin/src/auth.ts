@@ -73,7 +73,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         } catch {
           if (issued) {
             try {
-              await revokeRustokSession(issued.refreshToken, tenantSlug);
+              await revokeRustokSession(issued.refreshCredential, tenantSlug);
             } catch {
               console.warn(
                 'Rustok session cleanup failed after credential establishment'
@@ -135,9 +135,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
       try {
         const stored = await readRustokSessionCookies();
-        if (stored.refreshToken && tenantSlug) {
+        if (stored.refreshCredential && tenantSlug) {
           await revokeRustokSession(
-            stored.refreshToken,
+            stored.refreshCredential,
             tenantSlug,
             tenantId
           );

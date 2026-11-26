@@ -1,20 +1,23 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { isRustokAccessTokenExpiring, isSameOriginRequest, parseRustokSessionCookie, encodeRustokRefreshCredential, parseRustokRefreshCredential, newRustokRefreshSeed, rustokRefreshRetryKey, parseRustokHostCookies, retryAmbiguousRefresh } from './auth-session.ts';
+import { isRustokAccessTokenExpiring, isSameOriginRequest, parseRustokSessionCookie, encodeRustokRefreshCredential, parseRustokRefreshCredential, parseRustokHostCookies, retryAmbiguousRefresh } from './auth-session.ts';
 
 const refreshToken = '0123456789abcdef'.repeat(4);
+const retrySeed = 'b1'.repeat(32);
+const envelope = refreshToken+'.'+retrySeed;
 function jwt(exp) {
   return ['header', Buffer.from(JSON.stringify({exp})).toString('base64url'), 'signature'].join('.');
 }
 
-test('accepts only a canonical 256-bit refresh cookie with bounded Max-Age', () => {
-  assert.deepEqual(parseRustokSessionCookie('rustok-session='+refreshToken+'; Path=/api/auth/session; HttpOnly; Max-Age=3600'), {value:refreshToken,maxAge:3600});
+test('accepts only an Auth-owned canonical refresh envelope with bounded Max-Age', () => {
+  assert.deepEqual(parseRustokSessionCookie('rustok-session='+envelope+'; Path=/api/auth/session; HttpOnly; Max-Age=3600'), {credential:{token:refreshToken,retrySeed},maxAge:3600});
   for (const value of [
     null,
     'other='+refreshToken+'; Max-Age=3600',
     'rustok-session=bad; Max-Age=3600',
-    'rustok-session='+refreshToken+'; Max-Age=0',
-    'rustok-session='+refreshToken+'; Max-Age=999999999'
+    'rustok-session='+refreshToken+'; Max-Age=3600',
+    'rustok-session='+envelope+'; Max-Age=0',
+    'rustok-session='+envelope+'; Max-Age=999999999'
   ]) assert.equal(parseRustokSessionCookie(value), null);
 });
 
@@ -44,22 +47,17 @@ test('BFF credential envelope is canonical and does not accept bare or torn cred
   assert.throws(() => encodeRustokRefreshCredential({token: refreshToken, retrySeed:'bad'}));
 });
 
-test('retry proof is replica-stable, independent of bearer, and generation/tenant scoped', () => {
-  const credential = { token: refreshToken, retrySeed: newRustokRefreshSeed() };
-  const proof = rustokRefreshRetryKey(credential, 'tenant-a');
-  assert.match(proof, /^[0-9a-f]{64}$/);
-  assert.notEqual(proof, credential.retrySeed);
-  assert.notEqual(proof, credential.token);
-  assert.equal(proof, rustokRefreshRetryKey(
-    parseRustokRefreshCredential(encodeRustokRefreshCredential(credential)), 'tenant-a'));
-  assert.notEqual(proof, rustokRefreshRetryKey(credential, 'tenant-b'));
-  assert.notEqual(proof, rustokRefreshRetryKey({...credential, token:'a2'.repeat(32)}, 'tenant-a'));
-  assert.notEqual(proof, rustokRefreshRetryKey({...credential, retrySeed:newRustokRefreshSeed()}, 'tenant-a'));
+test('the BFF relays the exact Auth-issued envelope across requests', () => {
+  const issued = parseRustokSessionCookie('rustok-session='+envelope+'; Max-Age=3600');
+  assert.equal(encodeRustokRefreshCredential(issued.credential), envelope);
+  const next = parseRustokSessionCookie('rustok-session='+'a2'.repeat(32)+'.'+retrySeed+'; Max-Age=3600');
+  assert.equal(next.credential.retrySeed, issued.credential.retrySeed);
+  assert.notEqual(next.credential.token, issued.credential.token);
 });
 
 test('backend refresh cookie refuses ambiguous and noncanonical Max-Age', () => {
   for (const age of ['3600; Max-Age=3600', '1e3', '+3600', '03600']) {
-    assert.equal(parseRustokSessionCookie('rustok-session='+refreshToken+'; Max-Age='+age), null);
+    assert.equal(parseRustokSessionCookie('rustok-session='+envelope+'; Max-Age='+age), null);
   }
 });
 
@@ -69,7 +67,7 @@ test('host cookie admission rejects duplicate names and orphan access credential
   const wire = encodeRustokRefreshCredential(credential);
   const pair = 'rustok-session='+wire;
   assert.deepEqual(parseRustokHostCookies(pair+'; rustok-access=access'), {
-    accessToken:'access', refreshToken, refreshCredential:credential, invalid:false
+    accessToken:'access', refreshCredential:credential, invalid:false
   });
   assert.equal(parseRustokHostCookies(null).invalid, false);
   assert.equal(parseRustokHostCookies(pair).invalid, false);

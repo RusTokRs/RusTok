@@ -8,13 +8,10 @@ import {
   RUSTOK_SESSION_COOKIE_NAME,
   RUSTOK_SESSION_COOKIE_PATH,
   RUSTOK_SESSION_REQUEST_HEADER,
-  RUSTOK_REFRESH_RETRY_HEADER,
   encodeRustokRefreshCredential,
-  newRustokRefreshSeed,
   parseRustokHostCookies,
   parseRustokSessionCookie,
   retryAmbiguousRefresh,
-  rustokRefreshRetryKey,
   type RustokHostCookies,
   type RustokRefreshCredential
 } from './auth-session';
@@ -39,8 +36,7 @@ export interface RustokSessionUser {
 export interface RustokSessionCredentials {
   accessToken: string;
   expiresIn: number;
-  refreshToken: string;
-  retrySeed: string;
+  refreshCredential: RustokRefreshCredential;
   refreshMaxAge: number;
   user: RustokSessionUser;
 }
@@ -120,14 +116,12 @@ function copyLocaleHeaders(source: Headers, target: Headers): void {
 
 function toCredentials(
   response: SessionResponse,
-  cookie: { value: string; maxAge: number },
-  retrySeed: string
+  cookie: { credential: RustokRefreshCredential; maxAge: number }
 ): RustokSessionCredentials {
   return {
     accessToken: response.access_token,
     expiresIn: response.expires_in,
-    refreshToken: cookie.value,
-    retrySeed,
+    refreshCredential: cookie.credential,
     refreshMaxAge: cookie.maxAge,
     user: response.user
   };
@@ -185,7 +179,6 @@ export async function createRustokSession(input: {
   name?: string;
   request: Request;
 }): Promise<RustokSessionCredentials> {
-  const retrySeed = newRustokRefreshSeed();
   const headers = new Headers({
     'content-type': 'application/json',
     'x-tenant-slug': input.tenantSlug
@@ -219,7 +212,7 @@ export async function createRustokSession(input: {
     );
   }
 
-  return toCredentials(data, cookie, retrySeed);
+  return toCredentials(data, cookie);
 }
 
 async function refreshOnce(
@@ -229,9 +222,8 @@ async function refreshOnce(
   source?: Headers
 ): Promise<RustokSessionCredentials> {
   const headers = new Headers({
-    cookie: RUSTOK_SESSION_COOKIE_NAME + '=' + credential.token,
+    cookie: RUSTOK_SESSION_COOKIE_NAME + '=' + encodeRustokRefreshCredential(credential),
     [RUSTOK_SESSION_REQUEST_HEADER]: '1',
-    [RUSTOK_REFRESH_RETRY_HEADER]: rustokRefreshRetryKey(credential, tenantSlug),
     'x-tenant-slug': tenantSlug
   });
   if (tenantId) headers.set('x-tenant-id', tenantId);
@@ -245,15 +237,15 @@ async function refreshOnce(
   const cookie = parseRustokSessionCookie(
     response.headers.get('set-cookie')
   );
-  if (!cookie) {
+  if (!cookie || cookie.credential.retrySeed !== credential.retrySeed) {
     throw new RustokSessionError(
       502,
       'unknown',
-      'Rustok did not rotate the refresh cookie'
+      'Rustok did not return a matching refresh envelope'
     );
   }
 
-  return toCredentials(data, cookie, credential.retrySeed);
+  return toCredentials(data, cookie);
 }
 
 /** Repeat at most once after an ambiguous upstream result. The original
@@ -273,12 +265,12 @@ export async function refreshRustokSession(
 }
 
 export async function revokeRustokSession(
-  refreshToken: string,
+  credential: RustokRefreshCredential,
   tenantSlug: string,
   tenantId?: string | null
 ): Promise<void> {
   const headers = new Headers({
-    cookie: RUSTOK_SESSION_COOKIE_NAME + '=' + refreshToken,
+    cookie: RUSTOK_SESSION_COOKIE_NAME + '=' + encodeRustokRefreshCredential(credential),
     [RUSTOK_SESSION_REQUEST_HEADER]: '1',
     'x-tenant-slug': tenantSlug
   });
@@ -308,6 +300,14 @@ export async function revokeRustokSession(
       'Rustok logout failed'
     );
   }
+  try {
+    const body: unknown = await response.json();
+    if (!body || typeof body !== 'object' || !('status' in body) || body.status !== 'ok') {
+      throw new Error('Invalid logout response');
+    }
+  } catch {
+    throw new RustokSessionError(502, 'unknown', 'Logout could not be confirmed');
+  }
 }
 
 function cookieOptions(path: string) {
@@ -323,12 +323,8 @@ export async function persistRustokSessionCookies(
   session: RustokSessionCredentials
 ): Promise<void> {
   const store = await cookies();
-  // One cookie atomically carries the bearer and its independent BFF seed.
-  // A torn pair would turn a recoverable response loss into a false replay.
-  store.set(RUSTOK_SESSION_COOKIE_NAME, encodeRustokRefreshCredential({
-    token: session.refreshToken,
-    retrySeed: session.retrySeed
-  }), {
+  // Retain the exact Auth-issued envelope, not a second BFF proof protocol.
+  store.set(RUSTOK_SESSION_COOKIE_NAME, encodeRustokRefreshCredential(session.refreshCredential), {
     ...cookieOptions(RUSTOK_SESSION_COOKIE_PATH),
     maxAge: session.refreshMaxAge
   });

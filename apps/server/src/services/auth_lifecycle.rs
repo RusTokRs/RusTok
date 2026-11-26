@@ -2765,6 +2765,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn identical_cookie_envelopes_recover_one_committed_successor() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Cookie recovery", "cookie-recovery")
+            .insert(&db).await.unwrap();
+        let user = users::ActiveModel::new(tenant.id, "cookie@example.com", "hash")
+            .insert(&db).await.unwrap();
+        let token = "a1".repeat(32);
+        let cookie = rustok_auth::AuthRefreshCookie::new(&token, "b2".repeat(32)).unwrap();
+        let session = sessions::ActiveModel::new(
+            tenant.id, user.id, hash_refresh_token(&token),
+            Utc::now() + Duration::hours(1), None, None,
+        ).insert(&db).await.unwrap();
+        let config = test_auth_config("cookie-recovery-secret", 600, 3600);
+        let proof = cookie.retry_key(tenant.id).unwrap();
+        let (_, first) = AuthLifecycleService::refresh_with_config_db(
+            &db, &config, tenant.id, cookie.token(), false, Some(&proof),
+        ).await.unwrap();
+        let persisted = sessions::Entity::find_by_id(session.id).one(&db).await.unwrap().unwrap();
+        let replay = rustok_auth::AuthRefreshCookie::parse(&cookie.cookie_value()).unwrap();
+        let proof = replay.retry_key(tenant.id).unwrap();
+        let (_, recovered) = AuthLifecycleService::refresh_with_config_db(
+            &db, &config, tenant.id, replay.token(), false, Some(&proof),
+        ).await.unwrap();
+        assert_eq!(first.refresh_token, recovered.refresh_token);
+        let after = sessions::Entity::find_by_id(session.id).one(&db).await.unwrap().unwrap();
+        assert_eq!(persisted.token_hash, after.token_hash);
+        assert_eq!(persisted.expires_at, after.expires_at);
+        assert_eq!(persisted.previous_token_revoked_at, after.previous_token_revoked_at);
+    }
+
+    #[tokio::test]
     async fn refresh_reuse_inside_grace_is_rejected_without_revoking_live_session() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tenant = tenants::ActiveModel::new("Refresh grace tenant", "refresh-grace")
