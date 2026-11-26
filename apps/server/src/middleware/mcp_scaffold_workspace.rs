@@ -15,8 +15,6 @@ use rustok_mcp::{
     McpActorType, McpRemoteToolCallRequest, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
     UpdateMcpPolicyRequest,
 };
-use uuid::Uuid;
-
 use crate::services::mcp_scaffold_workspace::authorize_mcp_scaffold_workspace;
 
 const MAX_MCP_MANAGEMENT_BODY_BYTES: usize = 64 * 1024;
@@ -190,7 +188,11 @@ fn request_mode(method: &Method, path: &str) -> Option<RequestMode> {
     {
         return None;
     }
-    Uuid::parse_str(segments[3]).ok()?;
+    // The router decodes and validates Path<Uuid> after this middleware.
+    // Match its dynamic segment structurally, including percent-encoded IDs.
+    if segments[3].is_empty() {
+        return None;
+    }
     if method == Method::PUT && segments[4] == "policy" {
         Some(RequestMode::UpdatePolicy)
     } else if method == Method::POST && segments[4] == "rotate-token" {
@@ -206,8 +208,14 @@ fn is_scaffold_apply_path(path: &str) -> bool {
         && segments[0] == "api"
         && segments[1] == "mcp"
         && segments[2] == "scaffold-drafts"
-        && Uuid::parse_str(segments[3]).is_ok()
+        && !segments[3].is_empty()
         && segments[4] == "apply"
+}
+
+/// Exact POST routes authenticated by the MCP owner, not by user JWT middleware.
+pub(super) fn is_remote_mcp_auth_request(method: &Method, path: &str) -> bool {
+    method == Method::POST
+        && (path == "/api/mcp/runtime/bootstrap" || is_remote_tool_path(path))
 }
 
 fn is_remote_tool_path(path: &str) -> bool {
@@ -273,9 +281,15 @@ mod tests {
         assert!(!is_scaffold_apply_path(&format!(
             "/api/mcp/scaffold-drafts/{id}"
         )));
-        assert!(!is_scaffold_apply_path(
+        // Leave identity decoding to Axum's Path<Uuid> extractor; do not
+        // bypass the preflight when the raw segment is percent-encoded.
+        assert!(is_scaffold_apply_path(
             "/api/mcp/scaffold-drafts/not-a-uuid/apply"
         ));
+        assert!(is_scaffold_apply_path(
+            "/api/mcp/scaffold-drafts/%300000000-0000-0000-0000-000000000001/apply"
+        ));
+        assert!(!is_scaffold_apply_path("/api/mcp/scaffold-drafts//apply"));
     }
 
     #[test]
@@ -283,6 +297,43 @@ mod tests {
         assert!(is_remote_tool_path("/api/mcp/runtime/tools/call"));
         assert!(is_remote_tool_path("/api/mcp/runtime/tools/stream"));
         assert!(!is_remote_tool_path("/api/mcp/runtime/bootstrap"));
+    }
+
+    #[test]
+    fn remote_mcp_authentication_is_limited_to_exact_post_routes() {
+        for path in [
+            "/api/mcp/runtime/bootstrap",
+            "/api/mcp/runtime/tools/call",
+            "/api/mcp/runtime/tools/stream",
+        ] {
+            assert!(super::is_remote_mcp_auth_request(&Method::POST, path));
+            assert!(!super::is_remote_mcp_auth_request(&Method::GET, path));
+        }
+        for path in [
+            "/api/mcp/runtime/tools/call/",
+            "/api/mcp/runtime/other",
+            "/api/mcp/clients",
+            "/api/mcp/scaffold-drafts/id/apply",
+        ] {
+            assert!(!super::is_remote_mcp_auth_request(&Method::POST, path));
+        }
+    }
+
+    #[test]
+    fn encoded_management_ids_still_require_preflight() {
+        let id = "%300000000-0000-0000-0000-000000000001";
+        assert_eq!(
+            request_mode(&Method::PUT, &format!("/api/mcp/clients/{id}/policy")),
+            Some(RequestMode::UpdatePolicy)
+        );
+        assert_eq!(
+            request_mode(&Method::POST, &format!("/api/mcp/clients/{id}/rotate-token")),
+            Some(RequestMode::RotateToken)
+        );
+        assert_eq!(
+            request_mode(&Method::POST, &format!("/api/mcp/scaffold-drafts/{id}/apply")),
+            Some(RequestMode::DirectApply)
+        );
     }
 
     #[test]

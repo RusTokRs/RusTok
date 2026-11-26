@@ -107,7 +107,7 @@ REST remains mandatory for scenarios where an explicit HTTP contract is needed:
 
 REST must not be used as a hidden replacement for GraphQL for UI-only flows.
 
-MCP runtime bootstrap is a platform-owned REST surface: `POST /api/mcp/runtime/bootstrap` accepts MCP Bearer token or `plaintext_token`, requires non-stdio transport, returns persisted runtime binding/effective access context and writes an audit event with correlation id.
+MCP runtime bootstrap is a platform-owned REST surface: `POST /api/mcp/runtime/bootstrap` accepts MCP Bearer token or `plaintext_token`, requires non-stdio transport, returns persisted runtime binding/effective access context and writes an audit event with correlation id. The bootstrap, JSON tool call and SSE tool stream POST endpoints authenticate through MCP owner persistence, not the user JWT middleware. They accept exactly one credential transport and reject duplicate Authorization fields or mixed header/body credentials. The separate host-authority requirement for scaffold publication and the tenant routing gate are unchanged.
 
 ## `#[server]` Surface
 
