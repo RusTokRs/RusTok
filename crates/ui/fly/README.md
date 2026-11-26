@@ -306,6 +306,9 @@ Consumers must honor runtime error diagnostics before publishing.
 Page identities remain optional for legacy documents, but a page patch that sets `id` must supply a non-empty string; use `PagePatch.remove_fields` to clear an ID. Public document mutation helpers invalidate the cached project hash and component index, and compound theme/symbol commands publish changes only after validation succeeds.
 
 Mutating commands, including component patches, run the same full project validation before committing. A cached report is reused only for selection or an empty transaction; it cannot authorize a changed document. The patch-target validation API delegates to the canonical validator until dependency-complete incremental verification is available.
+Typed patch builders reconcile set/remove operations in call order. If a raw serialized
+patch contains both a set and a removal for the same exact attribute, field or style
+property, removal wins; unrelated writes remain in the same validated transaction.
 
 Snapshot comparisons fingerprint the actual document payload and retain the order and repeated identities of pages, assets and style rules. An entry whose position or payload changes appears in the corresponding changed collection (including shifted siblings); opaque entries retain their positions.
 

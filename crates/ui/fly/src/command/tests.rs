@@ -86,6 +86,49 @@ fn style_patch_merges_and_can_remove_individual_properties() {
 }
 
 #[test]
+fn serialized_patch_conflicts_remove_values_and_round_trip_through_history() {
+    let mut editor = editor();
+    editor.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default()
+            .set_attribute("title", json!("Original"))
+            .set_field("content", json!("Original")),
+    }).expect("initial values");
+    let before = editor.document().clone();
+    let sequence = editor.revision().command_sequence;
+    let patch: ComponentPatch = serde_json::from_value(json!({
+        "attributes": { "title": "Replacement", "aria-label": "Keep" },
+        "remove_attributes": ["title"],
+        "fields": { "content": "Replacement" },
+        "remove_fields": ["content"],
+        "style": { "color": "blue" },
+        "remove_style_properties": ["color"]
+    })).expect("deserialize patch");
+    editor.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch,
+    }).expect("apply");
+    let after = editor.document().clone();
+    let component = after.component("hero").expect("component");
+    assert!(!component.attributes.contains_key("title"));
+    assert_eq!(component.attributes["aria-label"], "Keep");
+    assert!(!component.extensions.contains_key("content"));
+    assert!(component.style.as_ref().unwrap().get("color").is_none());
+    assert_eq!(editor.revision().command_sequence, sequence + 1);
+
+    let inverse = editor.history().undo_entries().last()
+        .and_then(|entry| entry.inverse()).expect("local inverse").clone();
+    let mut replay = FlyEditor::new(after.clone(), editor.registries().clone());
+    replay.apply(inverse).expect("apply inverse");
+    assert_eq!(replay.document(), &before);
+
+    editor.undo().expect("undo");
+    assert_eq!(editor.document(), &before);
+    editor.redo().expect("redo");
+    assert_eq!(editor.document(), &after);
+}
+
+#[test]
 fn composed_style_replacement_is_atomic_and_reversible() {
     let mut editor = editor();
     let before = editor.document().clone();
