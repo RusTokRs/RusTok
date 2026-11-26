@@ -22,6 +22,8 @@ SSR-first browser adapter assets and protocol contracts for Fly editors.
   nearest accordion and may not contain the trigger itself. Sliders prioritize the explicit active
   marker over visibility and reject malformed or ambiguous selectors. Swipe state is document-local
   and completes only for the initiating touch. Animation lookup accepts only own allow-listed names.
+  Action adapter startup is idempotent per document. Repeated cleanup of a stopped adapter
+  cannot unregister a replacement adapter or duplicate its listeners.
   Scroll actions use instant scrolling when the
   target document requests reduced motion, even if its CSS specifies smooth scrolling. It emits
   host events but does not implement Cart, Product or Pricing rules.

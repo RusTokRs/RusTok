@@ -600,6 +600,8 @@
     documentRef.addEventListener("touchcancel", cancelTouch, { passive: true });
     var adapter = {
       stop: function () {
+        // A retained handle must not unregister a newer mount of this document.
+        if (documentRef[ADAPTER_KEY] !== adapter) return;
         documentRef.removeEventListener("click", onClick);
         documentRef.removeEventListener("touchstart", onTouchStart);
         documentRef.removeEventListener("touchend", onTouchEnd);
