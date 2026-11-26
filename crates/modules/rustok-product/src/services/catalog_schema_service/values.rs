@@ -403,6 +403,7 @@ impl ProductCatalogSchemaService {
     where
         C: ConnectionTrait,
     {
+        validate_uuid("product_id", product_id)?;
         let Some(form) =
             Self::load_effective_form_for_product_in(conn, tenant_id, product_id).await?
         else {
