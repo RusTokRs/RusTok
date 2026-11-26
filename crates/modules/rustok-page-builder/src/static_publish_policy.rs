@@ -8,7 +8,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v13";
+pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v14";
 
 const ALLOWED_TAGS: &[&str] = &[
     "a",
@@ -1921,6 +1921,7 @@ mod tests {
             "page_builder_static_publish_policy_v10",
             "page_builder_static_publish_policy_v11",
             "page_builder_static_publish_policy_v12",
+            "page_builder_static_publish_policy_v13",
         ] {
             let evidence = PageBuilderStaticPublishPolicyEvidence {
                 format: format.to_string(),
@@ -1976,7 +1977,10 @@ mod tests {
         let policy = PageBuilderStaticPublishPolicy::default();
         let oversized = format!("image-set('/{}' 1x)", "url(/long-segment)".repeat(130));
         assert!(!safe_css_value(&oversized, &policy));
-        for value in ["url(/a(b))", "url(/a'broken')", "url('/a.png' extra)"] {
+        for value in [
+            "url(/a(b))", "url(/a'broken')", "url('/a.png' extra)",
+            "image-set('/a.png' 1x))", "cross-fade(image('/a.png')",
+        ] {
             assert!(!safe_css_value(value, &policy), "{value}");
         }
         for value in ["url('/hero(1).png')", "image-set('/url(/hero.png)' 1x)"] {

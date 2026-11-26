@@ -1512,51 +1512,98 @@ fn valid_css_custom_property_name(name: &str) -> bool {
         })
 }
 
+/// Return the original byte ranges of quoted resource strings in CSS image functions.
 pub fn css_resource_string_ranges(value: &str) -> Option<Vec<std::ops::Range<usize>>> {
-    if value.contains('\\') { return None; }
-    let lowered = value.to_ascii_lowercase();
-    let mut ranges = Vec::new();
-    let mut cursor = 0usize;
-    while cursor < value.len() {
-        match value.as_bytes()[cursor] {
-            b'\'' | b'"' => { cursor = skip_css_string(value, cursor)?; continue; }
-            _ => {}
-        }
-        let remaining = &lowered[cursor..];
-        let function = if remaining.starts_with("-webkit-image-set(") {
-            Some("-webkit-image-set(")
-        } else if remaining.starts_with("image-set(") {
-            Some("image-set(")
-        } else if remaining.starts_with("image(") {
-            Some("image(")
-        } else if remaining.starts_with("src(") {
-            Some("src(")
-        } else {
-            None
-        };
-        if let Some(function) = function {
-            let preceded_by_identifier = value[..cursor].chars().next_back()
-                .is_some_and(css_identifier_character);
-            if !preceded_by_identifier {
-                let open = cursor + function.len() - 1;
-                let close = css_function_close(value, open)?;
-                collect_css_string_ranges(value, open + 1, close, &mut ranges)?;
-                // Continue scanning inside this function so nested image()/src() calls
-                // are handled by their own grammar rather than as arbitrary strings.
-                cursor = open + 1;
-                continue;
-            }
-        }
-        cursor += value[cursor..].chars().next()?.len_utf8();
-    }
-    // An outer image function collects its direct strings before the scanner
-    // visits nested image functions. Restore source order before consumers
-    // replace ranges in reverse; otherwise earlier edits invalidate later offsets.
-    ranges.sort_unstable_by_key(|range| range.start);
-    if ranges.windows(2).any(|pair| pair[0].end > pair[1].start) {
+    Some(
+        scan_css_resource_references(value)?
+            .into_iter()
+            .filter(|reference| reference.quoted_image)
+            .map(|reference| reference.url)
+            .collect(),
+    )
+}
+
+struct CssResourceReference {
+    url: std::ops::Range<usize>,
+    mask: std::ops::Range<usize>,
+    quoted_image: bool,
+}
+
+/// Scan the original text once, recording disjoint ranges in source order.
+/// Each stack entry describes whether direct strings inside that group are
+/// image resources. URL tokens are consumed atomically, never rescanned as CSS.
+fn scan_css_resource_references(value: &str) -> Option<Vec<CssResourceReference>> {
+    if value.contains('\\') || value.chars().any(char::is_control) {
         return None;
     }
-    Some(ranges)
+    let mut references = Vec::new();
+    let mut groups = Vec::new();
+    let mut cursor = 0;
+    while cursor < value.len() {
+        if value.as_bytes().get(cursor..cursor + 2) == Some(&b"/*"[..]) {
+            cursor = skip_css_comment(value, cursor)?;
+            continue;
+        }
+        match value.as_bytes()[cursor] {
+            b'\'' | b'"' => {
+                let after = skip_css_string(value, cursor)?;
+                if groups.last() == Some(&true) {
+                    let range = cursor + 1..after - 1;
+                    references.push(CssResourceReference {
+                        url: range.clone(),
+                        mask: range,
+                        quoted_image: true,
+                    });
+                }
+                cursor = after;
+            }
+            b'(' => {
+                let start = value[..cursor]
+                    .char_indices()
+                    .rev()
+                    .find(|(_, character)| !css_identifier_character(*character))
+                    .map_or(0, |(index, character)| index + character.len_utf8());
+                let name = &value[start..cursor];
+                if name.eq_ignore_ascii_case("url") {
+                    let close = css_function_close(value, cursor)?;
+                    let argument = &value[cursor + 1..close];
+                    let raw = argument.trim();
+                    let raw_start = cursor + 1 + argument.len() - argument.trim_start().len();
+                    let url = if matches!(raw.as_bytes().first(), Some(b'\'' | b'"')) {
+                        let after = skip_css_string(raw, 0)?;
+                        if after != raw.len() {
+                            return None;
+                        }
+                        raw_start + 1..raw_start + after - 1
+                    } else {
+                        if raw.contains(['\'', '"', '(', ')']) {
+                            return None;
+                        }
+                        raw_start..raw_start + raw.len()
+                    };
+                    references.push(CssResourceReference {
+                        url,
+                        mask: start..close + 1,
+                        quoted_image: false,
+                    });
+                    cursor = close + 1;
+                    continue;
+                }
+                groups.push(
+                    ["image-set", "-webkit-image-set", "image", "src"]
+                        .iter()
+                        .any(|function| name.eq_ignore_ascii_case(function)),
+                );
+                cursor += 1;
+            }
+            b')' => {
+                groups.pop()?;
+                cursor += 1;
+            }
+            _ => cursor += value[cursor..].chars().next()?.len_utf8(),
+        }
+    }
+    groups.is_empty().then_some(references)
 }
 
 fn css_identifier_character(character: char) -> bool {
@@ -1609,42 +1656,6 @@ fn css_function_close(value: &str, open: usize) -> Option<usize> {
     None
 }
 
-fn collect_css_string_ranges(
-    value: &str,
-    start: usize,
-    end: usize,
-    ranges: &mut Vec<std::ops::Range<usize>>,
-) -> Option<()> {
-    let mut cursor = start;
-    let mut nested_depth = 0usize;
-    while cursor < end {
-        match value.as_bytes()[cursor] {
-            b'\'' | b'"' => {
-                let after = skip_css_string(value, cursor)?;
-                if after > end { return None; }
-                if nested_depth == 0 {
-                    ranges.push(cursor + 1..after - 1);
-                }
-                cursor = after;
-            }
-            b'(' => {
-                nested_depth = nested_depth.checked_add(1)?;
-                cursor += 1;
-            }
-            b')' => {
-                if nested_depth == 0 {
-                    return None;
-                }
-                nested_depth -= 1;
-                cursor += 1;
-            }
-            b'\\' => return None,
-            _ => cursor += 1,
-        }
-    }
-    (nested_depth == 0).then_some(())
-}
-
 /// Decide whether a single CSS declaration may be emitted.
 ///
 /// CSS resource URLs may be expressed through url() or through quoted strings in image(),
@@ -1660,7 +1671,7 @@ fn collect_css_string_ranges(
 /// Layers may still differ from each other, and do: static publishing refuses plain `http://`
 /// where this renderer allows it. That is a coherent difference, because publishing applies the
 /// same stricter rule to attributes *and* references — see `FORBIDDEN_CSS_TOKENS` and
-/// `strip_validated_css_urls` in `rustok-page-builder`'s `static_publish_policy`.
+/// the shared `strip_css_resource_references` used by the static publish policy.
 fn safe_style(name: &str, value: &Value, policy: &RenderPolicy) -> Option<String> {
     safe_style_with_tokens(name, value, policy, &BTreeSet::new())
 }
@@ -1728,69 +1739,27 @@ fn safe_style_with_tokens(
 
 /// Validate CSS resource references using the caller's URL policy, then mask only
 /// the checked tokens for subsequent structural checks. Quoted image sources are
-/// checked in the original input before any url() token is replaced. A string
+/// checked in the original input without rescanning any masked text. A string
 /// containing the literal characters "url(" is not itself a CSS url() function.
 /// This deliberately conservative grammar refuses escapes and malformed tokens.
 pub fn strip_css_resource_references(
     value: &str,
     mut allow_url: impl FnMut(&str) -> bool,
 ) -> Option<String> {
-    if value.chars().any(char::is_control) || value.contains('\\') {
-        return None;
-    }
-    let mut scanned = value.to_string();
-    let ranges = css_resource_string_ranges(value)?;
-    for range in ranges.into_iter().rev() {
-        if !css_resource_url_allowed(&value[range.clone()], &mut allow_url) {
+    let references = scan_css_resource_references(value)?;
+    let mut output = String::with_capacity(value.len());
+    let mut copied = 0;
+    for reference in references {
+        if reference.mask.start < copied
+            || !css_resource_url_allowed(&value[reference.url], &mut allow_url)
+        {
             return None;
         }
-        scanned.replace_range(range, "url-ok");
+        output.push_str(&value[copied..reference.mask.start]);
+        output.push_str("url-ok");
+        copied = reference.mask.end;
     }
-
-    let lowered = scanned.to_ascii_lowercase();
-    let mut output = String::with_capacity(scanned.len());
-    let mut cursor = 0usize;
-    let mut copied = 0usize;
-    while cursor < scanned.len() {
-        if matches!(scanned.as_bytes()[cursor], b'\'' | b'"') {
-            cursor = skip_css_string(&scanned, cursor)?;
-            continue;
-        }
-        if scanned.as_bytes().get(cursor..cursor + 2) == Some(&b"/*"[..]) {
-            cursor = skip_css_comment(&scanned, cursor)?;
-            continue;
-        }
-        if lowered[cursor..].starts_with("url(")
-            && !scanned[..cursor].chars().next_back().is_some_and(css_identifier_character)
-        {
-            let open = cursor + 3;
-            let close = css_function_close(&scanned, open)?;
-            let raw = scanned[open + 1..close].trim();
-            let url = if matches!(raw.as_bytes().first(), Some(b'\'' | b'"')) {
-                let after = skip_css_string(raw, 0)?;
-                if after != raw.len() {
-                    return None;
-                }
-                &raw[1..after - 1]
-            } else {
-                // Unquoted URL tokens cannot contain quotes or parentheses.
-                if raw.contains(['\'', '"', '(', ')']) {
-                    return None;
-                }
-                raw
-            };
-            if !css_resource_url_allowed(url, &mut allow_url) {
-                return None;
-            }
-            output.push_str(&scanned[copied..cursor]);
-            output.push_str("url-ok");
-            cursor = close + 1;
-            copied = cursor;
-            continue;
-        }
-        cursor += scanned[cursor..].chars().next()?.len_utf8();
-    }
-    output.push_str(&scanned[copied..]);
+    output.push_str(&value[copied..]);
     Some(output)
 }
 
@@ -2597,13 +2566,36 @@ mod tests {
             checked.push(url.to_string());
             true
         }).expect("nested resources");
-        assert_eq!(checked, ["/second-long.png", "/é.png"]);
+        assert_eq!(checked, ["/é.png", "/second-long.png"]);
         assert_eq!(masked, "image-set(image('url-ok') 1x, 'url-ok' 2x)");
         assert!(safe_style(
             "background-image",
             &Value::String(css.to_string()),
             &RenderPolicy::default(),
         ).is_some());
+    }
+
+    #[test]
+    fn resource_scanner_uses_original_tokens_and_ignores_comments() {
+        let value = "image-set(/* image('/ignored.png') */ image('/first.png') 1x, url('/second.png') 2x, '/third.png' 3x)";
+        let mut checked = Vec::new();
+        let masked = strip_css_resource_references(value, |url| {
+            checked.push(url.to_string());
+            true
+        }).expect("resource tokens");
+        assert_eq!(checked, ["/first.png", "/second.png", "/third.png"]);
+        assert_eq!(
+            masked,
+            "image-set(/* image('/ignored.png') */ image('url-ok') 1x, url-ok 2x, 'url-ok' 3x)"
+        );
+        assert!(safe_style(
+            "background-image",
+            &Value::String(value.to_string()),
+            &RenderPolicy::default(),
+        ).is_none());
+        for malformed in ["image-set('/a.png' 1x))", "cross-fade(image('/a.png')", "url(/a(b))"] {
+            assert!(strip_css_resource_references(malformed, |_| true).is_none(), "{malformed}");
+        }
     }
 
     #[test]

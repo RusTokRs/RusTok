@@ -178,8 +178,8 @@ crates/ui/fly/
   image-set() and -webkit-image-set() resource strings are checked against the same
   resource policy, including nested image functions; escaped or malformed strings fail closed.
   Original quoted resource URLs are validated before token masking, and SSR and static
-  publication share the same resource scanner. Nested resource ranges are sorted in source
-  order before replacement to preserve UTF-8 boundaries and avoid stale offsets. CSS variable substitution is also blocked
+  publication share a single source-order resource scan with atomic URL tokens.
+  Masking uses disjoint original UTF-8 ranges without rescanning modified text. CSS variable substitution is also blocked
   in reflection masks (`-webkit-box-reflect`).
 
 ## Runtime locale selection

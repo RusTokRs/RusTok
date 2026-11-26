@@ -102,5 +102,6 @@ aspect-ratio preservation snap the driving dimension and constrain a single scal
 size bounds; the aspect ratio and bounds take precedence over snapping the second dimension.
 Incompatible bounds, collapsed geometry or an unrepresentable locked aspect ratio leave the
 original geometry unchanged. Preview and patch generation apply the same relative aspect-ratio
-check; an unlocked gesture can still expand a collapsed element. West and north handles anchor
+check; subnormal quotients and inconsistent locked change flags fail closed. An unlocked gesture
+can still expand a collapsed element. West and north handles anchor
 their opposite edges to the initial rectangle.

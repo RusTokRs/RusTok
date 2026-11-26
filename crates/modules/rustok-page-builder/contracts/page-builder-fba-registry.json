@@ -45,7 +45,7 @@
       "hash_algorithm": "sha256",
       "hash_payload": ["format", "policy_format", "policy_hash", "sanitized_project"],
       "policy": {
-        "format": "page_builder_static_publish_policy_v13",
+        "format": "page_builder_static_publish_policy_v14",
         "source": "crates/modules/rustok-page-builder/src/static_publish_policy.rs",
         "dto": "PageBuilderStaticPublishPolicy",
         "evidence": "PageBuilderStaticPublishPolicyEvidence",
@@ -158,7 +158,7 @@
         "service": "PageService::publish_reviewed",
         "sanitizer": "sanitize_static_landing_project",
         "sanitization_format": "page_builder_static_publish_sanitization_v2",
-        "policy_format": "page_builder_static_publish_policy_v13",
+        "policy_format": "page_builder_static_publish_policy_v14",
         "policy_hash_bound": true,
         "exact_materialized_policy_recheck": true,
         "receipt_entity": "page_publish_operation",
