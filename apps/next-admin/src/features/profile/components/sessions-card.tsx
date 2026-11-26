@@ -103,7 +103,6 @@ export function SessionsCard({ tenantSlug }: SessionsCardProps) {
   const [isRevokingAll, setIsRevokingAll] = React.useState(false);
 
   const fetchSessions = React.useCallback(async () => {
-    
     setIsLoading(true);
     try {
       const data = await graphqlRequest<{ limit?: number }, SessionsResponse>(
@@ -125,7 +124,6 @@ export function SessionsCard({ tenantSlug }: SessionsCardProps) {
   }, [fetchSessions]);
 
   const handleRevoke = async (sessionId: string) => {
-    
     setRevokingId(sessionId);
     try {
       const data = await graphqlRequest<
@@ -148,7 +146,6 @@ export function SessionsCard({ tenantSlug }: SessionsCardProps) {
   };
 
   const handleRevokeAllOther = async () => {
-    
     setIsRevokingAll(true);
     try {
       const data = await graphqlRequest<

@@ -13,7 +13,12 @@ export default function UserAuthForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedCallback = searchParams.get('callbackUrl') || '/dashboard';
-  const callbackUrl = requestedCallback.startsWith('/') && !requestedCallback.startsWith('//') && !requestedCallback.includes('\\') ? requestedCallback : '/dashboard';
+  const callbackUrl =
+    requestedCallback.startsWith('/') &&
+    !requestedCallback.startsWith('//') &&
+    !requestedCallback.includes('\\')
+      ? requestedCallback
+      : '/dashboard';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

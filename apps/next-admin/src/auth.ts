@@ -9,7 +9,9 @@ import {
   revokeRustokSession
 } from '@/shared/api/auth-server';
 
-const asString = (value: unknown) => typeof value === 'string' ? value : null;
+function asString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -23,19 +25,42 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       },
       authorize: async (credentials, request) => {
         const rawAction = asString(credentials?.action);
-        if (rawAction && rawAction !== 'login' && rawAction !== 'register') return null;
+        if (
+          rawAction &&
+          rawAction !== 'login' &&
+          rawAction !== 'register'
+        ) {
+          return null;
+        }
+
         const action = rawAction === 'register' ? 'register' : 'login';
         const email = asString(credentials?.email)?.trim() ?? '';
         const password = asString(credentials?.password) ?? '';
         const tenantSlug = asString(credentials?.tenantSlug)?.trim() ?? '';
         const name = asString(credentials?.name)?.trim() || undefined;
+
         if (!email || !password || !tenantSlug) return null;
 
-        let issued: Awaited<ReturnType<typeof createRustokSession>> | null = null;
+        let issued: Awaited<
+          ReturnType<typeof createRustokSession>
+        > | null = null;
+
         try {
-          issued = await createRustokSession({ action, email, password, tenantSlug, name, request });
-          const tenant = await fetchCurrentTenant(issued.accessToken, tenantSlug);
+          issued = await createRustokSession({
+            action,
+            email,
+            password,
+            tenantSlug,
+            name,
+            request
+          });
+
+          const tenant = await fetchCurrentTenant(
+            issued.accessToken,
+            tenantSlug
+          );
           await persistRustokSessionCookies(issued);
+
           return {
             id: issued.user.id,
             email: issued.user.email,
@@ -47,9 +72,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           };
         } catch {
           if (issued) {
-            try { await revokeRustokSession(issued.refreshToken, tenantSlug); }
-            catch { console.warn('Rustok session cleanup failed after credential establishment'); }
+            try {
+              await revokeRustokSession(issued.refreshToken, tenantSlug);
+            } catch {
+              console.warn(
+                'Rustok session cleanup failed after credential establishment'
+              );
+            }
           }
+
           await clearRustokSessionCookies().catch(() => {
             console.warn('Rustok session cookie cleanup failed');
           });
@@ -64,36 +95,57 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.id = user.id ?? '';
         token.role = String(user.role ?? '');
         token.status = String(user.status ?? '');
-        token.tenantSlug = typeof user.tenantSlug === 'string' ? user.tenantSlug : null;
-        token.tenantId = typeof user.tenantId === 'string' ? user.tenantId : null;
+        token.tenantSlug =
+          typeof user.tenantSlug === 'string' ? user.tenantSlug : null;
+        token.tenantId =
+          typeof user.tenantId === 'string' ? user.tenantId : null;
       }
-      if (trigger === 'update' && session && typeof (session as {name?: unknown}).name === 'string') {
-        token.name = (session as {name: string}).name;
+
+      if (
+        trigger === 'update' &&
+        session &&
+        typeof (session as { name?: unknown }).name === 'string'
+      ) {
+        token.name = (session as { name: string }).name;
       }
+
       return token;
     },
     session({ session, token }) {
       session.user.id = String(token.id ?? '');
       session.user.role = String(token.role ?? '');
       session.user.status = String(token.status ?? '');
-      session.user.tenantSlug = typeof token.tenantSlug === 'string' ? token.tenantSlug : null;
-      session.user.tenantId = typeof token.tenantId === 'string' ? token.tenantId : null;
-      if (typeof token.name === 'string') session.user.name = token.name;
+      session.user.tenantSlug =
+        typeof token.tenantSlug === 'string' ? token.tenantSlug : null;
+      session.user.tenantId =
+        typeof token.tenantId === 'string' ? token.tenantId : null;
+      if (typeof token.name === 'string') {
+        session.user.name = token.name;
+      }
       return session;
     }
   },
   events: {
     async signOut(message) {
       const token = 'token' in message ? message.token : null;
-      const tenantSlug = typeof token?.tenantSlug === 'string' ? token.tenantSlug : null;
-      const tenantId = typeof token?.tenantId === 'string' ? token.tenantId : null;
+      const tenantSlug =
+        typeof token?.tenantSlug === 'string' ? token.tenantSlug : null;
+      const tenantId =
+        typeof token?.tenantId === 'string' ? token.tenantId : null;
+
       try {
         const stored = await readRustokSessionCookies();
         if (stored.refreshToken && tenantSlug) {
-          await revokeRustokSession(stored.refreshToken, tenantSlug, tenantId);
+          await revokeRustokSession(
+            stored.refreshToken,
+            tenantSlug,
+            tenantId
+          );
         }
       } catch {
-        console.warn('Rustok server session revocation failed during sign-out');
+        console.warn(
+          'Rustok server session revocation failed during sign-out'
+        );
       } finally {
         await clearRustokSessionCookies().catch(() => {
           console.warn('Rustok session cookie cleanup failed during sign-out');
@@ -101,6 +153,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
     }
   },
-  pages: { signIn: '/auth/sign-in' },
-  session: { strategy: 'jwt', maxAge: 30 * 24 * 60 * 60 }
+  pages: {
+    signIn: '/auth/sign-in'
+  },
+  session: {
+    strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60
+  }
 });

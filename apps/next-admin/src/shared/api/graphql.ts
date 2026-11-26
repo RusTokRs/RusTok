@@ -235,9 +235,17 @@ export async function graphqlRequest<V, T>(
   if (json.errors && json.errors.length > 0) {
     const err = json.errors[0];
     const code = err.extensions?.code;
-    const resolvedCode = code ??
-      (err.message.toLowerCase().includes('unauthorized') ? 'UNAUTHORIZED' : undefined);
-    throw new GraphqlError(err.message, resolvedCode, err.extensions?.retryable, err.extensions?.outcome);
+    const resolvedCode =
+      code ??
+      (err.message.toLowerCase().includes('unauthorized')
+        ? 'UNAUTHORIZED'
+        : undefined);
+    throw new GraphqlError(
+      err.message,
+      resolvedCode,
+      err.extensions?.retryable,
+      err.extensions?.outcome
+    );
   }
 
   if (!json.data) {
