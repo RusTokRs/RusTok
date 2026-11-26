@@ -70,6 +70,7 @@ async fn create_sqlite_test_tables(db: &DatabaseConnection) {
         )",
         "CREATE TABLE IF NOT EXISTS sys_events (
             id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NULL,
             event_type TEXT NOT NULL,
             schema_version INTEGER NOT NULL,
             payload TEXT NOT NULL,

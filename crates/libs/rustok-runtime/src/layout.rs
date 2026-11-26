@@ -83,8 +83,15 @@ impl InstanceLayout {
         let relative = relative.as_ref();
         if relative.is_absolute()
             || relative
-                .components()
-                .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
+                .as_os_str()
+                .to_str()
+                .is_some_and(|text| text.contains('\0'))
+            || relative.components().any(|component| {
+                matches!(
+                    component,
+                    Component::RootDir | Component::ParentDir | Component::Prefix(_)
+                )
+            })
         {
             return Err(InstanceLayoutError::InvalidRelativePath {
                 path: relative.display().to_string(),

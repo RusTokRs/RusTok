@@ -106,7 +106,7 @@ for (const [marker, label] of [
     '"selected_shipping_option_id must be a valid UUID"',
     "shipping option UUID compatibility",
   ],
-  ['message.starts_with("delivery group `")', "missing delivery group compatibility"],
+  ['message.contains("delivery group `")', "missing delivery group compatibility"],
   [
     'message.contains(" is not available for shipping profile ")',
     "unavailable option compatibility",

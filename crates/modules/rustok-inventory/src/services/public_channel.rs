@@ -112,11 +112,11 @@ pub(super) async fn require_tenant_variant_identities<C: ConnectionTrait>(
 /// Minimal location data needed by Inventory quantity projections. Avoid loading
 /// address/contact fields merely to prove a tenant-owned level binding.
 #[derive(Debug, Clone, FromQueryResult)]
-struct TenantLocationProjection {
-    id: Uuid,
-    tenant_id: Uuid,
-    deleted_at: Option<DateTimeWithTimeZone>,
-    metadata: Value,
+pub(super) struct TenantLocationProjection {
+    pub(super) id: Uuid,
+    pub(super) tenant_id: Uuid,
+    pub(super) deleted_at: Option<DateTimeWithTimeZone>,
+    pub(super) metadata: Value,
 }
 
 fn tenant_location_identity_error() -> sea_orm::DbErr {

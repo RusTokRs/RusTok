@@ -137,7 +137,10 @@ async fn circuit_breaker_limits_half_open_probe_requests() {
         half_open_max_requests: Some(1),
     }));
 
-    let _ = breaker.call(|| async { Err::<(), _>("boom") }).await;
+    assert!(matches!(
+        breaker.call(|| async { Err::<(), _>("boom") }).await,
+        Err(CircuitBreakerError::Upstream("boom"))
+    ));
     assert_eq!(breaker.get_state().await, CircuitState::Open);
 
     tokio::time::sleep(Duration::from_millis(5)).await;

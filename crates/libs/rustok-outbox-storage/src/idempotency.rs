@@ -648,13 +648,23 @@ fn canonical_json(value: &Value, depth: usize) -> Result<Value, PortError> {
         // therefore canonicalise to integers. (Receipts stored before this
         // canonicalisation keep their original hash; only requests that
         // actually mix spellings across retries observe a difference.)
-        Value::Number(number) => match number.as_f64() {
-            // 2^53 bounds the range where an f64 names one exact integer.
-            Some(float) if float.fract() == 0.0 && float.abs() < 9_007_199_254_740_992.0 => {
-                Value::Number((float as i64).into())
+        Value::Number(number) => {
+            if number.is_i64() || number.is_u64() {
+                value.clone()
+            } else {
+                match number.as_f64() {
+                    // 2^53 bounds the range where an f64 names one exact integer.
+                    Some(float)
+                        if float.is_finite()
+                            && float.fract().abs().to_bits() == 0
+                            && float.abs() < 9_007_199_254_740_992.0 =>
+                    {
+                        Value::Number((float as i64).into())
+                    }
+                    _ => value.clone(),
+                }
             }
-            _ => value.clone(),
-        },
+        }
         value => value.clone(),
     })
 }

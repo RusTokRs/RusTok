@@ -216,11 +216,7 @@ impl SecurityService {
         }
 
         // If a whitelist exists, the IP must match at least one whitelist rule
-        if has_whitelist && !matched_whitelist {
-            return Ok(false);
-        }
-
-        Ok(true)
+        Ok(!(has_whitelist && !matched_whitelist))
     }
 
     // ───────────────────────────────────────────────
@@ -298,6 +294,7 @@ impl SecurityService {
                         "AuthFailedLogin" => SecurityEventType::AuthFailedLogin,
                         "AuthAccountLocked" => SecurityEventType::AuthAccountLocked,
                         "AuthLoginSuccess" => SecurityEventType::AuthLoginSuccess,
+                        "AuthPasswordReset" => SecurityEventType::AuthPasswordReset,
                         "IpBlocked" => SecurityEventType::IpBlocked,
                         "RateLimitExceeded" => SecurityEventType::RateLimitExceeded,
                         "MfaChallenged" => SecurityEventType::MfaChallenged,
@@ -346,9 +343,9 @@ impl SecurityService {
 
                 Ok(SecurityPolicy {
                     tenant_id: m.tenant_id,
-                    max_failed_login_attempts: m.max_failed_login_attempts as u32,
-                    lockout_duration_secs: m.lockout_duration_secs as u64,
-                    rate_limit_per_minute: m.rate_limit_per_minute as u32,
+                    max_failed_login_attempts: m.max_failed_login_attempts.max(0) as u32,
+                    lockout_duration_secs: m.lockout_duration_secs.max(0) as u64,
+                    rate_limit_per_minute: m.rate_limit_per_minute.max(0) as u32,
                     captcha_provider: match m.captcha_provider.as_str() {
                         "honeypot" => CaptchaProviderKind::Honeypot,
                         "turnstile" => CaptchaProviderKind::Turnstile,
@@ -392,12 +389,27 @@ impl SecurityService {
         let mut policy = self.get_policy(tenant_id).await?;
 
         if let Some(val) = input.max_failed_login_attempts {
+            i32::try_from(val).map_err(|_| {
+                SecurityError::Validation(
+                    "max_failed_login_attempts exceeds supported range".to_string(),
+                )
+            })?;
             policy.max_failed_login_attempts = val;
         }
         if let Some(val) = input.lockout_duration_secs {
+            i64::try_from(val).map_err(|_| {
+                SecurityError::Validation(
+                    "lockout_duration_secs exceeds supported range".to_string(),
+                )
+            })?;
             policy.lockout_duration_secs = val;
         }
         if let Some(val) = input.rate_limit_per_minute {
+            i32::try_from(val).map_err(|_| {
+                SecurityError::Validation(
+                    "rate_limit_per_minute exceeds supported range".to_string(),
+                )
+            })?;
             policy.rate_limit_per_minute = val;
         }
         if let Some(val) = input.captcha_provider {
@@ -494,8 +506,8 @@ impl SecurityService {
             )
             .await?;
 
-        if decision.is_locked {
-            if let Err(err) = self
+        if decision.is_locked
+            && let Err(err) = self
                 .log_event(
                     tenant_id,
                     LogSecurityEventInput {
@@ -512,15 +524,14 @@ impl SecurityService {
                     },
                 )
                 .await
-            {
-                tracing::warn!(
-                    %tenant_id,
-                    %identity,
-                    %ip,
-                    error = %err,
-                    "failed to persist account locked security event"
-                );
-            }
+        {
+            tracing::warn!(
+                %tenant_id,
+                %identity,
+                %ip,
+                error = %err,
+                "failed to persist account locked security event"
+            );
         }
 
         Ok(decision)

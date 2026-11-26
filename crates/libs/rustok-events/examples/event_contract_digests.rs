@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{io::Write, path::PathBuf};
 
 use rustok_events::event_contract_digests;
 use serde::Serialize;
@@ -26,12 +26,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let json = format!("{}\n", serde_json::to_string_pretty(&artifact)?);
 
     match std::env::args().skip(1).collect::<Vec<_>>().as_slice() {
-        [] => print!("{json}"),
+        [] => {
+            let mut stdout = std::io::stdout().lock();
+            stdout.write_all(json.as_bytes())?;
+            stdout.flush()?;
+        }
         [flag] if flag == "--write" => {
             let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("contracts/event-contract-digests.json");
             std::fs::write(&path, json)?;
-            println!("updated {}", path.display());
+            writeln!(std::io::stdout().lock(), "updated {}", path.display())?;
         }
         _ => {
             return Err(std::io::Error::new(

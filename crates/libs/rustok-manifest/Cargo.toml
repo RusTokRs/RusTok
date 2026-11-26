@@ -20,3 +20,6 @@ hex = { workspace = true, optional = true }
 [features]
 default = ["snapshot-hash"]
 snapshot-hash = ["dep:sha2", "dep:hex"]
+
+[lints]
+workspace = true

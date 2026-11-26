@@ -140,7 +140,7 @@ fn test_sampling_rate_bounds() {
         sampling_rate: 1.0,
         ..Default::default()
     };
-    assert_eq!(config.sampling_rate, 1.0);
+    assert!((config.sampling_rate - 1.0).abs() < f64::EPSILON);
 }
 
 // Integration test with actual OTLP collector
@@ -175,7 +175,7 @@ async fn test_init_tracing_with_collector() {
         }
         Err(e) => {
             // Expected if collector is not running
-            eprintln!("Note: OTLP collector not available (expected): {}", e);
+            assert!(!e.to_string().is_empty());
         }
     }
 }

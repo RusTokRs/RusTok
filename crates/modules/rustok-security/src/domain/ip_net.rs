@@ -111,10 +111,18 @@ impl IpNet {
         }
     }
 
-    /// Checks if a given IP address belongs to this network or matches this IP.
+    /// Checks if a given IP address belongs to this network or matches this IP,
+    /// normalizing IPv4-mapped IPv6 addresses (`::ffff:a.b.c.d`) against IPv4 rules.
     pub fn contains(&self, ip: &IpAddr) -> bool {
         match (self, ip) {
             (Self::V4 { network, mask, .. }, IpAddr::V4(v4)) => {
+                let ip_u32 = u32::from_be_bytes(v4.octets());
+                (ip_u32 & mask) == *network
+            }
+            (Self::V4 { network, mask, .. }, IpAddr::V6(v6)) => {
+                let Some(v4) = v6.to_ipv4_mapped() else {
+                    return false;
+                };
                 let ip_u32 = u32::from_be_bytes(v4.octets());
                 (ip_u32 & mask) == *network
             }
@@ -172,5 +180,14 @@ mod tests {
         assert!(IpNet::parse("192.168.1.1/33").is_err());
         assert!(IpNet::parse("2001:db8::/129").is_err());
         assert!(IpNet::parse("192.168.1.1/abc").is_err());
+    }
+
+    #[test]
+    fn test_ipv4_mapped_ipv6_matches_v4_cidr() {
+        let net = IpNet::parse("10.0.0.0/24").unwrap();
+        let mapped: IpAddr = "::ffff:10.0.0.42".parse().unwrap();
+        let other_mapped: IpAddr = "::ffff:192.168.1.1".parse().unwrap();
+        assert!(net.contains(&mapped));
+        assert!(!net.contains(&other_mapped));
     }
 }

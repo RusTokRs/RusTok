@@ -26,7 +26,7 @@ import type { CartPromotionPreview, CartSnapshot } from '../types';
 export function CartPromotionsTemplate({ opts }: { opts: GqlOpts }) {
   const [cartId, setCartId] = React.useState('');
   const [sourceId, setSourceId] = React.useState('');
-  const [kind, setKind] = React.useState('PERCENT');
+  const [kind, setKind] = React.useState('PERCENTAGE_DISCOUNT');
   const [scope, setScope] = React.useState('CART');
   const [lineItemId, setLineItemId] = React.useState('');
   const [discountPercent, setDiscountPercent] = React.useState('');
@@ -48,9 +48,12 @@ export function CartPromotionsTemplate({ opts }: { opts: GqlOpts }) {
       sourceId: sourceId.trim(),
       kind,
       scope,
-      lineItemId: lineItemId.trim() || null,
-      discountPercent: discountPercent ? discountPercent : null,
-      amount: amount ? amount : null,
+      lineItemId: scope === 'LINE_ITEM' ? lineItemId.trim() || null : null,
+      discountPercent:
+        kind === 'PERCENTAGE_DISCOUNT' && discountPercent
+          ? discountPercent
+          : null,
+      amount: kind === 'FIXED_DISCOUNT' && amount ? amount : null,
       metadata: metadataStr || null
     };
   };
@@ -164,8 +167,8 @@ export function CartPromotionsTemplate({ opts }: { opts: GqlOpts }) {
                     value={kind}
                     onChange={(e) => setKind(e.target.value)}
                   >
-                    <option value='PERCENT'>PERCENT</option>
-                    <option value='AMOUNT'>AMOUNT</option>
+                    <option value='PERCENTAGE_DISCOUNT'>PERCENTAGE_DISCOUNT</option>
+                    <option value='FIXED_DISCOUNT'>FIXED_DISCOUNT</option>
                   </select>
                 </div>
                 <div className='space-y-2'>
@@ -176,7 +179,8 @@ export function CartPromotionsTemplate({ opts }: { opts: GqlOpts }) {
                     onChange={(e) => setScope(e.target.value)}
                   >
                     <option value='CART'>CART</option>
-                    <option value='LINE_ITEM'>LINE ITEM</option>
+                    <option value='LINE_ITEM'>LINE_ITEM</option>
+                    <option value='SHIPPING'>SHIPPING</option>
                   </select>
                 </div>
               </div>
@@ -190,7 +194,7 @@ export function CartPromotionsTemplate({ opts }: { opts: GqlOpts }) {
                     placeholder='e.g. 15.00'
                     value={discountPercent}
                     onChange={(e) => setDiscountPercent(e.target.value)}
-                    disabled={kind !== 'PERCENT'}
+                    disabled={kind !== 'PERCENTAGE_DISCOUNT'}
                   />
                 </div>
                 <div className='space-y-2'>
@@ -201,7 +205,7 @@ export function CartPromotionsTemplate({ opts }: { opts: GqlOpts }) {
                     placeholder='e.g. 10.00'
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    disabled={kind !== 'AMOUNT'}
+                    disabled={kind !== 'FIXED_DISCOUNT'}
                   />
                 </div>
               </div>

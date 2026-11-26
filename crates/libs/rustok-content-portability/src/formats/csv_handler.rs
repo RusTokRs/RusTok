@@ -15,10 +15,12 @@ impl CsvFormatHandler {
         options: &FormatOptions,
     ) -> Result<Vec<T>, PortabilityError> {
         let delimiter = options.csv_delimiter.unwrap_or(b',');
+        let quote = options.csv_quote.unwrap_or(b'"');
         let has_headers = options.csv_include_headers.unwrap_or(true);
 
         let mut reader = csv::ReaderBuilder::new()
             .delimiter(delimiter)
+            .quote(quote)
             .has_headers(has_headers)
             .from_reader(data);
 
@@ -37,10 +39,12 @@ impl CsvFormatHandler {
         options: &FormatOptions,
     ) -> Result<Vec<u8>, PortabilityError> {
         let delimiter = options.csv_delimiter.unwrap_or(b',');
+        let quote = options.csv_quote.unwrap_or(b'"');
         let has_headers = options.csv_include_headers.unwrap_or(true);
 
         let mut writer = csv::WriterBuilder::new()
             .delimiter(delimiter)
+            .quote(quote)
             .has_headers(has_headers)
             .from_writer(Vec::new());
 
@@ -121,5 +125,20 @@ mod tests {
         let csv = String::from_utf8(bytes).unwrap();
         assert!(!csv.contains("id,name"));
         assert!(csv.contains("1,alice"));
+    }
+
+    #[test]
+    fn roundtrip_csv_custom_quote() {
+        let items = vec![TestItem {
+            id: 1,
+            name: "alice, jr".to_string(),
+        }];
+        let options = FormatOptions::new().with_csv_quote(b'\'');
+        let bytes = CsvFormatHandler::serialize(&items, &options).unwrap();
+        let csv = String::from_utf8(bytes.clone()).unwrap();
+        assert!(csv.contains("'alice, jr'"));
+
+        let parsed: Vec<TestItem> = CsvFormatHandler::parse(&bytes, &options).unwrap();
+        assert_eq!(parsed, items);
     }
 }

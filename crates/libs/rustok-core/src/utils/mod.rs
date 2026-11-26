@@ -39,27 +39,29 @@ pub fn slugify(input: &str) -> String {
         .join("-")
 }
 
-/// Truncate a string to a maximum length, adding ellipsis if truncated
+/// Truncate a string to a maximum character length, adding ellipsis if truncated
 pub fn truncate(input: &str, max_len: usize) -> String {
-    if input.len() <= max_len {
+    if input.chars().count() <= max_len {
         input.to_string()
+    } else if max_len <= 3 {
+        "...".chars().take(max_len).collect()
     } else {
-        let truncated = &input[..max_len.saturating_sub(3)];
-        format!("{}...", truncated)
+        let truncated: String = input.chars().take(max_len - 3).collect();
+        format!("{truncated}...")
     }
 }
 
 /// Parse a duration string (e.g., "1h30m", "2d", "30s")
 pub fn parse_duration(input: &str) -> Option<Duration> {
-    let chars = input.chars().peekable();
     let mut total_seconds: u64 = 0;
     let mut current_num: u64 = 0;
 
-    for ch in chars {
+    for ch in input.chars() {
         if ch.is_ascii_digit() {
-            current_num = current_num * 10 + ch.to_digit(10)? as u64;
+            let digit = u64::from(ch.to_digit(10)?);
+            current_num = current_num.checked_mul(10)?.checked_add(digit)?;
         } else {
-            let multiplier = match ch {
+            let multiplier: u64 = match ch {
                 's' | 'S' => 1,
                 'm' | 'M' => 60,
                 'h' | 'H' => 60 * 60,
@@ -67,14 +69,15 @@ pub fn parse_duration(input: &str) -> Option<Duration> {
                 'w' | 'W' => 7 * 24 * 60 * 60,
                 _ => return None,
             };
-            total_seconds += current_num * multiplier;
+            let segment = current_num.checked_mul(multiplier)?;
+            total_seconds = total_seconds.checked_add(segment)?;
             current_num = 0;
         }
     }
 
     if current_num > 0 {
         // Number without suffix - treat as seconds
-        total_seconds += current_num;
+        total_seconds = total_seconds.checked_add(current_num)?;
     }
 
     if total_seconds > 0 {
@@ -421,6 +424,11 @@ mod tests {
         assert_eq!(truncate("Hello", 10), "Hello");
         assert_eq!(truncate("Hello World", 8), "Hello...");
         assert_eq!(truncate("Short", 3), "...");
+        assert_eq!(truncate("Short", 2), "..");
+        assert_eq!(truncate("Short", 0), "");
+        assert_eq!(truncate("Привет мир", 8), "Приве...");
+        assert_eq!(truncate("🦀🦀🦀🦀", 4), "🦀🦀🦀🦀");
+        assert_eq!(truncate("🦀🦀🦀🦀🦀", 4), "🦀...");
     }
 
     #[test]
@@ -431,6 +439,8 @@ mod tests {
         assert_eq!(parse_duration("2d"), Some(Duration::from_secs(172800)));
         assert_eq!(parse_duration("60"), Some(Duration::from_secs(60)));
         assert_eq!(parse_duration("invalid"), None);
+        assert_eq!(parse_duration("99999999999999999999999s"), None);
+        assert_eq!(parse_duration("18446744073709551615w"), None);
     }
 
     #[test]

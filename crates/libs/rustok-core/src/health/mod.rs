@@ -217,13 +217,12 @@ impl HealthRegistry {
         }
 
         // Determine overall status
-        let status = if checks.iter().any(|c| {
-            matches!(c.status, HealthStatus::Unhealthy)
-                && self
-                    .checks
-                    .iter()
-                    .any(|hc| hc.name() == c.name && hc.critical())
-        }) {
+        let status = if self
+            .checks
+            .iter()
+            .zip(checks.iter())
+            .any(|(hc, c)| matches!(c.status, HealthStatus::Unhealthy) && hc.critical())
+        {
             HealthStatus::Unhealthy
         } else if checks
             .iter()

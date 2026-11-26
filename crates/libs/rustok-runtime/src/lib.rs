@@ -363,6 +363,9 @@ impl ModuleWorkScheduler {
         mut stop: tokio::sync::watch::Receiver<bool>,
         poll_interval: Duration,
     ) {
+        if *stop.borrow() {
+            return;
+        }
         let poll_interval = poll_interval.max(Duration::from_millis(1));
         let mut interval = tokio::time::interval(poll_interval);
         loop {

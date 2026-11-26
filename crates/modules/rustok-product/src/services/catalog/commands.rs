@@ -483,7 +483,7 @@ impl CatalogService {
                 position: Set(variant_position),
                 created_at: Set(now.into()),
                 updated_at: Set(now.into()),
-                index_revision: sea_orm::ActiveValue::NotSet,
+                index_revision: Set(1),
             };
             variant.insert(&txn).await.map_err(|error| {
                 tracing::error!(%error, "variant.insert failed in create_product");
@@ -1537,7 +1537,7 @@ impl CatalogService {
             position: Set(next_position),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
-            index_revision: sea_orm::ActiveValue::NotSet,
+            index_revision: Set(1),
         };
 
         variant

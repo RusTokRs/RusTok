@@ -295,14 +295,14 @@ fn write_json_atomically<T: Serialize>(
 }
 
 fn cleanup_pending_file(path: &Path) {
-    if let Err(error) = fs::remove_file(path) {
-        if error.kind() != std::io::ErrorKind::NotFound {
-            tracing::warn!(
-                path = %path.display(),
-                %error,
-                "failed to remove pending module cache file during cleanup"
-            );
-        }
+    if let Err(error) = fs::remove_file(path)
+        && error.kind() != std::io::ErrorKind::NotFound
+    {
+        tracing::warn!(
+            path = %path.display(),
+            %error,
+            "failed to remove pending module cache file during cleanup"
+        );
     }
 }
 

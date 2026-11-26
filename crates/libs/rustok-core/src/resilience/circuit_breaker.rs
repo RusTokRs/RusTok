@@ -1,11 +1,9 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 /// Circuit Breaker Pattern Implementation
 ///
 /// Prevents cascading failures by failing fast while an upstream dependency is unavailable.
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-
-use tokio::sync::RwLock;
 
 /// Circuit breaker configuration.
 ///
@@ -119,6 +117,40 @@ pub struct CircuitBreaker {
     state_transitions: AtomicU64,
 }
 
+struct HalfOpenProbeGuard<'a> {
+    breaker: &'a CircuitBreaker,
+    epoch: Option<u64>,
+    completed: bool,
+}
+
+impl<'a> HalfOpenProbeGuard<'a> {
+    fn new(breaker: &'a CircuitBreaker, admission: CircuitAdmission) -> Self {
+        let epoch = match admission {
+            CircuitAdmission::Closed => None,
+            CircuitAdmission::HalfOpen { epoch } => Some(epoch),
+        };
+        Self {
+            breaker,
+            epoch,
+            completed: false,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.completed = true;
+    }
+}
+
+impl Drop for HalfOpenProbeGuard<'_> {
+    fn drop(&mut self) {
+        if !self.completed
+            && let Some(epoch) = self.epoch
+        {
+            self.breaker.release_cancelled_half_open_probe(epoch);
+        }
+    }
+}
+
 impl CircuitBreaker {
     pub fn new(config: CircuitBreakerConfig) -> Self {
         Self {
@@ -132,6 +164,18 @@ impl CircuitBreaker {
         }
     }
 
+    fn read_state(&self) -> RwLockReadGuard<'_, CircuitBreakerState> {
+        self.state
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn write_state(&self) -> RwLockWriteGuard<'_, CircuitBreakerState> {
+        self.state
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     pub async fn call<F, Fut, T, E>(&self, operation: F) -> Result<T, CircuitBreakerError<E>>
     where
         F: FnOnce() -> Fut,
@@ -140,19 +184,20 @@ impl CircuitBreaker {
     {
         self.total_requests.fetch_add(1, Ordering::Relaxed);
 
-        let Some(admission) = self.admit().await else {
+        let Some(admission) = self.admit() else {
             self.total_rejected.fetch_add(1, Ordering::Relaxed);
-            let state = self.get_state().await;
+            let state = self.read_state().state;
             tracing::warn!(state = state.as_str(), "Circuit breaker rejected request");
             return Err(CircuitBreakerError::Open);
         };
 
+        let mut probe_guard = HalfOpenProbeGuard::new(self, admission);
         let started_at = Instant::now();
         match operation().await {
             Ok(value) => {
-                self.record_success(admission).await;
+                let state = self.record_success(admission);
+                probe_guard.disarm();
                 self.total_successes.fetch_add(1, Ordering::Relaxed);
-                let state = self.get_state().await;
                 tracing::debug!(
                     duration_ms = started_at.elapsed().as_millis(),
                     state = state.as_str(),
@@ -161,9 +206,9 @@ impl CircuitBreaker {
                 Ok(value)
             }
             Err(error) => {
-                self.record_failure(admission).await;
+                let state = self.record_failure(admission);
+                probe_guard.disarm();
                 self.total_failures.fetch_add(1, Ordering::Relaxed);
-                let state = self.get_state().await;
                 tracing::warn!(
                     duration_ms = started_at.elapsed().as_millis(),
                     state = state.as_str(),
@@ -175,8 +220,8 @@ impl CircuitBreaker {
         }
     }
 
-    async fn admit(&self) -> Option<CircuitAdmission> {
-        let mut state = self.state.write().await;
+    fn admit(&self) -> Option<CircuitAdmission> {
+        let mut state = self.write_state();
         match state.state {
             CircuitState::Closed => Some(CircuitAdmission::Closed),
             CircuitState::Open => {
@@ -214,8 +259,25 @@ impl CircuitBreaker {
         }
     }
 
-    async fn record_success(&self, admission: CircuitAdmission) {
-        let mut state = self.state.write().await;
+    fn release_cancelled_half_open_probe(&self, epoch: u64) {
+        let mut state = self.write_state();
+        if state.state != CircuitState::HalfOpen || state.half_open_epoch != epoch {
+            return;
+        }
+        state.half_open_in_flight = state.half_open_in_flight.saturating_sub(1);
+        let required_successes = self.config.success_threshold.max(1);
+        if state.success_count >= required_successes && state.half_open_in_flight == 0 {
+            state.state = CircuitState::Closed;
+            state.failure_count = 0;
+            state.last_failure_time = None;
+            state.invalidate_half_open_epoch();
+            self.state_transitions.fetch_add(1, Ordering::Relaxed);
+            tracing::info!(epoch, "Circuit breaker: HalfOpen -> Closed");
+        }
+    }
+
+    fn record_success(&self, admission: CircuitAdmission) -> CircuitState {
+        let mut state = self.write_state();
         match admission {
             CircuitAdmission::Closed => {
                 if state.state == CircuitState::Closed {
@@ -224,7 +286,7 @@ impl CircuitBreaker {
             }
             CircuitAdmission::HalfOpen { epoch } => {
                 if state.state != CircuitState::HalfOpen || state.half_open_epoch != epoch {
-                    return;
+                    return state.state;
                 }
 
                 state.half_open_in_flight = state.half_open_in_flight.saturating_sub(1);
@@ -240,14 +302,15 @@ impl CircuitBreaker {
                 }
             }
         }
+        state.state
     }
 
-    async fn record_failure(&self, admission: CircuitAdmission) {
-        let mut state = self.state.write().await;
+    fn record_failure(&self, admission: CircuitAdmission) -> CircuitState {
+        let mut state = self.write_state();
         match admission {
             CircuitAdmission::Closed => {
                 if state.state != CircuitState::Closed {
-                    return;
+                    return state.state;
                 }
 
                 state.failure_count = state.failure_count.saturating_add(1);
@@ -261,7 +324,7 @@ impl CircuitBreaker {
             }
             CircuitAdmission::HalfOpen { epoch } => {
                 if state.state != CircuitState::HalfOpen || state.half_open_epoch != epoch {
-                    return;
+                    return state.state;
                 }
 
                 Self::set_open(&mut state);
@@ -269,6 +332,7 @@ impl CircuitBreaker {
                 tracing::warn!(epoch, "Circuit breaker: HalfOpen -> Open");
             }
         }
+        state.state
     }
 
     fn set_open(state: &mut CircuitBreakerState) {
@@ -279,11 +343,11 @@ impl CircuitBreaker {
     }
 
     pub async fn get_state(&self) -> CircuitState {
-        self.state.read().await.state
+        self.read_state().state
     }
 
     pub async fn stats(&self) -> CircuitBreakerStats {
-        let state = self.state.read().await;
+        let state = self.read_state();
         CircuitBreakerStats {
             state: state.state,
             total_requests: self.total_requests.load(Ordering::Relaxed),
@@ -337,7 +401,7 @@ circuit_breaker_rejection_rate{{name="{name}"}} {rejection_rate}
     }
 
     pub async fn open(&self) {
-        let mut state = self.state.write().await;
+        let mut state = self.write_state();
         if state.state != CircuitState::Open {
             Self::set_open(&mut state);
             self.state_transitions.fetch_add(1, Ordering::Relaxed);
@@ -346,7 +410,7 @@ circuit_breaker_rejection_rate{{name="{name}"}} {rejection_rate}
     }
 
     pub async fn close(&self) {
-        let mut state = self.state.write().await;
+        let mut state = self.write_state();
         if state.state != CircuitState::Closed {
             state.state = CircuitState::Closed;
             state.failure_count = 0;
@@ -358,7 +422,7 @@ circuit_breaker_rejection_rate{{name="{name}"}} {rejection_rate}
     }
 
     pub async fn reset(&self) {
-        let mut state = self.state.write().await;
+        let mut state = self.write_state();
         state.state = CircuitState::Closed;
         state.failure_count = 0;
         state.last_failure_time = None;
@@ -429,10 +493,16 @@ mod tests {
             42
         );
         for _ in 0..2 {
-            let _ = breaker.call(|| async { Err::<(), _>("failure") }).await;
+            assert!(matches!(
+                breaker.call(|| async { Err::<(), _>("failure") }).await,
+                Err(CircuitBreakerError::Upstream(_))
+            ));
             assert_eq!(breaker.get_state().await, CircuitState::Closed);
         }
-        let _ = breaker.call(|| async { Err::<(), _>("failure") }).await;
+        assert!(matches!(
+            breaker.call(|| async { Err::<(), _>("failure") }).await,
+            Err(CircuitBreakerError::Upstream(_))
+        ));
         assert_eq!(breaker.get_state().await, CircuitState::Open);
         assert_eq!(breaker.stats().await.failure_count, 3);
     }
@@ -591,9 +661,18 @@ mod tests {
             failure_threshold: 10,
             ..CircuitBreakerConfig::default()
         });
-        let _ = breaker.call(|| async { Ok::<_, String>(1) }).await;
-        let _ = breaker.call(|| async { Ok::<_, String>(2) }).await;
-        let _ = breaker.call(|| async { Err::<(), _>("failure") }).await;
+        assert_eq!(
+            breaker.call(|| async { Ok::<_, String>(1) }).await.unwrap(),
+            1
+        );
+        assert_eq!(
+            breaker.call(|| async { Ok::<_, String>(2) }).await.unwrap(),
+            2
+        );
+        assert!(matches!(
+            breaker.call(|| async { Err::<(), _>("failure") }).await,
+            Err(CircuitBreakerError::Upstream(_))
+        ));
 
         let stats = breaker.stats().await;
         assert_eq!(stats.total_requests, 3);
@@ -616,5 +695,37 @@ mod tests {
         assert_eq!(CircuitState::Closed.as_u8(), 0);
         assert_eq!(CircuitState::Open.as_u8(), 1);
         assert_eq!(CircuitState::HalfOpen.as_u8(), 2);
+    }
+
+    #[tokio::test]
+    async fn cancelled_half_open_probe_releases_slot_and_does_not_wedge_breaker() {
+        let breaker = Arc::new(CircuitBreaker::new(CircuitBreakerConfig {
+            failure_threshold: 1,
+            success_threshold: 1,
+            timeout: Duration::ZERO,
+            half_open_max_requests: Some(1),
+        }));
+        open_breaker(&breaker).await;
+
+        let started = Arc::new(Notify::new());
+        let b1 = Arc::clone(&breaker);
+        let s1 = Arc::clone(&started);
+        let probe = tokio::spawn(async move {
+            b1.call(|| async move {
+                s1.notify_one();
+                futures::future::pending::<Result<(), &str>>().await
+            })
+            .await
+        });
+        started.notified().await;
+
+        // Abort/cancel the in-flight half-open probe.
+        probe.abort();
+        assert!(probe.await.unwrap_err().is_cancelled());
+
+        // The slot must have been released so a new probe can succeed and close the circuit.
+        assert_eq!(breaker.get_state().await, CircuitState::HalfOpen);
+        breaker.call(|| async { Ok::<_, &str>(()) }).await.unwrap();
+        assert_eq!(breaker.get_state().await, CircuitState::Closed);
     }
 }

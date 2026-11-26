@@ -279,7 +279,7 @@ fn map_admin_shipping_option_port_error(
         code,
         message,
         error_kind,
-        ..
+        retryable,
     } = match &error.kind {
         PortErrorKind::Validation => AdminShippingOptionHttpPolicy {
             status: StatusCode::BAD_REQUEST,
@@ -346,7 +346,7 @@ fn map_admin_shipping_option_port_error(
         boundary = ADMIN_SHIPPING_BOUNDARY,
         "commerce admin shipping option owner call failed with bounded diagnostics"
     );
-    HttpError::new(status, code, message).with_retryable(error.retryable)
+    HttpError::new(status, code, message).with_retryable(retryable)
 }
 
 async fn validate_shipping_option_profile_inputs(

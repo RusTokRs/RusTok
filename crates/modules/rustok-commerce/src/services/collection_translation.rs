@@ -14,8 +14,13 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::CommerceError;
-use crate::collection_translation_changes::record_collection_translation_change_in_tx;
-use crate::entities::{collection, collection_translation};
+use crate::collection_translation_changes::{
+    CollectionTranslationChangeRecord,
+    collection_translation_change_highwater as read_change_highwater,
+    read_collection_translation_changes as read_changes_page,
+    record_collection_translation_change_in_tx,
+};
+use crate::{CommerceResult, entities::{collection, collection_translation}};
 
 pub const MAX_COLLECTION_TRANSLATION_RESOURCE_PAGE: u16 = 200;
 
@@ -413,6 +418,23 @@ impl CollectionTranslationService {
 
         txn.commit().await?;
         Ok(receipt)
+    }
+
+    pub async fn collection_translation_change_highwater(
+        &self,
+        tenant_id: Uuid,
+    ) -> CommerceResult<Option<u64>> {
+        read_change_highwater(&self.db, tenant_id).await
+    }
+
+    pub async fn read_collection_translation_changes(
+        &self,
+        tenant_id: Uuid,
+        after_seq: u64,
+        through_seq: u64,
+        limit: u16,
+    ) -> CommerceResult<Vec<CollectionTranslationChangeRecord>> {
+        read_changes_page(&self.db, tenant_id, after_seq, through_seq, limit).await
     }
 }
 

@@ -29,7 +29,7 @@ struct PostgresTenantTestDb {
 impl PostgresTenantTestDb {
     async fn setup(prefix: &str) -> TestResult<Option<Self>> {
         let Some(database_url) = postgres_database_url() else {
-            eprintln!(
+            tracing::info!(
                 "{TENANT_TEST_DATABASE_ENV} is not set to a PostgreSQL URL; skipping tenant locale-policy concurrency test"
             );
             return Ok(None);
@@ -70,11 +70,13 @@ impl PostgresTenantTestDb {
                 application_name_b,
             })),
             Err(error) => {
-                let _ = control
-                    .execute_unprepared(&format!(
-                        r#"DROP SCHEMA IF EXISTS "{schema_name}" CASCADE"#
-                    ))
-                    .await;
+                drop(
+                    control
+                        .execute_unprepared(&format!(
+                            r#"DROP SCHEMA IF EXISTS "{schema_name}" CASCADE"#
+                        ))
+                        .await,
+                );
                 Err(error)
             }
         }
@@ -153,8 +155,8 @@ async fn postgres_concurrent_locale_policy_requests_replay_one_durable_receipt()
         if let Err(error) = wait_result {
             task_a.abort();
             task_b.abort();
-            let _ = task_a.await;
-            let _ = task_b.await;
+            drop(task_a.await);
+            drop(task_b.await);
             return Err(error);
         }
 

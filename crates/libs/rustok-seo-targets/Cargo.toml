@@ -34,3 +34,6 @@ uuid.workspace = true
 rustok-api = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
 rustok-outbox-storage = { workspace = true, optional = true }
+
+[lints]
+workspace = true

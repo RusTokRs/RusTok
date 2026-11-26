@@ -4,6 +4,7 @@
 //! This module keeps the pre-cutover concrete-service controller verbatim: it is re-exported
 //! through `pub use super::payments_legacy::*;` for OpenAPI/compatibility surface and stays off
 //! the router, so the cutover remains reversible and auditable.
+#![allow(dead_code)]
 use axum::{
     Json,
     extract::{Path, Query, State},

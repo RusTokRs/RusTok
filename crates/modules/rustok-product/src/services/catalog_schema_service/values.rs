@@ -31,6 +31,45 @@ async fn lock_product_for_update_in_tx(
     product.ok_or(CommerceError::ProductNotFound(product_id))
 }
 
+#[derive(FromQueryResult)]
+struct ProductAttributeScopeRow {
+    id: Uuid,
+    scope: String,
+}
+
+async fn load_active_attribute_scopes_in<C>(
+    conn: &C,
+    tenant_id: Uuid,
+    bindings: &[crate::services::catalog_schema::AttributeBinding],
+) -> CommerceResult<HashMap<Uuid, String>>
+where
+    C: ConnectionTrait,
+{
+    let mut attribute_ids = bindings
+        .iter()
+        .filter(|binding| !binding.is_disabled)
+        .map(|binding| binding.attribute_id)
+        .collect::<Vec<_>>();
+    attribute_ids.sort();
+    attribute_ids.dedup();
+    if attribute_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let (placeholders, values) = uuid_filter_values(tenant_id, &attribute_ids);
+    let rows = ProductAttributeScopeRow::find_by_statement(Statement::from_sql_and_values(
+        conn.get_database_backend(),
+        format!(
+            "SELECT id, scope FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
+        ),
+        values,
+    ))
+    .all(conn)
+    .await?;
+
+    Ok(rows.into_iter().map(|row| (row.id, row.scope)).collect())
+}
+
 fn attribute_scope_includes_product(scope: &str) -> bool {
     matches!(scope, "product" | "both")
 }
@@ -176,6 +215,9 @@ impl ProductCatalogSchemaService {
             return Ok(());
         };
 
+        let attribute_scopes =
+            load_active_attribute_scopes_in(conn, tenant_id, &form.attributes).await?;
+
         let mut required_product_attribute_ids = Vec::new();
         let mut required_variant_attribute_ids = Vec::new();
         let mut required_product_locales: HashMap<Uuid, Vec<String>> = HashMap::new();
@@ -186,30 +228,34 @@ impl ProductCatalogSchemaService {
             .iter()
             .filter(|binding| !binding.is_disabled)
         {
+            let Some(scope) = attribute_scopes.get(&binding.attribute_id).map(String::as_str)
+            else {
+                continue;
+            };
             let rules =
                 attribute_validation::parse_product_attribute_validation(&binding.validation)?;
             let is_required =
                 binding.is_required || rules.required || !rules.required_locales.is_empty();
 
-            if !matches!(binding.scope.as_str(), "product" | "variant" | "both") {
+            if !matches!(scope, "product" | "variant" | "both") {
                 return Err(CommerceError::Validation(format!(
                     "attribute {} has an unsupported scope",
                     binding.attribute_id
                 )));
             }
 
-            if is_required && attribute_scope_includes_product(binding.scope.as_str()) {
+            if is_required && attribute_scope_includes_product(scope) {
                 required_product_attribute_ids.push(binding.attribute_id);
             }
-            if is_required && attribute_scope_includes_variant(binding.scope.as_str()) {
+            if is_required && attribute_scope_includes_variant(scope) {
                 required_variant_attribute_ids.push(binding.attribute_id);
             }
             if !rules.required_locales.is_empty() {
-                if attribute_scope_includes_product(binding.scope.as_str()) {
+                if attribute_scope_includes_product(scope) {
                     required_product_locales
                         .insert(binding.attribute_id, rules.required_locales.clone());
                 }
-                if attribute_scope_includes_variant(binding.scope.as_str()) {
+                if attribute_scope_includes_variant(scope) {
                     required_variant_locales
                         .insert(binding.attribute_id, rules.required_locales);
                 }
@@ -346,14 +392,15 @@ impl ProductCatalogSchemaService {
         };
         let form =
             Self::load_effective_form_for_category_in(db, tenant_id, category_id, &[]).await?;
+        let attribute_scopes =
+            load_active_attribute_scopes_in(db, tenant_id, &form.attributes).await?;
         let mut required_attribute_ids = Vec::new();
-        for binding in form
-            .attributes
-            .iter()
-            .filter(|binding| {
-                !binding.is_disabled && attribute_scope_includes_product(binding.scope.as_str())
-            })
-        {
+        for binding in form.attributes.iter().filter(|binding| {
+            !binding.is_disabled
+                && attribute_scopes
+                    .get(&binding.attribute_id)
+                    .is_some_and(|scope| attribute_scope_includes_product(scope.as_str()))
+        }) {
             let rules =
                 attribute_validation::parse_product_attribute_validation(&binding.validation)?;
             if binding.is_required || rules.required || !rules.required_locales.is_empty() {

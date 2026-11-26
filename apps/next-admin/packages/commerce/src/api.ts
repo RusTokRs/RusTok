@@ -73,7 +73,7 @@ query CommerceAdminShippingProfile($tenantId: UUID!, $id: UUID!) {
 }`;
 
 export const CREATE_SHIPPING_PROFILE_MUTATION = `
-mutation CommerceAdminCreateShippingProfile($tenantId: UUID!, $input: CreateShippingProfileInputObject!) {
+mutation CommerceAdminCreateShippingProfile($tenantId: UUID!, $input: CreateShippingProfileInput!) {
   createShippingProfile(tenantId: $tenantId, input: $input) {
     id
     slug
@@ -90,7 +90,7 @@ mutation CommerceAdminCreateShippingProfile($tenantId: UUID!, $input: CreateShip
 }`;
 
 export const UPDATE_SHIPPING_PROFILE_MUTATION = `
-mutation CommerceAdminUpdateShippingProfile($tenantId: UUID!, $id: UUID!, $input: UpdateShippingProfileInputObject!) {
+mutation CommerceAdminUpdateShippingProfile($tenantId: UUID!, $id: UUID!, $input: UpdateShippingProfileInput!) {
   updateShippingProfile(tenantId: $tenantId, id: $id, input: $input) {
     id
     slug
