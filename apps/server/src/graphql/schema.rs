@@ -18,7 +18,6 @@ mod schema_codegen {
     include!(concat!(env!("OUT_DIR"), "/graphql_schema_codegen.rs"));
 }
 
-use super::dashboard_security::GraphqlDashboardSecurityPolicy;
 use super::forum_principal_security::ForumPrincipalPolicy;
 use super::index_drift_diagnosis::IndexDriftDiagnosisMutation;
 use super::index_drift_source_page_diagnosis::IndexDriftSourcePageDiagnosisMutation;
@@ -249,7 +248,6 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
     .extension(GraphqlTenantPolicy)
     .extension(GraphqlSecurityPolicy)
     .extension(GraphqlModuleSecurityPolicy)
-    .extension(GraphqlDashboardSecurityPolicy)
     .extension(LegacyDisableUserPolicy)
     .extension(StorefrontPrincipalPolicy)
     .extension(ForumPrincipalPolicy)

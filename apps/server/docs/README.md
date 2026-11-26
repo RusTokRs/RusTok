@@ -1719,7 +1719,10 @@ for caller identity, bounded IO, operator permissions and unexecuted runtime gat
 - The root GraphQL `dashboardStats` query requires an authenticated caller
   with current `analytics:read` authority. `recentActivity`, which contains
   user email addresses, requires current `users:list` authority. Both are
-  guarded in the GraphQL document preflight policy and in the resolvers.
+  guarded by the shared sensitive-field GraphQL document preflight policy and
+  in the resolvers. A document containing both fields requires both effective
+  permissions; a single-field document does not acquire the other field's
+  permission requirement.
 - The root GraphQL user connection orders results by creation time then
   immutable user ID, and treats search text literally rather than allowing
   SQL LIKE wildcards to expand the result set.
