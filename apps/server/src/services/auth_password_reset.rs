@@ -162,6 +162,10 @@ impl AuthLifecycleService {
         )
         .await?;
 
+        if Utc::now() >= claims.expires_at {
+            tx.rollback().await.map_err(AuthLifecycleError::from)?;
+            return Err(AuthLifecycleError::InvalidResetToken);
+        }
         tx.commit().await.map_err(AuthLifecycleError::from)?;
         Self::record_password_reset_sessions_revoked(revoked_sessions);
         Ok(())

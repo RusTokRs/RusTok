@@ -433,6 +433,15 @@ impl AuthLifecycleService {
             .await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
 
+        // User creation, role assignment and outbox inserts can wait on
+        // other transactions. A late invite must not leave a user or receipt.
+        let final_now = Utc::now();
+        if expires_at <= final_now
+            || !invite_ledger_matches_claims(&issued, &email, expires_at, final_now)
+        {
+            tx.rollback().await.map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+            return Err(InviteAcceptanceError::InvalidToken);
+        }
         tx.commit()
             .await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;

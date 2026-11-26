@@ -88,6 +88,10 @@ impl AuthLifecycleService {
             }
         }
 
+        if Utc::now() >= claims.expires_at {
+            tx.rollback().await.map_err(AuthLifecycleError::from)?;
+            return Err(AuthLifecycleError::InvalidVerificationToken);
+        }
         tx.commit().await.map_err(AuthLifecycleError::from)?;
         Ok(())
     }

@@ -95,6 +95,7 @@ mod tests {
                 current_email: Set(user.email),
                 new_email: Set("new@example.com".to_string()),
                 password_changed_at: Set(user.password_changed_at),
+                recovery_revision: Set(Some(user.recovery_revision)),
                 token_hash: Set(format!("{:064x}", index + 1)),
                 expires_at: Set(expiry.into()),
                 created_at: Set((now - Duration::minutes(30)).into()),

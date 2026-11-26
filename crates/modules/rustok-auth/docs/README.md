@@ -788,6 +788,16 @@ confirmation rechecks it under the user mutation lock and in its conditional
 write. Old subjects without the revision fail closed. Stop older Auth writers,
 apply the platform migration and request fresh links at cutover. See
 [the recovery revision ADR](../../../../DECISIONS/2026-11-26-auth-recovery-revision.md).
+Stored email-change challenges now bind the same revision, including the
+pre-reauthentication snapshot comparison at issuance. Confirmation fails
+closed on a missing or changed revision. The Auth migration removes legacy
+pending requests instead of backfilling a revision they never proved.
+A stale challenge may retain its bounded reservation until confirmation,
+replacement or expiry cleanup. Reset, verification, email change and invite
+acceptance recheck deadlines after transactional side effects and before
+requesting commit; email-change confirmation also rechecks the proving
+session. These are application-clock observations, not a durable clock or
+database commit-time guarantee.
 Source regressions and PostgreSQL/SQLite migration execution remain pending.
 
 ## Direct session refresh history and recovery

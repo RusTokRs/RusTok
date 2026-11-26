@@ -11,6 +11,7 @@ pub struct Model {
     pub current_email: String,
     pub new_email: String,
     pub password_changed_at: Option<DateTimeWithTimeZone>,
+    pub recovery_revision: Option<i64>,
     #[serde(skip)]
     pub token_hash: String,
     pub expires_at: DateTimeWithTimeZone,
@@ -27,6 +28,7 @@ impl std::fmt::Debug for Model {
             .field("current_email", &self.current_email)
             .field("new_email", &self.new_email)
             .field("password_changed_at", &self.password_changed_at)
+            .field("recovery_revision", &self.recovery_revision)
             .field("token_hash", &"<redacted>")
             .field("expires_at", &self.expires_at)
             .field("created_at", &self.created_at)

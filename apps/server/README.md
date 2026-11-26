@@ -316,3 +316,13 @@ proof of deployed credentials, PostgreSQL locking, broker ACK/restart or source 
 failures currently park; automatic backoff/original-job and full operator-client recovery remain
 pending. Do not initialize a live baseline/cutover without explicit credential/schema/digest/
 worker/backlog/history/recovery preflight. Original job/lease metadata grants no source authority.
+
+## Recovery deadline and revision fence (2026-11-26)
+
+Stored email-change challenges use the account recovery revision in addition
+to their existing mailbox and password timestamp binding. Stop old binaries,
+apply the platform and Auth migrations, then deploy current readers and
+writers; existing pending email-change links must be requested again.
+Reset, verification, email change and invitation acceptance recheck expiry
+before requesting transaction commit. Durable clock rollback protection and
+runtime contention/migration evidence remain open.

@@ -559,3 +559,10 @@ The host extractor fails closed unless that row is active and matches the
 presented hash, client, tenant, grant, and subject. RFC 7009 and security
 revocation paths revoke access and refresh rows together. Delegated rows store
 the consent epoch so revoke/re-grant cannot resurrect older credentials.
+
+## Recovery lifecycle continuation (2026-11-26)
+
+- Email-change issuance and confirmation bind the existing user recovery revision; the Auth migration invalidates pre-cutover pending challenges. Mailbox ABA and stale issuance source regressions are authored.
+- Reset, verification, email change and invite acceptance recheck credential deadlines after transactional writes, immediately before requesting commit; authenticated email change also rechecks the locked proving session. Invite acceptance checks signed and ledger expiry.
+- PostgreSQL/SQLite fresh and incremental migration, rollback, contention and transport execution evidence remain pending. Source regressions are unrun. No transport or readiness status promotion.
+- Durable high-water time, commit-time deadline semantics, issuer authority history, and immediate reclamation of stale cross-account mailbox reservations remain separate unresolved boundaries.

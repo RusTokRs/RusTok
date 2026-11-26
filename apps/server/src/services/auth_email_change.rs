@@ -98,8 +98,8 @@ impl AuthLifecycleService {
     }
 
     /// Confirm the exact challenge while holding the user mutation fence.
-    /// The old address and password-change timestamp bind the challenge to
-    /// the identity state observed when it was requested.
+    /// The old address, password-change timestamp and recovery revision bind
+    /// the challenge to the identity state observed when it was requested.
     pub async fn confirm_email_change_runtime(
         ctx: &ServerRuntimeContext,
         tenant_id: Uuid,
@@ -167,6 +167,7 @@ impl AuthLifecycleService {
         if locked_user.email != observed_user.email
             || locked_user.password_hash != observed_user.password_hash
             || locked_user.password_changed_at != observed_user.password_changed_at
+            || locked_user.recovery_revision != observed_user.recovery_revision
         {
             return Err(AuthLifecycleError::InvalidCredentials);
         }
@@ -228,6 +229,7 @@ impl AuthLifecycleService {
             current_email: Set(locked_user.email),
             new_email: Set(new_email.to_string()),
             password_changed_at: Set(locked_user.password_changed_at),
+            recovery_revision: Set(Some(locked_user.recovery_revision)),
             token_hash: Set(token_hash.to_string()),
             expires_at: Set(expires_at.into()),
             created_at: Set(now.into()),
@@ -316,14 +318,15 @@ impl AuthLifecycleService {
         if !user.is_active()
             || user.email != request.current_email
             || user.password_changed_at != request.password_changed_at
+            || request.recovery_revision != Some(user.recovery_revision)
         {
             delete_email_change_request(&tx, request.id, token_hash).await?;
             tx.commit().await.map_err(AuthLifecycleError::from)?;
             return Err(AuthLifecycleError::InvalidEmailChangeToken);
         }
 
-        if let Some(session_id) = current_session_id {
-            Self::find_current_session_for_password_change_in_tx(
+        let proving_session = if let Some(session_id) = current_session_id {
+            Some(Self::find_current_session_for_password_change_in_tx(
                 &tx,
                 tenant_id,
                 user.id,
@@ -331,8 +334,10 @@ impl AuthLifecycleService {
             )
             .await?
             .filter(|session| session.is_active())
-            .ok_or(AuthLifecycleError::SessionExpired)?;
-        }
+            .ok_or(AuthLifecycleError::SessionExpired)?)
+        } else {
+            None
+        };
 
         let existing_user = Users::find()
             .filter(users::Column::TenantId.eq(tenant_id))
@@ -344,6 +349,9 @@ impl AuthLifecycleService {
         // Expiry is checked again after all row-lock waits, session
         // validation and the mailbox-availability lookup.
         let transition_at = Utc::now();
+        if proving_session.as_ref().is_some_and(|session| !session.is_active_at(transition_at)) {
+            return Err(AuthLifecycleError::SessionExpired);
+        }
         if request.expires_at.with_timezone(&Utc) <= transition_at {
             delete_email_change_request(&tx, request.id, token_hash).await?;
             tx.commit().await.map_err(AuthLifecycleError::from)?;
@@ -401,6 +409,17 @@ impl AuthLifecycleService {
         )
         .await?;
 
+        // The mailbox uniqueness check, revocations and outbox writes may
+        // block. Roll back every side effect if admission expired meanwhile.
+        let final_now = Utc::now();
+        if request.expires_at.with_timezone(&Utc) <= final_now {
+            tx.rollback().await.map_err(AuthLifecycleError::from)?;
+            return Err(AuthLifecycleError::InvalidEmailChangeToken);
+        }
+        if proving_session.as_ref().is_some_and(|session| !session.is_active_at(final_now)) {
+            tx.rollback().await.map_err(AuthLifecycleError::from)?;
+            return Err(AuthLifecycleError::SessionExpired);
+        }
         tx.commit().await.map_err(AuthLifecycleError::from)?;
         Ok(ConfirmedEmailChange {
             old_email,
@@ -500,6 +519,7 @@ mod tests {
                 current_email TEXT NOT NULL,
                 new_email TEXT NOT NULL,
                 password_changed_at TEXT NULL,
+                recovery_revision BIGINT NULL,
                 token_hash TEXT NOT NULL UNIQUE,
                 expires_at TEXT NOT NULL,
                 created_at TEXT NOT NULL
@@ -540,6 +560,7 @@ mod tests {
             current_email: Set(user.email.clone()),
             new_email: Set(new_email.to_string()),
             password_changed_at: Set(user.password_changed_at.clone()),
+            recovery_revision: Set(Some(user.recovery_revision)),
             token_hash: Set(token_hash.to_string()),
             expires_at: Set((Utc::now() + Duration::minutes(30)).into()),
             created_at: Set(Utc::now().into()),
@@ -594,6 +615,7 @@ mod tests {
         let request = &requests[0];
         assert_eq!(request.token_hash, new_hash);
         assert_eq!(request.new_email, "new@example.com");
+        assert_eq!(request.recovery_revision, Some(user.recovery_revision));
         assert!(request.created_at.with_timezone(&Utc) >= before - Duration::milliseconds(1));
         assert!(request.created_at.with_timezone(&Utc) <= after);
         assert_eq!(
@@ -863,6 +885,51 @@ mod tests {
             .expect("user");
         assert_eq!(unchanged.email, "old@example.com");
         assert!(unchanged.email_verified_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn mailbox_aba_invalidates_pending_email_change_and_stale_issuance() {
+        let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
+        ensure_email_change_table(&db).await;
+        let tenant = tenants::ActiveModel::new("Tenant", "email-change-revision")
+            .insert(&db).await.expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "old@example.com", "password-hash")
+            .insert(&db).await.expect("user");
+        let token_hash = "f".repeat(64);
+        insert_pending_request(&db, tenant.id, &user, "new@example.com", &token_hash).await;
+        for email in ["temporary@example.com", "old@example.com"] {
+            users::ActiveModel {
+                id: Set(user.id),
+                email: Set(email.to_string()),
+                ..Default::default()
+            }.update(&db).await.expect("change mailbox");
+        }
+        let current = Users::find_by_id(user.id).one(&db).await.unwrap().unwrap();
+        assert!(current.recovery_revision > user.recovery_revision);
+        assert_eq!(current.email, user.email);
+        assert_eq!(current.password_changed_at, user.password_changed_at);
+        let session = sessions::ActiveModel::new(
+            tenant.id, user.id, "revision-session".to_string(),
+            Utc::now() + Duration::hours(1), None, None,
+        ).insert(&db).await.expect("session");
+        assert!(matches!(
+            AuthLifecycleService::create_email_change_request_db(
+                &db, tenant.id, user.id, session.id, &user, "new@example.com", &"e".repeat(64),
+            ).await,
+            Err(AuthLifecycleError::InvalidCredentials)
+        ));
+        assert!(matches!(
+            AuthLifecycleService::confirm_email_change_db(
+                &ServerRuntimeContext::new(db.clone(), Default::default()),
+                tenant.id, &token_hash, None, None,
+            ).await,
+            Err(AuthLifecycleError::InvalidEmailChangeToken)
+        ));
+        assert!(AuthEmailChangeRequests::find()
+            .filter(auth_email_change_requests::Column::TokenHash.eq(&token_hash))
+            .one(&db).await.unwrap().is_none());
+        let unchanged = Users::find_by_id(user.id).one(&db).await.unwrap().unwrap();
+        assert_eq!(unchanged.email, user.email);
     }
 
     #[tokio::test]

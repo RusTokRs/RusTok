@@ -20,6 +20,7 @@ mod m20261125_000003_add_auth_jwt_cluster_lease;
 mod m20261125_000004_add_auth_jwt_replica_grants;
 mod m20261126_000001_create_auth_email_change_requests;
 mod m20261126_000060_enforce_oauth_family_identity;
+mod m20261126_000061_bind_email_change_recovery_revision;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -46,6 +47,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     migrations.extend(jwt_fence_migrations());
     migrations.push(Box::new(m20261126_000001_create_auth_email_change_requests::Migration));
     migrations.push(Box::new(m20261126_000060_enforce_oauth_family_identity::Migration));
+    migrations.push(Box::new(m20261126_000061_bind_email_change_recovery_revision::Migration));
     migrations
 }
 
@@ -60,6 +62,10 @@ pub(crate) fn jwt_fence_migrations() -> Vec<Box<dyn MigrationTrait>> {
 
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
     vec![
+        MigrationDependencyDescriptor::new(
+            "m20261126_000061_bind_email_change_recovery_revision",
+            vec!["m20261126_000001_create_auth_email_change_requests", "m20261126_000050_add_user_recovery_revision"],
+        ),
         MigrationDependencyDescriptor::new(
             "m20260716_000001_create_flex_field_definition_cache_generation",
             vec!["m20260716_000000_create_field_definition_cache_generation"],
