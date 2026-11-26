@@ -437,6 +437,29 @@ transport or fallback runtime execution.
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 
+### First standalone Blog capability
+
+Start with the storefront read of a published post by slug.
+`PostService::get_post_by_slug_on_channel` now applies tenant, publication and
+channel policy before it loads the translations. The native storefront, GraphQL
+and SEO adapters use that owner operation. A reader with tenant-wide editorial
+authority can still read non-public posts. SEO route resolution uses public
+read authority, which also excludes damaged publication stamps.
+
+The [published package](../ports/README.md) follows the
+[canonical FBA layout](../../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout).
+Its embedded provider binds the same operation to the native storefront and
+the public GraphQL path. The full module FBA layout gate still rejects the
+owner's direct Channel runtime dependency. Migrate the existing cross-owner
+runtime dependencies and shared transaction seams before accepting an
+independent Blog owner process. Add the optional gRPC and `service` profiles
+for the same operation after the embedded path is verified.
+
+Availability and disclosure must agree across providers for
+tenant and channel scope, missing or unpublished posts, and exact or fallback
+locale. Verify the standalone process with its own database and the real
+consumer paths before changing the readiness status.
+
 ## Current state
 
 `rustok-blog` owns localized posts, Blog Category membership/settings,

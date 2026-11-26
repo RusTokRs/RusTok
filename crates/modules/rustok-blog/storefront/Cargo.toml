@@ -33,6 +33,7 @@ ssr = [
   "dep:leptos_axum",
   "dep:rustok-channel",
   "dep:rustok-blog",
+  "dep:rustok-blog-ports",
   "dep:rustok-core",
   "dep:rustok-outbox",
   "dep:rustok-tenant",
@@ -58,6 +59,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 rustok-core = { workspace = true, optional = true }
 rustok-blog = { workspace = true, optional = true }
+rustok-blog-ports = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
 rustok-ui-i18n.workspace = true
 rustok-channel = { workspace = true, optional = true }

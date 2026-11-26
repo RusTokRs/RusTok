@@ -29,6 +29,9 @@ Blog contract:
 - `src/graphql/` and `src/controllers/` are thin owner transport adapters;
 - `src/lib.rs` is a facade that preserves deliberate public re-exports.
 
+The [operational CLI package](cli/README.md) keeps its public factory, command
+adapters and runtime binding in separate source files under `cli/`.
+
 Large responsibilities are nested below their owner slot. In particular,
 `PostService` is split into command, query, repository/projection, helper-policy,
 and test files instead of one shared source hotspot.
@@ -245,6 +248,10 @@ copy must use the canonical Taxonomy owner contract.
 - Public Blog reads honor channel module bindings and typed post visibility
   allowlists. **Authentication alone does not bypass** that gate: only a
   tenant-wide editor may read posts independently of storefront channels.
+  GraphQL and the native storefront call the embedded
+  [published read port](ports/README.md) for public slug reads. It uses
+  `PostService::get_post_by_slug_on_channel` to admit the post before loading
+  its localized response. SEO and editorial reads share the owner service.
   REST and GraphQL authenticated post lists apply public channel filtering in
   the owner query before cursor/limit calculation for readers without editor
   authority; direct unscoped public reads see globally visible posts only.

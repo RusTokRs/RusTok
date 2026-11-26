@@ -730,6 +730,30 @@ rotation method and its callers.
 
 ---
 
+### P-PUBLIC-READ-OWNER-ADMISSION — enforce visibility before building a public response
+
+* **Category:** Authorization scope and branch completeness.
+* **Problem:** Blog's native storefront, GraphQL and SEO route adapters each
+  filtered slug results after reading the localized post. SEO also read using
+  system authority, so its published-status filter admitted rows without a
+  publication timestamp.
+* **Pattern Solution:** Apply tenant, publication and channel policy in the
+  owner operation before loading localized response data. Use public authority
+  for public routes. Keep explicitly granted editorial reads in the same owner
+  operation.
+  ```rust
+  let channel_slugs = self.load_channel_slugs(tenant_id, post.id).await?;
+  if !can_read_any_post && !is_post_visible_for_channel(&channel_slugs, channel_slug) {
+      return Ok(None);
+  }
+  ```
+* **Verification:** Compare hidden and missing route results and verify locale
+  fallback, the publication stamp, channel availability and editor authority.
+* **Detection:** `rg -n 'get_post_by_slug|is_post_visible_for_channel' crates/modules/rustok-blog`
+  and trace public callers to the owner gate before DTO assembly.
+
+---
+
 ### P-RELEASE-SECURITY-MODE-DRIFT — environment labels must not weaken release security
 
 * **Category:** Deployment security and preconditions.

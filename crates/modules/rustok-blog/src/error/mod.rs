@@ -288,6 +288,23 @@ impl BlogError {
     }
 }
 
+impl From<rustok_api::PortError> for BlogError {
+    fn from(error: rustok_api::PortError) -> Self {
+        use rustok_api::PortErrorKind;
+
+        let kind = match error.kind {
+            PortErrorKind::Validation => ErrorKind::Validation,
+            PortErrorKind::NotFound => ErrorKind::NotFound,
+            PortErrorKind::Conflict => ErrorKind::Conflict,
+            PortErrorKind::Forbidden => ErrorKind::Forbidden,
+            PortErrorKind::Unavailable => ErrorKind::ExternalService,
+            PortErrorKind::Timeout => ErrorKind::Timeout,
+            PortErrorKind::InvariantViolation => ErrorKind::Internal,
+        };
+        Self::Rich(Box::new(RichError::new(kind, error.message).with_error_code(error.code)))
+    }
+}
+
 impl From<rustok_channel::ChannelError> for BlogError {
     fn from(value: rustok_channel::ChannelError) -> Self {
         match value {

@@ -243,9 +243,9 @@ The module backend layout is fixed as well:
 - `apps/server` only mounts routes, assembles runtime state and composes owner-owned
   entrypoints.
 
-Do not put CLI adapters into the domain crate, do not put module business logic into
-`apps/server`, and do not collect every third-party module command in one central crate. The
-future platform CLI aggregates module-local providers through an explicit registry.
+The module's public API owns the operation. Its `cli/` adapter binds the
+operation to the platform runner. The [CLI registry](../backend/module-backend-implementation.md#cli-adapters)
+composes the selected module adapters.
 
 ### 2.1 Follow the Canonical Native Source Layout
 
