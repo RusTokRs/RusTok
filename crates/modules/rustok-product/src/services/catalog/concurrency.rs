@@ -1,11 +1,13 @@
 //! Predecessor-revision control for the Product catalog aggregate.
 //!
-//! Every write to the `products` row bumps `revision`. A document update may carry
-//! `expected_revision`: when it does not match the stored revision, the owner refuses the write
-//! instead of overwriting another operator's change. The refusal travels as a reserved
-//! `CommerceError::Validation` message class, because the closed `CommerceError` vocabulary is
-//! published (see `public_error.rs` and its diagnostic-safety evidence); the port and GraphQL
-//! mappers translate the class into the public `PRODUCT_REVISION_CONFLICT` code.
+//! Product document commands and ProductVariant membership changes advance `revision`.
+//! The independent `index_revision` watermark may advance on index-source touches and is never
+//! used as an editor predecessor. A document update may carry `expected_revision`: when it does
+//! not match the stored revision, the owner refuses the write instead of overwriting another
+//! operator's change. The refusal travels as a reserved `CommerceError::Validation` message class,
+//! because the closed `CommerceError` vocabulary is published (see `public_error.rs` and its
+//! diagnostic-safety evidence); the port and GraphQL mappers translate the class into the public
+//! `PRODUCT_REVISION_CONFLICT` code.
 
 use crate::CommerceError;
 use crate::CommerceResult;

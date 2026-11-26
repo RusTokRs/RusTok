@@ -75,6 +75,9 @@ canonical large-module reference:
    - ProductVariant now owns a dedicated business `revision`; Variant update/delete compare it
      under the Variant lock. Direct Pricing base-price writes advance it through the Product owner
      row touch in the same transaction as the exact Index refresh record.
+   - Variant insertion, deletion and parent moves advance each affected Product business revision;
+     the same parent-row update advances its Index watermark. Non-membership Variant edits do not
+     change the parent Product predecessor.
    - Product/Variant `index_revision` remains an Index watermark, never an editor CAS token.
    This is bounded source hardening, not complete aggregate concurrency certification.
 
