@@ -191,7 +191,7 @@ impl ProductCatalogSchemaService {
         )
         .await?;
         ensure_schema(&txn, tenant_id, input.schema_id).await?;
-        let previous_policies = Self::axis_policy_snapshot_in(&txn, tenant_id).await?;
+        let previous_policies = Self::schema_policy_snapshot_in(&txn, tenant_id).await?;
         let (axis_policy, default_axis) = resolve_binding_axis_policy_in(
             &txn,
             tenant_id,
@@ -248,7 +248,7 @@ impl ProductCatalogSchemaService {
         ))
         .await?;
 
-        Self::validate_axis_policy_change_in(&txn, tenant_id, previous_policies).await?;
+        Self::validate_schema_policy_change_in(&txn, tenant_id, previous_policies).await?;
 
         txn.publish_in_tx(
             tenant_id,
