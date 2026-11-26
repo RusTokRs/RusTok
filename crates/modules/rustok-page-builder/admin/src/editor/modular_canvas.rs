@@ -47,7 +47,12 @@ fn browser_draft_binding_attributes(
                 Some(token),
                 Some(generation.to_string()),
             ),
-            None => (Some("rendered"), None, None, None),
+            None => (
+                Some("rendered"),
+                strict_receipts_enabled.then_some("rendered"),
+                None,
+                None,
+            ),
         },
         None => (None, None, None, None),
     }
@@ -342,11 +347,22 @@ mod browser_draft_binding_tests {
     use crate::SsrDraftRenderBinding;
 
     #[test]
-    fn no_session_does_not_advertise_the_strict_receipt_contract() {
+    fn editable_no_session_binding_keeps_strict_contract_fail_closed() {
         assert_eq!(
             browser_draft_binding_attributes(
                 Some(SsrDraftRenderBinding { session: None }),
                 true,
+            ),
+            (Some("rendered"), Some("rendered"), None, None),
+        );
+    }
+
+    #[test]
+    fn read_only_no_session_binding_does_not_advertise_strict_receipts() {
+        assert_eq!(
+            browser_draft_binding_attributes(
+                Some(SsrDraftRenderBinding { session: None }),
+                false,
             ),
             (Some("rendered"), None, None, None),
         );
