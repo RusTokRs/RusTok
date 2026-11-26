@@ -260,11 +260,16 @@ that retained handles are not acknowledged after stop. Tests are unexecuted.
 ## Server audit continuation — locked login credential-oracle closure (2026-11-25)
 
 Login now checks an active lockout before verifying the user's stored password
-hash. It performs the same dummy-hash verification used for unknown accounts
-and returns the generic `InvalidCredentials` result for every password while
-the account is locked. The transactional post-verification check applies the
-same generic result if another request activates the lockout after the initial
-lookup. This prevents the lockout window from becoming an unlimited online
+hash. Unknown-account and locked-account paths run a fixed-cost Argon2 verification
+with an internal candidate, so empty or oversized submitted passwords cannot
+skip the timing mask. When a known row has a malformed or weaker-than-current
+hash, or the submitted value would short-circuit verification, the stored verifier
+and dummy verifier run concurrently; sequential padding would make legacy rows
+measurably slower than unknown-account lookups. Current-format hashes use their
+normal verifier. The dummy hash is prewarmed during server initialization. The
+transactional post-verification check applies the same generic
+`InvalidCredentials` result if another request activates the lockout after the
+initial lookup. This prevents the lockout window from becoming an online
 password oracle while preserving atomic failed-attempt accounting. Regression
 coverage is authored but unexecuted.
 
