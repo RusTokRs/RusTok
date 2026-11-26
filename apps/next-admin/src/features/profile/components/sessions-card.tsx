@@ -71,7 +71,6 @@ mutation RevokeAllSessions {
 `;
 
 interface SessionsCardProps {
-  token?: string | null;
   tenantSlug?: string | null;
 }
 
@@ -97,20 +96,20 @@ function parseUserAgent(ua: string | null): {
   return { device: `${browser} on ${os}`, isMobile };
 }
 
-export function SessionsCard({ token, tenantSlug }: SessionsCardProps) {
+export function SessionsCard({ tenantSlug }: SessionsCardProps) {
   const [sessions, setSessions] = React.useState<SessionRecord[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [revokingId, setRevokingId] = React.useState<string | null>(null);
   const [isRevokingAll, setIsRevokingAll] = React.useState(false);
 
   const fetchSessions = React.useCallback(async () => {
-    if (!token) return;
+    
     setIsLoading(true);
     try {
       const data = await graphqlRequest<{ limit?: number }, SessionsResponse>(
         SESSIONS_QUERY,
         { limit: 50 },
-        token,
+        undefined,
         tenantSlug
       );
       setSessions(data.sessions.sessions || []);
@@ -119,20 +118,20 @@ export function SessionsCard({ token, tenantSlug }: SessionsCardProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [token, tenantSlug]);
+  }, [tenantSlug]);
 
   React.useEffect(() => {
     fetchSessions();
   }, [fetchSessions]);
 
   const handleRevoke = async (sessionId: string) => {
-    if (!token) return;
+    
     setRevokingId(sessionId);
     try {
       const data = await graphqlRequest<
         { sessionId: string },
         { revokeSession: { success: boolean; revoked: boolean } }
-      >(REVOKE_SESSION_MUTATION, { sessionId }, token, tenantSlug);
+      >(REVOKE_SESSION_MUTATION, { sessionId }, undefined, tenantSlug);
 
       if (data.revokeSession.success) {
         toast.success('Session revoked successfully');
@@ -149,13 +148,13 @@ export function SessionsCard({ token, tenantSlug }: SessionsCardProps) {
   };
 
   const handleRevokeAllOther = async () => {
-    if (!token) return;
+    
     setIsRevokingAll(true);
     try {
       const data = await graphqlRequest<
         Record<string, never>,
         { revokeAllSessions: { success: boolean; revokedCount: number } }
-      >(REVOKE_ALL_SESSIONS_MUTATION, {}, token, tenantSlug);
+      >(REVOKE_ALL_SESSIONS_MUTATION, {}, undefined, tenantSlug);
 
       if (data.revokeAllSessions.success) {
         toast.success(

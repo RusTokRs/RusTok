@@ -12,7 +12,8 @@ export default function UserAuthForm() {
   const t = useTranslations('auth');
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
+  const requestedCallback = searchParams.get('callbackUrl') || '/dashboard';
+  const callbackUrl = requestedCallback.startsWith('/') && !requestedCallback.startsWith('//') && !requestedCallback.includes('\\') ? requestedCallback : '/dashboard';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,6 +30,7 @@ export default function UserAuthForm() {
     setIsLoading(true);
     try {
       const result = await signIn('credentials', {
+        action: 'login',
         email: email.trim(),
         password,
         tenantSlug: tenantSlug.trim(),
@@ -43,6 +45,8 @@ export default function UserAuthForm() {
         router.push(callbackUrl);
         router.refresh();
       }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Sign-in failed');
     } finally {
       setIsLoading(false);
     }

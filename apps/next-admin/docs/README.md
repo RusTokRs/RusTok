@@ -110,6 +110,27 @@ rollback uses the owner operation identity. Both admin hosts display all active
 transition checkpoints, plus a distinct checkpoint selected by URL when present,
 and surface read errors. Runtime and browser verification remain required.
 
+## Authentication and session lifecycle
+
+- First-party login and registration use the Rustok cookie-session REST endpoints.
+  The backend issues a rotating refresh token in an HttpOnly cookie; the host
+  stores it in an HttpOnly, SameSite=Lax cookie scoped to `/api`, and stores
+  the short-lived access token in an HttpOnly cookie scoped to `/api/rustok`.
+  Both are Secure in production.
+- Auth.js contains identity and tenant scope only. Rustok access/refresh tokens
+  are not exposed by the Auth.js session endpoint or client components.
+- Browser GraphQL requests use the same-origin BFF. It ignores browser bearer
+  headers, binds tenant scope to the authenticated identity, refreshes expiring
+  access credentials server-side, and forwards only the server-held access
+  token. Cross-origin requests are rejected.
+- Logout revokes the backend refresh session and clears host cookies. Refresh
+  calls are coalesced within one Next.js process; a concurrent one-time refresh
+  across separate instances can still require a fresh login. Unknown refresh
+  outcomes are not retried automatically because a GraphQL mutation may not be
+  safe to replay.
+- HMAC-SHA256/HKDF-SHA256 and Argon2id are not JWT signing alternatives; the
+  backend JWT runtime is RS256-only.
+
 ## Ownership contract for module UI
 
 - If a module supplies admin UI, it remains a module-owned package alongside the module or in `packages/*`.

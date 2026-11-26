@@ -11,7 +11,7 @@ import {
 import { Input } from '@/shared/ui/shadcn/input';
 import { Label } from '@/shared/ui/shadcn/label';
 import { graphqlRequest } from '@/shared/api/graphql';
-import { useSession } from 'next-auth/react';
+import { signOut, useSession } from 'next-auth/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { SessionsCard } from './sessions-card';
@@ -33,7 +33,6 @@ mutation ChangePassword($input: ChangePasswordInput!) {
 export default function ProfileViewPage() {
   const { data: session, update } = useSession();
   const user = session?.user;
-  const token = user?.rustokToken;
   const tenantSlug = user?.tenantSlug;
 
   const [name, setName] = useState(user?.name ?? '');
@@ -45,13 +44,13 @@ export default function ProfileViewPage() {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token) return;
+    if (!user) return;
     setIsSavingProfile(true);
     try {
       await graphqlRequest<object, unknown>(
         UPDATE_PROFILE_MUTATION,
         { input: { name: name.trim() || null } },
-        token,
+        undefined,
         tenantSlug
       );
       await update({ name: name.trim() || undefined });
@@ -67,7 +66,7 @@ export default function ProfileViewPage() {
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token) return;
+    if (!user) return;
     if (!currentPassword || !newPassword) {
       toast.error('Both fields are required');
       return;
@@ -77,12 +76,13 @@ export default function ProfileViewPage() {
       await graphqlRequest<object, unknown>(
         CHANGE_PASSWORD_MUTATION,
         { input: { currentPassword, newPassword } },
-        token,
+        undefined,
         tenantSlug
       );
       setCurrentPassword('');
       setNewPassword('');
-      toast.success('Password changed. You will need to sign in again.');
+      toast.success('Password changed. Signing out of this session.');
+      await signOut({ callbackUrl: '/auth/sign-in' });
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : 'Failed to change password'
@@ -183,7 +183,7 @@ export default function ProfileViewPage() {
             </CardContent>
           </Card>
 
-          <SessionsCard token={token} tenantSlug={tenantSlug} />
+          <SessionsCard tenantSlug={tenantSlug} />
         </div>
       ) : (
         <p className='text-muted-foreground text-sm'>Loading profile...</p>

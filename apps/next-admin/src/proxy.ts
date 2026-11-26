@@ -1,3 +1,4 @@
+// Next.js 16 Proxy entry point.
 import { auth } from '@/auth';
 import {
   EFFECTIVE_LOCALE_HEADER,
