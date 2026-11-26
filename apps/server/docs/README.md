@@ -439,6 +439,13 @@ OAuth translation snapshots use the `rustok-auth` lifecycle enum directly.
 Its serialized `active` and `archived` values match persisted owner lifecycle
 spelling; server translation queries use SeaQuery's expression trait.
 
+REST invite acceptance retains its tenant/auth middleware boundary and skips
+unrelated channel and guest-cart resolution. The early dispatcher calls the
+registered controller; both entry paths share one bounded (64 KiB) JSON object
+decoder, require a single JSON Content-Type (HTTP 415 otherwise), and delegate
+to the same lifecycle service. Invalid or oversized bodies return HTTP 400
+without exposing credential values. Source regression authored, unrun.
+
 Invite acceptance and user-admin revocation share a transaction-scoped
 `auth_invites` row fence. The first committed transition wins; accepted invites
 cannot be retroactively revoked, and replayed revocations do not publish another
