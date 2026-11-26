@@ -228,14 +228,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
             return Err(invalid("variant axes preview product identity mismatch").into());
         }
 
-        println!(
-            "PRODUCT_CATALOG_COMMAND_RUNTIME_PROBE_OK operations=1 preview_axes=matched product_id=matched"
-        );
+        #[allow(clippy::print_stdout)]
+        {
+            println!(
+                "PRODUCT_CATALOG_COMMAND_RUNTIME_PROBE_OK operations=1 preview_axes=matched product_id=matched"
+            );
+        }
     }
 
-    println!(
-        "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=6 product_projection=matched variant_projection=matched published_list=nonempty sku_lookup=matched sku_list=matched storefront_variant=matched"
-    );
+    #[allow(clippy::print_stdout)]
+    {
+        println!(
+            "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=6 product_projection=matched variant_projection=matched published_list=nonempty sku_lookup=matched sku_list=matched storefront_variant=matched"
+        );
+    }
     Ok(())
 }
 

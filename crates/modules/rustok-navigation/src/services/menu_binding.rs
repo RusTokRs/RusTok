@@ -55,6 +55,7 @@ impl MenuBindingService {
             .await?
             .ok_or_else(|| NavigationError::menu_not_found(menu_id))?;
         if menu.location != storage_location {
+            txn.rollback().await?;
             return Err(NavigationError::validation(format!(
                 "Menu `{menu_id}` belongs to location `{}` and cannot be bound to `{storage_location}`",
                 menu.location,
@@ -88,11 +89,15 @@ impl MenuBindingService {
             match res {
                 Ok(inserted) => inserted,
                 Err(err) if is_unique_constraint(&err) => {
+                    txn.rollback().await?;
                     return Err(NavigationError::conflict(format!(
                         "Concurrent binding conflict for location `{storage_location}` on channel `{channel_id}`"
                     )));
                 }
-                Err(err) => return Err(NavigationError::Database(err)),
+                Err(err) => {
+                    txn.rollback().await?;
+                    return Err(NavigationError::Database(err));
+                }
             }
         };
         txn.commit().await?;

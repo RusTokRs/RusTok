@@ -192,12 +192,10 @@ pub fn buyer_currencies(product: &ProductDetail) -> Vec<String> {
         .iter()
         .flat_map(|variant| &variant.prices)
         .filter_map(|price| {
-            match rustok_pricing_storefront::parse_optional_currency_code(Some(
+            rustok_pricing_storefront::parse_optional_currency_code(Some(
                 price.currency_code.clone(),
-            )) {
-                Ok(code) => code,
-                Err(_) => None,
-            }
+            ))
+            .unwrap_or_default()
         })
         .collect::<BTreeSet<_>>()
         .into_iter()
@@ -526,11 +524,11 @@ pub fn build_view(
         "ready"
     };
     let mut currencies = buyer_currencies(product);
-    if let Some(currency) = input.request.currency_code.as_ref() {
-        if !currencies.contains(currency) {
-            currencies.push(currency.clone());
-            currencies.sort();
-        }
+    if let Some(currency) = input.request.currency_code.as_ref()
+        && !currencies.contains(currency)
+    {
+        currencies.push(currency.clone());
+        currencies.sort();
     }
     BuyerView {
         axes: axis_views(product, &input.values),
@@ -703,6 +701,7 @@ pub fn encode_snapshot(snapshot: &ProductBuyerSnapshot) -> Result<String, BuyerE
     }
     Ok(json)
 }
+#[cfg_attr(not(feature = "hydrate"), allow(dead_code))]
 pub fn decode_snapshot(json: &str) -> Result<ProductBuyerSnapshot, BuyerError> {
     if json.len() > 2 * 1024 * 1024 {
         return Err(BuyerError::Projection);

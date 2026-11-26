@@ -784,7 +784,7 @@ mod localized_clear_tests {
         .await
         .unwrap();
         db.execute_unprepared(
-            "CREATE TABLE product_variant_attribute_value_translations (id TEXT PRIMARY KEY, value_id TEXT NOT NULL, locale TEXT NOT NULL, value_text TEXT NOT NULL, PRIMARY KEY (value_id, locale))",
+            "CREATE TABLE product_variant_attribute_value_translations (id TEXT PRIMARY KEY, value_id TEXT NOT NULL, locale TEXT NOT NULL, value_text TEXT NOT NULL, UNIQUE (value_id, locale))",
         )
         .await
         .unwrap();
@@ -793,15 +793,28 @@ mod localized_clear_tests {
         let variant_id = Uuid::from_u128(12);
         let attribute_id = Uuid::from_u128(13);
         let value_id = Uuid::from_u128(14);
-        db.execute_unprepared(&format!(
-            "INSERT INTO product_variant_attribute_values (id, tenant_id, variant_id, attribute_id) VALUES ('{value_id}', '{tenant_id}', '{variant_id}', '{attribute_id}')"
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO product_variant_attribute_values (id, tenant_id, variant_id, attribute_id) VALUES (?, ?, ?, ?)",
+            [
+                value_id.into(),
+                tenant_id.into(),
+                variant_id.into(),
+                attribute_id.into(),
+            ],
         ))
         .await
         .unwrap();
         for (index, locale) in locales.iter().enumerate() {
-            db.execute_unprepared(&format!(
-                "INSERT INTO product_variant_attribute_value_translations (id, value_id, locale, value_text) VALUES ('{}', '{value_id}', '{locale}', 'value-{locale}')",
-                Uuid::from_u128(20 + index as u128)
+            db.execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "INSERT INTO product_variant_attribute_value_translations (id, value_id, locale, value_text) VALUES (?, ?, ?, ?)",
+                [
+                    Uuid::from_u128(20 + index as u128).into(),
+                    value_id.into(),
+                    (*locale).to_owned().into(),
+                    format!("value-{locale}").into(),
+                ],
             ))
             .await
             .unwrap();
@@ -810,10 +823,15 @@ mod localized_clear_tests {
         (db, tenant_id, variant_id, attribute_id, value_id)
     }
 
-    async fn count_rows(db: &DatabaseConnection, sql: &str) -> i64 {
-        db.query_one_raw(Statement::from_string(
+    async fn count_rows(
+        db: &DatabaseConnection,
+        sql: &str,
+        values: Vec<sea_orm::Value>,
+    ) -> i64 {
+        db.query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             sql.to_owned(),
+            values,
         ))
         .await
         .unwrap()
@@ -855,9 +873,8 @@ mod localized_clear_tests {
         assert_eq!(
             count_rows(
                 &db,
-                &format!(
-                    "SELECT COUNT(*) AS total FROM product_variant_attribute_value_translations WHERE value_id = '{value_id}' AND locale = 'en-US'"
-                ),
+                "SELECT COUNT(*) AS total FROM product_variant_attribute_value_translations WHERE value_id = ? AND locale = 'en-US'",
+                vec![value_id.into()],
             )
             .await,
             1
@@ -865,9 +882,8 @@ mod localized_clear_tests {
         assert_eq!(
             count_rows(
                 &db,
-                &format!(
-                    "SELECT COUNT(*) AS total FROM product_variant_attribute_value_translations WHERE value_id = '{value_id}' AND locale = 'ru-RU'"
-                ),
+                "SELECT COUNT(*) AS total FROM product_variant_attribute_value_translations WHERE value_id = ? AND locale = 'ru-RU'",
+                vec![value_id.into()],
             )
             .await,
             0
@@ -875,9 +891,8 @@ mod localized_clear_tests {
         assert_eq!(
             count_rows(
                 &db,
-                &format!(
-                    "SELECT COUNT(*) AS total FROM product_variant_attribute_values WHERE id = '{value_id}'"
-                ),
+                "SELECT COUNT(*) AS total FROM product_variant_attribute_values WHERE id = ?",
+                vec![value_id.into()],
             )
             .await,
             1
@@ -908,9 +923,8 @@ mod localized_clear_tests {
         assert_eq!(
             count_rows(
                 &db,
-                &format!(
-                    "SELECT COUNT(*) AS total FROM product_variant_attribute_value_translations WHERE value_id = '{value_id}'"
-                ),
+                "SELECT COUNT(*) AS total FROM product_variant_attribute_value_translations WHERE value_id = ?",
+                vec![value_id.into()],
             )
             .await,
             0
@@ -918,9 +932,8 @@ mod localized_clear_tests {
         assert_eq!(
             count_rows(
                 &db,
-                &format!(
-                    "SELECT COUNT(*) AS total FROM product_variant_attribute_values WHERE id = '{value_id}'"
-                ),
+                "SELECT COUNT(*) AS total FROM product_variant_attribute_values WHERE id = ?",
+                vec![value_id.into()],
             )
             .await,
             0

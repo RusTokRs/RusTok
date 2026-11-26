@@ -39,7 +39,7 @@ pub(super) fn CombinationPicker(
             <legend class="px-1 text-sm font-medium">{text("product-combinations-title")}</legend>
             <p class="text-xs text-muted-foreground">{text(if draft { "product-combinations-initialHelp" } else { "product-combinations-savedHelp" })}</p>
             <div class="grid gap-3 sm:grid-cols-2">
-                <For each=move || match axes.get() { Ok(axes) => axes, Err(_) => Vec::new() } key=|axis| (axis.attribute_id.clone(), axis.label.clone(), axis.options.iter().map(|option| (option.id.clone(), option.label.clone())).collect::<Vec<_>>()) children=move |axis| view! {
+                <For each=move || axes.get().unwrap_or_default() key=|axis| (axis.attribute_id.clone(), axis.label.clone(), axis.options.iter().map(|option| (option.id.clone(), option.label.clone())).collect::<Vec<_>>()) children=move |axis| view! {
                     <CombinationFilter axis=axis filters=filters page=page disabled=disabled click_problem=click_problem locale=locale.get_value() />
                 } />
             </div>

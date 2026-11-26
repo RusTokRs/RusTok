@@ -460,6 +460,7 @@ pub fn format_product_price(
     label
 }
 
+#[allow(dead_code)]
 pub fn format_pricing_scope(
     locale: Option<&str>,
     price_list_id: Option<&str>,
@@ -499,6 +500,7 @@ pub fn format_pricing_scope(
     Some(parts.join(" | "))
 }
 
+#[allow(dead_code)]
 pub fn format_pricing_context(locale: Option<&str>, context: &PricingResolutionContext) -> String {
     let mut parts = vec![
         format!(
@@ -1038,10 +1040,6 @@ mod tests {
         assert!(view_model.show_empty_state);
         assert!(view_model.clear_href.is_none());
         assert!(view_model.facets.is_empty());
-    }
-
-    fn without_bidi_isolates(value: &str) -> String {
-        value.replace(['\u{2068}', '\u{2069}'], "")
     }
 
     #[test]

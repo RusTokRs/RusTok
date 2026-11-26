@@ -1,3 +1,5 @@
+#![cfg_attr(any(feature = "ssr", feature = "hydrate"), allow(dead_code))]
+
 use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql, graphql_url};
 use serde::{Deserialize, Serialize};
 

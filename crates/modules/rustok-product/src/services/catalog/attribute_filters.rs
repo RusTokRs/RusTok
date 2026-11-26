@@ -366,16 +366,41 @@ fn custom_condition(
     sql_template: &str,
     values: Vec<sea_orm::Value>,
 ) -> Condition {
-    let sql = values
-        .iter()
-        .enumerate()
-        .fold(sql_template.to_string(), |sql, (index, _)| {
-            sql.replace(
-                format!("{{p{}}}", index + 1).as_str(),
-                sql_placeholder(backend, index + 1).as_str(),
-            )
-        });
-    Condition::all().add(Expr::cust_with_values(sql, values))
+    let uses_positional_qmark = sql_placeholder(backend, 1) == "?";
+    let (sql, expanded_values) = if !uses_positional_qmark {
+        let sql = values
+            .iter()
+            .enumerate()
+            .fold(sql_template.to_string(), |sql, (index, _)| {
+                sql.replace(
+                    format!("{{p{}}}", index + 1).as_str(),
+                    sql_placeholder(backend, index + 1).as_str(),
+                )
+            });
+        (sql, values)
+    } else {
+        let mut sql = String::with_capacity(sql_template.len());
+        let mut expanded = Vec::with_capacity(values.len());
+        let mut rest = sql_template;
+        while let Some(start) = rest.find("{p") {
+            sql.push_str(&rest[..start]);
+            let after = &rest[start + 2..];
+            if let Some(end) = after.find('}')
+                && let Ok(index) = after[..end].parse::<usize>()
+                && let Some(value) = index.checked_sub(1).and_then(|idx| values.get(idx))
+            {
+                sql.push('?');
+                expanded.push(value.clone());
+                rest = &after[end + 1..];
+            } else {
+                sql.push_str("{p");
+                rest = after;
+            }
+        }
+        sql.push_str(rest);
+        (sql, expanded)
+    };
+    Condition::all().add(Expr::cust_with_values(sql, expanded_values))
 }
 
 #[cfg(test)]

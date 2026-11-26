@@ -1033,11 +1033,21 @@ where
     required_pairs.dedup();
 
     if !required_pairs.is_empty() {
+        let backend = conn.get_database_backend();
+        let attribute_id_predicate = if backend == DatabaseBackend::Postgres {
+            "CAST(pa.id AS TEXT) = required_locales.attribute_id"
+        } else {
+            "pa.id = required_locales.attribute_id"
+        };
         let mut values: Vec<sea_orm::Value> = vec![tenant_id.into(), product_id.into()];
         let mut required_rows = Vec::with_capacity(required_pairs.len());
         for (attribute_id, locale) in required_pairs {
             let attribute_placeholder = format!("${}", values.len() + 1);
-            values.push(attribute_id.to_string().into());
+            if backend == DatabaseBackend::Postgres {
+                values.push(attribute_id.to_string().into());
+            } else {
+                values.push(attribute_id.into());
+            }
             let locale_placeholder = format!("${}", values.len() + 1);
             values.push(locale.into());
             required_rows.push(format!("({attribute_placeholder}, {locale_placeholder})"));
@@ -1045,7 +1055,7 @@ where
 
         let missing = MissingVariantRequiredLocaleRow::find_by_statement(
             Statement::from_sql_and_values(
-                conn.get_database_backend(),
+                backend,
                 format!(
                     r#"
                     WITH required_locales(attribute_id, locale) AS (
@@ -1059,7 +1069,7 @@ where
                     JOIN required_locales ON TRUE
                     JOIN product_attributes pa
                       ON pa.tenant_id = pv.tenant_id
-                     AND CAST(pa.id AS TEXT) = required_locales.attribute_id
+                     AND {attribute_id_predicate}
                      AND pa.archived_at IS NULL
                     LEFT JOIN product_variant_attribute_values pvav
                       ON pvav.tenant_id = pv.tenant_id
@@ -1215,8 +1225,17 @@ mod variant_publish_requirement_tests {
         first_variant_id: Uuid,
         second_variant_id: Uuid,
     ) {
-        db.execute_unprepared(&format!(
-            "INSERT INTO product_variants (id, tenant_id, product_id, sku, position) VALUES ('{first_variant_id}', '{tenant_id}', '{product_id}', 'SKU-1', 0), ('{second_variant_id}', '{tenant_id}', '{product_id}', 'SKU-2', 1)"
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "INSERT INTO product_variants (id, tenant_id, product_id, sku, position) VALUES (?, ?, ?, 'SKU-1', 0), (?, ?, ?, 'SKU-2', 1)",
+            [
+                first_variant_id.into(),
+                tenant_id.into(),
+                product_id.into(),
+                second_variant_id.into(),
+                tenant_id.into(),
+                product_id.into(),
+            ],
         ))
         .await
         .unwrap();
@@ -1242,14 +1261,22 @@ mod variant_publish_requirement_tests {
         let attribute_id = Uuid::new_v4();
         insert_two_variants(&db, tenant_id, product_id, first_variant_id, second_variant_id)
             .await;
-        db.execute_unprepared(&format!(
-            "INSERT INTO product_attributes (id, tenant_id, code, value_type, is_localized, archived_at, position) VALUES ('{attribute_id}', '{tenant_id}', 'material', 'text', 0, NULL, 0)"
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "INSERT INTO product_attributes (id, tenant_id, code, value_type, is_localized, archived_at, position) VALUES (?, ?, 'material', 'text', 0, NULL, 0)",
+            [attribute_id.into(), tenant_id.into()],
         ))
         .await
         .unwrap();
-        db.execute_unprepared(&format!(
-            "INSERT INTO product_variant_attribute_values (id, tenant_id, variant_id, attribute_id, value_text) VALUES ('{}', '{tenant_id}', '{first_variant_id}', '{attribute_id}', 'cotton')",
-            Uuid::new_v4()
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "INSERT INTO product_variant_attribute_values (id, tenant_id, variant_id, attribute_id, value_text) VALUES (?, ?, ?, ?, 'cotton')",
+            [
+                Uuid::new_v4().into(),
+                tenant_id.into(),
+                first_variant_id.into(),
+                attribute_id.into(),
+            ],
         ))
         .await
         .unwrap();
@@ -1279,18 +1306,37 @@ mod variant_publish_requirement_tests {
         let second_value_id = Uuid::new_v4();
         insert_two_variants(&db, tenant_id, product_id, first_variant_id, second_variant_id)
             .await;
-        db.execute_unprepared(&format!(
-            "INSERT INTO product_attributes (id, tenant_id, code, value_type, is_localized, archived_at, position) VALUES ('{attribute_id}', '{tenant_id}', 'care', 'text', 1, NULL, 0)"
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "INSERT INTO product_attributes (id, tenant_id, code, value_type, is_localized, archived_at, position) VALUES (?, ?, 'care', 'text', 1, NULL, 0)",
+            [attribute_id.into(), tenant_id.into()],
         ))
         .await
         .unwrap();
-        db.execute_unprepared(&format!(
-            "INSERT INTO product_variant_attribute_values (id, tenant_id, variant_id, attribute_id) VALUES ('{first_value_id}', '{tenant_id}', '{first_variant_id}', '{attribute_id}'), ('{second_value_id}', '{tenant_id}', '{second_variant_id}', '{attribute_id}')"
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "INSERT INTO product_variant_attribute_values (id, tenant_id, variant_id, attribute_id) VALUES (?, ?, ?, ?), (?, ?, ?, ?)",
+            [
+                first_value_id.into(),
+                tenant_id.into(),
+                first_variant_id.into(),
+                attribute_id.into(),
+                second_value_id.into(),
+                tenant_id.into(),
+                second_variant_id.into(),
+                attribute_id.into(),
+            ],
         ))
         .await
         .unwrap();
-        db.execute_unprepared(&format!(
-            "INSERT INTO product_variant_attribute_value_translations (value_id, locale, value_text) VALUES ('{first_value_id}', 'en', 'care en'), ('{first_value_id}', 'fr', 'care fr'), ('{second_value_id}', 'en', 'care en')"
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "INSERT INTO product_variant_attribute_value_translations (value_id, locale, value_text) VALUES (?, 'en', 'care en'), (?, 'fr', 'care fr'), (?, 'en', 'care en')",
+            [
+                first_value_id.into(),
+                first_value_id.into(),
+                second_value_id.into(),
+            ],
         ))
         .await
         .unwrap();
@@ -1337,14 +1383,28 @@ mod localized_clear_tests {
         let product_id = Uuid::from_u128(2);
         let attribute_id = Uuid::from_u128(3);
         let value_id = Uuid::from_u128(4);
-        db.execute_unprepared(&format!(
-            "INSERT INTO product_attribute_values (id, tenant_id, product_id, attribute_id) VALUES ('{value_id}', '{tenant_id}', '{product_id}', '{attribute_id}')"
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO product_attribute_values (id, tenant_id, product_id, attribute_id) VALUES (?, ?, ?, ?)",
+            [
+                value_id.into(),
+                tenant_id.into(),
+                product_id.into(),
+                attribute_id.into(),
+            ],
         ))
         .await
         .unwrap();
         for locale in locales {
-            db.execute_unprepared(&format!(
-                "INSERT INTO product_attribute_value_translations (tenant_id, value_id, locale, value_text) VALUES ('{tenant_id}', '{value_id}', '{locale}', 'value-{locale}')"
+            db.execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "INSERT INTO product_attribute_value_translations (tenant_id, value_id, locale, value_text) VALUES (?, ?, ?, ?)",
+                [
+                    tenant_id.into(),
+                    value_id.into(),
+                    (*locale).to_owned().into(),
+                    format!("value-{locale}").into(),
+                ],
             ))
             .await
             .unwrap();
@@ -1353,10 +1413,15 @@ mod localized_clear_tests {
         (db, tenant_id, product_id, attribute_id, value_id)
     }
 
-    async fn count_rows(db: &DatabaseConnection, sql: &str) -> i64 {
-        db.query_one_raw(Statement::from_string(
+    async fn count_rows(
+        db: &DatabaseConnection,
+        sql: &str,
+        values: Vec<sea_orm::Value>,
+    ) -> i64 {
+        db.query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             sql.to_owned(),
+            values,
         ))
         .await
         .unwrap()
@@ -1429,9 +1494,8 @@ mod localized_clear_tests {
         assert_eq!(
             count_rows(
                 &db,
-                &format!(
-                    "SELECT COUNT(*) AS total FROM product_attribute_value_translations WHERE value_id = '{value_id}' AND locale = 'en-US'"
-                ),
+                "SELECT COUNT(*) AS total FROM product_attribute_value_translations WHERE value_id = ? AND locale = 'en-US'",
+                vec![value_id.into()],
             )
             .await,
             1
@@ -1439,9 +1503,8 @@ mod localized_clear_tests {
         assert_eq!(
             count_rows(
                 &db,
-                &format!(
-                    "SELECT COUNT(*) AS total FROM product_attribute_value_translations WHERE value_id = '{value_id}' AND locale = 'ru-RU'"
-                ),
+                "SELECT COUNT(*) AS total FROM product_attribute_value_translations WHERE value_id = ? AND locale = 'ru-RU'",
+                vec![value_id.into()],
             )
             .await,
             0
@@ -1449,9 +1512,8 @@ mod localized_clear_tests {
         assert_eq!(
             count_rows(
                 &db,
-                &format!(
-                    "SELECT COUNT(*) AS total FROM product_attribute_values WHERE id = '{value_id}'"
-                ),
+                "SELECT COUNT(*) AS total FROM product_attribute_values WHERE id = ?",
+                vec![value_id.into()],
             )
             .await,
             1
@@ -1482,9 +1544,8 @@ mod localized_clear_tests {
         assert_eq!(
             count_rows(
                 &db,
-                &format!(
-                    "SELECT COUNT(*) AS total FROM product_attribute_value_translations WHERE value_id = '{value_id}'"
-                ),
+                "SELECT COUNT(*) AS total FROM product_attribute_value_translations WHERE value_id = ?",
+                vec![value_id.into()],
             )
             .await,
             0
@@ -1492,9 +1553,8 @@ mod localized_clear_tests {
         assert_eq!(
             count_rows(
                 &db,
-                &format!(
-                    "SELECT COUNT(*) AS total FROM product_attribute_values WHERE id = '{value_id}'"
-                ),
+                "SELECT COUNT(*) AS total FROM product_attribute_values WHERE id = ?",
+                vec![value_id.into()],
             )
             .await,
             0

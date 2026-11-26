@@ -576,6 +576,8 @@ mod tests {
                 id TEXT PRIMARY KEY,
                 tenant_id TEXT NOT NULL,
                 scope TEXT NOT NULL,
+                value_type TEXT NOT NULL DEFAULT 'text',
+                is_localized BOOLEAN NOT NULL DEFAULT 0,
                 validation JSON NOT NULL,
                 archived_at TEXT NULL
             )",
@@ -584,9 +586,11 @@ mod tests {
         .expect("create product_attributes");
         let tenant_id = Uuid::new_v4();
         let attribute_id = Uuid::new_v4();
-        db.execute_unprepared(&format!(
-            "INSERT INTO product_attributes (id, tenant_id, scope, validation, archived_at)
-             VALUES ('{attribute_id}', '{tenant_id}', 'variant', '{{\"required\":true}}', NULL)"
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "INSERT INTO product_attributes (id, tenant_id, scope, value_type, is_localized, validation, archived_at)
+             VALUES (?, ?, 'variant', 'text', 0, '{\"required\":true}', NULL)",
+            [attribute_id.into(), tenant_id.into()],
         ))
         .await
         .expect("insert attribute definition");
@@ -613,6 +617,8 @@ mod tests {
                 id TEXT PRIMARY KEY,
                 tenant_id TEXT NOT NULL,
                 scope TEXT NOT NULL,
+                value_type TEXT NOT NULL DEFAULT 'text',
+                is_localized BOOLEAN NOT NULL DEFAULT 0,
                 validation JSON NOT NULL,
                 archived_at TEXT NULL
             )",

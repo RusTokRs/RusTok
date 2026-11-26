@@ -192,6 +192,7 @@ mod tests {
     };
     use crate::entities;
     use rustok_api::Patch;
+    use uuid::Uuid;
 
     fn product(revision: i32) -> entities::product::Model {
         entities::product::Model {

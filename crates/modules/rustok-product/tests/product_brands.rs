@@ -208,6 +208,8 @@ async fn setup_database() -> TestResult<DatabaseConnection> {
             position INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            revision INTEGER NOT NULL DEFAULT 1,
+            index_revision INTEGER NOT NULL DEFAULT 1,
             FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
         );
         CREATE TABLE IF NOT EXISTS product_variant_translations (

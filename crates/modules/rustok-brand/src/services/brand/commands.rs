@@ -185,9 +185,11 @@ impl BrandService {
         if let Some(slug) = input.slug {
             let clean_slug = slug.trim().to_lowercase();
             if clean_slug.is_empty() {
+                txn.rollback().await?;
                 return Err(BrandError::InvalidInput("Slug cannot be empty".to_string()));
             }
             if clean_slug.len() > 100 {
+                txn.rollback().await?;
                 return Err(BrandError::InvalidInput(
                     "Slug exceeds maximum length of 100 characters".to_string(),
                 ));
@@ -199,6 +201,7 @@ impl BrandService {
                 .one(&txn)
                 .await?;
             if duplicate.is_some() {
+                txn.rollback().await?;
                 return Err(BrandError::SlugAlreadyExists(clean_slug));
             }
             active.slug = Set(clean_slug);
@@ -212,6 +215,7 @@ impl BrandService {
         }
         if let Some(url) = input.website_url {
             if url.as_ref().is_some_and(|u| u.len() > 512) {
+                txn.rollback().await?;
                 return Err(BrandError::InvalidInput(
                     "Website URL exceeds maximum length of 512 characters".to_string(),
                 ));
@@ -231,22 +235,26 @@ impl BrandService {
             for t in translations {
                 let loc = t.locale.trim().to_lowercase();
                 if loc.is_empty() {
+                    txn.rollback().await?;
                     return Err(BrandError::InvalidInput(
                         "Translation locale cannot be empty".to_string(),
                     ));
                 }
                 if loc.len() > 16 {
+                    txn.rollback().await?;
                     return Err(BrandError::InvalidInput(
                         "Translation locale exceeds maximum length of 16 characters".to_string(),
                     ));
                 }
                 let name = t.name.trim().to_string();
                 if name.is_empty() {
+                    txn.rollback().await?;
                     return Err(BrandError::InvalidInput(
                         "Translation name cannot be empty".to_string(),
                     ));
                 }
                 if name.len() > 255 {
+                    txn.rollback().await?;
                     return Err(BrandError::InvalidInput(
                         "Translation name exceeds maximum length of 255 characters".to_string(),
                     ));

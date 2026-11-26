@@ -1791,7 +1791,7 @@ pub(super) fn ProductVariantsPanel(
                     let variants_for_edit = product_variants.clone();
                     let default_curr = default_currency.clone();
                     let on_mutated_edit = on_variant_mutated;
-                    let on_variant_deleted_for_rows = on_variant_deleted.clone();
+                    let on_variant_deleted_for_rows = on_variant_deleted;
                     let delete_label = copy.delete.clone();
                     let cannot_delete_only_label = copy.cannot_delete_only.clone();
                     let delete_confirm_label = delete_confirm_label.clone();
@@ -2034,8 +2034,8 @@ pub(super) fn ProductVariantsPanel(
                                 };
 
                                 let original_for_delete = original_variant.clone();
-                                let on_variant_deleted_for_confirm = on_variant_deleted_for_rows.clone();
-                                let on_mutated_delete_reconcile = on_mutated_edit.clone();
+                                let on_variant_deleted_for_confirm = on_variant_deleted_for_rows;
+                                let on_mutated_delete_reconcile = on_mutated_edit;
                                 let product_id_for_delete = product_id_for_edit.clone();
                                 let variant_id_for_confirm = variant_id.clone();
                                 let cannot_delete_only_for_confirm = cannot_delete_only_label.clone();
@@ -2056,7 +2056,7 @@ pub(super) fn ProductVariantsPanel(
                                         set_error.set(Some("The selected variant is no longer available. Reload the catalog.".into()));
                                         return;
                                     };
-                                    let Some(on_deleted) = on_variant_deleted_for_confirm.clone() else {
+                                    let Some(on_deleted) = on_variant_deleted_for_confirm else {
                                         set_error.set(Some("Product variant deletion is unavailable in this editor.".into()));
                                         return;
                                     };
@@ -2070,7 +2070,7 @@ pub(super) fn ProductVariantsPanel(
                                     let expected_revision = original.revision.clone();
                                     let deleted_product_id = product_id_for_delete.clone();
                                     let reconcile_product_id = product_id_for_delete.clone();
-                                    let reconcile_projection = on_mutated_delete_reconcile.clone();
+                                    let reconcile_projection = on_mutated_delete_reconcile;
 
                                     set_busy.set(true);
                                     set_error.set(None);

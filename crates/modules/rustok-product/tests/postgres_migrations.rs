@@ -99,10 +99,13 @@ FROM generate_series(1, 10) AS tenant_number;
                 .into());
             }
 
-            println!(
-                "product_storefront_plan rows={total_rows} page_ms={page_ms:.3} \
-                 count_ms={count_ms:.3}"
-            );
+            #[allow(clippy::print_stdout)]
+            {
+                println!(
+                    "product_storefront_plan rows={total_rows} page_ms={page_ms:.3} \
+                     count_ms={count_ms:.3}"
+                );
+            }
             previous_rows = total_rows;
         }
         Ok(())

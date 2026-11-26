@@ -11,8 +11,8 @@ use crate::core::resolve_requested_locale;
 
 #[cfg(feature = "ssr")]
 use crate::model::{
-    ProductCatalogSearchOption, ProductEffectivePrice, ProductImage, ProductPrice,
-    ProductPricingVariant, ProductTranslation, ProductVariant,
+    ProductEffectivePrice, ProductImage, ProductPrice, ProductPricingVariant, ProductTranslation,
+    ProductVariant,
 };
 use crate::model::{ProductCatalogSearchOptions, ProductDetail, ProductPricingDetail};
 

@@ -275,11 +275,11 @@ pub(super) fn AttributeLifecyclePanel(
             .map(|loaded| loaded.value)
     });
     Effect::new(move |_| {
-        if let Some(value) = current_workspace.get() {
-            if let Ok(option_id) = core::selected_option(&selected_target.get_untracked()) {
-                set_patch
-                    .set(core::presentation_json(&value, option_id.as_deref()).unwrap_or_default());
-            }
+        if let Some(value) = current_workspace.get()
+            && let Ok(option_id) = core::selected_option(&selected_target.get_untracked())
+        {
+            set_patch
+                .set(core::presentation_json(&value, option_id.as_deref()).unwrap_or_default());
         }
     });
     let controls = Signal::derive(move || {

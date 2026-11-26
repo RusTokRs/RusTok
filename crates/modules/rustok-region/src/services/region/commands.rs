@@ -151,6 +151,7 @@ impl RegionService {
         if let Some(policies) = &normalized_country_tax_policies {
             for policy in policies {
                 if !effective_countries.contains(&policy.country_code) {
+                    txn.rollback().await?;
                     return Err(RegionError::Validation(format!(
                         "country tax policy targets `{}` which is not in region countries",
                         policy.country_code
@@ -164,6 +165,7 @@ impl RegionService {
                 .await?;
             for policy in existing_policies {
                 if !new_countries.contains(&policy.country_code) {
+                    txn.rollback().await?;
                     return Err(RegionError::Validation(format!(
                         "region countries cannot exclude existing country tax policy for `{}` without providing updated country tax policies",
                         policy.country_code

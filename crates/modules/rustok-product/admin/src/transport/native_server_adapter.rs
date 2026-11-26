@@ -38,6 +38,7 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
+#[cfg_attr(not(any(feature = "ssr", feature = "hydrate")), allow(dead_code))]
 pub(super) async fn fetch_product_attributes(
     tenant_id: String,
     locale: String,
@@ -47,6 +48,7 @@ pub(super) async fn fetch_product_attributes(
         .map_err(Into::into)
 }
 
+#[cfg_attr(not(any(feature = "ssr", feature = "hydrate")), allow(dead_code))]
 pub(super) async fn fetch_catalog_categories(
     tenant_id: String,
     locale: String,
@@ -56,6 +58,7 @@ pub(super) async fn fetch_catalog_categories(
         .map_err(Into::into)
 }
 
+#[cfg_attr(not(any(feature = "ssr", feature = "hydrate")), allow(dead_code))]
 pub(super) async fn fetch_catalog_search_options(
     locale: String,
 ) -> Result<ProductCatalogSearchOptions, ApiError> {
@@ -64,6 +67,7 @@ pub(super) async fn fetch_catalog_search_options(
         .map_err(Into::into)
 }
 
+#[cfg_attr(not(any(feature = "ssr", feature = "hydrate")), allow(dead_code))]
 pub(super) async fn fetch_attribute_schemas(
     tenant_id: String,
     locale: String,
@@ -73,6 +77,7 @@ pub(super) async fn fetch_attribute_schemas(
         .map_err(Into::into)
 }
 
+#[cfg_attr(not(any(feature = "ssr", feature = "hydrate")), allow(dead_code))]
 pub(super) async fn fetch_effective_product_form(
     tenant_id: String,
     product_id: Option<String>,
@@ -84,6 +89,7 @@ pub(super) async fn fetch_effective_product_form(
         .map_err(Into::into)
 }
 
+#[cfg_attr(not(any(feature = "ssr", feature = "hydrate")), allow(dead_code))]
 pub(super) async fn fetch_product_attribute_values(
     tenant_id: String,
     product_id: String,

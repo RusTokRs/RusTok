@@ -1074,7 +1074,9 @@ mod tests {
             PathBuf::from(format!("{}-shm", path.display())),
             PathBuf::from(format!("{}-wal", path.display())),
         ] {
-            let _ = std::fs::remove_file(sqlite_file);
+            if let Err(error) = std::fs::remove_file(sqlite_file) {
+                assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+            }
         }
     }
 

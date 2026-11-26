@@ -114,7 +114,10 @@ async fn run_product_category_closure_storage_lifecycle() -> Result<(), Box<dyn 
     .await;
 
     if keep_database {
-        eprintln!("Keeping CAT-34 Product migration database '{database_name}' at {target_url}");
+        #[allow(clippy::print_stderr)]
+        {
+            eprintln!("Keeping CAT-34 Product migration database '{database_name}' at {target_url}");
+        }
     } else {
         drop_postgres_database_if_exists(&admin, &database_name).await?;
     }

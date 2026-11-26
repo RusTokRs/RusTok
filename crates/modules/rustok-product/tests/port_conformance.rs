@@ -277,7 +277,7 @@ async fn loopback_grpc_provider_executes_the_product_catalog_port_contract() {
         Server::builder()
             .add_service(server_service)
             .serve_with_incoming_shutdown(incoming, async {
-                let _ = shutdown_rx.await;
+                drop(shutdown_rx.await);
             })
             .await
             .expect("loopback Product gRPC server should run");
@@ -352,7 +352,7 @@ async fn loopback_grpc_provider_executes_the_product_catalog_port_contract() {
         .read_variant_identities(read_context(tenant_id), identity_request)
         .await
         .expect("SKU identity lookup should cross gRPC");
-    assert_eq!(identities, [expected_identity.clone()]);
+    assert_eq!(identities.as_slice(), std::slice::from_ref(&expected_identity));
 
     let listed = identity_port
         .list_product_variant_identities(
@@ -489,7 +489,9 @@ async fn loopback_grpc_provider_executes_the_product_catalog_port_contract() {
     assert_eq!(deadline_error.kind, PortErrorKind::Timeout);
     assert_eq!(deadline_error.code, "port.deadline_required");
 
-    let _ = shutdown_tx.send(());
+    if shutdown_tx.send(()).is_err() {
+        // Server task already stopped before explicit shutdown.
+    }
     server
         .await
         .expect("loopback Product gRPC server task should stop");
@@ -768,7 +770,7 @@ async fn loopback_grpc_provider_executes_the_product_catalog_command_port_contra
             .add_service(read_service)
             .add_service(server_service)
             .serve_with_incoming_shutdown(incoming, async {
-                let _ = shutdown_rx.await;
+                drop(shutdown_rx.await);
             })
             .await
             .expect("loopback Product command gRPC server should run");
@@ -926,7 +928,9 @@ async fn loopback_grpc_provider_executes_the_product_catalog_command_port_contra
         .await
         .expect("delete_product should succeed over gRPC loopback");
 
-    let _ = shutdown_tx.send(());
+    if shutdown_tx.send(()).is_err() {
+        // Server task already stopped before explicit shutdown.
+    }
     server
         .await
         .expect("loopback Product command gRPC server task should stop");

@@ -121,10 +121,10 @@ pub(crate) fn validate_selection(
         if !identities.insert(values.into_iter().collect::<Vec<_>>()) {
             return Err("Duplicate SKU combination".into());
         }
-        if let Some(sku) = variant.sku.as_ref().filter(|sku| !sku.trim().is_empty()) {
-            if sku.chars().count() > 100 || !skus.insert(sku.trim()) {
-                return Err("SKU codes must be unique and at most 100 characters".into());
-            }
+        if let Some(sku) = variant.sku.as_ref().filter(|sku| !sku.trim().is_empty())
+            && (sku.chars().count() > 100 || !skus.insert(sku.trim()))
+        {
+            return Err("SKU codes must be unique and at most 100 characters".into());
         }
         if variant
             .barcode
@@ -810,7 +810,7 @@ mod pending_assignment_tests {
             inventory_quantity: Some(4),
             ..Default::default()
         };
-        assert!(!uses_scalar_initial_variant(&[], &[row.clone()]));
+        assert!(!uses_scalar_initial_variant(&[], std::slice::from_ref(&row)));
         apply_selection(&mut draft, vec![], vec![row], None).unwrap();
         let selected = draft.initial_variants.as_ref().unwrap();
         assert_eq!(selected.len(), 1);

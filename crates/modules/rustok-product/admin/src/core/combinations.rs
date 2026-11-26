@@ -492,7 +492,7 @@ mod tests {
             sku: Some("sku".into()),
             axis_values: values.clone(),
         };
-        let page = combination_page(&axes, &[], &[member.clone()], 0, false).unwrap();
+        let page = combination_page(&axes, &[], std::slice::from_ref(&member), 0, false).unwrap();
         assert_eq!(page.rows[0].existing.as_ref().unwrap().id, "sku-uuid");
         assert_eq!(
             choose_combination(&axes, &[], &[member], &values, false),
@@ -504,7 +504,7 @@ mod tests {
             axis_values: vec![],
         };
         assert_eq!(
-            combination_page(&axes, &[], &[incomplete.clone()], 0, false),
+            combination_page(&axes, &[], std::slice::from_ref(&incomplete), 0, false),
             Err(CombinationError::Members)
         );
         assert_eq!(

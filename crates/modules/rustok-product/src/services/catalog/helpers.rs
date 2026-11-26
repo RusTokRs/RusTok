@@ -45,12 +45,11 @@ pub fn extract_allowed_channel_slugs(metadata: &Value) -> Vec<String> {
 
     let mut normalized = std::collections::BTreeSet::new();
     for value in values {
-        if let Some(raw_slug) = value.as_str() {
-            if let Some(slug) = normalize_public_channel_slug(Some(raw_slug))
+        if let Some(raw_slug) = value.as_str()
+            && let Some(slug) = normalize_public_channel_slug(Some(raw_slug))
                 .filter(|slug| slug.as_str() == raw_slug)
-            {
-                normalized.insert(slug);
-            }
+        {
+            normalized.insert(slug);
         }
     }
 

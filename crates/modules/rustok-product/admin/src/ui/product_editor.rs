@@ -513,12 +513,12 @@ pub fn ProductEditorPage(
     let variant_bootstrap =
         Signal::derive(move || variant_bootstrap_resource.get().and_then(Result::ok));
     let variant_reload_locale = locale.clone();
-    let select_variant_editor_target_for_refresh = select_variant_editor_target.clone();
+    let select_variant_editor_target_for_refresh = select_variant_editor_target;
     let refresh_variant_projection = Callback::new(move |product_id: String| {
         let tok = token.get_untracked();
         let ten = tenant.get_untracked();
         let loc = variant_reload_locale.clone();
-        let select_variant_editor_target = select_variant_editor_target_for_refresh.clone();
+        let select_variant_editor_target = select_variant_editor_target_for_refresh;
         spawn_local(async move {
             let result = async {
                 let bootstrap =
@@ -583,8 +583,8 @@ pub fn ProductEditorPage(
             }
         });
     });
-    let select_variant_editor_target_for_delete = select_variant_editor_target.clone();
-    let refresh_variant_projection_for_delete = refresh_variant_projection.clone();
+    let select_variant_editor_target_for_delete = select_variant_editor_target;
+    let refresh_variant_projection_for_delete = refresh_variant_projection;
     let on_variant_deleted = Callback::new(
         move |(product_id, deleted_variant_id): (String, String)| {
             if variant_target_id.get_untracked().as_deref()
@@ -1453,16 +1453,16 @@ pub fn ProductEditorPage(
                                     prop:value=move || currency_code.get()
                                     on:change=move |ev| {
                                         let next_currency = event_target_value(&ev);
-                                        if is_editing {
-                                            if let Some(variant) = loaded_product.get_untracked().and_then(|product| {
+                                        if is_editing
+                                            && let Some(variant) = loaded_product.get_untracked().and_then(|product| {
                                                 let target_id = variant_target_id.get_untracked()?;
                                                 product.variants.into_iter().find(|variant| variant.id == target_id)
-                                            }) {
-                                                let (next_amount, next_compare_at) =
-                                                    variant_price_editor_fields_for_currency(&variant, &next_currency);
-                                                set_amount.set(next_amount);
-                                                set_compare_at_amount.set(next_compare_at);
-                                            }
+                                            })
+                                        {
+                                            let (next_amount, next_compare_at) =
+                                                variant_price_editor_fields_for_currency(&variant, &next_currency);
+                                            set_amount.set(next_amount);
+                                            set_compare_at_amount.set(next_compare_at);
                                         }
                                         set_currency_code.set(next_currency);
                                         set_clear_primary_price.set(false);

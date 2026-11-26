@@ -31,3 +31,6 @@ rustok-ui-i18n.workspace = true
 rustok-ui-transport.workspace = true
 serde = { workspace = true, features = ["derive"] }
 web-sys = { version = "0.3", features = ["Location", "Window"] }
+
+[lints]
+workspace = true

@@ -165,6 +165,7 @@ impl TaxonomyService {
         }
         let deleted = delete_query.exec(&txn).await.map_err(TaxonomyError::from)?;
         if deleted.rows_affected != 1 {
+            txn.rollback().await.map_err(TaxonomyError::from)?;
             return Err(TaxonomyError::conflict(
                 "taxonomy Category changed before deletion could commit",
             )

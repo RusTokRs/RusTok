@@ -48,3 +48,6 @@ richtext-assets = ["dep:axum", "dep:rustok-web"]
 
 [build-dependencies]
 serde_json.workspace = true
+
+[lints]
+workspace = true

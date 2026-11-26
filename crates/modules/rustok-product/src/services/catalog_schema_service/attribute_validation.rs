@@ -416,13 +416,14 @@ pub(crate) fn parse_product_attribute_validation(
                         "must contain locale codes as strings".to_string(),
                     ));
                 };
-                if validate_locale(raw).is_err() {
+                let trimmed = raw.trim();
+                if validate_locale(trimmed).is_err() {
                     return Err(schema_failure(
                         "requiredLocales",
                         format!("`{raw}` is not a valid locale"),
                     ));
                 }
-                let canonical = raw.trim().to_string();
+                let canonical = trimmed.to_string();
                 if !required_locales.contains(&canonical) {
                     required_locales.push(canonical);
                 }

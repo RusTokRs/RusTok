@@ -17,6 +17,7 @@ use crate::model::ProductListItem;
 #[cfg(feature = "ssr")]
 use rustok_product::AdminProductListQueryExt;
 
+#[cfg_attr(not(any(feature = "ssr", feature = "hydrate")), allow(dead_code))]
 pub(crate) async fn fetch_products(
     tenant_id: String,
     locale: Option<String>,
@@ -349,6 +350,7 @@ fn map_admin_catalog_facets(
 ///
 /// The counts cover every lifecycle status the admin list shows, so the panel describes the same
 /// population the grid below it renders.
+#[cfg_attr(not(any(feature = "ssr", feature = "hydrate")), allow(dead_code))]
 pub(crate) async fn fetch_admin_catalog_facets(
     tenant_id: String,
     locale: Option<String>,

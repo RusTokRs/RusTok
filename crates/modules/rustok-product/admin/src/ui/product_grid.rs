@@ -100,18 +100,12 @@ pub fn ProductGridPage() -> impl IntoView {
         signal((requested_page, requested_page_size));
     let (page_request_nonce, set_page_request_nonce) = signal(0_u64);
 
-    let request_current_page = {
-        let pagination = pagination;
-        let last_requested_pagination = last_requested_pagination;
-        let set_last_requested_pagination = set_last_requested_pagination;
-        let set_page_request_nonce = set_page_request_nonce;
-        move || {
-            let state = pagination.get_untracked();
-            let requested = (state.page, state.page_size);
-            if last_requested_pagination.get_untracked() != requested {
-                set_last_requested_pagination.set(requested);
-                set_page_request_nonce.update(|nonce| *nonce = nonce.saturating_add(1));
-            }
+    let request_current_page = move || {
+        let state = pagination.get_untracked();
+        let requested = (state.page, state.page_size);
+        if last_requested_pagination.get_untracked() != requested {
+            set_last_requested_pagination.set(requested);
+            set_page_request_nonce.update(|nonce| *nonce = nonce.saturating_add(1));
         }
     };
     let (infinite_items, set_infinite_items) = signal(Vec::<ProductListItem>::new());
@@ -198,7 +192,7 @@ pub fn ProductGridPage() -> impl IntoView {
     // The owner returns one page plus its total. The grid receives the page
     // and metadata separately so it never slices a partial catalog locally.
     let res_locale = locale.clone();
-    let res_controls = catalog_controls.clone();
+    let res_controls = catalog_controls;
     let products_resource = Resource::new(
         move || {
             (
@@ -401,7 +395,7 @@ pub fn ProductGridPage() -> impl IntoView {
     // facet capability, no transport, or no countable attribute all degrade to "no panel" instead
     // of an error, because the grid itself must keep working.
     let facets_locale = locale.clone();
-    let facets_controls = catalog_controls.clone();
+    let facets_controls = catalog_controls;
     let facets_resource = Resource::new(
         move || {
             (
@@ -446,7 +440,7 @@ pub fn ProductGridPage() -> impl IntoView {
     // resource instead of being cached: a selection change navigates, and the new render shows the
     // new counts.
     let facet_panel_base = base_route.clone();
-    let facet_panel_controls = catalog_controls.clone();
+    let facet_panel_controls = catalog_controls;
     let facet_panel_labels = build_product_admin_facet_labels(locale.as_deref());
 
     // The owner has already applied every active column filter before pagination;

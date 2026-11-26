@@ -717,9 +717,12 @@ impl TaggedStorefrontLists {
             )
             .into());
         }
-        println!(
-            "Mounted Commerce storefront verified with Taxonomy available={taxonomy_available}"
-        );
+        #[allow(clippy::print_stdout)]
+        {
+            println!(
+                "Mounted Commerce storefront verified with Taxonomy available={taxonomy_available}"
+            );
+        }
         Ok(())
     }
 }

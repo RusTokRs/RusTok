@@ -307,6 +307,7 @@ impl RegionTranslationService {
             &current_source_revision,
         )?;
         if request.expected_target_revision != current_target_revision {
+            txn.rollback().await?;
             return Err(RegionTranslationExactLocaleError::RevisionConflict { revision: "target" });
         }
 

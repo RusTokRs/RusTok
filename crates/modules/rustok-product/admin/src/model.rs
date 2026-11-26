@@ -486,10 +486,10 @@ impl VariantUpdateDraft {
         let compare_at_amount = rustok_ui_core::normalize_ui_text(&compare_at_amount);
 
         if amount.is_empty() {
-            if clear_primary_price {
-                if let Some(primary_currency) = primary_currency {
-                    next_prices.retain(|price| price.currency_code != primary_currency);
-                }
+            if clear_primary_price
+                && let Some(primary_currency) = primary_currency
+            {
+                next_prices.retain(|price| price.currency_code != primary_currency);
             }
         } else {
             let updated_price = VariantPriceDraft {
