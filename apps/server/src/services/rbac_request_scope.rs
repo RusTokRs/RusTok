@@ -20,6 +20,9 @@ pub struct RbacRequestScope {
     credential: Option<RequestCredentialAuthority>,
     admitted_epoch: Option<u64>,
     static_revision: Option<Arc<rustok_rbac::StaticActorAuthorityRevision>>,
+    // Losing verification already observed at admission must not keep an
+    // authenticated snapshot alive, even when the runtime policy is absent here.
+    email_verified_at_admission: bool,
 }
 
 /// Facts admitted by the common JWT extractor, never transport input.
@@ -93,6 +96,7 @@ impl RbacRequestScope {
             credential: None,
             admitted_epoch: None,
             static_revision: None,
+            email_verified_at_admission: false,
         }
     }
 
@@ -110,6 +114,7 @@ impl RbacRequestScope {
         );
         scope.admitted_epoch = Some(current.rbac_epoch);
         scope.static_revision = current.static_authority_revision.clone();
+        scope.email_verified_at_admission = current.user.is_email_verified();
         scope.credential = Some(RequestCredentialAuthority {
             principal_kind: current.principal_kind,
             session_id: current.session_id,
@@ -423,9 +428,9 @@ pub(crate) fn ensure_scope_not_invalidated(
     Ok(())
 }
 
-/// Revalidate the original static authority at an asynchronous authorization
-/// boundary. Never refresh the snapshot or replace its permission ceiling.
-/// The owner read is a single statement, not a transaction-spanning fence.
+/// Revalidate the original credential and static authority at an asynchronous
+/// authorization boundary. Never refresh or widen the snapshot. These owner
+/// reads are observations, not a transaction-spanning fence.
 pub(crate) async fn ensure_scope_authority(
     db: Option<&sea_orm::DatabaseConnection>,
     tenant_id: &Uuid,
@@ -445,29 +450,43 @@ pub(crate) async fn ensure_scope_authority(
         return Ok(());
     };
 
-    // Trusted grant-only scopes and service principals do not have a
-    // persisted static user membership. Authenticated human principals do.
-    let Some(expected) = state.scope.static_revision.as_ref() else {
-        if state.scope.admitted_epoch.is_some()
-            && state.scope.credential.as_ref().is_some_and(|credential| {
-                credential.principal_kind != AuthPrincipalKind::Service
-            })
-        {
+    // Grant-only internal scopes are intentionally exempt. An authenticated
+    // scope without its credential evidence is not a trusted internal call.
+    if let Some(credential) = state.scope.credential.as_ref() {
+        let result = match db {
+            Some(db) => crate::extractors::auth::revalidate_request_credential(
+                db, *tenant_id, *actor_id, credential, &state.scope.permissions,
+                state.scope.email_verified_at_admission,
+            ).await,
+            None => Err((axum::http::StatusCode::SERVICE_UNAVAILABLE, "Database unavailable")),
+        };
+        if let Err((status, _)) = result {
+            // Never log the registration digest or private credential facts.
+            tracing::debug!(%status, "Request credential revalidation denied");
+            state.valid.store(false, Ordering::Release);
+            return Err(invalidated_scope_error());
+        }
+        ensure_scope_not_invalidated(tenant_id, actor_id)?;
+    } else if state.scope.admitted_epoch.is_some() {
+        state.valid.store(false, Ordering::Release);
+        return Err(invalidated_scope_error());
+    }
+
+    // Service OAuth has no persisted user membership, but it must pass the
+    // credential check above. Authenticated humans need both observations.
+    if let Some(expected) = state.scope.static_revision.as_ref() {
+        let current = match db {
+            Some(db) => rustok_rbac::read_static_actor_authority_revision_on(
+                db, *tenant_id, *actor_id,
+            ).await.ok(),
+            None => None,
+        };
+        if current.as_ref() != Some(expected.as_ref()) {
             state.valid.store(false, Ordering::Release);
         }
-        return ensure_scope_not_invalidated(tenant_id, actor_id);
-    };
-    let current = match db {
-        Some(db) => {
-            rustok_rbac::read_static_actor_authority_revision_on(db, *tenant_id, *actor_id)
-                .await
-                .ok()
-        }
-        None => None,
-    };
-    if current.as_ref() != Some(expected.as_ref()) {
-        // Missing/corrupt data, storage failure and revision drift all deny.
-        // All captured clones share the terminal flag.
+    } else if state.scope.credential.as_ref().is_some_and(|credential| {
+        credential.principal_kind.is_human_user()
+    }) {
         state.valid.store(false, Ordering::Release);
     }
     // Recheck the local epoch and credential deadline after the DB await.

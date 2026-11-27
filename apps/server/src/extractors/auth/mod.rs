@@ -314,7 +314,27 @@ async fn validate_oauth_access_token_registration(
                 "Application database clock unavailable",
             )
         })?;
-    let row = OAuthTokens::find_by_id(jti)
+    read_live_oauth_registration(
+        db, app_id, tenant_id, grant_type, jti, &token_hash,
+        expected_user_id, expected_scopes, now,
+    ).await
+}
+
+/// Shared storage predicate for initial JWT admission and subsequent
+/// request-scope checks. The latter retains only the admitted digest.
+#[allow(clippy::too_many_arguments)]
+async fn read_live_oauth_registration(
+    db: &DatabaseConnection,
+    app_id: uuid::Uuid,
+    tenant_id: uuid::Uuid,
+    grant_type: &str,
+    registration_id: uuid::Uuid,
+    token_hash: &str,
+    expected_user_id: Option<uuid::Uuid>,
+    expected_scopes: &[String],
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<oauth_tokens::Model, (StatusCode, &'static str)> {
+    let row = OAuthTokens::find_by_id(registration_id)
         .filter(oauth_tokens::Column::TokenHash.eq(token_hash))
         .filter(oauth_tokens::Column::AppId.eq(app_id))
         .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
@@ -1071,6 +1091,110 @@ async fn revalidate_admitted_authority(
         .ok_or(changed)?;
     if !tenant.is_active {
         return Err((StatusCode::FORBIDDEN, "Tenant is unavailable"));
+    }
+    Ok(())
+}
+
+/// Revalidate admitted credential evidence at an asynchronous request
+/// boundary without retaining the bearer token or expanding its grants.
+/// This is a storage observation, not a transaction/credential-key fence.
+/// The caller rechecks the local deadline and latches invalidation on error.
+pub(crate) async fn revalidate_request_credential(
+    db: &DatabaseConnection,
+    tenant_id: uuid::Uuid,
+    actor_id: uuid::Uuid,
+    credential: &crate::services::rbac_request_scope::RequestCredentialAuthority,
+    original_permissions: &[Permission],
+    email_verified_at_admission: bool,
+) -> Result<(), (StatusCode, &'static str)> {
+    let changed = (StatusCode::UNAUTHORIZED, "Request credential authority changed");
+    let database_error = (StatusCode::INTERNAL_SERVER_ERROR, "Database error");
+    let now = rustok_auth::application_clock::local_now()
+        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application clock unavailable"))?;
+    if now >= credential.expires_at || credential.typed().is_none() {
+        return Err(changed);
+    }
+
+    let tenant = crate::models::tenants::Entity::find_by_id(tenant_id)
+        .one(db).await.map_err(|_| database_error)?.ok_or(changed)?;
+    if !tenant.is_active {
+        return Err(changed);
+    }
+
+    let user = if credential.principal_kind.is_human_user() {
+        let user = Users::find_by_id(actor_id)
+            .filter(users::Column::TenantId.eq(tenant_id))
+            .one(db).await.map_err(|_| database_error)?.ok_or(changed)?;
+        if !user.is_active()
+            || credential.recovery_revision < 0
+            || user.recovery_revision != credential.recovery_revision
+            || (email_verified_at_admission && !user.is_email_verified())
+        {
+            return Err(changed);
+        }
+        Some(user)
+    } else {
+        None
+    };
+
+    if credential.principal_kind == AuthPrincipalKind::DirectUser {
+        let session = Sessions::find_by_id(credential.session_id)
+            .filter(crate::models::sessions::Column::TenantId.eq(tenant_id))
+            .one(db).await.map_err(|_| database_error)?.ok_or(changed)?;
+        if session.user_id != actor_id
+            || !session.is_active_at(now)
+            || session.expires_at.with_timezone(&chrono::Utc)
+                .min(session.absolute_deadline()) < credential.expires_at
+        {
+            return Err(changed);
+        }
+        return Ok(());
+    }
+
+    if !credential.session_id.is_nil() {
+        return Err(changed);
+    }
+    let evidence = credential.oauth.as_ref().ok_or(changed)?;
+    let (grant_type, subject) = match credential.principal_kind {
+        AuthPrincipalKind::DelegatedUser => (AUTHORIZATION_CODE_GRANT_TYPE, Some(actor_id)),
+        AuthPrincipalKind::Service => (CLIENT_CREDENTIALS_GRANT_TYPE, None),
+        AuthPrincipalKind::DirectUser => return Err(changed),
+    };
+    let app = resolve_active_oauth_app(
+        db, tenant_id, evidence.client_id, grant_type, &evidence.scopes,
+    ).await?;
+    if app.id != evidence.app_id || (subject.is_none() && app.id != actor_id) {
+        return Err(changed);
+    }
+    let row = read_live_oauth_registration(
+        db, app.id, tenant_id, grant_type, evidence.registration_id,
+        &evidence.token_hash, subject, &evidence.scopes, now,
+    ).await?;
+    if row.created_at.with_timezone(&chrono::Utc) != evidence.issued_at
+        || row.consent_granted_at != evidence.consent_granted_at
+        || row.expires_at.with_timezone(&chrono::Utc) < credential.expires_at
+    {
+        return Err(changed);
+    }
+    if let Some(user) = user {
+        if user.rejects_delegated_token_issued_at(evidence.issued_at) {
+            return Err(changed);
+        }
+        validate_active_user_consent(
+            db, &app, tenant_id, actor_id, &evidence.scopes,
+            row.consent_granted_at, row.authorization_code_id,
+        ).await?;
+    } else {
+        if row.consent_granted_at.is_some() || row.authorization_code_id.is_some() {
+            return Err(changed);
+        }
+        let grants = app.parsed_granted_permissions().map_err(|_| changed)?;
+        let effective = restrict_permissions_to_scopes(&grants, &evidence.scopes);
+        if original_permissions.iter().any(|permission| {
+            !rustok_api::has_effective_permission(&effective, permission)
+        }) {
+            return Err(changed);
+        }
     }
     Ok(())
 }

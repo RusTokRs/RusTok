@@ -404,8 +404,17 @@ Scope-aware service checks and GraphQL root admission compare it through the
 single-statement owner reader. Raw relation changes and ABA cannot pass a
 subsequent matching check merely because no notification arrived. WebSocket
 revalidation also binds the revision. This adds a read, not a transaction
-fence. Service OAuth and synchronous consumers retain their separate contracts.
+fence. Synchronous consumers retain their separate contract.
 Source regressions are unrun.
+
+Matching authenticated scopes also check live tenant/account, recovery
+revision, direct session deadline/revocation, or exact OAuth app/registration
+and consent lineage. Service OAuth checks the admitted grant ceiling against
+current app grants and token scopes without needing a user membership.
+Observation errors invalidate the scope terminally. Async service, root and
+explicit nested read gates reuse this check; no raw bearer is retained.
+Continuous module policy, signing-key authority and atomic effect fencing
+remain separate. Source regressions unrun.
 
 Matching scope reads used for fallback now distinguish absent scope from
 invalid authority in one fallible accessor, including a recheck after

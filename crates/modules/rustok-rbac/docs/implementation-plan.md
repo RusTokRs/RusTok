@@ -597,6 +597,15 @@ exists.
   regressions authored, unrun. Other protected nested fields, full receipt
   materialization and continuous credential/module authority remain open.
 
+- Durable request credential observations: matching authenticated scope
+  rechecks tenant, human account/recovery revision, direct session or exact
+  OAuth app/access registration/consent lineage; service app grants must
+  cover original scoped permissions. Terminal failure without grant fallback;
+  shared registration predicate with JWT admission. Tests cover revoked
+  session, service grant loss/revocation and delegated consent replacement.
+  Source tests unrun. Continuous module policy, signing-key authority,
+  synchronous-only consumers and atomic credential/effect fencing remain open.
+
 - Revision-bound permission cache: bracket production fills with durable
   revision reads and recheck the local epoch after publication. Bound hits
   compare exact grants and original revision in one statement. Legacy entries

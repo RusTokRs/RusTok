@@ -157,6 +157,29 @@ non-null field can still propagate a GraphQL null after commit. Other
 receipt projections and protected nested consumers remain open. No schema
 field type change. Source regressions authored, unrun.
 
+## Durable request credential observations (2026-11-27)
+
+Matching credential-bearing scopes now revalidate the admitted identity
+against live tenant, human account, recovery revision and session (including
+the absolute deadline), or OAuth app, grant, exact access registration,
+scopes and consent lineage. Initial and subsequent OAuth access checks
+share the same registration storage predicate; the scope retains only the
+admitted digest, never the bearer token. Service principals also verify
+that current app grants restricted by the original scopes still cover
+every admitted permission; human principals retain the static revision
+check. Loss of verification already observed at admission denies. Missing
+storage/evidence or a failed observation terminally invalidates that scope,
+including captured clones. Existing grant-only trusted scopes are unchanged.
+
+These are observations at async service, GraphQL root and explicit fresh
+read boundaries, not a single atomic credential/permission snapshot or
+transaction fence. The guarded local clock is used at each check; no new
+durable clock write is performed there. JWT key/witness revocation, newly
+enabled verification requirements, continuous module policy and unscoped or
+synchronous-only consumers require separate runtime authority integration.
+A revocation restored before any observation is not necessarily detected.
+Source regressions authored, unrun.
+
 ## Non-goals
 
 This change does not create an atomic revocation fence, ensure immediate

@@ -968,6 +968,13 @@ async fn delegated_user_admin_rejects_revoked_registration_and_consent_epoch() {
     replacement.revoked_at = Set(None);
     replacement.insert(&db).await.unwrap();
     assert!(resolve_current_user_from_access_token(&runtime, tenant.id, &token).await.is_err());
+    with_rbac_request_scope(Some(scope()), async {
+        // Same-timestamp replacement of consent must also invalidate an
+        // already admitted delegated RBAC snapshot, not just a new JWT.
+        assert!(crate::services::rbac_request_scope::ensure_scope_authority(
+            Some(&db), &tenant.id, &actor.id,
+        ).await.is_err());
+    }).await;
     let denied = with_rbac_request_scope(
         Some(scope()),
         provider.create_user(&context, create("delegated-epoch@example.test")),
@@ -1684,6 +1691,90 @@ async fn final_authority_check_rejects_membership_aba_and_revoked_session() {
     session.revoked_at = Set(Some(Utc::now().into()));
     session.update(&db).await.unwrap();
     assert!(revalidate!(&restored).await.is_err());
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn admitted_direct_scope_rejects_revoked_session_without_rbac_notification() {
+    use crate::services::rbac_request_scope::{
+        RbacRequestScope, ensure_scope_authority, with_rbac_request_scope,
+    };
+
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let runtime = test_auth_runtime(db.clone());
+    let tenant = tenants::ActiveModel::new("Scope session", &format!("tenant-{}", Uuid::new_v4()))
+        .insert(&db).await.unwrap();
+    let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+    rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+        &db, tenant.id, user.id, UserRole::Manager,
+    ).await.unwrap();
+    let token = encode_access_token(
+        runtime.require_auth_config().unwrap(), user.id, tenant.id, UserRole::Manager, session_id,
+    ).unwrap();
+    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await.unwrap();
+    let scope = RbacRequestScope::authenticated(&admitted, admitted.access_token_expires_at);
+    with_rbac_request_scope(Some(scope), async {
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &user.id).await.is_ok());
+        sessions::ActiveModel {
+            id: Set(session_id),
+            revoked_at: Set(Some(Utc::now().into())),
+            ..Default::default()
+        }.update(&db).await.unwrap();
+        assert!(RbacService::get_user_permissions(&db, &tenant.id, &user.id).await.is_err());
+        assert!(RbacService::get_user_role(&db, &tenant.id, &user.id).await.is_err());
+        assert!(crate::services::rbac_request_scope::permissions_for(&tenant.id, &user.id).is_none());
+    }).await;
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn admitted_service_scope_rejects_grant_loss_and_registration_revocation() {
+    use crate::services::rbac_request_scope::{
+        RbacRequestScope, ensure_scope_authority, with_rbac_request_scope,
+    };
+
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    ensure_oauth_apps_table(&db).await;
+    let runtime = test_auth_runtime(db.clone());
+    let tenant = tenants::ActiveModel::new("Scope service", &format!("tenant-{}", Uuid::new_v4()))
+        .insert(&db).await.unwrap();
+    let app = insert_oauth_app(&db, tenant.id, "service", &["client_credentials"], true).await;
+    let token = registered_service_token(
+        &db, runtime.require_auth_config().unwrap(), &app, &["forum:*".into()],
+    ).await;
+    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await.unwrap();
+    assert!(!admitted.permissions.is_empty());
+    let scope = RbacRequestScope::authenticated(&admitted, admitted.access_token_expires_at);
+    let registration = admitted.oauth_credential.as_ref().unwrap().registration_id;
+
+    with_rbac_request_scope(Some(scope.clone()), async {
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &app.id).await.is_ok());
+        oauth_apps::ActiveModel {
+            id: Set(app.id),
+            granted_permissions: Set(serde_json::json!([])),
+            ..Default::default()
+        }.update(&db).await.unwrap();
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &app.id).await.is_err());
+        oauth_apps::ActiveModel {
+            id: Set(app.id),
+            granted_permissions: Set(app.granted_permissions.clone()),
+            ..Default::default()
+        }.update(&db).await.unwrap();
+        // Restoring grants cannot resurrect this invalidated request.
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &app.id).await.is_err());
+    }).await;
+
+    with_rbac_request_scope(Some(scope), async {
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &app.id).await.is_ok());
+        oauth_tokens::ActiveModel {
+            id: Set(registration),
+            revoked_at: Set(Some(Utc::now().into())),
+            ..Default::default()
+        }.update(&db).await.unwrap();
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &app.id).await.is_err());
+    }).await;
 }
 
 #[tokio::test]
