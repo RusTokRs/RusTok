@@ -1788,6 +1788,38 @@ mod tests {
     }
 
     #[test]
+    fn symbol_definitions_respect_custom_component_limits() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [{
+                "id": "cta",
+                "components": [{
+                    "id": "first",
+                    "type": "text"
+                }, {
+                    "id": "second",
+                    "type": "text"
+                }]
+            }],
+            "pages": [{
+                "id": "home",
+                "component": { "id": "root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        let limits = ValidationLimits {
+            maximum_nodes: 1,
+            ..ValidationLimits::default()
+        };
+
+        let report = validate_project(&document, &RegistrySet::with_builtins(), limits);
+
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "symbol_definition_maximum_nodes_exceeded"
+                && diagnostic.severity == ValidationSeverity::Error
+        }));
+    }
+
+    #[test]
     fn symbol_expansion_budget_is_reported_by_project_validation() {
         let symbol_components = (0..crate::MAX_SYMBOL_COMPONENTS)
             .map(|index| {
