@@ -145,26 +145,31 @@ impl ProjectFragment {
         let reserved = crate::id_reference::project_identity_ids(editor.document());
         let mut staged = editor.clone();
         self.remap_ids_avoiding(&mut staged.id_generator, reserved)?;
+        let existing_assets = staged.document().project().assets.clone();
+        remap_fragment_asset_ids(
+            &mut self.assets,
+            &mut self.components,
+            &existing_assets,
+            &mut staged.id_generator,
+        )?;
         let mut inserted_ids = Vec::new();
         let mut commands = Vec::new();
         commands.extend(self.assets.into_iter().map(|asset| EditorCommand::Asset {
             command: AssetCommand::Upsert { asset },
         }));
-        commands.extend(
-            self.components
-                .into_iter()
-                .enumerate()
-                .map(|(offset, component)| {
-                    if let Some(id) = component.id() {
-                        inserted_ids.push(id.to_string());
-                    }
-                    EditorCommand::Insert {
-                        parent_id: parent_id.clone(),
-                        index: index + offset,
-                        component,
-                    }
-                }),
-        );
+        for (offset, component) in self.components.into_iter().enumerate() {
+            if let Some(id) = component.id() {
+                inserted_ids.push(id.to_string());
+            }
+            let insertion_index = index.checked_add(offset).ok_or_else(|| {
+                FlyError::Decode("fragment insertion index overflow".to_string())
+            })?;
+            commands.push(EditorCommand::Insert {
+                parent_id: parent_id.clone(),
+                index: insertion_index,
+                component,
+            });
+        }
         commands.extend(
             self.styles
                 .into_iter()
@@ -178,6 +183,113 @@ impl ProjectFragment {
         staged.apply(EditorCommand::batch(commands))?;
         *editor = staged;
         Ok(inserted_ids)
+    }
+}
+
+fn remap_fragment_asset_ids(
+    assets: &mut [Value],
+    components: &mut [ComponentNode],
+    existing_assets: &[Value],
+    generator: &mut impl IdGenerator,
+) -> FlyResult<()> {
+    let mut existing_by_id = BTreeMap::new();
+    for raw in existing_assets {
+        if let Some(asset) = AssetDescriptor::from_value(raw.clone()) {
+            existing_by_id.entry(asset.id).or_insert_with(|| raw.clone());
+        }
+    }
+
+    let mut reserved = existing_by_id.keys().cloned().collect::<BTreeSet<_>>();
+    let mut seen = BTreeSet::new();
+    let mut mapping = BTreeMap::new();
+    for raw in assets {
+        let Some(asset) = AssetDescriptor::from_value(raw.clone()) else {
+            continue;
+        };
+        if !seen.insert(asset.id.clone()) {
+            return Err(FlyError::InvalidAssetReference(format!(
+                "fragment contains duplicate asset id `{}`",
+                asset.id
+            )));
+        }
+        reserved.insert(asset.id.clone());
+        if let Some(existing) = existing_by_id.get(&asset.id)
+            && existing != raw
+        {
+            let replacement =
+                crate::id_reference::allocate_generated_id(generator, "asset", &mut reserved);
+            set_asset_identity(raw, &replacement)?;
+            mapping.insert(asset.id, replacement);
+        }
+    }
+
+    if !mapping.is_empty() {
+        for component in components {
+            remap_component_asset_references(component, &mapping);
+        }
+    }
+    Ok(())
+}
+
+fn set_asset_identity(raw: &mut Value, id: &str) -> FlyResult<()> {
+    let Some(object) = raw.as_object_mut() else {
+        return Err(FlyError::InvalidAssetReference(
+            "asset must be a JSON object".to_string(),
+        ));
+    };
+    let mut updated = false;
+    for key in ["id", "assetId"] {
+        if object.contains_key(key) {
+            object.insert(key.to_string(), Value::String(id.to_string()));
+            updated = true;
+        }
+    }
+    if !updated {
+        object.insert("id".to_string(), Value::String(id.to_string()));
+    }
+    Ok(())
+}
+
+fn remap_component_asset_references(
+    component: &mut ComponentNode,
+    mapping: &BTreeMap<String, String>,
+) {
+    match component {
+        ComponentNode::Object(object) => {
+            remap_asset_attribute(&mut object.attributes, mapping);
+            if let Some(children) = object.children_mut() {
+                for child in children {
+                    remap_component_asset_references(child, mapping);
+                }
+            }
+        }
+        ComponentNode::Opaque(raw) => remap_opaque_asset_references(raw, mapping),
+    }
+}
+
+fn remap_opaque_asset_references(raw: &mut Value, mapping: &BTreeMap<String, String>) {
+    let Some(object) = raw.as_object_mut() else {
+        return;
+    };
+    if let Some(attributes) = object.get_mut("attributes").and_then(Value::as_object_mut) {
+        remap_asset_attribute(attributes, mapping);
+    }
+    if let Some(children) = object.get_mut("components").and_then(Value::as_array_mut) {
+        for child in children {
+            remap_opaque_asset_references(child, mapping);
+        }
+    }
+}
+
+fn remap_asset_attribute(
+    attributes: &mut Map<String, Value>,
+    mapping: &BTreeMap<String, String>,
+) {
+    let Some(Value::String(asset_id)) = attributes.get_mut("data-fly-asset-id") else {
+        return;
+    };
+    if let Some(replacement) = mapping.get(asset_id) {
+        *asset_id = replacement.clone();
     }
 }
 
@@ -417,6 +529,102 @@ mod tests {
             "{}",
             rendered.css
         );
+    }
+
+    #[test]
+    fn pasting_asset_id_collisions_does_not_replace_destination_assets() {
+        let source = GrapesJsCodec::decode_value(json!({
+            "assets": [{ "id": "shared", "src": "/source.webp", "name": "source" }],
+            "pages": [{
+                "component": {
+                    "id": "source-root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "hero",
+                        "type": "image",
+                        "attributes": {
+                            "src": "/source.webp",
+                            "data-fly-asset-id": "shared"
+                        }
+                    }]
+                }
+            }]
+        }))
+        .expect("source");
+        let target = GrapesJsCodec::decode_value(json!({
+            "assets": [{ "id": "shared", "src": "/target.webp", "name": "target" }],
+            "pages": [{
+                "component": {
+                    "id": "target-root",
+                    "type": "wrapper",
+                    "components": []
+                }
+            }]
+        }))
+        .expect("target");
+        let fragment = ProjectFragment::from_component(&source, "hero").expect("fragment");
+        let mut editor = FlyEditor::new(target, RegistrySet::with_builtins());
+
+        let inserted = fragment
+            .insert(&mut editor, Some("target-root".to_string()), 0)
+            .expect("paste");
+
+        let catalog = AssetDescriptor::from_value;
+        let assets = editor.document().project().assets.iter()
+            .filter_map(|raw| catalog(raw.clone()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            assets.iter().find(|asset| asset.id == "shared").map(|asset| asset.source.as_str()),
+            Some("/target.webp")
+        );
+        let inserted_component = editor.document().component(&inserted[0]).expect("inserted");
+        let pasted_asset_id = inserted_component.attributes["data-fly-asset-id"]
+            .as_str()
+            .expect("asset id");
+        assert_ne!(pasted_asset_id, "shared");
+        assert_eq!(
+            assets.iter().find(|asset| asset.id == pasted_asset_id).map(|asset| asset.source.as_str()),
+            Some("/source.webp")
+        );
+        assert_eq!(
+            inserted_component.attributes["src"],
+            "/source.webp"
+        );
+    }
+
+    #[test]
+    fn fragment_insert_rejects_index_overflow_without_mutating_the_editor() {
+        let target = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "target-root",
+                    "type": "wrapper",
+                    "components": []
+                }
+            }]
+        }))
+        .expect("target");
+        let mut editor = FlyEditor::new(target, RegistrySet::with_builtins());
+        let before = editor.clone();
+        let fragment = ProjectFragment {
+            components: vec![
+                serde_json::from_value(json!({"id": "first", "type": "section"}))
+                    .expect("first component"),
+                serde_json::from_value(json!({"id": "second", "type": "section"}))
+                    .expect("second component"),
+            ],
+            styles: Vec::new(),
+            assets: Vec::new(),
+            provider_requirements: Vec::new(),
+            extensions: Map::new(),
+        };
+
+        let error = fragment
+            .insert(&mut editor, Some("target-root".to_string()), usize::MAX)
+            .expect_err("overflowing fragment index");
+
+        assert!(matches!(error, FlyError::Decode(message) if message.contains("index overflow")));
+        assert_eq!(editor, before);
     }
 
     #[test]
