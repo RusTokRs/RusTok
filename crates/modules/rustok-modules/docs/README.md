@@ -1533,9 +1533,10 @@ The `platform.http` broker disables process/system proxies on both its shared
 and DNS-pinned clients. Hostname resolution is bounded by the capability
 deadline, every returned address is screened before the first validated address
 is pinned, and the remaining deadline is shared by connection, request and
-response-body consumption. IPv4-mapped, IPv4-translated, IPv4-compatible,
-well-known NAT64, 6to4 and ISATAP addresses are checked against their embedded
-IPv4 destination; ISATAP additionally requires a global-unicast IPv6 prefix.
+response-body consumption. IPv4-mapped, IPv4-translated (RFC 2765),
+IPv4-compatible, well-known NAT64, 6to4 and ISATAP (RFC 5214) addresses are
+checked against their embedded IPv4 destination; ISATAP additionally requires
+a global-unicast IPv6 prefix.
 The RFC 8215 local-use NAT64 prefix is rejected outright because it is not
 globally reachable. Non-global IPv6 ranges and site-local, Teredo, benchmarking,
 documentation, discard-only, dummy, SRv6 and other non-globally-reachable
