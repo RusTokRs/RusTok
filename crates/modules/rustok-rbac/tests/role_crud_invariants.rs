@@ -11,10 +11,16 @@ struct TestMutationAuthority {
     permissions: Vec<Permission>,
     availability: Option<rustok_rbac::PermissionAvailability>,
     deny_commit: bool,
+    rename_before_lock: Option<DatabaseConnection>,
 }
 #[async_trait::async_trait]
 impl RbacMutationAuthority for TestMutationAuthority {
     async fn prepare(&self) -> Result<(), RbacGraphqlRoleWriteError> {
+        if let Some(db) = &self.rename_before_lock {
+            db.execute_unprepared("UPDATE roles SET slug = 'super_admin', is_system = TRUE WHERE slug = 'editor'")
+                .await
+                .map_err(|error| RbacGraphqlRoleWriteError::Internal(error.to_string()))?;
+        }
         Ok(())
     }
     async fn lock(
@@ -54,6 +60,7 @@ fn test_authority(
         permissions,
         availability,
         deny_commit,
+        rename_before_lock: None,
     }))
 }
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
@@ -1436,4 +1443,47 @@ async fn role_mutations_deny_disjoint_admitted_and_live_management_grants() {
         .execute(r#"mutation { createRole(input: {name: "New role", slug: "new_role", permissions: ["posts:read"]}) { success } }"#)
         .await;
     assert!(allowed.errors.is_empty(), "{:?}", allowed.errors);
+}
+
+#[tokio::test]
+async fn stale_role_slug_cannot_mutate_or_delete_renamed_break_glass_role() {
+    for mutation in [
+        r#"mutation { updateRole(input: {slug: "editor", name: "Changed", permissions: []}) { success } }"#,
+        r#"mutation { deleteRole(slug: "editor") { success } }"#,
+    ] {
+        let db = setup_test_db().await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let permissions = vec![Permission::SETTINGS_MANAGE, Permission::POSTS_READ];
+        let schema = test_schema(db.clone(), tenant_id, actor_id, permissions.clone());
+        create_editor(&schema).await;
+        let before = editor_state(&db).await;
+        let authority = RbacMutationAuthorityHandle(std::sync::Arc::new(TestMutationAuthority {
+            permissions,
+            availability: None,
+            deny_commit: false,
+            rename_before_lock: Some(db.clone()),
+        }));
+        let response = schema
+            .execute(async_graphql::Request::new(mutation).data(authority))
+            .await;
+        assert!(
+            response.errors.iter().any(|error| error.message.contains("Role 'editor' not found")),
+            "{mutation}: {:?}",
+            response.errors
+        );
+        let row = db
+            .query_one_raw(sea_orm::Statement::from_string(
+                sea_orm::DbBackend::Sqlite,
+                "SELECT is_system FROM roles WHERE slug = 'super_admin'".to_string(),
+            ))
+            .await
+            .unwrap()
+            .expect("renamed role must survive");
+        assert!(row.try_get::<bool>("", "is_system").unwrap());
+        db.execute_unprepared("UPDATE roles SET slug = 'editor' WHERE slug = 'super_admin'")
+            .await
+            .unwrap();
+        assert_eq!(editor_state(&db).await, before);
+    }
 }

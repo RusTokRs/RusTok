@@ -20,6 +20,12 @@ documentation for this module must live inside the crate, not spread across
 
 ## Transaction-bound management alternatives
 
+GraphQL role update and deletion revalidate the requested tenant, role UUID
+and slug in the locked row query. A rename between the initial locator read
+and transaction admission returns not-found instead of applying stale slug
+policy (including break-glass protection) to the renamed role. The regression
+exercises both mutations; runtime verification is pending.
+
 The host RBAC control-plane authority returns only the effective intersection
 of the admitted request and current module-filtered grants. The GraphQL owner
 also applies its request ceiling before testing management alternatives.

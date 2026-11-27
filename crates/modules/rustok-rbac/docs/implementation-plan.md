@@ -519,3 +519,7 @@ exists.
   of UUID reuse with the same revision in another tenant. The PostgreSQL
   contention assertion requires the exact witness-busy error. Owner migration
   registration is guarded; execution remains pending.
+
+- GraphQL role locator integrity: update and delete revalidate the exact tenant,
+  UUID and slug under the role lock; stale locators cannot bypass break-glass
+  protection. SQLite transport regressions authored, unrun.

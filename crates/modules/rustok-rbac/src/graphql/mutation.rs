@@ -604,7 +604,8 @@ impl RbacMutation {
         let availability = &authority.availability;
 
         // Lock and read current metadata inside the transaction so concurrent
-        // renames/edits or deletes are serialized cleanly with zero TOCTOU.
+        // renames/edits or deletes are serialized. Revalidate the requested slug
+        // as well as the ID: a concurrent SQL rename can change break-glass status.
         let requested_desc_patch: Option<Option<String>> = match input.description {
             MaybeUndefined::Undefined => None,
             MaybeUndefined::Null => Some(None),
@@ -622,17 +623,17 @@ impl RbacMutation {
         )> = async {
             let lock_role_sql = match backend {
                 sea_orm::DbBackend::Sqlite => {
-                    "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? RETURNING name, description, is_system"
+                    "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? AND slug = ? RETURNING name, description, is_system"
                 }
                 sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql | _ => {
-                    "SELECT name, description, is_system FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE"
+                    "SELECT name, description, is_system FROM roles WHERE tenant_id = ? AND id = ? AND slug = ? LIMIT 1 FOR UPDATE"
                 }
             };
             let tx_role = tx
                 .query_one_raw(prepare_statement(
                     backend,
                     lock_role_sql,
-                    vec![tenant.id.into(), role_id.into()],
+                    vec![tenant.id.into(), role_id.into(), slug.clone().into()],
                 ))
                 .await
                 .map_err(|e| internal_db_error("rbac role mutation", e))?
@@ -961,22 +962,22 @@ impl RbacMutation {
             };
 
         // Re-verify the role inside the deleting transaction: the lookup
-        // above ran outside it, so a concurrent delete must surface as
-        // not-found here instead of a phantom success below.
+        // above ran outside it, so a concurrent delete or slug change must
+        // surface as not-found. The old slug is not proof of break-glass status.
         let tx_outcome: Result<()> = async {
             let lock_role_sql = match backend {
                 sea_orm::DbBackend::Sqlite => {
-                    "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? RETURNING id"
+                    "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? AND slug = ? RETURNING id"
                 }
                 sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql | _ => {
-                    "SELECT id FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE"
+                    "SELECT id FROM roles WHERE tenant_id = ? AND id = ? AND slug = ? LIMIT 1 FOR UPDATE"
                 }
             };
             let tx_role = tx
                 .query_one_raw(prepare_statement(
                     backend,
                     lock_role_sql,
-                    vec![tenant.id.into(), role_id.into()],
+                    vec![tenant.id.into(), role_id.into(), slug.clone().into()],
                 ))
                 .await
                 .map_err(|e| internal_db_error("rbac role mutation", e))?;
