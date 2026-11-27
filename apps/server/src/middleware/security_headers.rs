@@ -202,8 +202,8 @@ fn plaintext_websocket_allowed() -> bool {
 }
 
 fn is_oauth_browser_document(path: &str, method: &axum::http::Method) -> bool {
-    (path == "/api/oauth/authorize" && *method == axum::http::Method::GET)
-        || (path == "/api/oauth/consent" && *method == axum::http::Method::POST)
+    (path == "/api/oauth/authorize" && method.as_str() == "GET")
+        || (path == "/api/oauth/consent" && method.as_str() == "POST")
 }
 
 fn is_api_surface(path: &str) -> bool {
