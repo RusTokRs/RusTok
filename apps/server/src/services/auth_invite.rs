@@ -2,17 +2,39 @@ use chrono::{DateTime, Duration, Utc};
 use rustok_events::DomainEvent;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter,
-    QuerySelect, Set, TransactionTrait, sea_query::Expr,
+    QuerySelect, Set, Statement, TransactionTrait, sea_query::Expr,
 };
 use sha2::{Digest, Sha256};
 
 use crate::auth::{AuthConfig, decode_invite_token, normalize_email};
 use crate::error::Error;
-use crate::models::{auth_invite_consumptions, auth_invites, users};
+use crate::models::{auth_invite_consumptions, auth_invites, tenants, users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+
+/// Shared active-tenant fence for authenticated administration and invite
+/// acceptance. Acquire before app/user/ledger locks; KEY SHARE would not
+/// prevent an is_active update. SQLite must acquire its writer first.
+pub(crate) async fn lock_active_auth_tenant(
+    tx: &sea_orm::DatabaseTransaction,
+    tenant_id: uuid::Uuid,
+) -> Result<bool, sea_orm::DbErr> {
+    match tx.get_database_backend() {
+        DbBackend::Postgres => Ok(tx.query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT id FROM tenants WHERE id = $1 AND is_active = TRUE FOR SHARE",
+            [tenant_id.into()],
+        )).await?.is_some()),
+        DbBackend::Sqlite => Ok(tenants::Entity::update_many()
+            .col_expr(tenants::Column::UpdatedAt, Expr::col(tenants::Column::UpdatedAt))
+            .filter(tenants::Column::Id.eq(tenant_id))
+            .filter(tenants::Column::IsActive.eq(true))
+            .exec(tx).await?.rows_affected == 1),
+        _ => Err(sea_orm::DbErr::Custom("unsupported auth tenant fence backend".into())),
+    }
+}
 
 /// Identifies an issuance-ledger row whose lifecycle is being changed.
 #[derive(Clone, Copy)]
@@ -83,6 +105,9 @@ async fn lock_invite_for_acceptance(
     tenant_id: uuid::Uuid,
     observed: &auth_invites::Model,
 ) -> Result<Option<auth_invites::Model>, sea_orm::DbErr> {
+    if !lock_active_auth_tenant(tx, tenant_id).await? {
+        return Ok(None);
+    }
     let Some(issuer_id) = observed.issued_by else {
         return Ok(None);
     };
@@ -257,275 +282,304 @@ impl AuthLifecycleService {
         let consumption_id = uuid::Uuid::new_v4();
 
         let registry = ctx.shared_get::<rustok_core::ModuleRegistry>();
-        crate::services::rbac_module_availability::prepare_invite_module_policy(
-            ctx.db(),
-            registry.as_ref(),
-        )
-        .await
-        .map_err(InviteAcceptanceError::Internal)?;
-
-        let tx = ctx
-            .db()
-            .begin()
-            .await
-            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-
-        // Issuer -> invite -> module policy -> ordered role grants.
-        // Revocation still uses the same invite-row fence.
-        let issued = lock_invite_for_acceptance(&tx, tenant_id, &observed)
-            .await
-            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
-            .ok_or(InviteAcceptanceError::InvalidToken)?;
-        // Argon2 preparation and lock acquisition may take time. Recheck
-        // expiration after the invite row is locked; it is checked once more
-        // immediately before the unique consumption reservation below.
-        let now = rustok_auth::application_clock::verified_now(&tx)
-            .await
-            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-        if expires_at <= now
-            || issued.role != ledger_role
-            || !invite_ledger_matches_claims(&issued, &email, expires_at.clone(), now)
-        {
-            return Err(InviteAcceptanceError::InvalidToken);
-        }
-        let invite_id = issued.id;
-
-        // Under the ledger fence a committed receipt is terminal. Avoid
-        // taking module/RBAC locks for a replay. Keep the unique insert as
-        // the final authority even if another writer bypasses this fence.
-        if invite_already_consumed(&tx, tenant_id, &token_hash)
-            .await
-            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
-        {
-            return Err(InviteAcceptanceError::InvalidToken);
-        }
-
-        // Role grants, module availability, and the issuer's authority can
-        // change while an invite is outstanding. Re-check the issuer's active
-        // invite permission, hierarchy, and current grant ceiling before
-        // accepting it, so a later role edit cannot widen the invitation.
-        // This happens before reservation, leaving policy-rejected invites
-        // unconsumed.
-        let issuer_id = issued
-            .issued_by
-            .ok_or(InviteAcceptanceError::InvalidToken)?;
-        // The issuer mutation fence and account epoch were validated by
-        // lock_invite_for_acceptance and remain held through commit.
-        let (module_policy_binding, availability) =
-            crate::services::rbac_module_availability::lock_invite_module_policy(
+        let mut attempt = 1;
+        loop {
+            // Re-admit the same signed token and pinned ledger identity;
+            // never extend expiry or reuse transaction-local authority.
+            let admitted = rustok_auth::application_clock::admit_now(ctx.db())
+                .await
+                .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+            if expires_at <= admitted || decode_invite_token(config, token).is_err() {
+                return Err(InviteAcceptanceError::InvalidToken);
+            }
+            crate::services::rbac_module_availability::prepare_invite_module_policy(
                 ctx.db(),
-                &tx,
                 registry.as_ref(),
-                tenant_id,
             )
             .await
             .map_err(InviteAcceptanceError::Internal)?;
-        if issued.module_policy_binding.as_deref() != Some(module_policy_binding.as_str()) {
-            return Err(InviteAcceptanceError::InvalidToken);
-        }
-        let membership_revision =
-            rustok_rbac::read_user_membership_revision_on(&tx, tenant_id, issuer_id)
+
+            let tx = ctx
+                .db()
+                .begin()
                 .await
                 .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-        if issued.issuer_membership_revision != Some(membership_revision) {
-            return Err(InviteAcceptanceError::InvalidToken);
-        }
-        let role_binding =
-            rustok_rbac::lock_invite_role_grant_binding_on(&tx, tenant_id, issuer_id, &ledger_role)
+
+            // Tenant -> issuer -> invite -> module policy -> ordered role grants.
+            // Revocation still uses the same invite-row fence.
+            let issued = lock_invite_for_acceptance(&tx, tenant_id, &observed)
+                .await
+                .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
+                .ok_or(InviteAcceptanceError::InvalidToken)?;
+            // Argon2 preparation and lock acquisition may take time. Recheck
+            // expiration after the invite row is locked; it is checked once more
+            // immediately before the unique consumption reservation below.
+            let now = rustok_auth::application_clock::verified_now(&tx)
                 .await
                 .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-        if role_binding.is_none() || issued.role_grant_binding != role_binding {
-            return Err(InviteAcceptanceError::InvalidToken);
-        }
-        let mut issuer_permissions =
-            RbacService::get_user_permissions_authoritative(&tx, &tenant_id, &issuer_id)
+            if expires_at <= now
+                || issued.role != ledger_role
+                || !invite_ledger_matches_claims(&issued, &email, expires_at.clone(), now)
+            {
+                return Err(InviteAcceptanceError::InvalidToken);
+            }
+            let invite_id = issued.id;
+
+            // Under the ledger fence a committed receipt is terminal. Avoid
+            // taking module/RBAC locks for a replay. Keep the unique insert as
+            // the final authority even if another writer bypasses this fence.
+            if invite_already_consumed(&tx, tenant_id, &token_hash)
+                .await
+                .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
+            {
+                return Err(InviteAcceptanceError::InvalidToken);
+            }
+
+            // Role grants, module availability, and the issuer's authority can
+            // change while an invite is outstanding. Re-check the issuer's active
+            // invite permission, hierarchy, and current grant ceiling before
+            // accepting it, so a later role edit cannot widen the invitation.
+            // This happens before reservation, leaving policy-rejected invites
+            // unconsumed.
+            let issuer_id = issued
+                .issued_by
+                .ok_or(InviteAcceptanceError::InvalidToken)?;
+            // The issuer mutation fence and account epoch were validated by
+            // lock_invite_for_acceptance and remain held through commit.
+            let (module_policy_binding, availability) =
+                crate::services::rbac_module_availability::lock_invite_module_policy(
+                    ctx.db(),
+                    &tx,
+                    registry.as_ref(),
+                    tenant_id,
+                )
                 .await
                 .map_err(InviteAcceptanceError::Internal)?;
-        // Permission grants owned by disabled modules are persisted but are
-        // not current request authority. Apply the same effective-permission
-        // boundary used at invite issuance and regular authentication before
-        // checking whether the issuer may delegate this role.
-        if let Some(availability) = availability {
-            issuer_permissions = availability.active_permissions(&issuer_permissions);
-        }
-        let issuer_role = RbacService::get_user_role_authoritative(&tx, &tenant_id, &issuer_id)
-            .await
-            .map_err(InviteAcceptanceError::Internal)?;
-        let may_issue_invite =
-            issuer_may_issue_invite(&issuer_permissions, &role, custom_role_slug.is_some());
-        if !may_issue_invite {
-            tracing::warn!(
-                tenant_id = %tenant_id,
-                issuer_id = %issuer_id,
-                role_slug = %ledger_role,
-                "invite issuer no longer has authority to issue this invite"
-            );
-            return Err(InviteAcceptanceError::InvalidToken);
-        }
-        let authority_check = validate_invite_role_grant_on(
-            &tx,
-            tenant_id,
-            &issuer_role,
-            &issuer_permissions,
-            &role,
-            custom_role_slug.as_deref(),
-        )
-        .await;
-        if let Err(error) = authority_check {
-            tracing::warn!(
-                %error,
-                tenant_id = %tenant_id,
-                issuer_id = %issuer_id,
-                role_slug = %ledger_role,
-                "invite role no longer satisfies issuer authority"
-            );
-            return Err(map_invite_role_authority_error(error));
-        }
+            if issued.module_policy_binding.as_deref() != Some(module_policy_binding.as_str()) {
+                return Err(InviteAcceptanceError::InvalidToken);
+            }
+            let membership_revision =
+                rustok_rbac::read_user_membership_revision_on(&tx, tenant_id, issuer_id)
+                    .await
+                    .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+            if issued.issuer_membership_revision != Some(membership_revision) {
+                return Err(InviteAcceptanceError::InvalidToken);
+            }
+            let role_binding =
+                rustok_rbac::lock_invite_role_grant_binding_on(&tx, tenant_id, issuer_id, &ledger_role)
+                    .await
+                    .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+            if role_binding.is_none() || issued.role_grant_binding != role_binding {
+                return Err(InviteAcceptanceError::InvalidToken);
+            }
+            let mut issuer_permissions =
+                RbacService::get_user_permissions_authoritative(&tx, &tenant_id, &issuer_id)
+                    .await
+                    .map_err(InviteAcceptanceError::Internal)?;
+            // Permission grants owned by disabled modules are persisted but are
+            // not current request authority. Apply the same effective-permission
+            // boundary used at invite issuance and regular authentication before
+            // checking whether the issuer may delegate this role.
+            if let Some(availability) = availability {
+                issuer_permissions = availability.active_permissions(&issuer_permissions);
+            }
+            let issuer_role = RbacService::get_user_role_authoritative(&tx, &tenant_id, &issuer_id)
+                .await
+                .map_err(InviteAcceptanceError::Internal)?;
+            let may_issue_invite =
+                issuer_may_issue_invite(&issuer_permissions, &role, custom_role_slug.is_some());
+            if !may_issue_invite {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    issuer_id = %issuer_id,
+                    role_slug = %ledger_role,
+                    "invite issuer no longer has authority to issue this invite"
+                );
+                return Err(InviteAcceptanceError::InvalidToken);
+            }
+            let authority_check = validate_invite_role_grant_on(
+                &tx,
+                tenant_id,
+                &issuer_role,
+                &issuer_permissions,
+                &role,
+                custom_role_slug.as_deref(),
+            )
+            .await;
+            if let Err(error) = authority_check {
+                tracing::warn!(
+                    %error,
+                    tenant_id = %tenant_id,
+                    issuer_id = %issuer_id,
+                    role_slug = %ledger_role,
+                    "invite role no longer satisfies issuer authority"
+                );
+                return Err(map_invite_role_authority_error(error));
+            }
 
-        // Recheck at the actual consumption boundary after issuer/RBAC reads.
-        // The signed JWT and issuance ledger must both still be live when the
-        // single-use reservation is written.
-        let consumed_at = rustok_auth::application_clock::verified_now(&tx)
-            .await
-            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-        if expires_at <= consumed_at
-            || decode_invite_token(config, token).is_err()
-            || !invite_ledger_matches_claims(&issued, &email, expires_at.clone(), consumed_at)
-        {
-            return Err(InviteAcceptanceError::InvalidToken);
-        }
-
-        // Reserve the digest first. The unique token_hash constraint is the
-        // serialization point, so every concurrent replay is rejected before
-        // user creation regardless of email uniqueness or transaction timing.
-        let reservation = auth_invite_consumptions::ActiveModel {
-            id: Set(consumption_id),
-            tenant_id: Set(tenant_id),
-            token_hash: Set(token_hash.clone()),
-            email: Set(email.clone()),
-            role: Set(ledger_role),
-            user_id: Set(None),
-            expires_at: Set(expires_at.into()),
-            consumed_at: Set(consumed_at.into()),
-        };
-        if let Err(insert_error) = reservation.insert(&tx).await {
-            tx.rollback()
+            // Recheck at the actual consumption boundary after issuer/RBAC reads.
+            // The signed JWT and issuance ledger must both still be live when the
+            // single-use reservation is written.
+            let consumed_at = rustok_auth::application_clock::verified_now(&tx)
                 .await
                 .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+            if expires_at <= consumed_at
+                || decode_invite_token(config, token).is_err()
+                || !invite_ledger_matches_claims(&issued, &email, expires_at.clone(), consumed_at)
+            {
+                return Err(InviteAcceptanceError::InvalidToken);
+            }
 
-            let already_consumed = invite_already_consumed(ctx.db(), tenant_id, &token_hash)
-                .await
-                .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-            return if already_consumed {
-                Err(InviteAcceptanceError::InvalidToken)
-            } else {
-                Err(InviteAcceptanceError::Internal(insert_error.into()))
+            // Reserve the digest first. The unique token_hash constraint is the
+            // serialization point, so every concurrent replay is rejected before
+            // user creation regardless of email uniqueness or transaction timing.
+            let reservation = auth_invite_consumptions::ActiveModel {
+                id: Set(consumption_id),
+                tenant_id: Set(tenant_id),
+                token_hash: Set(token_hash.clone()),
+                email: Set(email.clone()),
+                role: Set(ledger_role.clone()),
+                user_id: Set(None),
+                expires_at: Set(expires_at.into()),
+                consumed_at: Set(consumed_at.into()),
             };
-        }
+            if let Err(insert_error) = reservation.insert(&tx).await {
+                if rustok_core::resilience::retry::rollback_for_transaction_retry(
+                    tx, &insert_error, attempt,
+                )
+                .await
+                .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
+                {
+                    attempt += 1;
+                    continue;
+                }
 
-        // The target grant is already authorized and locked. Do not
-        // temporarily assign Customer: that unrelated role may require an
-        // additional lock or bootstrap write and creates spurious membership
-        // history. Both branches share validated account insertion.
-        let created = if let Some(slug) = custom_role_slug.as_deref() {
-            AuthLifecycleService::create_user_with_custom_role_in_tx(
-                &tx,
-                tenant_id,
-                prepared,
-                slug,
-                Some(rustok_core::UserStatus::Active),
-            )
-            .await
-        } else {
-            AuthLifecycleService::create_user_in_tx(
-                &tx,
-                tenant_id,
-                prepared,
-                role.clone(),
-                Some(rustok_core::UserStatus::Active),
-            )
-            .await
-        };
-        let user = match created {
-            Ok(user) => user,
-            Err(error) => {
+                let already_consumed = invite_already_consumed(ctx.db(), tenant_id, &token_hash)
+                    .await
+                    .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+                return if already_consumed {
+                    Err(InviteAcceptanceError::InvalidToken)
+                } else {
+                    Err(InviteAcceptanceError::Internal(insert_error.into()))
+                };
+            }
+
+            // The target grant is already authorized and locked. Do not
+            // temporarily assign Customer: that unrelated role may require an
+            // additional lock or bootstrap write and creates spurious membership
+            // history. Both branches share validated account insertion.
+            let created = if let Some(slug) = custom_role_slug.as_deref() {
+                AuthLifecycleService::create_user_with_custom_role_in_tx(
+                    &tx,
+                    tenant_id,
+                    prepared.clone(),
+                    slug,
+                    Some(rustok_core::UserStatus::Active),
+                )
+                .await
+            } else {
+                AuthLifecycleService::create_user_in_tx(
+                    &tx,
+                    tenant_id,
+                    prepared.clone(),
+                    role.clone(),
+                    Some(rustok_core::UserStatus::Active),
+                )
+                .await
+            };
+            let user = match created {
+                Ok(user) => user,
+                Err(AuthLifecycleError::Internal(Error::Database(error))) => {
+                    if rustok_core::resilience::retry::rollback_for_transaction_retry(
+                        tx, &error, attempt,
+                    )
+                    .await
+                    .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
+                    {
+                        attempt += 1;
+                        continue;
+                    }
+                    return Err(InviteAcceptanceError::Internal(error.into()));
+                }
+                Err(error) => {
+                    tx.rollback()
+                        .await
+                        .map_err(|rollback| InviteAcceptanceError::Internal(rollback.into()))?;
+                    return Err(map_lifecycle_error(error));
+                }
+            };
+
+            // Project the final custom-role membership, never the JWT's
+            // built-in placeholder, before committing the acceptance.
+            let role = if custom_role_slug.is_some() {
+                RbacService::get_user_role_authoritative(&tx, &tenant_id, &user.id)
+                    .await
+                    .map_err(InviteAcceptanceError::Internal)?
+            } else {
+                role.clone()
+            };
+
+            let reservation = auth_invite_consumptions::Entity::find_by_id(consumption_id)
+                .filter(auth_invite_consumptions::Column::TenantId.eq(tenant_id))
+                .one(&tx)
+                .await
+                .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
+                .ok_or_else(|| {
+                    InviteAcceptanceError::Internal(Error::Message(
+                        "invite consumption reservation disappeared".to_string(),
+                    ))
+                })?;
+            let mut active: auth_invite_consumptions::ActiveModel = reservation.into();
+            active.user_id = Set(Some(user.id));
+            active
+                .update(&tx)
+                .await
+                .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+
+            let event_bus = transactional_event_bus_from_context(ctx);
+            event_bus
+                .publish_in_tx(
+                    &tx,
+                    tenant_id,
+                    Some(user.id),
+                    DomainEvent::UserAccountRegistered { user_id: user.id },
+                )
+                .await
+                .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+
+            event_bus
+                .publish_in_tx(
+                    &tx,
+                    tenant_id,
+                    Some(user.id),
+                    DomainEvent::UserInviteAccepted {
+                        user_id: user.id,
+                        invite_id,
+                    },
+                )
+                .await
+                .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+
+            // User creation, role assignment and outbox inserts can wait on
+            // other transactions. A late invite must not leave a user or receipt.
+            let final_now = rustok_auth::application_clock::verified_now(&tx)
+                .await
+                .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+            if expires_at <= final_now
+                || decode_invite_token(config, token).is_err()
+                || !invite_ledger_matches_claims(&issued, &email, expires_at, final_now)
+            {
                 tx.rollback()
                     .await
-                    .map_err(|rollback| InviteAcceptanceError::Internal(rollback.into()))?;
-                return Err(map_lifecycle_error(error));
+                    .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+                return Err(InviteAcceptanceError::InvalidToken);
             }
-        };
-
-        // Project the final custom-role membership, never the JWT's
-        // built-in placeholder, before committing the acceptance.
-        let role = if custom_role_slug.is_some() {
-            RbacService::get_user_role_authoritative(&tx, &tenant_id, &user.id)
-                .await
-                .map_err(InviteAcceptanceError::Internal)?
-        } else {
-            role
-        };
-
-        let reservation = auth_invite_consumptions::Entity::find_by_id(consumption_id)
-            .filter(auth_invite_consumptions::Column::TenantId.eq(tenant_id))
-            .one(&tx)
-            .await
-            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
-            .ok_or_else(|| {
-                InviteAcceptanceError::Internal(Error::Message(
-                    "invite consumption reservation disappeared".to_string(),
-                ))
-            })?;
-        let mut active: auth_invite_consumptions::ActiveModel = reservation.into();
-        active.user_id = Set(Some(user.id));
-        active
-            .update(&tx)
-            .await
-            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-
-        let event_bus = transactional_event_bus_from_context(ctx);
-        event_bus
-            .publish_in_tx(
-                &tx,
-                tenant_id,
-                Some(user.id),
-                DomainEvent::UserAccountRegistered { user_id: user.id },
-            )
-            .await
-            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-
-        event_bus
-            .publish_in_tx(
-                &tx,
-                tenant_id,
-                Some(user.id),
-                DomainEvent::UserInviteAccepted {
-                    user_id: user.id,
-                    invite_id,
-                },
-            )
-            .await
-            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-
-        // User creation, role assignment and outbox inserts can wait on
-        // other transactions. A late invite must not leave a user or receipt.
-        let final_now = rustok_auth::application_clock::verified_now(&tx)
-            .await
-            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-        if expires_at <= final_now
-            || decode_invite_token(config, token).is_err()
-            || !invite_ledger_matches_claims(&issued, &email, expires_at, final_now)
-        {
-            tx.rollback()
+            tx.commit()
                 .await
                 .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-            return Err(InviteAcceptanceError::InvalidToken);
-        }
-        tx.commit()
-            .await
-            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
 
-        Ok(AcceptedInvite { user, email, role })
+            return Ok(AcceptedInvite { user, email, role });
+        }
     }
 }
 
@@ -801,6 +855,22 @@ mod tests {
                 .is_some()
         );
         tx.rollback().await.unwrap();
+
+        // A disabled tenant must reject even a previously valid locator.
+        tenants::ActiveModel {
+            id: Set(tenant.id),
+            is_active: Set(false),
+            ..Default::default()
+        }.update(&db).await.unwrap();
+        let tx = db.begin().await.unwrap();
+        assert!(lock_invite_for_acceptance(&tx, tenant.id, &observed)
+            .await.unwrap().is_none());
+        tx.rollback().await.unwrap();
+        tenants::ActiveModel {
+            id: Set(tenant.id),
+            is_active: Set(true),
+            ..Default::default()
+        }.update(&db).await.unwrap();
 
         // The unlocked locator must not authorize a different issuer.
         auth_invites::ActiveModel {

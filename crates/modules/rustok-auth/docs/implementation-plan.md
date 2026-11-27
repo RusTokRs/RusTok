@@ -640,9 +640,17 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   Both reuse only validated inputs/hash, repeat clock and locked authority;
   update retains its original metadata baseline and rereads Flex values.
   Create refreshes Flex preparation before retry, not a schema-generation
-  fence. No event/commit failure retry. Other statement errors, invite and
-  GraphQL role retry wiring, plus PostgreSQL credential revocation
-  between attempts and end-to-end event/rollback verification, remain open.
+  fence. No event/commit failure retry. GraphQL role owner SQL retries are
+  wired separately in RBAC.
+- Invite issuance retries typed ledger insertion conflicts before event
+  publication; revocation retries ledger lock, receipt read and update
+  conflicts. Acceptance retries receipt insertion/account creation conflicts
+  with the original JWT, digest, pinned ledger and fresh clock/policy/issuer
+  checks. Argon2 remains outside retries; abandoned tokens/receipts are never
+  published. Acceptance and admin share an active-tenant fence before actor
+  locks. Source regressions cover disabled tenant and synthetic SQLSTATE
+  rejection. Other statement errors, PostgreSQL credential revocation between
+  attempts and end-to-end event/rollback verification remain open.
 
 - All user-admin mutations now use the same pre-transaction clock admission
   and module-policy preparation as OAuth and RBAC control-plane writes.

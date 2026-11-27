@@ -424,8 +424,13 @@ publication; admin update retries the late generation reservation only.
 Both preserve the request ceiling and rerun locked authority; Argon2 is not
 repeated. Update retains its original metadata conflict baseline and reloads
 localized values in the fresh transaction; creation refreshes Flex preparation
-before a retry (not a schema-generation fence). Invite writes and other
-statement boundaries are not covered. PostgreSQL re-admission and contention evidence is
+before a retry (not a schema-generation fence). Invite issuance retries typed
+ledger insertion conflicts; revocation retries ledger lock, receipt read and
+revocation update conflicts; acceptance retries receipt insertion and account
+creation conflicts. Each attempt re-admits the credential or original signed
+invite and rechecks locked authority. No event or commit retry. Acceptance
+also fences the active tenant before issuer and invite; disabled tenants deny.
+Other statement boundaries remain uncovered. PostgreSQL re-admission and contention evidence is
 still required. Source regressions are unrun.
 
 ### Authorization-code consent generation
