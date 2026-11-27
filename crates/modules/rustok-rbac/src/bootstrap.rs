@@ -11,6 +11,10 @@ use rustok_core::{Rbac, UserRole};
 pub enum RbacRoleAssignmentError {
     #[error("RBAC role assignment database error: {0}")]
     Database(String),
+    /// A caller-owned statement failure, preserving the original driver code.
+    /// Begin, commit and rollback diagnostics must not enter this variant.
+    #[error("RBAC role assignment statement failed: {0}")]
+    Statement(#[source] sea_orm::DbErr),
     #[error("RBAC role assignment did not persist {0}")]
     MissingPersistedRecord(&'static str),
     #[error("RBAC user {user_id} belongs to tenant {actual_tenant_id}, not {expected_tenant_id}")]
@@ -241,7 +245,7 @@ impl RbacRoleAssignmentDbWriter {
             vec![user_id.into(), tenant_id.into()],
         ))
         .await
-        .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?;
+        .map_err(RbacRoleAssignmentError::Statement)?;
         Ok(())
     }
 }
@@ -406,14 +410,14 @@ where
                 vec![tenant_id.into(), slug.into()],
             ))
             .await
-            .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?
+            .map_err(RbacRoleAssignmentError::Statement)?
             .map(|row| {
                 let id = row
                     .try_get("", "id")
-                    .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?;
+                    .map_err(RbacRoleAssignmentError::Statement)?;
                 let is_system = row
                     .try_get("", "is_system")
-                    .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?;
+                    .map_err(RbacRoleAssignmentError::Statement)?;
                 Ok((id, is_system))
             })
             .transpose()
@@ -529,12 +533,12 @@ where
                 vec![role_id.into()],
             ))
             .await
-            .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?;
+            .map_err(RbacRoleAssignmentError::Statement)?;
 
         rows.into_iter()
             .map(|row| {
                 row.try_get("", "permission_id")
-                    .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))
+                    .map_err(RbacRoleAssignmentError::Statement)
             })
             .collect()
     }
@@ -558,7 +562,7 @@ where
                 vec![role_id.into(), permission_id.into()],
             ))
             .await
-            .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?;
+            .map_err(RbacRoleAssignmentError::Statement)?;
         Ok(())
     }
 
@@ -572,7 +576,7 @@ where
         self.db
             .execute_raw(Statement::from_sql_and_values(backend, sql, values))
             .await
-            .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?;
+            .map_err(RbacRoleAssignmentError::Statement)?;
         Ok(())
     }
 
@@ -597,10 +601,10 @@ where
                 values,
             ))
             .await
-            .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?
+            .map_err(RbacRoleAssignmentError::Statement)?
             .map(|row| {
                 row.try_get("", column)
-                    .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))
+                    .map_err(RbacRoleAssignmentError::Statement)
             })
             .transpose()
     }
@@ -724,6 +728,58 @@ mod tests {
 
         assert!(validate_builtin_role(tenant_id, "admin", role_id, true).is_ok());
         assert!(validate_builtin_role(tenant_id, "admin", role_id, false).is_err());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_RBAC_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn late_assignment_role_fence_preserves_driver_conflict() {
+        use super::*;
+        use rustok_core::resilience::retry::{
+            PostgresTransactionConflict, rollback_for_transaction_retry,
+        };
+
+        let db = sea_orm::Database::connect(
+            std::env::var("RUSTOK_RBAC_TEST_DATABASE_URL").unwrap(),
+        ).await.unwrap();
+        assert_eq!(db.get_database_backend(), DbBackend::Postgres);
+        let schema = format!("rbac_assignment_retry_{}", Uuid::new_v4().simple());
+        let tenant = Uuid::new_v4();
+        let role = Uuid::new_v4();
+        db.execute_unprepared(&format!(
+            "CREATE SCHEMA {schema};
+             CREATE TABLE {schema}.roles (id UUID PRIMARY KEY, tenant_id UUID NOT NULL,
+                 slug TEXT NOT NULL, is_system BOOLEAN NOT NULL);
+             INSERT INTO {schema}.roles VALUES ('{role}', '{tenant}', 'admin', TRUE)"
+        )).await.unwrap();
+
+        let holder = db.begin().await.unwrap();
+        holder.execute_unprepared(&format!("SELECT id FROM {schema}.roles FOR UPDATE"))
+            .await.unwrap();
+        let contender = db.begin().await.unwrap();
+        contender.execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await.unwrap();
+        let writer = ConnectionRoleAssignmentWriter { db: &contender };
+        let error = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            writer.lock_assignment_role(tenant, &UserRole::Admin, role),
+        ).await.expect("late assignment fence must not wait").unwrap_err();
+        let RbacRoleAssignmentError::Statement(error) = error else {
+            panic!("driver failure must retain its original type");
+        };
+        assert_eq!(
+            PostgresTransactionConflict::classify(DbBackend::Postgres, &error),
+            Some(PostgresTransactionConflict::LockUnavailable)
+        );
+        assert!(rollback_for_transaction_retry(contender, &error, 1).await.unwrap());
+        holder.rollback().await.unwrap();
+
+        let retry = db.begin().await.unwrap();
+        retry.execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await.unwrap();
+        ConnectionRoleAssignmentWriter { db: &retry }
+            .lock_assignment_role(tenant, &UserRole::Admin, role).await.unwrap();
+        retry.rollback().await.unwrap();
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
     }
 
     #[tokio::test]

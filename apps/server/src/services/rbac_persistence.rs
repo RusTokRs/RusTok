@@ -17,7 +17,10 @@ where
     record_authz_entrypoint_call("replace_user_role_via_store", "core_runtime");
     rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(db, *tenant_id, *user_id, role)
         .await
-        .map_err(|error| Error::Message(error.to_string()))
+        .map_err(|error| match error {
+            rustok_rbac::RbacRoleAssignmentError::Statement(error) => Error::Database(error),
+            other => Error::Message(other.to_string()),
+        })
 }
 
 fn record_authz_entrypoint_call(entry_point: &str, path: &str) {

@@ -11,7 +11,10 @@ the edit. PostgreSQL late reservation also rejects a contended table or row
 with NOWAIT; reservation retains the typed driver error through the server
 write adapter. Standalone committed role replacement retries typed pre-commit
 conflicts after explicit rollback and fresh locked facts; no-op and commit
-failure never retry. Nested bootstrap assignment errors and request-bound
+failure never retry. Bootstrap assignment statements now preserve driver errors through the
+standalone replacement adapter; begin/commit/rollback diagnostics do not
+enter that statement variant. Account deactivation retries only watermark
+reservation conflicts with fresh credential admission. Other request-bound
 Auth/GraphQL whole-transaction retry remain open. An optional legacy host callback still needs its own generation
 reconciliation. Added owner/host regressions have not been compiled or executed.
 

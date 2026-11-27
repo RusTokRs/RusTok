@@ -629,6 +629,15 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 
 ## Transaction-bound administrative credential authority
 
+- Account deactivation now uses the shared rollback-only retry policy for
+  typed RBAC generation reservation conflicts before durable event publication.
+  A fresh attempt starts at request authorization and clock admission, repeats
+  tenant/app/user/session or registration/consent/module/role fences and
+  continuity checks, and publishes cache invalidation only after commit.
+  Other statement errors and commit failures are not retried. Create/update,
+  invite and GraphQL role retry wiring, plus PostgreSQL credential revocation
+  between attempts and end-to-end event/rollback verification, remain open.
+
 - All user-admin mutations now use the same pre-transaction clock admission
   and module-policy preparation as OAuth and RBAC control-plane writes.
   The active tenant row is checked and fenced for both direct and delegated

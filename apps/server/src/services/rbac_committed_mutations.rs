@@ -115,7 +115,10 @@ impl RbacService {
 
 fn role_persistence_error(error: rustok_rbac::RbacRolePersistenceError) -> Error {
     match error {
-        rustok_rbac::RbacRolePersistenceError::Database(error) => Error::Database(error),
+        rustok_rbac::RbacRolePersistenceError::Database(error)
+        | rustok_rbac::RbacRolePersistenceError::Assignment(
+            rustok_rbac::RbacRoleAssignmentError::Statement(error),
+        ) => Error::Database(error),
         rustok_rbac::RbacRolePersistenceError::TargetNotFound => Error::NotFound,
         rustok_rbac::RbacRolePersistenceError::Policy(policy) => {
             Error::BadRequest(policy.to_string())

@@ -77,7 +77,10 @@ owner transaction; any retry must start with fresh authorization and must not
 replay an uncertain commit. The owner reservation preserves the driver DbErr
 through the host write adapter; the standalone committed replacement uses the
 shared rollback-only retry contract. Request-bound administration still needs
-fresh credential admission before it can safely retry. Reserve by UPDATE RETURNING, reject
+fresh credential admission before it can safely retry. The user deactivation
+host path now retries typed reservation conflicts before event publication,
+repeating the original ceiling and locked live authority checks. Other admin
+paths are not covered. Reserve by UPDATE RETURNING, reject
 invalid or exhausted integer storage without mutating it, and publish only
 the assigned committed generation. Do not use this global watermark as a
 per-role authorization fence. The seeded singleton is permanent under ordinary

@@ -414,7 +414,13 @@ Authenticated OAuth consent revocation prelocks exact token/code/consent
 rows in the existing stable order. On a typed PostgreSQL statement conflict,
 confirmed rollback permits a bounded fresh attempt with new clock admission
 and locked credential authority. Commit failure is never auto-replayed.
-Source regressions are unrun; other admin paths are not covered by this retry.
+Account deactivation also retries a typed RBAC watermark reservation failure
+before durable event publication, only after explicit rollback. Each attempt
+rechecks the original admitted ceiling and the locked live credential, tenant,
+module policy, role grants and continuity. Other statement failures, event
+publication, commit errors, create/update user and invite writes are not
+covered by this retry. PostgreSQL re-admission and contention evidence is
+still required. Source regressions are unrun.
 
 ### Authorization-code consent generation
 

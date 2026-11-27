@@ -1428,92 +1428,116 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         context: &AuthAdminMutationContext,
         user_id: Uuid,
     ) -> Result<(), AuthAdminMutationError> {
-        self.authorize_user(
-            context,
-            &[Permission::USERS_MANAGE],
-            "users:manage required",
-        )
-        .await?;
-
-        let request_role = self.actor_role(context).await?;
-        let event_bus = &self.event_bus;
-        let tx = self.prepare_admin_transaction(true).await?;
-        let (user, live_actor_role, _, credential_deadline) = self
-            .lock_user_admin_authority(
-                &tx,
+        let mut attempt = 1;
+        loop {
+            // Recheck the admitted ceiling, clock, tenant, live credential and
+            // locked grants on every retry, not just the target mutation.
+            self.authorize_user(
                 context,
-                Some(user_id),
-                None,
-                None,
                 &[Permission::USERS_MANAGE],
+                "users:manage required",
             )
             .await?;
-        let user = user.ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))?;
-        let current_role = self.user_role(&tx, context.tenant_id, user.id).await?;
-        for actor_role in [&request_role, &live_actor_role] {
-            rustok_rbac::require_user_management(
-                context.actor_id,
-                user.id,
-                actor_role,
-                &current_role,
-            )
-            .map_err(map_role_mutation_policy_error)?;
-        }
-        ensure_active_super_admin_continuity(&tx, context.tenant_id, user.id, None, None, true)
-            .await?;
-        AuthLifecycleService::deactivate_user_in_tx(&tx, context.tenant_id, user.id)
-            .await
-            .map_err(map_lifecycle_error)?;
-        #[cfg(feature = "mod-profiles")]
-        rustok_profiles::redact_profile_for_account_deactivation_in_tx(
-            &tx,
-            context.tenant_id,
-            user.id,
-        )
-        .await
-        .map_err(super::internal_admin_error)?;
-        revoke_active_sessions(&tx, context.tenant_id, user.id).await?;
-        auth_email_change_requests::Entity::delete_many()
-            .filter(auth_email_change_requests::Column::TenantId.eq(context.tenant_id))
-            .filter(auth_email_change_requests::Column::UserId.eq(user.id))
-            .exec(&tx)
-            .await
-            .map_err(super::internal_admin_error)?;
-        let durable_generation = reserve_rbac_invalidation_generation(&tx)
-            .await
-            .map_err(super::internal_admin_error)?;
-        if let Err(error) = event_bus
-            .publish_in_tx(
+
+            let request_role = self.actor_role(context).await?;
+            let event_bus = &self.event_bus;
+            let tx = self.prepare_admin_transaction(true).await?;
+            let (user, live_actor_role, _, credential_deadline) = self
+                .lock_user_admin_authority(
+                    &tx,
+                    context,
+                    Some(user_id),
+                    None,
+                    None,
+                    &[Permission::USERS_MANAGE],
+                )
+                .await?;
+            let user = user.ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))?;
+            let current_role = self.user_role(&tx, context.tenant_id, user.id).await?;
+            for actor_role in [&request_role, &live_actor_role] {
+                rustok_rbac::require_user_management(
+                    context.actor_id,
+                    user.id,
+                    actor_role,
+                    &current_role,
+                )
+                .map_err(map_role_mutation_policy_error)?;
+            }
+            ensure_active_super_admin_continuity(&tx, context.tenant_id, user.id, None, None, true)
+                .await?;
+            AuthLifecycleService::deactivate_user_in_tx(&tx, context.tenant_id, user.id)
+                .await
+                .map_err(map_lifecycle_error)?;
+            #[cfg(feature = "mod-profiles")]
+            rustok_profiles::redact_profile_for_account_deactivation_in_tx(
                 &tx,
                 context.tenant_id,
-                Some(context.actor_id),
-                DomainEvent::UserDeleted { user_id: user.id },
+                user.id,
             )
             .await
-        {
-            let rollback_error = tx.rollback().await.err();
-            tracing::error!(
-                %error,
-                ?rollback_error,
-                tenant_id = %context.tenant_id,
-                user_id = %user.id,
-                "Durable UserDeleted publication failed; account deactivation rolled back"
-            );
-            return Err(AuthAdminMutationError::Internal(
-                "durable user deletion invalidation is unavailable".to_string(),
-            ));
+            .map_err(super::internal_admin_error)?;
+            revoke_active_sessions(&tx, context.tenant_id, user.id).await?;
+            auth_email_change_requests::Entity::delete_many()
+                .filter(auth_email_change_requests::Column::TenantId.eq(context.tenant_id))
+                .filter(auth_email_change_requests::Column::UserId.eq(user.id))
+                .exec(&tx)
+                .await
+                .map_err(super::internal_admin_error)?;
+            let durable_generation = match reserve_rbac_invalidation_generation(&tx).await {
+                Ok(generation) => generation,
+                Err(crate::error::Error::Database(error)) => {
+                    // Only the explicitly SQL-only pre-publication boundary is
+                    // retryable. Discard every locked fact before a fresh attempt.
+                    if rustok_core::resilience::retry::rollback_for_transaction_retry(
+                        tx, &error, attempt,
+                    )
+                    .await
+                    .map_err(super::internal_admin_error)?
+                    {
+                        attempt += 1;
+                        continue;
+                    }
+                    return Err(super::internal_admin_error(error));
+                }
+                Err(error) => {
+                    tx.rollback().await.map_err(super::internal_admin_error)?;
+                    return Err(super::internal_admin_error(error));
+                }
+            };
+            if let Err(error) = event_bus
+                .publish_in_tx(
+                    &tx,
+                    context.tenant_id,
+                    Some(context.actor_id),
+                    DomainEvent::UserDeleted { user_id: user.id },
+                )
+                .await
+            {
+                let rollback_error = tx.rollback().await.err();
+                tracing::error!(
+                    %error,
+                    ?rollback_error,
+                    tenant_id = %context.tenant_id,
+                    user_id = %user.id,
+                    "Durable UserDeleted publication failed; account deactivation rolled back"
+                );
+                return Err(AuthAdminMutationError::Internal(
+                    "durable user deletion invalidation is unavailable".to_string(),
+                ));
+            }
+            self.ensure_user_admin_credential_deadline(&tx, credential_deadline)
+                .await?;
+            // Commit errors are never retried, including a lost commit response.
+            tx.commit().await.map_err(super::internal_admin_error)?;
+            publish_committed_user_invalidation(
+                &self.cache_service,
+                context.tenant_id,
+                user.id,
+                durable_generation,
+            )
+            .await;
+            return Ok(());
         }
-        self.ensure_user_admin_credential_deadline(&tx, credential_deadline)
-            .await?;
-        tx.commit().await.map_err(super::internal_admin_error)?;
-        publish_committed_user_invalidation(
-            &self.cache_service,
-            context.tenant_id,
-            user.id,
-            durable_generation,
-        )
-        .await;
-        Ok(())
     }
 
     async fn issue_user_invite(
