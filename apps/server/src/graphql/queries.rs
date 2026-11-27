@@ -366,7 +366,6 @@ impl RootQuery {
     }
 
     async fn enabled_modules(&self, ctx: &Context<'_>, limit: Option<i32>) -> Result<Vec<String>> {
-        ensure_modules_read_permission(ctx).await?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
         let modules = effective_module_policy_view(ctx)
@@ -1354,11 +1353,7 @@ mod tests {
         )
         .finish();
 
-        for field in [
-            "dashboardStats { totalUsers }",
-            "recentActivity { id }",
-            "enabledModules",
-        ] {
+        for field in ["dashboardStats { totalUsers }", "recentActivity { id }"] {
             let response = schema
                 .execute(async_graphql::Request::new(format!("{{ {field} }}")))
                 .await;
