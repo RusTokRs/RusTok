@@ -15,7 +15,7 @@ use rustok_outbox::{
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend,
-    DatabaseConnection, EntityTrait, QueryFilter, Set, Statement,
+    DatabaseConnection, EntityTrait, QueryFilter, Set, Statement, TransactionTrait,
 };
 use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
 use tokio::sync::Semaphore;
@@ -133,6 +133,63 @@ async fn post_acceptance_validation_failure_retries_original_identity() -> TestR
     let row = entity::Entity::find_by_id(event.id).one(&db).await?.expect("event");
     assert_eq!(row.status, SysEventStatus::Dispatched);
     assert_eq!(*transport.accepted.lock().await, vec![event.id, event.id]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn concurrent_consumer_ack_retries_without_waiting_for_the_source_row() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+    let Some(db) = setup_db().await? else {
+        return Ok(());
+    };
+    if db.get_database_backend() != DatabaseBackend::Postgres {
+        return Ok(());
+    }
+
+    let schema = db.query_one_raw(Statement::from_string(
+        DatabaseBackend::Postgres,
+        "SELECT current_schema() AS schema_name",
+    )).await?.expect("schema").try_get::<String>("", "schema_name")?;
+    assert!(schema.starts_with("rustok_outbox_test_"));
+    assert!(schema.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_'));
+    let database_url = std::env::var("RUSTOK_OUTBOX_TEST_DATABASE_URL")
+        .or_else(|_| std::env::var("DATABASE_URL"))?;
+    let mut options = ConnectOptions::new(database_url);
+    options.max_connections(1).min_connections(1).sqlx_logging(false);
+    let second = Database::connect(options).await?;
+    second.execute_unprepared(&format!(r#"SET search_path TO "{schema}""#)).await?;
+
+    let envelope = seed_event(&db).await?;
+    let consumer = rustok_outbox::OutboxConsumer::new(db.clone());
+    let types = [envelope.event_type.clone()];
+    consumer.register_required_event_types("consumer.first", &types).await?;
+    consumer.register_required_event_types("consumer.second", &types).await?;
+    let first_txn = db.begin().await?;
+    rustok_outbox::OutboxConsumer::acknowledge_in_transaction(
+        &first_txn, "consumer.first", envelope.id, &envelope.event_type,
+    ).await?;
+
+    let second_txn = second.begin().await?;
+    let blocked = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        rustok_outbox::OutboxConsumer::acknowledge_in_transaction(
+            &second_txn, "consumer.second", envelope.id, &envelope.event_type,
+        ),
+    ).await.expect("late ACK must return without waiting on the source row");
+    assert!(blocked.is_err());
+    second_txn.rollback().await?;
+    first_txn.commit().await?;
+
+    let retry_txn = second.begin().await?;
+    rustok_outbox::OutboxConsumer::acknowledge_in_transaction(
+        &retry_txn, "consumer.second", envelope.id, &envelope.event_type,
+    ).await?;
+    retry_txn.commit().await?;
+    let receipts = db.query_one_raw(Statement::from_string(
+        DatabaseBackend::Postgres,
+        "SELECT COUNT(*) AS count FROM sys_event_consumer_receipts",
+    )).await?.expect("receipt count").try_get::<i64>("", "count")?;
+    assert_eq!(receipts, 2);
     Ok(())
 }
 

@@ -926,7 +926,7 @@ mod tests {
         ] {
             let error = prune_terminal_receipts(&database, window, batch)
                 .await.expect_err("invalid retention");
-            assert!(format!("{error:?}").contains("outbox.operation_receipt_retention_invalid"));
+            assert_eq!(error.code, "outbox.operation_receipt_retention_invalid");
         }
     }
 

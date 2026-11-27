@@ -69,7 +69,12 @@ Consumer registration and retirement serialize registry mutations before drain
 reads. PostgreSQL retirement takes a non-blocking event-table writer fence;
 SQLite reserves the writer before scanning. Drain requires matching event-type
 receipts. ACK holds registry and source event authority through the owner
-transaction; contention must roll back owner effects and be retried.
+transaction: PostgreSQL uses NOWAIT exclusive source-event and NOWAIT shared
+subscription locks, serializing concurrent ACKs for one event. Contention
+must roll back owner effects and be retried. Missing-event startup backfill
+requires an actively registered consumer. Event and receipt deletion batches
+are capped at 10000 candidates, and direct receipt pruning observes the same
+3650-day retention limit.
 Unfenced transport ACK cannot complete a relay claim.
 
 ## Tenant and authorization boundary
