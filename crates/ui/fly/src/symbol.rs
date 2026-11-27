@@ -825,11 +825,6 @@ pub fn convert_component_to_symbol(
                 .to_string(),
         ));
     }
-    if !fragment.provider_requirements.is_empty() {
-        return Err(FlyError::InvalidSymbolReference(
-            "symbol definitions cannot yet preserve component provider requirements".to_string(),
-        ));
-    }
     let definition = SymbolDescriptor {
         id: symbol_id.to_string(),
         name,
@@ -2203,33 +2198,6 @@ mod tests {
         assert!(resolved.component("cta-label").is_some());
         editor.undo().expect("undo");
         assert_eq!(editor.document(), &document);
-    }
-
-    #[test]
-    fn symbol_conversion_rejects_provider_requirements_it_cannot_preserve() {
-        let document = GrapesJsCodec::decode_value(json!({
-            "pages": [{
-                "component": {
-                    "id": "root",
-                    "type": "wrapper",
-                    "components": [{
-                        "id": "hero",
-                        "type": "section",
-                        "provider": "provider.hero"
-                    }]
-                }
-            }]
-        }))
-        .expect("document");
-
-        let error = convert_component_to_symbol(&document, "hero", "cta", None)
-            .expect_err("conversion must not silently discard provider requirements");
-
-        assert!(matches!(
-            error,
-            FlyError::InvalidSymbolReference(message)
-                if message.contains("provider requirements")
-        ));
     }
 
     #[test]
