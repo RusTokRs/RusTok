@@ -545,52 +545,80 @@ fn count_document_component_nodes(document: &ProjectDocument) -> usize {
         .fold(0usize, usize::saturating_add)
 }
 
-fn validate_symbol_forms(component: &ComponentNode, symbol_id: &str) -> FlyResult<()> {
+fn validate_symbol_interactions(
+    component: &ComponentNode,
+    symbol_id: &str,
+) -> FlyResult<()> {
     match component {
         ComponentNode::Object(object) => {
-            if let Some(raw) = object.extensions.get(crate::FLY_FORM_FIELD) {
-                crate::action::decode_form(raw.clone()).map_err(|error| {
-                    FlyError::InvalidSymbolReference(format!(
-                        "symbol `{symbol_id}` contains an invalid form: {error}"
-                    ))
-                })?;
-            }
+            validate_symbol_interaction_fields(&object.extensions, symbol_id)?;
             match &object.components {
                 crate::ComponentChildren::Nodes(children) => {
                     for child in children {
-                        validate_symbol_forms(child, symbol_id)?;
+                        validate_symbol_interactions(child, symbol_id)?;
                     }
                 }
                 crate::ComponentChildren::Opaque(raw) => {
-                    validate_opaque_symbol_forms(raw, symbol_id)?;
+                    validate_opaque_symbol_interactions(raw, symbol_id)?;
                 }
             }
         }
-        ComponentNode::Opaque(raw) => validate_opaque_symbol_forms(raw, symbol_id)?,
+        ComponentNode::Opaque(raw) => validate_opaque_symbol_interactions(raw, symbol_id)?,
     }
     Ok(())
 }
 
-fn validate_opaque_symbol_forms(value: &Value, symbol_id: &str) -> FlyResult<()> {
+fn validate_opaque_symbol_interactions(value: &Value, symbol_id: &str) -> FlyResult<()> {
     match value {
         Value::Array(children) => {
             for child in children {
-                validate_opaque_symbol_forms(child, symbol_id)?;
+                validate_opaque_symbol_interactions(child, symbol_id)?;
             }
         }
         Value::Object(object) => {
-            if let Some(raw) = object.get(crate::FLY_FORM_FIELD) {
-                crate::action::decode_form(raw.clone()).map_err(|error| {
-                    FlyError::InvalidSymbolReference(format!(
-                        "symbol `{symbol_id}` contains an invalid form: {error}"
-                    ))
-                })?;
-            }
+            validate_symbol_interaction_fields(object, symbol_id)?;
             if let Some(children) = object.get("components") {
-                validate_opaque_symbol_forms(children, symbol_id)?;
+                validate_opaque_symbol_interactions(children, symbol_id)?;
             }
         }
         _ => {}
+    }
+    Ok(())
+}
+
+fn validate_symbol_interaction_fields(
+    fields: &serde_json::Map<String, Value>,
+    symbol_id: &str,
+) -> FlyResult<()> {
+    let has_page_link = fields.contains_key(crate::FLY_PAGE_LINK_FIELD);
+    let has_action = fields.contains_key(crate::FLY_ACTION_FIELD);
+    let has_form = fields.contains_key(crate::FLY_FORM_FIELD);
+    if has_page_link && has_action {
+        return Err(FlyError::InvalidSymbolReference(format!(
+            "symbol `{symbol_id}` component cannot define both `{}` and `{}`",
+            crate::FLY_PAGE_LINK_FIELD,
+            crate::FLY_ACTION_FIELD
+        )));
+    }
+    if has_form && (has_page_link || has_action) {
+        return Err(FlyError::InvalidSymbolReference(format!(
+            "symbol `{symbol_id}` component cannot combine `{}` with navigation or action fields",
+            crate::FLY_FORM_FIELD
+        )));
+    }
+    if let Some(raw) = fields.get(crate::FLY_FORM_FIELD) {
+        crate::action::decode_form(raw.clone()).map_err(|error| {
+            FlyError::InvalidSymbolReference(format!(
+                "symbol `{symbol_id}` contains an invalid form: {error}"
+            ))
+        })?;
+    }
+    if let Some(raw) = fields.get(crate::FLY_ACTION_FIELD) {
+        serde_json::from_value::<crate::ComponentAction>(raw.clone()).map_err(|error| {
+            FlyError::InvalidSymbolReference(format!(
+                "symbol `{symbol_id}` contains an invalid action: {error}"
+            ))
+        })?;
     }
     Ok(())
 }
@@ -658,7 +686,7 @@ pub(crate) fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()
     let mut dom_ids = BTreeSet::new();
     let mut form_ids = BTreeSet::new();
     for component in &descriptor.components {
-        validate_symbol_forms(component, &descriptor.id)?;
+        validate_symbol_interactions(component, &descriptor.id)?;
         let mut collected_dom = Vec::new();
         let mut collected_forms = Vec::new();
         component.collect_dom_ids(&mut collected_dom);
