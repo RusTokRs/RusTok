@@ -1409,10 +1409,9 @@ impl AuthLifecycleService {
         observed: &sessions::Model,
         token_hash: &str,
     ) -> std::result::Result<(), AuthLifecycleError> {
-        if observed.token_hash == token_hash {
-            return Ok(());
-        }
-
+        // Do not trust the preflight token_hash snapshot here: another
+        // refresh may have rotated it before tenant deactivation won the
+        // admission fence. Re-read under the user/session locks first.
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
         let Some(user) = Self::find_user_for_update_in_tx(&txn, tenant_id, observed.user_id).await?
         else {
