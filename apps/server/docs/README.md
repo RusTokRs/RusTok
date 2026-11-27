@@ -2165,8 +2165,8 @@ Regression cases authored, unrun by request.
 ## Session credential tenant deactivation fence (2026-11-28)
 
 Registration, login, refresh, and failed-login lockout writes now acquire the
-canonical active tenant row inside their final transaction before user/session
-locks and retain it through commit. If tenant deactivation wins, no new session
+canonical active tenant row inside their final transaction before any
+user/session row lock or insert, and retain it through commit. If tenant deactivation wins, no new session
 is issued and failed-login state is not mutated. A refresh request that loses
 the fence rolls back and re-reads the user/session under user-then-session
 locks; stale replay outside grace is still revoked, but no replacement token is
