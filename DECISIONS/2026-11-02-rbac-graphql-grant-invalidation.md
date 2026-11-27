@@ -66,7 +66,17 @@ running and healthy readers, not a fixed latency guarantee.
 ## Data, transaction, and concurrency boundary
 
 The role write, grant replacement, and generation reservation share the owner
-transaction. The generation row serializes reservations. Post-commit local
+transaction. The generation row serializes reservations. On the inspected
+role-edit, user-admin, committed role replacement and artifact-assignment
+paths it is a late write fence, after tenant/credential/user/role and
+grant/receipt identities; subsequent outbox or deadline checks must not
+acquire a new earlier-ranked identity. Reserve by UPDATE RETURNING, reject
+invalid or exhausted integer storage without mutating it, and publish only
+the assigned committed generation. Do not use this global watermark as a
+per-role authorization fence. Single-role grant materialization uses the
+same ordered (resource, action) vocabulary keys in control-plane, bootstrap
+and repair writers. This is not a complete multi-role/bulk lock-order proof.
+Post-commit local
 clearing and optional fan-out occur outside it; process crashes can occur before
 those actions, leaving the durable generation for eventual reconciliation.
 

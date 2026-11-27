@@ -244,7 +244,10 @@ async fn grant_role_permissions_in_tx(
     permissions: &[Permission],
 ) -> Result<Vec<String>> {
     let mut granted = Vec::with_capacity(permissions.len());
-    for permission in permissions {
+    // All role writers materialize shared vocabulary keys in the same order.
+    let mut ordered = permissions.iter().collect::<Vec<_>>();
+    ordered.sort_by_cached_key(|permission| permission_parts(permission));
+    for permission in ordered {
         let (resource, action) = permission_parts(permission);
         let (resource, action) = (resource.as_str(), action.as_str());
 
