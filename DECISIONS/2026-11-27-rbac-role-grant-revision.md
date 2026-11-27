@@ -30,8 +30,20 @@ RBAC bootstrap owner; a concurrent creator's grants are not reconciled by
 the loser. Failure rolls back that initialization too. A missing custom
 role is rejected. A replacement role ID or any bound grant change denies
 the old invite even if current grants again match. Existing target
-roles and issuer roles are held until commit. Low-level writers using
-opposite lock orders can deadlock; retry entire failed transactions.
+roles and issuer roles are held until commit. Migration 000006 adds a
+PostgreSQL BEFORE ROW guard for role_permissions: lock old/new role IDs
+ordered by UUID FOR NO KEY UPDATE NOWAIT, then referenced permissions for
+insert/update FOR SHARE NOWAIT. Tenant validation follows the guard;
+the AFTER revision increment cannot wait for a new surviving role parent.
+DELETE locks only the revision parent, allowing a same-transaction role
+cascade. Active parent RLS fails closed. Late contention raises 55P03 and
+requires a whole-transaction retry. The migration also protects artifact
+grant/receipt INSERT/UPDATE FK parents in actor, role, exact definition
+order using KEY SHARE NOWAIT. It does not change receipt semantics, cascade
+policy, or revision values. The normal host path already owns these parents.
+No complete multi-row or parent-cascade lock-order guarantee is claimed;
+SQLite keeps its single-writer contract. PostgreSQL contention regressions
+are authored but not executed.
 
 This covers static role grants, not artifact-defined permissions (separate
 authorization plane) or module-policy revisions. No wire change. Database

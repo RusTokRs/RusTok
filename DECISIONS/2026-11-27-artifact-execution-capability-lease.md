@@ -238,8 +238,12 @@ The registry release AFTER trigger no longer acquires a platform slug fence
 after release row locks. The PostgreSQL BEFORE guard and matching canonical
 advisory gate reject late competing registry DML, including first insertion.
 This closes that particular blocking edge in source, not arbitrary multi-row
-or cross-owner deadlocks. Other implicit FK and trigger locks, owner receipts,
-RBAC generations, and external effects need separate analysis.
+or cross-owner deadlocks. RBAC migration 000006 adds nonblocking parent
+guards before membership/grant revision triggers and artifact grant/receipt
+FK checks, retaining the parent locks through commit. See the membership
+and role grant ADRs for the bounded ordering and retry contract. Other
+implicit FK and trigger locks, bulk cascades, owner receipts, RBAC generation
+ordering across owners, and external effects need further analysis.
 For the governed-transition/security-state seam, the global security epoch
 singleton follows the required platform/tenant slug fences and precedes domain
 writes. Staging, governed activation and finalization hold a PostgreSQL
