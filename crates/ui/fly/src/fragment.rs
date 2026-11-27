@@ -34,11 +34,7 @@ impl ProjectFragment {
         let mut requirements = BTreeSet::new();
         let mut component_ids = Vec::new();
         let mut asset_references = BTreeSet::new();
-        node.visit(0, "fragment.components[0]", &mut |component, _, _| {
-            if let Some(provider) = component.provider.as_ref() {
-                requirements.insert(provider.clone());
-            }
-        });
+        collect_node_provider_requirements(&node, &mut requirements);
         // Opaque descendants remain part of the fragment's structural identity and resource
         // graph, even though they are not exposed through the typed component visitor.
         node.collect_ids(&mut component_ids);
@@ -379,6 +375,49 @@ impl RichTextPayload {
             payload,
             extensions: Map::new(),
         }
+    }
+}
+
+fn collect_node_provider_requirements(
+    component: &ComponentNode,
+    requirements: &mut BTreeSet<String>,
+) {
+    match component {
+        ComponentNode::Object(object) => {
+            if let Some(provider) = object.provider.as_ref() {
+                requirements.insert(provider.clone());
+            }
+            match &object.components {
+                ComponentChildren::Nodes(children) => {
+                    for child in children {
+                        collect_node_provider_requirements(child, requirements);
+                    }
+                }
+                ComponentChildren::Opaque(raw) => {
+                    collect_opaque_provider_requirements(raw, requirements);
+                }
+            }
+        }
+        ComponentNode::Opaque(raw) => collect_opaque_provider_requirements(raw, requirements),
+    }
+}
+
+fn collect_opaque_provider_requirements(raw: &Value, requirements: &mut BTreeSet<String>) {
+    match raw {
+        Value::Array(children) => {
+            for child in children {
+                collect_opaque_provider_requirements(child, requirements);
+            }
+        }
+        Value::Object(object) => {
+            if let Some(provider) = object.get("provider").and_then(Value::as_str) {
+                requirements.insert(provider.to_string());
+            }
+            if let Some(children) = object.get("components") {
+                collect_opaque_provider_requirements(children, requirements);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -795,9 +834,11 @@ mod tests {
                         "type": "section",
                         "components": {
                             "id": "opaque-container",
+                            "provider": "provider.opaque-container",
                             "attributes": { "data-fly-asset-id": "shared" },
                             "components": {
                                 "id": "opaque-leaf",
+                                "provider": "provider.opaque-leaf",
                                 "attributes": { "data-fly-asset-id": "shared" }
                             }
                         }
@@ -809,6 +850,14 @@ mod tests {
         let fragment = ProjectFragment::from_component(&source, "hero").expect("fragment");
         assert_eq!(fragment.assets.len(), 1);
         assert_eq!(fragment.styles.len(), 1);
+        assert_eq!(
+            fragment
+                .provider_requirements
+                .iter()
+                .map(|requirement| requirement.provider.as_str())
+                .collect::<Vec<_>>(),
+            vec!["provider.opaque-container", "provider.opaque-leaf"]
+        );
 
         let target = GrapesJsCodec::decode_value(json!({
             "pages": [{
