@@ -1417,19 +1417,16 @@ impl AuthLifecycleService {
         // refresh may have rotated it before tenant deactivation won the
         // admission fence. Re-read under the user/session locks first.
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
-        let Some(user) = Self::find_user_for_update_in_tx(&txn, tenant_id, observed.user_id).await?
+        let Some(user) =
+            Self::find_user_for_update_in_tx(&txn, tenant_id, observed.user_id).await?
         else {
             txn.rollback().await.map_err(AuthLifecycleError::from)?;
             return Ok(());
         };
-        let Some(session) = Self::find_session_record_for_update_in_tx(
-            &txn,
-            tenant_id,
-            observed.id,
-            true,
-        )
-        .await?
-        .filter(|session| session.user_id == user.id)
+        let Some(session) =
+            Self::find_session_record_for_update_in_tx(&txn, tenant_id, observed.id, true)
+                .await?
+                .filter(|session| session.user_id == user.id)
         else {
             txn.rollback().await.map_err(AuthLifecycleError::from)?;
             return Ok(());
@@ -2301,7 +2298,10 @@ mod tests {
             .expect("user");
         let mut inactive_tenant: tenants::ActiveModel = tenant.clone().into();
         inactive_tenant.is_active = Set(false);
-        inactive_tenant.update(&db).await.expect("deactivate tenant");
+        inactive_tenant
+            .update(&db)
+            .await
+            .expect("deactivate tenant");
 
         let ctx = ServerRuntimeContext::new(db.clone(), Default::default());
         let config = test_auth_config("inactive-auth-tenant-secret", 600, 3600);
@@ -2461,8 +2461,7 @@ mod tests {
             .expect("second history row");
         let second_session_id = second_history.session_id;
         let mut aged_second_history: session_refresh_history::ActiveModel = second_history.into();
-        aged_second_history.rotated_at =
-            Set(Some((Utc::now() - Duration::minutes(2)).into()));
+        aged_second_history.rotated_at = Set(Some((Utc::now() - Duration::minutes(2)).into()));
         age_history_fixture(&db, aged_second_history).await;
 
         let mut inactive_tenant: tenants::ActiveModel = tenant.clone().into();
