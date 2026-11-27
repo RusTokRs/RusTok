@@ -60,7 +60,11 @@ impl CommandCapabilityRequirement {
             EditorCommand::StyleRule { .. } => self.insert(EditorCapability::Styles),
             EditorCommand::Theme { .. } => self.insert(EditorCapability::Styles),
             EditorCommand::Page { command } => match command {
-                PageCommand::Patch { .. } => self.insert(EditorCapability::Properties),
+                PageCommand::Patch { patch, .. } => {
+                    if !patch.fields.is_empty() || !patch.remove_fields.is_empty() {
+                        self.insert(EditorCapability::Properties);
+                    }
+                }
                 PageCommand::Add { .. } | PageCommand::Remove { .. } | PageCommand::Move { .. } => {
                     self.insert(EditorCapability::Edit)
                 }
@@ -142,7 +146,10 @@ mod tests {
             EditorCommand::Page {
                 command: PageCommand::Patch {
                     locator: PageLocator::by_id("home"),
-                    patch: PagePatch::default(),
+                    patch: PagePatch {
+                        fields: Map::from_iter([("name".to_string(), json!("Home"))]),
+                        ..PagePatch::default()
+                    },
                 },
             },
         ]);
@@ -218,9 +225,16 @@ mod tests {
             component_id: "hero".to_string(),
             patch: ComponentPatch::default(),
         });
+        let empty_page_patch = CommandCapabilityRequirement::for_command(&EditorCommand::Page {
+            command: PageCommand::Patch {
+                locator: PageLocator::by_id("home"),
+                patch: PagePatch::default(),
+            },
+        });
 
         assert!(empty_batch.is_empty());
         assert!(empty_patch.is_empty());
+        assert!(empty_page_patch.is_empty());
     }
 
     #[test]
