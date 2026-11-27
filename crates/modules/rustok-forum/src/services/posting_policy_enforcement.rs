@@ -28,7 +28,7 @@
 //! `DECISIONS/2026-11-27-forum-posting-policy-window-enforcement.md`.
 
 use rustok_api::PortContext;
-use rustok_core::security_context::{SecurityActorKind, SecurityContext};
+use rustok_core::{SecurityActorKind, SecurityContext};
 use uuid::Uuid;
 
 use crate::error::{ForumError, ForumResult};
@@ -155,7 +155,7 @@ async fn prepare_create_posting_policy(
         .compose(context, &rules, request)
         .await
         .map_err(|error| {
-            posting_policy_unavailable(&format!("fact composition failed ({})", error.code()))
+            posting_policy_unavailable(&format!("fact composition failed ({})", error.code))
         })?;
     Ok(PreparedCreatePostingPolicy {
         rules,
@@ -236,7 +236,7 @@ mod tests {
     use crate::services::posting_policy::ForumPostingPolicyFactKind;
     use crate::services::posting_policy_evaluator::ForumPostingWindowLimit;
     use rustok_api::PortActor;
-    use rustok_core::security_context::{SecurityContext, UserRole};
+    use rustok_core::UserRole;
 
     fn window_rules(maximum_count: u32, window_seconds: u32) -> ForumPostingPolicyRules {
         ForumPostingPolicyRules {
