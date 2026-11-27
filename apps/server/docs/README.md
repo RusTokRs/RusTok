@@ -2221,3 +2221,12 @@ assert that representative secret values do not appear in Debug output.
 The changes preserve Debug support for diagnostics while avoiding accidental
 credential disclosure in logs or assertion output. Compilation, formatting and
 tests remain unrun at the maintainer's request.
+
+## Artifact execution lease clock fence (2026-11-27)
+
+Captured direct artifact request scopes now consult the shared Auth application
+clock latch as part of every lease-liveness check, in addition to request-scope
+invalidation and the original credential deadline. A clock discontinuity that
+is latched while guest work is running therefore fails closed before a later
+capability admission or successful output release. The change reuses the
+existing process-local clock guard and adds no new clock source or lease.
