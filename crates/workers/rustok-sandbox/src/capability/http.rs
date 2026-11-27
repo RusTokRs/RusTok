@@ -177,7 +177,7 @@ fn validate_http_request_shape(call: &CapabilityCall, method: &str) -> SandboxRe
             .and_then(Value::as_str)
             .and_then(|value| uuid::Uuid::parse_str(value).ok())
             .filter(|key| !key.is_nil());
-        if key.is_none() || call.context.idempotency_key.is_none_or(uuid::Uuid::is_nil) {
+        if key.is_none() || call.context.idempotency_key.is_none_or(|key| key.is_nil()) {
             return Err(SandboxError::CapabilityConstraintDenied {
                 capability: call.capability.clone(),
                 reason: "mutating HTTP requests require an execution idempotency key and a per-request idempotency_key UUID".to_string(),
@@ -188,7 +188,7 @@ fn validate_http_request_shape(call: &CapabilityCall, method: &str) -> SandboxRe
         .is_some_and(|value| {
             value.as_str()
                 .and_then(|key| uuid::Uuid::parse_str(key).ok())
-                .is_none_or(uuid::Uuid::is_nil)
+                .is_none_or(|key| key.is_nil())
         })
     {
         return Err(SandboxError::CapabilityConstraintDenied {
