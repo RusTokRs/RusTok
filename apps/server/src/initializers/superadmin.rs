@@ -65,12 +65,35 @@ async fn ensure_configured_superadmin(
     // Normalize before provisioning a tenant to avoid side effects for invalid
     // email configuration.
     let email = crate::auth::normalize_email(email).map_err(AuthLifecycleError::from)?;
-    let tenant = tenants::find_or_create(ctx.db(), tenant_name, tenant_slug, None).await?;
+    let existing_tenant = tenants::find_by_slug(ctx.db(), tenant_slug).await?;
 
-    if let Some(user) = users::Entity::find_by_email(ctx.db(), tenant.id, &email).await? {
+    if let Some(tenant) = existing_tenant.as_ref()
+        && let Some(user) = users::Entity::find_by_email(ctx.db(), tenant.id, &email).await?
+    {
         observe_existing_superadmin(ctx, tenant_slug, &user).await?;
         return Ok(());
     }
+
+    if let Err(error) = crate::auth::validate_password_policy(
+        password,
+        crate::auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
+    ) {
+        // Another replica may have provisioned the exact identity after the
+        // first lookup. Preserve bootstrap idempotence without creating a
+        // tenant solely to discover that the configured password is invalid.
+        if let Some(tenant) = tenants::find_by_slug(ctx.db(), tenant_slug).await?
+            && let Some(user) = users::Entity::find_by_email(ctx.db(), tenant.id, &email).await?
+        {
+            observe_existing_superadmin(ctx, tenant_slug, &user).await?;
+            return Ok(());
+        }
+        return Err(AuthLifecycleError::from(error).into());
+    }
+
+    let tenant = match existing_tenant {
+        Some(tenant) => tenant,
+        None => tenants::find_or_create(ctx.db(), tenant_name, tenant_slug, None).await?,
+    };
 
     let result = AuthLifecycleService::create_user_runtime(
         ctx,
@@ -177,7 +200,7 @@ mod tests {
         ensure_configured_superadmin(
             &ctx,
             "  SEED@EXAMPLE.TEST  ",
-            "NewPassword123!",
+            "short",
             "Seed tenant",
             "seed-tenant",
         )
@@ -299,6 +322,28 @@ mod tests {
             events.len(),
             1,
             "bootstrap account creation must publish exactly one registration event"
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_password_does_not_provision_a_tenant() {
+        let ctx = test_context().await;
+        assert!(
+            ensure_configured_superadmin(
+                &ctx,
+                "bootstrap-admin@example.test",
+                "short",
+                "Invalid password tenant",
+                "invalid-password-tenant",
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            tenants::find_by_slug(ctx.db(), "invalid-password-tenant")
+                .await
+                .expect("tenant lookup")
+                .is_none()
         );
     }
 
