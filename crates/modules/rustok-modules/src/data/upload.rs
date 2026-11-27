@@ -242,7 +242,7 @@ where
             .await?;
         let quota = self.quota.validate()?;
         let digest_sha256 = crate::installation::sha256_digest(&chunk.data);
-        let key = ObjectKey::chronological(
+        let stored_path = ObjectKey::chronological(
             "module-artifact-data",
             ObjectZone::Staging,
             ObjectScope::Namespace {
@@ -256,7 +256,6 @@ where
         )
         .map_err(|error| ArtifactDataError::Storage(error.to_string()))?
         .to_string();
-        let stored_path = key.clone();
 
         // Stage bytes before opening the owner transaction. A remote object
         // store must never hold the namespace, installation or RBAC SQL locks.
@@ -290,7 +289,7 @@ where
                     return Err(error);
                 }
             };
-        let staged = async {
+        let staged: Result<bool, ArtifactDataError> = async {
             let backend =
                 SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
             ensure_active_object_namespace(&transaction, scope, backend).await?;
