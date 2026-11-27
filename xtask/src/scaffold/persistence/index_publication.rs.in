@@ -1,0 +1,14 @@
+/// Owner SQL for an exact, currently published translation at the indexed revision.
+pub(super) const POSTGRES_FRESHNESS: &str = r#"
+EXISTS (
+    SELECT 1
+    FROM __TABLE__ AS owner_record
+    JOIN __TRANSLATIONS__ AS owner_copy
+      ON owner_copy.tenant_id = owner_record.tenant_id AND owner_copy.record_id = owner_record.id
+    WHERE owner_record.tenant_id = {{entity}}.tenant_id
+      AND owner_record.id = {{entity}}.entity_id
+      AND owner_record.published_at IS NOT NULL
+      AND owner_record.revision = {{entity}}.source_version
+      AND owner_copy.locale = {{entity}}.locale_key
+)
+"#;

@@ -92,7 +92,10 @@ rows to revisioned tombstones. This contract supplies internal replay independen
 of Search. Publication, withdrawal and edits of published titles also append
 the sealed Index refresh fact in the same owner transaction. The Index listener
 stores the latest exact locale copies or tombstones before acknowledging the
-event. Public Index serving requires independent admission.
+event. Index queries use the owner's published revision and exact translation
+predicate and the module control plane's explicit discovery decision in the
+same PostgreSQL snapshot as filtering, pagination and counting. Public request
+adapters also require trusted tenant, locale and Channel availability.
 
 ## Failure semantics
 

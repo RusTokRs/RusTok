@@ -1,4 +1,4 @@
-//! Native owner replay contract for exact localized records.
+//! Native owner projection contract for exact localized records.
 
 use std::{num::NonZeroU64, sync::Arc};
 
@@ -64,6 +64,10 @@ pub struct LocalizedIndexSource {
     pub module_slug: &'static str,
     pub entity_type: &'static str,
     pub build: fn(DatabaseConnection) -> Arc<dyn LocalizedIndexReader>,
+    pub public_discovery_key: &'static str,
+    /// Trusted owner SQL that proves the exact locale is published at the Index
+    /// row's revision. The Index compiler supplies the `{{entity}}` alias.
+    pub postgres_publication_freshness: &'static str,
 }
 
 #[derive(Default)]

@@ -42,5 +42,6 @@ fn registers_each_selected_scaffold_once() {
     }
 }
 "#,
-    include_str!("index_fixture.rs.in")
+    include_str!("index_fixture.rs.in"),
+    include_str!("index_query_fixture.rs.in")
 );

@@ -1,0 +1,91 @@
+mod index_query {
+    use rustok_core::MigrationSource;
+    use rustok_index::{
+        FieldName, FieldPath, IndexQuery, IndexQueryPort, IndexQueryScope, IndexValue, LocaleKey,
+        Pagination, SharedIndexQueryRuntime,
+    };
+    use rustok_modules::ModulesModule;
+    use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
+    use sea_orm_migration::SchemaManager;
+    use serde_json::{Value, json};
+    use uuid::Uuid;
+
+    use super::localized_schema;
+
+    const MODULE: &str = "scaffold_matrix_localized";
+
+    pub(super) async fn migrate_settings(manager: &SchemaManager<'_>) {
+        ModulesModule
+            .migrations()
+            .into_iter()
+            .find(|migration| migration.name() == "m20250101_000060_create_tenant_modules")
+            .expect("the module control plane owns tenant settings")
+            .up(manager)
+            .await
+            .unwrap();
+    }
+
+    pub(super) struct PublicQueries<'a> {
+        pub db: &'a DatabaseConnection,
+        pub tenant: Uuid,
+        pub runtime: &'a SharedIndexQueryRuntime,
+    }
+
+    impl PublicQueries<'_> {
+        pub(super) async fn set_discovery(&self, enabled: Option<bool>, setting: Value) {
+            self.db
+                .execute_raw(Statement::from_sql_and_values(
+                    self.db.get_database_backend(),
+                    "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings)
+                     VALUES ($1, $2, $3, $4, $5)
+                     ON CONFLICT (tenant_id, module_slug)
+                     DO UPDATE SET enabled = excluded.enabled, settings = excluded.settings",
+                    [
+                        Uuid::new_v4().into(),
+                        self.tenant.into(),
+                        MODULE.into(),
+                        enabled.into(),
+                        json!({ "public_discovery_enabled": setting }).into(),
+                    ],
+                ))
+                .await
+                .unwrap();
+        }
+
+        pub(super) async fn expect(&self, locale: &str, title: Option<&str>) {
+            let page = self
+                .runtime
+                .execute_query(IndexQuery {
+                    scope: IndexQueryScope {
+                        tenant_id: self.tenant,
+                        locale: Some(LocaleKey::new(locale).unwrap()),
+                    },
+                    schema: localized_schema(),
+                    fields: vec![FieldPath::new(FieldName::new("title").unwrap())],
+                    filter: None,
+                    order_by: Vec::new(),
+                    pagination: Pagination::Cursor {
+                        first: 1,
+                        after: None,
+                    },
+                    include_exact_count: true,
+                })
+                .await
+                .unwrap();
+            assert_eq!(page.exact_count, Some(u64::from(title.is_some())));
+            assert!(!page.has_more);
+            let titles = page
+                .items
+                .iter()
+                .map(|item| item.fields[0].value.clone())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                titles,
+                title
+                    .map(|title| IndexValue::String(title.into()))
+                    .into_iter()
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+}

@@ -65,6 +65,7 @@ pub(super) fn render(
         ("src/integrations/mod.rs", "pub(crate) mod cache;\npub(crate) mod index;\npub(crate) mod search;\n"),
         ("src/integrations/cache.rs", include_str!("persistence/cache.rs.in")),
         ("src/integrations/index.rs", include_str!("persistence/index.rs.in")),
+        ("src/integrations/index/publication.rs", include_str!("persistence/index_publication.rs.in")),
         ("src/integrations/search.rs", include_str!("persistence/search.rs.in")),
         ("src/integrations/search/visibility.rs", include_str!("persistence/search_visibility.rs.in")),
         ("src/migrations/mod.rs", "mod __MIGRATION__;\n\npub(crate) use __MIGRATION__::Migration;\npub(crate) const ID: &str = stringify!(__MIGRATION__);\n"),
@@ -168,6 +169,8 @@ Store tenant-owned records with localized titles and explicit edit revisions.
 - `src/entities/` and `src/migrations/` own the schema and tenant relations.
 - `src/services/record/` owns commands, queries and the private repository.
 - `src/integrations/search.rs` maps published owner copy to the Search source contract.
+- `src/integrations/index.rs` supplies exact locale copies and owner revisions to relational Index replay and live refresh.
+- `src/integrations/index/publication.rs` supplies the exact published-locale and revision predicate used by Index pagination and counts.
 - `src/integrations/cache.rs` binds the host-selected Cache backend to a revision-scoped published view.
 - `tests/record/` applies platform identity, Outbox and owner migrations and verifies the PostgreSQL Search path when selected.
 
@@ -175,7 +178,7 @@ Store tenant-owned records with localized titles and explicit edit revisions.
 
 {ui}
 
-Compose the service with the owner permission resource. A public transport derives tenant and authorization from platform context and applies module and channel availability. Storefront Search admission is configured by its host.
+Compose the service with the owner permission resource. A public transport derives tenant and authorization from platform context and checks the resolved channel. Storefront Search admission is configured by its host. Distribution composes the Index source, listener and query admission from the owner declaration. Index applies current publication, revision and the tenant discovery setting before pagination and counting.
 An embedding host can call `with_public_cache` with its shared service and a bounded backend. Each hit is gated by the current database publication and owner revision. Keys include requested and fallback locales.
 Use `with_settings_reader` with the platform static settings reader to apply the tenant's `admin_page_size` to lists without an explicit page size.
 Public record reads also use that reader. The snapshot must explicitly enable this optional module and set `public_discovery_enabled` to `true` before a published record can be read or returned from cache.
@@ -193,7 +196,7 @@ See the [platform integration guide](../../../../docs/backend/module-backend-imp
         r#"# {package} implementation plan
 
 ## Current state
-Localized {entity} persistence, publication, Outbox and the Search projection source are implemented. Run the generated integration tests against the actual module and platform migrations.
+Localized {entity} persistence, publication, Outbox and sources for Search and relational Index are implemented. Run the generated integration tests against the actual module and platform migrations.
 
 ## FFA/FBA status
 
@@ -220,7 +223,7 @@ Localized {entity} persistence, publication, Outbox and the Search projection so
 - `cargo xtask module validate {slug}`
 - `cargo test -p {package} --test record`
 
-Record PostgreSQL migration and Search evidence before production use. Compose trusted tenant and principal context before attaching a published transport.
+Record PostgreSQL migration, Search and Index delivery evidence before production use. Compose trusted tenant and principal context before attaching a published transport.
 "#
     );
     let api = format!(
@@ -232,7 +235,7 @@ Record PostgreSQL migration and Search evidence before production use. Compose t
 
 ## Platform Capability Bindings
 
-The module uses platform locale policy, RBAC, SeaORM migrations, transactional Outbox, an optional host-bound public view cache and a module-owned Search projection source.
+The module uses platform locale policy, RBAC, SeaORM migrations, transactional Outbox, an optional host-bound public view cache and module-owned sources for Search and relational Index.
 
 ## Domain Collaborations
 
@@ -254,7 +257,7 @@ The base identity is locale-neutral. Localized writes never infer a locale from 
 
 ### Events / Outbox Side Effects
 
-Publication, withdrawal and edits to published copy append a durable Search refresh request in the owner transaction. The registered source projects each published locale. Withdrawal returns an empty entity projection so Search removes previous copies. Storefront corpus admission belongs to the host.
+Publication, withdrawal and edits to published copy append the Search and sealed Index refresh requests in the owner transaction. Search loads published locale copies and removes the entity from its corpus on withdrawal. Index reads all exact locale copies from one owner snapshot and persists revisioned tombstones for withdrawals. Live refresh and replay share mutation identities. Storefront corpus admission belongs to the host.
 
 ### Errors / Failure Codes
 

@@ -123,7 +123,7 @@ mod static_settings_reader;
 mod static_settings_source_locale;
 pub mod static_settings_translation_read;
 pub mod translation;
-pub use static_settings_reader::DatabaseStaticModuleSettingsReader;
+pub use static_settings_reader::{DatabaseStaticModuleSettingsReader, postgres_discovery_tenants};
 mod transition_coordinator;
 mod transition_receipts;
 mod transition_service;

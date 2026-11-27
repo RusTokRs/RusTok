@@ -45,11 +45,17 @@ read through the port. Localized record owners also publish a sealed
 `index.localized_record.refresh_requested` fact with module, entity, record
 and minimum committed revision. The selected Index listener acknowledges only
 after fetching all exact locales in one owner statement and persisting the
-corresponding revisioned mutations. Storefront admission remains independent.
+corresponding revisioned mutations. For this published-record schema, the
+localized owner supplies its PostgreSQL publication and exact-copy freshness
+predicate. The module control plane publishes tenant IDs with explicit
+enablement and an opted-in boolean public setting. Distribution composes both
+into the registered Index admission rule. Public callers separately establish
+the resolved channel's admission from Channel authority.
 
 ## Sources of truth and ownership
 
-Product and Channel own their tables and the semantics of the published SQL.
+Product, Channel, localized records and the module control plane own their
+tables and the semantics of their published SQL.
 Distribution binds inputs and registers composed Index capabilities. Index owns
 its schema, storage, query execution, and replay and refresh machinery.
 

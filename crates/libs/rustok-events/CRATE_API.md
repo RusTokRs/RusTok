@@ -220,6 +220,15 @@ event additionally requires canonical identity.
 - `EventValidationError`, `EventEnvelopeError`, and `EventContractEnvelopeError` define stable validation classes.
 - Unregistered event type, schema mismatch, payload metadata mismatch, invalid decoded payload, and root-family conversion failure must not be hidden as arbitrary transport errors.
 
+## Localized record Index refresh
+
+`LocalizedIndexRefreshEvent` registers the sealed v1
+`index.localized_record.refresh_requested` fact. The payload carries the owner
+module slug, entity type, non-nil record ID and positive source revision.
+Tenant and actor come from the canonical envelope. The consumer refetches
+exact copies from the owner at or above that revision. Dispatch requires
+acknowledgement from a matching module listener.
+
 ## Inventory reservation invalidation (2026-11-01; source only)
 
 `InventoryReservationEvent::Changed { product_id, variant_id }` is a sealed, registered v1
@@ -232,8 +241,8 @@ Inventory publishes only admitted fresh reserve/release movement, on its counter
 transaction; replay/zero/adoption publish none. Consumers refetch current owner state rather
 than applying arithmetic from the payload. Core provides explicit acknowledged local dispatch;
 remote Iggy cursor/ACK remains a separate durable boundary. Four family regression definitions
-are uncompiled/unrun. Canonical digest generation is pending, not manually reconstructed;
-see [admission](docs/event-contract-digest-admission.md#pending-inventory-reservation-admission-2026-11-01).
+were unverified in the original source change. The current digest includes
+this family. [Digest admission](docs/event-contract-digest-admission.md#localized-record-index-refresh-admission).
 
 ## Inventory source facts and delivery policy (2026-11-02; source only)
 
@@ -249,5 +258,6 @@ Inventory source/reservation facts require acknowledged module handling in memor
 Other remote-consumer families keep their primary/cursor contract. **No production Inventory
 source listener/selected Index consumer is installed yet**; unknown required delivery refuses.
 Event actor and saved baseline creator are not credentials for native owner source reads.
-Six new family definitions remain uncompiled/unrun. Existing root/reservation wires and release
-artifact are unchanged; [digest admission remains pending](docs/event-contract-digest-admission.md#pending-inventory-source-admission-2026-11-02).
+The original source change recorded six family definitions without execution.
+The current digest includes the Inventory source family.
+[Digest admission](docs/event-contract-digest-admission.md#localized-record-index-refresh-admission).

@@ -5,7 +5,8 @@ use rustok_api::{is_valid_module_slug, localized_index::LocalizedIndexSources};
 use rustok_core::ModuleRuntimeExtensions;
 use rustok_index::{
     DomainError, EntityName, FieldCardinality, FieldName, IndexField, IndexSchema, IndexValueType,
-    LocaleMode, ModuleName, SchemaRef, SchemaVersion, register_index_schema_source,
+    LocaleMode, ModuleName, PostgresQueryEntityAdmission, SchemaRef, SchemaVersion,
+    register_index_schema_source, register_postgres_index_query_admission,
     register_postgres_index_source_factory,
 };
 
@@ -20,7 +21,24 @@ pub(super) fn register(extensions: &mut ModuleRuntimeExtensions) -> rustok_core:
         let schema = schema(source.module_slug, source.entity_type).map_err(invalid)?;
         let reference = schema.reference.clone();
         let name = format!("{}-localized-records", source.module_slug);
+        let tenants = rustok_modules::postgres_discovery_tenants(
+            source.module_slug,
+            source.public_discovery_key,
+        )
+        .map_err(invalid)?;
+        let admission = PostgresQueryEntityAdmission::new(format!(
+            "({}) AND {{{{entity}}}}.tenant_id IN ({tenants})",
+            source.postgres_publication_freshness
+        ))
+        .map_err(invalid)?;
         register_index_schema_source(extensions, source.module_slug, schema).map_err(invalid)?;
+        register_postgres_index_query_admission(
+            extensions,
+            source.module_slug,
+            reference.clone(),
+            admission,
+        )
+        .map_err(invalid)?;
         register_postgres_index_source_factory(
             extensions,
             source.module_slug,

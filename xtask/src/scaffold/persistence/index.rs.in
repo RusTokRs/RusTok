@@ -1,3 +1,5 @@
+mod publication;
+
 use std::{collections::HashSet, num::NonZeroU64, sync::Arc};
 
 use async_trait::async_trait;
@@ -24,6 +26,8 @@ pub(crate) fn register(extensions: &mut ModuleRuntimeExtensions) {
             module_slug: "__SLUG__",
             entity_type: "__ENTITY_SLUG__",
             build: |db| Arc::new(RecordIndexReader { db }),
+            public_discovery_key: "__PUBLIC_DISCOVERY_KEY__",
+            postgres_publication_freshness: publication::POSTGRES_FRESHNESS,
         });
 }
 
@@ -33,7 +37,11 @@ struct RecordIndexReader {
 
 #[async_trait]
 impl LocalizedIndexReader for RecordIndexReader {
-    async fn load_record(&self, tenant_id: Uuid, id: Uuid) -> Result<Vec<LocalizedIndexRow>, PortError> {
+    async fn load_record(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> Result<Vec<LocalizedIndexRow>, PortError> {
         if tenant_id.is_nil() || id.is_nil() {
             return Err(invalid_scope());
         }
@@ -41,7 +49,9 @@ impl LocalizedIndexReader for RecordIndexReader {
             .filter(translation::Column::RecordId.eq(id))
             .order_by_asc(translation::Column::Locale)
             .limit((MAX_SEARCH_PROJECTION_DOCUMENTS_PER_ENTITY + 1) as u64)
-            .all(&self.db).await.map_err(|error| storage_unavailable(tenant_id, error))?;
+            .all(&self.db)
+            .await
+            .map_err(|error| storage_unavailable(tenant_id, error))?;
         if copies.len() > MAX_SEARCH_PROJECTION_DOCUMENTS_PER_ENTITY {
             return Err(invalid_record());
         }

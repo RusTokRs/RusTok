@@ -5,8 +5,24 @@ use uuid::Uuid;
 use crate::backend::SupportedBackend;
 use rustok_api::{
     PortError, SharedStaticModuleSettingsReader, StaticModuleSettingsReader,
-    StaticModuleSettingsSnapshot, StaticModuleSettingsTransactionReader,
+    StaticModuleSettingsSnapshot, StaticModuleSettingsTransactionReader, is_valid_module_slug,
 };
+
+/// PostgreSQL read contract for composition inside the consumer's snapshot.
+/// The result projects tenant IDs with explicit enablement and boolean opt-in.
+/// Both arguments identify static declarations and must be platform identifiers.
+pub fn postgres_discovery_tenants(module_slug: &str, setting: &str) -> Result<String, PortError> {
+    if !is_valid_module_slug(module_slug) || !is_valid_module_slug(setting) {
+        return Err(PortError::validation(
+            "modules.static_discovery_identifier_invalid",
+            "Static module and discovery setting must be platform identifiers",
+        ));
+    }
+    Ok(format!(
+        "SELECT tenant_id FROM tenant_modules WHERE module_slug = '{module_slug}' \
+         AND enabled IS TRUE AND settings -> '{setting}' = 'true'::jsonb"
+    ))
+}
 
 /// Database-backed owner implementation for static/native tenant-module settings.
 ///
