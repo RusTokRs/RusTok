@@ -7,7 +7,8 @@ use rustok_modules::{
     ModuleArtifactSecurityCommand, ModuleArtifactSecurityError, ModuleArtifactSecurityReceipt,
     ModuleArtifactSecuritySnapshot, ModuleArtifactSecurityStatus, ModuleCommandContext,
 };
-use rustok_rbac::{RbacControlPlanePrincipal, RbacService, require_direct_control_plane_user};
+use rustok_rbac::{RbacControlPlanePrincipal, require_direct_control_plane_user};
+use crate::services::rbac_runtime::{authorize_request, AuthorizationCheck};
 use sea_orm::DatabaseConnection;
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -55,8 +56,25 @@ fn validate_direct_operator(
     Ok(())
 }
 
-/// Check both the authenticated permission snapshot and the current persisted
-/// tenant grant. This avoids relying solely on a potentially stale access token.
+/// Check both the authenticated permission snapshot and the current effective
+/// tenant grant through the server's canonical RBAC resolver.
+async fn current_modules_manage_permission(
+    db: &DatabaseConnection,
+    tenant_id: &Uuid,
+    user_id: &Uuid,
+) -> Result<bool, ArtifactSecurityAuthorizationError> {
+    let outcome = authorize_request(
+        db,
+        tenant_id,
+        user_id,
+        AuthorizationCheck::Single(&Permission::MODULES_MANAGE),
+    )
+    .await
+    .map_err(|_| ArtifactSecurityAuthorizationError::PermissionCheckFailed)?;
+
+    Ok(outcome.decision.allowed)
+}
+
 pub async fn authorize_artifact_security_operator(
     db: &DatabaseConnection,
     auth: &AuthContext,
@@ -65,14 +83,7 @@ pub async fn authorize_artifact_security_operator(
 ) -> Result<(), ArtifactSecurityAuthorizationError> {
     validate_direct_operator(auth, principal, tenant_id)?;
 
-    let allowed = RbacService::has_permission(
-        db,
-        &tenant_id,
-        &auth.user_id,
-        &Permission::MODULES_MANAGE,
-    )
-    .await
-    .map_err(|_| ArtifactSecurityAuthorizationError::PermissionCheckFailed)?;
+    let allowed = current_modules_manage_permission(db, &tenant_id, &auth.user_id).await?;
 
     if !allowed {
         return Err(ArtifactSecurityAuthorizationError::ModulesManageRequired);
@@ -143,11 +154,10 @@ impl ServerArtifactSecurityAuthorizer {
             ));
         }
 
-        let allowed = RbacService::has_permission(
+        let allowed = current_modules_manage_permission(
             &self.db,
             &self.tenant_id,
             &self.actor_id,
-            &Permission::MODULES_MANAGE,
         )
         .await
         .map_err(|_| {
