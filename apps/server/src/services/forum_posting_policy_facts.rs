@@ -21,6 +21,7 @@ const TENANT_MISMATCH_CODE: &str = "forum.account_age_facts.tenant_mismatch";
 const ACTOR_MISMATCH_CODE: &str = "forum.account_age_facts.actor_mismatch";
 const USER_NOT_FOUND_CODE: &str = "forum.account_age_facts.user_not_found";
 const STORAGE_UNAVAILABLE_CODE: &str = "forum.account_age_facts.storage_unavailable";
+const CLOCK_UNAVAILABLE_CODE: &str = "forum.account_age_facts.clock_unavailable";
 const STORAGE_INVARIANT_CODE: &str = "forum.account_age_facts.storage_invariant";
 
 pub(crate) type SharedForumPostingPolicyFactsComposer = Arc<ForumPostingPolicyFactsComposer>;
@@ -28,25 +29,27 @@ pub(crate) type SharedForumPostingPolicyFactsComposer = Arc<ForumPostingPolicyFa
 type AccountAgeClock = Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>;
 
 /// Host-owned exact-user adapter over the authoritative `users.created_at`
-/// timestamp. Forum receives only the derived bounded age in seconds and never
-/// imports the server user entity or reads the users table directly.
+/// timestamp. Production observations use the Auth application's DB-
+—corroborated clock; tests may inject a deterministic observation time. Forum
+/// receives only the derived bounded age in seconds and never imports the
+/// server user entity or reads the users table directly.
 #[derive(Clone)]
 pub(crate) struct ServerForumAccountAgeFactPort {
     db: DatabaseConnection,
-    now: AccountAgeClock,
+    now: Option<AccountAgeClock>,
 }
 
 impl ServerForumAccountAgeFactPort {
     pub(crate) fn new(db: DatabaseConnection) -> Self {
-        Self {
-            db,
-            now: Arc::new(Utc::now),
-        }
+        Self { db, now: None }
     }
 
     #[cfg(test)]
     fn with_clock(db: DatabaseConnection, now: AccountAgeClock) -> Self {
-        Self { db, now }
+        Self {
+            db,
+            now: Some(now),
+        }
     }
 
     pub(crate) fn shared(db: DatabaseConnection) -> SharedForumPostingPolicyOwnerFactPort {
@@ -104,7 +107,17 @@ impl ForumPostingPolicyOwnerFactPort for ServerForumAccountAgeFactPort {
             ));
         }
 
-        let observed_at = (self.now)();
+        let observed_at = match &self.now {
+            Some(now) => now(),
+            None => rustok_auth::application_clock::admit_now(&self.db)
+                .await
+                .map_err(|_| {
+                    PortError::unavailable(
+                        CLOCK_UNAVAILABLE_CODE,
+                        "Forum account-age application clock is unavailable",
+                    )
+                })?,
+        };
         let created_at = user.created_at.with_timezone(&Utc);
         if created_at > observed_at {
             return Err(PortError::invariant_violation(
