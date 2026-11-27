@@ -169,10 +169,9 @@ fn apply_symbol_command_inner(
                 )));
             }
             set_symbol_descriptors(document, entries);
-            let cycles = detect_symbol_cycles(&SymbolDescriptor::catalog_from_document(document));
-            if let Some(cycle) = cycles.first() {
-                return Err(FlyError::SymbolCycle(cycle.clone()));
-            }
+            // Validate the complete catalog, not only cycles: a direct caller of this
+            // public command API must not be able to commit a dangling nested reference.
+            strict_catalog(document)?;
             Ok(())
         }
         SymbolCommand::Remove { symbol_id } => {
@@ -213,6 +212,7 @@ fn apply_symbol_command_inner(
                 return Err(FlyError::SymbolNotFound(symbol_id.clone()));
             }
             set_symbol_descriptors(document, retained);
+            strict_catalog(document)?;
             Ok(())
         }
     }
@@ -801,9 +801,9 @@ fn expand_opaque_symbol_node(
     let Some(object) = value.as_object() else {
         return Ok(());
     };
-    match object.get("symbolId") {
+    let symbol_marker = object.get("symbolId").cloned();
+    match symbol_marker {
         Some(Value::String(symbol_id)) => {
-            let symbol_id = symbol_id.clone();
             let component = serde_json::from_value::<ComponentObject>(value.clone()).map_err(
                 |error| {
                     FlyError::InvalidSymbolReference(format!(
@@ -1508,6 +1508,34 @@ mod tests {
     }
 
     #[test]
+    fn resolves_symbol_instances_inside_opaque_array_component_roots() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [{
+                "id": "cta",
+                "components": [{ "id": "cta-root", "type": "section" }]
+            }],
+            "pages": [{
+                "component": [{
+                    "id": "slot",
+                    "type": "symbol",
+                    "symbolId": "cta",
+                    "components": []
+                }]
+            }]
+        }))
+        .expect("document");
+
+        let resolved = resolve_symbol_instances(&document).expect("resolve");
+        let Some(ComponentNode::Opaque(Value::Array(children))) =
+            resolved.project().pages[0].component.as_ref()
+        else {
+            panic!("opaque array root must remain an array")
+        };
+        assert!(children[0].get("symbolId").is_none());
+        assert_eq!(children[0]["components"][0]["id"], "slot-cta-root");
+    }
+
+    #[test]
     fn symbol_cycles_include_references_inside_opaque_children() {
         let document = GrapesJsCodec::decode_value(json!({
             "flySymbols": [
@@ -1897,6 +1925,31 @@ mod tests {
             raw = json!({ "nested": raw });
         }
         assert!(SymbolDescriptor::from_value(&raw).is_none());
+    }
+
+    #[test]
+    fn direct_symbol_upsert_rejects_missing_nested_references_atomically() {
+        let mut document = document_with(object("root", "wrapper", vec![]), Vec::new());
+        let before = document.clone();
+
+        let error = apply_symbol_command(
+            &mut document,
+            &SymbolCommand::Upsert {
+                symbol: symbol_json(
+                    "outer",
+                    vec![json!({
+                        "id": "nested-slot",
+                        "type": "symbol",
+                        "symbolId": "missing",
+                        "components": []
+                    })],
+                ),
+            },
+        )
+        .expect_err("direct upsert must reject dangling nested references");
+
+        assert!(matches!(error, FlyError::SymbolNotFound(message) if message.contains("missing")));
+        assert_eq!(document, before);
     }
 
     #[test]
