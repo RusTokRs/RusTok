@@ -166,6 +166,13 @@ impl ProjectFragment {
                 collect_component_asset_ids(root, &mut existing_asset_references);
             }
         }
+        for (_, entry) in crate::symbol::SymbolDescriptor::entries_from_document(staged.document()) {
+            if let Some(symbol) = crate::symbol::SymbolDescriptor::from_value(&entry) {
+                existing_asset_references.extend(
+                    crate::symbol::symbol_asset_dangling_references(&symbol),
+                );
+            }
+        }
         remap_fragment_asset_ids(
             &mut self.assets,
             &mut self.components,
@@ -963,6 +970,73 @@ mod tests {
                 .iter()
                 .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
                 .any(|asset| asset.id == pasted_asset_id && asset.source == "/source.webp")
+        );
+    }
+
+    #[test]
+    fn fragment_paste_does_not_capture_dangling_symbol_asset_references() {
+        let source = GrapesJsCodec::decode_value(json!({
+            "assets": [{ "id": "shared", "src": "/pasted.webp" }],
+            "pages": [{
+                "component": {
+                    "id": "source-root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "pasted-image",
+                        "type": "image",
+                        "attributes": {
+                            "data-fly-asset-id": "shared",
+                            "src": "/pasted.webp"
+                        }
+                    }]
+                }
+            }]
+        }))
+        .expect("source");
+        let fragment =
+            ProjectFragment::from_component(&source, "pasted-image").expect("fragment");
+        let target = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "target-root",
+                    "type": "wrapper",
+                    "components": []
+                }
+            }],
+            "flySymbols": [{
+                "id": "existing-symbol",
+                "components": [{
+                    "id": "symbol-image",
+                    "type": "image",
+                    "attributes": { "data-fly-asset-id": "shared" }
+                }],
+                "assets": []
+            }]
+        }))
+        .expect("target");
+        let mut editor = FlyEditor::new(target, RegistrySet::with_builtins());
+
+        let inserted = fragment
+            .insert(&mut editor, Some("target-root".to_string()), 0)
+            .expect("paste");
+        let pasted = editor.document().component(&inserted[0]).expect("pasted");
+        let pasted_asset_id = pasted.attributes["data-fly-asset-id"]
+            .as_str()
+            .expect("pasted asset id");
+        assert_ne!(pasted_asset_id, "shared");
+        assert_eq!(
+            editor.document().project().extensions["flySymbols"][0]["components"][0]
+                ["attributes"]["data-fly-asset-id"],
+            "shared"
+        );
+        assert!(
+            editor
+                .document()
+                .project()
+                .assets
+                .iter()
+                .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
+                .any(|asset| asset.id == pasted_asset_id && asset.source == "/pasted.webp")
         );
     }
 
