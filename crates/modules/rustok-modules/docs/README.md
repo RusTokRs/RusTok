@@ -1546,7 +1546,9 @@ rejected. More-specific
 explicitly marked globally reachable remain available to an exact host grant;
 the explicitly listed reserved blocks in the
 [IANA global-unicast assignments](https://www.iana.org/assignments/ipv6-unicast-address-assignments)
-are denied.
+are denied. Network-specific RFC 6052 NAT64 prefixes are not dynamically
+discovered; DNS64 deployments must not expose synthesized-only answers to this
+broker until prefix-aware screening is configured.
 Redirects remain disabled and response bytes are streamed under an
 overflow-safe configured ceiling. Zero timeouts and zero response limits are
 rejected during construction.
