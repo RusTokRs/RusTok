@@ -578,16 +578,12 @@ mod write_path_wiring_tests {
         // 2026-10-09) while the canonical evaluator runs alongside it for
         // configured window rules.
         assert!(topic.contains("posting_rate::enforce_new_topic_rate_in_tx"));
-        assert!(
-            topic.contains("posting_policy_enforcement::prepare_topic_create_posting_policy")
-        );
+        assert!(topic.contains("posting_policy_enforcement::prepare_topic_create_posting_policy"));
         assert!(
             topic.contains("posting_policy_enforcement::enforce_prepared_create_posting_policy")
         );
         assert!(reply.contains("posting_rate::enforce_new_reply_rate_in_tx"));
-        assert!(
-            reply.contains("posting_policy_enforcement::prepare_reply_create_posting_policy")
-        );
+        assert!(reply.contains("posting_policy_enforcement::prepare_reply_create_posting_policy"));
         assert!(
             reply.contains("posting_policy_enforcement::enforce_prepared_create_posting_policy")
         );

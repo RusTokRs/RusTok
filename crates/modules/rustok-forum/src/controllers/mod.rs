@@ -169,8 +169,7 @@ impl ForumHttpRuntime {
             db: runtime.db_clone(),
             event_bus,
             audience_facts: runtime.shared_get::<SharedForumAudienceFactsPort>(),
-            posting_policy_facts: runtime
-                .shared_get::<SharedForumPostingPolicyFactsComposer>(),
+            posting_policy_facts: runtime.shared_get::<SharedForumPostingPolicyFactsComposer>(),
             settings_providers,
             taxonomy_port,
         })

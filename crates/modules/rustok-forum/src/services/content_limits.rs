@@ -60,18 +60,18 @@ impl ForumContentLimits {
             max_body_chars: settings.max_post_body_length,
             new_topic_rate_limit_seconds: settings.rate_limit_new_topic_seconds,
             new_reply_rate_limit_seconds: settings.rate_limit_new_reply_seconds,
-            posting_policy_topic_create_limit: settings
-                .posting_policy_topic_create_limit
-                .map(|limit| ForumPostingWindowLimit {
+            posting_policy_topic_create_limit: settings.posting_policy_topic_create_limit.map(
+                |limit| ForumPostingWindowLimit {
                     maximum_count: limit.maximum_count,
                     window_seconds: limit.window_seconds,
-                }),
-            posting_policy_reply_create_limit: settings
-                .posting_policy_reply_create_limit
-                .map(|limit| ForumPostingWindowLimit {
+                },
+            ),
+            posting_policy_reply_create_limit: settings.posting_policy_reply_create_limit.map(
+                |limit| ForumPostingWindowLimit {
                     maximum_count: limit.maximum_count,
                     window_seconds: limit.window_seconds,
-                }),
+                },
+            ),
         }
     }
 

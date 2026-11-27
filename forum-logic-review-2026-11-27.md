@@ -432,3 +432,29 @@ prior audit (which is itself mostly fixed). All five applied findings
 (A1, B1, D2, E1, G1) plus **D1** (posting policy write-path enforcement, wired
 for opt-in window rules with fail-closed semantics) are now source-ready on
 this branch; none of them could be cargo-verified in this environment.
+
+
+## Publication and remote verification
+
+The branch was published and draft PR #4830 opened after user approval.
+`.github/workflows/forum-posting-policy.yml` runs package-scoped formatting,
+compilation/lint and selected unit/SQLite/SEO contracts, not workspace tests.
+
+First remote run: https://github.com/RusTokRs/RusTok/actions/runs/46007770149
+at `b7489f4450ff7e3c60012070d1a68fd014797b74`.
+Rust 1.96.0 setup succeeded. Forum formatting failed; all reported rustfmt
+hunks were applied from the remote diagnostics. Compilation was **cancelled**
+when the PR-triggered run superseded the push run, before Forum compilation
+completed. Clippy and tests were **skipped**, not passed. A fresh run is needed.
+
+Opening the draft automatically queued general repository workflows. An attempt
+to cancel them returned HTTP 403 (`Resource not accessible by integration`), so
+this agent cannot enforce scoped-only execution of automatic repository CI.
+Manual cancellation or Actions-write permission is needed. No required gate is
+waived and this draft is not merge-ready.
+
+Refreshed main was `c1d40f075d7085e65b6e9c45348c56460b61848c`, 225 commits
+ahead of the original base, with no direct overlap in edited files. The host
+posting-facts account-age clock and dispatcher changes retain the composer type
+identity. Dependency changes and newer main still need integration verification;
+this branch has not merged or rebased onto that main revision.

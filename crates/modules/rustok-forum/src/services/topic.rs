@@ -385,7 +385,9 @@ impl TopicService {
         // Read the tombstone-aware row so an owner can still resolve a soft-deleted
         // topic and receive `is_deleted = true`; ordinary readers that must not see
         // deleted topics go through `find_topic` instead.
-        let topic = self.find_topic_including_deleted(tenant_id, topic_id).await?;
+        let topic = self
+            .find_topic_including_deleted(tenant_id, topic_id)
+            .await?;
         let is_deleted = Self::is_topic_deleted(&self.db, tenant_id, topic_id)
             .await?
             .ok_or(ForumError::TopicNotFound(topic_id))?;
@@ -488,18 +490,16 @@ impl TopicService {
                        is_locked, reply_count, created_at, updated_at, last_reply_at";
         let (sql, values) = match backend {
             DatabaseBackend::Postgres => {
-                let mut statement = format!(
-                    "SELECT {columns} FROM forum_topics WHERE tenant_id = $1 AND id = $2",
-                );
+                let mut statement =
+                    format!("SELECT {columns} FROM forum_topics WHERE tenant_id = $1 AND id = $2",);
                 if exclude_deleted {
                     statement.push_str(" AND deleted_at IS NULL");
                 }
                 (statement, vec![tenant_id.into(), topic_id.into()])
             }
             _ => {
-                let mut statement = format!(
-                    "SELECT {columns} FROM forum_topics WHERE tenant_id = ?1 AND id = ?2",
-                );
+                let mut statement =
+                    format!("SELECT {columns} FROM forum_topics WHERE tenant_id = ?1 AND id = ?2",);
                 if exclude_deleted {
                     statement.push_str(" AND deleted_at IS NULL");
                 }
@@ -507,7 +507,10 @@ impl TopicService {
             }
         };
         let stmt = Statement::from_sql_and_values(backend, sql, values);
-        let model = forum_topic::Entity::find().from_raw_sql(stmt).one(db).await?;
+        let model = forum_topic::Entity::find()
+            .from_raw_sql(stmt)
+            .one(db)
+            .await?;
         model.ok_or(ForumError::TopicNotFound(topic_id))
     }
 
@@ -1649,14 +1652,15 @@ impl TopicService {
         // Compose posting-policy facts before the transaction so fact reads
         // never race the writer lock; the decision itself is enforced below,
         // after authorization and the flat cooldown. Inert with default rules.
-        let posting_policy = super::posting_policy_enforcement::prepare_topic_create_posting_policy(
-            self.posting_policy_facts.as_ref(),
-            context.as_ref(),
-            &security,
-            tenant_id,
-            content_limits.posting_policy_rules(),
-        )
-        .await?;
+        let posting_policy =
+            super::posting_policy_enforcement::prepare_topic_create_posting_policy(
+                self.posting_policy_facts.as_ref(),
+                context.as_ref(),
+                &security,
+                tenant_id,
+                content_limits.posting_policy_rules(),
+            )
+            .await?;
 
         let txn = self.db.begin().await?;
         lock_category_tree_in_tx(&txn, tenant_id).await?;

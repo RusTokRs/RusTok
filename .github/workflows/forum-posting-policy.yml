@@ -89,10 +89,10 @@ jobs:
       # downloads can be inaccessible from restricted authoring environments.
       # This reports actual step outcomes and cannot turn a failed job green.
       - name: Publish scoped check diagnostics
-        if: ${{ always() && github.event_name == 'push' }}
+        if: ${{ always() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
         env:
           GH_TOKEN: ${{ github.token }}
-          EVIDENCE_SHA: ${{ github.sha }}
+          EVIDENCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           EVIDENCE_REPOSITORY: ${{ github.repository }}
           STEP_OUTCOMES: ${{ toJSON(steps) }}
         run: |

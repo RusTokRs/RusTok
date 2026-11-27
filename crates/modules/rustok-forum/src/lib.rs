@@ -284,8 +284,8 @@ pub use services::{
     SetForumCategoryTopicCreateAudiencePolicyInput, SetForumCategoryVisibilityPolicyInput,
     SetForumTopicAudiencePolicyInput, SetForumTopicReplyCreateAudiencePolicyInput,
     SetForumUserTrustInput, SharedForumPostingPolicyFactsComposer,
-    SharedForumPostingPolicyOwnerFactPort, SplitForumTopicRepliesInput,
-    SubscriptionService, TopicService, UserStatsService, VoteService,
+    SharedForumPostingPolicyOwnerFactPort, SplitForumTopicRepliesInput, SubscriptionService,
+    TopicService, UserStatsService, VoteService,
 };
 pub use services::{
     BackfillForumTopicMergeRouteAliasesInput, FORUM_TOPIC_RENAMED_ROUTE_REASON,

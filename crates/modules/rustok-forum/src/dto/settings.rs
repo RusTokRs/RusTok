@@ -288,12 +288,7 @@ mod posting_policy_settings_tests {
 
     #[test]
     fn each_window_setting_rejects_zero_and_excessive_values() {
-        for (maximum_count, window_seconds) in [
-            (0, 1),
-            (1_000_001, 1),
-            (1, 0),
-            (1, 2_592_001),
-        ] {
+        for (maximum_count, window_seconds) in [(0, 1), (1_000_001, 1), (1, 0), (1, 2_592_001)] {
             let limit = Some(ForumPostingWindowLimitSettings {
                 maximum_count,
                 window_seconds,
