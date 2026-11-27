@@ -1544,7 +1544,7 @@ dummy, SRv6 and other non-globally-reachable special-purpose IPv6 ranges are
 rejected. More-specific
 [IANA IPv6 special-purpose allocations](https://www.iana.org/assignments/iana-ipv6-special-registry)
 explicitly marked globally reachable remain available to an exact host grant;
-unallocated/reserved ranges in the
+the explicitly listed reserved blocks in the
 [IANA global-unicast assignments](https://www.iana.org/assignments/ipv6-unicast-address-assignments)
 are denied.
 Redirects remain disabled and response bytes are streamed under an
