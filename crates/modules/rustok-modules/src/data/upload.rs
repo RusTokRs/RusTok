@@ -2,10 +2,7 @@
 
 use bytes::Bytes;
 use rustok_storage::{ObjectKey, ObjectScope, ObjectZone};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
-    Value as SqlValue,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use uuid::Uuid;
 
 use super::constants::*;
