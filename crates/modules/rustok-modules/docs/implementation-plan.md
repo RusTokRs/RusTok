@@ -1,5 +1,13 @@
 # Implementation Plan for `rustok-modules`
 
+## Artifact HTTP SSRF and deadline hardening (2026-11-27)
+
+The `platform.http` broker now disables process/system proxies for shared and
+DNS-pinned clients, bounds DNS resolution, and shares one remaining deadline
+across DNS and the complete HTTP exchange. It rejects zero timeout/response
+limits and uses checked response-size arithmetic. Focused source regressions
+were added; compilation, formatting and tests remain pending.
+
 ## Scope
 
 Own the mandatory Core module control plane: identity, releases, marketplace,
