@@ -3703,3 +3703,12 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   PostgreSQL regressions authored; compilation, migration execution and
   contention evidence remain pending. Privileged DDL/restore and remaining
   cross-owner lock ordering are not covered by this change.
+
+- Durable security epoch integrity: migration 000102 validates the existing
+  singleton under writer admission, rejects ordinary SQL reset/removal/reinsert,
+  non-successor updates and metadata-only changes. Exact unchanged updates
+  preserve SQLite writer reservation. No reseed or destructive downgrade.
+  SQLite and opt-in PostgreSQL regressions cover rollback, stale epoch rejection,
+  invalid baselines and concurrent commit admission; compilation and runtime
+  checks remain unrun. Privileged restore and remaining global lock edges are
+  not covered.

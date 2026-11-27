@@ -96,6 +96,7 @@ mod m20261127_000098_registry_platform_lock_order;
 mod m20261127_000099_registry_release_fk_fences;
 mod m20261127_000100_registry_request_fk_fences;
 mod m20261127_000101_registry_authority_witness_integrity;
+mod m20261127_000102_security_epoch_integrity;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -199,6 +200,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261127_000099_registry_release_fk_fences::Migration),
         Box::new(m20261127_000100_registry_request_fk_fences::Migration),
         Box::new(m20261127_000101_registry_authority_witness_integrity::Migration),
+        Box::new(m20261127_000102_security_epoch_integrity::Migration),
     ]
 }
 

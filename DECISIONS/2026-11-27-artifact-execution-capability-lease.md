@@ -257,12 +257,17 @@ FOR SHARE epoch lock through commit; quarantine/revoke acquire FOR UPDATE
 before security state writes. SQLite reserves its writer before reading the
 epoch. Finalization discovers and revalidates its checkpoint under the platform
 fence before acquiring the epoch and reserving the FK-bearing receipt; exact
-replay is checked again after waiting. Security operation receipts remain
-private admission fences before the slug, with no new receipt acquired below
-the epoch. Watchdog and operator failure/recovery paths do not grant new
+replay is checked again after waiting. Security operations inspect exact receipts after the platform slug fence;
+new quarantine/revoke receipts are reserved after the exclusive epoch, while
+completed exact replay does not acquire the epoch. Watchdog and operator failure/recovery paths do not grant new
 execution authority and retain their existing revision CAS behavior.
 The epoch increment returns its exact successor with UPDATE RETURNING and
-rejects exhausted signed-integer storage without mutation. Cross-owner
+rejects exhausted signed-integer storage without mutation. Migration 000102
+preserves the existing singleton under ordinary DML: only exact successor
+updates and unchanged rows are allowed; insertion, removal, reset and
+metadata-only changes are refused. SQLite reservation remains an unchanged
+update. Invalid baseline requires offline recovery, not reseeding. Privileged
+DDL and database restoration remain outside this contract. Cross-owner
 ordering beyond this slice remains open; emergency mutations may wait for
 an already admitted SQL transition to commit, not for external execution.
 Migration 000098 preserves existing witness revisions; stop old writers and

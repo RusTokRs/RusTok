@@ -290,3 +290,9 @@ replacement). PostgreSQL release triggers fail rather than wait for contended
 activation/witness relation locks or an existing witness row. This is a DML
 integrity fence, not protection against privileged DDL or database restoration.
 Source regressions are unrun.
+
+Security epoch migration 000102 protects the existing singleton from ordinary
+SQL deletion, replacement, reset, skipped successors and metadata-only changes.
+Exact no-op updates remain legal for SQLite writer admission. The baseline is
+validated, not recreated; privileged DDL and restore are outside the fence.
+SQLite and opt-in PostgreSQL regressions are authored, unrun.

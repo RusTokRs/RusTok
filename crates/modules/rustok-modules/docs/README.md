@@ -1191,6 +1191,12 @@ replays still require the transaction-bound host authority at commit.
 Finalization rechecks exact receipt replay after waiting on the platform
 fence, then acquires the epoch before the FK-bearing receipt. Epoch advancement
 returns the exact assigned successor and fails closed on exhaustion.
+Migration 000102 preserves the singleton and accepts only an exact successor
+or an unchanged row (including SQLite writer reservation). Direct insertion,
+deletion, PostgreSQL truncation, epoch reset, skipped values and metadata-only
+changes are rejected. Existing invalid or absent baselines block migration;
+no automatic reseed. Ordinary DML integrity does not cover privileged DDL or
+restoration of an older database. Drain writers before migration.
 This is not a guarantee of global deadlock freedom or of immediate interruption
 of an admitted transaction. PostgreSQL and SQLite regressions are authored,
 not executed.
