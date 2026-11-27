@@ -155,6 +155,9 @@ fn rbac_invalidation_uses_one_transactionally_reserved_generation_sequence() {
         );
     }
     assert!(exports.contains("reserve_permission_invalidation_generation"));
+    assert!(exports.contains("flush_static_relation_invalidation_generation"));
+    assert!(generation.contains("rustok_rbac::flush_static_relation_invalidation_generation(db)"));
+    assert!(!committed.contains("reserve_rbac_invalidation_generation(&tx)"));
     assert!(exports.contains("read_permission_invalidation_generation"));
 
     assert!(!rbac.contains("bump_cache_backend_generation"));
@@ -163,10 +166,15 @@ fn rbac_invalidation_uses_one_transactionally_reserved_generation_sequence() {
     assert!(rbac.contains("DurableCacheInvalidationRecord::new("));
     assert!(rbac.contains("            generation,"));
 
-    for mutation in [&committed, &admin, &repair] {
+    for (mutation, watermark) in [
+        (&committed, "flush_rbac_static_relation_generation(&tx)"),
+        (&admin, "flush_rbac_static_relation_generation(&tx)"),
+        (&admin, "reserve_rbac_invalidation_generation(&tx)"),
+        (&repair, "reserve_rbac_invalidation_generation(&tx)"),
+    ] {
         let reserve = mutation
-            .find("reserve_rbac_invalidation_generation(&tx)")
-            .expect("committed RBAC mutation must reserve durable generation");
+            .find(watermark)
+            .expect("committed RBAC mutation must establish a durable generation");
         let commit = mutation[reserve..]
             .find("tx.commit()")
             .map(|offset| reserve + offset)

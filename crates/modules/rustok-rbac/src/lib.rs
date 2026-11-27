@@ -31,6 +31,7 @@ mod m20261127_000016_fence_artifact_catalog_parents;
 mod m20261127_000017_couple_artifact_grant_generation;
 mod m20261127_000206_preserve_artifact_operation_witnesses;
 mod m20261127_000207_couple_static_relation_generation;
+mod m20261127_000208_fence_static_relation_rowids;
 mod membership_revision;
 pub mod module;
 pub mod ports;

@@ -300,7 +300,7 @@ async fn concurrent_generation_reservations_are_unique_contiguous_and_committed(
         let generation_after = rustok_rbac::read_permission_invalidation_generation(&db_a).await?;
         if generation_after != generation_before + 8 {
             return Err(format!(
-                "committed generation ended at {generation_after}, expected at least {}",
+                "committed generation ended at {generation_after}, expected {}",
                 generation_before + 8
             )
             .into());

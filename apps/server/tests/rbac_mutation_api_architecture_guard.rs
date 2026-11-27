@@ -163,7 +163,7 @@ fn committed_role_replacement_delegates_authority_before_generation_bump() {
     let committed = source("apps/server/src/services/rbac_committed_mutations.rs");
     let owner = source("crates/modules/rustok-rbac/src/role_mutation.rs");
     for required in [
-        "replace_persisted_user_role_on(&tx",
+        "rustok_rbac::replace_persisted_user_role_on(",
         "if !changed",
         "exact_single_role_replacement_is_a_generation_noop",
         "matching_role_among_multiple_assignments_is_not_treated_as_noop",
@@ -187,7 +187,7 @@ fn committed_role_replacement_delegates_authority_before_generation_bump() {
         .unwrap();
     let noop = committed.find("if !changed").unwrap();
     let reserve = committed
-        .find("reserve_rbac_invalidation_generation(&tx)")
+        .find("flush_rbac_static_relation_generation(&tx)")
         .unwrap();
     assert!(delegate < noop && noop < reserve);
     for required in [

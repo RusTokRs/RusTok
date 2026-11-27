@@ -211,3 +211,10 @@ replacement and repair notification markers remain conservative additional
 advances pending consumer migration. Generation is a recovery watermark, not
 an operation counter; gaps require namespace-wide reconciliation. Drain old
 writers before applying. No uncertain commit retry. Source tests unrun.
+
+SQLite additionally guards hidden rowid changes and insert collisions on static
+relation tables. With recursive triggers disabled, REPLACE could otherwise
+remove a different authority owner's relation without its DELETE-trigger history.
+The guard rejects all rowid aliases and uses explicit ABORT; normal UUID-keyed
+writes remain unchanged. Migration m20261127_000208_fence_static_relation_rowids is forward-only; source regression
+unrun.

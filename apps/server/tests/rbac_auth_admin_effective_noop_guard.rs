@@ -88,21 +88,24 @@ fn auth_admin_status_and_row_writes_follow_effective_change() {
     let invalidation = update
         .find("let invalidates_authorization = role_mutation_plan.is_some() || status_changed;")
         .expect("effective invalidation decision must exist");
+    let flush = update
+        .find("flush_rbac_static_relation_generation(&tx)")
+        .expect("effective role change must flush its relation generation");
     let reserve = update
         .find("reserve_rbac_invalidation_generation(&tx)")
-        .expect("effective change must reserve a generation");
+        .expect("status-only change must reserve a generation");
 
     assert!(lock < status);
     assert!(status < plan);
     assert!(plan < row_update);
     assert!(row_update < invalidation);
-    assert!(invalidation < reserve);
+    assert!(invalidation < flush && flush < reserve);
     let response_role = update.find("let final_role = match role_mutation_plan.as_ref()")
         .expect("response role must be resolved");
     let response_tenant = update.find("let tenant_name = self.tenant_name(&tx, context.tenant_id)")
         .expect("response tenant must be resolved");
     let deadline = update.rfind("self.ensure_user_admin_credential_deadline(&tx, credential_deadline)")
         .expect("credential deadline must be checked at commit");
-    assert!(response_role < reserve && response_tenant < reserve);
+    assert!(response_role < flush && response_tenant < flush);
     assert!(reserve < deadline);
 }

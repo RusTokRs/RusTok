@@ -770,3 +770,9 @@ replacement and repair notification markers remain conservative additional
 advances pending consumer migration. Generation is a recovery watermark, not
 an operation counter; gaps require namespace-wide reconciliation. Drain old
 writers before applying. No uncertain commit retry. Source tests unrun.
+
+- SQLite static relation rowid guards (m20261127_000208_fence_static_relation_rowids) prohibit hidden-rowid changes
+  and colliding inserts even with recursive triggers disabled and REPLACE/IGNORE.
+  The purpose is to preserve existing per-owner revision and global generation
+  coverage when the conflict victim would otherwise bypass DELETE triggers.
+  Normal owner inserts/updates/deletes remain supported. Source regression unrun.
