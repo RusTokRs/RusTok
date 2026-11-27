@@ -163,7 +163,7 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                     ),
                     ..RelayConfig::default()
                 };
-            relay_policy_config.validate()
+            relay_policy_config.verify_execution_admission(&ctx.db_clone()).await
                 .map_err(|error| Error::BadRequest(error.to_string()))?;
             let artifact_projector = ModuleControlPlane::new(ctx.db_clone())
                 .artifact_event_projector(ArtifactEventDeliveryConfig::default())

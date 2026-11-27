@@ -327,6 +327,35 @@ async fn relay_claims_only_available_slots_and_reports_each_clone_pass() -> Test
 }
 
 #[tokio::test]
+async fn independent_relays_share_durable_capacity_and_ttl() -> TestResult<()> {
+    let db = setup_sqlite_db().await?;
+    db.execute_unprepared("UPDATE outbox_execution_policy SET max_in_flight = 2 WHERE id = 1").await?;
+    for _ in 0..4 { seed_event(&db).await?; }
+    let target = Arc::new(GatedTransport { entered: Semaphore::new(0), release: Semaphore::new(0) });
+    let config = RelayConfig { batch_size: 4, max_concurrency: 2, ..Default::default() };
+    let first = OutboxRelay::new(db.clone(), target.clone()).with_config(config.clone());
+    let other = OutboxRelay::new(db.clone(), Arc::new(MockTransport::default())).with_config(config.clone());
+    let mismatched = OutboxRelay::new(db.clone(), Arc::new(MockTransport::default())).with_config(RelayConfig {
+        claim_ttl: std::time::Duration::from_secs(120), ..config
+    });
+    let pass = tokio::spawn(async move { first.process_pending_once(None).await });
+    tokio::time::timeout(std::time::Duration::from_secs(5), target.entered.acquire_many(2))
+        .await?.expect("gate open").forget();
+    assert_eq!(other.process_pending_once(None).await?, 0);
+    assert!(mismatched.process_pending_once(None).await.is_err());
+    target.release.add_permits(1);
+    tokio::time::timeout(std::time::Duration::from_secs(5), target.entered.acquire())
+        .await?.expect("sliding-window refill").forget();
+    let claimed = entity::Entity::find()
+        .filter(entity::Column::ClaimedBy.is_not_null()).all(&db).await?;
+    assert_eq!(claimed.len(), 2);
+    target.release.add_permits(3);
+    assert_eq!(pass.await??, 4);
+    assert_eq!(other.process_pending_once(None).await?, 0);
+    Ok(())
+}
+
+#[tokio::test]
 async fn relay_processes_baseline_batch_with_bounded_latency() -> TestResult<()> {
     let db = setup_sqlite_db().await?;
     for _ in 0..32 {

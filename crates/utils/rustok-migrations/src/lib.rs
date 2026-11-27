@@ -76,6 +76,7 @@ mod composition {
     mod m20261127_000010_fence_session_history_parents;
     mod m20261127_000011_session_evidence_integrity;
     mod m20261127_000200_create_outbox_temporal_clock;
+    mod m20261127_000201_create_outbox_execution_policy;
 
     #[cfg(test)]
     mod contract_tests;
@@ -528,6 +529,9 @@ mod composition {
         ));
         all.push(Box::new(
             m20261127_000200_create_outbox_temporal_clock::Migration,
+        ));
+        all.push(Box::new(
+            m20261127_000201_create_outbox_execution_policy::Migration,
         ));
         all
     }

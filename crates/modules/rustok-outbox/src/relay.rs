@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use chrono::{DateTime, Utc};
 use sea_orm::{
     ColumnTrait, Condition, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait,
+    DatabaseTransaction, PaginatorTrait, QueryOrder, QuerySelect, Set, Statement, TransactionTrait,
     sea_query::{LockBehavior, LockType},
 };
 use serde_json::from_value;
@@ -22,7 +22,7 @@ use crate::ports::OutboxRelayRunOnceProjection;
 /// Upper bound on rows claimed in one relay pass. Matches the server
 /// runtime cap so a library caller cannot materialise an unbounded batch.
 pub const MAX_RELAY_BATCH_SIZE: u64 = 10_000;
-/// Upper bound on simultaneous dispatches across one relay's clones.
+/// Upper bound on local and cluster-policy simultaneous dispatches.
 pub const MAX_RELAY_CONCURRENCY: usize = 1_024;
 const MAX_RELAY_INTERVAL: Duration = Duration::from_secs(3650 * 86_400);
 
@@ -114,10 +114,66 @@ impl RelayConfig {
                     .to_string(),
             ));
         }
+        if self.claim_ttl.subsec_nanos() % 1_000_000 != 0 {
+            return Err(Error::Validation("outbox claim_ttl must use whole milliseconds".to_string()));
+        }
         if self.claim_ttl > MAX_RELAY_INTERVAL || self.backoff_max > MAX_RELAY_INTERVAL {
             return Err(Error::Validation("outbox relay intervals must not exceed 3650 days".to_string()));
         }
         Ok(())
+    }
+
+    /// Verify the durable shared policy before starting broker resources.
+    pub async fn verify_execution_admission(&self, db: &DatabaseConnection) -> Result<()> {
+        self.validate()?;
+        let txn = db.begin().await?;
+        self.lock_execution_policy(&txn).await?;
+        rustok_outbox_storage::database_now(&txn).await?;
+        txn.commit().await?;
+        Ok(())
+    }
+
+    // Lock order: execution policy -> sys_events. No broker I/O under
+    // this lock. READ COMMITTED sees all preceding committed admissions.
+    async fn lock_execution_policy(&self, txn: &DatabaseTransaction) -> Result<u64> {
+        let backend = txn.get_database_backend();
+        if backend == DatabaseBackend::Postgres {
+            txn.execute_unprepared("SET TRANSACTION ISOLATION LEVEL READ COMMITTED").await?;
+        }
+        let locked = txn.execute_unprepared(
+            "UPDATE outbox_execution_policy SET max_in_flight = max_in_flight WHERE id = 1",
+        ).await?;
+        if locked.rows_affected() != 1 {
+            return Err(Error::External("outbox execution policy is missing".to_string()));
+        }
+        let row = txn.query_one_raw(Statement::from_string(backend,
+            "SELECT max_in_flight, claim_ttl_ms FROM outbox_execution_policy WHERE id = 1".to_string(),
+        )).await?.ok_or_else(|| Error::External("outbox execution policy is missing".to_string()))?;
+        let cap: i64 = row.try_get("", "max_in_flight")?;
+        let persisted_ttl: Option<i64> = row.try_get("", "claim_ttl_ms")?;
+        let ttl = i64::try_from(self.claim_ttl.as_millis())
+            .map_err(|_| Error::Validation("outbox claim TTL is out of range".to_string()))?;
+        if !(1..=MAX_RELAY_CONCURRENCY as i64).contains(&cap) || ttl <= 1 {
+            return Err(Error::Validation("invalid durable outbox execution policy".to_string()));
+        }
+        match persisted_ttl {
+            Some(value) if value != ttl => return Err(Error::Validation(
+                "outbox relay claim_ttl differs from durable execution policy; coordinated reconfiguration required".to_string(),
+            )),
+            Some(_) => {}
+            None => {
+                let sql = match backend {
+                    DatabaseBackend::Postgres => "UPDATE outbox_execution_policy SET claim_ttl_ms = $1 WHERE id = 1 AND claim_ttl_ms IS NULL",
+                    DatabaseBackend::Sqlite => "UPDATE outbox_execution_policy SET claim_ttl_ms = ? WHERE id = 1 AND claim_ttl_ms IS NULL",
+                    _ => return Err(Error::Validation("unsupported outbox execution backend".to_string())),
+                };
+                let changed = txn.execute_raw(Statement::from_sql_and_values(backend, sql, [ttl.into()])).await?;
+                if changed.rows_affected() != 1 {
+                    return Err(Error::External("outbox execution policy initialization lost".to_string()));
+                }
+            }
+        }
+        Ok(cap as u64)
     }
 }
 
@@ -279,62 +335,67 @@ impl OutboxRelay {
             retry_total: 0, dlq_total: 0, processed_total: 0,
         };
 
-        while report.claimed_count < batch_size {
-            // Reserve no more rows than can begin dispatch in this wave.
-            // A forward-only cursor prevents reprocessing a row in this pass,
-            // even if an operator requeues it or its retry delay elapses.
-            let limit = (batch_size - report.claimed_count).min(self.config.max_concurrency);
-            let claimed = self.claim_batch(limit as u64, eligible_at, cursor).await?;
-            if claimed.is_empty() {
-                break;
-            }
-            cursor = claimed.last().map(|row| (row.created_at, row.id));
-            report.claimed_count += claimed.len();
-
-            let mut tasks = tokio::task::JoinSet::new();
-            let mut first_error = None;
-            for model in claimed {
-                let relay = self.clone();
-                let task_guard = Arc::clone(&guard);
-                tasks.spawn(async move {
-                    let _guard = task_guard;
-                    relay.process_claimed_event(&model).await
-                });
-            }
-            while let Some(result) = tasks.join_next().await {
-                match result {
-                    Ok(Ok(outcome)) => {
-                        report.processed_total += 1;
-                        match outcome {
-                            DispatchOutcome::Succeeded => report.success_total += 1,
-                            DispatchOutcome::Retried => {
-                                report.failure_total += 1;
-                                report.retry_total += 1;
-                            }
-                            DispatchOutcome::DeadLettered => {
-                                report.failure_total += 1;
-                                report.dlq_total += 1;
-                            }
+        let mut tasks = tokio::task::JoinSet::new();
+        let mut first_error = None;
+        loop {
+            if first_error.is_none() && report.claimed_count < batch_size
+                && tasks.len() < self.config.max_concurrency
+            {
+                let limit = (batch_size - report.claimed_count)
+                    .min(self.config.max_concurrency - tasks.len());
+                // A claim error must not abort already running publications.
+                match self.claim_batch(limit as u64, eligible_at, cursor).await {
+                    Ok(claimed) => {
+                        if let Some(last) = claimed.last() {
+                            cursor = Some((last.created_at, last.id));
+                        }
+                        report.claimed_count += claimed.len();
+                        for model in claimed {
+                            let relay = self.clone();
+                            let task_guard = Arc::clone(&guard);
+                            tasks.spawn(async move {
+                                let _guard = task_guard;
+                                relay.process_claimed_event(&model).await
+                            });
                         }
                     }
-                    Ok(Err(error)) => {
-                        if first_error.is_none() {
-                            first_error = Some(error);
+                    Err(error) => first_error = Some(error),
+                }
+            }
+            // If other processes own the capacity, return rather than spin.
+            let Some(result) = tasks.join_next().await else { break };
+            match result {
+                Ok(Ok(outcome)) => {
+                    report.processed_total += 1;
+                    match outcome {
+                        DispatchOutcome::Succeeded => report.success_total += 1,
+                        DispatchOutcome::Retried => {
+                            report.failure_total += 1;
+                            report.retry_total += 1;
                         }
-                    }
-                    Err(error) => {
-                        tracing::error!(error = ?error, "Outbox relay dispatch task failed");
-                        if first_error.is_none() {
-                            first_error = Some(Error::External(format!(
-                                "outbox relay dispatch task failed: {error}"
-                            )));
+                        DispatchOutcome::DeadLettered => {
+                            report.failure_total += 1;
+                            report.dlq_total += 1;
                         }
                     }
                 }
+                Ok(Err(error)) => {
+                    if first_error.is_none() {
+                        first_error = Some(error);
+                    }
+                }
+                Err(error) => {
+                    tracing::error!(error = ?error, "Outbox relay dispatch task failed");
+                    if first_error.is_none() {
+                        first_error = Some(Error::External(format!(
+                            "outbox relay dispatch task failed: {error}"
+                        )));
+                    }
+                }
             }
-            if let Some(error) = first_error {
-                return Err(error);
-            }
+        }
+        if let Some(error) = first_error {
+            return Err(error);
         }
         Ok(report)
     }
@@ -352,15 +413,22 @@ impl OutboxRelay {
     ) -> Result<Vec<entity::Model>> {
         let txn = self.db.begin().await?;
         let backend = txn.get_database_backend();
-        if backend == DatabaseBackend::Sqlite {
-            // Avoid upgrading a stale read snapshot into a writer.
-            txn.execute_unprepared("UPDATE sys_events SET claimed_at = claimed_at WHERE 1 = 0")
-                .await?;
-        }
+        let cap = self.config.lock_execution_policy(&txn).await?;
         let claim_ttl = chrono::Duration::from_std(self.config.claim_ttl)
             .map_err(|_| Error::Validation("outbox relay claim_ttl is out of range".to_string()))?;
         let stale_before = eligible_at.checked_sub_signed(claim_ttl)
             .ok_or_else(|| Error::Validation("outbox relay lease cutoff is out of range".to_string()))?;
+        // Count live reservations using the same conservative horizon
+        // as the reclaim query, under the shared policy writer lock.
+        let active = entity::Entity::find()
+            .filter(entity::Column::Status.eq(SysEventStatus::Pending))
+            .filter(entity::Column::ClaimedAt.gt(stale_before))
+            .count(&txn).await?;
+        let batch_size = batch_size.min(cap.saturating_sub(active));
+        if batch_size == 0 {
+            txn.commit().await?;
+            return Ok(Vec::new());
+        }
         // Fencing owner for this claim pass: unique per pass, so two relay
         // processes configured with the same worker_id (and two passes of
         // the same process) can never complete each other's claims. The
@@ -455,6 +523,19 @@ impl OutboxRelay {
             )));
         }
         let txn = self.db.begin().await?;
+        self.config.lock_execution_policy(&txn).await?;
+        // Do not hold the global admission lock while waiting for an event.
+        if txn.get_database_backend() == DatabaseBackend::Postgres {
+            let row = entity::Entity::find_by_id(model.id)
+                .filter(entity::Column::Status.eq(SysEventStatus::Pending))
+                .filter(entity::Column::ClaimedBy.eq(model.claimed_by.clone()))
+                .filter(entity::Column::ClaimedAt.eq(model.claimed_at))
+                .lock_with_behavior(LockType::Update, LockBehavior::Nowait)
+                .one(&txn).await?;
+            if row.is_none() {
+                return Err(Error::External(format!("outbox event {} claim was lost before refresh", model.id)));
+            }
+        }
         // Acquire the exact pending row before observing its remaining time.
         let locked = entity::Entity::update_many()
             .filter(entity::Column::Id.eq(model.id))

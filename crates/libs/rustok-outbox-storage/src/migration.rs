@@ -15,10 +15,12 @@ impl MigrationTrait for SysEventsMigration {
         add_sys_events_integrity_checks(manager).await?;
         create_owner_operation_receipts_table(manager).await?;
         create_sys_event_consumer_tables(manager).await?;
-        create_outbox_temporal_clock(manager).await
+        create_outbox_temporal_clock(manager).await?;
+        create_outbox_execution_policy(manager).await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        drop_outbox_execution_policy(manager).await?;
         drop_outbox_temporal_clock(manager).await?;
         drop_sys_event_consumer_tables(manager).await?;
         drop_owner_operation_receipts_table(manager).await?;
@@ -707,5 +709,42 @@ impl MigrationTrait for OutboxTemporalClockMigration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         drop_outbox_temporal_clock(manager).await
+    }
+}
+
+/// A single deployment policy serializes claim reservation and live refresh.
+/// The canonical execution permits remain the pending event claim columns.
+pub async fn create_outbox_execution_policy(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let db = manager.get_connection();
+    db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS outbox_execution_policy (id INTEGER PRIMARY KEY CHECK (id = 1), max_in_flight BIGINT NOT NULL CHECK (max_in_flight BETWEEN 1 AND 1024), claim_ttl_ms BIGINT CHECK (claim_ttl_ms BETWEEN 2 AND 315360000000))",
+    ).await?;
+    db.execute_unprepared(
+        "INSERT INTO outbox_execution_policy (id, max_in_flight, claim_ttl_ms) VALUES (1, 8, NULL) ON CONFLICT (id) DO NOTHING",
+    ).await?;
+    db.execute_unprepared(
+        "CREATE INDEX IF NOT EXISTS idx_sys_events_execution_claims ON sys_events (status, claimed_at) WHERE claimed_at IS NOT NULL",
+    ).await?;
+    Ok(())
+}
+
+pub async fn drop_outbox_execution_policy(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let db = manager.get_connection();
+    db.execute_unprepared("DROP INDEX IF EXISTS idx_sys_events_execution_claims").await?;
+    db.execute_unprepared("DROP TABLE IF EXISTS outbox_execution_policy").await?;
+    Ok(())
+}
+
+#[derive(DeriveMigrationName)]
+pub struct OutboxExecutionPolicyMigration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for OutboxExecutionPolicyMigration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        create_outbox_execution_policy(manager).await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        drop_outbox_execution_policy(manager).await
     }
 }

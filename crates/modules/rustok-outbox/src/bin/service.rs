@@ -22,6 +22,8 @@ async fn main() -> Result<()> {
 
     let relay_config = relay_config_from_env()?;
     let database = open_database(&env::var(DATABASE_ENV).context(DATABASE_ENV)?).await?;
+    relay_config.verify_execution_admission(&database).await
+        .map_err(|error| anyhow!("Outbox execution policy preflight failed: {error}"))?;
     let config_path = env::var_os(IGGY_CONFIG_ENV).context(IGGY_CONFIG_ENV)?;
     let config = read_broker_config(Path::new(&config_path)).await?;
     let broker = Arc::new(
