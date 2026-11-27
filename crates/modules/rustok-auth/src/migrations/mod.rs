@@ -26,6 +26,7 @@ mod m20261126_000063_bind_invite_issuer_recovery_revision;
 mod m20261127_000002_bind_invite_membership_revision;
 mod m20261127_000004_bind_invite_role_grant_revision;
 mod m20261127_000005_bind_invite_module_policy;
+mod m20261127_000007_fence_auth_credential_parents;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -73,6 +74,9 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     ));
     migrations.push(Box::new(
         m20261127_000005_bind_invite_module_policy::Migration,
+    ));
+    migrations.push(Box::new(
+        m20261127_000007_fence_auth_credential_parents::Migration,
     ));
     migrations
 }

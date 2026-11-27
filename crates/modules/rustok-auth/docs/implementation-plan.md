@@ -685,3 +685,12 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   artifact-runtime authority and prove cross-module lock ordering (including
   tenant active state and all bulk credential revocation paths). Compile
   and PostgreSQL contention/revocation tests remain unrun.
+
+- PostgreSQL credential FK parent admission (migration 000007): app tenant,
+  token/code/consent tenant/app/user, translation app, deferred refresh-family
+  root, invite issuer/consumption and email-change user references use
+  nonblocking parent guards. Existing FK/lineage constraints and nullable
+  cascades remain in place. Metadata-only mutations do not add earlier locks.
+  PostgreSQL contention, successful retry and user cascade regression authored,
+  unrun. Session refresh history, bulk parent deletes, all owner receipt/outbox
+  and global cross-owner lock order remain separate open boundaries.

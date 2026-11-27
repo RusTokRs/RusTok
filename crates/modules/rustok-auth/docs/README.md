@@ -1133,3 +1133,19 @@ in force. This does not bind the initiating session/JWT or delegated access
 registration to the write: the current admin port lacks that evidence. Other
 RBAC writers, artifact grants and cross-owner lock order still require audit.
 Source regressions authored; compilation and PostgreSQL contention unverified.
+
+### Auth credential FK admission
+
+Migration 000007 guards PostgreSQL OAuth app tenant references, credential
+app/user/tenant references, application translations, deferred family root
+references, invite issuance/consumption and email-change requests. Acquire
+FK-compatible KEY SHARE NOWAIT before a late FK check, in tenant/app/user/root
+order where applicable. This is referential admission, not active credential
+or permission authorization. Existing lineage and FK constraints still apply.
+Unchanged references, metadata-only revocation and nullable user SET NULL
+cascades do not acquire a new parent lock. Missing/invisible parents fail
+closed; busy parents reject with SQLSTATE 55P03. Retry from a fresh transaction.
+SQLite retains its serialized writer and existing guards. PostgreSQL regression
+source covers contention, canonical reuse, metadata and user cascade; compile,
+migration and runtime verification are pending. Session/history and broader
+bulk revocation, administrative receipt and outbox ordering remain open.

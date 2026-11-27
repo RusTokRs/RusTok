@@ -87,3 +87,11 @@ users, sessions and OAuth grants are not deleted by migration.
 Verify fresh/incremental PostgreSQL and SQLite, no-op writes, mailbox/status
 ABA, password rehash, simultaneous confirmation and rollback. Source
 regressions are unrun; no deployment readiness is claimed.
+
+PostgreSQL Auth migration 000007 also protects invite issuance, invite
+consumption and email-change request FK references with nonblocking parent
+locks, rejecting missing/invisible or contended parents. Nullable user
+SET NULL cascades do not discover a new parent; no recovery revision is
+advanced by a pure FK fence. Existing recovery and invitation authority
+checks remain mandatory. Contention requires a fresh transaction. Source
+regression authored; runtime and other cross-owner ordering remain open.

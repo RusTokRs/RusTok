@@ -258,3 +258,19 @@ is carried in the owner context.
 The host still depends on its request scope for provenance, permission ceiling
 and invalidation. A fully scope-independent capability and inter-owner
 lock verification are separate remaining work. Compilation and tests unrun.
+
+## Credential FK parent admission (2026-11-27)
+
+Migration 000007 adds PostgreSQL BEFORE guards for OAuth application tenant,
+credential tenant/app/user and translation app FK references. The token
+INSERT additionally retains the non-self family root with KEY SHARE NOWAIT
+before the existing lineage validation and deferred root FK. The deferred
+FK remains authoritative; its check must not be the first root lock at commit.
+Parent contention rejects with SQLSTATE 55P03 rather than waiting from a late
+child write. Missing/invisible parents reject; unchanged references and
+metadata-only revocation do not acquire new locks. These are FK locks, not
+proof of active tenant/app/user, current consent or authorization. The existing
+owner mutation and credential clock checks remain necessary. SQLite retains
+its serialized writer and existing lineage guards. Deploy the migration with
+coordinated writer rollout; PostgreSQL runtime/compile and cross-owner ordering
+remain unverified.
