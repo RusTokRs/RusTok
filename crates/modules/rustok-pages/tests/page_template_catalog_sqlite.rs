@@ -311,6 +311,20 @@ async fn preview_rejects_site_symbols_whose_stored_identity_does_not_match_conte
     }));
     active.update(&db).await?;
 
+    let save_error = service
+        .save(
+            tenant,
+            &actor,
+            "site",
+            "en",
+            vec!["header".into()],
+            vec![],
+            None,
+        )
+        .await
+        .expect_err("layout save must reject a mismatched stored symbol identity");
+    assert!(save_error.to_string().contains("identity mismatch"));
+
     let source = json!({
         "pages": [{
             "id": "home",
