@@ -480,7 +480,11 @@ revision CAS, platform authorization, exact idempotency replay, and outbox
 events. The owner calls the host authorizer inside the transition transaction,
 before replay and before taking the platform slug activation lock; the host
 must retain direct credential and current RBAC row fences through commit.
-Therefore an exact idempotency replay still requires current authorization.
+The owner then calls the host's final authority check immediately before both
+new-state and exact-replay commits, after lock waits and all writes, so a
+time-bounded direct credential cannot expire while the transaction is pending.
+Therefore an exact idempotency replay still requires current authorization
+and a still-live credential at its commit boundary.
 The read-only security resolver feeds effective policy with redacted
 status/revision/release facts; quarantine and revoke block new execution, while
 a revoked state cannot be cleared.

@@ -3555,8 +3555,12 @@ authenticated actor to a tenant-independent command envelope.
 
 The host authorizer revalidates the direct credential and current RBAC grants
 inside the owner transaction, taking tenant/user/session/policy/role fences
-before the platform release-slug lock and retaining them through commit.
-Exact idempotency replay also requires current authorization. All mutations
+before the platform release-slug lock and retaining them through commit. The
+owner also calls a final host authority check immediately before both new-state
+and exact-replay commits; the host rechecks the earliest credential deadline
+after slug-lock waits and all writes, rolling back state, receipt and outbox if
+the credential has expired. Exact idempotency replay also requires current
+authorization. All mutations
 retain the owner-issued idempotency receipt and outbox evidence, and successful
 changes evict every tenant entry from the process-local effective policy cache.
 Marketplace yanking and external-provenance quarantine remain separate controls.

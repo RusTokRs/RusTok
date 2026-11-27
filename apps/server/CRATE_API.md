@@ -38,7 +38,7 @@
   carries a non-nil `changed_by`; GraphQL maps it to a permission error rather
   than an internal failure.
 
-- Global artifact release security uses ModuleControlPlane and a platform-scoped owner command context. The server requires a direct user session, matching tenant, and modules:manage in the request snapshot. The owner invokes the authorizer inside the same fenced DatabaseTransaction used for the state, receipt and outbox write; the server provider locks direct-session credentials and authoritative RBAC role/policy rows through commit. expectedRevision is a decimal string at the transport boundary to preserve u64 precision; policyRevision is caller-provided audit/idempotency metadata, not authorization proof.
+- Global artifact release security uses ModuleControlPlane and a platform-scoped owner command context. The server requires a direct user session, matching tenant, and modules:manage in the request snapshot. The owner invokes the authorizer inside the same fenced DatabaseTransaction used for the state, receipt and outbox write; the server provider locks direct-session credentials and authoritative RBAC role/policy rows through commit. The owner also invokes the host's final authority check immediately before both new-state and exact-replay commits, so the earliest credential deadline is rechecked after slug-lock waits and all writes. expectedRevision is a decimal string at the transport boundary to preserve u64 precision; policyRevision is caller-provided audit/idempotency metadata, not authorization proof.
 
 ## Common AI Mistakes
 - Reintroducing framework-global context instead of passing the explicit server runtime context.

@@ -213,6 +213,15 @@ pub trait ModuleArtifactSecurityAuthorizer: Send + Sync {
         transaction: &DatabaseTransaction,
         command: &ModuleArtifactSecurityCommand,
     ) -> Result<(), ModuleArtifactSecurityError>;
+
+    /// Recheck time-bounded authority immediately before each successful
+    /// commit, after owner lock waits and writes. This also applies to exact
+    /// idempotency replays, whose authorization must not expire while waiting.
+    async fn ensure_authority_at_commit(
+        &self,
+        transaction: &DatabaseTransaction,
+        command: &ModuleArtifactSecurityCommand,
+    ) -> Result<(), ModuleArtifactSecurityError>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -387,6 +396,9 @@ where
         if let Some(receipt) =
             reserve_operation(&transaction, &command.context, action, &request_digest).await?
         {
+            self.authorizer
+                .ensure_authority_at_commit(&transaction, &command)
+                .await?;
             transaction.commit().await.map_err(store_error)?;
             return Ok(receipt);
         }
@@ -449,6 +461,9 @@ where
             )
             .await
             .map_err(store_error)?;
+        self.authorizer
+            .ensure_authority_at_commit(&transaction, &command)
+            .await?;
         transaction.commit().await.map_err(store_error)?;
         Ok(receipt)
     }
@@ -940,6 +955,14 @@ mod tests {
         ) -> Result<(), ModuleArtifactSecurityError> {
             Ok(())
         }
+
+        async fn ensure_authority_at_commit(
+            &self,
+            _transaction: &sea_orm::DatabaseTransaction,
+            _command: &ModuleArtifactSecurityCommand,
+        ) -> Result<(), ModuleArtifactSecurityError> {
+            Ok(())
+        }
     }
 
 
@@ -974,6 +997,55 @@ mod tests {
         ) -> Result<(), ModuleArtifactSecurityError> {
             Err(ModuleArtifactSecurityError::AuthorizationDenied(
                 "operator authority was revoked".to_string(),
+            ))
+        }
+
+        async fn ensure_authority_at_commit(
+            &self,
+            _transaction: &sea_orm::DatabaseTransaction,
+            _command: &ModuleArtifactSecurityCommand,
+        ) -> Result<(), ModuleArtifactSecurityError> {
+            Err(ModuleArtifactSecurityError::AuthorizationDenied(
+                "operator authority was revoked".to_string(),
+            ))
+        }
+    }
+
+    struct DenyCommitSecurityTransitions;
+
+    #[async_trait]
+    impl ModuleArtifactSecurityAuthorizer for DenyCommitSecurityTransitions {
+        async fn authorize_quarantine(
+            &self,
+            _transaction: &sea_orm::DatabaseTransaction,
+            _command: &ModuleArtifactSecurityCommand,
+        ) -> Result<(), ModuleArtifactSecurityError> {
+            Ok(())
+        }
+
+        async fn authorize_clear_quarantine(
+            &self,
+            _transaction: &sea_orm::DatabaseTransaction,
+            _command: &ModuleArtifactSecurityCommand,
+        ) -> Result<(), ModuleArtifactSecurityError> {
+            Ok(())
+        }
+
+        async fn authorize_revoke(
+            &self,
+            _transaction: &sea_orm::DatabaseTransaction,
+            _command: &ModuleArtifactSecurityCommand,
+        ) -> Result<(), ModuleArtifactSecurityError> {
+            Ok(())
+        }
+
+        async fn ensure_authority_at_commit(
+            &self,
+            _transaction: &sea_orm::DatabaseTransaction,
+            _command: &ModuleArtifactSecurityCommand,
+        ) -> Result<(), ModuleArtifactSecurityError> {
+            Err(ModuleArtifactSecurityError::AuthorizationDenied(
+                "credential expired before commit".to_string(),
             ))
         }
     }
@@ -1151,6 +1223,113 @@ mod tests {
             &tx, &command.release, 2,
         ).await.is_err());
         tx.rollback().await.unwrap();
+    }
+
+
+    #[tokio::test]
+    async fn commit_authority_is_rechecked_for_new_commands_and_exact_replays() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
+        rustok_outbox::SysEventsMigration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("outbox migration");
+        for migration in ModulesModule.migrations() {
+            migration
+                .up(&SchemaManager::new(&database))
+                .await
+                .expect("module migration");
+        }
+
+        let command = command();
+        let expired_service = SeaOrmModuleArtifactSecurityService::with_infrastructure(
+            database.clone(),
+            DenyCommitSecurityTransitions,
+            ControlPlaneInfrastructure::for_database(database.clone()),
+        );
+        assert!(matches!(
+            expired_service.quarantine(command.clone()).await,
+            Err(ModuleArtifactSecurityError::AuthorizationDenied(_))
+        ));
+
+        let resolver = SeaOrmModuleArtifactSecurityResolver::new(database.clone());
+        let unchanged = resolver
+            .resolve(&command.release)
+            .await
+            .expect("read rolled-back security state");
+        assert_eq!(unchanged.status, ModuleArtifactSecurityStatus::Clear);
+        assert_eq!(unchanged.revision, 0);
+
+        let operation_count = database
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS total FROM module_artifact_security_operations".to_string(),
+            ))
+            .await
+            .expect("query operation count")
+            .expect("operation count row")
+            .try_get::<i64>("", "total")
+            .expect("operation count");
+        let event_count = database
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS total FROM sys_events WHERE event_type = 'module.artifact.security_state_changed'"
+                    .to_string(),
+            ))
+            .await
+            .expect("query event count")
+            .expect("event count row")
+            .try_get::<i64>("", "total")
+            .expect("event count");
+        assert_eq!(operation_count, 0, "pending receipt must roll back");
+        assert_eq!(event_count, 0, "outbox event must roll back");
+
+        let allowed_service = SeaOrmModuleArtifactSecurityService::with_infrastructure(
+            database.clone(),
+            AllowSecurityTransitions,
+            ControlPlaneInfrastructure::for_database(database.clone()),
+        );
+        allowed_service
+            .quarantine(command.clone())
+            .await
+            .expect("seed completed command receipt");
+
+        assert!(matches!(
+            expired_service.quarantine(command.clone()).await,
+            Err(ModuleArtifactSecurityError::AuthorizationDenied(_))
+        ));
+
+        let replayed_state = resolver
+            .resolve(&command.release)
+            .await
+            .expect("read state after denied replay");
+        assert_eq!(replayed_state.status, ModuleArtifactSecurityStatus::Quarantined);
+        assert_eq!(replayed_state.revision, 1);
+
+        let operation_count = database
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS total FROM module_artifact_security_operations".to_string(),
+            ))
+            .await
+            .expect("query operation count")
+            .expect("operation count row")
+            .try_get::<i64>("", "total")
+            .expect("operation count");
+        let event_count = database
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS total FROM sys_events WHERE event_type = 'module.artifact.security_state_changed'"
+                    .to_string(),
+            ))
+            .await
+            .expect("query event count")
+            .expect("event count row")
+            .try_get::<i64>("", "total")
+            .expect("event count");
+        assert_eq!(operation_count, 1, "denied replay must not duplicate receipts");
+        assert_eq!(event_count, 1, "denied replay must not duplicate events");
     }
 
     #[tokio::test]

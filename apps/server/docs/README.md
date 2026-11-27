@@ -2310,8 +2310,11 @@ modules:manage permission in the resolved tenant. Delegated and service
 principals are rejected. For mutations, the host revalidates the direct
 credential and current RBAC grants inside the owner transaction, taking
 tenant/user/session/policy/role fences before the platform release-slug lock
-and retaining them through commit. Exact idempotency replay also requires
-current authorization, so a stale request snapshot cannot authorize a replay.
+and retaining them through commit. The owner rechecks the earliest direct
+credential deadline immediately before both new-state and exact-replay commits,
+after any slug-lock wait and all writes; expiry rolls back state, receipt and
+outbox together. Exact idempotency replay also requires current authorization,
+so a stale request snapshot cannot authorize a replay.
 Successful commands clear the process-local effective module-policy cache
 across all tenants, because the security aggregate is global to the release.
 policyRevision is caller-provided audit/idempotency metadata, not an

@@ -18,7 +18,7 @@ use rustok_modules::{
 use rustok_rbac::{RbacControlPlanePrincipal, require_direct_control_plane_user};
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use serde::Serialize;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -160,6 +160,7 @@ pub struct ServerArtifactSecurityAuthorizer {
     tenant_id: Uuid,
     principal_kind: AuthPrincipalKind,
     permissions: Vec<Permission>,
+    credential_deadline: Arc<Mutex<Option<chrono::DateTime<chrono::Utc>>>>,
 }
 
 impl ServerArtifactSecurityAuthorizer {
@@ -198,6 +199,7 @@ impl ServerArtifactSecurityAuthorizer {
             tenant_id,
             principal_kind: principal.kind,
             permissions: auth.permissions.clone(),
+            credential_deadline: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -231,13 +233,62 @@ impl ServerArtifactSecurityAuthorizer {
             .await
             .map_err(map_admin_authorization_error)?;
 
-        if has_effective_permission(&authority.permissions, &Permission::MODULES_MANAGE) {
-            Ok(())
-        } else {
-            Err(ModuleArtifactSecurityError::AuthorizationDenied(
+        if !has_effective_permission(&authority.permissions, &Permission::MODULES_MANAGE) {
+            return Err(ModuleArtifactSecurityError::AuthorizationDenied(
                 "modules:manage permission is no longer granted".to_string(),
-            ))
+            ));
         }
+
+        let mut deadline = self
+            .credential_deadline
+            .lock()
+            .map_err(|_| {
+                ModuleArtifactSecurityError::Store(
+                    "artifact security credential deadline is unavailable".to_string(),
+                )
+            })?;
+        *deadline = Some(authority.deadline);
+        Ok(())
+    }
+
+    async fn recheck_authority_deadline(
+        &self,
+        transaction: &DatabaseTransaction,
+        command: &ModuleArtifactSecurityCommand,
+    ) -> Result<(), ModuleArtifactSecurityError> {
+        if !command_is_bound_to_operator(
+            self.actor_id,
+            self.tenant_id,
+            self.principal_kind,
+            &self.permissions,
+            command,
+        ) {
+            return Err(ModuleArtifactSecurityError::AuthorizationDenied(
+                "direct session user with modules:manage required".to_string(),
+            ));
+        }
+
+        let deadline = {
+            self.credential_deadline
+                .lock()
+                .map_err(|_| {
+                    ModuleArtifactSecurityError::Store(
+                        "artifact security credential deadline is unavailable".to_string(),
+                    )
+                })?
+                .as_ref()
+                .cloned()
+                .ok_or_else(|| {
+                    ModuleArtifactSecurityError::AuthorizationDenied(
+                        "artifact security authority was not admitted".to_string(),
+                    )
+                })?
+        };
+
+        self.provider
+            .check_artifact_effect_deadline_on(transaction, deadline)
+            .await
+            .map_err(map_admin_authorization_error)
     }
 }
 
@@ -265,6 +316,14 @@ impl ModuleArtifactSecurityAuthorizer for ServerArtifactSecurityAuthorizer {
         command: &ModuleArtifactSecurityCommand,
     ) -> Result<(), ModuleArtifactSecurityError> {
         self.authorize_command(transaction, command).await
+    }
+
+    async fn ensure_authority_at_commit(
+        &self,
+        transaction: &DatabaseTransaction,
+        command: &ModuleArtifactSecurityCommand,
+    ) -> Result<(), ModuleArtifactSecurityError> {
+        self.recheck_authority_deadline(transaction, command).await
     }
 }
 
