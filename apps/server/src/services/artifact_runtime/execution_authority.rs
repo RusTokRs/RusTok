@@ -13,7 +13,8 @@ use rustok_modules::{
     ArtifactBindingDispatchError, ArtifactCapabilityExecution, ArtifactEffectivePolicyResolver,
     ArtifactExecutionLeaseGuard, ArtifactInstallationTarget, InstalledModuleArtifact,
     ModuleRuntimeBinding, ArtifactSqlEffectAuthorizer, ArtifactSqlEffectFence,
-    ArtifactSqlEffectCommitGuard, resolve_granted_artifact_capability,
+    ArtifactSqlEffectCommitGuard, lock_granted_artifact_capability_on,
+    resolve_granted_artifact_capability,
 };
 use rustok_sandbox::{
     CapabilityBroker, CapabilityCall, CapabilityCallContext, CapabilityGrant, CapabilityResponse,
@@ -44,6 +45,7 @@ struct ExecutionLease {
     artifact: InstalledModuleArtifact,
     binding: ModuleRuntimeBinding,
     effective_revision: Option<String>,
+    policy: SandboxPolicy,
     deadline: Instant,
     direct_scope: Option<CapturedArtifactRequestScope>,
 }
@@ -164,6 +166,7 @@ impl ExecutionAuthority {
             artifact: artifact.clone(),
             binding: binding.clone(),
             effective_revision: effective_revision.map(str::to_owned),
+            policy: policy.clone(),
             // The lease has not yet been registered. Set its non-renewable
             // monotonic deadline only after the last durable preflight.
             deadline: Instant::now(),
@@ -290,6 +293,16 @@ impl ArtifactSqlEffectFence for SqlEffectFence {
             // port does not manufacture a credential for an attributed actor.
             None
         };
+        // Keep exact selection and the owner grant in the effect transaction
+        // after the direct credential/RBAC fences, including background work.
+        let current_policy = lock_granted_artifact_capability_on(
+            tx, &self.lease.artifact, self.lease.tenant_id(), &self.call.capability,
+        ).await?;
+        let original = self.lease.policy.grant(&self.call.capability).ok_or_else(|| self.deny())?;
+        let current = current_policy.grant(&self.call.capability).ok_or_else(|| self.deny())?;
+        if current.constraints != original.constraints {
+            return Err(self.deny());
+        }
         self.ensure_live()?;
         Ok(Box::new(SqlEffectCommitGuard {
             fence: SqlEffectFence {
@@ -333,7 +346,10 @@ impl<B: CapabilityBroker> CapabilityBroker for FencedCapabilityBroker<B> {
         let denied = || SandboxError::CapabilityDenied(call.capability.clone());
         let authority = &self.resolver.execution_authority;
         let lease = authority.lookup(call)?;
-        if grant.name != call.capability {
+        if grant.name != call.capability
+            || lease.policy.grant(&call.capability)
+                .is_none_or(|original| original.constraints != grant.constraints)
+        {
             return Err(denied());
         }
         // Resolve the live capability revision even for lifecycle hooks; a

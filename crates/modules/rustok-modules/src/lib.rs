@@ -263,7 +263,7 @@ pub use artifact_capability_router::{
     ArtifactCapabilityBrokerResolver, ArtifactCapabilityBrokerResolverRouter,
     ArtifactCapabilityExecution, ArtifactCapabilityScope, ArtifactSqlEffectAuthorizer,
     ArtifactSqlEffectFence, ArtifactSqlEffectCommitGuard, ResolvingArtifactCapabilityBroker,
-    resolve_granted_artifact_capability,
+    lock_granted_artifact_capability_on, resolve_granted_artifact_capability,
 };
 pub use artifact_cas::StorageArtifactBlobStore;
 pub use artifact_node_reconciliation::{

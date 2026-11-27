@@ -5392,18 +5392,6 @@ impl ArtifactSandboxPolicyResolver for SeaOrmArtifactSandboxPolicyResolver {
         artifact: &InstalledModuleArtifact,
         tenant_id: Uuid,
     ) -> Result<SandboxPolicy, ArtifactSandboxPolicyResolveError> {
-        if artifact.installation_id.is_nil() || tenant_id.is_nil() {
-            return Err(ArtifactSandboxPolicyResolveError::InvalidRequest(
-                "artifact sandbox policy requires non-nil identities".to_string(),
-            ));
-        }
-        if matches!(&artifact.scope, ModuleInstallationScope::Tenant { tenant_id: scope_tenant } if *scope_tenant != tenant_id)
-        {
-            return Err(ArtifactSandboxPolicyResolveError::InvalidRequest(
-                "tenant-scoped artifact cannot execute for another tenant".to_string(),
-            ));
-        }
-
         let transaction = self
             .db
             .begin()
@@ -5412,94 +5400,117 @@ impl ArtifactSandboxPolicyResolver for SeaOrmArtifactSandboxPolicyResolver {
         configure_rls_scope(&transaction, &ModuleInstallationScope::Tenant { tenant_id })
             .await
             .map_err(|error| ArtifactSandboxPolicyResolveError::Store(error.to_string()))?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(|error| ArtifactSandboxPolicyResolveError::Store(error.to_string()))?;
-        let placeholders = match backend {
-            SupportedBackend::Postgres => ("$1", "$2", "$3", "$4", "$5"),
-            SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4", "?5"),
-        };
-        let policy_scope = match &artifact.scope {
-            ModuleInstallationScope::Platform => format!(
-                "(policy.tenant_id = {} OR policy.tenant_id IS NULL)",
-                placeholders.1
-            ),
-            ModuleInstallationScope::Tenant { .. } => {
-                format!("policy.tenant_id = {}", placeholders.1)
-            }
-        };
-        let lifecycle_enabled = match backend {
-            SupportedBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
-            SupportedBackend::Sqlite => "COALESCE(lifecycle.enabled, 1) = 1",
-        };
-        let row = transaction
-            .query_one_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                format!(
-                    "SELECT policy.capability_grant_revision, CAST(policy.policy AS TEXT) AS policy \
-                     FROM module_artifact_sandbox_policies policy \
-                     JOIN module_artifact_installations installation \
-                       ON installation.installation_id = policy.installation_id \
-                     JOIN module_artifact_admissions admission \
-                       ON admission.installation_id = installation.installation_id \
-                     LEFT JOIN module_artifact_tenant_lifecycle lifecycle \
-                       ON lifecycle.installation_id = installation.installation_id \
-                      AND lifecycle.tenant_id = {tenant} \
-                     WHERE policy.installation_id = {installation_id} \
-                       AND installation.slug = {slug} \
-                       AND installation.version = {version} \
-                       AND installation.payload_digest = {digest} \
-                       AND admission.status = 'active' \
-                       AND (installation.scope_kind = 'platform' \
-                            OR (installation.scope_kind = 'tenant' \
-                                AND installation.tenant_id = {tenant})) \
-                       AND {lifecycle_enabled} \
-                       AND {policy_scope} \
-                     ORDER BY CASE WHEN policy.tenant_id = {tenant} THEN 0 ELSE 1 END \
-                     LIMIT 1",
-                    installation_id = placeholders.0,
-                    tenant = placeholders.1,
-                    slug = placeholders.2,
-                    version = placeholders.3,
-                    digest = placeholders.4,
-                ),
-                vec![
-                    backend.uuid_value(artifact.installation_id),
-                    backend.uuid_value(tenant_id),
-                    artifact.release.slug.clone().into(),
-                    artifact.release.version.clone().into(),
-                    artifact.release.digest.clone().into(),
-                ],
-            ))
-            .await
-            .map_err(|error| ArtifactSandboxPolicyResolveError::Store(error.to_string()))?;
+        let policy = resolve_sandbox_policy_on(&transaction, artifact, tenant_id).await?;
         transaction
             .commit()
             .await
             .map_err(|error| ArtifactSandboxPolicyResolveError::Store(error.to_string()))?;
-        let row = row.ok_or(ArtifactSandboxPolicyResolveError::Unavailable)?;
-        let revision: i64 = row
-            .try_get("", "capability_grant_revision")
-            .map_err(|error| ArtifactSandboxPolicyResolveError::Invariant(error.to_string()))?;
-        let revision = u64::try_from(revision).map_err(|_| {
-            ArtifactSandboxPolicyResolveError::Invariant(
-                "sandbox policy revision is outside the supported range".to_string(),
-            )
-        })?;
-        if revision != artifact.capability_grant_revision {
-            return Err(ArtifactSandboxPolicyResolveError::RevisionMismatch);
-        }
-        let policy: SandboxPolicy =
-            serde_json::from_str(&row.try_get::<String>("", "policy").map_err(|error| {
-                ArtifactSandboxPolicyResolveError::Invariant(error.to_string())
-            })?)
-            .map_err(|_| {
-                ArtifactSandboxPolicyResolveError::Invariant(
-                    "sandbox policy is invalid".to_string(),
-                )
-            })?;
-        validate_sandbox_policy(artifact, &policy)?;
         Ok(policy)
     }
+}
+
+/// Canonical sandbox policy lookup on a caller-owned, tenant-scoped
+/// transaction. Effect callers must retain the serving selection locks.
+pub(crate) async fn resolve_sandbox_policy_on(
+    transaction: &DatabaseTransaction,
+    artifact: &InstalledModuleArtifact,
+    tenant_id: Uuid,
+) -> Result<SandboxPolicy, ArtifactSandboxPolicyResolveError> {
+    if artifact.installation_id.is_nil() || tenant_id.is_nil() {
+        return Err(ArtifactSandboxPolicyResolveError::InvalidRequest(
+            "artifact sandbox policy requires non-nil identities".to_string(),
+        ));
+    }
+    if matches!(&artifact.scope, ModuleInstallationScope::Tenant { tenant_id: scope_tenant } if *scope_tenant != tenant_id)
+    {
+        return Err(ArtifactSandboxPolicyResolveError::InvalidRequest(
+            "tenant-scoped artifact cannot execute for another tenant".to_string(),
+        ));
+    }
+
+    let backend = SupportedBackend::new(transaction.get_database_backend())
+        .map_err(|error| ArtifactSandboxPolicyResolveError::Store(error.to_string()))?;
+    let placeholders = match backend {
+        SupportedBackend::Postgres => ("$1", "$2", "$3", "$4", "$5"),
+        SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4", "?5"),
+    };
+    let policy_scope = match &artifact.scope {
+        ModuleInstallationScope::Platform => format!(
+            "(policy.tenant_id = {} OR policy.tenant_id IS NULL)",
+            placeholders.1
+        ),
+        ModuleInstallationScope::Tenant { .. } => {
+            format!("policy.tenant_id = {}", placeholders.1)
+        }
+    };
+    let lifecycle_enabled = match backend {
+        SupportedBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
+        SupportedBackend::Sqlite => "COALESCE(lifecycle.enabled, 1) = 1",
+    };
+    let row = transaction
+        .query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            format!(
+                "SELECT policy.capability_grant_revision, CAST(policy.policy AS TEXT) AS policy \
+                 FROM module_artifact_sandbox_policies policy \
+                 JOIN module_artifact_installations installation \
+                   ON installation.installation_id = policy.installation_id \
+                 JOIN module_artifact_admissions admission \
+                   ON admission.installation_id = installation.installation_id \
+                 LEFT JOIN module_artifact_tenant_lifecycle lifecycle \
+                   ON lifecycle.installation_id = installation.installation_id \
+                  AND lifecycle.tenant_id = {tenant} \
+                 WHERE policy.installation_id = {installation_id} \
+                   AND installation.slug = {slug} \
+                   AND installation.version = {version} \
+                   AND installation.payload_digest = {digest} \
+                   AND admission.status = 'active' \
+                   AND (installation.scope_kind = 'platform' \
+                        OR (installation.scope_kind = 'tenant' \
+                            AND installation.tenant_id = {tenant})) \
+                   AND {lifecycle_enabled} \
+                   AND {policy_scope} \
+                 ORDER BY CASE WHEN policy.tenant_id = {tenant} THEN 0 ELSE 1 END \
+                 LIMIT 1",
+                installation_id = placeholders.0,
+                tenant = placeholders.1,
+                slug = placeholders.2,
+                version = placeholders.3,
+                digest = placeholders.4,
+            ),
+            vec![
+                backend.uuid_value(artifact.installation_id),
+                backend.uuid_value(tenant_id),
+                artifact.release.slug.clone().into(),
+                artifact.release.version.clone().into(),
+                artifact.release.digest.clone().into(),
+            ],
+        ))
+        .await
+        .map_err(|error| ArtifactSandboxPolicyResolveError::Store(error.to_string()))?;
+    let row = row.ok_or(ArtifactSandboxPolicyResolveError::Unavailable)?;
+    let revision: i64 = row
+        .try_get("", "capability_grant_revision")
+        .map_err(|error| ArtifactSandboxPolicyResolveError::Invariant(error.to_string()))?;
+    let revision = u64::try_from(revision).map_err(|_| {
+        ArtifactSandboxPolicyResolveError::Invariant(
+            "sandbox policy revision is outside the supported range".to_string(),
+        )
+    })?;
+    if revision != artifact.capability_grant_revision {
+        return Err(ArtifactSandboxPolicyResolveError::RevisionMismatch);
+    }
+    let policy: SandboxPolicy =
+        serde_json::from_str(&row.try_get::<String>("", "policy").map_err(|error| {
+            ArtifactSandboxPolicyResolveError::Invariant(error.to_string())
+        })?)
+        .map_err(|_| {
+            ArtifactSandboxPolicyResolveError::Invariant(
+                "sandbox policy is invalid".to_string(),
+            )
+        })?;
+    validate_sandbox_policy(artifact, &policy)?;
+    Ok(policy)
 }
 
 #[async_trait]
@@ -12138,6 +12149,11 @@ mod tests {
             (duplicate_package, ModuleInstallationScope::Platform),
         ] {
             let reference = package.reference.clone();
+            let mut command = admission_command(reference.clone(), scope);
+            command.sandbox_policy.grants = vec![CapabilityGrant {
+                name: CapabilityName::new("platform.events").expect("capability"),
+                constraints: json!({}),
+            }];
             let installation = ModuleInstaller::new(
                 FixtureRegistry(package),
                 store.clone(),
@@ -12146,7 +12162,7 @@ mod tests {
                 trust_policy(),
                 AllowArtifactPermissionRegistrar,
             )
-            .admit(admission_command(reference, scope))
+            .admit(command)
             .await
             .expect("admit fixture");
             installations.push(installation);
@@ -12187,6 +12203,47 @@ mod tests {
                 .await
                 .expect("tenant release selected");
         assert_eq!(selected.installation_id, installations[1].installation_id);
+
+        let capability = CapabilityName::new("platform.events").expect("capability");
+        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
+        assert!(crate::lock_granted_artifact_capability_on(
+            &tx, &selected, tenant_id, &capability,
+        ).await.is_ok());
+        tx.rollback().await.unwrap();
+
+        let mut stale_grant = selected.clone();
+        stale_grant.capability_grant_revision += 1;
+        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
+        assert!(crate::lock_granted_artifact_capability_on(
+            &tx, &stale_grant, tenant_id, &capability,
+        ).await.is_err());
+        tx.rollback().await.unwrap();
+
+        let mut stale_installation = selected.clone();
+        stale_installation.installation_id = installations[0].installation_id;
+        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
+        assert!(crate::lock_granted_artifact_capability_on(
+            &tx, &stale_installation, tenant_id, &capability,
+        ).await.is_err());
+        tx.rollback().await.unwrap();
+
+        // A committed grant-revision change must invalidate the
+        // original execution authority.
+        database.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE module_artifact_installations SET capability_grant_revision = capability_grant_revision + 1 WHERE installation_id = ?1",
+            vec![selected.installation_id.to_string().into()],
+        )).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
+        assert!(crate::lock_granted_artifact_capability_on(
+            &tx, &selected, tenant_id, &capability,
+        ).await.is_err());
+        tx.rollback().await.unwrap();
+        database.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE module_artifact_installations SET capability_grant_revision = capability_grant_revision - 1 WHERE installation_id = ?1",
+            vec![selected.installation_id.to_string().into()],
+        )).await.unwrap();
 
         // A catalog built before a tenant override must not acquire a
         // lifecycle claim for the now-shadowed platform release.
@@ -12335,6 +12392,11 @@ mod tests {
             .execute_raw(update_status(installations[1].installation_id, "inactive"))
             .await
             .expect("remove tenant selection");
+        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
+        assert!(crate::lock_granted_artifact_capability_on(
+            &tx, &selected, tenant_id, &capability,
+        ).await.is_err());
+        tx.rollback().await.unwrap();
         for release in [&platform_release, &duplicate_release] {
             assert!(matches!(
                 crate::ArtifactInstallationResolver::resolve(&store, release, tenant_id).await,

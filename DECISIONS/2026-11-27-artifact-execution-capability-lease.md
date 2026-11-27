@@ -43,6 +43,16 @@ mismatched identity or unavailable checks fail closed. No SQL lock or registry
 mutex spans external invocation. The original sandbox grant limits and
 independent owner effect checks still apply.
 
+For server-composed structured data and event outbox SQL effects, the owner
+transaction now takes the existing platform/tenant activation locks after
+direct credential/RBAC fences, resolves the current selection and grant
+through the canonical owner queries, and compares against the lease's exact
+installation and grant constraints. The transaction retains selection locks
+through commit, including for non-direct execution. This increment does not
+fence the full effective-policy revision, security state, dependency closure
+or deployment readiness; PostgreSQL lock-order and runtime evidence remain
+required. Lifecycle admission remains distinct from serving mutations.
+
 ## Context, events and migration
 
 Tenant, actor, phase, binding, release/installation, capability, execution ID,

@@ -3569,6 +3569,13 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   source regression exercises rollback and replay denial. Bind the events
   broker to the resolved exact installation and tenant.
 - The host lease is still checked on all SQL effects; background work does not
-  impersonate users. Transactional module-policy/grant/selection/readiness
-  fences, event-outbox integration evidence, independent compositions, and
-  non-SQL effects remain outstanding. Tests and compilation are unrun.
+  impersonate users. Full effective-policy/readiness fences, event-outbox
+  integration evidence, independent compositions and non-SQL effects remain
+  outstanding. Tests and compilation are unrun.
+- Source-wired exact active installation and capability grant revalidation on
+  the SQL effect transaction using the existing platform/tenant activation
+  locks. The lease rejects changed installation facts or grant constraints.
+  Selection/grant regression authored; PostgreSQL concurrent lifecycle and
+  cross-owner lock-order verification remains outstanding. Full effective
+  policy, dependency closure, security/quarantine and deployment readiness
+  are not fenced by this increment.
