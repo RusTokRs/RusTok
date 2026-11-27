@@ -61,12 +61,14 @@ The Prometheus family `rustok_module_errors_total` records the same bounded dire
 | `frame-ancestors` | `'none'` | Embedding forbidden |
 | `base-uri` | `'self'` | Base URL rewriting restricted |
 | `form-action` | `'self'` | Form submission restricted to same origin |
+| OAuth browser documents | `default-src 'none'; script-src 'none'; style-src 'nonce-<per-response>'; form-action 'self'; frame-ancestors 'none'` | Only the exact authorization/consent document methods may submit same-origin forms; all other OAuth methods retain API deny CSP |
 
 ## Trusted Script and Style Element Nonce Boundary
 
 - `rustok-web::CspNonce` creates one UUIDv4-derived nonce per UI response.
-- The outer main-server security middleware inserts the nonce into request extensions and uses the same value in enforced and report-only headers.
-- Reserved API and operator route families are matched on path-segment boundaries, including registry mutations under `/v2/catalog`, protocol discovery under `/.well-known` and the build WebSocket at `/ws/builds`. These use the strict API CSP without UI nonce or report-only headers; similarly named UI routes are not classified as API surfaces.
+- The outer main-server security middleware inserts the nonce into request extensions and uses the same value in enforced and report-only headers wherever a report-only policy applies.
+- Reserved API and operator route families are matched on path-segment boundaries, including registry mutations under `/v2/catalog`, protocol discovery under `/.well-known` and the build WebSocket at `/ws/builds`. These use the strict API CSP without UI nonce or report-only headers.
+- The OAuth browser documents are explicit method-scoped exceptions: `GET /api/oauth/authorize` and `POST /api/oauth/consent` receive an isolated deny-by-default policy with `script-src 'none'`, a per-response nonce for the trusted inline style element, and `form-action 'self'`. The JSON `POST /api/oauth/authorize` and all token, revoke, userinfo and browser-session endpoints remain strict API surfaces.
 - Embedded admin processing applies the nonce only to script and style elements in the immutable bundled `index.html`; it is never applied to tenant or user-authored HTML.
 - Storefront processing applies the nonce only to the exact JSON-LD opening tag emitted by the typed SEO renderer.
 - The standalone admin middleware inserts the same nonce type into Axum request extensions and copies it into the Leptos render context through the UI nonce contract. Its SSR shell intentionally contains no transitional auth bootstrap or hydration script; module-owned server-preview and inline elements consume the context nonce, and browser hydrate/CSR reads the nonce from the trusted script that booted it.
@@ -126,6 +128,7 @@ For every reviewed surface, retain the response CSP header, the browser console 
 | Standalone admin | authentication bootstrap, dashboard shell, dark/light theme, tables, charts, forms |
 | Next admin | dashboard, overview charts, data tables, progress/toasts, forms, responsive sidebar |
 | Storefront | home/module route, JSON-LD page, search suggestions, presets, filters and results |
+| OAuth browser flow | authorization HTML, nonce-bearing consent style, approve/deny POST, same-origin form action |
 | Page Builder | canvas, viewport size/zoom, overlays, selection, resize handles and nested layers |
 
 Rollback for a smoke environment should use the last known reviewed release/policy. Do not restore blanket `style-src-attr 'unsafe-inline'`, `unsafe-eval`, or plaintext connection sources.

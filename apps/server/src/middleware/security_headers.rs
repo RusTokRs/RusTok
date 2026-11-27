@@ -20,6 +20,10 @@ use super::csp_reports;
 /// Default CSP for API/server-only surfaces.
 const API_CSP: &str =
     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+/// The OAuth authorization and consent endpoints render server-generated HTML
+/// forms. Keep the document isolated from scripts and external resources while
+/// permitting its nonce-bearing style block and same-origin form submission.
+const OAUTH_BROWSER_CSP_TEMPLATE: &str = "default-src 'none'; script-src 'none'; style-src {nonce}; img-src 'none'; font-src 'none'; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
 const RICHTEXT_FRAME_CSP: &str = "default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'none'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
 /// UI-compatible enforced CSP for embedded admin/storefront shells.
 ///
@@ -55,13 +59,16 @@ pub async fn handle_csp_report(request: Request, next: Next) -> Response {
 
 pub async fn security_headers(mut request: Request, next: Next) -> Response {
     let path = request.uri().path().to_string();
-    let credential_response = is_credential_response_path(&path, request.method());
+    let method = request.method().clone();
+    let credential_response = is_credential_response_path(&path, &method);
     tracing::debug!(
         path_group = super::http_stack::trace_path_family(&path),
         "security_headers entry"
     );
-    let csp_nonce =
-        (!is_api_surface(&path) && !is_richtext_frame_surface(&path)).then(CspNonce::generate);
+    let oauth_browser_document = is_oauth_browser_document(&path, &method);
+    let csp_nonce = ((!is_api_surface(&path) || oauth_browser_document)
+        && !is_richtext_frame_surface(&path))
+    .then(CspNonce::generate);
     if let Some(nonce) = csp_nonce.as_ref() {
         request.extensions_mut().insert(nonce.clone());
     }
@@ -71,7 +78,12 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
 
     // Content-Security-Policy. Missing nonce state on a UI path falls back to the API deny policy
     // rather than restoring an inline-script or inline-style-element allowance.
-    let enforced_policy = select_csp(&path, csp_nonce.as_ref(), plaintext_websocket_allowed());
+    let enforced_policy = select_request_csp(
+        &path,
+        &method,
+        csp_nonce.as_ref(),
+        plaintext_websocket_allowed(),
+    );
     headers.insert(
         header::CONTENT_SECURITY_POLICY,
         policy_header(enforced_policy.as_str()),
@@ -189,6 +201,11 @@ fn plaintext_websocket_allowed() -> bool {
     !crate::common::is_production_security_mode()
 }
 
+fn is_oauth_browser_document(path: &str, method: &axum::http::Method) -> bool {
+    (path == "/api/oauth/authorize" && *method == axum::http::Method::GET)
+        || (path == "/api/oauth/consent" && *method == axum::http::Method::POST)
+}
+
 fn is_api_surface(path: &str) -> bool {
     // Match reserved route families on segment boundaries. The registry's
     // mutation API and protocol discovery are not UI documents, while paths
@@ -273,6 +290,24 @@ fn select_csp(path: &str, csp_nonce: Option<&CspNonce>, allow_plaintext_websocke
     }
 }
 
+fn select_request_csp(
+    path: &str,
+    method: &axum::http::Method,
+    csp_nonce: Option<&CspNonce>,
+    allow_plaintext_websocket: bool,
+) -> String {
+    if is_oauth_browser_document(path, method) {
+        return csp_nonce
+            .map(|nonce| {
+                OAUTH_BROWSER_CSP_TEMPLATE
+                    .replace("{nonce}", nonce.source_expression().as_str())
+            })
+            .unwrap_or_else(|| API_CSP.to_string());
+    }
+
+    select_csp(path, csp_nonce, allow_plaintext_websocket)
+}
+
 fn select_report_only_csp(path: &str, csp_nonce: Option<&CspNonce>) -> Option<String> {
     if is_api_surface(path) || is_richtext_frame_surface(path) {
         None
@@ -287,14 +322,15 @@ fn select_report_only_csp(path: &str, csp_nonce: Option<&CspNonce>) -> Option<St
 mod tests {
     use super::{
         API_CSP, REPORTING_ENDPOINTS, RICHTEXT_FRAME_PATH, handle_csp_report,
-        is_richtext_frame_surface, parse_env_flag, richtext_cache_control, security_headers,
-        select_csp, select_report_only_csp,
+        is_oauth_browser_document, is_richtext_frame_surface, parse_env_flag,
+        richtext_cache_control, security_headers, select_csp, select_report_only_csp,
+        select_request_csp,
     };
     use crate::middleware::csp_reports::CSP_REPORT_PATH;
     use axum::{
         Extension, Router,
         body::{Body, to_bytes},
-        http::{Request, StatusCode},
+        http::{Method, Request, StatusCode},
         middleware,
         routing::get,
     };
@@ -338,6 +374,59 @@ mod tests {
             assert_eq!(select_csp(path, Some(&nonce), false), API_CSP, "{path}");
             assert_eq!(select_report_only_csp(path, Some(&nonce)), None, "{path}");
         }
+    }
+
+    #[test]
+    fn oauth_browser_csp_is_method_scoped_and_fails_closed_without_nonce() {
+        let nonce = CspNonce::generate();
+
+        for (path, method) in [
+            ("/api/oauth/authorize", Method::GET),
+            ("/api/oauth/consent", Method::POST),
+        ] {
+            assert!(is_oauth_browser_document(path, &method));
+            let policy = select_request_csp(path, &method, Some(&nonce), false);
+            assert!(policy.contains("form-action 'self'"), "{policy}");
+            assert!(policy.contains("script-src 'none'"), "{policy}");
+            assert!(policy.contains(nonce.source_expression().as_str()), "{policy}");
+            assert!(!policy.contains("unsafe-inline"), "{policy}");
+        }
+
+        assert!(!is_oauth_browser_document(
+            "/api/oauth/authorize",
+            &Method::POST
+        ));
+        assert!(!is_oauth_browser_document(
+            "/api/oauth/token",
+            &Method::POST
+        ));
+        assert_eq!(
+            select_request_csp(
+                "/api/oauth/authorize",
+                &Method::POST,
+                Some(&nonce),
+                false
+            ),
+            API_CSP
+        );
+        assert_eq!(
+            select_request_csp(
+                "/api/oauth/token",
+                &Method::POST,
+                Some(&nonce),
+                false
+            ),
+            API_CSP
+        );
+        assert_eq!(
+            select_request_csp(
+                "/api/oauth/authorize",
+                &Method::GET,
+                None,
+                false
+            ),
+            API_CSP
+        );
     }
 
     #[test]
@@ -590,6 +679,75 @@ mod tests {
             .await
             .expect("unrelated API response");
         assert!(!response.headers().contains_key("cache-control"));
+    }
+
+    async fn oauth_browser_test_page(
+        Extension(nonce): Extension<CspNonce>,
+    ) -> axum::response::Html<String> {
+        axum::response::Html(format!("<style nonce=\"{}\"></style>", nonce.as_str()))
+    }
+
+    async fn oauth_api_test_page() -> StatusCode {
+        StatusCode::OK
+    }
+
+    #[tokio::test]
+    async fn oauth_browser_documents_receive_nonce_and_form_safe_csp() {
+        let app = Router::new()
+            .route(
+                "/api/oauth/authorize",
+                get(oauth_browser_test_page).post(oauth_api_test_page),
+            )
+            .route(
+                "/api/oauth/consent",
+                axum::routing::post(oauth_browser_test_page),
+            )
+            .layer(middleware::from_fn(security_headers));
+
+        for (method, path, expect_browser_policy) in [
+            (Method::GET, "/api/oauth/authorize", true),
+            (Method::POST, "/api/oauth/consent", true),
+            (Method::POST, "/api/oauth/authorize", false),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri(path)
+                        .body(Body::empty())
+                        .expect("OAuth request"),
+                )
+                .await
+                .expect("OAuth response");
+            let policy = response
+                .headers()
+                .get("content-security-policy")
+                .expect("CSP header")
+                .to_str()
+                .expect("valid CSP")
+                .to_string();
+            let body = String::from_utf8(
+                to_bytes(response.into_body(), usize::MAX)
+                    .await
+                    .expect("OAuth response body")
+                    .to_vec(),
+            )
+            .expect("HTML response body");
+
+            if expect_browser_policy {
+                let nonce = body
+                    .strip_prefix("<style nonce=\"")
+                    .and_then(|rest| rest.split_once('"').map(|(nonce, _)| nonce))
+                    .expect("nonce-bearing OAuth style element");
+                assert!(policy.contains(&format!("'nonce-{nonce}'")), "{policy}");
+                assert!(policy.contains("form-action 'self'"), "{policy}");
+                assert!(policy.contains("script-src 'none'"), "{policy}");
+                assert!(!policy.contains("unsafe-inline"), "{policy}");
+            } else {
+                assert_eq!(policy, API_CSP);
+            }
+        }
     }
 
     #[tokio::test]

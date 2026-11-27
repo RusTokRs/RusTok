@@ -597,9 +597,13 @@ message. Focused regressions are authored, not run.
 The main-server CSP classifier matches reserved API and operator route families
 on path-segment boundaries. Registry mutations under `/v2/catalog`, protocol
 discovery under `/.well-known` and the build WebSocket use the strict API policy
-without UI nonce or report-only headers. Similarly named UI routes retain their
-nonce-backed policy. Focused classifier and HTTP middleware regressions are
-authored but unrun.
+without UI nonce or report-only headers. OAuth browser documents are a narrow,
+method-scoped exception: `GET /api/oauth/authorize` and `POST /api/oauth/consent`
+receive an isolated deny-by-default policy with a per-response style nonce and
+`form-action 'self'`; OAuth JSON/token methods, including `POST /api/oauth/authorize`,
+remain on the strict API policy. Their responses remain non-cacheable. Focused
+classifier, rendered-HTML and HTTP middleware regressions are authored but
+unrun.
 
 The CSP report collector accepts legacy browser reports containing both
 `effective-directive` and `violated-directive`, preferring the nonblank

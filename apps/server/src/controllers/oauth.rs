@@ -4,7 +4,7 @@
 
 use axum::{
     Json,
-    extract::{ConnectInfo, Form, FromRequest, Query, Request, State},
+    extract::{ConnectInfo, Extension, Form, FromRequest, Query, Request, State},
     http::{
         HeaderMap, StatusCode,
         header::{
@@ -17,6 +17,7 @@ use axum::{
 };
 use reqwest::Url;
 use rustok_api::AuthPrincipalKind;
+use rustok_web::CspNonce;
 pub use rustok_auth::{
     AuthorizeRequest, BrowserAuthorizeRequest, BrowserSessionResponse, ConsentRequest,
     RevokeRequest, TokenErrorResponse, TokenRequest, TokenResponse,
@@ -620,7 +621,11 @@ pub(crate) async fn authorize_browser_handler(
     tenant_ctx: TenantContext,
     headers: HeaderMap,
     Query(req): Query<BrowserAuthorizeRequest>,
+    csp_nonce: Option<Extension<CspNonce>>,
 ) -> axum::response::Response {
+    let csp_nonce = csp_nonce
+        .map(|Extension(nonce)| nonce.as_str().to_owned())
+        .unwrap_or_default();
     tracing::debug!("oauth::authorize_browser_handler entry");
     let runtime_ctx = ctx.runtime_ctx();
     let validated = match validate_authorize_request(
@@ -642,7 +647,7 @@ pub(crate) async fn authorize_browser_handler(
 
     let access_token = extract_browser_access_token(&headers);
     let Some(access_token) = access_token else {
-        return render_authorization_required(&validated.app.name).into_response();
+        return render_authorization_required(&validated.app.name, &csp_nonce).into_response();
     };
 
     let current_user =
@@ -654,6 +659,7 @@ pub(crate) async fn authorize_browser_handler(
                     Html(render_error_page(
                         "Authorization required",
                         &format!("Sign in again to continue: {message}"),
+                        &csp_nonce,
                     )),
                 )
                     .into_response();
@@ -666,6 +672,7 @@ pub(crate) async fn authorize_browser_handler(
             Html(render_error_page(
                 "Access denied",
                 "This authorization must be completed with a direct user session.",
+                &csp_nonce,
             )),
         )
             .into_response();
@@ -750,6 +757,7 @@ pub(crate) async fn authorize_browser_handler(
         &req,
         &current_user.user.email,
         &consent_csrf,
+        &csp_nonce,
     ))
     .into_response()
 }
@@ -774,8 +782,12 @@ pub(crate) async fn consent_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     tenant_ctx: TenantContext,
     headers: HeaderMap,
+    csp_nonce: Option<Extension<CspNonce>>,
     Form(req): Form<ConsentRequest>,
 ) -> axum::response::Response {
+    let csp_nonce = csp_nonce
+        .map(|Extension(nonce)| nonce.as_str().to_owned())
+        .unwrap_or_default();
     tracing::debug!("oauth::consent_handler entry");
     let runtime_ctx = ctx.runtime_ctx();
     let validated = match validate_authorize_request(
@@ -797,7 +809,7 @@ pub(crate) async fn consent_handler(
 
     let access_token = extract_browser_access_token(&headers);
     let Some(access_token) = access_token else {
-        return render_authorization_required(&validated.app.name).into_response();
+        return render_authorization_required(&validated.app.name, &csp_nonce).into_response();
     };
 
     let current_user =
@@ -809,6 +821,7 @@ pub(crate) async fn consent_handler(
                     Html(render_error_page(
                         "Authorization required",
                         &format!("Sign in again to continue: {message}"),
+                        &csp_nonce,
                     )),
                 )
                     .into_response();
@@ -1358,7 +1371,10 @@ fn redirect_with_error(
     )
 }
 
-fn render_authorization_required(app_name: &str) -> (StatusCode, Html<String>) {
+fn render_authorization_required(
+    app_name: &str,
+    csp_nonce: &str,
+) -> (StatusCode, Html<String>) {
     (
         StatusCode::UNAUTHORIZED,
         Html(render_error_page(
@@ -1367,14 +1383,16 @@ fn render_authorization_required(app_name: &str) -> (StatusCode, Html<String>) {
                 "Create an OAuth browser session first, then retry authorization for '{}'. First-party frontends should POST /api/oauth/browser-session with the current bearer token before opening the browser authorization URL.",
                 app_name
             ),
+            csp_nonce,
         )),
     )
 }
 
-fn render_error_page(title: &str, message: &str) -> String {
+fn render_error_page(title: &str, message: &str, csp_nonce: &str) -> String {
     format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>{}</title><style>body{{font-family:system-ui,sans-serif;max-width:720px;margin:48px auto;padding:0 16px;color:#111827}}.card{{border:1px solid #d1d5db;border-radius:12px;padding:24px;background:#fff}}p{{line-height:1.5;color:#374151}}</style></head><body><div class=\"card\"><h1>{}</h1><p>{}</p></div></body></html>",
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>{}</title><style nonce=\"{}\">body{{font-family:system-ui,sans-serif;max-width:720px;margin:48px auto;padding:0 16px;color:#111827}}.card{{border:1px solid #d1d5db;border-radius:12px;padding:24px;background:#fff}}p{{line-height:1.5;color:#374151}}</style></head><body><div class=\"card\"><h1>{}</h1><p>{}</p></div></body></html>",
         escape_html(title),
+        escape_attr(csp_nonce),
         escape_html(title),
         escape_html(message)
     )
@@ -1385,6 +1403,7 @@ fn render_consent_page(
     request: &BrowserAuthorizeRequest,
     user_email: &str,
     consent_csrf: &str,
+    csp_nonce: &str,
 ) -> String {
     let scopes = validated
         .requested_scopes
@@ -1417,7 +1436,8 @@ fn render_consent_page(
         .unwrap_or_default();
 
     format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Authorize {app}</title><style>body{{font-family:system-ui,sans-serif;background:#f8fafc;color:#0f172a;max-width:760px;margin:40px auto;padding:0 16px}}.card{{background:#fff;border:1px solid #dbe3f0;border-radius:16px;padding:24px;box-shadow:0 12px 30px rgba(15,23,42,0.08)}}.meta{{color:#475569}}ul{{padding-left:20px}}form{{display:flex;gap:12px;margin-top:24px}}button{{border:0;border-radius:10px;padding:12px 18px;font-weight:600;cursor:pointer}}.approve{{background:#0f766e;color:white}}.deny{{background:#e2e8f0;color:#0f172a}}</style></head><body><div class=\"card\"><h1>Authorize {app}</h1><p class=\"meta\">Signed in as {user}. This app is requesting access to:</p><ul>{scopes}</ul><p class=\"meta\">Redirect URI: {redirect}</p><form method=\"post\" action=\"/api/oauth/consent\"><input type=\"hidden\" name=\"client_id\" value=\"{client_id}\"><input type=\"hidden\" name=\"redirect_uri\" value=\"{redirect_attr}\">{scope_input}{state_input}<input type=\"hidden\" name=\"code_challenge\" value=\"{challenge_attr}\"><input type=\"hidden\" name=\"code_challenge_method\" value=\"S256\"><input type=\"hidden\" name=\"consent_csrf\" value=\"{csrf_attr}\"><button class=\"approve\" type=\"submit\" name=\"action\" value=\"approve\">Approve</button><button class=\"deny\" type=\"submit\" name=\"action\" value=\"deny\">Deny</button></form></div></body></html>",
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Authorize {app}</title><style nonce=\"{nonce}\">body{{font-family:system-ui,sans-serif;background:#f8fafc;color:#0f172a;max-width:760px;margin:40px auto;padding:0 16px}}.card{{background:#fff;border:1px solid #dbe3f0;border-radius:16px;padding:24px;box-shadow:0 12px 30px rgba(15,23,42,0.08)}}.meta{{color:#475569}}ul{{padding-left:20px}}form{{display:flex;gap:12px;margin-top:24px}}button{{border:0;border-radius:10px;padding:12px 18px;font-weight:600;cursor:pointer}}.approve{{background:#0f766e;color:white}}.deny{{background:#e2e8f0;color:#0f172a}}</style></head><body><div class=\"card\"><h1>Authorize {app}</h1><p class=\"meta\">Signed in as {user}. This app is requesting access to:</p><ul>{scopes}</ul><p class=\"meta\">Redirect URI: {redirect}</p><form method=\"post\" action=\"/api/oauth/consent\"><input type=\"hidden\" name=\"client_id\" value=\"{client_id}\"><input type=\"hidden\" name=\"redirect_uri\" value=\"{redirect_attr}\">{scope_input}{state_input}<input type=\"hidden\" name=\"code_challenge\" value=\"{challenge_attr}\"><input type=\"hidden\" name=\"code_challenge_method\" value=\"S256\"><input type=\"hidden\" name=\"consent_csrf\" value=\"{csrf_attr}\"><button class=\"approve\" type=\"submit\" name=\"action\" value=\"approve\">Approve</button><button class=\"deny\" type=\"submit\" name=\"action\" value=\"deny\">Deny</button></form></div></body></html>",
+        nonce = escape_attr(csp_nonce),
         app = escape_html(&validated.app.name),
         user = escape_html(user_email),
         scopes = scopes,
@@ -2355,10 +2375,11 @@ mod tests {
 
     #[test]
     fn authorization_required_page_mentions_browser_session_endpoint() {
-        let (status, html) = render_authorization_required("Admin App");
+        let (status, html) = render_authorization_required("Admin App", "test-nonce");
         assert_eq!(status, StatusCode::UNAUTHORIZED);
         assert!(html.0.contains("POST /api/oauth/browser-session"));
         assert!(html.0.contains("Admin App"));
+        assert!(html.0.contains("<style nonce=\"test-nonce\">"));
     }
 
     #[test]
@@ -2383,8 +2404,10 @@ mod tests {
             &request,
             "user+test@example.com",
             "1893456000.deadbeef",
+            "test-nonce",
         );
         assert!(html.contains("Authorize Partner &lt;App&gt;"));
+        assert!(html.contains("<style nonce=\"test-nonce\">"));
         assert!(html.contains("user+test@example.com"));
         assert!(html.contains("name=\"client_id\""));
         assert!(html.contains("name=\"redirect_uri\""));
@@ -2417,6 +2440,7 @@ mod tests {
             &request,
             "user@example.com",
             "1893456000.deadbeef",
+            "test-nonce",
         );
         assert!(!html.contains("name=\"scope\""), "{html}");
         assert!(!html.contains("name=\"state\""), "{html}");

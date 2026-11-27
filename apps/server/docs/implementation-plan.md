@@ -1,5 +1,25 @@
 # Server App — Implementation Plan
 
+## OAuth browser document CSP and consent form repair (2026-11-27)
+
+The OAuth authorization and consent pages are HTML documents served from
+`/api/oauth/authorize` (GET) and `/api/oauth/consent` (POST). Path-only API
+classification had applied `form-action 'none'`, preventing the consent form
+from submitting, and the inline style blocks had no nonce. The main-server CSP
+now recognizes only those exact method/path pairs as browser documents and
+uses an isolated deny-by-default policy with `script-src 'none'`,
+`form-action 'self'`, and a per-response nonce for the trusted style element.
+The JSON `POST /api/oauth/authorize` and all other OAuth API methods remain on
+the strict API CSP. The outer middleware nonce is passed to the two HTML
+handlers and included in both consent and error-page style elements.
+
+Focused middleware and rendered-page regressions were added. Maintainer
+verification remains pending: `cargo check -p rustok-server`,
+`cargo test -p rustok-server --lib oauth_browser_documents_receive_nonce_and_form_safe_csp`,
+and `cargo test -p rustok-server --lib consent_page_escapes_fields_and_contains_expected_form_inputs`.
+Tests and compilation were not run in this session.
+
+
 ## Admin-only RichText routing and static asset cache correctness (2026-11-27)
 
 The embedded admin shell requests the shared RichText adapter from the
