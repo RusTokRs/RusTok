@@ -752,7 +752,7 @@ impl OutboxRelay {
                 // The transport can have performed a remote effect before
                 // reporting a later local validation/serialization failure.
                 // Only relay-side envelope rejection is proven pre-publication.
-                let outcome = self.mark_failed_attempt(model, err, false, Some(attempt_id)).await?;
+                let outcome = self.mark_failed_attempt(model, err, false, Some((attempt_id, Self::claim_token(model)?))).await?;
                 self.record_processed(&model.event_type, elapsed_ms, false);
                 Ok(outcome)
             }
@@ -845,9 +845,23 @@ impl OutboxRelay {
             .set(entity::ActiveModel { retry_count: Set(model.retry_count), ..Default::default() })
             .filter(entity::Column::RetryCount.eq(model.retry_count))
             .exec(txn).await?;
-        self.ensure_claim_owned(model.id, result.rows_affected)
+        self.ensure_claim_owned(model.id, result.rows_affected)?;
+        Self::verify_event_state(txn, model).await
     }
 
+    fn claim_token(model: &entity::Model) -> Result<&str> {
+        model.claimed_by.as_deref()
+            .ok_or_else(|| Error::External("missing outbox claim token".into()))
+    }
+
+    // Affected-row counts do not detect an UPDATE rewritten by a trigger.
+    async fn verify_event_state(txn: &DatabaseTransaction, expected: &entity::Model) -> Result<()> {
+        let saved = entity::Entity::find_by_id(expected.id).one(txn).await?;
+        if saved.as_ref() != Some(expected) {
+            return Err(Error::External(format!("outbox event {} transition readback mismatch", expected.id)));
+        }
+        Ok(())
+    }
 
     async fn bind_delivery_route(&self, txn: &DatabaseTransaction, model: &entity::Model) -> Result<bool> {
         if let Some(row) = checkpoints::Entity::find_by_id(model.id).one(txn).await? {
@@ -915,6 +929,13 @@ impl OutboxRelay {
             return Err(Error::Validation("outbox primary checkpoint cannot be disabled after confirmation".into()));
         }
         let skip = row.primary_confirmed_at.is_some();
+        let mut expected = row;
+        expected.local_required = Some(local_required);
+        let saved = checkpoints::Entity::find_by_id(scope.model.id).one(&txn).await?;
+        if saved.as_ref() != Some(&expected) {
+            return Err(Error::External("outbox fanout topology readback mismatch".into()));
+        }
+        Self::verify_event_state(&txn, &scope.model).await?;
         txn.commit().await?;
         Ok(skip)
     }
@@ -922,6 +943,8 @@ impl OutboxRelay {
     async fn confirm_primary(&self, scope: &DeliveryScope) -> Result<()> {
         let txn = self.db.begin().await?;
         let now = self.lock_delivery_scope(&txn, scope).await?;
+        let mut expected = checkpoints::Entity::find_by_id(scope.model.id).one(&txn).await?
+            .ok_or_else(|| Error::External("missing outbox delivery checkpoint".into()))?;
         let result = checkpoints::Entity::update_many()
             .filter(checkpoints::Column::EventId.eq(scope.model.id))
             .filter(checkpoints::Column::RouteKey.eq(self.delivery_route.clone()))
@@ -930,6 +953,12 @@ impl OutboxRelay {
             .set(checkpoints::ActiveModel { primary_confirmed_at: Set(Some(now)), ..Default::default() })
             .exec(&txn).await?;
         self.ensure_claim_owned(scope.model.id, result.rows_affected)?;
+        expected.primary_confirmed_at = Some(now);
+        let saved = checkpoints::Entity::find_by_id(scope.model.id).one(&txn).await?;
+        if saved.as_ref() != Some(&expected) {
+            return Err(Error::External("outbox primary confirmation readback mismatch".into()));
+        }
+        Self::verify_event_state(&txn, &scope.model).await?;
         txn.commit().await?;
         Ok(())
     }
@@ -976,18 +1005,33 @@ impl OutboxRelay {
 
     async fn finish_dispatch_attempt(
         &self, txn: &DatabaseTransaction, event_id: Uuid, attempt_id: Uuid,
-        state: &str, now: DateTime<Utc>,
+        claim_token: &str, state: &str, now: DateTime<Utc>,
     ) -> Result<()> {
+        let mut expected = attempts::Entity::find_by_id(attempt_id).one(txn).await?
+            .ok_or_else(|| Error::External(format!("outbox event {event_id} dispatch attempt is missing")))?;
+        if expected.event_id != event_id || expected.claim_token != claim_token
+            || expected.state != attempts::OPEN || expected.finished_at.is_some()
+        {
+            return Err(Error::External(format!("outbox event {event_id} dispatch attempt authority mismatch")));
+        }
         let result = attempts::Entity::update_many()
             .filter(attempts::Column::Id.eq(attempt_id))
             .filter(attempts::Column::EventId.eq(event_id))
+            .filter(attempts::Column::ClaimToken.eq(claim_token))
             .filter(attempts::Column::State.eq(attempts::OPEN))
+            .filter(attempts::Column::FinishedAt.is_null())
             .filter(attempts::Column::StartedAt.lte(now))
             .set(attempts::ActiveModel {
                 state: Set(state.to_owned()), finished_at: Set(Some(now)), ..Default::default()
             }).exec(txn).await?;
         if result.rows_affected != 1 {
             return Err(Error::External(format!("outbox event {event_id} open dispatch attempt was lost")));
+        }
+        expected.state = state.to_owned();
+        expected.finished_at = Some(now);
+        let saved = attempts::Entity::find_by_id(attempt_id).one(txn).await?;
+        if saved.as_ref() != Some(&expected) {
+            return Err(Error::External(format!("outbox event {event_id} attempt outcome readback mismatch")));
         }
         Ok(())
     }
@@ -1004,7 +1048,7 @@ impl OutboxRelay {
             return Err(Error::External("current outbox claim already has an open dispatch attempt".into()));
         }
         let error = Error::External("outbox previous dispatch outcome unconfirmed after claim recovery; retry may redeliver".into());
-        self.mark_failed_attempt(model, error, false, Some(open.id)).await.map(Some)
+        self.mark_failed_attempt(model, error, false, Some((open.id, open.claim_token.as_str()))).await.map(Some)
     }
 
     // No broker effect has started, so this exact claim can be released
@@ -1027,8 +1071,12 @@ impl OutboxRelay {
         self.ensure_claim_owned(model.id, result.rows_affected)?;
         if let Some(id) = attempt {
             let now = rustok_outbox_storage::database_now(&txn).await?;
-            self.finish_dispatch_attempt(&txn, model.id, id, attempts::NOT_STARTED, now).await?;
+            self.finish_dispatch_attempt(&txn, model.id, id, Self::claim_token(model)?, attempts::NOT_STARTED, now).await?;
         }
+        let mut expected = model.clone();
+        expected.claimed_by = None;
+        expected.claimed_at = None;
+        Self::verify_event_state(&txn, &expected).await?;
         txn.commit().await?;
         Ok(())
     }
@@ -1054,7 +1102,15 @@ impl OutboxRelay {
             .exec(&txn)
             .await?;
         self.ensure_claim_owned(model.id, result.rows_affected)?;
-        self.finish_dispatch_attempt(&txn, model.id, attempt, attempts::CONFIRMED, now).await?;
+        self.finish_dispatch_attempt(&txn, model.id, attempt, Self::claim_token(model)?, attempts::CONFIRMED, now).await?;
+        let mut expected = model.clone();
+        expected.status = SysEventStatus::Dispatched;
+        expected.dispatched_at = Some(now);
+        expected.claimed_by = None;
+        expected.claimed_at = None;
+        expected.last_error = None;
+        expected.next_attempt_at = None;
+        Self::verify_event_state(&txn, &expected).await?;
         txn.commit().await?;
         Ok(())
     }
@@ -1064,7 +1120,7 @@ impl OutboxRelay {
         model: &entity::Model,
         error: Error,
         terminal: bool,
-        attempt: Option<Uuid>,
+        attempt: Option<(Uuid, &str)>,
     ) -> Result<DispatchOutcome> {
         let txn = self.db.begin().await?;
         self.lock_current_claim(&txn, model).await?;
@@ -1097,19 +1153,27 @@ impl OutboxRelay {
             .filter(entity::Column::ClaimedAt.eq(model.claimed_at))
             .set(entity::ActiveModel {
                 retry_count: Set(retry_count),
-                last_error: Set(Some(last_error)),
+                last_error: Set(Some(last_error.clone())),
                 claimed_by: Set(None),
                 claimed_at: Set(None),
-                status: Set(status),
+                status: Set(status.clone()),
                 next_attempt_at: Set(next_attempt_at),
                 ..Default::default()
             })
             .exec(&txn)
             .await?;
         self.ensure_claim_owned(model.id, result.rows_affected)?;
-        if let Some(id) = attempt {
-            self.finish_dispatch_attempt(&txn, model.id, id, attempts::UNCERTAIN, now).await?;
+        if let Some((id, token)) = attempt {
+            self.finish_dispatch_attempt(&txn, model.id, id, token, attempts::UNCERTAIN, now).await?;
         }
+        let mut expected = model.clone();
+        expected.retry_count = retry_count;
+        expected.last_error = Some(last_error);
+        expected.claimed_by = None;
+        expected.claimed_at = None;
+        expected.status = status;
+        expected.next_attempt_at = next_attempt_at;
+        Self::verify_event_state(&txn, &expected).await?;
         txn.commit().await?;
 
         if moved_to_dlq {
@@ -1350,6 +1414,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rewritten_dispatch_outcomes_roll_back_event_and_attempt_together() {
+        for trigger in [
+            "CREATE TRIGGER rewrite_outcome AFTER UPDATE OF status ON sys_events WHEN NEW.status = 'dispatched' BEGIN UPDATE sys_events SET retry_count = NEW.retry_count + 1 WHERE id = NEW.id; END",
+            "CREATE TRIGGER rewrite_outcome AFTER UPDATE OF state ON outbox_dispatch_attempts WHEN NEW.state = 'confirmed' BEGIN UPDATE outbox_dispatch_attempts SET state = 'uncertain' WHERE id = NEW.id; END",
+        ] {
+            let db = database().await;
+            let envelope = EventEnvelope::new(
+                Uuid::new_v4(), None,
+                rustok_events::DomainEvent::UserLoggedIn { user_id: Uuid::new_v4() },
+            );
+            let id = envelope.id;
+            crate::OutboxTransport::new(db.clone()).publish(envelope).await.unwrap();
+            let relay = OutboxRelay::new(db.clone(), Arc::new(RejectUnexpectedPublish));
+            let horizon = rustok_outbox_storage::observe_database_clock(&db).await.unwrap();
+            let claimed = relay.claim_batch(1, horizon, None).await.unwrap().pop().unwrap();
+            let renewed = relay.refresh_claim(&claimed).await.unwrap();
+            let AttemptAdmission::Ready(attempt) = relay.begin_dispatch_attempt(&renewed).await.unwrap() else { panic!("intent"); };
+            let before = attempts::Entity::find_by_id(attempt).one(&db).await.unwrap().unwrap();
+            // Exercise relay readback independently of the database history guard.
+            db.execute_unprepared("DROP TRIGGER outbox_attempt_update_guard").await.unwrap();
+            db.execute_unprepared(trigger).await.unwrap();
+            assert!(relay.mark_dispatched(&renewed, attempt).await.is_err());
+            assert_eq!(entity::Entity::find_by_id(id).one(&db).await.unwrap(), Some(renewed.clone()));
+            assert_eq!(attempts::Entity::find_by_id(attempt).one(&db).await.unwrap(), Some(before));
+            db.execute_unprepared("DROP TRIGGER rewrite_outcome").await.unwrap();
+            relay.mark_dispatched(&renewed, attempt).await.unwrap();
+        }
+    }
+
+    #[tokio::test]
     async fn backoff_reaches_cap_without_overflow_or_fixed_exponent_ceiling() {
         let relay = OutboxRelay::new(database().await, Arc::new(RejectUnexpectedPublish))
             .with_config(RelayConfig {
@@ -1576,7 +1670,7 @@ mod tests {
         ] {
             assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
         }
-        relay.mark_failed_attempt(&renewed, Error::External("local failure".into()), false, Some(attempt_id)).await.unwrap();
+        relay.mark_failed_attempt(&renewed, Error::External("local failure".into()), false, Some((attempt_id, OutboxRelay::claim_token(&renewed).unwrap()))).await.unwrap();
         entity::Entity::update_many().filter(entity::Column::Id.eq(event_id))
             .set(entity::ActiveModel { next_attempt_at: Set(None), ..Default::default() })
             .exec(&db).await.unwrap();
@@ -1710,7 +1804,7 @@ mod tests {
         // This models reviewed recovery, not evidence of actual broker acceptance.
         let txn = db.begin().await.unwrap();
         let now = rustok_outbox_storage::database_now(&txn).await.unwrap();
-        relay.finish_dispatch_attempt(&txn, id, attempt, attempts::CONFIRMED, now).await.unwrap();
+        relay.finish_dispatch_attempt(&txn, id, attempt, OutboxRelay::claim_token(&renewed).unwrap(), attempts::CONFIRMED, now).await.unwrap();
         txn.commit().await.unwrap();
         transport.acknowledge(id).await.unwrap();
         assert_eq!(crate::OutboxRetention::new(db.clone()).prune_once().await.unwrap().pruned, 1);

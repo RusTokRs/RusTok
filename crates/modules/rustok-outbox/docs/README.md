@@ -357,3 +357,16 @@ Parent identity/SQLite parent REPLACE, arbitrary privileged DDL, restored backup
 and proof of retention eligibility against direct parent DELETE are separate
 boundaries. Stop/drain older relay binaries before deployment. SQLite and
 PostgreSQL regression sources are authored, not executed.
+
+## Exact dispatch outcome integrity (source only)
+
+Relay writer fences verify the complete event snapshot. ACK, retry, DLQ and
+pre-publication release read back the expected event transition before commit;
+closing an attempt requires its exact claim token and verifies its terminal
+record. Recovery explicitly uses the abandoned intent's token, not the new
+claim's token. Fanout topology and primary confirmation also require exact
+checkpoint readback. Rewritten outcomes abort the SQL transaction instead of
+reporting success or silently losing retry state. No broker I/O is added to
+these transactions; ambiguous broker effects still require recovery.
+SQLite regression sources exercise rewritten event and attempt ACK outcomes
+independently of the history guard; compilation and execution remain pending.
