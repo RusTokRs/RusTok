@@ -867,6 +867,47 @@ mod variant_patch_tests {
             .unwrap_or_else(|_| panic!("Invalid Variant input fixture"))
     }
 
+    fn decode_create(value: serde_json::Value) -> CreateVariantInput {
+        CreateVariantInput::parse(Some(async_graphql::Value::from_json(value).unwrap()))
+            .unwrap_or_else(|_| panic!("Invalid CreateVariant input fixture"))
+    }
+
+    #[test]
+    fn graphql_variant_create_and_update_forward_typed_eav_batches() {
+        let batch = serde_json::json!({
+            "locale": "en",
+            "patches": [{
+                "attributeId": "00000000-0000-4000-8000-000000000003",
+                "kind": "TEXT",
+                "text": "Blue"
+            }]
+        });
+        let create = convert_create_variant_input(decode_create(serde_json::json!({
+            "prices": [],
+            "attributeValues": [batch.clone()]
+        })))
+        .unwrap();
+        let update = convert_update_variant_input(decode(serde_json::json!({
+            "attributeValues": [batch]
+        })))
+        .unwrap();
+
+        for batches in [&create.attribute_values, &update.attribute_values] {
+            assert_eq!(batches.len(), 1);
+            assert_eq!(batches[0].locale, "en");
+            assert_eq!(
+                batches[0].patches[0].attribute_id,
+                Uuid::parse_str("00000000-0000-4000-8000-000000000003").unwrap()
+            );
+            assert_eq!(
+                batches[0].patches[0].value,
+                rustok_product::services::ProductAttributeValuePatchValue::Text(
+                    "Blue".to_owned()
+                )
+            );
+        }
+    }
+
     #[test]
     fn graphql_omission_and_null_reach_the_owner_as_different_intents() {
         let omitted = convert_update_variant_input(decode(serde_json::json!({}))).unwrap();
