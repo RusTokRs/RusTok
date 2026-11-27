@@ -213,7 +213,7 @@ fn apply_symbol_command_inner(
                 if let Some(existing) = existing {
                     if existing != raw {
                         return Err(FlyError::InvalidAssetReference(format!(
-                            "symbol asset id \`{}\` conflicts with an existing project asset",
+                            "symbol asset id `{}` conflicts with an existing project asset",
                             asset_descriptor.id
                         )));
                     }
@@ -1499,8 +1499,8 @@ fn walk_symbol_graph(
 mod tests {
     use super::*;
     use crate::{
-        ComponentChildren, EditorCommand, FlyEditor, GrapesProject, ProjectPage, RegistrySet,
-        SymbolCommand, ValidationLimits, validate_project,
+        AssetDescriptor, ComponentChildren, EditorCommand, FlyEditor, GrapesJsCodec, GrapesProject,
+        ProjectPage, RegistrySet, SymbolCommand, ValidationLimits, validate_project,
     };
     use serde_json::json;
 

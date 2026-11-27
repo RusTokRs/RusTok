@@ -1562,3 +1562,6 @@ Fly iframe/resize identity follow-up (2026-11-27, source-only): Leptos and Dioxu
 
 
 Fly Dioxus/classic JS handoff correction (2026-11-27, source-only): Dioxus now marks only its hydrated palette and layer-tree islands; the raw canvas preview remains outside those boundaries for classic-JS selection/drag. The browser adapter scopes selection ownership to the originating element, preserves native Dioxus palette drag handles, cancels accidental hydrated row drags, and no longer treats the Dioxus-local move button as a browser action. A nested-island Playwright regression and stricter Dioxus action checks were authored. No Playwright run, Dioxus WASM build, Cargo test or lint was run; cross-adapter runtime verification remains open.
+
+
+Fly compile-blocker correction (2026-11-27, source-only): fixed the missing semicolon after a let-else statement in fragment asset remapping, removed invalid escaped-backtick sequences from a symbol error message, and imported GrapesJsCodec/AssetDescriptor in the symbol regression-test module. These were existing blockers in untouched Fly modules surfaced by the first focused workflow run. No new test result is claimed until the workflow reruns.
