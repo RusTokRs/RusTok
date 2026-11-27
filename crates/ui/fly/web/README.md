@@ -17,6 +17,8 @@ For full public interface and web runtime definitions, see [CRATE_API.md](CRATE_
 - Implement authenticated real-DOM inline edit grants and request validation, including the
   client-side half of the commit contract: only a changed element emits a request, and the
   value is normalized to the plain text the grant accepts before it is bound.
+- Advance each real-DOM inline-edit request sequence with checked arithmetic; exhaustion is
+  surfaced as `InlineEditContractError::SequenceExhausted` rather than reusing `u64::MAX`.
 - Provide the page-scoped `BrowserPeerWriteChannel` used by the classic JS adapter and Rust
   Leptos/Dioxus hosts. Its sender identity combines a document nonce with an editor-root scope,
   so channels for one editor advance together while other tabs or editor roots are treated as

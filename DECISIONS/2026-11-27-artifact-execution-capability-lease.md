@@ -90,9 +90,20 @@ and compares both revision and hash. Composition CAS writes conflict with
 this lock; restoration of the same manifest cannot renew an old lease.
 Missing composition must not be bootstrapped by revalidation. Unrelated
 composition replacements conservatively invalidate serving leases.
-Lifecycle hooks remain root-only. This does not fence independent compiled
+Lifecycle hooks remain root-only. Serving closures also bind converged
+deployment state revision, head IDs, owner-derived readiness digest, node ID
+and exact assignment observation revisions for all artifact members. Capture
+readiness in one read snapshot and reject a changed head; no selection-only
+closure can authorize a serving SQL effect. After mixed-selection fences and
+before the composition lock, acquire the existing reconciliation state row
+shared lock (SQLite already has its write reservation), compare head/revision,
+recompute the persisted digest and check each required live/observed
+assignment and observation revision. The ledger owner serializes requests,
+claims, heartbeats and reports using the exclusive state row lock. A restored
+head cannot revive an older revision. Fresh preflight compares the same
+evidence, not a tenant policy digest. This does not fence independent compiled
 registry changes, contextual channel/maintenance, registry mutation,
-full effective-policy revision or deployment readiness. PostgreSQL
+full effective-policy revision or continuous worker/node liveness. PostgreSQL
 cross-owner lock-order and runtime evidence remain required. Mixed-closure
 tenant intent and composition identity fencing require no additional
 migration; coordinate writers and readers.

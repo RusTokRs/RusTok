@@ -1531,8 +1531,23 @@ old revision. The global composition fence conservatively invalidates a
 serving lease even for unrelated manifest edits. No extra migration is
 needed. This covers composition-derived defaults and co-requisites, not
 changes to an in-process native registry or independent deployment inputs.
-Contextual channel/maintenance inputs, registry writers and deployment
-readiness are not transactionally fenced. Each artifact lease also captures
+The serving closure also binds the converged reconciliation state revision,
+head IDs, owner-derived readiness digest, node ID and exact observations for
+every selected artifact. Capture all readiness evidence in a single owner
+read snapshot, then reject a changed head. SQL effects take the shared
+reconciliation state row lock after mixed-selection fences (SQLite already
+holds its write reservation) and before the composition row lock. All
+reconciliation requests, claims, heartbeats and reports acquire the exclusive
+state row lock before changing ledger evidence. Recompute the persisted
+deployment digest and recheck every required live/observed assignment identity
+and observation revision under that lock. An incomplete, legacy, changed
+or missing set denies the effect; even a restored head cannot renew a lease
+whose state revision changed. Fresh non-SQL preflight compares the same
+readiness evidence without an effect lock. Lifecycle hooks retain their
+separate root-only admission. This protects the durable ledger, not live
+executor availability or independent worker liveness. Contextual
+channel/maintenance inputs and registry writers are not transactionally
+fenced. Each artifact lease also captures
 both platform and tenant selection generations on the permanent slug fences.
 Successful activation, deactivation, rollback, uninstall and explicit artifact
 tenant enable/disable advance the affected scope in the same transaction as

@@ -178,6 +178,8 @@ test('malformed peer notifications neither fence nor advance the editor baseline
     channel.postMessage(message);
     channel.postMessage({ ...message, senderId: ' \u0085' });
     channel.postMessage({ ...message, senderId: 'é'.repeat(129) });
+    channel.postMessage({ ...message, senderId: '\uD800' });
+    channel.postMessage({ ...message, senderId: '\uDC00' });
     channel.postMessage({ ...message, senderId: 'peer', revision: 'é'.repeat(129) });
     channel.postMessage({ ...message, senderId: 'peer', extra: 'x'.repeat(1024) });
     channel.postMessage(JSON.stringify({ ...message, senderId: 'peer' }));
@@ -199,6 +201,27 @@ test('malformed peer notifications neither fence nor advance the editor baseline
     channel.close();
   });
   await expect(page.locator('#fly-root')).toHaveAttribute('data-fly-peer-write-conflict', 'true');
+});
+
+test('peer notifications accept valid non-BMP UTF-8 metadata at the byte limit', async ({ page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  await mountEditor(page, 'same-page', source);
+
+  await page.evaluate(() => {
+    const channel = new BroadcastChannel('fly:page-authoring-writes:v1');
+    channel.postMessage({
+      kind: 'confirmed-write',
+      pageId: 'same-page',
+      revision: '🧭'.repeat(64),
+      hash: '🔑'.repeat(64),
+      senderId: '😀'.repeat(64),
+    });
+    channel.close();
+  });
+
+  await expect(page.locator('#fly-root')).toHaveAttribute(
+    'data-fly-peer-write-conflict', 'true'
+  );
 });
 
 test('server revision conflicts fence the browser editor without BroadcastChannel', async ({ page }) => {

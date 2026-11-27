@@ -3541,3 +3541,26 @@ claim cancellation safety inside the connector's own constructor.
 Focused source regressions cover reuse without desired-policy reads, stopped
 initialization, and active-profile reporting. Compilation, formatting and tests
 were not run at the maintainer's request.
+
+## Server audit continuation — global artifact release security API (2026-11-27)
+
+Implemented the missing server boundary for the rustok-modules global artifact
+security aggregate. REST now exposes a non-cacheable snapshot read and the
+revisioned quarantine, clear-quarantine, and terminal revoke commands; revision
+values are decimal strings at both transport boundaries to preserve full u64
+precision. GraphQL
+exposes the matching snapshot and mutation fields. Both transports require a
+direct authenticated user and modules:manage, and the owner adapter binds the
+authenticated actor to a tenant-independent command envelope.
+
+The authorizer checks both the direct-session claims and the persisted tenant
+permission, failing closed if the permission lookup is unavailable. All
+mutations retain the owner-issued idempotency receipt and outbox evidence, and
+successful changes evict every tenant entry from the process-local effective
+policy cache. Marketplace yanking and external-provenance quarantine remain
+separate controls.
+
+Regression source was added for authorization, command identity, response
+cache policy, error mapping, GraphQL field classification and OpenAPI bearer
+requirements. Tests, compilation and formatting were not run at the maintainer's
+request.

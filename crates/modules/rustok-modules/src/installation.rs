@@ -12411,7 +12411,8 @@ mod tests {
         ).await.is_err());
 
         let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        closure.require_current_on(&tx).await.unwrap();
+        assert!(closure.require_current_on(&tx).await.is_err(), "selection-only closure must not authorize serving effects");
+        closure.require_selection_current_on(&tx).await.unwrap();
         tx.rollback().await.unwrap();
 
         // Inherited native intent is absent at admission. Exercise the
@@ -12426,7 +12427,7 @@ mod tests {
             crate::StaticTenantLifecycleStore::release(&tx, tenant_id, "native_provider", key).await.unwrap();
             tx.commit().await.unwrap();
             let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-            assert!(closure.require_current_on(&tx).await.is_err());
+            assert!(closure.require_selection_current_on(&tx).await.is_err());
             tx.rollback().await.unwrap();
             if enabled == Some(false) {
                 assert!(crate::ArtifactServingClosure::from_policy_selection(
@@ -12440,7 +12441,7 @@ mod tests {
             &db, tenant_id, root, &policy, &selected,
         ).await.unwrap();
         let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        closure.require_current_on(&tx).await.unwrap();
+        closure.require_selection_current_on(&tx).await.unwrap();
         tx.rollback().await.unwrap();
 
         // The root remains active while its co-requisite is quarantined.
@@ -12451,7 +12452,7 @@ mod tests {
                 provider.release.digest.clone().into(), Uuid::new_v4().to_string().into()],
         )).await.unwrap();
         let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        assert!(closure.require_current_on(&tx).await.is_err());
+        assert!(closure.require_selection_current_on(&tx).await.is_err());
         tx.rollback().await.unwrap();
 
         db.execute_raw(Statement::from_sql_and_values(
@@ -12460,7 +12461,7 @@ mod tests {
             vec![provider.release.slug.clone().into()],
         )).await.unwrap();
         let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        assert!(closure.require_current_on(&tx).await.is_err(), "security ABA must not revive the lease");
+        assert!(closure.require_selection_current_on(&tx).await.is_err(), "security ABA must not revive the lease");
         tx.rollback().await.unwrap();
 
         // Refresh the policy evidence for a new lease, then invalidate its
@@ -12500,7 +12501,7 @@ mod tests {
             &db, tenant_id, root, &policy, &selected,
         ).await.unwrap();
         let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        refreshed.require_current_on(&tx).await.unwrap();
+        refreshed.require_selection_current_on(&tx).await.unwrap();
         tx.rollback().await.unwrap();
         // Real lifecycle owner writes: the exact installation and clear
         // security revision return to the original values after re-enable.
@@ -12538,14 +12539,14 @@ mod tests {
         ).await.unwrap();
         assert_eq!(&restored, provider);
         let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        assert!(refreshed.require_current_on(&tx).await.is_err(), "disable/enable ABA must not revive a lease");
+        assert!(refreshed.require_selection_current_on(&tx).await.is_err(), "disable/enable ABA must not revive a lease");
         tx.rollback().await.unwrap();
 
         let renewed = crate::ArtifactServingClosure::from_policy_selection(
             &db, tenant_id, root, &policy, &selected,
         ).await.unwrap();
         let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        renewed.require_current_on(&tx).await.unwrap();
+        renewed.require_selection_current_on(&tx).await.unwrap();
         tx.rollback().await.unwrap();
 
         db.execute_raw(Statement::from_sql_and_values(
@@ -12554,7 +12555,7 @@ mod tests {
             vec![provider.installation_id.to_string().into()],
         )).await.unwrap();
         let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        assert!(renewed.require_current_on(&tx).await.is_err());
+        assert!(renewed.require_selection_current_on(&tx).await.is_err());
         tx.rollback().await.unwrap();
     }
 

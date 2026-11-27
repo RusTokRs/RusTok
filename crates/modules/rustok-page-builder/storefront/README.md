@@ -55,6 +55,7 @@ bodies are synchronized. Neither an event nor an acknowledgement proves a cart m
 
 ## Known Limitations / Pending Implementation
 
+- **Authenticated inline edit grants are single-commit.** Each grant is bound to one page, revision and project hash. After a successful edit, the host must persist the returned `project_data`, issue a fresh grant for the new revision/hash, and remount the component; the current client does not rotate grants or queue multiple edits under one grant. Authenticated inline editing accepts `First`, `Index` and stable `Id` page selections; `Slug` is intentionally rejected because it is not a stable grant identity. Unsupported selections are marked in SSR and reported through `on_error` after hydration.
 - **No fallback for browsers without `@scope`.** It needs Chrome/Edge 118+, Safari 17.4+ or Firefox 128+. An older browser drops the whole block: the landing renders unstyled there (the host is unaffected). There is no selector-prefixing fallback.
 - **At-rules that define document-wide names are not confined.** `@keyframes`, `@font-face`, `@property` and similar keep their names global where a browser accepts them inside `@scope`; a landing can still collide with a host animation or font name.
 - **Landing markup is not scoped, only its stylesheet.** The body HTML is emitted as produced by the Fly sanitizer (`inner_html`); `scope_landing_css` adds no second sanitization pass.

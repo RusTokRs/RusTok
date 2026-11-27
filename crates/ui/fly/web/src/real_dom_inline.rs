@@ -202,6 +202,7 @@ pub enum InlineEditContractError {
     ExpiredGrant,
     GrantIdentityMismatch,
     InvalidSequence,
+    SequenceExhausted,
     InvalidPlainText(String),
     Browser(String),
 }
@@ -219,6 +220,9 @@ impl Display for InlineEditContractError {
             Self::InvalidSequence => {
                 formatter.write_str("inline edit sequence must be greater than zero")
             }
+            Self::SequenceExhausted => {
+                formatter.write_str("inline edit sequence space is exhausted")
+            }
             Self::InvalidPlainText(message) => {
                 write!(formatter, "invalid inline edit plain text: {message}")
             }
@@ -230,6 +234,13 @@ impl Display for InlineEditContractError {
 }
 
 impl std::error::Error for InlineEditContractError {}
+
+// A monotonic request identity must never saturate and be reused as a replay.
+fn next_inline_edit_sequence(current: u64) -> Result<u64, InlineEditContractError> {
+    current
+        .checked_add(1)
+        .ok_or(InlineEditContractError::SequenceExhausted)
+}
 
 fn normalized_required(value: String, label: &str) -> Result<String, InlineEditContractError> {
     let value = value.trim().to_string();
@@ -500,7 +511,13 @@ mod browser {
                         return;
                     }
                 };
-                let next_sequence = sequence.get().saturating_add(1);
+                let next_sequence = match next_inline_edit_sequence(sequence.get()) {
+                    Ok(next_sequence) => next_sequence,
+                    Err(error) => {
+                        on_error(error);
+                        return;
+                    }
+                };
                 let now_unix_ms = js_sys::Date::now().max(0.0) as u64;
                 match grant.bind_request(now_unix_ms, next_sequence, component_id, value) {
                     Ok(request) => {
@@ -565,6 +582,17 @@ mod tests {
             2_000,
         )
         .expect("grant")
+    }
+
+
+    #[test]
+    fn inline_edit_sequence_advancement_fails_closed_instead_of_reusing_maximum() {
+        assert_eq!(next_inline_edit_sequence(0), Ok(1));
+        assert_eq!(next_inline_edit_sequence(u64::MAX - 1), Ok(u64::MAX));
+        assert_eq!(
+            next_inline_edit_sequence(u64::MAX),
+            Err(InlineEditContractError::SequenceExhausted)
+        );
     }
 
     #[test]
