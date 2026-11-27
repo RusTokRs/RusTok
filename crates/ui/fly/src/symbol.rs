@@ -161,6 +161,17 @@ fn apply_symbol_command_inner(
                     );
                 }
             }
+            for (path, entry) in SymbolDescriptor::entries_from_document(document) {
+                let existing = SymbolDescriptor::from_value(&entry).ok_or_else(|| {
+                    FlyError::InvalidSymbolReference(format!(
+                        "{path} is not a valid symbol definition"
+                    ))
+                })?;
+                if existing.id != descriptor.id {
+                    existing_asset_references
+                        .extend(symbol_asset_dangling_references(&existing));
+                }
+            }
             let mut asset_id_generator =
                 crate::SequentialIdGenerator::new("fly-symbol-asset");
             crate::fragment::remap_fragment_asset_ids(
@@ -463,6 +474,21 @@ fn symbol_instance_facts_in_components(
     instances
 }
 
+fn symbol_asset_dangling_references(
+    descriptor: &SymbolDescriptor,
+) -> BTreeSet<String> {
+    let mut references = BTreeSet::new();
+    for component in &descriptor.components {
+        crate::fragment::collect_component_asset_ids(component, &mut references);
+    }
+    for raw in &descriptor.assets {
+        if let Some(asset) = crate::AssetDescriptor::from_value(raw.clone()) {
+            references.remove(&asset.id);
+        }
+    }
+    references
+}
+
 pub(crate) fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()> {
     let encoded = serde_json::to_vec(descriptor)
         .map_err(|error| FlyError::InvalidSymbolReference(error.to_string()))?;
@@ -723,6 +749,12 @@ pub fn resolve_symbol_instances(document: &ProjectDocument) -> FlyResult<Project
             crate::fragment::collect_component_asset_ids(root, &mut asset_references);
         }
     }
+    let symbol_asset_dangling_references = catalog
+        .iter()
+        .map(|(id, descriptor)| {
+            (id.clone(), symbol_asset_dangling_references(descriptor))
+        })
+        .collect();
     let mut identities = SymbolIdentityReservations {
         generated: crate::id_reference::project_identity_ids(&resolved),
         forms: crate::id_reference::project_form_ids(&resolved),
@@ -731,6 +763,7 @@ pub fn resolve_symbol_instances(document: &ProjectDocument) -> FlyResult<Project
         asset_references,
         asset_id_generator: crate::SequentialIdGenerator::new("fly-symbol-asset"),
         symbol_asset_mappings: BTreeMap::new(),
+        symbol_asset_dangling_references,
     };
     let mut pending_styles = Vec::new();
     for page in &mut resolved.project_mut().pages {
@@ -824,6 +857,7 @@ struct SymbolIdentityReservations {
     asset_references: BTreeSet<String>,
     asset_id_generator: crate::SequentialIdGenerator,
     symbol_asset_mappings: BTreeMap<String, BTreeMap<String, String>>,
+    symbol_asset_dangling_references: BTreeMap<String, BTreeSet<String>>,
 }
 
 fn expand_node(
@@ -1059,11 +1093,17 @@ fn expand_instance(
             asset_mapping,
         )?;
     } else {
+        let mut existing_asset_references = identities.asset_references.clone();
+        for (other_symbol_id, references) in &identities.symbol_asset_dangling_references {
+            if other_symbol_id != symbol_id {
+                existing_asset_references.extend(references.iter().cloned());
+            }
+        }
         let asset_mapping = crate::fragment::remap_fragment_asset_ids(
             &mut symbol_assets,
             &mut cloned,
             &identities.assets,
-            &identities.asset_references,
+            &existing_asset_references,
             &mut identities.asset_id_generator,
         )?;
         identities
