@@ -106,7 +106,7 @@ pub(crate) struct ArtifactRolePermissionAssignmentResponse {
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Direct session user with modules:manage required"),
         (status = 404, description = "Role or permission in the requested explicit scope not found"),
-        (status = 409, description = "Idempotency command conflict")
+        (status = 409, description = "Idempotency command conflict or operation in progress")
     )
 )]
 async fn grant_artifact_permission(
@@ -135,7 +135,7 @@ async fn grant_artifact_permission(
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Direct session user with modules:manage required"),
         (status = 404, description = "Role or permission in the requested explicit scope not found"),
-        (status = 409, description = "Idempotency command conflict")
+        (status = 409, description = "Idempotency command conflict or operation in progress")
     )
 )]
 async fn revoke_artifact_permission(
@@ -189,7 +189,7 @@ async fn assign(
         .ok_or(Error::InternalServerError)?;
     authority.0.prepare().await.map_err(map_authority_error)?;
     let tx = ctx.db().begin().await?;
-    let locked = authority
+    let locked = match authority
         .0
         .lock(
             &tx,
@@ -199,8 +199,14 @@ async fn assign(
             &[Permission::MODULES_MANAGE],
         )
         .await
-        .map_err(map_authority_error)?;
-    let result = service
+    {
+        Ok(locked) => locked,
+        Err(error) => {
+            tx.rollback().await?;
+            return Err(map_authority_error(error));
+        }
+    };
+    let result = match service
         .assign_in_transaction(
             &tx,
             ArtifactRolePermissionAssignmentCommand {
@@ -215,12 +221,17 @@ async fn assign(
             },
         )
         .await
-        .map_err(map_assignment_error)?;
-    authority
-        .0
-        .ensure_deadline(&tx, &locked)
-        .await
-        .map_err(map_authority_error)?;
+    {
+        Ok(result) => result,
+        Err(error) => {
+            tx.rollback().await?;
+            return Err(map_assignment_error(error));
+        }
+    };
+    if let Err(error) = authority.0.ensure_deadline(&tx, &locked).await {
+        tx.rollback().await?;
+        return Err(map_authority_error(error));
+    }
     tx.commit().await?;
     Ok(json_response(ArtifactRolePermissionAssignmentResponse {
         applied: result.applied,
@@ -278,6 +289,13 @@ fn map_assignment_error(error: ArtifactPermissionAssignmentError) -> Error {
                 StatusCode::CONFLICT,
                 "idempotency_conflict",
                 "Idempotency key was already used for a different artifact permission command",
+            ))
+        }
+        ArtifactPermissionAssignmentError::OperationBusy => {
+            http_error(rustok_web::HttpError::new(
+                StatusCode::CONFLICT,
+                "idempotency_in_progress",
+                "Artifact permission operation is in progress; retry with the same key",
             ))
         }
         ArtifactPermissionAssignmentError::Database(_error) => {
@@ -469,5 +487,7 @@ mod tests {
         let conflict =
             super::map_assignment_error(ArtifactPermissionAssignmentError::IdempotencyConflict);
         assert!(matches!(conflict, Error::Http(ref e) if e.status == StatusCode::CONFLICT));
+        let busy = super::map_assignment_error(ArtifactPermissionAssignmentError::OperationBusy);
+        assert!(matches!(busy, Error::Http(ref e) if e.status == StatusCode::CONFLICT));
     }
 }

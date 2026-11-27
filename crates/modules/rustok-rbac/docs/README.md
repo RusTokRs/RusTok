@@ -474,3 +474,14 @@ membership predicate. Existing hierarchy and permission-ceiling checks remain.
 Source regressions cover a malformed foreign membership and the distinction
 between inferred rank and canonical membership; compilation and execution
 remain pending.
+
+### Artifact receipt contention
+
+Owner assignment on PostgreSQL refuses a busy tenant/idempotency-key advisory
+fence rather than waiting on the receipt unique index while holding role locks.
+The lock is transaction-scoped and independent of actor and role. Definition
+parent and receipt table admission are nonwaiting as well. The REST adapter
+explicitly rolls back before returning `409 idempotency_in_progress`; callers
+may retry the same key with fresh authority. The unique constraint still owns
+receipt identity; direct SQL that bypasses the owner fence is not covered.
+No commit error is automatically replayed. Source regressions are unrun.

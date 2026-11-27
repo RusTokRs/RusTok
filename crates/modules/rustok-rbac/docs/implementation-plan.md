@@ -643,3 +643,16 @@ membership predicate. Existing hierarchy and permission-ceiling checks remain.
 Source regressions cover a malformed foreign membership and the distinction
 between inferred rank and canonical membership; compilation and execution
 remain pending.
+
+## Artifact operation receipt contention (source only)
+
+PostgreSQL owner assignment acquires a nonwaiting transaction-scoped advisory
+fence over the exact tenant/idempotency-key namespace before receipt lookup or
+insert; different actors or target roles do not change that key. Contention
+returns a distinct HTTP 409 in-progress response after rollback. Definition
+row and relation admission and receipt-table admission are also nonwaiting.
+The unique receipt constraint is still authoritative; raw SQL writers that
+bypass the owner advisory fence, receipt retention after destructive cleanup,
+commit outcome recovery and full cross-owner ordering remain open. SQLite
+continues to serialize writers. The opt-in PostgreSQL fence test and REST
+mapping regression are authored, not executed.

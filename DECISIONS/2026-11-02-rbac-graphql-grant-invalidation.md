@@ -167,3 +167,15 @@ once-per-transaction protocol. Exact state no-ops and replays advance nothing.
 Drain old writers and advance once at cutover to invalidate old continuity
 receipts. Direct static relation generation coupling and general safe retry
 remain open; source regressions authored, unrun.
+
+## Artifact operation receipt lock-order refinement
+
+Owner assignment on PostgreSQL uses nonwaiting definition relation/row and
+receipt relation admission, followed by a transaction-scoped try-advisory
+fence keyed by tenant and idempotency key before reading or inserting the
+receipt. This avoids owner-to-owner unique-index waits under different role
+locks. A busy key rejects the transaction without reporting an idempotency
+payload mismatch. The owner and HTTP transaction adapters explicitly roll back
+on pre-commit errors. The unique constraint remains authoritative; raw receipt
+DML that bypasses this advisory fence and receipt retention are separate gaps.
+No uncertain commit is replayed. Regression sources are unrun.

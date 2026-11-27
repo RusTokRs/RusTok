@@ -53,6 +53,8 @@ pub enum ArtifactPermissionAssignmentError {
     InvalidCommand(&'static str),
     #[error("idempotency key was already used for a different artifact permission command")]
     IdempotencyConflict,
+    #[error("artifact permission operation is currently in progress; retry with the same key")]
+    OperationBusy,
     #[error("role does not exist in the requested tenant")]
     RoleNotFound,
     #[error("artifact permission is not registered for the requested explicit scope")]
@@ -109,9 +111,16 @@ impl RbacArtifactPermissionAssignmentService {
         ensure_supported_backend(self.db.get_database_backend())?;
 
         let transaction = self.db.begin().await.map_err(database_error)?;
-        let result = self.assign_in_transaction(&transaction, command).await?;
-        transaction.commit().await.map_err(database_error)?;
-        Ok(result)
+        match self.assign_in_transaction(&transaction, command).await {
+            Ok(result) => {
+                transaction.commit().await.map_err(database_error)?;
+                Ok(result)
+            }
+            Err(error) => {
+                transaction.rollback().await.map_err(database_error)?;
+                Err(error)
+            }
+        }
     }
 
     /// Host control-plane adapters supply an owner transaction on which
@@ -139,6 +148,7 @@ impl RbacArtifactPermissionAssignmentService {
         let artifact_permission =
             resolve_artifact_permission_identity(transaction, &command).await?;
 
+        lock_operation_key(transaction, &command).await?;
         if let Some(existing) = find_operation(transaction, &command).await? {
             return match_operation(existing, &artifact_permission, &command);
         }
@@ -382,6 +392,32 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), ArtifactPermission
     }
 }
 
+/// A tenant-scoped key is independent of the actor and target role. Two
+/// concurrent commands with the same key may hold different role locks.
+/// Never wait on their shared unique-index entry at this late boundary.
+/// The unique constraint remains authoritative, including hash collisions.
+async fn lock_operation_key(
+    tx: &DatabaseTransaction,
+    command: &ArtifactRolePermissionAssignmentCommand,
+) -> Result<(), ArtifactPermissionAssignmentError> {
+    if tx.get_database_backend() != DbBackend::Postgres {
+        return Ok(()); // SQLite already holds the writer fence.
+    }
+    tx.execute_unprepared(
+        "LOCK TABLE rbac_artifact_role_permission_operations IN ROW EXCLUSIVE MODE NOWAIT",
+    ).await.map_err(database_error)?;
+    let row = tx.query_one_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT pg_try_advisory_xact_lock(hashtextextended('rustok:rbac-artifact-operation:' || $1::uuid::text || ':' || $2::text, 0)) AS acquired",
+        vec![command.tenant_id.into(), command.idempotency_key.clone().into()],
+    )).await.map_err(database_error)?
+        .ok_or_else(|| database_error("artifact operation fence returned no row"))?;
+    if !row.try_get::<bool>("", "acquired").map_err(database_error)? {
+        return Err(ArtifactPermissionAssignmentError::OperationBusy);
+    }
+    Ok(())
+}
+
 async fn find_operation(
     transaction: &DatabaseTransaction,
     command: &ArtifactRolePermissionAssignmentCommand,
@@ -536,13 +572,18 @@ async fn resolve_artifact_permission_identity(
 ) -> Result<ArtifactPermissionIdentity, ArtifactPermissionAssignmentError> {
     let backend = transaction.get_database_backend();
     let requested_scope_key = scope_key(command.scope, command.tenant_id);
+    if backend == DbBackend::Postgres {
+        transaction.execute_unprepared(
+            "LOCK TABLE rbac_artifact_permission_definitions IN ROW SHARE MODE NOWAIT",
+        ).await.map_err(database_error)?;
+    }
     let sql = placeholders(
         backend,
         // Definitions are immutable, but a concurrent delete must not
         // invalidate the exact parent between resolution and receipt/write.
         match backend {
             DbBackend::Postgres => {
-                "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key} LIMIT 1 FOR KEY SHARE"
+                "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key} LIMIT 1 FOR KEY SHARE NOWAIT"
             }
             _ => {
                 "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key} LIMIT 1"
@@ -722,6 +763,55 @@ mod tests {
             scope_key(ArtifactPermissionAssignmentScope::Tenant, tenant_id),
             format!("tenant:{tenant_id}")
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_RBAC_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_operation_key_fence_rejects_late_same_key_contention() {
+        use sea_orm::Database;
+        use std::time::Duration;
+
+        let db = Database::connect(std::env::var("RUSTOK_RBAC_TEST_DATABASE_URL").unwrap())
+            .await.unwrap();
+        assert_eq!(db.get_database_backend(), DbBackend::Postgres);
+        let schema = format!("rbac_operation_fence_{}", Uuid::new_v4().simple());
+        db.execute_unprepared(&format!(
+            "CREATE SCHEMA {schema}; CREATE TABLE {schema}.rbac_artifact_role_permission_operations (id UUID PRIMARY KEY)"
+        )).await.unwrap();
+
+        let original = command(ArtifactPermissionAssignmentScope::Tenant);
+        let holder = db.begin().await.unwrap();
+        holder.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        lock_operation_key(&holder, &original).await.unwrap();
+        lock_operation_key(&holder, &original).await.unwrap();
+
+        let mut competing = original.clone();
+        competing.role_id = Uuid::new_v4();
+        competing.actor_id = Uuid::new_v4();
+        let contender = db.begin().await.unwrap();
+        contender.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(3), lock_operation_key(&contender, &competing))
+                .await.expect("late receipt fence must not wait"),
+            Err(ArtifactPermissionAssignmentError::OperationBusy),
+        );
+        contender.rollback().await.unwrap();
+
+        let unrelated = db.begin().await.unwrap();
+        unrelated.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        competing.tenant_id = Uuid::new_v4();
+        lock_operation_key(&unrelated, &competing).await.unwrap();
+        competing.tenant_id = original.tenant_id;
+        competing.idempotency_key = "different-key".into();
+        lock_operation_key(&unrelated, &competing).await.unwrap();
+        unrelated.rollback().await.unwrap();
+        holder.rollback().await.unwrap();
+
+        let fresh = db.begin().await.unwrap();
+        fresh.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        lock_operation_key(&fresh, &original).await.unwrap();
+        fresh.rollback().await.unwrap();
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
     }
 
     #[test]
