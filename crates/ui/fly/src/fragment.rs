@@ -239,6 +239,7 @@ pub(crate) fn remap_fragment_asset_ids(
             }
         }
     }
+    reserved.extend(source_asset_ids.iter().cloned());
     let mut dangling_source_references = BTreeSet::new();
     for component in components.iter() {
         collect_component_asset_ids(component, &mut dangling_source_references);
@@ -996,6 +997,70 @@ mod tests {
             "fly-symbol-asset-asset-1"
         );
         assert_eq!(assets[0]["id"], "fly-symbol-asset-asset-2");
+    }
+
+    #[test]
+    fn remapped_assets_do_not_capture_later_source_asset_ids() {
+        let mut assets = vec![
+            json!({
+                "id": "shared",
+                "src": "/source-a.webp"
+            }),
+            json!({
+                "id": "fly-symbol-asset-asset-1",
+                "src": "/source-b.webp"
+            }),
+        ];
+        let mut components = vec![
+            serde_json::from_value(json!({
+                "id": "source-a",
+                "type": "image",
+                "attributes": {
+                    "data-fly-asset-id": "shared"
+                }
+            }))
+            .expect("source image a"),
+            serde_json::from_value(json!({
+                "id": "source-b",
+                "type": "image",
+                "attributes": {
+                    "data-fly-asset-id": "fly-symbol-asset-asset-1"
+                }
+            }))
+            .expect("source image b"),
+        ];
+        let existing_assets = vec![json!({
+            "id": "shared",
+            "src": "/target.webp"
+        })];
+        let mut generator = crate::SequentialIdGenerator::new("fly-symbol-asset");
+
+        let mapping = remap_fragment_asset_ids(
+            &mut assets,
+            &mut components,
+            &existing_assets,
+            &BTreeSet::new(),
+            &mut generator,
+        )
+        .expect("remap colliding source asset");
+
+        assert_eq!(
+            mapping.get("shared").map(String::as_str),
+            Some("fly-symbol-asset-asset-2")
+        );
+        assert_eq!(assets[0]["id"], "fly-symbol-asset-asset-2");
+        assert_eq!(assets[1]["id"], "fly-symbol-asset-asset-1");
+        assert_ne!(assets[0]["id"], assets[1]["id"]);
+        assert_eq!(
+            components[0].as_object().expect("source image a").attributes
+                ["data-fly-asset-id"],
+            "fly-symbol-asset-asset-2"
+        );
+        assert_eq!(
+            components[1].as_object().expect("source image b").attributes
+                ["data-fly-asset-id"],
+            "fly-symbol-asset-asset-1"
+        );
     }
 
     #[test]
