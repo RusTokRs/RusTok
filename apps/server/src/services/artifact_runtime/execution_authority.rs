@@ -374,7 +374,12 @@ impl ArtifactSqlEffectAuthorizer for ExecutionAuthority {
     ) -> SandboxResult<Box<dyn ArtifactSqlEffectFence>> {
         if !matches!(
             call.capability.as_str(),
-            "platform.data" | "platform.data.objects" | "platform.events"
+            "platform.data"
+                | "platform.data.objects"
+                | "platform.events"
+                | "platform.http"
+                | "platform.mcp"
+                | "platform.secrets"
         ) {
             return Err(SandboxError::CapabilityDenied(call.capability.clone()));
         }
