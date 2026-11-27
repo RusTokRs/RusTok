@@ -20,7 +20,7 @@ const CLAIMS: &[(&str, &str, &str, bool)] = &[
     ("oauth_authorization_codes", "code_hash", "oauth_code_digest", false),
 ];
 
-const KINDS: &str = "'session', 'oauth_app', 'oauth_client', 'oauth_token', 'oauth_token_digest', 'oauth_code', 'oauth_code_digest'";
+const KINDS: &str = "'session', 'session_digest', 'oauth_app', 'oauth_client', 'oauth_token', 'oauth_token_digest', 'oauth_code', 'oauth_code_digest'";
 
 const POSTGRES_GUARDS: &str = r#"
 CREATE FUNCTION auth_guard_credential_witness() RETURNS trigger LANGUAGE plpgsql AS $$

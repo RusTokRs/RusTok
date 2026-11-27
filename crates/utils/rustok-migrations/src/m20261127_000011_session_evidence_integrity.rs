@@ -57,6 +57,7 @@ const SQLITE_GUARDS: &[&str] = &[
     r#"CREATE TRIGGER trg_session_identity_guard BEFORE UPDATE ON sessions
        FOR EACH ROW WHEN NEW.id IS NOT OLD.id OR NEW.tenant_id IS NOT OLD.tenant_id
            OR NEW.user_id IS NOT OLD.user_id OR NEW.created_at IS NOT OLD.created_at
+           OR NEW.rowid IS NOT OLD.rowid
        BEGIN SELECT RAISE(ABORT, 'Session identity is immutable'); END"#,
     r#"CREATE TRIGGER trg_session_tenant_user_insert BEFORE INSERT ON sessions
        FOR EACH ROW WHEN NOT EXISTS (
@@ -70,6 +71,7 @@ const SQLITE_GUARDS: &[&str] = &[
        FOR EACH ROW WHEN EXISTS (
            SELECT 1 FROM sessions s WHERE s.id = NEW.id OR
                (s.tenant_id = NEW.tenant_id AND s.token_hash = NEW.token_hash)
+               OR s.rowid = NEW.rowid
        ) BEGIN SELECT RAISE(ABORT, 'Session replacement is forbidden'); END"#,
     r#"CREATE TRIGGER trg_session_update_replace_guard BEFORE UPDATE OF token_hash ON sessions
        FOR EACH ROW WHEN EXISTS (
@@ -82,7 +84,8 @@ const SQLITE_GUARDS: &[&str] = &[
        FOR EACH ROW WHEN EXISTS (SELECT 1 FROM sessions WHERE id = OLD.session_id)
        BEGIN SELECT RAISE(ABORT, 'Session refresh evidence requires parent deletion'); END"#,
     r#"CREATE TRIGGER trg_session_history_insert_replace_guard BEFORE INSERT ON session_refresh_history
-       FOR EACH ROW WHEN EXISTS (SELECT 1 FROM session_refresh_history WHERE token_hash = NEW.token_hash)
+       FOR EACH ROW WHEN EXISTS (SELECT 1 FROM session_refresh_history
+           WHERE token_hash = NEW.token_hash OR rowid = NEW.rowid)
        BEGIN SELECT RAISE(ABORT, 'Session refresh evidence replacement is forbidden'); END"#,
 ];
 
@@ -173,6 +176,7 @@ mod tests {
     async fn sqlite_session_evidence_is_immutable_and_cascades_only_with_parent() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         db.execute_unprepared("PRAGMA foreign_keys = ON").await.unwrap();
+        db.execute_unprepared("PRAGMA recursive_triggers = OFF").await.unwrap();
         db.execute_unprepared(&fixture_sql()).await.unwrap();
         Migration.up(&SchemaManager::new(&db)).await.unwrap();
         db.execute_unprepared(&format!("INSERT INTO sessions VALUES ('{S2}', '{T}', '{U}', 'other-current', '2026-01-01')")).await.unwrap();
@@ -180,6 +184,11 @@ mod tests {
             format!("UPDATE OR REPLACE sessions SET token_hash = 'other-current' WHERE id = '{S}'"),
             format!("INSERT OR REPLACE INTO sessions VALUES ('{S}', '{T}', '{U}', 'replacement', '2026-01-02')"),
             format!("INSERT OR REPLACE INTO session_refresh_history VALUES ('historical', '{S}', '2026-01-03')"),
+            format!("INSERT OR REPLACE INTO sessions (rowid, id, tenant_id, user_id, token_hash, created_at)
+                SELECT rowid, '{OTHER}', '{T}', '{U}', 'different', created_at FROM sessions WHERE id = '{S}'"),
+            format!("UPDATE OR REPLACE sessions SET rowid = (SELECT rowid FROM sessions WHERE id = '{S2}') WHERE id = '{S}'"),
+            format!("INSERT OR REPLACE INTO session_refresh_history (rowid, token_hash, session_id, rotated_at)
+                SELECT rowid, 'different-history', '{S2}', rotated_at FROM session_refresh_history"),
         ]) {
             assert!(db.execute_unprepared(&sql).await.is_err(), "{sql}");
         }
