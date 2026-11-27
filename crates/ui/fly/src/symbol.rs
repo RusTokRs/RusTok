@@ -348,6 +348,99 @@ pub(crate) struct SymbolInstanceInfo {
     pub(crate) malformed_symbol_id: bool,
 }
 
+fn validate_symbol_component_ids(
+    component: &ComponentNode,
+    symbol_id: &str,
+    ids: &mut BTreeSet<String>,
+    path: &str,
+) -> FlyResult<()> {
+    match component {
+        ComponentNode::Object(object) => {
+            if let Some(id) = object.id.as_deref() {
+                validate_symbol_component_id(id, symbol_id, ids, path)?;
+            }
+            match &object.components {
+                crate::ComponentChildren::Nodes(children) => {
+                    for (index, child) in children.iter().enumerate() {
+                        validate_symbol_component_ids(
+                            child,
+                            symbol_id,
+                            ids,
+                            &format!("{path}.components[{index}]"),
+                        )?;
+                    }
+                }
+                crate::ComponentChildren::Opaque(raw) => {
+                    validate_opaque_symbol_component_ids(raw, symbol_id, ids, &format!("{path}.components"))?;
+                }
+            }
+        }
+        ComponentNode::Opaque(raw) => {
+            validate_opaque_symbol_component_ids(raw, symbol_id, ids, path)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_opaque_symbol_component_ids(
+    value: &Value,
+    symbol_id: &str,
+    ids: &mut BTreeSet<String>,
+    path: &str,
+) -> FlyResult<()> {
+    match value {
+        Value::Array(children) => {
+            for (index, child) in children.iter().enumerate() {
+                validate_opaque_symbol_component_ids(
+                    child,
+                    symbol_id,
+                    ids,
+                    &format!("{path}[{index}]"),
+                )?;
+            }
+        }
+        Value::Object(object) => {
+            if let Some(raw_id) = object.get("id") {
+                let id = raw_id.as_str().ok_or_else(|| {
+                    FlyError::InvalidSymbolReference(format!(
+                        "symbol `{symbol_id}` contains a non-string component id at {path}"
+                    ))
+                })?;
+                validate_symbol_component_id(id, symbol_id, ids, path)?;
+            }
+            if let Some(children) = object.get("components") {
+                validate_opaque_symbol_component_ids(
+                    children,
+                    symbol_id,
+                    ids,
+                    &format!("{path}.components"),
+                )?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn validate_symbol_component_id(
+    id: &str,
+    symbol_id: &str,
+    ids: &mut BTreeSet<String>,
+    path: &str,
+) -> FlyResult<()> {
+    validate_identifier(id).map_err(|reason| {
+        FlyError::InvalidSymbolReference(format!(
+            "symbol `{symbol_id}` component id `{id}` at {path} is invalid: {reason}"
+        ))
+    })?;
+    if !ids.insert(id.to_string()) {
+        return Err(FlyError::InvalidSymbolReference(format!(
+            "symbol `{symbol_id}` contains duplicate component id `{id}`"
+        )));
+    }
+    Ok(())
+}
+
 fn collect_symbol_instances_from_components(
     components: &[ComponentNode],
     path: &str,
@@ -728,22 +821,7 @@ pub(crate) fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()
                 )));
             }
         }
-        let mut collected = Vec::new();
-        component.collect_ids(&mut collected);
-        for id in collected {
-            if let Err(reason) = validate_identifier(&id) {
-                return Err(FlyError::InvalidSymbolReference(format!(
-                    "symbol `{}` component id `{id}` is invalid: {reason}",
-                    descriptor.id
-                )));
-            }
-            if !ids.insert(id.clone()) {
-                return Err(FlyError::InvalidSymbolReference(format!(
-                    "symbol `{}` contains duplicate component id `{id}`",
-                    descriptor.id
-                )));
-            }
-        }
+        validate_symbol_component_ids(component, &descriptor.id, &mut ids, "components")?;
     }
     for instance in symbol_instance_facts_in_components(&descriptor.components) {
         if instance.malformed_symbol_id {
@@ -1675,6 +1753,31 @@ mod tests {
             .unwrap();
         assert_ne!(child.id.as_deref(), Some("slot-child"));
         assert!(resolved.component("slot-child").is_some());
+    }
+
+    #[test]
+    fn symbol_definitions_reject_non_string_ids_in_opaque_structural_children() {
+        for component in [
+            json!({
+                "id": "parent",
+                "type": "section",
+                "components": { "id": 42, "provider": "provider.opaque" }
+            }),
+            json!({ "id": 42, "provider": "provider.opaque" }),
+        ] {
+            let definition = json!({
+                "id": "broken",
+                "components": [component]
+            });
+            let descriptor =
+                SymbolDescriptor::from_value(&definition).expect("symbol descriptor");
+
+            assert!(matches!(
+                validate_definition(&descriptor),
+                Err(FlyError::InvalidSymbolReference(message))
+                    if message.contains("non-string component id")
+            ));
+        }
     }
 
     #[test]
