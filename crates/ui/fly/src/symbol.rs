@@ -545,6 +545,56 @@ fn count_document_component_nodes(document: &ProjectDocument) -> usize {
         .fold(0usize, usize::saturating_add)
 }
 
+fn validate_symbol_forms(component: &ComponentNode, symbol_id: &str) -> FlyResult<()> {
+    match component {
+        ComponentNode::Object(object) => {
+            if let Some(raw) = object.extensions.get(crate::FLY_FORM_FIELD) {
+                crate::action::decode_form(raw.clone()).map_err(|error| {
+                    FlyError::InvalidSymbolReference(format!(
+                        "symbol `{symbol_id}` contains an invalid form: {error}"
+                    ))
+                })?;
+            }
+            match &object.components {
+                crate::ComponentChildren::Nodes(children) => {
+                    for child in children {
+                        validate_symbol_forms(child, symbol_id)?;
+                    }
+                }
+                crate::ComponentChildren::Opaque(raw) => {
+                    validate_opaque_symbol_forms(raw, symbol_id)?;
+                }
+            }
+        }
+        ComponentNode::Opaque(raw) => validate_opaque_symbol_forms(raw, symbol_id)?,
+    }
+    Ok(())
+}
+
+fn validate_opaque_symbol_forms(value: &Value, symbol_id: &str) -> FlyResult<()> {
+    match value {
+        Value::Array(children) => {
+            for child in children {
+                validate_opaque_symbol_forms(child, symbol_id)?;
+            }
+        }
+        Value::Object(object) => {
+            if let Some(raw) = object.get(crate::FLY_FORM_FIELD) {
+                crate::action::decode_form(raw.clone()).map_err(|error| {
+                    FlyError::InvalidSymbolReference(format!(
+                        "symbol `{symbol_id}` contains an invalid form: {error}"
+                    ))
+                })?;
+            }
+            if let Some(children) = object.get("components") {
+                validate_opaque_symbol_forms(children, symbol_id)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()> {
     let encoded = serde_json::to_vec(descriptor)
         .map_err(|error| FlyError::InvalidSymbolReference(error.to_string()))?;
@@ -601,6 +651,7 @@ pub(crate) fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()
     let mut dom_ids = BTreeSet::new();
     let mut form_ids = BTreeSet::new();
     for component in &descriptor.components {
+        validate_symbol_forms(component, &descriptor.id)?;
         let mut collected_dom = Vec::new();
         let mut collected_forms = Vec::new();
         component.collect_dom_ids(&mut collected_dom);
@@ -1623,6 +1674,35 @@ mod tests {
         .unwrap()
         .html;
         assert_eq!(html.matches(" id=\"contact\"").count(), 1, "{html}");
+    }
+
+    #[test]
+    fn symbol_definitions_reject_invalid_form_contracts() {
+        let document = document_with(
+            object("root", "wrapper", vec![instance("slot", "contact")]),
+            vec![json!({
+                "id": "contact",
+                "components": [{
+                    "id": "form-node",
+                    "type": "form",
+                    "flyForm": {
+                        "id": "invalid form id",
+                        "method": "post",
+                        "provider": "forms",
+                        "action": "submit"
+                    }
+                }]
+            })],
+        );
+
+        let error = resolve_symbol_instances(&document)
+            .expect_err("symbol definitions must use the same form id contract as page components");
+
+        assert!(matches!(
+            error,
+            FlyError::InvalidSymbolReference(message)
+                if message.contains("invalid form") && message.contains("form id")
+        ));
     }
 
     #[test]
