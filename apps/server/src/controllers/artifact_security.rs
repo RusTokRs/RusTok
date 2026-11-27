@@ -76,7 +76,8 @@ pub async fn get_artifact_security_snapshot(
     principal: AuthPrincipalContext,
     Query(query): Query<ArtifactSecurityLookup>,
 ) -> Result<Response> {
-    authorize_artifact_security_operator(&ctx.db_clone(), &auth, principal, tenant.id)
+    let db = ctx.db_clone();
+    authorize_artifact_security_operator(&db, &auth, principal, tenant.id)
         .await
         .map_err(map_authorization_error)?;
 
@@ -85,7 +86,7 @@ pub async fn get_artifact_security_snapshot(
         version: query.version,
         digest: query.payload_digest,
     };
-    let snapshot = ModuleControlPlane::new(ctx.db_clone())
+    let snapshot = ModuleControlPlane::new(db)
         .artifact_security_resolver()
         .resolve(&release)
         .await
