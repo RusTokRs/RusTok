@@ -566,32 +566,33 @@ impl CapabilityBroker for ArtifactHttpCapabilityBroker {
     async fn invoke(
         &self,
         call: &CapabilityCall,
-        _grant: &CapabilityGrant,
+        grant: &CapabilityGrant,
     ) -> SandboxResult<CapabilityResponse> {
+        if grant.name != call.capability
+            || call.capability.as_str() != "platform.http"
+            || call.operation != "request"
+        {
+            return Err(SandboxError::CapabilityDenied(call.capability.clone()));
+        }
         let input = call
             .input
             .as_object()
             .ok_or_else(|| SandboxError::InvalidRequest("HTTP input must be an object".into()))?;
-
         let method_str = input
             .get("method")
             .and_then(Value::as_str)
             .ok_or_else(|| SandboxError::InvalidRequest("HTTP method is required".into()))?;
-
         let url_str = input
             .get("url")
             .and_then(Value::as_str)
             .ok_or_else(|| SandboxError::InvalidRequest("HTTP url is required".into()))?;
-
         let parsed_url = Url::parse(url_str)
-            .map_err(|err| SandboxError::InvalidRequest(format!("HTTP url is invalid: {err}")))?;
+            .map_err(|_| SandboxError::InvalidRequest("HTTP url is invalid".into()))?;
         if !matches!(parsed_url.scheme(), "http" | "https") {
-            return Err(SandboxError::InvalidRequest(format!(
-                "HTTP url scheme `{}` is not supported",
-                parsed_url.scheme()
-            )));
+            return Err(SandboxError::InvalidRequest(
+                "HTTP url scheme is not supported".to_string(),
+            ));
         }
-
         let method = match method_str.to_ascii_uppercase().as_str() {
             "GET" => Method::GET,
             "POST" => Method::POST,
@@ -600,41 +601,36 @@ impl CapabilityBroker for ArtifactHttpCapabilityBroker {
             "DELETE" => Method::DELETE,
             "HEAD" => Method::HEAD,
             "OPTIONS" => Method::OPTIONS,
-            other => {
-                return Err(SandboxError::InvalidRequest(format!(
-                    "unsupported HTTP method `{other}`"
-                )));
-            }
+            _ => return Err(SandboxError::InvalidRequest("HTTP method is unsupported".into())),
+        };
+        let mutating = matches!(method, Method::POST | Method::PUT | Method::PATCH | Method::DELETE);
+        let receipt_key = if mutating {
+            Some(http_effect_receipt_key(call, input)?)
+        } else {
+            None
         };
 
-        // DNS resolution and the HTTP exchange share one deadline. The
-        // request receives only the time left after the bounded DNS lookup.
+        // DNS resolution and the HTTP exchange share one deadline. Build the
+        // complete request before claiming a durable receipt, so malformed
+        // headers or body encoding never leave a false dispatch in progress.
         let started_at = Instant::now();
         let target =
             resolve_public_target(&parsed_url, &call.capability, self.timeout).await?;
         let remaining_timeout =
             remaining_request_timeout(started_at, self.timeout, &call.capability)?;
-
-        // Pin hostname destinations to the address validated above so the
-        // connection cannot be rebound to a different (private) address by
-        // a second DNS answer. Both clients use the same no-proxy policy.
         let client = match target {
             Some((host, addr)) => restricted_http_client_builder(remaining_timeout)
                 .resolve(&host, addr)
                 .build()
-                .map_err(|error| SandboxError::HostCapability {
-                    capability: call.capability.clone(),
-                    message: format!("failed to construct pinned HTTP client: {error}"),
-                })?,
+                .map_err(|_| http_host_error(call, "pinned HTTP client could not be constructed"))?,
             None => self.client.clone(),
         };
-
-        let mut request_builder = client.request(method, url_str).timeout(remaining_timeout);
-
-        if let Some(headers_obj) = input.get("headers").and_then(Value::as_object) {
-            for (key, val) in headers_obj {
-                // Hop-by-hop and framing headers are owned by the HTTP
-                // client; a guest must not override Host or body framing.
+        let mut request_builder = client.request(method.clone(), url_str).timeout(remaining_timeout);
+        if let Some(headers_obj) = input.get("headers") {
+            let headers = headers_obj.as_object().ok_or_else(|| {
+                SandboxError::InvalidRequest("HTTP headers must be an object".to_string())
+            })?;
+            for (key, value) in headers {
                 if matches!(
                     key.to_ascii_lowercase().as_str(),
                     "host"
@@ -646,17 +642,25 @@ impl CapabilityBroker for ArtifactHttpCapabilityBroker {
                         | "te"
                         | "trailer"
                         | "upgrade"
+                        | "idempotency-key"
                 ) {
                     return Err(SandboxError::InvalidRequest(format!(
                         "HTTP header `{key}` is managed by the platform and must not be set"
                     )));
                 }
-                if let Some(val_str) = val.as_str() {
-                    request_builder = request_builder.header(key.as_str(), val_str);
-                }
+                let value = value.as_str().ok_or_else(|| {
+                    SandboxError::InvalidRequest("HTTP header values must be strings".to_string())
+                })?;
+                request_builder = request_builder.header(key.as_str(), value);
             }
         }
-
+        if let Some(key) = receipt_key.as_ref() {
+            let remote_key = format!(
+                "{}:{}",
+                key.execution_idempotency_key, key.request_idempotency_key
+            );
+            request_builder = request_builder.header("Idempotency-Key", remote_key);
+        }
         if let Some(body_val) = input.get("body") {
             if let Some(body_str) = body_val.as_str() {
                 request_builder = request_builder.body(body_str.to_string());
@@ -664,77 +668,88 @@ impl CapabilityBroker for ArtifactHttpCapabilityBroker {
                 request_builder = request_builder.json(body_val);
             }
         }
+        let request = request_builder
+            .build()
+            .map_err(|_| SandboxError::InvalidRequest("HTTP request could not be built".into()))?;
 
-        let mut response =
-            request_builder
-                .send()
-                .await
-                .map_err(|err| SandboxError::HostCapability {
-                    capability: call.capability.clone(),
-                    message: format!("HTTP request failed: {err}"),
-                })?;
+        if let Some(key) = receipt_key.as_ref() {
+            if let Some(output) = self.claim_effect_receipt(call, key).await? {
+                return Ok(CapabilityResponse { output });
+            }
+        } else {
+            self.authorize_dispatch(call).await?;
+        }
 
+        let mut response = match client.execute(request).await {
+            Ok(response) => response,
+            Err(_) => {
+                if let Some(key) = receipt_key.as_ref() {
+                    self.mark_effect_receipt_ambiguous(call, key).await;
+                }
+                return Err(http_host_error(
+                    call,
+                    "HTTP request failed; its remote outcome may be ambiguous",
+                ));
+            }
+        };
         let status = response.status().as_u16();
-
         if response
             .content_length()
-            .is_some_and(|len| len > self.max_response_bytes as u64)
+            .is_some_and(|length| length > self.max_response_bytes as u64)
         {
-            let content_length = response.content_length().unwrap_or_default();
-            return Err(SandboxError::HostCapability {
-                capability: call.capability.clone(),
-                message: format!(
-                    "HTTP response content length ({content_length} bytes) exceeds limit of {} bytes",
-                    self.max_response_bytes
-                ),
-            });
+            if let Some(key) = receipt_key.as_ref() {
+                self.mark_effect_receipt_ambiguous(call, key).await;
+            }
+            return Err(http_host_error(
+                call,
+                "HTTP response content length exceeds the configured limit",
+            ));
         }
-
         let mut response_headers = HashMap::new();
-        for (key, val) in response.headers() {
-            if let Ok(val_str) = val.to_str() {
-                response_headers.insert(key.as_str().to_string(), val_str.to_string());
+        for (key, value) in response.headers() {
+            if let Ok(value) = value.to_str() {
+                response_headers.insert(key.as_str().to_string(), value.to_string());
             }
         }
-
-        // Stream the body so the size cap bounds memory during the read;
-        // a chunked response without Content-Length must not be buffered
-        // in full before the limit is checked.
         let mut bytes = Vec::new();
-        while let Some(chunk) =
-            response
-                .chunk()
-                .await
-                .map_err(|err| SandboxError::HostCapability {
-                    capability: call.capability.clone(),
-                    message: format!("reading HTTP response body failed: {err}"),
-                })?
-        {
+        loop {
+            let chunk = match response.chunk().await {
+                Ok(Some(chunk)) => chunk,
+                Ok(None) => break,
+                Err(_) => {
+                    if let Some(key) = receipt_key.as_ref() {
+                        self.mark_effect_receipt_ambiguous(call, key).await;
+                    }
+                    return Err(http_host_error(
+                        call,
+                        "reading the HTTP response failed; its remote outcome is ambiguous",
+                    ));
+                }
+            };
             if !response_body_len_within_limit(
                 bytes.len(),
                 chunk.len(),
                 self.max_response_bytes,
             ) {
-                return Err(SandboxError::HostCapability {
-                    capability: call.capability.clone(),
-                    message: format!(
-                        "HTTP response body size exceeds limit of {} bytes",
-                        self.max_response_bytes
-                    ),
-                });
+                if let Some(key) = receipt_key.as_ref() {
+                    self.mark_effect_receipt_ambiguous(call, key).await;
+                }
+                return Err(http_host_error(
+                    call,
+                    "HTTP response body exceeds the configured limit",
+                ));
             }
             bytes.extend_from_slice(&chunk);
         }
-
-        let body_text = String::from_utf8_lossy(&bytes).to_string();
-
-        Ok(CapabilityResponse {
-            output: json!({
-                "status": status,
-                "headers": response_headers,
-                "body": body_text,
-            }),
-        })
+        let output = json!({
+            "status": status,
+            "headers": response_headers,
+            "body": String::from_utf8_lossy(&bytes).to_string(),
+        });
+        if let Some(key) = receipt_key.as_ref() {
+            self.complete_effect_receipt(call, key, &output).await?;
+        }
+        Ok(CapabilityResponse { output })
     }
 }
 
