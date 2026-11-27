@@ -2262,7 +2262,10 @@ This is not yet a universal effect transaction. Full effective-policy revision,
 operational maintenance authority, deferred/background channel context and
 continuous worker/node liveness remain unfenced. HTTP, MCP, secrets and
 object-storage effects do not share the SQL commit fence and still rely on
-per-call admission plus owner-specific checks. PostgreSQL cross-owner lock
+per-call admission plus owner-specific checks. The `platform.http` transport
+also disables process/system proxies and bounds DNS plus the full request
+deadline, but this does not create an atomic external-effect fence or make
+remote timeout outcomes replay-safe. PostgreSQL cross-owner lock
 ordering/contention and deployed worker/runtime evidence remain pending. See
 the [execution capability lease ADR](../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md)
 and the server [Known Limitations / Pending Implementation](../README.md#known-limitations--pending-implementation).
