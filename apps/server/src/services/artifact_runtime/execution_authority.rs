@@ -627,8 +627,11 @@ impl<B: CapabilityBroker> CapabilityBroker for FencedCapabilityBroker<B> {
         // policy changes, or credential revocation during the await must deny
         // the response. This does not cancel an already-completed remote effect;
         // a post-launch denial therefore remains an ambiguous outcome.
-        let response = self.inner.invoke(call, grant).await?;
+        let result = self.inner.invoke(call, grant).await;
+        // Apply the same output-release fence to errors: a revoked execution
+        // must not receive broker diagnostics from an operation that was
+        // still awaiting when its authority expired or was invalidated.
         revalidate_capability_authority(&self.resolver, authority, call, &lease).await?;
-        Ok(response)
+        result
     }
 }
