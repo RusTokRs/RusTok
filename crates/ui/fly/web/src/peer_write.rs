@@ -216,7 +216,7 @@ mod browser {
             })?;
 
             let callback_base = Rc::clone(&base);
-            let callback = Closure::<dyn FnMut(MessageEvent)>::new(move |event| {
+            let callback = Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
                 let data = event.data();
                 // Both producers send structured objects, not serialized JSON strings.
                 if !data.is_object() || js_sys::Array::is_array(&data) {

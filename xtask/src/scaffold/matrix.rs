@@ -181,9 +181,9 @@ impl Matrix {
             self.cargo("test", &args)?;
         }
         for feature in ["csr", "hydrate"] {
-            println!("Checking the generated record workspace with the {feature} profile on WASM");
+            println!("Building the generated record workspace with the {feature} profile on WASM");
             self.cargo(
-                "check",
+                "build",
                 &[
                     "--locked",
                     "-p",

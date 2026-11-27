@@ -107,7 +107,8 @@ impl CommerceHttpRuntime {
                 db.clone(),
                 payment_provider_registry.clone(),
             );
-        let product_pricing = rustok_pricing::in_process_product_pricing_port(db.clone());
+        let product_pricing =
+            rustok_pricing::in_process_product_pricing_port(db.clone(), event_bus.clone());
         let product_catalog_read_runtime =
             rustok_product::ProductCatalogReadRuntime::in_process_with_pricing(
                 db.clone(),

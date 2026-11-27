@@ -127,10 +127,9 @@ fn cli_scaffold_previews_and_applies_the_owner_and_registry_as_one_plan() {
         fs::read(&options.adapter).unwrap()
     );
     let readme = fs::read_to_string(root.join(OWNER).join("cli/README.md")).unwrap();
-    let manifest: toml::Value = fs::read_to_string(root.join(OWNER).join("cli/Cargo.toml"))
-        .unwrap()
-        .parse()
-        .unwrap();
+    let manifest: toml::Value =
+        toml::from_str(&fs::read_to_string(root.join(OWNER).join("cli/Cargo.toml")).unwrap())
+            .unwrap();
     assert_eq!(
         manifest["dependencies"]["serde_json"]["workspace"].as_bool(),
         Some(true)

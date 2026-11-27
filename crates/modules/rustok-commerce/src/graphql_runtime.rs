@@ -319,7 +319,8 @@ pub(crate) fn product_catalog_read_runtime_for_current_graphql_scope(
     CURRENT_COMMERCE_PRODUCT_CATALOG_READ_RUNTIME
         .try_with(Clone::clone)
         .unwrap_or_else(|_| {
-            let pricing = rustok_pricing::in_process_product_pricing_port(db.clone());
+            let pricing =
+                rustok_pricing::in_process_product_pricing_port(db.clone(), event_bus.clone());
             let inventory = rustok_inventory::in_process_product_inventory_port(db.clone());
             ProductCatalogReadRuntime::in_process_with_collaborators(
                 db,
@@ -338,7 +339,8 @@ pub(crate) fn product_catalog_command_runtime_for_current_graphql_scope(
     CURRENT_COMMERCE_PRODUCT_CATALOG_COMMAND_RUNTIME
         .try_with(Clone::clone)
         .unwrap_or_else(|_| {
-            let pricing = rustok_pricing::in_process_product_pricing_port(db.clone());
+            let pricing =
+                rustok_pricing::in_process_product_pricing_port(db.clone(), event_bus.clone());
             let inventory = rustok_inventory::in_process_product_inventory_port(db.clone());
             let runtime = ProductCatalogCommandRuntime::in_process_with_collaborators(
                 db.clone(),
