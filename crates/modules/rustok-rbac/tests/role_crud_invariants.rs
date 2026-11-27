@@ -1096,13 +1096,14 @@ async fn update_role_preserves_dormant_grants_clears_description_and_syncs_syste
         ],
     );
 
-    // Seed built-in system roles first via `roles` query.
-    let list_seed = schema
-        .execute(async_graphql::Request::new(
-            "{ roles { slug displayName } }",
-        ))
-        .await;
-    assert!(list_seed.errors.is_empty(), "{:?}", list_seed.errors);
+    // Explicit fixture creation: listing roles must never bootstrap authority.
+    db.execute_raw(Statement::from_sql_and_values(
+        sea_orm::DbBackend::Sqlite,
+        "INSERT INTO roles (id, tenant_id, name, slug, is_system) VALUES (?, ?, 'Manager', 'manager', 1)",
+        vec![Uuid::new_v4().into(), tenant_id.into()],
+    ))
+    .await
+    .unwrap();
 
     let role_id = Uuid::new_v4();
     let dormant_perm_candidate = Uuid::new_v4();
@@ -1618,4 +1619,72 @@ async fn postgres_role_update_retries_authority_after_generation_conflict() {
     drop(schema);
     db.close().await.unwrap();
     admin.execute_unprepared(&format!("DROP SCHEMA {namespace} CASCADE")).await.unwrap();
+}
+
+#[tokio::test]
+async fn role_overview_is_read_only_and_shared_by_graphql_and_native() {
+    use sea_orm::{DbBackend, Statement};
+
+    let db = setup_test_db().await;
+    let tenant_id = Uuid::new_v4();
+    let foreign_tenant = Uuid::new_v4();
+    let schema = test_schema(
+        db.clone(), tenant_id, Uuid::new_v4(), vec![Permission::SETTINGS_READ],
+    );
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO tenants (id, name, slug) VALUES (?, 'Tenant', 'tenant')",
+        vec![tenant_id.into()],
+    )).await.unwrap();
+
+    let query = "{ roles { id slug displayName description isSystem permissions inactivePermissions } }";
+    let response = schema.execute(query).await;
+    assert!(response.errors.is_empty(), "{:?}", response.errors);
+    assert_eq!(response.data.into_json().unwrap()["roles"], serde_json::json!([]));
+    assert!(rustok_rbac::load_tenant_roles_overview_on(&db, tenant_id, None, Some("en"))
+        .await.unwrap().is_empty());
+    for table in ["roles", "permissions", "role_permissions"] {
+        let row = db.query_one_raw(Statement::from_string(
+            DbBackend::Sqlite, format!("SELECT COUNT(*) AS count FROM {table}"),
+        )).await.unwrap().unwrap();
+        assert_eq!(row.try_get::<i64>("", "count").unwrap(), 0);
+    }
+    let row = db.query_one_raw(Statement::from_string(
+        DbBackend::Sqlite, "SELECT generation FROM rbac_invalidation_state WHERE scope = 'permissions'",
+    )).await.unwrap().unwrap();
+    assert_eq!(row.try_get::<i64>("", "generation").unwrap(), 0);
+
+    let empty_role = Uuid::new_v4();
+    let granted_role = Uuid::new_v4();
+    let local_permission = Uuid::new_v4();
+    let foreign_permission = Uuid::new_v4();
+    for (sql, values) in [
+        ("INSERT INTO roles (id, tenant_id, name, slug) VALUES (?, ?, 'Empty', 'empty'), (?, ?, 'Granted', 'granted')",
+         vec![empty_role.into(), tenant_id.into(), granted_role.into(), tenant_id.into()]),
+        ("INSERT INTO permissions (id, tenant_id, resource, action) VALUES (?, ?, 'users', 'read'), (?, ?, 'users', 'manage')",
+         vec![local_permission.into(), tenant_id.into(), foreign_permission.into(), foreign_tenant.into()]),
+        ("INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?), (?, ?, ?)",
+         vec![Uuid::new_v4().into(), granted_role.into(), local_permission.into(), Uuid::new_v4().into(), granted_role.into(), foreign_permission.into()]),
+    ] {
+        db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, sql, values))
+            .await.unwrap();
+    }
+    let native = rustok_rbac::load_tenant_roles_overview_on(&db, tenant_id, None, Some("en"))
+        .await.unwrap();
+    assert_eq!(native.len(), 2);
+    assert!(native[0].permissions.is_empty());
+    assert_eq!(native[1].permissions, vec!["users:read"]);
+    let response = schema.execute(query).await;
+    assert!(response.errors.is_empty(), "{:?}", response.errors);
+    let data = response.data.into_json().unwrap();
+    let expected = native.iter().map(|role| serde_json::json!({
+        "id": role.id.map(|id| id.to_string()),
+        "slug": role.slug,
+        "displayName": role.display_name,
+        "description": role.description,
+        "isSystem": role.is_system,
+        "permissions": role.permissions,
+        "inactivePermissions": role.inactive_permissions,
+    })).collect::<Vec<_>>();
+    assert_eq!(data["roles"], serde_json::json!(expected));
 }

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{HashMap, hash_map::Entry};
 
 use rustok_api::{AuthPrincipalKind, StoredLocale};
 use rustok_core::UserRole;
@@ -101,119 +101,97 @@ pub async fn load_tenant_roles_overview_on<C: ConnectionTrait>(
         ));
     }
 
+    let requested_locale = match locale.and_then(|tag| StoredLocale::new(tag).ok()) {
+        Some(locale) => locale,
+        None => StoredLocale::new("en")
+            .map_err(|error| sea_orm::DbErr::Custom(error.to_string()))?,
+    };
     let backend = db.get_database_backend();
-    let role_rows = db
+    // One statement observes role identity, grants and display names together.
+    // Keep roles with zero grants; exclude foreign-tenant permission links.
+    let rows = db
         .query_all_raw(prepare_control_plane_statement(
             backend,
-            "SELECT id, slug, name, description, is_system FROM roles WHERE tenant_id = ? ORDER BY is_system DESC, slug ASC",
-            vec![tenant_id.into()],
+            "SELECT r.id, r.slug, r.name, r.description, r.is_system, \
+                    p.id AS permission_id, p.resource, p.action, \
+                    exact_copy.name AS exact_name, source_copy.name AS source_name \
+             FROM roles r \
+             LEFT JOIN (role_permissions rp JOIN permissions p ON p.id = rp.permission_id) \
+               ON rp.role_id = r.id AND p.tenant_id = r.tenant_id \
+             LEFT JOIN rbac_localized_presentations exact_copy \
+               ON exact_copy.tenant_id = r.tenant_id AND exact_copy.resource_kind = 'role' \
+               AND exact_copy.resource_key = r.slug AND exact_copy.locale = ? \
+             LEFT JOIN rbac_localized_presentations source_copy \
+               ON source_copy.tenant_id = r.tenant_id AND source_copy.resource_kind = 'role' \
+               AND source_copy.resource_key = r.slug AND source_copy.locale = 'en' \
+             WHERE r.tenant_id = ?",
+            vec![requested_locale.as_str().into(), tenant_id.into()],
         ))
         .await?;
 
-    if role_rows.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let perm_rows = db
-        .query_all_raw(prepare_control_plane_statement(
-            backend,
-            "SELECT rp.role_id, p.resource, p.action FROM role_permissions rp JOIN roles r ON r.id = rp.role_id JOIN permissions p ON p.id = rp.permission_id WHERE r.tenant_id = ? AND p.tenant_id = ?",
-            vec![tenant_id.into(), tenant_id.into()],
-        ))
-        .await?;
-
-    let mut perms_by_role: HashMap<Uuid, Vec<String>> = HashMap::new();
-    for row in perm_rows {
-        let role_id: Uuid = row.try_get("", "role_id")?;
-        let resource: String = row.try_get("", "resource")?;
-        let action: String = row.try_get("", "action")?;
-        perms_by_role
-            .entry(role_id)
-            .or_default()
-            .push(format!("{resource}:{action}"));
-    }
-    for perms in perms_by_role.values_mut() {
-        perms.sort();
-        perms.dedup();
-    }
-
-    let requested_locale = locale
-        .and_then(|tag| StoredLocale::new(tag).ok())
-        .unwrap_or_else(|| StoredLocale::new("en").expect("static en locale"));
-    let presentation_rows = db
-        .query_all_raw(prepare_control_plane_statement(
-            backend,
-            "SELECT resource_key, locale, name FROM rbac_localized_presentations WHERE tenant_id = ? AND resource_kind = 'role' AND locale IN (?, 'en')",
-            vec![tenant_id.into(), requested_locale.as_str().into()],
-        ))
-        .await?;
-
-    let mut exact_names: BTreeMap<String, String> = BTreeMap::new();
-    let mut en_names: BTreeMap<String, String> = BTreeMap::new();
-    for row in presentation_rows {
-        let key: String = row.try_get("", "resource_key")?;
-        let row_locale: String = row.try_get("", "locale")?;
-        let row_name: String = row.try_get("", "name")?;
-        if row_locale == requested_locale.as_str() {
-            exact_names.insert(key, row_name);
-        } else if row_locale == "en" {
-            en_names.insert(key, row_name);
+    let mut by_id: HashMap<Uuid, TenantRoleOverviewRecord> = HashMap::new();
+    for row in rows {
+        let id: Uuid = row.try_get("", "id")?;
+        let record = match by_id.entry(id) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                let slug: String = row.try_get("", "slug")?;
+                let persisted_name: String = row.try_get("", "name")?;
+                let is_system: bool = row.try_get("", "is_system")?;
+                let display_name = if is_system {
+                    if let Ok(builtin) = slug.parse::<UserRole>() {
+                        let exact_name: Option<String> = row.try_get("", "exact_name")?;
+                        let source_name: Option<String> = row.try_get("", "source_name")?;
+                        let seed_name = builtin_seed_display_name(&builtin);
+                        if let Some(name) = exact_name {
+                            name
+                        } else if !persisted_name.trim().is_empty() && persisted_name != seed_name {
+                            persisted_name
+                        } else {
+                            source_name.unwrap_or_else(|| seed_name.to_string())
+                        }
+                    } else {
+                        persisted_name
+                    }
+                } else {
+                    persisted_name
+                };
+                entry.insert(TenantRoleOverviewRecord {
+                    id: Some(id),
+                    slug,
+                    display_name,
+                    description: row.try_get("", "description")?,
+                    is_system,
+                    permissions: Vec::new(),
+                    inactive_permissions: Vec::new(),
+                })
+            }
+        };
+        if row.try_get::<Option<Uuid>>("", "permission_id")?.is_some() {
+            let resource: String = row.try_get("", "resource")?;
+            let action: String = row.try_get("", "action")?;
+            record.permissions.push(format!("{resource}:{action}"));
         }
     }
 
-    let mut roles = Vec::with_capacity(role_rows.len());
-    for row in role_rows {
-        let id: Uuid = row.try_get("", "id")?;
-        let slug: String = row.try_get("", "slug")?;
-        let persisted_name: String = row.try_get("", "name")?;
-        let description: Option<String> = row.try_get("", "description")?;
-        let is_system: bool = row.try_get("", "is_system")?;
-        let permissions = perms_by_role.remove(&id).unwrap_or_default();
-
-        let inactive_permissions = match availability {
-            Some(snapshot) => permissions
+    let mut roles: Vec<_> = by_id.into_values().collect();
+    for role in &mut roles {
+        role.permissions.sort();
+        role.permissions.dedup();
+        if let Some(snapshot) = availability {
+            role.inactive_permissions = role
+                .permissions
                 .iter()
-                .filter(|permission| {
-                    matches!(
-                        snapshot.status(permission),
-                        crate::ModulePermissionStatus::Disabled(_)
-                    )
-                })
+                .filter(|permission| !snapshot.status(permission).is_active())
                 .cloned()
-                .collect(),
-            None => Vec::new(),
-        };
-
-        let display_name = if is_system {
-            if let Ok(builtin) = slug.parse::<UserRole>() {
-                if let Some(localized) = exact_names.get(&slug) {
-                    localized.clone()
-                } else if !persisted_name.trim().is_empty()
-                    && persisted_name != builtin_seed_display_name(&builtin)
-                {
-                    persisted_name
-                } else if let Some(en) = en_names.get(&slug) {
-                    en.clone()
-                } else {
-                    persisted_name
-                }
-            } else {
-                persisted_name
-            }
-        } else {
-            persisted_name
-        };
-
-        roles.push(TenantRoleOverviewRecord {
-            id: Some(id),
-            slug,
-            display_name,
-            description,
-            is_system,
-            permissions,
-            inactive_permissions,
-        });
+                .collect();
+        }
     }
+    roles.sort_by(|left, right| {
+        right.is_system.cmp(&left.is_system)
+            .then_with(|| left.slug.cmp(&right.slug))
+            .then_with(|| left.id.cmp(&right.id))
+    });
 
     Ok(roles)
 }

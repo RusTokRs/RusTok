@@ -18,6 +18,15 @@ documentation for this module must live inside the crate, not spread across
 - permission-aware runtime contracts and typed RBAC primitives in conjunction with `rustok-core`;
 - absence of rollout-mode and shadow-runtime logic in the live surface.
 
+## Read-only role overview
+
+GraphQL and native admin delegate to `load_tenant_roles_overview_on`. One
+statement reads roles, tenant-matching grants and localized display names;
+roles with no grants remain visible and empty tenants return an empty list.
+Listing does not seed or repair authority. Bootstrap and explicit operator
+repair retain their separate write boundaries. Both transports use system-first,
+slug-ordered results. Regression source is authored; execution is pending.
+
 ## Transaction-bound management alternatives
 
 GraphQL role update and deletion revalidate the requested tenant, role UUID

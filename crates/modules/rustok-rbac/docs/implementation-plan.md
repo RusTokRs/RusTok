@@ -1,5 +1,14 @@
 # Implementation plan for `rustok-rbac`
 
+## Read-only coherent role overview (verification pending; 2026-11-27)
+
+Removed GraphQL read-triggered system-role repair and unified GraphQL/native
+role overview on one owner statement. Metadata, grants and localized names
+are observed together; empty roles and tenant isolation are preserved.
+The regression covers read-only empty listings, unchanged invalidation state,
+malformed cross-tenant links and transport parity. Compilation and runtime
+verification remain pending. Explicit bootstrap and repair are unchanged.
+
 ## GraphQL role-grant durable invalidation (verification pending; 2026-11-02)
 
 The owner GraphQL `update_role` transaction now reserves the existing durable

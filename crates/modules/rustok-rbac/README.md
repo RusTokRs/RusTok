@@ -86,7 +86,10 @@ watermark, not a complete raw-DML change feed.
   insert. Only a successfully inserted role is seeded; single-role vocabulary
   materialization uses the same ordered (resource, action) keys as control-plane
   grant writes. Repair is not part of the normal request flow, so roles deleted through
-  the control plane stay deleted.
+  the control plane stay deleted. GraphQL and native role overview use the same
+  read-only owner query; listing an empty tenant never runs repair. Role rows,
+  tenant-scoped grants and localized display names share one SQL statement.
+  Both transports order system roles first, then by slug.
 - The decision engine is the platform's own set-based evaluator over the
   resolved permission set (see
   `DECISIONS/2026-02-26-rbac-relation-source-of-truth-cutover.md`).
