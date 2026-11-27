@@ -160,29 +160,17 @@ mod tests {
     impl RelationPermissionStore for StubStore {
         type Error = StubStoreError;
 
-        async fn load_user_role_ids(
+        async fn load_permissions_for_user(
             &self,
+            _tenant_id: &uuid::Uuid,
             _user_id: &uuid::Uuid,
-        ) -> Result<Vec<uuid::Uuid>, Self::Error> {
+        ) -> Result<Vec<Permission>, Self::Error> {
             if self.fail_load {
                 return Err(StubStoreError::Load);
             }
-            Ok(self.role_ids.clone())
-        }
-
-        async fn load_tenant_role_ids(
-            &self,
-            _tenant_id: &uuid::Uuid,
-            _role_ids: &[uuid::Uuid],
-        ) -> Result<Vec<uuid::Uuid>, Self::Error> {
-            Ok(self.tenant_role_ids.clone())
-        }
-
-        async fn load_permissions_for_roles(
-            &self,
-            _tenant_id: &uuid::Uuid,
-            _role_ids: &[uuid::Uuid],
-        ) -> Result<Vec<Permission>, Self::Error> {
+            if self.role_ids.is_empty() || self.tenant_role_ids.is_empty() {
+                return Ok(Vec::new());
+            }
             Ok(self.permissions.clone())
         }
     }

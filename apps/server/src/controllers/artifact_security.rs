@@ -1,9 +1,9 @@
 use axum::{
+    Json,
     extract::{DefaultBodyLimit, Query, State},
     http::{HeaderValue, header::CACHE_CONTROL},
     response::Response,
     routing::{get, post},
-    Json,
 };
 use rustok_api::{AuthContext, AuthPrincipalContext};
 use rustok_modules::{ArtifactReleaseRef, ModuleArtifactSecurityError, ModuleControlPlane};
@@ -120,8 +120,15 @@ pub async fn quarantine_artifact_release(
     principal: AuthPrincipalContext,
     Json(input): Json<ArtifactSecurityCommandRequest>,
 ) -> Result<Response> {
-    execute_security_command(ctx, tenant.id, auth, principal, input, SecurityAction::Quarantine)
-        .await
+    execute_security_command(
+        ctx,
+        tenant.id,
+        auth,
+        principal,
+        input,
+        SecurityAction::Quarantine,
+    )
+    .await
 }
 
 #[utoipa::path(
@@ -179,7 +186,15 @@ pub async fn revoke_artifact_release(
     principal: AuthPrincipalContext,
     Json(input): Json<ArtifactSecurityCommandRequest>,
 ) -> Result<Response> {
-    execute_security_command(ctx, tenant.id, auth, principal, input, SecurityAction::Revoke).await
+    execute_security_command(
+        ctx,
+        tenant.id,
+        auth,
+        principal,
+        input,
+        SecurityAction::Revoke,
+    )
+    .await
 }
 
 async fn execute_security_command(
@@ -190,16 +205,14 @@ async fn execute_security_command(
     input: ArtifactSecurityCommandRequest,
     action: SecurityAction,
 ) -> Result<Response> {
-    let expected_revision = input.expected_revision.parse::<u64>().map_err(|_| {
-        Error::BadRequest(
-            "expectedRevision must be an unsigned 64-bit decimal string".to_string(),
-        )
-    })?;
     let db = ctx.db_clone();
     let provider = artifact_security_authority_provider(&ctx).map_err(map_authorization_error)?;
     let authorizer = ServerArtifactSecurityAuthorizer::new(provider, &auth, principal, tenant_id)
         .await
         .map_err(map_authorization_error)?;
+    let expected_revision = input.expected_revision.parse::<u64>().map_err(|_| {
+        Error::BadRequest("expectedRevision must be an unsigned 64-bit decimal string".to_string())
+    })?;
     let command = build_module_artifact_security_command(
         ArtifactReleaseRef {
             slug: input.module_slug,
@@ -286,10 +299,9 @@ fn map_artifact_security_error(error: ModuleArtifactSecurityError) -> Error {
 
 fn private_json_response<T: serde::Serialize>(value: T) -> Response {
     let mut response = json_response(value);
-    response.headers_mut().insert(
-        CACHE_CONTROL,
-        HeaderValue::from_static("private, no-store"),
-    );
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("private, no-store"));
     response
 }
 
@@ -323,7 +335,10 @@ mod tests {
     fn release_security_responses_are_never_cacheable() {
         let response = private_json_response(serde_json::json!({"status":"clear"}));
         assert_eq!(
-            response.headers().get(CACHE_CONTROL).and_then(|value| value.to_str().ok()),
+            response
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
             Some("private, no-store")
         );
     }

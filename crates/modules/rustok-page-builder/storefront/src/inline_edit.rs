@@ -458,8 +458,8 @@ pub fn PageBuilderAuthenticatedInlineStorefront(
     let policy = policy.unwrap_or_default();
     let class = class.unwrap_or_else(|| "rustok-page-builder-inline-storefront".to_string());
     let root_id = inline_root_id(&grant);
-    let editable_ids = inline_editable_component_ids(&project_data, &selection)
-        .map_err(|error| error.to_string());
+    let editable_ids =
+        inline_editable_component_ids(&project_data, &selection).map_err(|error| error.to_string());
     let inline_edit_unavailable = editable_ids.is_err();
     let rendered = render_authenticated_inline_page(project_data, selection, policy, context);
 
@@ -773,7 +773,6 @@ mod tests {
         assert!(!root_id.contains(grant.session_id()));
         assert!(!root_id.contains("signed-proof"));
     }
-
 
     #[cfg(feature = "ssr")]
     #[test]

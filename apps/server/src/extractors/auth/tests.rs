@@ -530,7 +530,7 @@ async fn oauth_service_token_rejects_subject_that_is_not_the_app_id() {
         tenant.id,
         Uuid::new_v4(),
         app.client_id,
-        UserRole::Customer,
+        &UserRole::Customer,
         &["forum:*".to_string()],
         "",
         None,

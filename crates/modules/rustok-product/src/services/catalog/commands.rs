@@ -2556,13 +2556,13 @@ async fn validate_primary_category<C: ConnectionTrait>(
             [tenant_id.into(), category_id.into()],
         ))
         .await?;
-    let kind = row
-        .and_then(|row| row.try_get::<String>("", "kind").ok())
-        .ok_or_else(|| {
-            CommerceError::Validation(
-                "Primary category must reference an existing tenant category".to_string(),
-            )
-        })?;
+    let Some(row) = row else {
+        return Err(CommerceError::Validation(
+            "Primary category must reference an existing tenant category".to_string(),
+        ));
+    };
+    // A malformed persisted row is a storage failure, not a client validation error.
+    let kind = row.try_get::<String>("", "kind")?;
     if kind != "structural" {
         return Err(CommerceError::Validation(
             "Primary category must be structural".to_string(),
@@ -3372,6 +3372,57 @@ pub(super) fn validate_variant_axis_tuples(
 mod tests {
     use super::*;
     use rust_decimal::Decimal;
+
+    #[tokio::test]
+    async fn primary_category_storage_decode_failure_is_not_validation() {
+        use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseBackend, Statement};
+        use uuid::Uuid;
+
+        let url = format!(
+            "sqlite:file:product_primary_category_decode_{}?mode=memory&cache=shared",
+            Uuid::new_v4()
+        );
+        let mut options = ConnectOptions::new(url);
+        options
+            .max_connections(1)
+            .min_connections(1)
+            .sqlx_logging(false);
+        let db = Database::connect(options)
+            .await
+            .expect("connect in-memory database");
+        db.execute_unprepared(
+            "CREATE TABLE catalog_categories (
+                tenant_id TEXT NOT NULL,
+                id TEXT NOT NULL,
+                kind TEXT NULL,
+                deleted_at TEXT NULL,
+                PRIMARY KEY (tenant_id, id)
+            )",
+        )
+        .await
+        .expect("create category table");
+
+        let tenant_id = Uuid::new_v4();
+        let category_id = Uuid::new_v4();
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO catalog_categories (tenant_id, id, kind, deleted_at) VALUES ($1, $2, NULL, NULL)",
+            vec![tenant_id.into(), category_id.into()],
+        ))
+        .await
+        .expect("insert malformed category");
+
+        let storage_error = validate_primary_category(&db, tenant_id, Some(category_id))
+            .await
+            .expect_err("NULL persisted kind must be a storage error");
+        assert!(matches!(storage_error, CommerceError::Database(_)));
+
+        let missing_error =
+            validate_primary_category(&db, tenant_id, Some(Uuid::new_v4()))
+                .await
+                .expect_err("missing category must remain a validation error");
+        assert!(matches!(missing_error, CommerceError::Validation(_)));
+    }
 
     #[test]
     fn negative_variant_weight_is_rejected_for_all_write_inputs() {

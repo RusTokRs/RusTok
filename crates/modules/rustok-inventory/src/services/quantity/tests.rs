@@ -446,9 +446,7 @@ async fn sqlite_quantity_snapshot_reserves_writer_before_plan_reads() {
         .expect("quantity writer should reserve SQLite before reading the plan");
 
     let concurrent_write = observer
-        .execute_unprepared(
-            "UPDATE inventory_items SET updated_at = updated_at WHERE 1 = 0",
-        )
+        .execute_unprepared("UPDATE inventory_items SET updated_at = updated_at WHERE 1 = 0")
         .await;
     assert!(
         concurrent_write.is_err(),

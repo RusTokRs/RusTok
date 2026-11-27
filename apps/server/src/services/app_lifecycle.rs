@@ -3434,8 +3434,8 @@ mod seo_worker_runtime_extension_tests {
         let expected = Arc::new(ModuleRuntimeExtensions::default());
         runtime.shared_insert(Arc::clone(&expected));
 
-        let actual = seo_worker_runtime_extensions(&runtime)
-            .expect("registered module runtime extensions");
+        let actual =
+            seo_worker_runtime_extensions(&runtime).expect("registered module runtime extensions");
 
         assert!(Arc::ptr_eq(&actual, &expected));
     }

@@ -385,9 +385,7 @@ pub fn find_admin(admins: &[User]) -> Option<&User> {
 ### 3.1 Cancellation Safety
 
 ```rust
-// ✅ Correct: Cancellation-safe operations
-use tokio::select;
-
+// Timeout wrapper: expiry drops the operation future; callers must accept its cancellation semantics.
 pub async fn process_with_timeout<T>(
     operation: impl Future<Output = T>,
     timeout: Duration,
@@ -415,26 +413,36 @@ pub async fn run_service(mut rx: mpsc::Receiver<Command>) {
 // ❌ Incorrect: Forget about cancellation
 pub async fn critical_operation() {
     let file = File::create("important.dat").await.unwrap();
-    // If future is cancelled here, the file remains open/broken
+    // write_all is not cancellation-safe: cancellation can leave a prefix written.
     file.write_all(b"data").await.unwrap();
 }
 
 // ✅ Correct: Scope guard for cleanup
 pub async fn critical_operation() -> Result<()> {
-    let temp_path = tempfile::NamedTempFile::new()?.into_temp_path();
+    let temp_path = tempfile::NamedTempFile::new_in(".")?.into_temp_path();
     
     {
         let file = File::create(&temp_path).await?;
         file.write_all(b"data").await?;
     } // file closed
     
-    // Atomic rename
+    // Atomic rename on the same filesystem; create the temp file in the destination directory.
     tokio::fs::rename(&temp_path, "important.dat").await?;
     // temp_path is automatically deleted when leaving scope
     
     Ok(())
 }
 ```
+
+Cancellation safety belongs to the future being polled, not to the timeout or
+selection wrapper. A timeout drops the wrapped future when its deadline expires;
+`tokio::select!` drops losing branch futures when another branch completes. In Tokio,
+`read_exact`, `read_to_end`, `read_to_string`, and `write_all` are not cancellation-safe
+for partial I/O progress. Tokio's `Mutex::lock`, `RwLock::read`/`write`,
+`Semaphore::acquire`, and `Notify::notified` are also cancellation-unsafe because
+cancellation loses their fairness-queue position. Cancellation can still be
+intentional during shutdown; verify the owner's retry and progress contract
+rather than banning every use of select!. See the [Doctor cancellation rule](./logic-hygiene-patterns.md).
 
 ### 3.2 Spawn and Task Management
 

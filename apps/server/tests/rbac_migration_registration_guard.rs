@@ -97,3 +97,13 @@ fn central_migrator_keeps_existing_dependency_and_inventory_tests() {
         );
     }
 }
+
+#[test]
+fn permanent_rbac_identity_witness_migration_has_one_owner_registration() {
+    const NAME: &str = "m20261127_000013_preserve_rbac_identity_witnesses";
+    let registry = source("crates/modules/rustok-rbac/src/lib.rs");
+    let module = source("crates/modules/rustok-rbac/src/module.rs");
+    assert_eq!(registry.matches(&format!("mod {NAME};")).count(), 1);
+    assert_eq!(module.matches(&format!("Box::new(crate::{NAME}::Migration)")).count(), 1);
+    assert!(!repo_root().join(format!("crates/utils/rustok-migrations/src/{NAME}.rs")).exists());
+}

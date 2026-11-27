@@ -647,8 +647,14 @@ mod tests {
         let openapi = ApiDoc::openapi();
         for (path, method) in [
             ("/api/modules/artifact-security", HttpMethod::Get),
-            ("/api/modules/artifact-security/quarantine", HttpMethod::Post),
-            ("/api/modules/artifact-security/clear-quarantine", HttpMethod::Post),
+            (
+                "/api/modules/artifact-security/quarantine",
+                HttpMethod::Post,
+            ),
+            (
+                "/api/modules/artifact-security/clear-quarantine",
+                HttpMethod::Post,
+            ),
             ("/api/modules/artifact-security/revoke", HttpMethod::Post),
         ] {
             let security = openapi

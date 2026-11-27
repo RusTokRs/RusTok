@@ -371,6 +371,15 @@ impl ModuleControlPlane {
         ArtifactDataCopier::new(self.db.clone(), authorizer)
     }
 
+    /// Platform-only serving maintenance; the caller must supply a current
+    /// transaction-bound operational authorization implementation.
+    pub fn operational_maintenance<A: crate::OperationalMaintenanceAuthorizer>(
+        &self,
+        authorizer: A,
+    ) -> crate::OperationalMaintenanceService<A> {
+        crate::OperationalMaintenanceService::new(self.db.clone(), authorizer)
+    }
+
     /// Returns the bounded drain service for predecessor-incompatible or decommissioned queues.
     pub fn queue_drain(&self) -> ArtifactQueueDrainService {
         ArtifactQueueDrainService::new(self.db.clone())

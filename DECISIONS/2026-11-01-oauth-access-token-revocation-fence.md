@@ -258,3 +258,49 @@ is carried in the owner context.
 The host still depends on its request scope for provenance, permission ceiling
 and invalidation. A fully scope-independent capability and inter-owner
 lock verification are separate remaining work. Compilation and tests unrun.
+
+## Credential FK parent admission (2026-11-27)
+
+Migration 000007 adds PostgreSQL BEFORE guards for OAuth application tenant,
+credential tenant/app/user and translation app FK references. The token
+INSERT additionally retains the non-self family root with KEY SHARE NOWAIT
+before the existing lineage validation and deferred root FK. The deferred
+FK remains authoritative; its check must not be the first root lock at commit.
+Parent contention rejects with SQLSTATE 55P03 rather than waiting from a late
+child write. Missing/invisible parents reject; unchanged references and
+metadata-only revocation do not acquire new locks. These are FK locks, not
+proof of active tenant/app/user, current consent or authorization. The existing
+owner mutation and credential clock checks remain necessary. SQLite retains
+its serialized writer and existing lineage guards. Deploy the migration with
+coordinated writer rollout; PostgreSQL runtime/compile and cross-owner ordering
+remain unverified.
+
+SQLite migration 000008 implements the user-delete cascade absent from its
+original OAuth token table. The existing insert/update tenant guards cannot
+prevent a parent deletion from orphaning lineage. Delete exact tenant/user
+descendants before roots in the user deletion transaction, preserving other
+users and NULL-subject service credentials. PostgreSQL retains the composite
+user FK cascade. Reject existing orphan/cross-tenant lineage at migration;
+operator reconciliation is required instead of silently removing history.
+SQLite downgrade is denied. Source regression tests remain unrun.
+
+PostgreSQL retention obtains UUID-ordered candidate app locks before deleting
+any artifacts and restricts OAuth deletion to these apps. For a candidate
+family lock its root and every member nonblockingly, then recheck the full
+expiry horizon under Read Committed before deleting descendants and root.
+Delete old authorization codes only when no token references them and while
+retaining the app fence. Contention aborts the complete sweep rather than
+waiting for an earlier owner; retry in a fresh transaction. SQLite retains
+serialized deletion. No retention duration or clock contract changes.
+PostgreSQL regression is authored, unrun; arbitrary direct SQL, DDL, large
+sweep throughput and all cross-owner bulk revocations remain unverified.
+
+User-wide delegated credential revocation and application-wide credential
+revocation prelock exact PostgreSQL token/code candidates (and application
+consents for the latter) in UUID order, NOWAIT, before the first credential
+write. Preserve the respective existing owner fence: never discover an app
+lock after a user. Contention rejects the entire caller transaction, with
+no partial credential revocation. SQLite uses its serialized writer. The
+existing mutation predicates remain authoritative. This covers broad user/app
+writers, not every family replay and cross-owner receipt path. PostgreSQL
+contention regression is authored, unrun.

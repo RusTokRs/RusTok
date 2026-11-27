@@ -135,8 +135,7 @@ fn starts_with_graphql_keyword(input: &str, keyword: &str) -> bool {
     let Some(rest) = input.strip_prefix(keyword) else {
         return false;
     };
-    rest.is_empty()
-        || rest.starts_with(|c: char| c.is_whitespace() || matches!(c, '{' | '(' | '@'))
+    rest.is_empty() || rest.starts_with(|c: char| c.is_whitespace() || matches!(c, '{' | '(' | '@'))
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

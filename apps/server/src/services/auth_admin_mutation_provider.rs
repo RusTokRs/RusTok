@@ -569,14 +569,16 @@ impl ServerAuthAdminMutationProvider {
     ) -> Result<Vec<String>, AuthAdminMutationError> {
         self.prepare_artifact_effect_authority().await?;
         let tx = self.db.begin().await.map_err(internal_admin_error)?;
-        let (keys, _) = self.lock_artifact_runtime_permission_keys_on(
-            &tx, tenant_id, actor_id, installation,
-        ).await?;
+        let (keys, _) = self
+            .lock_artifact_runtime_permission_keys_on(&tx, tenant_id, actor_id, installation, None)
+            .await?;
         tx.commit().await.map_err(internal_admin_error)?;
         Ok(keys)
     }
 
-    pub(crate) async fn prepare_artifact_effect_authority(&self) -> Result<(), AuthAdminMutationError> {
+    pub(crate) async fn prepare_artifact_effect_authority(
+        &self,
+    ) -> Result<(), AuthAdminMutationError> {
         self.prepare_admin_authority(false).await
     }
 
@@ -588,6 +590,7 @@ impl ServerAuthAdminMutationProvider {
         tenant_id: Uuid,
         actor_id: Uuid,
         installation: &rustok_modules::InstalledModuleArtifact,
+        composition: Option<&rustok_modules::ModuleCompositionIdentity>,
     ) -> Result<(Vec<String>, chrono::DateTime<chrono::Utc>), AuthAdminMutationError> {
         let context = bind_admin_context(tenant_id, actor_id, AuthPrincipalKind::DirectUser, None)?;
         let scope = match &installation.scope {
@@ -611,6 +614,15 @@ impl ServerAuthAdminMutationProvider {
             .lock_user_admin_credential(tx, &context, &actor, None)
             .await?
             .ok_or(AuthAdminMutationError::Unauthorized)?;
+        // Same ordering as administrative Auth/RBAC: credentials, then
+        // composition, then roles. Do not acquire composition after roles or
+        // a module slug lock. The preflight-only caller has no lease proof.
+        if let Some(composition) = composition {
+            composition
+                .require_current_in_transaction(tx)
+                .await
+                .map_err(internal_admin_error)?;
+        }
         rustok_rbac::lock_actor_role_grants_on(tx, tenant_id, actor_id)
             .await
             .map_err(internal_admin_error)?;
@@ -635,7 +647,8 @@ impl ServerAuthAdminMutationProvider {
         tx: &sea_orm::DatabaseTransaction,
         deadline: chrono::DateTime<chrono::Utc>,
     ) -> Result<(), AuthAdminMutationError> {
-        self.ensure_user_admin_credential_deadline(tx, Some(deadline)).await
+        self.ensure_user_admin_credential_deadline(tx, Some(deadline))
+            .await
     }
 
     pub(crate) async fn lock_rbac_control_plane(
@@ -692,21 +705,23 @@ impl ServerAuthAdminMutationProvider {
         if let Some(snapshot) = &availability {
             permissions = snapshot.active_permissions(&permissions);
         }
-        if !required
-            .iter()
-            .any(|p| has_effective_permission(&permissions, p))
-        {
-            return Err(AuthAdminMutationError::Forbidden(
-                "current RBAC management permission required".into(),
-            ));
-        }
         self.ensure_user_admin_credential_deadline(tx, Some(deadline))
             .await?;
-        Ok(rustok_rbac::graphql::RbacLockedMutationAuthority {
+        let mut authority = rustok_rbac::graphql::RbacLockedMutationAuthority {
             permissions,
             availability,
             deadline,
-        })
+        };
+        // Reconfirm the admitted scope after the asynchronous lock/read path.
+        // A different alternative permission obtained since admission cannot
+        // substitute for a revoked one, nor enlarge the returned authority.
+        authority.restrict_to(&self.request_permissions(&context)?);
+        if !has_any_effective_permission(&authority.permissions, required) {
+            return Err(AuthAdminMutationError::Forbidden(
+                "current RBAC management permission within admitted authority required".into(),
+            ));
+        }
+        Ok(authority)
     }
 }
 

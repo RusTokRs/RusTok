@@ -348,3 +348,27 @@ remain held through commit, and the locked credential deadline is checked
 again immediately before committing. Lease membership and expiry remain
 mandatory; no actor is inferred for owner work. Installation and module
 policy concurrency fencing remains separate work.
+
+PostgreSQL migration 000007 introduces nonblocking FK parent admission for
+OAuth apps, token/code/consent rows, application translations, refresh-family
+roots and invite/recovery children. Existing FK and immutable lineage guards
+remain authoritative. Direct late writes reject busy parents (55P03) instead
+of waiting; retry only from a new transaction. PostgreSQL runtime and broader
+session/identity and cross-owner lock ordering remain unverified.
+
+Migration 000008 closes the SQLite token/user deletion parity gap: physical
+user deletion removes delegated descendants before roots, preserving service
+and other-user credentials. Existing orphan/cross-tenant lineage blocks
+migration for explicit reconciliation. Source tests unrun.
+
+PostgreSQL retention uses ordered nonblocking candidate locks and app-first
+OAuth family deletion with fresh whole-family expiry checks. Contention rolls
+back the complete sweep; the next attempt starts a new transaction. SQLite
+retains serialized writes. Source regressions are unrun.
+
+The RBAC-owned migration 000013 retains permanent user/role/permission UUID
+birth witnesses. A post-cutover hard-deleted user cannot be recreated under
+the same UUID to revive old recovery or membership evidence. The witness
+has no user FK or account PII and survives deletion. Pre-cutover deletions,
+other credential IDs, privileged DDL and database restore are not covered.
+See the RBAC owner documentation. Source regressions unrun.

@@ -1133,3 +1133,74 @@ in force. This does not bind the initiating session/JWT or delegated access
 registration to the write: the current admin port lacks that evidence. Other
 RBAC writers, artifact grants and cross-owner lock order still require audit.
 Source regressions authored; compilation and PostgreSQL contention unverified.
+
+### Auth credential FK admission
+
+Migration 000007 guards PostgreSQL OAuth app tenant references, credential
+app/user/tenant references, application translations, deferred family root
+references, invite issuance/consumption and email-change requests. Acquire
+FK-compatible KEY SHARE NOWAIT before a late FK check, in tenant/app/user/root
+order where applicable. This is referential admission, not active credential
+or permission authorization. Existing lineage and FK constraints still apply.
+Unchanged references, metadata-only revocation and nullable user SET NULL
+cascades do not acquire a new parent lock. Missing/invisible parents fail
+closed; busy parents reject with SQLSTATE 55P03. Retry from a fresh transaction.
+SQLite retains its serialized writer and existing guards. PostgreSQL regression
+source covers contention, canonical reuse, metadata and user cascade; compile,
+migration and runtime verification are pending. Session/history and broader
+bulk revocation, administrative receipt and outbox ordering remain open.
+
+SQLite migration 000008 implements the missing token user-delete cascade
+(the original SQLite token table has no user FK; PostgreSQL already has the
+composite user FK). The AFTER DELETE user trigger deletes exact tenant/user
+non-root members before roots, retaining NULL-subject service credentials
+and other users. Legacy orphan or cross-tenant lineage blocks the migration
+without deleting evidence. Physical deletion only; normal deactivation and
+revocation contracts remain unchanged. SQLite source regressions for cascade,
+rollback, tenant deletion, identity recreation and dirty preflight are unrun.
+
+Direct refresh and both logout paths now use the preflight digest/session ID
+only as a routing hint, lock the exact tenant user before the observed session,
+and re-check the exact linked identity and digest. Replay history is read only
+after the session fence; logout preserves existing expiry/revocation and
+expected-lineage semantics. SQLite user-before-session probe added; PostgreSQL
+contention and compile checks remain unrun.
+
+Platform migration 000010 fences PostgreSQL session tenant/user FK and
+refresh-history session FK writes with KEY SHARE NOWAIT. History updates and
+deletes also retain the parent when present, so retention holding a session
+row cannot wait on a history writer that needs that same session. The existing
+cascade remains authoritative; this does not enforce history immutability or
+add a composite session tenant/user FK. SQLite is unchanged. Source regression
+covers contention and owner cascade; runtime verification remains open.
+
+PostgreSQL retention now acquires candidate OAuth applications in UUID order
+with FOR UPDATE NOWAIT before any child deletion, scopes the sweep to those
+apps, locks the family root and all members, and rechecks the entire expiry
+horizon before deleting descendants then roots. Code replay evidence remains
+until no token references it. Session/invite/recovery and code candidates
+use ordered nonblocking row locks. A busy candidate aborts the entire sweep;
+retry later from a fresh transaction. SQLite retains its serialized writer.
+Clock cutoffs, final corroboration and all-or-nothing semantics are unchanged.
+The source regression exercises app/session/member/code contention and rollback,
+plus retained lineage and retry; execution, large sweeps and external DDL/direct
+SQL are not certified.
+
+Platform migration 000011 makes session ID, tenant, user and creation time
+immutable and enforces tenant/user parent integrity (PostgreSQL composite FK,
+SQLite insert and parent-move guards). History is append-only: UPDATE and
+independent DELETE are rejected while the parent exists; PostgreSQL TRUNCATE
+is denied, SQLite REPLACE is rejected for existing sessions/history. Existing
+parent cascade remains valid. Migration rejects dirty scoped identities
+without deleting history. Tests that age history explicitly restore the
+SQLite guard inside an isolated fixture transaction. No runtime bypass.
+This protects ordinary DML, not privileged trigger disabling or parent
+removal outside the retention contract. Compile and runtime tests unrun.
+
+Broad user credential revocation (password change/recovery/admin account
+changes) and app credential revocation prelock exact token and pending-code
+rows in UUID order with PostgreSQL NOWAIT; app revocation also prelocks
+consents. No new app lock is acquired after a user lock. Existing mutation
+scope and transaction rollback semantics remain; SQLite serializes writers.
+The new PostgreSQL regression covers token/code contention and unrelated
+user isolation; compile/runtime verification remains pending.

@@ -23,12 +23,25 @@ a set via delete/insert conservatively advances it. Rollback rolls back the
 epoch. Overflow and decreasing the epoch fail closed. PostgreSQL rejects
 TRUNCATE of user_roles; maintenance must use row deletion. SQLite rejects
 relation-ID replacement across users to prevent silent conflict-delete bypass.
-Trusted maintenance must not disable triggers or reuse deleted user IDs.
+Migration 000013 replaces the ordinary-DML non-reuse assumption with a
+permanent UUID witness for all users present at cutover or inserted later.
+A deleted user UUID cannot be recreated, and user ID updates are forbidden.
+Trusted maintenance must not disable triggers; pre-cutover deleted identities
+and privileged restore remain outside the witness history.
 
 The epoch update locks the same user row as Auth's issuer mutation fence.
 SQLite readers must already own its write fence. Writers should lock users
-before changing relations. Conflicting low-level lock ordering can abort
-with a database deadlock; retry the whole transaction, not part of it.
+before changing relations. Migration 000006 adds a PostgreSQL BEFORE ROW
+guard: lock old/new surviving user IDs in UUID order with FOR NO KEY UPDATE
+NOWAIT, then old/new referenced roles for insert/update with FOR SHARE
+NOWAIT. This precedes tenant validation and retains revision/FK authority
+through the AFTER trigger and commit. A late competing writer fails with
+SQLSTATE 55P03 instead of waiting for a parent while holding a relation row.
+DELETE locks only the surviving revision parent; a cascaded deleted user
+need not be resurrected. Active parent RLS is rejected because hidden rows
+cannot establish complete authority. SQLite retains its single-writer
+protocol. Retry the entire transaction after contention; bulk child-row
+ordering and cascades before the row guard are not globally proven.
 
 Auth stores the exact epoch separately from account recovery revision.
 Acceptance checks both before consuming the credential. Migration revokes

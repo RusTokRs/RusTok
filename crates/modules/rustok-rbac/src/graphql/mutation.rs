@@ -70,11 +70,13 @@ async fn lock_role_authority(
     tenant_id: Uuid,
     target_role_id: Option<Uuid>,
 ) -> Result<RbacLockedMutationAuthority> {
-    let authority = handle
+    let mut authority = handle
         .0
         .lock(tx, tenant_id, auth.user_id, target_role_id, ROLE_MANAGEMENT)
         .await
         .map_err(map_role_write_error)?;
+    // Enforce the owner contract even if an adapter returns raw live grants.
+    authority.restrict_to(&auth.permissions);
     if !ROLE_MANAGEMENT
         .iter()
         .any(|p| has_effective_permission(&authority.permissions, p))
@@ -244,7 +246,10 @@ async fn grant_role_permissions_in_tx(
     permissions: &[Permission],
 ) -> Result<Vec<String>> {
     let mut granted = Vec::with_capacity(permissions.len());
-    for permission in permissions {
+    // All role writers materialize shared vocabulary keys in the same order.
+    let mut ordered = permissions.iter().collect::<Vec<_>>();
+    ordered.sort_by_cached_key(|permission| permission_parts(permission));
+    for permission in ordered {
         let (resource, action) = permission_parts(permission);
         let (resource, action) = (resource.as_str(), action.as_str());
 

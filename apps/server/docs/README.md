@@ -1253,15 +1253,17 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
   control returns typed framework-neutral `rustok-api` snapshots, so GraphQL
   only wraps canonical facts and does not map SeaORM models.
 - The build progress WebSocket at `GET /ws/builds` authenticates its bearer
-  credential and admits only effective `modules:read`, `modules:list`, or
-  `modules:manage` permissions. It uses the same live authority lease as the
-  GraphQL WebSocket: it checks the tenant, token, session, and effective RBAC
-  snapshot on a 30-second interval and before forwarding an event; authority
-  lookup is bounded to five seconds and the remaining token lifetime. An expiry
+  credential and explicit host-global read authority (HostAuthority::Read).
+  Tenant modules:read, modules:list, and modules:manage grants do not authorize
+  this platform-wide stream. The bearer session/tenant lease is revalidated on
+  a 30-second interval and before forwarding an event; authority lookup is
+  bounded to five seconds and the remaining token lifetime. The host-authority
+  context is captured at upgrade, so host-token rotation requires reconnecting
+  existing sockets. An expiry
   deadline starts a bounded close; outbound writes are bounded by five seconds
   and the remaining token lifetime.
-  Authority changes attempt a 4401 close; a blocked or disconnected peer may see
-  only a dropped connection. The hub is an
+  Bearer-session or tenant-authority changes attempt a 4401 close; a blocked or
+  disconnected peer may see only a dropped connection. The hub is an
   atomic process-local singleton, not a distributed or durable event stream.
 - Effective-module-policy snapshots carry an owner-produced tenant/revision
   cache identity, but the server's `get_latest` path does not compare it to an
@@ -1599,7 +1601,10 @@ idempotencyKey)` is the corresponding headless action path. It resolves the
   an explicit contract before widening or replacing this surface.
 - GraphQL build history and active-build reads use the host-composed read-only
   `rustok-build::SharedBuildControl`. Pagination limits are enforced by the
-  owner, and the transport does not import build persistence entities.
+  owner, and the transport does not import build persistence entities. These
+  reads and the GraphQL buildProgress subscription require HostAuthority::Read;
+  the module GraphQL permission extension does not treat them as tenant module
+  reads.
 - Native admin and GraphQL marketplace reads share the host-composed
   `SharedModuleMarketplaceCatalog`. The server adapter combines active local
   composition with configured remote registry providers, applies durable
@@ -2042,6 +2047,12 @@ representation `Content-Length` on HEAD responses while keeping the body empty.
 Focused regressions were added; tests, compilation and formatting were not run
 at the maintainer's request.
 
+The explicit `RUSTOK_CORS_ALLOWED_ORIGINS` value is fail-closed even when
+the operating system cannot decode it: a non-Unicode value becomes an explicit
+empty allow-list and never falls back to development loopback defaults.
+Host-only origins with a trailing slash retain the HTTPS default-port rule for
+port 443.
+
 ## Server follow-up — installer heartbeat ownership and search limiter readiness (2026-11-25)
 
 The installer heartbeat now runs as a sibling future inside the runtime-owned
@@ -2233,20 +2244,25 @@ existing process-local clock guard and adds no new clock source or lease.
 
 ## Artifact SQL effect fencing (2026-11-27)
 
-For server-composed `platform.data` and `platform.events` calls, the host now
+For server-composed `platform.data` and `platform.events` calls, the host
 prepares the Auth clock authority before opening the effect transaction. The
-transaction then locks the direct tenant/user/session/role authority where
-applicable, acquires the platform-then-tenant artifact activation locks,
-re-resolves the exact active installation and current sandbox grant, and
-compares its constraints with the execution lease. Those locks remain held
-through commit, and the direct credential deadline plus execution lease are
-checked again immediately before commit. Structured-data reads/writes and
-event-outbox publication use this fence; delete-receipt replay is fenced too.
+transaction locks the direct tenant/user/session/role authority where
+applicable, all artifact activation fences in the exact dependency/co-requisite
+closure, active composition and reconciliation state, then re-resolves the
+exact active installation and current sandbox grant and compares its
+constraints with the execution lease. Security revisions, registry release
+authority, selection generations, tenant lifecycle/override intent, deployment
+readiness and captured HTTP channel generation are also revalidated under
+their owner fences. Those locks remain held through commit; the direct
+credential deadline and execution lease are checked again immediately before
+commit. Structured-data reads/writes and event-outbox publication use this
+fence; delete-receipt replay is fenced too.
 
-This is not yet a universal effect transaction: full effective-policy revision,
-dependency closure/security, registry mutation state and deployment readiness
-are not all held through commit, and HTTP, MCP, secrets and object-storage
-capabilities do not share this SQL commit fence. PostgreSQL cross-owner lock
+This is not yet a universal effect transaction. Full effective-policy revision,
+operational maintenance authority, deferred/background channel context and
+continuous worker/node liveness remain unfenced. HTTP, MCP, secrets and
+object-storage effects do not share the SQL commit fence and still rely on
+per-call admission plus owner-specific checks. PostgreSQL cross-owner lock
 ordering/contention and deployed worker/runtime evidence remain pending. See
 the [execution capability lease ADR](../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md)
 and the server [Known Limitations / Pending Implementation](../README.md#known-limitations--pending-implementation).
@@ -2297,14 +2313,38 @@ fields are also decimal strings.
 
 Both transports require a direct authenticated user session and the effective
 modules:manage permission in the resolved tenant. Delegated and service
-principals are rejected. The permission is checked against both the authenticated
-permission snapshot and the server's canonical RBAC resolver, including request-scope invalidation. Successful commands clear the
-process-local effective module-policy cache across all tenants, because the
-security aggregate is global to the release. The owner-side SQL execution fence
-remains authoritative for already-running artifact work.
+principals are rejected. For mutations, the host revalidates the direct
+credential and current RBAC grants inside the owner transaction, taking
+tenant/user/session/policy/role fences before the platform release-slug lock
+and retaining them through commit. The owner rechecks the earliest direct
+credential deadline immediately before both new-state and exact-replay commits,
+after any slug-lock wait and all writes; expiry rolls back state, receipt and
+outbox together. Exact idempotency replay also requires current authorization,
+so a stale request snapshot cannot authorize a replay.
+Successful commands clear the process-local effective module-policy cache
+across all tenants, because the security aggregate is global to the release.
+policyRevision is caller-provided audit/idempotency metadata, not an
+authorization credential. reasonDetail is free-text audit evidence and is not
+part of the semantic idempotency fingerprint; callers should reuse the original
+command body and UUID key for retries.
+The owner-side SQL execution fence remains authoritative for already-running
+artifact work.
 
 Focused source regressions cover direct-principal authorization, canonical RBAC
 permission-resolution checks, tenant/actor binding, global command context, response cache
 headers, owner error mapping, GraphQL field classification and OpenAPI auth
 contracts. Tests, compilation and formatting were not run at the maintainer's
 request.
+
+## GraphQL system diagnostics mirror runtime authority (2026-11-27)
+
+The tenant `sessionStats` query uses the verified Auth application clock and
+the same active-session fences as the Auth session listing: tenant ownership,
+non-revocation, creation time not in the future, the original 90-day absolute
+lifetime cap, sliding expiry, and any explicit absolute expiry. Legacy rows
+without an explicit absolute deadline are bounded by `created_at + 90 days`.
+
+The host-global `eventsStatus.iggyMode` field reports the initialized
+`EventRuntime` mode. An initialized Outbox-only runtime reports `inactive`;
+the deployment setting is used only before runtime initialization. This is
+diagnostic state, not proof of broker health or cross-replica readiness.

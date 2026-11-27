@@ -1,12 +1,5 @@
-logger:
-  enable: true
-  pretty_backtrace: true
-  level: info
-  format: compact
-
 server:
   binding: 127.0.0.1
-  host: http://127.0.0.1
   port: 5150
 
 database:

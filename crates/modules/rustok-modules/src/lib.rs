@@ -89,6 +89,7 @@ mod lifecycle_transition_fence;
 #[cfg(feature = "oci-distribution")]
 mod oci_transport;
 mod operation_store;
+mod operational_maintenance;
 pub mod operations_tool;
 pub mod operator;
 mod policy;
@@ -262,24 +263,24 @@ pub use artifact::{
 pub use artifact_capability_router::{
     ArtifactCapabilityBrokerResolver, ArtifactCapabilityBrokerResolverRouter,
     ArtifactCapabilityExecution, ArtifactCapabilityScope, ArtifactSqlEffectAuthorizer,
-    ArtifactSqlEffectFence, ArtifactSqlEffectCommitGuard, ResolvingArtifactCapabilityBroker,
+    ArtifactSqlEffectCommitGuard, ArtifactSqlEffectFence, ResolvingArtifactCapabilityBroker,
     lock_granted_artifact_capability_on, resolve_granted_artifact_capability,
 };
 pub use artifact_cas::StorageArtifactBlobStore;
 pub use artifact_node_reconciliation::{
-    ArtifactServingClosure, MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS, ModuleArtifactNodeAgentPort,
-    ModuleArtifactNodeAssignment, ModuleArtifactNodeAssignmentClaimCommand,
-    ModuleArtifactNodeAssignmentHeartbeatCommand, ModuleArtifactNodeAssignmentHeartbeatReceipt,
-    ModuleArtifactNodeAssignmentReport, ModuleArtifactNodeAssignmentReportReceipt,
-    ModuleArtifactNodeAssignmentTarget, ModuleArtifactNodeAssignmentWorkItem,
-    ModuleArtifactNodeInstallationScope, ModuleArtifactNodeReconciliation,
-    ModuleArtifactNodeReconciliationAuthorizer, ModuleArtifactNodeReconciliationError,
-    ModuleArtifactNodeReconciliationReceipt, ModuleArtifactNodeReconciliationRequest,
-    ModuleArtifactNodeReconciliationStatus, ModuleArtifactNodeReconciliationWorkIdentity,
-    ModuleArtifactNodeTopologyResolveError, ModuleArtifactNodeTopologyResolver,
-    ModuleArtifactNodeTopologySnapshot, SeaOrmArtifactNodeReadiness,
-    SeaOrmModuleArtifactNodeAgentService, SeaOrmModuleArtifactNodeReconciliationService,
-    module_artifact_node_topology_digest,
+    ArtifactServingClosure, MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS,
+    ModuleArtifactNodeAgentPort, ModuleArtifactNodeAssignment,
+    ModuleArtifactNodeAssignmentClaimCommand, ModuleArtifactNodeAssignmentHeartbeatCommand,
+    ModuleArtifactNodeAssignmentHeartbeatReceipt, ModuleArtifactNodeAssignmentReport,
+    ModuleArtifactNodeAssignmentReportReceipt, ModuleArtifactNodeAssignmentTarget,
+    ModuleArtifactNodeAssignmentWorkItem, ModuleArtifactNodeInstallationScope,
+    ModuleArtifactNodeReconciliation, ModuleArtifactNodeReconciliationAuthorizer,
+    ModuleArtifactNodeReconciliationError, ModuleArtifactNodeReconciliationReceipt,
+    ModuleArtifactNodeReconciliationRequest, ModuleArtifactNodeReconciliationStatus,
+    ModuleArtifactNodeReconciliationWorkIdentity, ModuleArtifactNodeTopologyResolveError,
+    ModuleArtifactNodeTopologyResolver, ModuleArtifactNodeTopologySnapshot,
+    SeaOrmArtifactNodeReadiness, SeaOrmModuleArtifactNodeAgentService,
+    SeaOrmModuleArtifactNodeReconciliationService, module_artifact_node_topology_digest,
 };
 pub use artifact_settings_recovery::{
     ArtifactSettingsPurgePreview, ArtifactSettingsPurgePreviewService,
@@ -341,11 +342,12 @@ pub use composition::{
     ACTIVE_MODULE_COMPOSITION_ID, ModuleCompositionBuildAdmission,
     ModuleCompositionBuildEnqueueError, ModuleCompositionBuildEnqueueResult,
     ModuleCompositionBuildEnqueuer, ModuleCompositionBuildLease, ModuleCompositionBuildReceipt,
-    ModuleCompositionError, ModuleCompositionIdentity, ModuleCompositionOperation, ModuleCompositionSnapshot,
-    ModuleCompositionUpdate, STATIC_MODULE_REGISTRY_MAX_LIMIT, SeaOrmModuleCompositionService,
-    SharedStaticInstalledModuleReader, SharedStaticModuleRegistryReader,
-    StaticInstalledModuleReader, StaticInstalledModuleReaderError, StaticModuleRegistryQuery,
-    StaticModuleRegistryReader, StaticModuleRegistryReaderError,
+    ModuleCompositionError, ModuleCompositionIdentity, ModuleCompositionOperation,
+    ModuleCompositionSnapshot, ModuleCompositionUpdate, STATIC_MODULE_REGISTRY_MAX_LIMIT,
+    SeaOrmModuleCompositionService, SharedStaticInstalledModuleReader,
+    SharedStaticModuleRegistryReader, StaticInstalledModuleReader,
+    StaticInstalledModuleReaderError, StaticModuleRegistryQuery, StaticModuleRegistryReader,
+    StaticModuleRegistryReaderError,
 };
 pub use contracts::{
     ControlPlaneRevision, ModuleCommandContext, ModuleControlPlaneError,
@@ -534,12 +536,12 @@ pub use installation::{
     ArtifactBlobStore, ArtifactDeactivationRequest, ArtifactDeactivationResult,
     ArtifactMigrationCheckpointRequest, ArtifactMigrationRollbackMode, ArtifactPayloadSource,
     ArtifactPermissionRegistrationStatus, ArtifactRegistry, ArtifactRollbackRequest,
-    ArtifactRollbackResult, ArtifactSelectionGeneration, ArtifactTenantDisableRequest, ArtifactTenantDisableResult,
-    ArtifactTenantEnableRequest, ArtifactTenantEnableResult, ArtifactTenantLifecycleSnapshot,
-    ArtifactUninstallRequest, ArtifactUninstallResult, ArtifactVerificationEvidence,
-    DurableArtifactBlobStore, InstalledModuleArtifact, ModuleArtifactPackage,
-    ModuleInstallationError, ModuleInstallationScope, ModuleInstaller, OciArtifactReference,
-    SeaOrmArtifactBlobRetentionPolicy, SeaOrmArtifactInstallationStore,
+    ArtifactRollbackResult, ArtifactSelectionGeneration, ArtifactTenantDisableRequest,
+    ArtifactTenantDisableResult, ArtifactTenantEnableRequest, ArtifactTenantEnableResult,
+    ArtifactTenantLifecycleSnapshot, ArtifactUninstallRequest, ArtifactUninstallResult,
+    ArtifactVerificationEvidence, DurableArtifactBlobStore, InstalledModuleArtifact,
+    ModuleArtifactPackage, ModuleInstallationError, ModuleInstallationScope, ModuleInstaller,
+    OciArtifactReference, SeaOrmArtifactBlobRetentionPolicy, SeaOrmArtifactInstallationStore,
     SeaOrmArtifactSandboxPolicyResolver, SnapshotArtifactBlobRetentionPolicy, StagedArtifactBlob,
     TransitionRollbackRequest,
 };
@@ -592,6 +594,11 @@ pub use operation_store::{
 };
 pub(crate) use operation_store::{
     TenantModuleSettingsRequest, TenantModuleStateRequest, TenantModuleStateStore,
+};
+pub use operational_maintenance::{
+    OperationalMaintenanceAuthority, OperationalMaintenanceAuthorizer, OperationalMaintenanceError,
+    OperationalMaintenanceScope, OperationalMaintenanceService, OperationalMaintenanceState,
+    ReplaceOperationalMaintenanceCommand,
 };
 pub use policy::{
     EffectivePolicyCacheIdentity, ModuleEffectivePolicy, ModuleEffectivePolicyChannelBinding,
@@ -649,10 +656,11 @@ pub use resolution::{
     ModuleResolutionResult, ModuleResolutionScope, resolve_module_dependencies,
 };
 pub use runtime::{
-    ArtifactEffectivePolicyResolveError, ArtifactEffectivePolicyResolver, ArtifactExecutionLeaseGuard,
-    ArtifactInstallationResolveError, ArtifactInstallationResolver, ArtifactRuntime,
-    ArtifactRuntimeError, ArtifactRuntimeLifecycleExecutor, ArtifactRuntimeReadinessProbe,
-    ArtifactSandboxPolicyResolveError, ArtifactSandboxPolicyResolver, VerifiedArtifactNodeCache,
+    ArtifactEffectivePolicyResolveError, ArtifactEffectivePolicyResolver,
+    ArtifactExecutionLeaseGuard, ArtifactInstallationResolveError, ArtifactInstallationResolver,
+    ArtifactRuntime, ArtifactRuntimeError, ArtifactRuntimeLifecycleExecutor,
+    ArtifactRuntimeReadinessProbe, ArtifactSandboxPolicyResolveError,
+    ArtifactSandboxPolicyResolver, VerifiedArtifactNodeCache,
 };
 pub use runtime_handles::{
     ArtifactDeliveryTenantSource, ArtifactDeliveryTenantSourceError, SharedArtifactBindingExecutor,

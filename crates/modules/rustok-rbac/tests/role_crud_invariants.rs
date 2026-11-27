@@ -1400,3 +1400,40 @@ async fn role_mutations_require_live_ceiling_and_rollback_on_credential_expiry()
     assert!(!expired_delete.errors.is_empty());
     assert_eq!(editor_state(&db).await, before);
 }
+
+#[tokio::test]
+async fn role_mutations_deny_disjoint_admitted_and_live_management_grants() {
+    let db = setup_test_db().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let schema = test_schema(
+        db.clone(),
+        tenant_id,
+        actor_id,
+        vec![Permission::SETTINGS_MANAGE, Permission::POSTS_READ],
+    );
+    create_editor(&schema).await;
+    let before = editor_state(&db).await;
+    let authority = test_authority(
+        vec![Permission::USERS_MANAGE, Permission::POSTS_READ],
+        None,
+        false,
+    );
+    for mutation in [
+        r#"mutation { createRole(input: {name: "New role", slug: "new_role", permissions: ["posts:read"]}) { success } }"#,
+        r#"mutation { updateRole(input: {slug: "editor", name: "Changed", permissions: ["posts:read"]}) { success } }"#,
+        r#"mutation { deleteRole(slug: "editor") { success } }"#,
+    ] {
+        let response = schema
+            .execute(async_graphql::Request::new(mutation).data(authority.clone()))
+            .await;
+        assert!(!response.errors.is_empty(), "{mutation} must fail closed");
+        assert_eq!(editor_state(&db).await, before);
+    }
+    // A matching management grant remains sufficient, so the failed
+    // attempts did not strand a lock or reserve the new role slug.
+    let allowed = schema
+        .execute(r#"mutation { createRole(input: {name: "New role", slug: "new_role", permissions: ["posts:read"]}) { success } }"#)
+        .await;
+    assert!(allowed.errors.is_empty(), "{:?}", allowed.errors);
+}

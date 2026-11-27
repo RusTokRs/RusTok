@@ -20,6 +20,13 @@ use wasm_bindgen::JsCast;
 #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
 use web_sys::{Element, Event, EventTarget, PointerEvent};
 
+#[cfg(any(all(target_arch = "wasm32", feature = "dioxus-web"), test))]
+fn can_resize_by_keyboard(modifiers: Modifiers) -> bool {
+    !modifiers.contains(Modifiers::ALT)
+        && !modifiers.contains(Modifiers::CONTROL)
+        && !modifiers.contains(Modifiers::META)
+}
+
 const RESIZE_HANDLES: [ResizeHandle; 8] = [
     ResizeHandle::NorthWest,
     ResizeHandle::North,
@@ -142,7 +149,6 @@ pub fn DioxusIsolatedCanvas(
         );
     }));
 
-    #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     let next_resize_context = (instance_is_current && selected_can_resize)
         .then(|| selected_id.clone().zip(selected_rect))
         .flatten()
@@ -629,6 +635,11 @@ pub fn DioxusIsolatedCanvas(
                                         onkeydown: {
                                             let intent_instance_id = intent_instance_id.clone();
                                             move |event| {
+                                                // Modified arrow chords belong to browser, OS or
+                                                // editor shortcuts; resize only owns plain arrows.
+                                                if !can_resize_by_keyboard(event.modifiers()) {
+                                                    return;
+                                                }
                                                 let Some(context) = keyboard_resize_context.clone()
                                                 else {
                                                     return;
@@ -704,7 +715,6 @@ pub fn DioxusIsolatedCanvas(
     }
 }
 
-#[cfg(any(all(target_arch = "wasm32", feature = "dioxus-web"), test))]
 #[derive(Debug, Clone, PartialEq)]
 struct DioxusResizeContext {
     instance_id: String,
@@ -713,7 +723,6 @@ struct DioxusResizeContext {
     zoom: f64,
 }
 
-#[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
 fn live_resize_context(
     session: Signal<EditorSessionState>,
     geometry: Signal<BTreeMap<String, CanvasComponentGeometry>>,
@@ -757,7 +766,6 @@ fn live_resize_context(
     })
 }
 
-#[cfg(any(all(target_arch = "wasm32", feature = "dioxus-web"), test))]
 fn resize_context_is_current(
     captured: &DioxusResizeContext,
     current: Option<&DioxusResizeContext>,
@@ -1024,10 +1032,19 @@ fn update_drag_candidates(
     on_ui_intent.call(UiIntent::UpdateHitTest(candidates));
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn modified_arrow_chords_are_not_consumed_by_resize_handles() {
+        assert!(can_resize_by_keyboard(Modifiers::empty()));
+        assert!(can_resize_by_keyboard(Modifiers::SHIFT));
+        assert!(!can_resize_by_keyboard(Modifiers::ALT));
+        assert!(!can_resize_by_keyboard(Modifiers::CONTROL));
+        assert!(!can_resize_by_keyboard(Modifiers::META));
+        assert!(!can_resize_by_keyboard(Modifiers::ALT | Modifiers::CONTROL));
+    }
 
     #[test]
     fn resize_gesture_snapshot_is_fenced_by_identity_target_geometry_and_zoom() {

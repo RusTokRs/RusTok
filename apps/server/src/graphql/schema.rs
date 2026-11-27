@@ -18,6 +18,7 @@ mod schema_codegen {
     include!(concat!(env!("OUT_DIR"), "/graphql_schema_codegen.rs"));
 }
 
+use super::artifact_security::{ArtifactSecurityMutation, ArtifactSecurityQuery};
 use super::forum_principal_security::ForumPrincipalPolicy;
 use super::index_drift_diagnosis::IndexDriftDiagnosisMutation;
 use super::index_drift_source_page_diagnosis::IndexDriftSourcePageDiagnosisMutation;
@@ -26,7 +27,6 @@ use super::legacy_disable_user::LegacyDisableUserPolicy;
 use super::loaders::TenantNameLoader;
 #[cfg(feature = "mod-moderation")]
 use super::moderation_recovery::ModerationRecoveryMutation;
-use super::artifact_security::{ArtifactSecurityMutation, ArtifactSecurityQuery};
 use super::module_rollback::ModuleRollbackMutation;
 use super::module_security::GraphqlModuleSecurityPolicy;
 use super::module_settings_cas::ModuleSettingsCasMutation;

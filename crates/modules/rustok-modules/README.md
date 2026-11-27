@@ -71,7 +71,10 @@ around the owner contracts.
   are removed.
 - Own artifact-release quarantine and terminal emergency revocation separately
   from registry yanking; security state blocks new execution while preserving
-  tenant enablement intent and records exact revisioned outbox evidence.
+  tenant enablement intent and records exact revisioned outbox evidence. The
+  owner invokes the host authorization port inside the transition transaction,
+  before replay and the platform slug lock, so credential and RBAC fences stay
+  held through commit.
 - Supply owner clock and identity ports through one
   `ControlPlaneInfrastructure` context rather than process-global calls.
 - Map installed artifacts to neutral sandbox requests and capability grants.
@@ -184,6 +187,10 @@ production readiness. The documented implementation and operational gaps include
   are also fenced, including implicit clear and quarantine/clear ABA.
   Independent monotonic registry release authority fences publication, yank,
   unyank and availability ABA for the root and entire serving artifact closure.
+  Migration 000098 moves PostgreSQL registry fence admission to a BEFORE guard
+  with the canonical advisory gate and nonblocking late acquisition; the
+  AFTER trigger only advances the witness. Coordinated writer cutover and
+  PostgreSQL contention verification remain required.
   Artifact scope selection generations fence lifecycle ABA on the exact
   serving closure. Migration 000095 requires coordinated writer/reader
   cutover. Mixed native/artifact serving closures also fence tenant lifecycle
@@ -192,8 +199,11 @@ production readiness. The documented implementation and operational gaps include
   owner row lock in the SQL effect transaction. Serving closures bind and
   transactionally revalidate converged deployment ledger evidence. Full effective-policy,
   HTTP channel context is now evaluated and fenced by the existing Channel generation.
-  Contextual operational maintenance, deferred/background channel context, continuous node liveness,
-  cross-owner lock ordering and external-effect fencing remain open; see the
+  Operational artifact serving maintenance now captures and fences the durable
+  Modules-owned revision (migration 000097); operator transport/authorization
+  composition and native serving are still open.
+  Deferred/background channel context, continuous node liveness,
+  Cross-owner ordering now aligns the inspected credential/composition/role and lifecycle cursor/slug paths; the full lock audit and external-effect fencing remain open; see the
   [SQL capability authority contract](./docs/README.md#sql-capability-effect-authority).
   Source regressions and compilation/concurrent PostgreSQL evidence remain unrun.
 
@@ -229,6 +239,10 @@ production readiness. The documented implementation and operational gaps include
   production fleet/job/write/recovery/retention fences, actual migration-object
   copy publication, PostgreSQL crash/race evidence, a separate full-manifest
   serving cutover, and safe orphan collection.
+- Structured namespace purge requires a direct operator's transaction-bound
+  credential, live RBAC/module policy and admitted grant ceiling, acquired before
+  installation locks and receipt reads. Every commit checks the credential
+  deadline, including exact replay; retention and operational drain remain open.
 - Post-purge recovery and structured copy still need production policy and host
   transport composition, lifecycle outbox facts, whole-operation source
   retention, full-snapshot verification, and production hold/fleet fences.
@@ -248,3 +262,31 @@ and evidence. These items must not be presented as production-ready until their
 owner contracts, runtime composition, and production evidence are complete.
 
 See the [local documentation](./docs/README.md).
+
+Deployment reconciliation and migration checkpoints now share the platform slug
+ordering: reconciliation fences all target slugs before readiness state, uses
+read-only identity locks compatible with PostgreSQL FK KEY SHARE, and rechecks
+all target identities before convergence. This is source-only remediation;
+registry platform trigger entry is fenced by migration 000098. Migration 000099
+also rejects contended late release/request and publication/yank/unyank receipt
+FK parent acquisition (PostgreSQL 55P03). Retry from a new transaction; broader
+FK/receipt ordering and PostgreSQL runtime verification remain open.
+
+Registry validation request-first locking and migration 000100 extend the
+nonblocking FK admission boundary to review/validation/evidence receipts,
+request staging, admissions, release artifacts and owner transfer receipts.
+PostgreSQL contention and migration verification remain pending; the broader
+Auth/RBAC and cross-owner FK order is not certified.
+
+Security-state operations now acquire platform slug and (for quarantine/revoke)
+the exclusive security epoch before reserving a new operation receipt. Exact
+replay still requires current host authorization, but does not advance or
+lock the epoch. The PostgreSQL lock-order regression is authored, unrun;
+global deadlock freedom is not established.
+
+Registry continuity witness migration 000101 protects permanent identities and
+strict integer successors from direct SQL resets or deletion (including SQLite
+replacement). PostgreSQL release triggers fail rather than wait for contended
+activation/witness relation locks or an existing witness row. This is a DML
+integrity fence, not protection against privileged DDL or database restoration.
+Source regressions are unrun.

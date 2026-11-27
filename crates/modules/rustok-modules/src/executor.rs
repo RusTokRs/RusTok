@@ -481,8 +481,14 @@ pub(crate) async fn execute_module_toggle(
                         // Same platform slug fence as serving SQL admission. Take it
                         // before touching the override, journal or aggregate revision.
                         crate::installation::acquire_artifact_activation_lock(
-                            transaction, &crate::ModuleInstallationScope::Platform, &module_slug,
-                        ).await.map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
+                            transaction,
+                            &crate::ModuleInstallationScope::Platform,
+                            &module_slug,
+                        )
+                        .await
+                        .map_err(|error| {
+                            ModuleLifecycleExecutionError::Persistence(error.to_string())
+                        })?;
                         let state = apply_tenant_override_enabled(
                             transaction,
                             tenant_id,
@@ -687,11 +693,14 @@ pub(crate) async fn execute_module_toggle(
         .transaction::<_, Option<TenantModuleStateRecord>, ModuleLifecycleExecutionError>(
             |transaction| {
                 Box::pin(async move {
-                    // Same platform slug fence as serving SQL admission. Take it
-                    // before touching the override, journal or aggregate revision.
-                    crate::installation::acquire_artifact_activation_lock(
-                        transaction, &crate::ModuleInstallationScope::Platform, &module_slug,
-                    ).await.map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
+                    lock_lifecycle_commit_authority(
+                        transaction,
+                        tenant_id,
+                        &module_slug,
+                        coordinator.as_ref(),
+                        policy_transition.as_ref(),
+                    )
+                    .await?;
                     let state = apply_tenant_override_enabled(
                         transaction,
                         tenant_id,
@@ -904,6 +913,41 @@ pub(crate) async fn execute_module_toggle(
 /// discarding either failure: the primary error stays visible, and a
 /// release failure is reported alongside it. A retained claim requires
 /// explicit reconciliation; expiry alone does not clear it.
+/// Shared ordering with administrative Auth/RBAC: cursor before slug.
+/// No authority lock is held across a lifecycle hook.
+async fn lock_lifecycle_commit_authority(
+    transaction: &sea_orm::DatabaseTransaction,
+    tenant_id: uuid::Uuid,
+    module_slug: &str,
+    coordinator: Option<&ModuleEffectivePolicyTransitionCoordinator>,
+    transition: Option<&ModulePolicyRevisionTransition>,
+) -> Result<(), ModuleLifecycleExecutionError> {
+    if let Some(transition) = transition {
+        let coordinator = coordinator.ok_or_else(|| {
+            ModuleLifecycleExecutionError::PolicyTransition(
+                "publisher is required for an effective-policy transition".into(),
+            )
+        })?;
+        let current = coordinator
+            .lock_current_revision(transaction, tenant_id, "module.lifecycle")
+            .await
+            .map_err(|error| ModuleLifecycleExecutionError::PolicyTransition(error.to_string()))?;
+        if current != transition.previous_revision {
+            return Err(ModuleLifecycleExecutionError::PolicyTransition(
+                "effective-policy predecessor changed before lifecycle commit".into(),
+            ));
+        }
+    }
+    crate::installation::acquire_artifact_activation_lock(
+        transaction,
+        &crate::ModuleInstallationScope::Platform,
+        module_slug,
+    )
+    .await
+    .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
+    Ok(())
+}
+
 async fn release_claim_after_error(
     db: &DatabaseConnection,
     tenant_id: uuid::Uuid,
@@ -1831,6 +1875,95 @@ mod tests {
             execute_module_toggle(&database, &dispatcher, None, request).await,
             Err(ModuleLifecycleExecutionError::IdempotencyConflict)
         ));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_MODULES_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_lifecycle_commit_waits_for_cursor_without_holding_slug() {
+        use std::time::Duration;
+        let db =
+            sea_orm::Database::connect(std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").unwrap())
+                .await
+                .unwrap();
+        let schema = format!("lifecycle_order_{}", uuid::Uuid::new_v4().simple());
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}"))
+            .await
+            .unwrap();
+        let setup = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        setup
+            .execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .unwrap();
+        setup.execute_unprepared(
+            "CREATE TABLE module_policy_revision_cursors (tenant_id UUID NOT NULL, consumer_key TEXT NOT NULL, current_revision TEXT, current_sequence BIGINT NOT NULL, updated_at TIMESTAMPTZ NOT NULL, PRIMARY KEY (tenant_id, consumer_key));
+             CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, PRIMARY KEY (scope_kind, scope_tenant_key, slug))"
+        ).await.unwrap();
+        setup.commit().await.unwrap();
+        let tenant = uuid::Uuid::new_v4();
+        let consumer = crate::SeaOrmModulePolicyRevisionConsumer::new(db.clone());
+        let admin = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        admin
+            .execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .unwrap();
+        consumer
+            .lock_current_revision_in_transaction(&admin, tenant, "module.lifecycle")
+            .await
+            .unwrap();
+        let worker_db = db.clone();
+        let worker_schema = schema.clone();
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let mut worker = tokio::spawn(async move {
+            let tx = crate::backend::begin_fenced_transaction(&worker_db)
+                .await
+                .unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}"))
+                .await
+                .unwrap();
+            let coordinator = ModuleEffectivePolicyTransitionCoordinator::new(
+                crate::ControlPlaneInfrastructure::default(),
+                crate::SeaOrmModulePolicyRevisionConsumer::new(worker_db.clone()),
+            );
+            let transition = ModulePolicyRevisionTransition {
+                previous_revision: None,
+                next_revision: format!("sha256:{}", "a".repeat(64)),
+            };
+            ready_tx.send(()).unwrap();
+            let result = lock_lifecycle_commit_authority(
+                &tx,
+                tenant,
+                "forum",
+                Some(&coordinator),
+                Some(&transition),
+            )
+            .await;
+            tx.rollback().await.unwrap();
+            result
+        });
+        ready_rx.await.unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(150), &mut worker)
+                .await
+                .is_err()
+        );
+        // An admin holding the cursor must be able to take the slug while
+        // the lifecycle transaction is waiting, rather than form a cycle.
+        tokio::time::timeout(
+            Duration::from_secs(3),
+            crate::installation::acquire_artifact_activation_lock(
+                &admin,
+                &crate::ModuleInstallationScope::Platform,
+                "forum",
+            ),
+        )
+        .await
+        .expect("slug must not be held by cursor waiter")
+        .unwrap();
+        admin.commit().await.unwrap();
+        worker.await.unwrap().unwrap();
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

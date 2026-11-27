@@ -4,8 +4,8 @@
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-01 — Entrypoint & Composition Root (`apps/server`)  
-**Next pending component:** [`apps/server`](../../apps/server) (FS-01.01)  
-**Current main SHA:** `a39f50b246`  
+**Next pending component:** [`apps/server`](../../apps/server) (FS-01.02)  
+**Current main SHA:** `e572e8c21a`  
 **Active branch:** `main`
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **285 components** (~2.5M LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -32,7 +32,7 @@ The single canonical trigger to continue this audit sequence is:
 
 ### Phase Backlog — Architectural Sequence (285 Components Total — 0% COMPLETE)
 
-- [ ] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (0/33 tracks completed)
+- [ ] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (1/33 tracks completed)
 - [ ] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (0/10 completed)
 - [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (0/24 completed)
 - [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (0/36 completed)
@@ -47,13 +47,15 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-01 — Entrypoint & Composition Root (`apps/server`)
-*Host binary, Axum HTTP/gRPC server composition, runtime context, middleware pipeline, global error handling, and background service lifecycle.* (0/33 tracks completed)
+*Host binary, Axum HTTP/gRPC server composition, runtime context, middleware pipeline, global error handling, and background service lifecycle.* (1/33 tracks completed)
 
-- [ ] **[`apps/server`](../../apps/server)** (485 files, 190,468 LOC) — decomposed into 33 focused audit tracks:
+- [ ] **[`apps/server`](../../apps/server)** (493 files, 235,863 LOC) — decomposed into 33 focused audit tracks:
 
 #### 1. Bootstrap, Host & Configuration
-- [ ] **FS-01.01 — `apps/server/src/main.rs` & `apps/server/src/bin/*`** — entrypoint, CLI arguments, signal handling, process lifecycle.
+- [x] **FS-01.01 — `apps/server/src/main.rs` & `apps/server/src/bin/*`** — entrypoint, CLI arguments, signal handling, process lifecycle.
+  - Completed in `2daddde1b7de`; CLI parsing now preserves non-UTF-8 arguments and paths. User reported the tests passed.
 - [ ] **FS-01.02 — `apps/server/src/host.rs` & `apps/server/src/host_authority.rs`** — host wiring, socket binding, TLS/HTTPS, shutdown signals.
+  - Implementation committed in `09538cec5c30`; regression tests added. Awaiting the user's test run before marking this track complete.
 - [ ] **FS-01.03 — `apps/server/src/services/server_bootstrap.rs`** — bootstrap sequence, database pool initialization, migration execution, state validation.
 - [ ] **FS-01.04 — `apps/server/src/services/server_runtime_context.rs`** — shared server context, state injection, thread safety.
 - [ ] **FS-01.05 — `apps/server/src/services/app_runtime.rs` & `apps/server/src/services/app_lifecycle.rs`** — runtime background worker lifecycle, cancellation, drain on shutdown.

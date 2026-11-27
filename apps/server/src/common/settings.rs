@@ -164,7 +164,10 @@ impl std::fmt::Debug for RegistryRemoteExecutorSettings {
             .field("enabled", &self.enabled)
             .field(
                 "shared_token_configured",
-                &self.shared_token.as_ref().is_some_and(|value| !value.trim().is_empty()),
+                &self
+                    .shared_token
+                    .as_ref()
+                    .is_some_and(|value| !value.trim().is_empty()),
             )
             .field("lease_ttl_ms", &self.lease_ttl_ms)
             .field("requeue_scan_interval_ms", &self.requeue_scan_interval_ms)
@@ -177,7 +180,10 @@ impl std::fmt::Debug for CacheSettings {
         f.debug_struct("CacheSettings")
             .field(
                 "redis_url_configured",
-                &self.redis_url.as_ref().is_some_and(|value| !value.trim().is_empty()),
+                &self
+                    .redis_url
+                    .as_ref()
+                    .is_some_and(|value| !value.trim().is_empty()),
             )
             .finish()
     }
@@ -188,10 +194,16 @@ impl std::fmt::Debug for EmailSettings {
         f.debug_struct("EmailSettings")
             .field("enabled", &self.enabled)
             .field("provider", &self.provider)
-            .field("allow_disabled_in_production", &self.allow_disabled_in_production)
+            .field(
+                "allow_disabled_in_production",
+                &self.allow_disabled_in_production,
+            )
             .field("smtp", &self.smtp)
             .field("from_configured", &!self.from.trim().is_empty())
-            .field("reset_base_url_configured", &!self.reset_base_url.trim().is_empty())
+            .field(
+                "reset_base_url_configured",
+                &!self.reset_base_url.trim().is_empty(),
+            )
             .finish()
     }
 }
@@ -215,7 +227,10 @@ impl std::fmt::Debug for SearchSettings {
             .field("url_configured", &!self.url.trim().is_empty())
             .field(
                 "api_key_configured",
-                &self.api_key.as_ref().is_some_and(|value| !value.trim().is_empty()),
+                &self
+                    .api_key
+                    .as_ref()
+                    .is_some_and(|value| !value.trim().is_empty()),
             )
             .field("index_prefix", &self.index_prefix)
             .field("reindex", &self.reindex)
@@ -1458,12 +1473,28 @@ fn email_delivery_is_disabled(settings: &EmailSettings) -> bool {
 /// `RUSTOK_ENV` is canonical; `RUST_ENV` and `APP_ENV` are compatibility
 /// aliases. All present aliases must agree, otherwise config-file selection
 /// and production security gates could silently disagree.
+fn normalize_environment_value(
+    key: &str,
+    value: Result<String, std::env::VarError>,
+) -> Result<Option<String>, String> {
+    match value {
+        Ok(value) => Ok(Some(value)),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            Err(format!("{key} must be valid UTF-8"))
+        }
+    }
+}
+
 pub(crate) fn resolve_environment_name() -> Result<String, String> {
-    resolve_environment_from(
-        ["RUSTOK_ENV", "RUST_ENV", "APP_ENV"]
-            .into_iter()
-            .map(|key| (key, std::env::var(key).ok())),
-    )
+    let mut values = Vec::with_capacity(3);
+    for key in ["RUSTOK_ENV", "RUST_ENV", "APP_ENV"] {
+        values.push((
+            key,
+            normalize_environment_value(key, std::env::var(key))?,
+        ));
+    }
+    resolve_environment_from(values)
 }
 
 fn resolve_environment_from(
@@ -1606,7 +1637,12 @@ mod tests {
         settings.search.api_key = Some("search-api-secret".to_string());
         settings.events.iggy.external.username = "iggy-user-secret".to_string();
         settings.events.iggy.external.password = "iggy-password-secret".to_string();
-        settings.events.iggy.bundled.arguments.push("--token=bundled-argument-secret".to_string());
+        settings
+            .events
+            .iggy
+            .bundled
+            .arguments
+            .push("--token=bundled-argument-secret".to_string());
         settings.events.iggy.bundled.environment.insert(
             "PRIVATE_ENV".to_string(),
             "bundled-environment-secret".to_string(),
@@ -1627,7 +1663,10 @@ mod tests {
             "bundled-argument-secret",
             "bundled-environment-secret",
         ] {
-            assert!(!debug.contains(secret), "Debug output leaked {secret}: {debug}");
+            assert!(
+                !debug.contains(secret),
+                "Debug output leaked {secret}: {debug}"
+            );
         }
     }
 
@@ -2460,6 +2499,17 @@ mod tests {
             Err(TenantSettingsError::MissingSubdomainBaseDomain)
         );
     }
+    #[test]
+    fn non_unicode_environment_alias_is_rejected_instead_of_ignored() {
+        let error = super::normalize_environment_value(
+            "RUSTOK_ENV",
+            Err(std::env::VarError::NotUnicode(std::ffi::OsString::from("invalid"))),
+        )
+        .expect_err("non-Unicode environment selectors must fail closed");
+        assert!(error.contains("RUSTOK_ENV"));
+        assert!(error.contains("UTF-8"));
+    }
+
     #[test]
     fn environment_aliases_must_agree() {
         let conflict = super::resolve_environment_from([

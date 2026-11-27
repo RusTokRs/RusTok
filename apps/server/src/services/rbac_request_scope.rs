@@ -152,7 +152,10 @@ where
     // An explicit unauthenticated nested boundary must mask any outer
     // authenticated request. Never inherit its credential by accident.
     CURRENT_RBAC_SCOPE
-        .scope(scope.map(|scope| Arc::new(RbacRequestScopeState::new(scope))), future)
+        .scope(
+            scope.map(|scope| Arc::new(RbacRequestScopeState::new(scope))),
+            future,
+        )
         .await
 }
 
@@ -164,13 +167,17 @@ pub(crate) struct CapturedArtifactRequestScope(Arc<RbacRequestScopeState>);
 
 impl CapturedArtifactRequestScope {
     pub(crate) fn capture(tenant_id: Uuid, actor_id: Uuid) -> Option<Self> {
-        CURRENT_RBAC_SCOPE.try_with(|state| {
-            let state = state.as_ref()?;
-            let credential = state.scope.credential.as_ref()?;
-            (state.matches_valid(&tenant_id, &actor_id)
-                && credential.principal_kind == AuthPrincipalKind::DirectUser
-                && credential.typed().is_some()).then(|| Self(Arc::clone(state)))
-        }).ok().flatten()
+        CURRENT_RBAC_SCOPE
+            .try_with(|state| {
+                let state = state.as_ref()?;
+                let credential = state.scope.credential.as_ref()?;
+                (state.matches_valid(&tenant_id, &actor_id)
+                    && credential.principal_kind == AuthPrincipalKind::DirectUser
+                    && credential.typed().is_some())
+                .then(|| Self(Arc::clone(state)))
+            })
+            .ok()
+            .flatten()
     }
 
     pub(crate) fn is_valid(&self) -> bool {
@@ -183,11 +190,18 @@ impl CapturedArtifactRequestScope {
 
     pub(crate) fn expires_at(&self) -> DateTime<Utc> {
         // Construction requires the original authenticated credential.
-        self.0.scope.credential.as_ref().expect("captured credential").expires_at
+        self.0
+            .scope
+            .credential
+            .as_ref()
+            .expect("captured credential")
+            .expires_at
     }
 
     pub(crate) async fn run<F: Future>(&self, future: F) -> F::Output {
-        CURRENT_RBAC_SCOPE.scope(Some(Arc::clone(&self.0)), future).await
+        CURRENT_RBAC_SCOPE
+            .scope(Some(Arc::clone(&self.0)), future)
+            .await
     }
 }
 
@@ -600,19 +614,25 @@ mod tests {
                     let child = capture.clone();
                     tokio::spawn(async move {
                         assert!(require_artifact_direct_credential(tenant, actor).is_err());
-                        child.run(async {
-                            assert!(require_artifact_direct_credential(tenant, actor).is_ok());
-                        }).await;
+                        child
+                            .run(async {
+                                assert!(require_artifact_direct_credential(tenant, actor).is_ok());
+                            })
+                            .await;
                         assert!(require_artifact_direct_credential(tenant, actor).is_err());
-                    }).await.unwrap();
+                    })
+                    .await
+                    .unwrap();
                 }
                 invalidate_current_rbac_request_scope(&tenant, &actor);
                 assert!(require_artifact_direct_credential(tenant, actor).is_err());
                 if let Some(capture) = capture {
                     assert!(!capture.is_valid());
-                    capture.run(async {
-                        assert!(require_artifact_direct_credential(tenant, actor).is_err());
-                    }).await;
+                    capture
+                        .run(async {
+                            assert!(require_artifact_direct_credential(tenant, actor).is_err());
+                        })
+                        .await;
                 }
             })
             .await;

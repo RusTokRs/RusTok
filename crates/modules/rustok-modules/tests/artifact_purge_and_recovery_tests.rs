@@ -115,17 +115,45 @@ impl ArtifactDataRecoveryAuthorizer for RecoveryFixturePolicy {
 #[derive(Clone)]
 struct TestAuthorizer;
 
+struct PurgeFixturePolicy {
+    owner: RecoveryFixturePolicy,
+    deny_admission: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    deny_commit: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
 #[async_trait]
-impl ArtifactDataPurgeAuthorizer for RecoveryFixturePolicy {
+impl ArtifactDataPurgeAuthorizer for PurgeFixturePolicy {
+    type LockedAuthority = ();
+
+    async fn prepare_purge(&self) -> Result<(), ArtifactDataError> {
+        Ok(())
+    }
+
+    async fn lock_purge_authority_on(
+        &self,
+        _transaction: &sea_orm::DatabaseTransaction,
+        request: &ArtifactDataPurgeRequest,
+    ) -> Result<Self::LockedAuthority, ArtifactDataError> {
+        if self.deny_admission.load(std::sync::atomic::Ordering::SeqCst)
+            || request.context.tenant_id != Some(self.owner.tenant_id)
+            || request.context.actor_id != self.owner.actor_id
+            || request.installation_id != self.owner.installation_id
+        {
+            return Err(ArtifactDataError::PolicyDenied);
+        }
+        Ok(())
+    }
+
     async fn authorize_purge_on(
         &self,
         transaction: &sea_orm::DatabaseTransaction,
         request: &ArtifactDataPurgeRequest,
         owner: &ArtifactDataPurgeAuthorizationContext,
+        _authority: &Self::LockedAuthority,
     ) -> Result<(), ArtifactDataError> {
-        if !self.check_scope(&request.context, &owner.scope)
-            || owner.installation_id != self.installation_id
-            || request.installation_id != self.installation_id
+        if !self.owner.check_scope(&request.context, &owner.scope)
+            || owner.installation_id != self.owner.installation_id
+            || request.installation_id != self.owner.installation_id
         {
             return Err(ArtifactDataError::PolicyDenied);
         }
@@ -136,8 +164,8 @@ impl ArtifactDataPurgeAuthorizer for RecoveryFixturePolicy {
              WHERE tenant_id=?1 AND data_owner_id=?2 AND namespace_instance_id=?3
                AND purged_at IS NULL AND namespace_revision=?4",
                 vec![
-                    self.tenant_id.to_string().into(),
-                    self.data_owner_id.to_string().into(),
+                    self.owner.tenant_id.to_string().into(),
+                    self.owner.data_owner_id.to_string().into(),
                     owner.scope.namespace_instance_id.to_string().into(),
                     i64::try_from(request.expected_namespace_revision)
                         .map_err(|_| ArtifactDataError::PurgePrecondition)?
@@ -147,6 +175,18 @@ impl ArtifactDataPurgeAuthorizer for RecoveryFixturePolicy {
             .await
             .map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
         if row.is_none() {
+            return Err(ArtifactDataError::PolicyDenied);
+        }
+        Ok(())
+    }
+
+    async fn ensure_purge_authority_on(
+        &self,
+        _transaction: &sea_orm::DatabaseTransaction,
+        _request: &ArtifactDataPurgeRequest,
+        _authority: &Self::LockedAuthority,
+    ) -> Result<(), ArtifactDataError> {
+        if self.deny_commit.load(std::sync::atomic::Ordering::SeqCst) {
             return Err(ArtifactDataError::PolicyDenied);
         }
         Ok(())
@@ -547,13 +587,19 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
         })
         .await
         .expect("actual source snapshot before purge");
+    let deny_purge_admission = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let deny_purge_commit = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let data_purge_service = SeaOrmArtifactDataPurgeService::new(
         database.clone(),
-        RecoveryFixturePolicy {
-            tenant_id,
-            actor_id,
-            installation_id,
-            data_owner_id,
+        PurgeFixturePolicy {
+            owner: RecoveryFixturePolicy {
+                tenant_id,
+                actor_id,
+                installation_id,
+                data_owner_id,
+            },
+            deny_admission: deny_purge_admission.clone(),
+            deny_commit: deny_purge_commit.clone(),
         },
     );
     let data_purge_req = ArtifactDataPurgeRequest {
@@ -824,6 +870,17 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
 
     // 6. Data purge uses the same exact installation ID and succeeds only
     // after the owner lifecycle fence has become retired.
+    deny_purge_commit.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(
+        data_purge_service.purge(data_purge_req.clone()).await,
+        Err(ArtifactDataError::PolicyDenied)
+    );
+    let after_expiry = data_preview_service.preview(tenant_id, installation_id).await
+        .expect("expired authority must roll back destructive work");
+    assert!(after_expiry.can_purge);
+    assert_eq!(after_expiry.namespace_revision, retired_data_preview.namespace_revision);
+    assert_eq!(after_expiry.records_to_purge, retired_data_preview.records_to_purge);
+    deny_purge_commit.store(false, std::sync::atomic::Ordering::SeqCst);
     let data_purge_res = data_purge_service
         .purge(data_purge_req.clone())
         .await
@@ -831,6 +888,20 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
 
     assert_eq!(data_purge_res.namespace_revision, 2);
     assert_eq!(data_purge_res.purged_records, 2);
+    // Replay of the exact original command still requires live admission
+    // and a final credential check, even though its namespace is purged.
+    deny_purge_admission.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(
+        data_purge_service.purge(data_purge_req.clone()).await,
+        Err(ArtifactDataError::PolicyDenied)
+    );
+    deny_purge_admission.store(false, std::sync::atomic::Ordering::SeqCst);
+    deny_purge_commit.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(
+        data_purge_service.purge(data_purge_req.clone()).await,
+        Err(ArtifactDataError::PolicyDenied)
+    );
+    deny_purge_commit.store(false, std::sync::atomic::Ordering::SeqCst);
     assert_eq!(
         data_purge_service
             .purge(data_purge_req)

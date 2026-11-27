@@ -1194,3 +1194,126 @@ pub fn create_account() {
     assert_eq!(slop_findings[0].line, 4);
     assert!(slop_findings[0].content.contains("Create a new buffer"));
 }
+
+
+#[test]
+fn ast_select_rule_only_checks_cancelled_branch_futures() {
+    let source = r#"
+async fn run(writer: &mut Writer, rx: &mut Receiver<()>, enabled: bool) {
+    tokio::select! {
+        _ = writer.write_all(b"payload"), if enabled => {},
+        _ = rx.recv() => {
+            writer.write_all(b"handler").await;
+        },
+    }
+}
+
+async fn safe_io(
+    reader: &mut Reader,
+    writer: &mut Writer,
+    read_buffer: &mut [u8],
+    write_buffer: &[u8],
+) {
+    tokio::select! {
+        _ = reader.read(read_buffer) => {},
+        _ = writer.write(write_buffer) => {},
+    }
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/worker.rs"), source);
+    let cancellation: Vec<_> = findings
+        .iter()
+        .filter(|finding| finding.pattern_id == "P-RUST-SELECT-CANCEL-UNSAFE")
+        .collect();
+
+    assert_eq!(cancellation.len(), 1);
+    assert_eq!(cancellation[0].line, 3);
+    assert!(cancellation[0].message.contains("write_all"));
+}
+
+#[test]
+fn ast_unsafe_send_sync_rule_skips_test_only_impls() {
+    let source = r#"
+unsafe impl Send for RawHandle {}
+unsafe impl Sync for RawHandle {}
+
+#[cfg(test)]
+mod tests {
+    unsafe impl Send for TestHandle {}
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/handle.rs"), source);
+    let unsafe_impls: Vec<_> = findings
+        .iter()
+        .filter(|finding| finding.pattern_id == "P-RUST-UNSAFE-SEND-SYNC-CONTRACT")
+        .collect();
+
+    assert_eq!(unsafe_impls.len(), 2);
+    assert_eq!(unsafe_impls[0].line, 2);
+    assert_eq!(unsafe_impls[1].line, 3);
+    assert!(unsafe_impls
+        .iter()
+        .all(|finding| finding.confidence == rustok_doctor::Confidence::Heuristic));
+}
+
+#[test]
+fn ast_ffi_rule_only_flags_panic_risks_at_non_unwinding_boundaries() {
+    let source = r#"
+extern "C" fn callback() {
+    maybe().unwrap();
+}
+extern "C-unwind" fn unwind_callback() {
+    panic!("unwinding is part of this ABI");
+}
+extern "Rust" fn rust_callback() {
+    panic!("the Rust ABI permits unwinding");
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/ffi.rs"), source);
+    let ffi: Vec<_> = findings
+        .iter()
+        .filter(|finding| finding.pattern_id == "P-RUST-FFI-UNWIND-BOUNDARY")
+        .collect();
+
+    assert_eq!(ffi.len(), 1);
+    assert_eq!(ffi[0].line, 2);
+    assert!(ffi[0].message.contains(".unwrap()"));
+}
+
+#[test]
+fn ast_lock_order_rule_requires_opposite_live_guard_order() {
+    let source = r#"
+struct Store {
+    first: Mutex<()>,
+    second: Mutex<()>,
+}
+
+impl Store {
+    async fn first_then_second(&self) {
+        let _first = self.first.lock().await;
+        let _second = self.second.lock().await;
+    }
+
+    async fn second_then_first(&self) {
+        let second = self.second.lock().await;
+        let _first = self.first.lock().await;
+        drop(second);
+    }
+
+    async fn release_between(&self) {
+        let first = self.first.lock().await;
+        drop(first);
+        let _second = self.second.lock().await;
+    }
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/store.rs"), source);
+    let lock_orders: Vec<_> = findings
+        .iter()
+        .filter(|finding| finding.pattern_id == "P-RUST-LOCK-ORDER-CYCLE")
+        .collect();
+
+    assert_eq!(lock_orders.len(), 1);
+    assert!(lock_orders[0].message.contains("first_then_second"));
+    assert!(lock_orders[0].message.contains("second_then_first"));
+}

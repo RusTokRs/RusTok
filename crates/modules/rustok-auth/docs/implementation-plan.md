@@ -685,3 +685,40 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   artifact-runtime authority and prove cross-module lock ordering (including
   tenant active state and all bulk credential revocation paths). Compile
   and PostgreSQL contention/revocation tests remain unrun.
+
+- PostgreSQL credential FK parent admission (migration 000007): app tenant,
+  token/code/consent tenant/app/user, translation app, deferred refresh-family
+  root, invite issuer/consumption and email-change user references use
+  nonblocking parent guards. Existing FK/lineage constraints and nullable
+  cascades remain in place. Metadata-only mutations do not add earlier locks.
+  PostgreSQL contention, successful retry and user cascade regression authored,
+  unrun. Session refresh history, bulk parent deletes, all owner receipt/outbox
+  and global cross-owner lock order remain separate open boundaries.
+
+- SQLite physical user deletion parity: migration 000008 adds the missing
+  token user cascade, deleting descendants before roots and preserving
+  unrelated credentials. Existing orphan/cross-tenant rows block cutover;
+  no automatic cleanup. Source tests authored, unrun. PostgreSQL existing
+  composite FK is unchanged.
+
+- Session/retention lock closure: exact session identity under the user fence
+  for refresh/logout; platform migration 000010 for nonblocking session/history
+  parent admission; PostgreSQL retention locks candidate apps before children,
+  then exact roots/members and eligible code rows. Busy candidates abort the
+  whole transaction; fixed conservative cutoff and SQLite behavior preserved.
+  Source regressions unrun. Full session history immutability, tenant/user
+  identity parity, bulk revocation and cross-owner/outbox ordering remain open.
+
+- Session evidence integrity (platform migration 000011): immutable session
+  identity/creation time, tenant/user composite FK or SQLite equivalent,
+  append-only history and parent-only cascade, PostgreSQL TRUNCATE rejection
+  and SQLite replacement guards. Dirty identity blocks migration. Source
+  regressions and aging fixture adjustments authored; no runtime verification.
+  Absolute deadline monotonicity, parent-delete authorization, bulk revocation
+  and cross-owner/outbox ordering remain open.
+
+- Broad OAuth user/app revocation: stable exact credential prelocks, NOWAIT
+  before mutations, with existing owner fences and all-or-nothing rollback.
+  App-wide scope includes consents; user scope preserves delegated-only tokens.
+  PostgreSQL source contention test unrun. Family replay and consent paths,
+  cross-owner receipts and outbox still require closure.

@@ -10,11 +10,13 @@ cargo xtask doctor hygiene --staged --strict
 cargo xtask doctor hotspots --all --top 20
 ```
 
-The scanner examines Rust source for the rules in the
-[hygiene catalog](../../../docs/standards/logic-hygiene-patterns.md). Findings
-include both potential impact and confidence. Only high-confidence findings
-meet a failure threshold. The scanner selects full files in Git modes and reads
-staged content from Git index blobs.
+The scanner combines lexical checks with a best-effort syn AST pass
+for the rules in the [hygiene catalog](../../../docs/standards/logic-hygiene-patterns.md).
+AST findings are heuristic: the scanner does not resolve Rust types, expand
+macros, or follow interprocedural data flow. Findings include both potential
+impact and confidence. Only high-confidence findings meet a failure threshold.
+The scanner selects full files in Git modes and reads staged content from Git
+index blobs.
 
 `hotspots` ranks Rust files by line count and labels test files. Generated
 and vendored files are counted separately in the exclusions. Use `--json`

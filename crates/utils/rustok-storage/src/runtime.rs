@@ -281,7 +281,10 @@ impl std::fmt::Debug for S3StorageConfig {
                 &self.secret_access_key.is_some(),
             )
             .field("session_token_configured", &self.session_token.is_some())
-            .field("public_base_url_configured", &self.public_base_url.is_some())
+            .field(
+                "public_base_url_configured",
+                &self.public_base_url.is_some(),
+            )
             .field("allow_http", &self.allow_http)
             .field(
                 "virtual_hosted_style_request",
@@ -290,7 +293,6 @@ impl std::fmt::Debug for S3StorageConfig {
             .finish()
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -317,7 +319,10 @@ mod tests {
             "session-token-secret",
             "public-url-secret",
         ] {
-            assert!(!debug.contains(secret), "Debug output leaked {secret}: {debug}");
+            assert!(
+                !debug.contains(secret),
+                "Debug output leaked {secret}: {debug}"
+            );
         }
     }
 }

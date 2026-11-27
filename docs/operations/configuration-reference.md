@@ -6,12 +6,21 @@ This document is the canonical reference for runtime configuration, environment 
 
 ## 1. Configuration Hierarchy and Precedence
 
-Configuration values are resolved in strict priority order (highest to lowest):
+Host configuration values are resolved in this order (highest to lowest):
 
-1. **Explicit CLI flags** (e.g. `--port 5150`, `--config /path/to/custom.yaml`).
-2. **Environment Variables** (e.g. `DATABASE_URL`, `REDIS_URL`, `RUSTOK_*`).
-3. **Deployment YAML Configuration** (`apps/server/config/{environment}.yaml`).
-4. **Compiled Domain Defaults** (built into crates and services).
+1. **Environment variables** override the corresponding supported YAML fields.
+2. **Deployment YAML** from `{RUSTOK_CONFIG_DIR}/{environment}.yaml`.
+3. **Compiled defaults** for fields explicitly declared with defaults.
+
+The `rustok-server` executable does not accept generic `--config` or `--port`
+flags. It starts the host with no arguments or runs the database-free
+`validate-jwt-keyring` command. Use `RUSTOK_CONFIG_DIR`, `RUSTOK_PORT`,
+`RUSTOK_BINDING`, and the documented environment overrides instead.
+
+Host-owned YAML sections are strict: unknown top-level, `server`, `database`,
+and `auth.jwt` fields fail startup instead of being silently ignored. The old
+YAML `logger` block and `server.host` field are not supported. Configure
+logging with the environment variables in section 10.
 
 ### Release security posture
 
@@ -23,11 +32,16 @@ Every non-debug `apps/server` binary enforces production-grade host security gat
 
 | Key | Environment Variable | Default (Dev) | Description |
 | :--- | :--- | :--- | :--- |
-| `server.binding` | `RUSTOK_BINDING` | `127.0.0.1` | Network interface address to bind (`0.0.0.0` in Docker/production). |
+| `server.binding` | `RUSTOK_BINDING`, `HOST` | `127.0.0.1` | Network interface address to bind (`0.0.0.0` in Docker/production). |
 | `server.port` | `PORT`, `RUSTOK_PORT` | `5150` | TCP port for HTTP and GraphQL API listener. |
-| `server.host` | `RUSTOK_HOST`, `RUSTOK_BASE_URL` | `http://127.0.0.1` | Canonical public base URL emitted in redirects and OpenAPI/GraphQL schemas. |
+| — | `RUSTOK_CONFIG_DIR` | adjacent `config/` or compiled `apps/server/config/` | Directory containing `{RUSTOK_ENV}.yaml`; the path is read as an OS path, not restricted to UTF-8. |
+| — | `RUSTOK_ENV`, `RUST_ENV`, `APP_ENV` | `development` in debug builds; `production` in release builds | Selects the configuration filename. If multiple aliases are set, their normalized values must agree. |
+| — | `RUSTOK_HOST`, `APP_HOST` | unset | Development-only CORS bind-host hints; never browser-origin grants in production. Listener binding uses `RUSTOK_BINDING` or `HOST`. |
 | Host authority credentials (host-only) | `RUSTOK_HOST_AUTHORITY_CREDENTIALS` | unset | JSON array of host operator credentials (`actor_id`, `authority` set to `read` or `manage`, and a SHA-256 `token_sha256`); present the raw credential in `X-RusTok-Host-Token`. `manage` is required for process-wide MCP scaffold filesystem writes. |
 | `RUSTOK_HTTPS` | `RUSTOK_HTTPS` | `false` | When `true`, enables HSTS and marks session cookies as `Secure`. Mandatory in production. |
+
+
+The executable has no separate `server.host` or `RUSTOK_BASE_URL` setting. The public JWT/OAuth issuer is configured by `settings.auth.issuer`; TLS termination and public routing belong to the reverse proxy.
 
 ---
 
@@ -35,13 +49,13 @@ Every non-debug `apps/server` binary enforces production-grade host security gat
 
 | Key | Environment Variable | Default (Dev) | Description |
 | :--- | :--- | :--- | :--- |
-| `database.uri` | `DATABASE_URL` | `postgres://rustok:rustok@localhost:5432/rustok_dev` | Connection string for PostgreSQL or SQLite (`sqlite://rustok.db?mode=rwc`). |
+| `database.uri` | `DATABASE_URL` | `postgres://rustok:rustok@localhost:5432/rustok_dev` | Connection string for PostgreSQL or SQLite (`sqlite://rustok.db?mode=rwc`). Production rejects placeholder credentials, reserved example domains, local/unspecified hosts, and SQLite. |
 | `database.min_connections` | `DATABASE_MIN_CONNECTIONS` | `5` | Minimum idle connections retained in the pool. |
 | `database.max_connections` | `DATABASE_MAX_CONNECTIONS` | `30` | Maximum concurrent connections allowed by SeaORM pool. |
-| `database.connect_timeout` | `DATABASE_CONNECT_TIMEOUT` | `10000` | Connection acquisition timeout in milliseconds. |
-| `database.idle_timeout` | `DATABASE_IDLE_TIMEOUT` | `300000` | Connection idle timeout in milliseconds before eviction. |
-| `database.enable_logging` | `DATABASE_ENABLE_LOGGING` | `true` | When `true`, logs SQL queries at DEBUG/TRACE level. Must be `false` in production. |
-| `database.auto_migrate` | `DATABASE_AUTO_MIGRATE` | `true` | Automatically run migrations on server startup. Strictly `false` in production deployments. |
+| `database.connect_timeout` | `DATABASE_CONNECT_TIMEOUT` | `10000` | Connection/acquisition timeout in milliseconds; positive values are honored up to 300000 ms, while zero selects the 10-second default. |
+| `database.idle_timeout` | `DATABASE_IDLE_TIMEOUT` | `300000` | Connection idle timeout in milliseconds; zero disables the idle timeout and positive values are honored up to 86400000 ms. |
+| `database.enable_logging` | `DATABASE_ENABLE_LOGGING` | `true` | When `true`, logs SQL queries at DEBUG/TRACE level. Accepts `true/false`, `1/0`, `yes/no`, or `on/off`; production startup rejects `true`. |
+| `database.auto_migrate` | `DATABASE_AUTO_MIGRATE` | `true` | Automatically run migrations on server startup. Accepts `true/false`, `1/0`, `yes/no`, or `on/off`; production startup rejects `true` and requires a controlled migration step. |
 
 ---
 
@@ -49,12 +63,11 @@ Every non-debug `apps/server` binary enforces production-grade host security gat
 
 | Key | Environment Variable | Default (Dev) | Description |
 | :--- | :--- | :--- | :--- |
-| `auth.jwt.secret` | `JWT_SECRET`, `RUSTOK_JWT_SECRET` | *dev placeholder* | Independent host MAC root for MAC proofs, OAuth CSRF, credential binding and durable authority/witness authentication. Never JWT signing material. Requires at least 32 non-whitespace bytes; production requires >= 64 bytes and rejects placeholder-like values. |
+| `auth.jwt.secret` | `RUSTOK_JWT_SECRET`, `JWT_SECRET` | *dev placeholder* | Independent host MAC root for MAC proofs, OAuth CSRF, credential binding and durable authority/witness authentication. Never JWT signing material. Requires at least 32 non-whitespace bytes; production requires >= 64 bytes and rejects placeholder-like values. `RUSTOK_JWT_SECRET` takes precedence over the compatibility alias `JWT_SECRET`. |
 | `auth.jwt.expiration` | `JWT_EXPIRATION` | `604800` (7 days) | Access token lifetime in seconds. Recommended `3600` (1 hour) in production. |
 | `settings.auth.refresh_expiration` | `REFRESH_TOKEN_EXPIRATION` | `1209600` (14 days) | Refresh token lifetime in seconds before re-authentication is required. |
 | `settings.auth.issuer` | `JWT_ISSUER` | `rustok` | Claim issuer (`iss`). Must match deployment API URL in production. |
 | `settings.auth.audience` | `JWT_AUDIENCE` | `rustok-admin` | Intended token audience (`aud`). |
-| `auth.session_cookie` | — | `rustok-session` | HttpOnly session cookie name issued to first-party browser clients. |
 
 ---
 
@@ -149,16 +162,22 @@ selector. See [FBA scope](../backend/module-backend-architecture.md#fba-contract
 
 ## 10. Logging & Observability
 
+The host does not read a YAML `logger` section. Use these environment variables;
+`RUST_LOG` controls the tracing filter and `RUSTOK_LOG_FORMAT` selects output
+format. The release container sets JSON format by default.
+
 | Key | Environment Variable | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `logger.enable` | `LOGGER_ENABLE` | `true` | Enables tracing/logging subscriber. |
-| `logger.level` | `RUST_LOG`, `LOGGER_LEVEL` | `debug` | Minimum log severity: `trace`, `debug`, `info`, `warn`, `error`. |
-| `logger.format` | `RUSTOK_LOG_FORMAT` | `compact` | Output format: `compact` (ANSI colored terminal), `json` (cloud ingestion). |
-| `logger.pretty_backtrace` | `RUST_BACKTRACE` | `true` | Enables symbolicated stack traces on panics. Set `false` in production. |
-| `otel.enabled` | `OTEL_ENABLED` | `false` | Enables OpenTelemetry distributed tracing export. |
-| `otel.exporter_otlp_endpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4317` | gRPC/HTTP endpoint for OpenTelemetry collector. |
-| `otel.service_name` | `OTEL_SERVICE_NAME` | `rustok-server` | Service identifier reported to tracing backends. |
-| `otel.sampling_rate` | `OTEL_SAMPLING_RATE` | `1.0` | Head-based trace sampling ratio (0.0 to 1.0). |
+| — | `RUST_LOG` | `info` | Tracing `EnvFilter` directives; defaults to `info` when unset or invalid. |
+| — | `RUSTOK_LOG_FORMAT` | `pretty` | `json` selects JSON output; unset or other values select pretty output. |
+| — | `RUST_BACKTRACE` | Rust runtime default | Standard Rust panic backtrace control. The release container sets `1`. |
+| — | `RUSTOK_METRICS` | `true` | Enables metrics unless set to `0`, `false`, `no`, or `off`. |
+| — | `RUSTOK_SERVICE_NAME` | `rustok-server` | Fallback service name when `OTEL_SERVICE_NAME` is unset. |
+| — | `RUSTOK_THREAD_STACK_SIZE` | `8388608` bytes | Tokio worker thread stack size; accepted range is 2 MiB through 64 MiB, otherwise the 8 MiB default is used. |
+| — | `OTEL_ENABLED` | `false` | Enables OpenTelemetry distributed tracing export when set to `true`, `1`, `yes`, or `on`. |
+| — | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4317` | gRPC/HTTP endpoint for the OpenTelemetry collector when tracing is enabled. |
+| — | `OTEL_SERVICE_NAME` | `rustok-server` | Highest-priority service identifier reported to tracing backends. |
+| — | `OTEL_SAMPLING_RATE` | `1.0` | Head-based trace sampling ratio; values are clamped to the range 0.0–1.0. |
 | — | `RUSTOK_OBSERVABILITY_BEARER_TOKEN` | *none* | Dedicated monitoring credential. Send its raw value in `X-RusTok-Observability-Token`; required in release builds for `/metrics`, detailed health endpoints and full readiness diagnostics. The legacy `RUSTOK_METRICS_BEARER_TOKEN` is a fallback. Host-global endpoints also require the separate `RUSTOK_HOST_AUTHORITY_CREDENTIALS` read credential. |
 
 ---

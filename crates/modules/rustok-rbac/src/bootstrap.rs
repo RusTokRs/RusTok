@@ -288,7 +288,12 @@ where
         role: &UserRole,
     ) -> Result<(), RbacRoleAssignmentError> {
         let mut expected_permission_ids = HashSet::new();
-        for permission in Rbac::permissions_for_role(role) {
+        // The permission vocabulary's unique key is shared across roles.
+        // Use the same (resource, action) order as control-plane grant writes.
+        let defaults = Rbac::permissions_for_role(role);
+        let mut ordered = defaults.iter().collect::<Vec<_>>();
+        ordered.sort_by_cached_key(|permission| (permission.resource.to_string(), permission.action.to_string()));
+        for permission in ordered {
             let permission_id = self.ensure_permission(tenant_id, permission).await?;
             self.ensure_role_permission(role_id, permission_id).await?;
             expected_permission_ids.insert(permission_id);

@@ -4,6 +4,15 @@ use sea_orm::ConnectionTrait;
 
 const MAX_PERMISSION_CACHE_RESOLUTION_ATTEMPTS: usize = 4;
 
+// One graph definition for the current read and cache-hit validation.
+const PERSISTED_GRANTS_SQL: &str = "SELECT DISTINCT permission.resource, permission.action \
+             FROM users subject \
+             JOIN user_roles membership ON membership.user_id = subject.id \
+             JOIN roles role ON role.id = membership.role_id AND role.tenant_id = subject.tenant_id \
+             JOIN role_permissions grant_row ON grant_row.role_id = role.id \
+             JOIN permissions permission ON permission.id = grant_row.permission_id AND permission.tenant_id = role.tenant_id \
+             WHERE subject.tenant_id = ? AND subject.id = ?";
+
 /// Canonical persisted relation reader shared by cached and current decisions.
 #[derive(Clone)]
 pub struct SeaOrmRelationPermissionStore {
@@ -55,16 +64,49 @@ impl<C: ConnectionTrait> ConnectionRelationPermissionStore<'_, C> {
         ))
     }
 
-    async fn role_ids(
+    // Compare exact vocabulary pairs at one snapshot, with no generation
+    // write or domain lock. Different raw spellings fall back to typed reads.
+    async fn cached_grants_match(
         &self,
-        statement: sea_orm::Statement,
-    ) -> Result<Vec<uuid::Uuid>, sea_orm::DbErr> {
-        self.db
-            .query_all_raw(statement)
-            .await?
-            .iter()
-            .map(|row| row.try_get("", "id"))
-            .collect()
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        permissions: &[Permission],
+    ) -> Result<bool, sea_orm::DbErr> {
+        let (collation, expected_sql) = match self.db.get_database_backend() {
+            sea_orm::DbBackend::Postgres => (
+                "\"C\"",
+                "SELECT resource COLLATE \"C\" AS resource, action COLLATE \"C\" AS action \
+                 FROM jsonb_to_recordset(CAST(CAST(? AS text) AS jsonb)) AS pair(resource text, action text)",
+            ),
+            sea_orm::DbBackend::Sqlite => (
+                "BINARY",
+                "SELECT CAST(json_extract(value, '$.resource') AS TEXT) COLLATE BINARY AS resource, \
+                        CAST(json_extract(value, '$.action') AS TEXT) COLLATE BINARY AS action \
+                 FROM json_each(?)",
+            ),
+            _ => return Err(sea_orm::DbErr::Custom(
+                "RBAC relation reader requires PostgreSQL or SQLite".to_string(),
+            )),
+        };
+        let expected = permissions.iter().map(|permission| serde_json::json!({
+            "resource": permission.resource.to_string(),
+            "action": permission.action.to_string(),
+        })).collect::<Vec<_>>();
+        let statement = self.statement(
+            &format!(
+                "WITH persisted AS ({PERSISTED_GRANTS_SQL}), \
+                 current_grants AS (SELECT CAST(resource AS TEXT) COLLATE {collation} AS resource, \
+                                           CAST(action AS TEXT) COLLATE {collation} AS action FROM persisted), \
+                 expected_grants AS ({expected_sql}) \
+                 SELECT NOT EXISTS (SELECT resource, action FROM current_grants EXCEPT SELECT resource, action FROM expected_grants) \
+                    AND NOT EXISTS (SELECT resource, action FROM expected_grants EXCEPT SELECT resource, action FROM current_grants) AS grants_match"
+            ),
+            vec![(*tenant_id).into(), (*user_id).into(), serde_json::Value::Array(expected).to_string().into()],
+        )?;
+        let row = self.db.query_one_raw(statement).await?.ok_or_else(|| {
+            sea_orm::DbErr::Custom("RBAC cache validation returned no result".to_string())
+        })?;
+        row.try_get("", "grants_match")
     }
 }
 
@@ -72,49 +114,15 @@ impl<C: ConnectionTrait> ConnectionRelationPermissionStore<'_, C> {
 impl<C: ConnectionTrait> RelationPermissionStore for ConnectionRelationPermissionStore<'_, C> {
     type Error = sea_orm::DbErr;
 
-    async fn load_user_role_ids(
+    async fn load_permissions_for_user(
         &self,
+        tenant_id: &uuid::Uuid,
         user_id: &uuid::Uuid,
-    ) -> Result<Vec<uuid::Uuid>, Self::Error> {
-        self.role_ids(self.statement(
-            "SELECT DISTINCT role.id FROM roles role JOIN user_roles membership ON membership.role_id = role.id JOIN users subject ON subject.id = membership.user_id AND subject.tenant_id = role.tenant_id WHERE subject.id = ?",
-            vec![(*user_id).into()],
-        )?).await
-    }
-
-    async fn load_tenant_role_ids(
-        &self,
-        tenant_id: &uuid::Uuid,
-        role_ids: &[uuid::Uuid],
-    ) -> Result<Vec<uuid::Uuid>, Self::Error> {
-        if role_ids.is_empty() {
-            return Ok(Vec::new());
-        }
-        let mut values = vec![(*tenant_id).into()];
-        values.extend(role_ids.iter().map(|id| sea_orm::Value::from(*id)));
-        self.role_ids(self.statement(
-            &format!(
-                "SELECT id FROM roles WHERE tenant_id = ? AND id IN ({})",
-                vec!["?"; role_ids.len()].join(", ")
-            ),
-            values,
-        )?)
-        .await
-    }
-
-    async fn load_permissions_for_roles(
-        &self,
-        tenant_id: &uuid::Uuid,
-        role_ids: &[uuid::Uuid],
     ) -> Result<Vec<Permission>, Self::Error> {
-        if role_ids.is_empty() {
-            return Ok(Vec::new());
-        }
-        let mut values = vec![(*tenant_id).into()];
-        values.extend(role_ids.iter().map(|id| sea_orm::Value::from(*id)));
+        // One statement observes membership and grants at the same database snapshot.
         let rows = self.db.query_all_raw(self.statement(
-            &format!("SELECT DISTINCT permission.resource, permission.action FROM permissions permission JOIN role_permissions grant_row ON grant_row.permission_id = permission.id JOIN roles role ON role.id = grant_row.role_id AND role.tenant_id = permission.tenant_id WHERE permission.tenant_id = ? AND role.id IN ({})", vec!["?"; role_ids.len()].join(", ")),
-            values,
+            PERSISTED_GRANTS_SQL,
+            vec![(*tenant_id).into(), (*user_id).into()],
         )?).await?;
         rows.iter()
             .map(|row| {
@@ -141,32 +149,24 @@ impl<C: ConnectionTrait> RelationPermissionStore for ConnectionRelationPermissio
 impl RelationPermissionStore for SeaOrmRelationPermissionStore {
     type Error = sea_orm::DbErr;
 
-    async fn load_user_role_ids(
+    async fn load_permissions_for_user(
         &self,
+        tenant_id: &uuid::Uuid,
         user_id: &uuid::Uuid,
-    ) -> Result<Vec<uuid::Uuid>, Self::Error> {
-        ConnectionRelationPermissionStore { db: &self.db }
-            .load_user_role_ids(user_id)
-            .await
-    }
-
-    async fn load_tenant_role_ids(
-        &self,
-        tenant_id: &uuid::Uuid,
-        role_ids: &[uuid::Uuid],
-    ) -> Result<Vec<uuid::Uuid>, Self::Error> {
-        ConnectionRelationPermissionStore { db: &self.db }
-            .load_tenant_role_ids(tenant_id, role_ids)
-            .await
-    }
-
-    async fn load_permissions_for_roles(
-        &self,
-        tenant_id: &uuid::Uuid,
-        role_ids: &[uuid::Uuid],
     ) -> Result<Vec<Permission>, Self::Error> {
         ConnectionRelationPermissionStore { db: &self.db }
-            .load_permissions_for_roles(tenant_id, role_ids)
+            .load_permissions_for_user(tenant_id, user_id)
+            .await
+    }
+
+    async fn cached_permissions_are_current(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        permissions: &[Permission],
+    ) -> Result<bool, Self::Error> {
+        ConnectionRelationPermissionStore { db: &self.db }
+            .cached_grants_match(tenant_id, user_id, permissions)
             .await
     }
 }
@@ -266,22 +266,28 @@ pub async fn authorize_current_permission<C: ConnectionTrait>(
 pub trait RelationPermissionStore {
     type Error;
 
-    async fn load_user_role_ids(
+    /// Read the exact tenant/user relation graph from one coherent snapshot.
+    /// Implementations must not compose separately observed memberships and grants.
+    async fn load_permissions_for_user(
         &self,
+        tenant_id: &uuid::Uuid,
         user_id: &uuid::Uuid,
-    ) -> Result<Vec<uuid::Uuid>, Self::Error>;
-
-    async fn load_tenant_role_ids(
-        &self,
-        tenant_id: &uuid::Uuid,
-        role_ids: &[uuid::Uuid],
-    ) -> Result<Vec<uuid::Uuid>, Self::Error>;
-
-    async fn load_permissions_for_roles(
-        &self,
-        tenant_id: &uuid::Uuid,
-        role_ids: &[uuid::Uuid],
     ) -> Result<Vec<Permission>, Self::Error>;
+
+    /// A cache hit is a candidate, not persisted authority. The default
+    /// compares a fresh coherent typed read. Optimized stores must prove
+    /// exact snapshot equivalence and propagate observation failures.
+    async fn cached_permissions_are_current(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        permissions: &[Permission],
+    ) -> Result<bool, Self::Error>
+    where
+        Self: Sync,
+    {
+        Ok(normalize_permissions(self.load_permissions_for_user(tenant_id, user_id).await?) == permissions)
+    }
 }
 
 /// Cache lookup result carrying an opaque token for conditional publication.
@@ -323,6 +329,16 @@ pub trait PermissionCache {
         PermissionCacheLookup::new(self.get(tenant_id, user_id).await, 0)
     }
 
+    /// Recheck the local lookup token after asynchronous authority validation.
+    async fn is_lookup_current(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        token: u64,
+    ) -> bool {
+        self.lookup(tenant_id, user_id).await.into_parts().1 == token
+    }
+
     /// Publish a cache fill only if the lookup token still represents the current generation.
     ///
     /// Returns `true` when the adapter accepts the fill under its validation policy. This does not
@@ -353,21 +369,7 @@ pub async fn resolve_permissions_from_relations<S: RelationPermissionStore>(
         user_id = %user_id,
         "Resolving permissions from relations"
     );
-    let user_role_ids = store.load_user_role_ids(user_id).await?;
-    if user_role_ids.is_empty() {
-        return Ok(vec![]);
-    }
-
-    let tenant_role_ids = store
-        .load_tenant_role_ids(tenant_id, &user_role_ids)
-        .await?;
-    if tenant_role_ids.is_empty() {
-        return Ok(vec![]);
-    }
-
-    let permissions = store
-        .load_permissions_for_roles(tenant_id, &tenant_role_ids)
-        .await?;
+    let permissions = store.load_permissions_for_user(tenant_id, user_id).await?;
 
     Ok(normalize_permissions(permissions))
 }
@@ -388,7 +390,7 @@ pub async fn resolve_permissions_with_cache<S, C>(
     user_id: &uuid::Uuid,
 ) -> Result<crate::PermissionResolution, PermissionCacheResolutionError<S::Error>>
 where
-    S: RelationPermissionStore,
+    S: RelationPermissionStore + Sync,
     C: PermissionCache + Sync,
 {
     if tenant_id.is_nil() || user_id.is_nil() {
@@ -405,10 +407,23 @@ where
     for _ in 0..MAX_PERMISSION_CACHE_RESOLUTION_ATTEMPTS {
         let (cached_permissions, token) = cache.lookup(tenant_id, user_id).await.into_parts();
         if let Some(cached_permissions) = cached_permissions {
-            return Ok(crate::PermissionResolution {
-                permissions: normalize_permissions(cached_permissions),
-                cache_hit: true,
-            });
+            let permissions = normalize_permissions(cached_permissions);
+            let matches = store
+                .cached_permissions_are_current(tenant_id, user_id, &permissions)
+                .await
+                .map_err(PermissionCacheResolutionError::Store)?;
+            if matches {
+                if cache.is_lookup_current(tenant_id, user_id, token).await {
+                    return Ok(crate::PermissionResolution {
+                        permissions,
+                        cache_hit: true,
+                    });
+                }
+                // The local token was superseded while the read was in flight.
+                continue;
+            }
+            // Direct SQL or a missed notification changed persisted authority.
+            // Refresh through the canonical reader and conditional publication.
         }
 
         let resolved_permissions = resolve_permissions_from_relations(store, tenant_id, user_id)
@@ -559,6 +574,66 @@ mod tests {
                 .expect("isolated role membership")
                 .is_empty()
         );
+        // Malformed foreign grant: the reader must enforce tenant isolation
+        // even in this deliberately unconstrained fixture.
+        let foreign_permission_id = uuid::Uuid::new_v4();
+        for (sql, values) in [
+            (
+                "INSERT INTO permissions VALUES (?1, ?2, 'users', 'manage')",
+                vec![foreign_permission_id.into(), foreign_tenant_id.into()],
+            ),
+            (
+                "INSERT INTO role_permissions VALUES (?1, ?2)",
+                vec![role_id.into(), foreign_permission_id.into()],
+            ),
+        ] {
+            db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, sql, values))
+                .await
+                .expect("foreign grant fixture");
+        }
+        let store = super::SeaOrmRelationPermissionStore::new(db.clone());
+        let cache = StubCache::default();
+        let local = resolve_permissions_with_cache(&store, &cache, &tenant_id, &user_id)
+            .await
+            .expect("cached relation resolution");
+        assert_eq!(local.permissions, vec![Permission::MODULES_MANAGE]);
+        assert!(!local.cache_hit);
+        let hit = resolve_permissions_with_cache(&store, &cache, &tenant_id, &user_id)
+            .await.expect("validate warm cache");
+        assert!(hit.cache_hit);
+        assert_eq!(hit.permissions, vec![Permission::MODULES_MANAGE]);
+
+        // Revoke the static grant without touching membership or notifying
+        // the cache, then restore it while the empty result is cached.
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "DELETE FROM role_permissions WHERE permission_id = ?1",
+            vec![permission_id.into()],
+        )).await.unwrap();
+        let grant_revoked = resolve_permissions_with_cache(&store, &cache, &tenant_id, &user_id)
+            .await.expect("refresh after direct grant removal");
+        assert!(!grant_revoked.cache_hit);
+        assert!(grant_revoked.permissions.is_empty());
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO role_permissions VALUES (?1, ?2)",
+            vec![role_id.into(), permission_id.into()],
+        )).await.unwrap();
+        let grant_restored = resolve_permissions_with_cache(&store, &cache, &tenant_id, &user_id)
+            .await.expect("refresh after direct grant insertion");
+        assert!(!grant_restored.cache_hit);
+        assert_eq!(grant_restored.permissions, vec![Permission::MODULES_MANAGE]);
+
+        for (tenant, user) in [
+            (tenant_id, foreign_user_id),
+            (foreign_tenant_id, foreign_user_id),
+            (foreign_tenant_id, user_id),
+        ] {
+            let resolved = resolve_permissions_with_cache(&store, &cache, &tenant, &user)
+                .await
+                .expect("isolated relation resolution");
+            assert!(resolved.permissions.is_empty());
+        }
         {
             use sea_orm::TransactionTrait;
 
@@ -614,6 +689,18 @@ mod tests {
         .await
         .expect("revoke membership");
         assert!(!check().await.expect("revoked decision").allowed);
+        let revoked = resolve_permissions_with_cache(&store, &cache, &tenant_id, &user_id)
+            .await.expect("refresh after direct SQL without invalidation");
+        assert!(!revoked.cache_hit);
+        assert!(revoked.permissions.is_empty());
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite, "INSERT INTO user_roles VALUES (?1, ?2)",
+            vec![user_id.into(), role_id.into()],
+        )).await.unwrap();
+        let restored = resolve_permissions_with_cache(&store, &cache, &tenant_id, &user_id)
+            .await.expect("empty cache is not authority either");
+        assert!(!restored.cache_hit);
+        assert_eq!(restored.permissions, vec![Permission::MODULES_MANAGE]);
         db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             "DROP TABLE user_roles",
@@ -621,6 +708,92 @@ mod tests {
         .await
         .expect("remove relation availability");
         assert!(check().await.is_err());
+        assert!(matches!(
+            resolve_permissions_with_cache(&store, &cache, &tenant_id, &user_id).await,
+            Err(PermissionCacheResolutionError::Store(_))
+        ), "a warm cache must not hide unavailable persisted authority");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_RBAC_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_cached_grant_equivalence_observes_raw_writes_and_cascades() {
+        use sea_orm::{ConnectionTrait, Database, DbBackend, TransactionTrait};
+        let db = Database::connect(std::env::var("RUSTOK_RBAC_TEST_DATABASE_URL").unwrap())
+            .await.unwrap();
+        assert_eq!(db.get_database_backend(), DbBackend::Postgres);
+        let tx = db.begin().await.unwrap();
+        let schema = format!("rbac_cache_equivalence_{}", uuid::Uuid::new_v4().simple());
+        tx.execute_unprepared(&format!("CREATE SCHEMA {schema}; SET LOCAL search_path TO {schema}"))
+            .await.unwrap();
+        tx.execute_unprepared(
+            "CREATE TABLE users (id UUID PRIMARY KEY, tenant_id UUID NOT NULL);
+             CREATE TABLE roles (id UUID PRIMARY KEY, tenant_id UUID NOT NULL);
+             CREATE TABLE permissions (id UUID PRIMARY KEY, tenant_id UUID NOT NULL, resource TEXT NOT NULL, action TEXT NOT NULL);
+             CREATE TABLE user_roles (user_id UUID REFERENCES users(id) ON DELETE CASCADE, role_id UUID REFERENCES roles(id) ON DELETE CASCADE);
+             CREATE TABLE role_permissions (role_id UUID REFERENCES roles(id) ON DELETE CASCADE, permission_id UUID REFERENCES permissions(id) ON DELETE CASCADE)"
+        ).await.unwrap();
+        let tenant = uuid::Uuid::new_v4();
+        let user = uuid::Uuid::new_v4();
+        let role = uuid::Uuid::new_v4();
+        let permission = uuid::Uuid::new_v4();
+        tx.execute_unprepared(&format!(
+            "INSERT INTO users VALUES ('{user}', '{tenant}');
+             INSERT INTO roles VALUES ('{role}', '{tenant}');
+             INSERT INTO permissions VALUES ('{permission}', '{tenant}', 'modules', 'manage');
+             INSERT INTO user_roles VALUES ('{user}', '{role}');
+             INSERT INTO role_permissions VALUES ('{role}', '{permission}')"
+        )).await.unwrap();
+        let store = super::ConnectionRelationPermissionStore { db: &tx };
+        let expected = [Permission::MODULES_MANAGE];
+        assert!(store.cached_grants_match(&tenant, &user, &expected).await.unwrap());
+        assert!(!store.cached_grants_match(&tenant, &user, &[]).await.unwrap());
+        assert!(!store.cached_grants_match(&tenant, &user, &[Permission::USERS_READ]).await.unwrap());
+        assert!(!store.cached_grants_match(&uuid::Uuid::new_v4(), &user, &expected).await.unwrap());
+
+        tx.execute_unprepared(&format!("DELETE FROM permissions WHERE id = '{permission}'"))
+            .await.unwrap();
+        assert!(!store.cached_grants_match(&tenant, &user, &expected).await.unwrap());
+        assert!(store.cached_grants_match(&tenant, &user, &[]).await.unwrap());
+        tx.execute_unprepared(&format!(
+            "INSERT INTO permissions VALUES ('{permission}', '{tenant}', 'modules', 'manage');
+             INSERT INTO role_permissions VALUES ('{role}', '{permission}')"
+        )).await.unwrap();
+        assert!(store.cached_grants_match(&tenant, &user, &expected).await.unwrap());
+        tx.execute_unprepared(&format!("DELETE FROM roles WHERE id = '{role}'")).await.unwrap();
+        assert!(!store.cached_grants_match(&tenant, &user, &expected).await.unwrap());
+        assert!(store.cached_grants_match(&tenant, &user, &[]).await.unwrap());
+        // Transactional DDL keeps the disposable test schema out of the database.
+        tx.rollback().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn cache_hit_superseded_during_authority_validation_is_not_returned() {
+        struct SupersededHit;
+        #[async_trait]
+        impl PermissionCache for SupersededHit {
+            async fn get(&self, _: &uuid::Uuid, _: &uuid::Uuid) -> Option<Vec<Permission>> {
+                Some(vec![Permission::USERS_MANAGE])
+            }
+            async fn insert(&self, _: &uuid::Uuid, _: &uuid::Uuid, _: Vec<Permission>) {
+                panic!("a superseded hit must not be published");
+            }
+            async fn invalidate(&self, _: &uuid::Uuid, _: &uuid::Uuid) {}
+            async fn lookup(&self, _: &uuid::Uuid, _: &uuid::Uuid) -> PermissionCacheLookup {
+                PermissionCacheLookup::new(Some(vec![Permission::USERS_MANAGE]), 7)
+            }
+            async fn is_lookup_current(&self, _: &uuid::Uuid, _: &uuid::Uuid, _: u64) -> bool {
+                false
+            }
+        }
+        let store = StubStore {
+            role_ids: vec![uuid::Uuid::new_v4()],
+            tenant_role_ids: vec![uuid::Uuid::new_v4()],
+            permissions: vec![Permission::USERS_MANAGE],
+        };
+        assert!(matches!(
+            resolve_permissions_with_cache(&store, &SupersededHit, &uuid::Uuid::new_v4(), &uuid::Uuid::new_v4()).await,
+            Err(PermissionCacheResolutionError::Invalidated)
+        ));
     }
 
     struct StubStore {
@@ -779,26 +952,14 @@ mod tests {
     impl RelationPermissionStore for StubStore {
         type Error = String;
 
-        async fn load_user_role_ids(
+        async fn load_permissions_for_user(
             &self,
+            _tenant_id: &uuid::Uuid,
             _user_id: &uuid::Uuid,
-        ) -> Result<Vec<uuid::Uuid>, Self::Error> {
-            Ok(self.role_ids.clone())
-        }
-
-        async fn load_tenant_role_ids(
-            &self,
-            _tenant_id: &uuid::Uuid,
-            _role_ids: &[uuid::Uuid],
-        ) -> Result<Vec<uuid::Uuid>, Self::Error> {
-            Ok(self.tenant_role_ids.clone())
-        }
-
-        async fn load_permissions_for_roles(
-            &self,
-            _tenant_id: &uuid::Uuid,
-            _role_ids: &[uuid::Uuid],
         ) -> Result<Vec<Permission>, Self::Error> {
+            if self.role_ids.is_empty() || self.tenant_role_ids.is_empty() {
+                return Ok(Vec::new());
+            }
             Ok(self.permissions.clone())
         }
     }
@@ -957,26 +1118,15 @@ mod tests {
         use tokio::sync::Notify;
 
         struct MutableStore {
-            role: uuid::Uuid,
             grants: Arc<Mutex<Vec<Permission>>>,
         }
         #[async_trait]
         impl RelationPermissionStore for MutableStore {
             type Error = String;
-            async fn load_user_role_ids(&self, _: &uuid::Uuid) -> Result<Vec<uuid::Uuid>, String> {
-                Ok(vec![self.role])
-            }
-            async fn load_tenant_role_ids(
+            async fn load_permissions_for_user(
                 &self,
                 _: &uuid::Uuid,
-                _: &[uuid::Uuid],
-            ) -> Result<Vec<uuid::Uuid>, String> {
-                Ok(vec![self.role])
-            }
-            async fn load_permissions_for_roles(
-                &self,
                 _: &uuid::Uuid,
-                _: &[uuid::Uuid],
             ) -> Result<Vec<Permission>, String> {
                 Ok(self.grants.lock().await.clone())
             }
@@ -1017,7 +1167,6 @@ mod tests {
 
         let grants = Arc::new(Mutex::new(vec![Permission::USERS_MANAGE]));
         let store = MutableStore {
-            role: uuid::Uuid::new_v4(),
             grants: grants.clone(),
         };
         let cache = Arc::new(RevocationCache {
@@ -1076,9 +1225,9 @@ mod tests {
         let tenant_id = uuid::Uuid::new_v4();
         let user_id = uuid::Uuid::new_v4();
         let store = StubStore {
-            role_ids: vec![],
-            tenant_role_ids: vec![],
-            permissions: vec![],
+            role_ids: vec![uuid::Uuid::new_v4()],
+            tenant_role_ids: vec![uuid::Uuid::new_v4()],
+            permissions: vec![Permission::USERS_MANAGE, Permission::USERS_READ],
         };
         let cache = StubCache::default();
 

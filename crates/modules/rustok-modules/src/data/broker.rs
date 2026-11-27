@@ -92,21 +92,35 @@ where
             quota,
         }
     }
-    pub(crate) fn with_effect_fence(mut self, fence: Box<dyn crate::ArtifactSqlEffectFence>) -> Self {
+    pub(crate) fn with_effect_fence(
+        mut self,
+        fence: Box<dyn crate::ArtifactSqlEffectFence>,
+    ) -> Self {
         self.effect_fence = Some(Arc::from(fence));
         self
     }
 
-    async fn begin_effect(&self, scope: &ArtifactDataScope) -> Result<
-        (DatabaseTransaction, Option<Box<dyn crate::ArtifactSqlEffectCommitGuard>>),
+    async fn begin_effect(
+        &self,
+        scope: &ArtifactDataScope,
+    ) -> Result<
+        (
+            DatabaseTransaction,
+            Option<Box<dyn crate::ArtifactSqlEffectCommitGuard>>,
+        ),
         ArtifactDataError,
     > {
         let transaction = crate::backend::begin_fenced_transaction(&self.db)
-            .await.map_err(storage_error)?;
+            .await
+            .map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
         let guard = match self.effect_fence.as_ref() {
-            Some(fence) => Some(fence.lock_on(&transaction).await
-                .map_err(|_| ArtifactDataError::PolicyDenied)?),
+            Some(fence) => Some(
+                fence
+                    .lock_on(&transaction)
+                    .await
+                    .map_err(|_| ArtifactDataError::PolicyDenied)?,
+            ),
             None => None,
         };
         Ok((transaction, guard))
@@ -117,7 +131,9 @@ where
         guard: Option<Box<dyn crate::ArtifactSqlEffectCommitGuard>>,
     ) -> Result<(), ArtifactDataError> {
         if let Some(guard) = guard.as_ref() {
-            guard.check_before_commit(&transaction).await
+            guard
+                .check_before_commit(&transaction)
+                .await
                 .map_err(|_| ArtifactDataError::PolicyDenied)?;
         }
         transaction.commit().await.map_err(storage_error)

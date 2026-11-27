@@ -54,6 +54,43 @@ fn presentation_switch_restores_edit_capabilities() {
 }
 
 #[test]
+fn resize_handles_follow_effective_style_capability_across_policy_round_trips() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    let rect = legal_candidate().rect;
+    machine
+        .dispatch(UiIntent::Select(Some("hero".into())))
+        .expect("select component");
+    machine
+        .dispatch(UiIntent::SetSelectedOverlay(Some(rect)))
+        .expect("set selected geometry");
+    assert!(machine.state.overlays.resize_handles_visible);
+
+    machine
+        .dispatch(UiIntent::SetPresentation(Presentation::ReadOnly))
+        .expect("withdraw presentation editability");
+    assert!(!machine.state.overlays.resize_handles_visible);
+    assert_eq!(machine.state.overlays.selected, Some(rect));
+
+    machine
+        .dispatch(UiIntent::SetPresentation(Presentation::Inline))
+        .expect("restore presentation editability");
+    assert!(machine.state.overlays.resize_handles_visible);
+
+    machine
+        .dispatch(UiIntent::SetEditableCapabilities(CapabilityState {
+            styles: false,
+            ..CapabilityState::full()
+        }))
+        .expect("withdraw style capability");
+    assert!(!machine.state.overlays.resize_handles_visible);
+
+    machine
+        .dispatch(UiIntent::SetEditableCapabilities(CapabilityState::full()))
+        .expect("restore style capability");
+    assert!(machine.state.overlays.resize_handles_visible);
+}
+
+#[test]
 fn restricted_capabilities_survive_presentation_round_trip() {
     let restricted = CapabilityState {
         assets: false,
@@ -863,16 +900,17 @@ fn contribution_filtering_is_capability_driven() {
 }
 
 #[test]
-fn a_read_only_session_cannot_slip_an_empty_batch_past_the_gate() {
-    // The state machine skips its whole guarded branch when a command requires no capability.
-    // An empty batch used to compute an empty requirement, so it bypassed the read-only check
-    // and still reached `FlyEditor::apply`, which records a history entry and marks the revision
-    // changed — enough for a read-only session to make the real editor's save fail on a conflict.
+fn a_read_only_session_accepts_an_empty_batch_as_a_noop() {
+    // FlyEditor verifies empty batches without adding history or advancing the revision, so
+    // they do not need edit capability and must not dirty a read-only session.
     let mut machine = FlyUiStateMachine::new(Presentation::ReadOnly);
-    let error = machine
-        .dispatch(UiIntent::execute(EditorCommand::Batch { commands: vec![] }))
-        .expect_err("read-only must reject an empty batch");
-    assert_eq!(error, UiError::ReadOnly);
+    let intent = UiIntent::execute(EditorCommand::Batch { commands: vec![] });
+    assert!(!intent.mutates_document());
+    machine
+        .dispatch(intent)
+        .expect("an empty batch is a no-op");
+    assert!(!machine.state.dirty.dirty);
+    assert_eq!(machine.state.dirty.command_sequence, 0);
 }
 
 #[test]
@@ -887,15 +925,35 @@ fn an_empty_batch_is_still_accepted_when_editing_is_allowed() {
 }
 
 #[test]
-fn selection_remains_possible_without_edit_capability() {
-    // `Select` requires no capability by design: inspecting a read-only preview is legitimate.
-    // The empty-batch fix must not have swept that up.
+fn a_read_only_session_accepts_an_empty_patch_as_a_noop() {
     let mut machine = FlyUiStateMachine::new(Presentation::ReadOnly);
+    let intent = UiIntent::execute(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: fly::ComponentPatch::default(),
+    });
+    assert!(!intent.mutates_document());
     machine
-        .dispatch(UiIntent::execute(EditorCommand::Select {
-            component_id: Some("hero".to_string()),
-        }))
+        .dispatch(intent)
+        .expect("an empty patch is a no-op");
+    assert!(!machine.state.dirty.dirty);
+    assert_eq!(machine.state.dirty.command_sequence, 0);
+}
+
+#[test]
+fn selection_remains_possible_without_edit_capability_or_dirtying_the_document() {
+    // `Select` requires no capability by design: inspecting a read-only preview is legitimate.
+    // It must also stay outside the document-mutation path used for preview invalidation and
+    // peer-write fencing.
+    let mut machine = FlyUiStateMachine::new(Presentation::ReadOnly);
+    let intent = UiIntent::execute(EditorCommand::Select {
+        component_id: Some("hero".to_string()),
+    });
+    assert!(!intent.mutates_document());
+    machine
+        .dispatch(intent)
         .expect("selection must stay available in a read-only session");
+    assert!(!machine.state.dirty.dirty);
+    assert_eq!(machine.state.dirty.command_sequence, 0);
 }
 
 #[test]
@@ -917,7 +975,13 @@ fn edit_after_failed_save_keeps_the_failure_signal() {
     machine
         .dispatch(UiIntent::execute(EditorCommand::Patch {
             component_id: "hero".to_string(),
-            patch: Default::default(),
+            patch: fly::ComponentPatch {
+                attributes: Map::from_iter([(
+                    "aria-label".to_string(),
+                    json!("Updated hero"),
+                )]),
+                ..fly::ComponentPatch::default()
+            },
         }))
         .expect("edit after failed save");
     assert!(machine.state.dirty.dirty);

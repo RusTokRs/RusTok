@@ -15440,9 +15440,11 @@ name = "rustok-doctor"
 version = "0.1.0"
 dependencies = [
  "csv",
+ "proc-macro2",
  "regex",
  "serde",
  "serde_json",
+ "syn",
  "tempfile",
 ]
 

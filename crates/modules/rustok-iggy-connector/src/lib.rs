@@ -150,7 +150,10 @@ impl std::fmt::Debug for BundledConnectorConfig {
         f.debug_struct("BundledConnectorConfig")
             .field("executable", &self.executable)
             .field("arguments_count", &self.arguments.len())
-            .field("environment_keys", &self.environment.keys().collect::<Vec<_>>())
+            .field(
+                "environment_keys",
+                &self.environment.keys().collect::<Vec<_>>(),
+            )
             .field("data_dir", &self.data_dir)
             .field("tcp_port", &self.tcp_port)
             .field("http_port", &self.http_port)
@@ -1683,7 +1686,10 @@ mod tests {
             vec!["broker-user:broker-password@broker.example:8090".to_string()];
         config.external.username = "external-user-secret".to_string();
         config.external.password = "external-password-secret".to_string();
-        config.bundled.arguments.push("--token=bundled-argument-secret".to_string());
+        config
+            .bundled
+            .arguments
+            .push("--token=bundled-argument-secret".to_string());
         config.bundled.environment.insert(
             "PRIVATE_ENV".to_string(),
             "bundled-environment-secret".to_string(),
@@ -1698,7 +1704,10 @@ mod tests {
             "bundled-argument-secret",
             "bundled-environment-secret",
         ] {
-            assert!(!debug.contains(secret), "Debug output leaked {secret}: {debug}");
+            assert!(
+                !debug.contains(secret),
+                "Debug output leaked {secret}: {debug}"
+            );
         }
     }
 

@@ -51,6 +51,10 @@ and makes injected clock/ID/event-writer infrastructure request-dependent.
   `ArtifactHttpBindingRequest` admit and dispatch exact installed artifacts.
 - `ModuleEffectivePolicy` and `SharedModuleEffectivePolicyReader` provide the
   owner-issued, redacted availability decision.
+- `ModuleControlPlane::artifact_data_purge` requires an
+  `ArtifactDataPurgeAuthorizer` with a transaction-held `LockedAuthority`;
+  it admits the operator before receipt lookup or installation locks, validates
+  the exact owner for new effects, and rechecks authority before every commit.
 - `ModuleControlPlane::artifact_data_object_gc` returns the owner GC service.
   Its `tenants_with_candidates_after(after, limit)` method returns a bounded
   ascending UUID keyset page using an exclusive cursor; callers should wrap
@@ -191,14 +195,17 @@ credentials. Two enforcement shapes exist:
   (`governance_actor_can_*`). Registry publication additionally enforces
   the validation-stage/approval-override gate inside the owner; host
   projections only mirror that decision.
-- All other owner commands are host-authorized: the composing host must
-  authenticate the caller and authorize the operation before invoking the
-  owner. This currently includes the registry governance review actions
-  (reject, request changes, hold, resume publish request): the owner
-  validates command shape, actor context, revisions, and state transitions
-  for them, but performs no in-service reviewer-capability check. The owner
-  never derives authorization from artifact payloads, descriptors, or
-  caller-supplied identity strings.
+- All other owner commands are host-authorized; the owner never derives
+  authorization from artifact payloads, descriptors, or caller-supplied
+  identity strings. Artifact security transitions invoke the host authorizer
+  inside the owner transaction, before idempotency replay and before the
+  platform slug activation lock. The host must acquire and retain direct
+  credential and current RBAC fences through the state, receipt, and outbox
+  commit. An exact receipt replay is not an authorization bypass.
+- Registry governance review actions (reject, request changes, hold, resume
+  publish request) remain pre-authorized by the composing host before owner
+  invocation; the owner validates command shape, actor context, revisions,
+  and state transitions but performs no in-service reviewer-capability check.
 
 Computing capability facts from an authenticated principal is always the
 host's responsibility; the owner only enforces the facts it is given.
@@ -294,3 +301,8 @@ an unchanged frame. Failures propagate to the existing Outbox retry path; duplic
 original-source identity, not a newly fabricated event. This is not a raw-table relay or another
 bus. Two new regression definitions are uncompiled/unrun; real backend subscription/worker/
 restart evidence remains open. See the [Inventory packet](../rustok-inventory/contracts/evidence/reservation-events-source.json).
+
+- `ModuleArtifactSecurityAuthorizer::ensure_authority_at_commit` is invoked
+  immediately before both new-transition and exact-replay commits. Host
+  adapters use it to recheck time-bounded credentials after owner lock waits;
+  expiry rolls back the state, receipt and outbox writes.

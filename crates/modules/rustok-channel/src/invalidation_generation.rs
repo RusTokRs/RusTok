@@ -33,22 +33,23 @@ pub async fn require_resolution_invalidation_generation_on(
             }
             READ_CHANNEL_RESOLUTION_GENERATION_SQL.to_string()
         }
-        backend => return Err(ChannelError::Database(DbErr::Custom(
-            format!("unsupported channel authority backend: {backend:?}"),
-        ))),
+        backend => {
+            return Err(ChannelError::Database(DbErr::Custom(format!(
+                "unsupported channel authority backend: {backend:?}"
+            ))));
+        }
     };
     if read_generation(tx, sql).await? != expected {
-        return Err(ChannelError::Conflict("channel resolution authority changed".into()));
+        return Err(ChannelError::Conflict(
+            "channel resolution authority changed".into(),
+        ));
     }
     Ok(())
 }
 
 async fn read_generation(db: &impl ConnectionTrait, sql: String) -> ChannelResult<u64> {
     let row = db
-        .query_one_raw(Statement::from_string(
-            db.get_database_backend(),
-            sql,
-        ))
+        .query_one_raw(Statement::from_string(db.get_database_backend(), sql))
         .await?
         .ok_or_else(|| {
             ChannelError::Database(DbErr::Custom(
@@ -65,7 +66,9 @@ async fn read_generation(db: &impl ConnectionTrait, sql: String) -> ChannelResul
 
 #[cfg(test)]
 mod tests {
-    use super::{read_resolution_invalidation_generation, require_resolution_invalidation_generation_on};
+    use super::{
+        read_resolution_invalidation_generation, require_resolution_invalidation_generation_on,
+    };
     use sea_orm::{ConnectionTrait, Database, TransactionTrait};
 
     async fn install_generation_state(db: &sea_orm::DatabaseConnection, generation: i64) {
@@ -86,16 +89,29 @@ mod tests {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         install_generation_state(&db, 4).await;
         let tx = db.begin().await.unwrap();
-        require_resolution_invalidation_generation_on(&tx, 4).await.unwrap();
+        require_resolution_invalidation_generation_on(&tx, 4)
+            .await
+            .unwrap();
         tx.commit().await.unwrap();
-        assert_eq!(read_resolution_invalidation_generation(&db).await.unwrap(), 4);
+        assert_eq!(
+            read_resolution_invalidation_generation(&db).await.unwrap(),
+            4
+        );
 
-        db.execute_unprepared("UPDATE channel_resolution_invalidation_state SET generation = 6").await.unwrap();
+        db.execute_unprepared("UPDATE channel_resolution_invalidation_state SET generation = 6")
+            .await
+            .unwrap();
         let tx = db.begin().await.unwrap();
-        assert!(require_resolution_invalidation_generation_on(&tx, 4).await.is_err());
+        assert!(
+            require_resolution_invalidation_generation_on(&tx, 4)
+                .await
+                .is_err()
+        );
         tx.rollback().await.unwrap();
         let tx = db.begin().await.unwrap();
-        require_resolution_invalidation_generation_on(&tx, 6).await.unwrap();
+        require_resolution_invalidation_generation_on(&tx, 6)
+            .await
+            .unwrap();
         tx.rollback().await.unwrap();
     }
 

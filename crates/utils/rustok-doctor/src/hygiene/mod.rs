@@ -1,3 +1,4 @@
+mod ast;
 mod sql;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -1010,6 +1011,21 @@ pub fn scan_crate_source(
         }
         if thiserror_depth.is_some_and(|scope| depth <= scope) {
             thiserror_depth = None;
+        }
+    }
+    if !scan.test_file && !scan.build_file && !scan.vendored {
+        for finding in ast::scan(content) {
+            if finding.line == 0 || finding.line > scan.lines.len() {
+                continue;
+            }
+            scan.add(
+                finding.line,
+                finding.pattern_id,
+                finding.rule_name,
+                finding.severity,
+                finding.message,
+                finding.suggested_fix,
+            );
         }
     }
     scan.findings

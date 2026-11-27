@@ -29,6 +29,26 @@ conversion bound; external Rust consumers must migrate. Multi-query consistency,
 commit-time revocation fences, and multi-replica recovery remain separate gates.
 See [the decision](../../../../DECISIONS/2026-11-02-rbac-cache-resolution-consistency.md).
 
+## Coherent static permission reads (2026-11-27)
+
+Cached misses and uncached decisions share one tenant/user-scoped SQL relation
+read rather than separately sampling membership and role grants. The relation
+store contract now requires a coherent read, including custom implementations;
+the old split-load methods are removed. Source regressions cover malformed
+cross-tenant grants and membership, cache misses, and caller-transaction
+revocation. Compilation, PostgreSQL concurrent execution and distributed cache
+recovery remain pending; a statement snapshot is not a revocation fence.
+
+## Transaction-bound management ceiling (2026-11-27)
+
+The control-plane host and GraphQL owner intersect admitted and live effective
+grants before evaluating the management OR gate. Independent successful
+checks against disjoint grant sets are no longer sufficient. The host rechecks
+request scope after lock/read waits. Regressions cover wildcard narrowing,
+disjoint management alternatives on create/update/delete, and unchanged state
+on denial. Compile and execution evidence remain pending. Artifact purge
+authorization and global inter-module fences remain separate work.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`
@@ -456,3 +476,34 @@ exists.
 - Evidence: `node scripts/verify/verify-rbac-fba.mjs, node scripts/verify/verify-owner-fba-runtime-order.mjs, and node scripts/verify/verify-rbac-admin-boundary.mjs passed after the registry correction. Retained CI evidence remains recorded above; no broad local Cargo pass is claimed.`
 - Next action: `execute and retain the exact-head formatting, Events/RBAC/Admin/server compilation, focused tests, source verifiers, and cargo xtask module validate/test rbac gates; classify every failure against the RBAC diff before moving into migration compatibility and PostgreSQL rollback evidence. Keep the verification cursor on cycle-001/core-rbac.`
 - Resume command: `cargo fmt --all -- --check`
+
+- Global lock hierarchy continuation: migration 000012 protects the RBAC
+  watermark from ordinary SQL reset/removal/replacement; user-admin response
+  reads precede reservation. Generation-bearing outbox and final credential
+  deadline remain in the transaction tail. Authored SQLite and PostgreSQL
+  regressions, including actual generation contention. Compilation, migration
+  execution, direct relation invalidation coupling and global lock evidence
+  remain pending.
+
+- Direct relation mutation continuation: validate every persisted cache-hit
+  candidate against an exact current grant set, then recheck local token.
+  This closes stale unscoped cache use on direct SQL or missed notifications
+  without introducing an early global generation lock. A hit now requires a
+  read query. Source regressions authored; compile, PostgreSQL query parity
+  and performance evidence remain pending. Raw-DML generation coupling,
+  request-snapshot revocation and relation incarnation continuity remain open.
+  Added an opt-in PostgreSQL exact-set regression covering both directions of
+  comparison, tenant isolation and FK cascades, and extended the SQLite
+  regression for raw static-grant deletion/reinsertion. Tests remain unrun.
+
+- Static authority UUID continuity: migration 000013 preserves user, role and
+  permission birth witnesses without a global row lock; same-ID replacement,
+  deletion/recreation and direct witness reset fail closed. SQLite alternate
+  UUID encodings share one witness. Existing identity history before migration,
+  different-ID natural-key replacement, other credential/tenant identities and
+  revision-based cache optimization remain open. Source regressions authored;
+  migration and PostgreSQL contention evidence unrun.
+  Additional regression exercises tenant FK cascades, rollback and rejection
+  of UUID reuse with the same revision in another tenant. The PostgreSQL
+  contention assertion requires the exact witness-busy error. Owner migration
+  registration is guarded; execution remains pending.

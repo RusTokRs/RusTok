@@ -1069,6 +1069,47 @@ where
     Ok(())
 }
 
+
+/// A broad revocation may intersect another owner (app-wide versus
+/// user-wide). Its caller already holds the corresponding owner mutation
+/// fence. Never acquire a new app after a user: prelock exact credential
+/// rows in stable order without waiting, or abort the entire transaction.
+pub(crate) enum BulkOAuthRevocationScope {
+    Application(Uuid),
+    User(Uuid),
+}
+
+pub(crate) async fn lock_bulk_oauth_credentials<C: ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+    scope: BulkOAuthRevocationScope,
+) -> Result<(), sea_orm::DbErr> {
+    match db.get_database_backend() {
+        DbBackend::Sqlite => return Ok(()),
+        DbBackend::Postgres => {}
+        _ => return Err(sea_orm::DbErr::Custom("unsupported OAuth bulk revocation database".into())),
+    }
+    let (column, identity, token_filter, include_consents) = match scope {
+        BulkOAuthRevocationScope::Application(id) => ("app_id", id, "", true),
+        BulkOAuthRevocationScope::User(id) => ("user_id", id, " AND grant_type = 'authorization_code'", false),
+    };
+    // Fixed identifiers only. Retain all candidate locks before the first
+    // credential write, including code rows even if no tokens remain.
+    for (table, predicate) in [
+        ("oauth_tokens", format!("revoked_at IS NULL{token_filter}")),
+        ("oauth_authorization_codes", "used_at IS NULL".to_owned()),
+        ("oauth_consents", "revoked_at IS NULL".to_owned()),
+    ] {
+        if table == "oauth_consents" && !include_consents { continue; }
+        db.query_all_raw(sea_orm::Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            format!("SELECT id FROM {table} WHERE tenant_id = $1 AND {column} = $2 AND {predicate} ORDER BY id FOR UPDATE NOWAIT"),
+            [tenant_id.into(), identity.into()],
+        )).await?;
+    }
+    Ok(())
+}
+
 /// Revoke every live delegated token row for a user inside the caller's
 /// credential-change transaction. Registered access rows are revoked here,
 /// and the user's `password_changed_at` epoch remains a second fence at
@@ -1082,6 +1123,7 @@ pub(crate) async fn revoke_user_delegated_tokens_in_tx<C>(
 where
     C: ConnectionTrait,
 {
+    lock_bulk_oauth_credentials(db, tenant_id, BulkOAuthRevocationScope::User(user_id)).await?;
     let revoked = oauth_tokens::Entity::update_many()
         .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
         .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
@@ -2556,6 +2598,63 @@ mod tests {
                 .revoked_at
                 .is_none()
         );
+    }
+
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_AUTH_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_bulk_oauth_revocation_prelocks_exact_rows_without_waiting() {
+        let db = sea_orm::Database::connect(std::env::var("RUSTOK_AUTH_TEST_DATABASE_URL").unwrap()).await.unwrap();
+        let schema = format!("oauth_bulk_fence_{}", uuid::Uuid::new_v4().simple());
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
+        let tenant = uuid::Uuid::new_v4();
+        let app = uuid::Uuid::new_v4();
+        let user = uuid::Uuid::new_v4();
+        let other = uuid::Uuid::new_v4();
+        let token = uuid::Uuid::new_v4();
+        let code = uuid::Uuid::new_v4();
+        let unrelated = uuid::Uuid::new_v4();
+        let setup = db.begin().await.unwrap();
+        setup.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        setup.execute_unprepared(&format!(
+            "CREATE TABLE oauth_tokens (id UUID PRIMARY KEY, tenant_id UUID, app_id UUID, user_id UUID, grant_type TEXT, revoked_at TIMESTAMPTZ, updated_at TIMESTAMPTZ);
+             CREATE TABLE oauth_authorization_codes (id UUID PRIMARY KEY, tenant_id UUID, app_id UUID, user_id UUID, used_at TIMESTAMPTZ);
+             CREATE TABLE oauth_consents (id UUID PRIMARY KEY, tenant_id UUID, app_id UUID, user_id UUID, revoked_at TIMESTAMPTZ);
+             INSERT INTO oauth_tokens VALUES ('{token}', '{tenant}', '{app}', '{user}', 'authorization_code', NULL, NULL),
+                 ('{unrelated}', '{tenant}', '{app}', '{other}', 'authorization_code', NULL, NULL);
+             INSERT INTO oauth_authorization_codes VALUES ('{code}', '{tenant}', '{app}', '{user}', NULL);"
+        )).await.unwrap();
+        setup.commit().await.unwrap();
+
+        for (table, id) in [("oauth_tokens", token), ("oauth_authorization_codes", code)] {
+            let owner = db.begin().await.unwrap();
+            owner.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+            owner.execute_unprepared(&format!("SELECT id FROM {table} WHERE id = '{id}' FOR UPDATE")).await.unwrap();
+            for scope in [super::BulkOAuthRevocationScope::Application(app), super::BulkOAuthRevocationScope::User(user)] {
+                let writer = db.begin().await.unwrap();
+                writer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+                let result = tokio::time::timeout(std::time::Duration::from_secs(3),
+                    super::lock_bulk_oauth_credentials(&writer, tenant, scope)).await.expect("bulk prelock must not wait");
+                assert!(result.is_err());
+                writer.rollback().await.unwrap();
+            }
+            owner.rollback().await.unwrap();
+        }
+
+        let owner = db.begin().await.unwrap();
+        owner.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        owner.execute_unprepared(&format!("SELECT id FROM oauth_tokens WHERE id = '{unrelated}' FOR UPDATE")).await.unwrap();
+        let writer = db.begin().await.unwrap();
+        writer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        let now = chrono::Utc::now();
+        assert_eq!(super::revoke_user_delegated_tokens_in_tx(&writer, tenant, user, now).await.unwrap(), 1);
+        writer.commit().await.unwrap();
+        owner.rollback().await.unwrap();
+        let check = db.begin().await.unwrap();
+        check.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        assert_eq!(super::revoke_user_delegated_tokens_in_tx(&check, tenant, user, now).await.unwrap(), 0);
+        check.commit().await.unwrap();
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
     }
 
     #[tokio::test]

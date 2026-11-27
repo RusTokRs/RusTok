@@ -190,9 +190,13 @@ pub async fn lock_granted_artifact_capability_on(
     crate::backend::set_tenant_scope(tx, tenant_id)
         .await
         .map_err(|_| denied())?;
-    acquire_artifact_activation_lock(tx, &ModuleInstallationScope::Platform, &expected.release.slug)
-        .await
-        .map_err(|_| denied())?;
+    acquire_artifact_activation_lock(
+        tx,
+        &ModuleInstallationScope::Platform,
+        &expected.release.slug,
+    )
+    .await
+    .map_err(|_| denied())?;
     acquire_artifact_activation_lock(
         tx,
         &ModuleInstallationScope::Tenant { tenant_id },
@@ -200,14 +204,13 @@ pub async fn lock_granted_artifact_capability_on(
     )
     .await
     .map_err(|_| denied())?;
-    let current = resolve_active_many_in_transaction(
-        tx, std::slice::from_ref(&expected.release), tenant_id,
-    )
-    .await
-    .map_err(|_| denied())?
-    .pop()
-    .ok_or_else(denied)?
-    .map_err(|_| denied())?;
+    let current =
+        resolve_active_many_in_transaction(tx, std::slice::from_ref(&expected.release), tenant_id)
+            .await
+            .map_err(|_| denied())?
+            .pop()
+            .ok_or_else(denied)?
+            .map_err(|_| denied())?;
     if &current != expected || !current.descriptor.capabilities.contains(capability) {
         return Err(denied());
     }
@@ -227,22 +230,22 @@ pub async fn lock_granted_artifact_capability_on(
 #[async_trait]
 pub trait ArtifactSqlEffectAuthorizer: Send + Sync {
     async fn prepare(
-        &self, call: &CapabilityCall,
+        &self,
+        call: &CapabilityCall,
     ) -> SandboxResult<Box<dyn ArtifactSqlEffectFence>>;
 }
 
 #[async_trait]
 pub trait ArtifactSqlEffectFence: Send + Sync {
     async fn lock_on(
-        &self, tx: &sea_orm::DatabaseTransaction,
+        &self,
+        tx: &sea_orm::DatabaseTransaction,
     ) -> SandboxResult<Box<dyn ArtifactSqlEffectCommitGuard>>;
 }
 
 #[async_trait]
 pub trait ArtifactSqlEffectCommitGuard: Send + Sync {
-    async fn check_before_commit(
-        &self, tx: &sea_orm::DatabaseTransaction,
-    ) -> SandboxResult<()>;
+    async fn check_before_commit(&self, tx: &sea_orm::DatabaseTransaction) -> SandboxResult<()>;
 }
 
 /// Capability-name router for independently owned artifact capability
