@@ -161,13 +161,10 @@ fn apply_symbol_command_inner(
                     );
                 }
             }
-            for (path, entry) in SymbolDescriptor::entries_from_document(document) {
-                let existing = SymbolDescriptor::from_value(&entry).ok_or_else(|| {
-                    FlyError::InvalidSymbolReference(format!(
-                        "{path} is not a valid symbol definition"
-                    ))
-                })?;
-                if existing.id != descriptor.id {
+            for (_, entry) in SymbolDescriptor::entries_from_document(document) {
+                if let Some(existing) = SymbolDescriptor::from_value(&entry)
+                    && existing.id != descriptor.id
+                {
                     existing_asset_references
                         .extend(symbol_asset_dangling_references(&existing));
                 }
