@@ -16,8 +16,11 @@ standalone replacement adapter; begin/commit/rollback diagnostics do not
 enter that statement variant. Account deactivation retries only watermark
 reservation conflicts with fresh credential admission. Admin creation now
 retries typed account insertion/role assignment failures; admin update
-retries generation reservation conflicts before event publication. Other request-bound
-Auth/GraphQL whole-transaction retry remain open. An optional legacy host callback still needs its own generation
+retries generation reservation conflicts before event publication. GraphQL role
+create/update/delete now retry typed owner SQL failures after explicit rollback
+and fresh host authority; update/delete retain the original target UUID.
+Host admission/deadline and commit failures are not replayed. Other request-bound
+Auth retry and end-to-end PostgreSQL re-admission evidence remain open. An optional legacy host callback still needs its own generation
 reconciliation. Added owner/host regressions have not been compiled or executed.
 
 This is a durable watermark plus eventual watchdog reconciliation, not an outbox,

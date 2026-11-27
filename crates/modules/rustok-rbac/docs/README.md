@@ -277,7 +277,11 @@ a concurrent winning persisted system role is left unchanged. The RBAC
 generation reservation rejects non-integer SQLite storage and exhausted
 counters, and returns the exact assigned successor. PostgreSQL reservation
 uses nonwaiting table and singleton fences, matching the artifact grant trigger;
-contention requires rollback and fresh admission, not a partial retry. SQLite regressions and
+contention requires rollback and fresh admission, not a partial retry. GraphQL
+role create/update/delete now preserve owner statement errors and use the bounded
+rollback-only retry policy with fresh host prepare/lock and deadline checks.
+Existing role IDs remain pinned; post-commit notification stays outside retry.
+Host authority-port errors and uncertain commit are not replayed. SQLite regressions and
 an opt-in PostgreSQL reservation contention test
 (`RUSTOK_RBAC_TEST_DATABASE_URL`) are authored, not run. Full bulk
 role/permission ordering and FK/trigger auditing remain open.

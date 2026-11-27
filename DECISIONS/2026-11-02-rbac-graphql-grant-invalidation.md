@@ -83,7 +83,12 @@ repeating the original ceiling and locked live authority checks. Other admin
 paths are not uniformly covered. Admin update now also retries typed generation
 reservation conflicts, keeping its original metadata conflict baseline and
 recomputing locked plans. Admin create retries typed insertion/assignment
-failures only, before publication. Reserve by UPDATE RETURNING, reject
+failures only, before publication. GraphQL role create/update/delete now retain
+owner statement DbErr until rollback/retry admission, re-enter host authority on
+each attempt, and pin existing target UUID and slug. Host authority failures
+and commit errors are not automatically retried; notify only after commit.
+Role creation uniqueness uses the typed constraint classification rather than
+formatted text. Reserve by UPDATE RETURNING, reject
 invalid or exhausted integer storage without mutating it, and publish only
 the assigned committed generation. Do not use this global watermark as a
 per-role authorization fence. The seeded singleton is permanent under ordinary
