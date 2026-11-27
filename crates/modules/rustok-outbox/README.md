@@ -416,3 +416,11 @@ binaries must be stopped/drained before migration
 spans broker I/O. This is not an exactly-once guarantee, a complete
 per-handler receipt system, or a proof that the broker retained an accepted
 message. Source regression tests are authored, not executed.
+
+A changed bound route is now classified as a pre-publication validation
+failure through the normal bounded retry/backoff and DLQ policy, releasing
+the exact claim rather than monopolizing capacity until lease expiry.
+Checkpoint-enabled primary publication refuses without its relay task scope;
+the test-only uncheckpointed transport retains ordinary direct behavior.
+The server regression exercises local failure, relay reconstruction and
+confirmed-primary skipping with a transport double (not a live broker).

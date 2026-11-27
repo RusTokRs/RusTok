@@ -1084,6 +1084,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn durable_fanout_retries_local_projection_without_republishing_confirmed_primary() {
+        use rustok_outbox::{OutboxTransport, SysEventsMigration, entity};
+        use sea_orm::{ColumnTrait, Database, EntityTrait, QueryFilter, Set};
+        use sea_orm_migration::{MigrationTrait, SchemaManager};
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        SysEventsMigration.up(&SchemaManager::new(&db)).await.unwrap();
+        let primary = MemoryTransport::with_capacity(8);
+        let mut primary_receiver = primary.subscribe();
+        let primary: Arc<dyn EventTransport> = Arc::new(primary);
+        let (transport, listener_bus) = transport_with_local_delivery_policy(primary.clone(), 8, true);
+        let handled = Arc::new(Mutex::new(vec![]));
+        let fail = Arc::new(AtomicBool::new(true));
+        let running = listen_root(listener_bus, handled.clone(), fail);
+        let tenant_id = Uuid::new_v4();
+        let envelope = EventEnvelope::new(tenant_id, None, DomainEvent::TenantUpdated { tenant_id });
+        OutboxTransport::new(db.clone()).publish(envelope.clone()).await.unwrap();
+        let relay = OutboxRelay::new(db.clone(), transport)
+            .with_delivery_route("server-external-test-v1");
+        assert_eq!(relay.process_pending_once(None).await.unwrap(), 1);
+        assert_eq!(primary_receiver.try_recv().unwrap().id, envelope.id);
+        let pending = entity::Entity::find_by_id(envelope.id).one(&db).await.unwrap().unwrap();
+        assert_eq!(pending.status, entity::SysEventStatus::Pending);
+        assert_eq!(pending.retry_count, 1);
+        running.stop().await.unwrap();
+        drop(relay);
+        entity::Entity::update_many().filter(entity::Column::Id.eq(envelope.id))
+            .set(entity::ActiveModel { next_attempt_at: Set(None), ..Default::default() })
+            .exec(&db).await.unwrap();
+
+        let (transport, listener_bus) = transport_with_local_delivery_policy(primary, 8, true);
+        let running = listen_root(listener_bus, handled.clone(), Arc::new(AtomicBool::new(false)));
+        let restarted = OutboxRelay::new(db.clone(), transport)
+            .with_delivery_route("server-external-test-v1");
+        assert_eq!(restarted.process_pending_once(None).await.unwrap(), 1);
+        let delivered = entity::Entity::find_by_id(envelope.id).one(&db).await.unwrap().unwrap();
+        assert_eq!(delivered.status, entity::SysEventStatus::Dispatched);
+        assert!(matches!(primary_receiver.try_recv(), Err(tokio::sync::broadcast::error::TryRecvError::Empty)));
+        assert_root_delivery(&handled.lock().unwrap(), &[&envelope, &envelope]);
+        running.stop().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn local_root_projection_failure_is_returned_to_the_outbox_relay() {
         let primary = MemoryTransport::with_capacity(8);
         let mut primary_receiver = primary.subscribe();

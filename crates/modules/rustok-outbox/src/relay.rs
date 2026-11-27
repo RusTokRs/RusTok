@@ -272,6 +272,13 @@ impl std::fmt::Debug for OutboxRelay {
 }
 
 
+#[derive(Debug)]
+enum AttemptAdmission {
+    Ready(Uuid),
+    BudgetExhausted,
+    RouteConflict,
+}
+
 #[derive(Clone)]
 struct DeliveryScope {
     relay: OutboxRelay,
@@ -284,8 +291,8 @@ tokio::task_local! {
 }
 
 /// Execute the primary leg of acknowledged fanout. Only the current relay
-/// task can record/skip durable acceptance. Direct non-relay callers retain
-/// ordinary at-least-once behavior. Do not spawn this call into another task.
+/// task can record/skip durable acceptance. Checkpoint-enabled callers
+/// without that scope fail closed. Do not spawn this call into another task.
 pub async fn publish_primary_with_checkpoint<F>(
     event_id: Uuid,
     local_required: bool,
@@ -296,6 +303,9 @@ where
     F: std::future::Future<Output = Result<()>> + Send,
 {
     let Ok(scope) = DELIVERY_SCOPE.try_with(Clone::clone) else {
+        if checkpoint_enabled {
+            return Err(Error::Validation("checkpoint-enabled fanout requires an outbox dispatch scope".into()));
+        }
         return publish.await;
     };
     if scope.model.id != event_id {
@@ -667,9 +677,22 @@ impl OutboxRelay {
                 "outbox event {event_id} dispatch lease budget exhausted before publication"
             )));
         }
-        let Some(attempt_id) = self.begin_dispatch_attempt(model).await? else {
-            self.release_unpublished_claim(model, None).await?;
-            return Err(Error::External(format!("outbox event {event_id} dispatch lease budget exhausted before intent")));
+        let attempt_id = match self.begin_dispatch_attempt(model).await? {
+            AttemptAdmission::Ready(id) => id,
+            AttemptAdmission::BudgetExhausted => {
+                self.release_unpublished_claim(model, None).await?;
+                return Err(Error::External(format!("outbox event {event_id} dispatch lease budget exhausted before intent")));
+            }
+            AttemptAdmission::RouteConflict => {
+                let outcome = self.mark_failed_attempt(
+                    model,
+                    Error::Validation("outbox delivery route changed; reconcile event before retry".into()),
+                    false,
+                    None,
+                ).await?;
+                self.record_processed(&model.event_type, started.elapsed().as_millis() as u64, false);
+                return Ok(outcome);
+            }
         };
         // Journal admission itself consumes time. Do not start the target if
         // the durable intent commit used the remaining monotonic lease budget.
@@ -804,13 +827,13 @@ impl OutboxRelay {
     }
 
 
-    async fn bind_delivery_route(&self, txn: &DatabaseTransaction, model: &entity::Model) -> Result<()> {
+    async fn bind_delivery_route(&self, txn: &DatabaseTransaction, model: &entity::Model) -> Result<bool> {
         if self.delivery_route.is_empty() || self.delivery_route.len() > 128 || self.delivery_route.trim() != self.delivery_route {
             return Err(Error::Validation("invalid outbox delivery route key".into()));
         }
         if let Some(row) = checkpoints::Entity::find_by_id(model.id).one(txn).await? {
             if row.route_key != self.delivery_route {
-                return Err(Error::Validation("outbox delivery route changed; reconcile event before retry".into()));
+                return Ok(false);
             }
         } else {
             checkpoints::Entity::insert(checkpoints::ActiveModel {
@@ -818,7 +841,7 @@ impl OutboxRelay {
                 local_required: Set(None), primary_confirmed_at: Set(None),
             }).exec_without_returning(txn).await?;
         }
-        Ok(())
+        Ok(true)
     }
 
     async fn lock_delivery_scope(&self, txn: &DatabaseTransaction, scope: &DeliveryScope) -> Result<DateTime<Utc>> {
@@ -877,7 +900,7 @@ impl OutboxRelay {
         Ok(())
     }
 
-    async fn begin_dispatch_attempt(&self, model: &entity::Model) -> Result<Option<Uuid>> {
+    async fn begin_dispatch_attempt(&self, model: &entity::Model) -> Result<AttemptAdmission> {
         let txn = self.db.begin().await?;
         self.lock_current_claim(&txn, model).await?;
         let now = rustok_outbox_storage::database_now(&txn).await?;
@@ -887,9 +910,12 @@ impl OutboxRelay {
         ).map_err(|_| Error::Validation("outbox dispatch budget out of range".into()))?;
         if now < claimed_at || now.signed_duration_since(claimed_at) >= budget {
             txn.rollback().await?;
-            return Ok(None);
+            return Ok(AttemptAdmission::BudgetExhausted);
         }
-        self.bind_delivery_route(&txn, model).await?;
+        if !self.bind_delivery_route(&txn, model).await? {
+            txn.rollback().await?;
+            return Ok(AttemptAdmission::RouteConflict);
+        }
         let id = Uuid::new_v4();
         attempts::Entity::insert(attempts::ActiveModel {
             id: Set(id),
@@ -900,7 +926,7 @@ impl OutboxRelay {
             state: Set(attempts::OPEN.into()),
         }).exec_without_returning(&txn).await?;
         txn.commit().await?;
-        Ok(Some(id))
+        Ok(AttemptAdmission::Ready(id))
     }
 
     async fn finish_dispatch_attempt(
@@ -1365,7 +1391,7 @@ mod tests {
         let renewed = relay.refresh_claim(&queued).await.expect("renew claim");
         assert_ne!(renewed.claimed_by, queued.claimed_by);
         assert!(renewed.claimed_at > queued.claimed_at);
-        let attempt = relay.begin_dispatch_attempt(&renewed).await.expect("admission").expect("intent");
+        let AttemptAdmission::Ready(attempt) = relay.begin_dispatch_attempt(&renewed).await.expect("admission") else { panic!("intent"); };
         assert!(relay.mark_dispatched(&queued, attempt).await.is_err());
         // A missing attempt must roll back the event ACK in the same transaction.
         assert!(relay.mark_dispatched(&renewed, Uuid::new_v4()).await.is_err());
@@ -1390,7 +1416,7 @@ mod tests {
         let horizon = rustok_outbox_storage::observe_database_clock(&db).await.unwrap();
         let claimed = relay.claim_batch(1, horizon, None).await.unwrap().pop().unwrap();
         let renewed = relay.refresh_claim(&claimed).await.unwrap();
-        let attempt_id = relay.begin_dispatch_attempt(&renewed).await.unwrap().unwrap();
+        let AttemptAdmission::Ready(attempt_id) = relay.begin_dispatch_attempt(&renewed).await.unwrap() else { panic!("intent"); };
         let scope = DeliveryScope { relay: relay.clone(), model: renewed.clone(), attempt_id };
         DELIVERY_SCOPE.scope(scope, async {
             publish_primary_with_checkpoint(event_id, true, true, async { Ok(()) }).await.unwrap();
@@ -1407,8 +1433,8 @@ mod tests {
         let claimed = restarted.claim_batch(1, horizon, None).await.unwrap().pop().unwrap();
         let renewed = restarted.refresh_claim(&claimed).await.unwrap();
         let changed = restarted.clone().with_delivery_route("local-only-v1");
-        assert!(changed.begin_dispatch_attempt(&renewed).await.is_err());
-        let attempt_id = restarted.begin_dispatch_attempt(&renewed).await.unwrap().unwrap();
+        assert!(matches!(changed.begin_dispatch_attempt(&renewed).await.unwrap(), AttemptAdmission::RouteConflict));
+        let AttemptAdmission::Ready(attempt_id) = restarted.begin_dispatch_attempt(&renewed).await.unwrap() else { panic!("intent"); };
         let scope = DeliveryScope { relay: restarted.clone(), model: renewed.clone(), attempt_id };
         DELIVERY_SCOPE.scope(scope, async {
             assert!(publish_primary_with_checkpoint(event_id, false, true, async { Ok(()) }).await.is_err());
@@ -1434,7 +1460,7 @@ mod tests {
         let horizon = rustok_outbox_storage::observe_database_clock(&db).await.unwrap();
         let claimed = relay.claim_batch(1, horizon, None).await.unwrap().pop().unwrap();
         let renewed = relay.refresh_claim(&claimed).await.unwrap();
-        let attempt = relay.begin_dispatch_attempt(&renewed).await.unwrap().expect("intent");
+        let AttemptAdmission::Ready(attempt) = relay.begin_dispatch_attempt(&renewed).await.unwrap() else { panic!("intent"); };
         // Simulate process loss after durable intent, before SQL completion.
         entity::Entity::update_many().filter(entity::Column::Id.eq(id))
             .set(entity::ActiveModel { claimed_at: Set(Some(Utc::now() - chrono::Duration::minutes(2))), ..Default::default() })
@@ -1465,7 +1491,7 @@ mod tests {
         let horizon = rustok_outbox_storage::observe_database_clock(&db).await.unwrap();
         let claimed = relay.claim_batch(1, horizon, None).await.unwrap().pop().unwrap();
         let renewed = relay.refresh_claim(&claimed).await.unwrap();
-        let attempt = relay.begin_dispatch_attempt(&renewed).await.unwrap().expect("intent");
+        let AttemptAdmission::Ready(attempt) = relay.begin_dispatch_attempt(&renewed).await.unwrap() else { panic!("intent"); };
         relay.release_unpublished_claim(&renewed, Some(attempt)).await.unwrap();
         let row = entity::Entity::find_by_id(id).one(&db).await.unwrap().unwrap();
         assert_eq!(row.retry_count, 0);
