@@ -333,10 +333,11 @@ pub async fn count_remaining_active_super_admins_on(
     validate_identity("tenant_id", tenant_id)?;
     validate_identity("target_user_id", target_user_id)?;
     let sql = match db.get_database_backend() {
-        sea_orm::DbBackend::Postgres => {
-            "SELECT id FROM roles WHERE tenant_id = ? AND slug = ? AND is_system = TRUE FOR UPDATE"
-        }
-        sea_orm::DbBackend::Sqlite => {
+        sea_orm::DbBackend::Postgres | sea_orm::DbBackend::Sqlite => {
+            // A row lock alone does not invalidate an older REPEATABLE READ
+            // snapshot of the membership/status set. Write the coordinator
+            // even when its logical value is unchanged; a stale snapshot
+            // must abort rather than count previously active administrators.
             "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND slug = ? AND is_system = TRUE RETURNING id"
         }
         _ => {
@@ -390,6 +391,9 @@ pub async fn plan_persisted_user_role_mutation_on(
     }
     let target_status =
         lock_target_authority_on(db, request.tenant_id, request.target_user_id).await?;
+    lock_existing_target_role_set_on(
+        db, request.tenant_id, request.target_user_id, &request.requested_role.to_string(),
+    ).await?;
     let permissions =
         crate::resolve_persisted_permissions_on(db, &request.tenant_id, &request.target_user_id)
             .await?;
@@ -513,6 +517,9 @@ pub async fn ensure_user_authority_continuity_on(
     if !active || remains {
         return Ok(());
     }
+    // Status-only and deletion callers need the same role union as
+    // replacement callers before inspecting the canonical membership.
+    lock_existing_target_role_set_on(db, tenant_id, user_id, &UserRole::SuperAdmin.to_string()).await?;
     if holds_canonical_super_admin_on(db, tenant_id, user_id).await?
         && count_remaining_active_super_admins_on(db, tenant_id, user_id).await? == 0
     {
@@ -914,6 +921,9 @@ pub async fn plan_persisted_custom_role_assignment_on(
 
     let target_status =
         lock_target_authority_on(db, request.tenant_id, request.target_user_id).await?;
+    if !lock_existing_target_role_set_on(db, request.tenant_id, request.target_user_id, &slug).await? {
+        return Err(RbacRolePersistenceError::RoleNotFound(slug));
+    }
     let role_id = lock_role_row_on(db, request.tenant_id, &slug)
         .await?
         .ok_or_else(|| RbacRolePersistenceError::RoleNotFound(slug.clone()))?;

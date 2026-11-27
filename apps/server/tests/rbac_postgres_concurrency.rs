@@ -219,6 +219,49 @@ async fn concurrent_super_admin_demotions_preserve_one_active_super_admin() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires PostgreSQL admin access"]
+async fn stale_repeatable_read_cannot_remove_the_last_active_super_admin() {
+    with_rbac_postgres_database("rustok_rbac_continuity_snapshot", |db_a, db_b| async move {
+        let tenant = insert_tenant(&db_a, "continuity-snapshot").await?;
+        let first = insert_user(&db_a, tenant, "snapshot-first@example.com").await?;
+        let second = insert_user(&db_a, tenant, "snapshot-second@example.com").await?;
+        let writer = RbacRoleAssignmentDbWriter::new(db_a.clone());
+        writer.assign_role_permissions(tenant, first, UserRole::SuperAdmin).await?;
+        writer.assign_role_permissions(tenant, second, UserRole::SuperAdmin).await?;
+
+        // Establish a snapshot before the other owner removes its user.
+        let stale = db_b.begin().await?;
+        stale.execute_unprepared("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ").await?;
+        let count = stale.query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            format!("SELECT COUNT(*) AS count FROM users WHERE tenant_id = '{tenant}' AND status = 'active'"),
+        )).await?.ok_or("missing snapshot count")?.try_get::<i64>("", "count")?;
+        assert_eq!(count, 2);
+
+        let change = rustok_rbac::RbacUserAuthorityChange {
+            status: Some(UserStatus::Inactive),
+            ..Default::default()
+        };
+        let current = db_a.begin().await?;
+        rustok_rbac::ensure_user_authority_continuity_on(&current, tenant, first, &change).await?;
+        current.execute_unprepared(&format!("UPDATE users SET status = 'inactive' WHERE id = '{first}'")).await?;
+        current.commit().await?;
+
+        let error = rustok_rbac::ensure_user_authority_continuity_on(&stale, tenant, second, &change)
+            .await.expect_err("stale snapshot must not admit removal");
+        assert!(error.to_string().contains("could not serialize access"), "unexpected error: {error}");
+        stale.rollback().await?;
+
+        let retry = db_b.begin().await?;
+        let error = rustok_rbac::ensure_user_authority_continuity_on(&retry, tenant, second, &change)
+            .await.expect_err("fresh retry must see the last active administrator");
+        assert!(error.to_string().contains("last active super administrator"), "unexpected error: {error}");
+        retry.rollback().await?;
+        Ok(())
+    }).await.unwrap_or_else(|error| panic!("RBAC snapshot continuity regression failed: {error}"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires PostgreSQL admin access"]
 async fn concurrent_generation_reservations_are_unique_contiguous_and_committed() {
     with_rbac_postgres_database("rustok_rbac_generation", |db_a, db_b| async move {
         let generation_before = rustok_rbac::read_permission_invalidation_generation(&db_a).await?;

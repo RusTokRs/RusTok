@@ -656,3 +656,20 @@ bypass the owner advisory fence, receipt retention after destructive cleanup,
 commit outcome recovery and full cross-owner ordering remain open. SQLite
 continues to serialize writers. The opt-in PostgreSQL fence test and REST
 mapping regression are authored, not executed.
+
+### Administrator continuity under snapshot isolation (source only)
+
+The continuity role is now a write fence, not just a row lock: the canonical
+super_admin row receives an exact no-op update before counting remaining
+active members. PostgreSQL REPEATABLE READ/SERIALIZABLE transactions whose
+snapshot predates a committed continuity check cannot both authorize removals
+from the old active set; serialization failure requires whole-transaction
+retry. The no-op does not change grant_revision or the role's timestamp.
+SQLite retains its existing writer fence. Persisted role planners and the
+standalone status/removal continuity boundary reserve the existing target
+membership, destination and continuity roles in canonical UUID order before
+reading hierarchy or membership facts. Missing custom destination fails
+closed. Callers must retain the transaction through the effect. Raw user
+status DML bypassing the owner, privileged database maintenance, and complete
+cross-owner lock ordering are not covered by this change. PostgreSQL
+regression source authored; compilation and execution remain pending.
