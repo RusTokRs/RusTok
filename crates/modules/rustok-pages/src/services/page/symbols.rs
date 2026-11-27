@@ -209,6 +209,14 @@ pub(super) async fn load_site_symbols_by_locale<C: ConnectionTrait>(
         .await?;
     let mut by_locale: HashMap<String, Vec<Value>> = HashMap::new();
     for row in rows {
+        let descriptor = SymbolDescriptor::from_value(&row.content)
+            .ok_or_else(|| PagesError::validation("Stored site symbol is malformed"))?;
+        if descriptor.id != row.symbol_id {
+            return Err(PagesError::validation(format!(
+                "Stored site symbol identity mismatch for `{}`",
+                row.symbol_id
+            )));
+        }
         by_locale.entry(row.locale).or_default().push(row.content);
     }
     Ok(by_locale)
@@ -236,6 +244,16 @@ pub(super) async fn sync_site_symbols_in_tx<C: ConnectionTrait>(
         .order_by_asc(site_symbol::Column::SymbolId)
         .all(conn)
         .await?;
+    for row in &existing {
+        let descriptor = SymbolDescriptor::from_value(&row.content)
+            .ok_or_else(|| PagesError::validation("Stored site symbol is malformed"))?;
+        if descriptor.id != row.symbol_id {
+            return Err(PagesError::validation(format!(
+                "Stored site symbol identity mismatch for `{}`",
+                row.symbol_id
+            )));
+        }
+    }
     let current: Vec<Value> = existing.iter().map(|row| row.content.clone()).collect();
     let revision = catalog_revision(&current)?;
     if token != Some(revision.as_str()) && !(token.is_none() && current.is_empty()) {
