@@ -10,6 +10,14 @@ setting only before runtime initialization. Query-shape and mode-selection
 regressions were added. Maintainer verification remains pending; compilation,
 formatting and tests were not run in this session.
 
+## CORS allow-list parsing fails closed (2026-11-27)
+
+A non-Unicode `RUSTOK_CORS_ALLOWED_ORIGINS` value is treated as an explicitly
+empty allow-list rather than as an absent variable, so malformed explicit
+configuration cannot silently inherit development loopback origins. Host-only
+origins ending in `/` preserve HTTPS normalization when using port 443.
+Source regressions were added; compilation, formatting and tests remain pending.
+
 ## Bounded post-abort worker joins (2026-11-25)
 
 Runtime and module worker shutdown helpers now use a separate one-second
