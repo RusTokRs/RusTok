@@ -673,6 +673,20 @@ fn collect_asset_attribute_references(
     references: &mut BTreeSet<String>,
 ) {
     for (name, raw_value) in attributes {
+        let Some(value) = raw_value.as_str() else {
+            continue;
+        };
+        if name.eq_ignore_ascii_case("srcset") {
+            let mut candidates = BTreeSet::new();
+            let valid = crate::safe_url::validate_srcset_candidates(value, 16, |url| {
+                candidates.insert(url.to_string());
+                true
+            });
+            if valid {
+                references.extend(candidates);
+            }
+            continue;
+        }
         if [
             "data-fly-asset-id",
             "data-fly-provider-asset-id",
@@ -682,7 +696,6 @@ fn collect_asset_attribute_references(
         ]
         .iter()
         .any(|key| name.eq_ignore_ascii_case(key))
-            && let Some(value) = raw_value.as_str()
         {
             references.insert(value.to_string());
         }
@@ -951,6 +964,42 @@ mod tests {
                 .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
                 .any(|asset| asset.id == pasted_asset_id && asset.source == "/source.webp")
         );
+    }
+
+    #[test]
+    fn fragment_copy_carries_assets_referenced_only_by_srcset_candidates() {
+        let source = GrapesJsCodec::decode_value(json!({
+            "assets": [
+                { "id": "small", "src": "/small.webp" },
+                { "id": "large", "src": "/large.webp" },
+                { "id": "unused", "src": "/unused.webp" }
+            ],
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "responsive-image",
+                        "type": "image",
+                        "attributes": {
+                            "SRCSET": "/small.webp 1x, /large.webp 2x"
+                        }
+                    }]
+                }
+            }]
+        }))
+        .expect("source");
+
+        let fragment =
+            ProjectFragment::from_component(&source, "responsive-image").expect("fragment");
+        let ids = fragment
+            .assets
+            .iter()
+            .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
+            .map(|asset| asset.id)
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(ids, BTreeSet::from(["large".to_string(), "small".to_string()]));
     }
 
     #[test]
