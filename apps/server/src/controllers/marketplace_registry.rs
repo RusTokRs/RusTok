@@ -3345,8 +3345,6 @@ fn require_remote_executor_access(
         .map_err(|_| {
             Error::Unauthorized("Invalid x-rustok-runner-token header encoding".to_string())
         })?
-        .trim()
-        .trim_matches('"')
         .trim();
     if !bool::from(provided_token.as_bytes().ct_eq(expected_trimmed.as_bytes())) {
         return Err(Error::Unauthorized(
