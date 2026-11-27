@@ -1004,6 +1004,7 @@ async fn upload_completion_and_begin_replay_use_the_idempotency_key() {
         .expect("replay completed begin request");
     assert_eq!(replayed_session.session_id, session.session_id);
     assert_eq!(replayed_session.completed_object, Some(completed));
+    drop(uploads);
     if directory.exists() {
         tokio::fs::remove_dir_all(directory)
             .await
