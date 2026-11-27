@@ -328,6 +328,9 @@ impl ProductCatalogSchemaService {
     }
 
     pub(super) async fn axis_policy_snapshot_in(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+    ) -> CommerceResult<AxisPolicySnapshot> {
         let categories = Self::load_category_schema_map(txn, tenant_id).await?;
         let schemas = Self::load_attribute_schema_map(txn, tenant_id).await?;
         let mut policies = HashMap::new();

@@ -156,6 +156,7 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+async-graphql.workspace = true
 rustok-core = { workspace = true, features = ["server"] }
 rustok-migrations.workspace = true
 rustok-product-ports = { workspace = true, features = ["grpc-client"] }

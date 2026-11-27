@@ -365,7 +365,7 @@ where
                                     let current = local_widths
                                         .get()
                                         .get_clamped(&id, width.current, width.min, width.max);
-                                    view! { <col width=current.to_string() /> }
+                                    leptos::html::col().attr("width", current.to_string())
                                 })
                                 .collect_view()
                         }}

@@ -69,13 +69,19 @@ pub(super) fn files(
         .into_iter()
         .collect();
     dependencies.extend(options.dependencies.iter().map(String::as_str));
-    for key in dependencies.iter().copied().chain(["tokio"]) {
+    let mut dev_dependencies: BTreeSet<_> = ["tokio"].into_iter().collect();
+    dev_dependencies.extend(options.dev_dependencies.iter().map(String::as_str));
+    for key in dependencies.iter().chain(&dev_dependencies).copied() {
         ensure!(
             catalog.get(key).is_some(),
             "Unknown workspace dependency '{key}'"
         );
     }
     let dependencies = dependencies
+        .into_iter()
+        .map(|name| format!("{name}.workspace = true\n"))
+        .collect::<String>();
+    let dev_dependencies = dev_dependencies
         .into_iter()
         .map(|name| format!("{name}.workspace = true\n"))
         .collect::<String>();
@@ -101,7 +107,7 @@ workspace = true
 [dependencies]
 {dependencies}
 [dev-dependencies]
-tokio.workspace = true
+{dev_dependencies}
 "#
     );
     let (slug, name, operation, summary) = (

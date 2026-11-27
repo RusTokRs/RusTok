@@ -1,20 +1,10 @@
-use std::time::Duration;
-
 use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
-use rustok_api::{PortActor, PortContext, PortErrorKind, RequestContext, TenantContext, graphql::GraphQLError};
-use rustok_channel_ports::{
-    CHANNEL_PUBLIC_MODULE_READ_CLAIM, ChannelPublicModuleSelector, ReadChannelPublicModule,
-};
-use rustok_index::{
-    EntityName, FieldName, FieldPath, IndexQuery, IndexQueryExecutionError, IndexQueryPage,
-    IndexQueryPort, IndexQueryScope, IndexValue, LocaleKey, ModuleName, Pagination,
-    PersistedSchemaReadinessFailure, SchemaRef, SchemaVersion,
-};
+use rustok_api::{PortErrorKind, RequestContext, TenantContext, graphql::GraphQLError};
 use uuid::Uuid;
 
-use super::__MODULE_STEM__AdminGraphqlData;
+use crate::services::PublicRecordPage;
 
-const MODULE: &str = "__SLUG__";
+use super::__MODULE_STEM__AdminGraphqlData;
 
 #[derive(Default)]
 pub(super) struct StorefrontQuery;
@@ -28,78 +18,32 @@ impl StorefrontQuery {
         #[graphql(default = 25)] first: u32,
         after: Option<String>,
     ) -> Result<StorefrontPage> {
-        let request = ctx.data_opt::<RequestContext>()
-            .ok_or_else(|| FieldError::permission_denied("Trusted public request context required"))?;
+        let request = ctx.data_opt::<RequestContext>().ok_or_else(|| {
+            FieldError::permission_denied("Trusted public request context required")
+        })?;
         let tenant = ctx.data::<TenantContext>()?;
         if !tenant.is_active || tenant.id.is_nil() || tenant.id != request.tenant_id {
-            return Err(FieldError::permission_denied("Invalid public request authority"));
+            return Err(FieldError::permission_denied(
+                "Invalid public request authority",
+            ));
         }
-
-        let pagination = Pagination::Cursor { first, after };
-        pagination.validate().map_err(|error| FieldError::bad_user_input(&error.to_string()))?;
-        let Some(channel_id) = request.channel_id else {
-            return Ok(StorefrontPage::default());
-        };
         let runtime = ctx.data::<__MODULE_STEM__AdminGraphqlData>()?;
-        if !channel_allowed(runtime, request, channel_id).await? {
-            return Ok(StorefrontPage::default());
-        }
-
-        let index = runtime.index.as_ref().ok_or_else(unavailable)?;
-        let query = IndexQuery {
-            scope: IndexQueryScope {
-                tenant_id: tenant.id,
-                locale: Some(LocaleKey::new(&request.locale).map_err(operation_error)?),
-            },
-            schema: SchemaRef {
-                module: ModuleName::new(env!("CARGO_PKG_NAME")).map_err(operation_error)?,
-                entity: EntityName::new("__ENTITY_SLUG__").map_err(operation_error)?,
-                version: SchemaVersion::INITIAL,
-            },
-            fields: vec![FieldPath::new(FieldName::new("title").map_err(operation_error)?)],
-            filter: None,
-            order_by: Vec::new(),
-            pagination,
-            include_exact_count: false,
-        };
-        match index.execute_query(query).await {
-            Ok(page) => StorefrontPage::from_index(page),
-            Err(IndexQueryExecutionError::SchemaNotReady {
-                reason: PersistedSchemaReadinessFailure::Missing, ..
-            }) => Ok(StorefrontPage::default()),
-            Err(IndexQueryExecutionError::Decode(rustok_index::PostgresQueryDecodeError::Cursor(_))) =>
-                Err(FieldError::bad_user_input("Invalid continuation cursor")),
-            Err(error) => Err(operation_error(error)),
-        }
+        runtime
+            .public_records
+            .list(request, first, after)
+            .await
+            .map(Into::into)
+            .map_err(|error| {
+                if error.kind == PortErrorKind::Validation {
+                    FieldError::bad_user_input(&error.message)
+                } else {
+                    FieldError::internal_error("Public records are temporarily unavailable")
+                }
+            })
     }
 }
 
-async fn channel_allowed(
-    runtime: &__MODULE_STEM__AdminGraphqlData,
-    request: &RequestContext,
-    channel_id: Uuid,
-) -> Result<bool> {
-    let port = runtime.channel.as_ref().ok_or_else(unavailable)?;
-    let context = PortContext::new(
-        request.tenant_id.to_string(),
-        PortActor::service(MODULE),
-        request.locale.clone(),
-        request.correlation_id.clone(),
-    )
-    .with_claim(CHANNEL_PUBLIC_MODULE_READ_CLAIM)
-    .with_deadline(Duration::from_secs(2));
-
-    match port.is_public_module_available(context, ReadChannelPublicModule {
-        channel: ChannelPublicModuleSelector::Id(channel_id),
-        module_slug: MODULE.into(),
-    }).await {
-        Ok(allowed) => Ok(allowed),
-        Err(error) if error.kind == PortErrorKind::NotFound => Ok(false),
-        Err(error) => Err(operation_error(error)),
-    }
-}
-
-#[derive(Default, SimpleObject)]
+#[derive(SimpleObject)]
 #[graphql(name = "__MODULE_STEM__StorefrontRecordsPage")]
 struct StorefrontPage {
     items: Vec<StorefrontRecord>,
@@ -107,16 +51,20 @@ struct StorefrontPage {
     next_cursor: Option<String>,
 }
 
-impl StorefrontPage {
-    fn from_index(page: IndexQueryPage) -> Result<Self> {
-        let items = page.items.into_iter().map(|item| {
-            let mut fields = item.fields.into_iter();
-            match (fields.next().map(|field| field.value), fields.next()) {
-                (Some(IndexValue::String(title)), None) => Ok(StorefrontRecord { id: item.entity_id, title }),
-                _ => Err(operation_error("Index returned an invalid public title projection")),
-            }
-        }).collect::<Result<_>>()?;
-        Ok(Self { items, has_more: page.has_more, next_cursor: page.next_cursor })
+impl From<PublicRecordPage> for StorefrontPage {
+    fn from(page: PublicRecordPage) -> Self {
+        Self {
+            items: page
+                .items
+                .into_iter()
+                .map(|item| StorefrontRecord {
+                    id: item.id,
+                    title: item.title,
+                })
+                .collect(),
+            has_more: page.has_more,
+            next_cursor: page.next_cursor,
+        }
     }
 }
 
@@ -125,13 +73,4 @@ impl StorefrontPage {
 struct StorefrontRecord {
     id: Uuid,
     title: String,
-}
-
-fn unavailable() -> FieldError {
-    FieldError::internal_error("Public records are temporarily unavailable")
-}
-
-fn operation_error(error: impl std::fmt::Display) -> FieldError {
-    tracing::error!(module_slug = MODULE, %error, "Public record query failed");
-    unavailable()
 }

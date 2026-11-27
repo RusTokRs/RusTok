@@ -15324,6 +15324,7 @@ name = "rustok-distribution"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "async-graphql",
  "async-trait",
  "chrono",
  "flex",

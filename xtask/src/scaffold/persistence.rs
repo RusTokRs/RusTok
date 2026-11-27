@@ -88,6 +88,7 @@ pub(super) fn render(
     .into_iter()
     .chain(options.admin_resource.as_ref().into_iter().flat_map(|_| [
         ("src/services/record/admin.rs", include_str!("persistence/admin.rs.in")),
+        ("src/services/record/public_list.rs", include_str!("persistence/public_list.rs.in")),
         ("src/graphql/mod.rs", include_str!("persistence/graphql/mod.rs.in")),
         ("src/graphql/runtime.rs", include_str!("persistence/graphql/runtime.rs.in")),
         ("src/graphql/query.rs", include_str!("persistence/graphql/query.rs.in")),
@@ -108,8 +109,8 @@ pub(super) fn render(
         let source = if let Some(resource) = &options.admin_resource {
             source
                 .replace("__RESOURCE__", resource)
-                .replace("// __ADMIN_ADAPTER__", "#[cfg(feature = \"admin\")]\nmod admin;\n#[cfg(feature = \"admin\")]\npub use admin::{admin_record_revision, admin_record_security};")
-                .replace("// __ADMIN_EXPORTS__", "#[cfg(feature = \"admin\")]\npub use record::{admin_record_revision, admin_record_security};")
+                .replace("// __ADMIN_ADAPTER__", "#[cfg(feature = \"admin\")]\nmod admin;\n#[cfg(feature = \"admin\")]\npub use admin::{admin_record_revision, admin_record_security};\n#[cfg(feature = \"graphql\")]\npub(crate) mod public_list;")
+                .replace("// __ADMIN_EXPORTS__", "#[cfg(feature = \"admin\")]\npub use record::{admin_record_revision, admin_record_security};\n#[cfg(feature = \"graphql\")]\npub(crate) use record::public_list::{PublicRecordPage, PublicRecordReader};")
         } else {
             source
                 .replace("// __ADMIN_ADAPTER__\n", "")
@@ -136,7 +137,7 @@ pub(super) fn documentation(
     };
     let graphql_doc = options.admin_resource.as_ref().map_or_else(String::new, |resource| {
         format!(
-            "\n## Authenticated admin GraphQL\n\nThe server's module feature selects the `graphql` contribution. Its namespaced list, detail, draft, title edit and publication operations use `Resource::{resource}` with the required action. Tenant and actor come from authenticated request context. The host provides the module settings reader. Use the [operation documents](./contracts/graphql/) with their shared `admin_record_fields.graphql` fragment for client bindings. Edit revisions are decimal strings.\n"
+            "\n## GraphQL\n\nThe server's module feature selects the `graphql` contribution. Its admin list, detail, draft, title edit and publication operations use `Resource::{resource}` with the required action. Tenant and actor come from authenticated request context. Edit revisions are decimal strings.\n\nThe public records operation uses the host-resolved tenant, channel and exact locale. It checks Channel availability and reads currently published rows through Index. The module's discovery setting must be enabled for the tenant. The operation accepts a bounded page size and an opaque continuation cursor. [Operation documents](./contracts/graphql/)\n"
         )
     });
     let readme = format!(

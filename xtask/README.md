@@ -203,8 +203,10 @@ generated GraphQL documents. The server distribution must compile the module's
 The persisted profile also contributes a localized-record schema and replay
 source to the relational Index. The owner supplies exact locale reads and
 revisioned publication state. Distribution binds those reads to Index on
-PostgreSQL. The replay path is available to Index operators. Incremental
-delivery and storefront Index admission are separate integration steps.
+PostgreSQL. Index operators can replay the source. Publication changes also
+refresh exact copies through Outbox. The persisted GraphQL profile registers
+a public record query that checks the host-resolved Channel and reads the
+current published revision in the request locale.
 
 ### Attach a module-local CLI
 
@@ -217,7 +219,8 @@ cargo xtask module scaffold-cli <slug> --name <command> --summary "<summary>" --
 
 The adapter exports `pub(crate) async fn execute(&RuntimeComposition, CommandRequest)
 -> CliCoreResult<CommandOutcome>` and calls the module's owner API. The test file
-becomes `cli/src/tests/contract.rs`. Repeat `--dependency` for additional keys in
+becomes `cli/src/tests/contract.rs`. Repeat `--dependency` for adapter dependencies
+and `--dev-dependency` for fixture dependencies. Both resolve keys in
 `workspace.dependencies`. Use `--supports-dry-run` only when the adapter
 implements that command behavior and the supplied tests cover it.
 
@@ -232,6 +235,10 @@ Cargo lock entries and exercise the supplied tests. Use
 `cargo run -p rustok-cli --bin rustok-cli -- list --namespace <slug> --json`
 to verify distribution discovery. See the
 [CLI adapter contract](../docs/backend/module-backend-implementation.md#cli-adapters).
+
+The scaffold matrix attaches `public-discovery --tenant-id <uuid>` to the
+localized records module. The command reads current tenant settings through
+the owner API and returns `public_discovery_allowed` in its structured output.
 
 ### Recovering an interrupted scaffold
 

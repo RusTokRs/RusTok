@@ -483,8 +483,10 @@ invalidation. Replay and refresh share per-copy revision identity and return
 deletion mutations for withdrawn or unpublished copies. The embedded query
 runtime combines the owner publication and revision predicate with explicit
 tenant module enablement and the boolean public discovery opt-in before
-pagination and exact count. The public request adapter still needs to check
-the host-resolved channel through Channel authority.
+pagination and exact count. For the persisted GraphQL profile, the manifest
+mounts the owner query alongside the admin fields. The public field passes
+the resolved request to the owner service, which checks the Channel binding
+and serves a cursor page in the request's exact locale through Index.
 
 The selected Distribution fixture passed schema registration and the live
 Outbox relay and Index scenario on disposable PostgreSQL. A forced failure on
@@ -503,6 +505,13 @@ tenant's opt-in did not open the scope. Exact copies and an explicit locale
 fallback became visible after opt-in. Editing or withdrawing a record fenced
 the previous revision before Outbox delivered the refresh. The scaffold tests
 and the generated owner's source layout check passed.
+
+The generated public GraphQL document ran against the merged owner schema,
+the Channel owner port and the PostgreSQL Index runtime. The allowed channel
+received the Russian copy. Missing, foreign, inactive and explicitly disabled
+channels returned empty pages. The scenario also exercised an absent
+provider, conflicting tenant contexts, a locale without a copy and an invalid
+continuation cursor.
 
 - [ ] Close Blog reference-verifier drift and retain actual reference execution
   evidence before certifying it for propagation. Do not preserve obsolete source

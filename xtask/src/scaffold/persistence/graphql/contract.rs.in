@@ -1,5 +1,5 @@
 use __OWNER__::graphql::{
-    __MODULE_STEM__AdminMutation, __MODULE_STEM__AdminQuery, attach_schema_data,
+    __MODULE_STEM__AdminMutation, __MODULE_STEM__Query, attach_schema_data,
 };
 use async_graphql::{EmptySubscription, Request, Response, Schema, Variables};
 use rustok_api::{
@@ -31,7 +31,7 @@ macro_rules! document {
 
 const LIST: &str = "__MODULE_STEM__AdminRecords";
 type AdminSchema =
-    Schema<__MODULE_STEM__AdminQuery, __MODULE_STEM__AdminMutation, EmptySubscription>;
+    Schema<__MODULE_STEM__Query, __MODULE_STEM__AdminMutation, EmptySubscription>;
 
 async fn setup(db: &DatabaseConnection, enabled_tenant: Uuid) -> AdminSchema {
     let migration = ModulesModule
@@ -52,7 +52,7 @@ async fn setup(db: &DatabaseConnection, enabled_tenant: Uuid) -> AdminSchema {
     let host = host.with_shared_value(DatabaseStaticModuleSettingsReader::shared(db.clone()));
     let runtime = attach_schema_data(&GraphqlRuntimeInputs::new(host)).unwrap();
     Schema::build(
-        __MODULE_STEM__AdminQuery,
+        __MODULE_STEM__Query::default(),
         __MODULE_STEM__AdminMutation,
         EmptySubscription,
     )

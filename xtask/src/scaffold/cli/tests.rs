@@ -77,6 +77,8 @@ fn fixture() -> (TempWorkspace, Options) {
         tests.to_str().unwrap(),
         "--dependency",
         "serde_json",
+        "--dev-dependency",
+        "uuid",
     ]
     .map(str::to_owned);
     (temporary, Options::parse(&args).unwrap())
@@ -125,9 +127,24 @@ fn cli_scaffold_previews_and_applies_the_owner_and_registry_as_one_plan() {
         fs::read(&options.adapter).unwrap()
     );
     let readme = fs::read_to_string(root.join(OWNER).join("cli/README.md")).unwrap();
-    assert!(readme
-        .lines()
-        .any(|line| line.starts_with("- `src/provider.rs`")));
+    let manifest: toml::Value = fs::read_to_string(root.join(OWNER).join("cli/Cargo.toml"))
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert_eq!(
+        manifest["dependencies"]["serde_json"]["workspace"].as_bool(),
+        Some(true)
+    );
+    assert!(manifest["dependencies"].get("uuid").is_none());
+    assert_eq!(
+        manifest["dev-dependencies"]["uuid"]["workspace"].as_bool(),
+        Some(true)
+    );
+    assert!(
+        readme
+            .lines()
+            .any(|line| line.starts_with("- `src/provider.rs`"))
+    );
     let api = fs::read_to_string(root.join(OWNER).join("cli/CRATE_API.md")).unwrap();
     assert!(api.lines().any(|line| line == "Inspect module identity"));
     let generated = fs::read_to_string(root.join(REGISTRY).join("src/generated.rs")).unwrap();

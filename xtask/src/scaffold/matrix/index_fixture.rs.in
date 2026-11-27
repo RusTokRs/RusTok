@@ -83,6 +83,7 @@ async fn assert_index_replay(db: DatabaseConnection) {
             .unwrap_or_else(|error| panic!("{}: {error}", migration.name()));
     }
     index_query::migrate_settings(&manager).await;
+    index_graphql::migrate_channels(&manager).await;
     let tenant = Uuid::new_v4();
     let foreign = Uuid::new_v4();
     for id in [tenant, foreign] {
@@ -227,6 +228,7 @@ async fn assert_index_replay(db: DatabaseConnection) {
     public.expect("ru", Some("Русский")).await;
     public.expect("de", None).await;
     public.expect_fallback("de", "ru", Some("Русский")).await;
+    index_graphql::verify(&db, tenant, foreign, &queries, draft.id).await;
 
     for (scope, revision) in [
         (foreign, published.revision),

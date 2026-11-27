@@ -1,4 +1,4 @@
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{Context, Result, bail, ensure};
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 
@@ -10,6 +10,7 @@ pub(super) struct Options {
     pub adapter: PathBuf,
     pub tests: PathBuf,
     pub dependencies: BTreeSet<String>,
+    pub dev_dependencies: BTreeSet<String>,
     pub supports_dry_run: bool,
     pub dry_run: bool,
 }
@@ -29,6 +30,7 @@ impl Options {
         );
         let mut values = HashMap::new();
         let mut dependencies = BTreeSet::new();
+        let mut dev_dependencies = BTreeSet::new();
         let mut switches = BTreeSet::new();
         let mut flags = flags.iter();
         while let Some(flag) = flags.next() {
@@ -36,12 +38,13 @@ impl Options {
                 "--supports-dry-run" | "--dry-run" => {
                     ensure!(switches.insert(flag.as_str()), "Duplicate {flag}");
                 }
-                "--name" | "--summary" | "--adapter" | "--tests" | "--dependency" => {
+                "--name" | "--summary" | "--adapter" | "--tests" | "--dependency"
+                | "--dev-dependency" => {
                     let value = flags
                         .next()
                         .filter(|value| !value.trim().is_empty() && !value.starts_with("--"))
                         .with_context(|| format!("Missing value for {flag}"))?;
-                    if flag == "--dependency" {
+                    if matches!(flag.as_str(), "--dependency" | "--dev-dependency") {
                         ensure!(
                             value
                                 .bytes()
@@ -49,10 +52,12 @@ impl Options {
                                     || matches!(byte, b'-' | b'_')),
                             "Invalid Cargo dependency key '{value}'"
                         );
-                        ensure!(
-                            dependencies.insert(value.clone()),
-                            "Duplicate dependency '{value}'"
-                        );
+                        let keys = if flag == "--dependency" {
+                            &mut dependencies
+                        } else {
+                            &mut dev_dependencies
+                        };
+                        ensure!(keys.insert(value.clone()), "Duplicate {flag} '{value}'");
                     } else {
                         ensure!(
                             values.insert(flag.as_str(), value.clone()).is_none(),
@@ -90,6 +95,7 @@ impl Options {
             adapter: PathBuf::from(take("--adapter")?),
             tests: PathBuf::from(take("--tests")?),
             dependencies,
+            dev_dependencies,
             supports_dry_run: switches.contains("--supports-dry-run"),
             dry_run: switches.contains("--dry-run"),
         })

@@ -1,0 +1,46 @@
+use rustok_api::Resource;
+use rustok_cli_core::{CliCoreError, CliCoreResult, CommandOutcome, CommandRequest};
+use rustok_modules::DatabaseStaticModuleSettingsReader;
+use rustok_runtime::RuntimeComposition;
+use rustok_scaffold_matrix_localized::ProductService;
+use serde_json::json;
+use uuid::Uuid;
+
+pub(crate) async fn execute(
+    runtime: &RuntimeComposition,
+    request: CommandRequest,
+) -> CliCoreResult<CommandOutcome> {
+    let tenant_id = request
+        .args
+        .get("options")
+        .and_then(|options| options.get("tenant_id"))
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .filter(|id| !id.is_nil())
+        .ok_or_else(|| CliCoreError::InvalidInput {
+            message: "--tenant-id must be a non-nil UUID".into(),
+        })?;
+    let host = runtime
+        .require_host()
+        .map_err(|error| CliCoreError::CommandFailed {
+            message: format!("public-discovery requires a database runtime: {error}"),
+        })?;
+    let db = host.db_clone();
+    let owner = ProductService::new(db.clone(), Resource::Posts)
+        .with_settings_reader(DatabaseStaticModuleSettingsReader::shared(db));
+    let allowed = owner
+        .public_discovery_allowed(tenant_id)
+        .await
+        .map_err(|error| CliCoreError::CommandFailed {
+            message: format!("public discovery could not be resolved: {error}"),
+        })?;
+    let message = if allowed {
+        "Public discovery is enabled"
+    } else {
+        "Public discovery is disabled"
+    };
+    Ok(CommandOutcome::success(message).with_data(json!({
+        "tenant_id": tenant_id,
+        "public_discovery_allowed": allowed,
+    })))
+}
