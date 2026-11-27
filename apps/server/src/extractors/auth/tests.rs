@@ -237,6 +237,8 @@ fn service_current_user_builds_service_security_context() {
         scopes: Vec::new(),
         grant_type: "client_credentials".to_string(),
         access_token_expires_at: Utc::now() + Duration::hours(1),
+        rbac_epoch: 0, // SecurityContext-only fixture, never admitted as a request.
+        static_authority_revision: None,
         oauth_credential: None,
     };
 
@@ -1669,6 +1671,110 @@ async fn final_authority_check_rejects_membership_aba_and_revoked_session() {
     session.revoked_at = Set(Some(Utc::now().into()));
     session.update(&db).await.unwrap();
     assert!(revalidate!(&restored).await.is_err());
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn admitted_static_scope_rejects_membership_and_grant_aba_without_notification() {
+    use crate::models::_entities::{role_permissions, roles};
+    use crate::services::rbac_request_scope::{
+        RbacRequestScope, ensure_scope_authority, with_rbac_request_scope,
+    };
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let runtime = test_auth_runtime(db.clone());
+    let tenant = tenants::ActiveModel::new("Durable scope", &format!("tenant-{}", Uuid::new_v4()))
+        .insert(&db)
+        .await
+        .unwrap();
+    let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+    rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+        &db, tenant.id, user.id, UserRole::Manager,
+    )
+    .await
+    .unwrap();
+    let token = encode_access_token(
+        runtime.require_auth_config().unwrap(),
+        user.id,
+        tenant.id,
+        UserRole::Manager,
+        session_id,
+    )
+    .unwrap();
+    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await
+        .unwrap();
+    let original = RbacRequestScope::authenticated(&admitted, admitted.access_token_expires_at);
+    let lease = super::WebSocketAuthLease::new(token.clone(), &admitted);
+    with_rbac_request_scope(Some(original.clone()), async {
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &user.id).await.is_ok());
+        for role in [UserRole::Customer, UserRole::Manager] {
+            rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(
+                &db, tenant.id, user.id, role,
+            )
+            .await
+            .unwrap();
+        }
+        assert!(RbacService::get_user_permissions(&db, &tenant.id, &user.id).await.is_err());
+        assert!(RbacService::get_user_role(&db, &tenant.id, &user.id).await.is_err());
+    })
+    .await;
+    assert_eq!(
+        lease.revalidate(&runtime).await,
+        Err(super::WebSocketAuthLeaseError::AuthorityChanged)
+    );
+
+    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await
+        .unwrap();
+    let scope = RbacRequestScope::authenticated(&admitted, admitted.access_token_expires_at);
+    let role = roles::Entity::find()
+        .filter(roles::Column::TenantId.eq(tenant.id))
+        .filter(roles::Column::Slug.eq(UserRole::Manager.to_string()))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    let grant = role_permissions::Entity::find()
+        .filter(role_permissions::Column::RoleId.eq(role.id))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    // Bypass the host writer and notification path; restore the exact grant.
+    role_permissions::Entity::delete_by_id(grant.id).exec(&db).await.unwrap();
+    role_permissions::Entity::insert(role_permissions::ActiveModel {
+        id: Set(grant.id),
+        role_id: Set(grant.role_id),
+        permission_id: Set(grant.permission_id),
+    })
+    .exec(&db)
+    .await
+    .unwrap();
+    with_rbac_request_scope(Some(scope), async {
+        assert!(RbacService::has_permission(&db, &tenant.id, &user.id, &Permission::USERS_READ)
+            .await
+            .is_err());
+        assert!(RbacService::has_any_permission(&db, &tenant.id, &user.id, &[Permission::USERS_READ])
+            .await
+            .is_err());
+        assert!(RbacService::has_all_permissions(&db, &tenant.id, &user.id, &[Permission::USERS_READ])
+            .await
+            .is_err());
+    })
+    .await;
+    let fresh = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await
+        .unwrap();
+    assert_eq!(fresh.permissions, admitted.permissions);
+    let scope = RbacRequestScope::authenticated(&fresh, fresh.access_token_expires_at);
+    with_rbac_request_scope(Some(scope), async {
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &user.id).await.is_ok());
+        assert!(ensure_scope_authority(None, &tenant.id, &user.id).await.is_err());
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &user.id).await.is_err());
+    })
+    .await;
 }
 
 #[tokio::test]

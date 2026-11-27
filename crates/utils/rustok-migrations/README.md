@@ -32,6 +32,12 @@ installer workflow.
 
 ## Direct session refresh history
 
+The session evidence integrity migration rejects SQLite replacement by hidden
+rowid on both sessions and replay history, and prevents changing a session's
+rowid. This protects existing replay evidence even with recursive triggers
+disabled. Auth's permanent credential witness separately retains current and
+historical session digest claims across session cleanup.
+
 `m20261125_000001_create_session_refresh_history` adds session-owned replay evidence and
 backfills the last available rotated digest. The table is portable PostgreSQL/SQLite
 storage with a session deletion cascade; rollback drops historical evidence and must

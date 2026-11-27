@@ -18,6 +18,8 @@ pub struct RbacRequestScope {
     pub permissions: Vec<Permission>,
     pub role: UserRole,
     credential: Option<RequestCredentialAuthority>,
+    admitted_epoch: Option<u64>,
+    static_revision: Option<Arc<rustok_rbac::StaticActorAuthorityRevision>>,
 }
 
 /// Facts admitted by the common JWT extractor, never transport input.
@@ -89,6 +91,8 @@ impl RbacRequestScope {
             permissions,
             role,
             credential: None,
+            admitted_epoch: None,
+            static_revision: None,
         }
     }
 
@@ -104,6 +108,8 @@ impl RbacRequestScope {
             current.permissions.clone(),
             current.inferred_role.clone(),
         );
+        scope.admitted_epoch = Some(current.rbac_epoch);
+        scope.static_revision = current.static_authority_revision.clone();
         scope.credential = Some(RequestCredentialAuthority {
             principal_kind: current.principal_kind,
             session_id: current.session_id,
@@ -114,7 +120,17 @@ impl RbacRequestScope {
         scope
     }
 
+    pub(crate) fn epoch_is_current(&self) -> bool {
+        self.admitted_epoch.is_none_or(|epoch| {
+            super::rbac_runtime::request_authority_epoch(self.tenant_id, self.actor_id)
+                == Some(epoch)
+        })
+    }
+
     pub(crate) fn admin_credential(&self) -> Option<CredentialAuthority> {
+        if !self.epoch_is_current() {
+            return None;
+        }
         self.credential.as_ref()?.typed()
     }
 
@@ -149,6 +165,12 @@ impl RbacRequestScopeState {
                 self.valid.store(false, Ordering::Release);
                 return false;
             }
+        }
+        // Check after sampling time, so invalidation during that check is
+        // observed before returning the original authority.
+        if !self.scope.epoch_is_current() {
+            self.valid.store(false, Ordering::Release);
+            return false;
         }
         self.valid.load(Ordering::Acquire)
     }
@@ -305,8 +327,9 @@ pub fn role_for(tenant_id: &Uuid, actor_id: &Uuid) -> Option<UserRole> {
 /// Reject unscoped fallback for an invalidated or expired matching request snapshot.
 ///
 /// Absence of a scope, or a scope for a different tenant/actor, retains the
-/// existing persisted-grant behavior. This is task-local and is not a fence for
-/// in-flight checks, other tasks, or other replicas.
+/// existing persisted-grant behavior. Authenticated snapshots also observe
+/// the process-local epoch; this is not a fence for already admitted checks
+/// or invalidations not yet delivered by another replica.
 pub(crate) fn ensure_scope_not_invalidated(
     tenant_id: &Uuid,
     actor_id: &Uuid,
@@ -326,11 +349,62 @@ pub(crate) fn ensure_scope_not_invalidated(
     Ok(())
 }
 
+/// Revalidate the original static authority at an asynchronous authorization
+/// boundary. Never refresh the snapshot or replace its permission ceiling.
+/// The owner read is a single statement, not a transaction-spanning fence.
+pub(crate) async fn ensure_scope_authority(
+    db: Option<&sea_orm::DatabaseConnection>,
+    tenant_id: &Uuid,
+    actor_id: &Uuid,
+) -> crate::error::Result<()> {
+    ensure_scope_not_invalidated(tenant_id, actor_id)?;
+    let state = CURRENT_RBAC_SCOPE
+        .try_with(|state| {
+            state
+                .as_ref()
+                .filter(|state| state.scope.matches(tenant_id, actor_id))
+                .map(Arc::clone)
+        })
+        .ok()
+        .flatten();
+    let Some(state) = state else {
+        return Ok(());
+    };
+
+    // Trusted grant-only scopes and service principals do not have a
+    // persisted static user membership. Authenticated human principals do.
+    let Some(expected) = state.scope.static_revision.as_ref() else {
+        if state.scope.admitted_epoch.is_some()
+            && state.scope.credential.as_ref().is_some_and(|credential| {
+                credential.principal_kind != AuthPrincipalKind::Service
+            })
+        {
+            state.valid.store(false, Ordering::Release);
+        }
+        return ensure_scope_not_invalidated(tenant_id, actor_id);
+    };
+    let current = match db {
+        Some(db) => {
+            rustok_rbac::read_static_actor_authority_revision_on(db, *tenant_id, *actor_id)
+                .await
+                .ok()
+        }
+        None => None,
+    };
+    if current.as_ref() != Some(expected.as_ref()) {
+        // Missing/corrupt data, storage failure and revision drift all deny.
+        // All captured clones share the terminal flag.
+        state.valid.store(false, Ordering::Release);
+    }
+    // Recheck the local epoch and credential deadline after the DB await.
+    ensure_scope_not_invalidated(tenant_id, actor_id)
+}
+
 /// Invalidate the current task-local RBAC snapshot when the mutation targets its exact actor.
 ///
 /// Later scope-aware checks in this task fail rather than reuse the snapshot or fall back to
-/// unscoped grants. Other concurrent tasks retain their own task-local state; this is not a
-/// request-wide or transaction-spanning revocation fence.
+/// unscoped grants. This helper affects only the current task; cache invalidation also
+/// advances the shared epoch checked by authenticated scopes in other tasks.
 pub(crate) fn invalidate_current_rbac_request_scope(tenant_id: &Uuid, actor_id: &Uuid) {
     if let Err(error) = CURRENT_RBAC_SCOPE.try_with(|state| {
         if let Some(state) = state
@@ -358,6 +432,74 @@ pub(crate) fn invalidate_current_rbac_request_scope_for_all() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn admitted_scope_rejects_cross_task_and_pre_entry_epoch_changes() {
+        use super::super::rbac_runtime::{
+            invalidate_all_user_permissions_cache, invalidate_user_permissions_cache,
+            request_authority_epoch,
+        };
+
+        let tenant = Uuid::new_v4();
+        let actor = Uuid::new_v4();
+        let fresh_scope = || {
+            let mut scope = RbacRequestScope::new(
+                tenant,
+                actor,
+                vec![Permission::USERS_MANAGE],
+                UserRole::Admin,
+            );
+            scope.admitted_epoch = Some(request_authority_epoch(tenant, actor).unwrap());
+            scope.credential = Some(RequestCredentialAuthority {
+                principal_kind: AuthPrincipalKind::DirectUser,
+                session_id: Uuid::new_v4(),
+                expires_at: Utc::now() + chrono::Duration::minutes(5),
+                recovery_revision: 1,
+                oauth: None,
+            });
+            scope
+        };
+
+        let stale = fresh_scope();
+        invalidate_user_permissions_cache(&tenant, &actor).await;
+        with_rbac_request_scope(Some(stale), async {
+            assert!(permissions_for(&tenant, &actor).is_none());
+            assert!(ensure_scope_not_invalidated(&tenant, &actor).is_err());
+        })
+        .await;
+
+        for full in [false, true] {
+            with_rbac_request_scope(Some(fresh_scope()), async {
+                assert!(permissions_for(&tenant, &actor).is_some());
+                let captured = CapturedArtifactRequestScope::capture(tenant, actor).unwrap();
+                tokio::spawn(async move {
+                    if full {
+                        invalidate_all_user_permissions_cache().await;
+                    } else {
+                        invalidate_user_permissions_cache(&tenant, &actor).await;
+                    }
+                })
+                .await
+                .unwrap();
+                assert!(permissions_for(&tenant, &actor).is_none());
+                assert!(role_for(&tenant, &actor).is_none());
+                assert!(credential_for(&tenant, &actor).is_none());
+                assert!(ensure_scope_not_invalidated(&tenant, &actor).is_err());
+                assert!(!captured.is_valid());
+                captured
+                    .run(async {
+                        assert!(ensure_scope_not_invalidated(&tenant, &actor).is_err());
+                    })
+                    .await;
+            })
+            .await;
+        }
+        with_rbac_request_scope(Some(fresh_scope()), async {
+            assert!(permissions_for(&tenant, &actor).is_some());
+        })
+        .await;
+    }
 
     #[tokio::test]
     async fn request_scope_is_bound_to_exact_tenant_and_actor() {

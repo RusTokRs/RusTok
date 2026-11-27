@@ -2,10 +2,7 @@
 
 use bytes::Bytes;
 use rustok_storage::{ObjectKey, ObjectScope, ObjectZone};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
-    Value as SqlValue,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use uuid::Uuid;
 
 use super::constants::*;
@@ -116,7 +113,7 @@ where
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-        ensure_active_namespace(&transaction, scope, backend).await?;
+        ensure_active_object_namespace(&transaction, scope, backend).await?;
         if let Some(row) = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -141,14 +138,18 @@ where
                     .map(|value| u64::try_from(value).map_err(|_| ArtifactDataError::ObjectIntegrity))
                     .transpose()?
                     .ok_or(ArtifactDataError::ObjectIntegrity)?;
-                let (stored, _) = find_artifact_data_object_operation(
+                let (stored, expected_revision) = find_artifact_data_object_operation(
                     &transaction,
                     scope,
                     request.idempotency_key,
                 )
                 .await?
                 .ok_or(ArtifactDataError::ObjectIntegrity)?;
-                if stored.object.revision != completed_revision {
+                if stored.object.revision != completed_revision
+                    || stored.object.name != request.name
+                    || stored.object.content_type != request.content_type
+                    || expected_revision != request.expected_revision
+                {
                     return Err(ArtifactDataError::ObjectIntegrity);
                 }
                 Some(stored.object)
@@ -241,109 +242,7 @@ where
             .await?;
         let quota = self.quota.validate()?;
         let digest_sha256 = crate::installation::sha256_digest(&chunk.data);
-        let (transaction, guard) =
-            begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
-        let backend =
-            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-        ensure_active_namespace(&transaction, scope, backend).await?;
-        let active = transaction
-            .execute_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                format!(
-                    "UPDATE module_artifact_data_object_upload_sessions
-                     SET updated_at = updated_at
-                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
-                     AND policy_revision = {} AND session_id = {} AND status = 'open'
-                     AND expires_at > {}",
-                    backend.placeholder(1),
-                    backend.placeholder(2),
-                    backend.placeholder(3),
-                    backend.placeholder(4),
-                    backend.placeholder(5),
-                    backend.now_sql(),
-                ),
-                vec![
-                    backend.uuid_value(scope.tenant_id),
-                    backend.uuid_value(scope.data_owner_id),
-                    backend.uuid_value(scope.namespace_instance_id),
-                    revision_value(scope.policy_revision)?,
-                    backend.uuid_value(chunk.session_id),
-                ],
-            ))
-            .await
-            .map_err(storage_error)?;
-        if active.rows_affected() != 1 {
-            return Err(rollback_artifact_data_error(
-                transaction,
-                ArtifactDataError::NamespacePurged,
-            )
-            .await);
-        }
-        if let Some(row) = transaction.query_one_raw(Statement::from_sql_and_values(
-            backend.db_backend(),
-            format!("SELECT size_bytes, digest_sha256 FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {} AND sequence = {}", backend.placeholder(1), backend.placeholder(2), backend.placeholder(3)),
-            vec![backend.uuid_value(scope.tenant_id), backend.uuid_value(chunk.session_id), revision_value(chunk.sequence)?],
-        )).await.map_err(storage_error)? {
-            let size: i64 = row.try_get("", "size_bytes").map_err(storage_error)?;
-            let digest: String = row.try_get("", "digest_sha256").map_err(storage_error)?;
-            commit_artifact_data_effect(transaction, guard).await?;
-            if u64::try_from(size).ok() == Some(chunk.data.len() as u64) && digest == digest_sha256 {
-                return Ok(());
-            }
-            return Err(ArtifactDataError::IdempotencyConflict);
-        }
-        let row = transaction.query_one_raw(Statement::from_sql_and_values(
-            backend.db_backend(),
-            format!("SELECT COALESCE(SUM(size_bytes), 0) AS total_size FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", backend.placeholder(1), backend.placeholder(2)),
-            vec![backend.uuid_value(scope.tenant_id), backend.uuid_value(chunk.session_id)],
-        )).await.map_err(storage_error)?.ok_or_else(|| ArtifactDataError::Storage("chunk total was not computed".to_string()))?;
-        let total_size: i64 = row.try_get("", "total_size").map_err(storage_error)?;
-        let total_size =
-            u64::try_from(total_size).map_err(|_| ArtifactDataError::ObjectIntegrity)?;
-        if total_size
-            .checked_add(chunk.data.len() as u64)
-            .filter(|size| *size <= MAX_ARTIFACT_OBJECT_BYTES)
-            .is_none()
-        {
-            return Err(rollback_artifact_data_error(
-                transaction,
-                ArtifactDataError::InvalidObject,
-            )
-            .await);
-        }
-        let row = transaction
-            .query_one_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                format!(
-                    "SELECT COALESCE(SUM(chunk.size_bytes), 0) AS total_size
-                     FROM module_artifact_data_object_upload_chunks chunk
-                     INNER JOIN module_artifact_data_object_upload_sessions session
-                       ON session.tenant_id = chunk.tenant_id AND session.session_id = chunk.session_id
-                     WHERE session.tenant_id = {} AND session.data_owner_id = {}
-                       AND session.namespace_instance_id = {}
-                       AND session.status IN ('open', 'completing')",
-                    backend.placeholder(1),
-                    backend.placeholder(2),
-                    backend.placeholder(3),
-                ),
-                namespace_values(scope, backend)?,
-            ))
-            .await
-            .map_err(storage_error)?
-            .ok_or_else(|| {
-                ArtifactDataError::Storage("upload staging usage was not computed".to_string())
-            })?;
-        let staging_bytes =
-            nonnegative_usage(row.try_get("", "total_size").map_err(storage_error)?)?;
-        let projected_staging_bytes = staging_bytes
-            .checked_add(chunk.data.len() as u64)
-            .ok_or_else(|| ArtifactDataError::Storage("staging byte quota overflow".to_string()))?;
-        enforce_quota(
-            "staging_bytes",
-            quota.max_staging_bytes,
-            projected_staging_bytes,
-        )?;
-        let key = ObjectKey::chronological(
+        let stored_path = ObjectKey::chronological(
             "module-artifact-data",
             ObjectZone::Staging,
             ObjectScope::Namespace {
@@ -357,33 +256,228 @@ where
         )
         .map_err(|error| ArtifactDataError::Storage(error.to_string()))?
         .to_string();
-        let stored_path = key.clone();
-        self.storage
+
+        // Stage bytes before opening the owner transaction. A remote object
+        // store must never hold the namespace, installation or RBAC SQL locks.
+        if let Err(error) = self
+            .storage
             .objects
             .put_opts(
-                &Path::from(key),
+                &Path::from(stored_path.as_str()),
                 chunk.data.clone().into(),
                 self.storage.put_options("application/octet-stream"),
             )
             .await
-            .map_err(storage_error)?;
-        let stored_size = chunk.data.len() as u64;
-        let inserted = transaction.execute_raw(Statement::from_sql_and_values(
-            backend.db_backend(),
-            format!("INSERT INTO module_artifact_data_object_upload_chunks (tenant_id, session_id, sequence, storage_key, size_bytes, digest_sha256, created_at) VALUES ({}, {}, {}, {}, {}, {}, {})", backend.placeholder(1), backend.placeholder(2), backend.placeholder(3), backend.placeholder(4), backend.placeholder(5), backend.placeholder(6), backend.now_sql()),
-            vec![backend.uuid_value(scope.tenant_id), backend.uuid_value(chunk.session_id), revision_value(chunk.sequence)?, stored_path.clone().into(), i64::try_from(stored_size).map_err(|_| ArtifactDataError::InvalidObject)?.into(), digest_sha256.into()],
-        )).await;
-        if let Err(error) = inserted {
-            let primary = storage_error(error);
-            let error = rollback_artifact_data_error(transaction, primary).await;
-            delete_uploaded_object_best_effort(&self.storage, &Path::from(stored_path)).await;
-            return Err(error);
+        {
+            delete_uploaded_object_best_effort(
+                &self.storage,
+                &Path::from(stored_path.as_str()),
+            )
+            .await;
+            return Err(storage_error(error));
         }
+
+        let (transaction, guard) =
+            match begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await {
+                Ok(effect) => effect,
+                Err(error) => {
+                    delete_uploaded_object_best_effort(
+                        &self.storage,
+                        &Path::from(stored_path.as_str()),
+                    )
+                    .await;
+                    return Err(error);
+                }
+            };
+        let staged: Result<bool, ArtifactDataError> = async {
+            let backend =
+                SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+            ensure_active_object_namespace(&transaction, scope, backend).await?;
+            let active = transaction
+                .execute_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
+                    format!(
+                        "UPDATE module_artifact_data_object_upload_sessions
+                         SET updated_at = updated_at
+                         WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
+                         AND policy_revision = {} AND session_id = {} AND status = 'open'
+                         AND expires_at > {}",
+                        backend.placeholder(1),
+                        backend.placeholder(2),
+                        backend.placeholder(3),
+                        backend.placeholder(4),
+                        backend.placeholder(5),
+                        backend.now_sql(),
+                    ),
+                    vec![
+                        backend.uuid_value(scope.tenant_id),
+                        backend.uuid_value(scope.data_owner_id),
+                        backend.uuid_value(scope.namespace_instance_id),
+                        revision_value(scope.policy_revision)?,
+                        backend.uuid_value(chunk.session_id),
+                    ],
+                ))
+                .await
+                .map_err(storage_error)?;
+            if active.rows_affected() != 1 {
+                return Err(ArtifactDataError::NamespacePurged);
+            }
+            if let Some(row) = transaction
+                .query_one_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
+                    format!(
+                        "SELECT size_bytes, digest_sha256
+                         FROM module_artifact_data_object_upload_chunks
+                         WHERE tenant_id = {} AND session_id = {} AND sequence = {}",
+                        backend.placeholder(1),
+                        backend.placeholder(2),
+                        backend.placeholder(3),
+                    ),
+                    vec![
+                        backend.uuid_value(scope.tenant_id),
+                        backend.uuid_value(chunk.session_id),
+                        revision_value(chunk.sequence)?,
+                    ],
+                ))
+                .await
+                .map_err(storage_error)?
+            {
+                let size: i64 = row.try_get("", "size_bytes").map_err(storage_error)?;
+                let digest: String = row.try_get("", "digest_sha256").map_err(storage_error)?;
+                if u64::try_from(size).ok() == Some(chunk.data.len() as u64)
+                    && digest == digest_sha256
+                {
+                    return Ok(false);
+                }
+                return Err(ArtifactDataError::IdempotencyConflict);
+            }
+            let row = transaction
+                .query_one_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
+                    format!(
+                        "SELECT COALESCE(SUM(size_bytes), 0) AS total_size
+                         FROM module_artifact_data_object_upload_chunks
+                         WHERE tenant_id = {} AND session_id = {}",
+                        backend.placeholder(1),
+                        backend.placeholder(2),
+                    ),
+                    vec![
+                        backend.uuid_value(scope.tenant_id),
+                        backend.uuid_value(chunk.session_id),
+                    ],
+                ))
+                .await
+                .map_err(storage_error)?
+                .ok_or_else(|| {
+                    ArtifactDataError::Storage("chunk total was not computed".to_string())
+                })?;
+            let total_size: i64 = row.try_get("", "total_size").map_err(storage_error)?;
+            let total_size =
+                u64::try_from(total_size).map_err(|_| ArtifactDataError::ObjectIntegrity)?;
+            if total_size
+                .checked_add(chunk.data.len() as u64)
+                .filter(|size| *size <= MAX_ARTIFACT_OBJECT_BYTES)
+                .is_none()
+            {
+                return Err(ArtifactDataError::InvalidObject);
+            }
+            let row = transaction
+                .query_one_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
+                    format!(
+                        "SELECT COALESCE(SUM(chunk.size_bytes), 0) AS total_size
+                         FROM module_artifact_data_object_upload_chunks chunk
+                         INNER JOIN module_artifact_data_object_upload_sessions session
+                           ON session.tenant_id = chunk.tenant_id AND session.session_id = chunk.session_id
+                         WHERE session.tenant_id = {} AND session.data_owner_id = {}
+                           AND session.namespace_instance_id = {}
+                           AND session.status IN ('open', 'completing')",
+                        backend.placeholder(1),
+                        backend.placeholder(2),
+                        backend.placeholder(3),
+                    ),
+                    namespace_values(scope, backend)?,
+                ))
+                .await
+                .map_err(storage_error)?
+                .ok_or_else(|| {
+                    ArtifactDataError::Storage("upload staging usage was not computed".to_string())
+                })?;
+            let staging_bytes =
+                nonnegative_usage(row.try_get("", "total_size").map_err(storage_error)?)?;
+            let projected_staging_bytes = staging_bytes
+                .checked_add(chunk.data.len() as u64)
+                .ok_or_else(|| {
+                    ArtifactDataError::Storage("staging byte quota overflow".to_string())
+                })?;
+            enforce_quota(
+                "staging_bytes",
+                quota.max_staging_bytes,
+                projected_staging_bytes,
+            )?;
+            let stored_size = chunk.data.len() as u64;
+            transaction
+                .execute_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
+                    format!(
+                        "INSERT INTO module_artifact_data_object_upload_chunks
+                         (tenant_id, session_id, sequence, storage_key, size_bytes, digest_sha256, created_at)
+                         VALUES ({}, {}, {}, {}, {}, {}, {})",
+                        backend.placeholder(1),
+                        backend.placeholder(2),
+                        backend.placeholder(3),
+                        backend.placeholder(4),
+                        backend.placeholder(5),
+                        backend.placeholder(6),
+                        backend.now_sql(),
+                    ),
+                    vec![
+                        backend.uuid_value(scope.tenant_id),
+                        backend.uuid_value(chunk.session_id),
+                        revision_value(chunk.sequence)?,
+                        stored_path.clone().into(),
+                        i64::try_from(stored_size)
+                            .map_err(|_| ArtifactDataError::InvalidObject)?
+                            .into(),
+                        digest_sha256.clone().into(),
+                    ],
+                ))
+                .await
+                .map_err(storage_error)?;
+            Ok(true)
+        }
+        .await;
+
+        let inserted = match staged {
+            Ok(inserted) => inserted,
+            Err(primary) => {
+                let error = rollback_artifact_data_error(transaction, primary).await;
+                if !matches!(&error, ArtifactDataError::RollbackFailed { .. }) {
+                    delete_uploaded_object_best_effort(
+                        &self.storage,
+                        &Path::from(stored_path.as_str()),
+                    )
+                    .await;
+                }
+                return Err(error);
+            }
+        };
         if let Err(error) = commit_artifact_data_effect(transaction, guard).await {
-            if matches!(&error, ArtifactDataError::PolicyDenied) {
-                delete_uploaded_object_best_effort(&self.storage, &Path::from(stored_path)).await;
+            if !inserted || matches!(&error, ArtifactDataError::PolicyDenied) {
+                delete_uploaded_object_best_effort(
+                    &self.storage,
+                    &Path::from(stored_path.as_str()),
+                )
+                .await;
             }
             return Err(error);
+        }
+        if !inserted {
+            delete_uploaded_object_best_effort(
+                &self.storage,
+                &Path::from(stored_path.as_str()),
+            )
+            .await;
         }
         Ok(())
     }
@@ -418,13 +512,16 @@ where
         {
             ArtifactDataObjectUploadCompletion::Active(session) => session,
             ArtifactDataObjectUploadCompletion::Completed {
-                idempotency_key,
+                session,
                 completed_revision,
             } => {
-                let object = self
-                    .completed_upload_object(scope, idempotency_key)
+                let (object, expected_revision) = self
+                    .completed_upload_object(scope, session.idempotency_key)
                     .await?;
                 if object.revision != completed_revision
+                    || object.name != session.name
+                    || object.content_type != session.content_type
+                    || expected_revision != session.expected_revision
                     || object.size_bytes != request.size_bytes
                     || object.digest_sha256 != request.digest_sha256
                 {
@@ -437,7 +534,7 @@ where
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-        ensure_active_namespace(&transaction, scope, backend).await?;
+        ensure_active_object_namespace(&transaction, scope, backend).await?;
         let max_chunk_count = usize::try_from(MAX_ARTIFACT_OBJECT_UPLOAD_CHUNKS_PER_SESSION)
             .map_err(|_| ArtifactDataError::ObjectIntegrity)?;
         let query_limit = i64::try_from(MAX_ARTIFACT_OBJECT_UPLOAD_CHUNKS_PER_SESSION + 1)
@@ -522,7 +619,7 @@ where
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-        ensure_active_namespace(&transaction, scope, backend).await?;
+        ensure_active_object_namespace(&transaction, scope, backend).await?;
         let completed = transaction.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(

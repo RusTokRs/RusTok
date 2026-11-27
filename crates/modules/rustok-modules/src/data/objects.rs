@@ -4,10 +4,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use object_store::path::Path;
 use rustok_storage::{ObjectKey, ObjectScope, ObjectZone};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
-    Value as SqlValue,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use uuid::Uuid;
 
 use super::constants::*;
@@ -109,6 +106,9 @@ where
             .await?;
         let (transaction, guard) =
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        ensure_active_object_namespace(&transaction, scope, backend).await?;
         let object = find_artifact_data_object(&transaction, scope, name).await?;
         commit_artifact_data_effect(transaction, guard).await?;
         Ok(object.map(|stored| stored.object))
@@ -131,6 +131,9 @@ where
             .await?;
         let (transaction, guard) =
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        ensure_active_object_namespace(&transaction, scope, backend).await?;
         let stored = find_artifact_data_object(&transaction, scope, name).await?;
         commit_artifact_data_effect(transaction, guard).await?;
         let Some(stored) = stored else {
@@ -196,7 +199,8 @@ where
         )
         .map_err(|error| ArtifactDataError::Storage(error.to_string()))?
         .to_string();
-        self.storage
+        if let Err(error) = self
+            .storage
             .objects
             .put_opts(
                 &Path::from(generated_key.as_str()),
@@ -204,7 +208,14 @@ where
                 self.storage.put_options(&requested.content_type),
             )
             .await
-            .map_err(storage_error)?;
+        {
+            delete_uploaded_object_best_effort(
+                &self.storage,
+                &Path::from(generated_key.as_str()),
+            )
+            .await;
+            return Err(storage_error(error));
+        }
         let uploaded_path = generated_key;
         if upload.data.len() as u64 != requested.size_bytes {
             delete_uploaded_object_best_effort(&self.storage, &Path::from(uploaded_path.as_str()))
@@ -287,7 +298,7 @@ where
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-        ensure_active_namespace(&transaction, scope, backend).await?;
+        ensure_active_object_namespace(&transaction, scope, backend).await?;
         if let Some(result) =
             find_artifact_data_object_delete_operation(&transaction, scope, &request).await?
         {
@@ -356,6 +367,7 @@ where
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        ensure_active_object_namespace(&transaction, scope, backend).await?;
         let limit = i64::from(page.limit) + 1;
         let prefix = format!("{}%", escape_like_prefix(&page.prefix));
         let (query, values) = match page.after_key {
@@ -443,7 +455,7 @@ where
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-        ensure_active_namespace(&transaction, scope, backend).await?;
+        ensure_active_object_namespace(&transaction, scope, backend).await?;
         let operation =
             find_artifact_data_object_operation(&transaction, scope, upload.idempotency_key)
                 .await?;

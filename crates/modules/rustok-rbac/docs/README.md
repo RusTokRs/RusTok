@@ -385,3 +385,22 @@ requires a valid existing watermark. Drain old writers and deploy the matching
 owner together. Direct static relation writes still do not advance the global
 watermark; exact static reads/revisions remain separate. Arbitrary bulk SQL and
 whole-transaction retry policy remain open. Regression sources are unrun.
+
+## Process-local request snapshot revocation
+
+Authenticated host scopes carry the cache epoch sampled before durable grant
+resolution. A later targeted stripe or global advance, including delivery by
+the existing invalidation listener/watchdog, prevents stale scope reuse or
+unscoped fallback. Collisions are conservative denials; no per-actor map or new
+persistent generation. Direct SQL without notification, remote commit latency
+and in-flight transaction authority remain separate boundaries. Source tests unrun.
+
+## Durable static request revision checks
+
+The host retains the owner membership and role grant revision from admission.
+Scope-aware service checks and GraphQL root admission compare it through the
+single-statement owner reader. Raw relation changes and ABA cannot pass a
+subsequent matching check merely because no notification arrived. WebSocket
+revalidation also binds the revision. This adds a read, not a transaction
+fence. Service OAuth and synchronous consumers retain their separate contracts.
+Source regressions are unrun.

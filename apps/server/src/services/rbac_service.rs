@@ -13,7 +13,7 @@ use rustok_telemetry::metrics;
 
 use super::rbac_persistence::replace_user_role_via_store;
 use super::rbac_request_scope::{
-    ensure_scope_not_invalidated, permissions_for as scoped_permissions_for,
+    ensure_scope_authority, ensure_scope_not_invalidated, permissions_for as scoped_permissions_for,
     role_for as scoped_role_for,
 };
 pub use super::rbac_runtime::RbacResolverMetricsSnapshot;
@@ -70,10 +70,9 @@ impl RbacService {
     ) -> Result<bool> {
         Self::record_authz_entrypoint_call("has_permission", "library");
 
-        // Answer from the immutable request-scope snapshot when present,
-        // exactly like get_user_permissions/get_user_role: one authority
-        // resolution per request. The resolver below rejects an invalidated
-        // matching scope rather than falling back to unscoped grants.
+        // Retain the original request ceiling, but corroborate its durable
+        // static authority before evaluating the snapshot.
+        ensure_scope_authority(Some(db), tenant_id, user_id).await?;
         if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
             let allowed = evaluate_single_permission(&permissions, required_permission).allowed;
             debug!(
@@ -137,6 +136,7 @@ impl RbacService {
     ) -> Result<bool> {
         Self::record_authz_entrypoint_call("has_any_permission", "library");
 
+        ensure_scope_authority(Some(db), tenant_id, user_id).await?;
         if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
             // Matches policy-engine semantics: empty "any" set fails closed.
             let allowed = evaluate_any_permission(&permissions, required_permissions).allowed;
@@ -201,6 +201,7 @@ impl RbacService {
     ) -> Result<bool> {
         Self::record_authz_entrypoint_call("has_all_permissions", "library");
 
+        ensure_scope_authority(Some(db), tenant_id, user_id).await?;
         if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
             // Matches policy-engine semantics: empty "all" set fails closed.
             let allowed = evaluate_all_permissions(&permissions, required_permissions).allowed;
@@ -267,6 +268,7 @@ impl RbacService {
     ) -> Result<Vec<Permission>> {
         Self::record_authz_entrypoint_call("get_user_permissions", "library");
 
+        ensure_scope_authority(Some(db), tenant_id, user_id).await?;
         if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
             debug!(
                 tenant_id = %tenant_id,
@@ -311,6 +313,7 @@ impl RbacService {
             "Looking up user role"
         );
 
+        ensure_scope_authority(Some(db), tenant_id, user_id).await?;
         if let Some(role) = scoped_role_for(tenant_id, user_id) {
             return Ok(role);
         }

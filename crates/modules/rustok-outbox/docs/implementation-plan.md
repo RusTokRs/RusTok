@@ -193,3 +193,59 @@ primary clock discontinuities or guarantee exactly-once broker effects.
 Source regressions cover clock progress, token rotation and capped backoff.
 PostgreSQL contention, primary clock discontinuity handling, retry jitter and
 per-pass metrics remain pending. No compilation or tests were run.
+
+## Relay execution and retry hardening (2026-11-27, source only)
+
+Relay passes reserve at most max_concurrency rows per dispatch wave and
+advance a stable (created_at, id) cursor within the invocation. Due/reclaim
+eligibility uses one initial SQL-clock horizon. A shared pass guard serializes
+clones of a relay instance, including aborted tasks until they actually exit.
+Independent relay instances/processes still coordinate through SQL claims;
+there is no deployment-wide concurrency quota. Reports count the joined
+durable outcomes of the specific pass, not differences of lifetime counters.
+A failed or cancelled pass can have committed earlier outcomes.
+Retry uses equal jitter between half the capped exponential delay and the cap
+(with a one millisecond floor). Startup validates relay configuration before
+connecting broker transports. Waves deliberately trade some utilization for
+bounded reservation; a slower event can delay the next wave.
+Regression source covers gated slot admission, concurrent clone calls,
+per-pass accounting and jitter endpoints. Compilation, cancellation contention,
+PostgreSQL multi-process dispatch and broker behavior remain unverified.
+
+## Strict owner-operation lease expiry
+
+Owner-operation receipts now enforce a strict five-minute half-open live
+interval. A matching token cannot renew, lock, finalize or release an expired
+receipt. Sample SQL time after acquiring the receipt write lock, recheck
+expiry on reclaim and restamp fresh admission after unique-index contention.
+Completion and failure use a transaction or an owner-transaction savepoint;
+owner errors require rollback of the entire owner transaction. Expired release
+preserves the request fingerprint for exact-request reclamation. Owners must
+renew before expiry and keep owner transactions bounded; a row lock alone
+does not extend the lease. External effects need owner-specific idempotency.
+
+Source regressions cover expiry, future timestamps, stale operations and reclaimed completion. Generic finalization/release now requires TransactionTrait; cross-owner compilation and PostgreSQL lock-wait verification remain open.
+
+## Durable temporal clock authority
+
+The outbox_temporal_clock singleton stores the maximum committed SQL-clock
+observation across process restarts. Independent relay-pass, receipt admission,
+renewal/reclaim and retention boundaries advance it in a short transaction.
+Owner transactions read the floor and SQL time without taking the global writer
+lock. Missing schema, backward observations below the committed floor, slow
+observations (>2s), host-clock steps (>100ms during observation) or SQL/host
+skew outside a 2s sanity bound fail closed; host time is not a timestamp
+fallback. Relay claim refresh checks its live interval after acquiring row
+ownership. Event retention checks time again after the registry fence.
+
+This is bounded discontinuity detection, not a trusted independent distributed
+time service: simultaneous host/DB forward jumps, smaller jumps within the
+sanity bound and a stale repeatable-read snapshot are not fully fenced.
+A floor ahead of actual time blocks affected operations until time catches up
+or an explicitly reviewed operator recovery is performed. Do not reset it on
+startup. The floor begins at zero on migration; pre-upgrade history is not
+retroactively verified. Upgrade the schema before new workers and drain old
+workers that bypass the guard. A committed owner transaction may still be
+subject to cancellation and ambiguous broker effects.
+
+Migration composition and source regressions are unverified at runtime. Deployment-wide clock latching and broker ACK remain open.

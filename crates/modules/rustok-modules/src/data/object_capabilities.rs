@@ -97,7 +97,7 @@ where
         }
     }
 
-    fn with_sql_effect_authorizer(
+    pub(crate) fn with_sql_effect_authorizer(
         mut self,
         authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>,
     ) -> Self {
@@ -127,7 +127,8 @@ where
             return Err(SandboxError::CapabilityDenied(call.capability.clone()));
         }
         let decoded = decode_object_data_capability_call(call)?;
-        let effect_fence = match self.effect_authorizer.as_ref() {
+        let effect_fence: Option<Arc<dyn crate::ArtifactSqlEffectFence>> =
+            match self.effect_authorizer.as_ref() {
             Some(authorizer) => Some(Arc::from(authorizer.prepare(call).await?)),
             None => None,
         };

@@ -1543,13 +1543,15 @@ above.
 ### SQL capability effect authority
 
 The server composition injects an explicit SQL effect authorizer into the
-structured-data and event-outbox brokers. It captures the live execution lease
+structured-data, private-object, and event-outbox brokers. It captures the live execution lease
 before opening the owner transaction, reuses Auth/RBAC tenant/user/session/role
 fences on that transaction for direct user execution, and checks the locked
 credential deadline and lease membership before commit. All structured CRUD,
-list/index reads and the delete-receipt replay path use the same commit gate.
-An error rolls back the effect and its receipt; no new database connection or
-guest invocation is permitted under the fences. The events resolver also
+list/index reads and the delete-receipt replay path use the same commit gate. Object metadata
+reads/lists, object put/delete receipts, upload-session creation/claim, chunk
+append, completion transitions and their replay paths use the same guard.
+An error rolls back the owner transaction and its receipt; no new database
+connection or guest invocation is permitted under the fences. The events resolver also
 binds the complete installation subject and tenant, rejecting mismatched
 capability identity. Owner-only/background work preserves its separate
 admission contract and checks lease lifetime, without inventing user evidence.
@@ -1580,7 +1582,9 @@ selection lock, SQL admission takes all artifact slug locks in ascending
 order (platform then tenant per slug), reselects the complete artifact set,
 validates each durable sandbox policy, security revision and registry witness, and keeps the
 locks through commit. Non-SQL calls compare fresh closure evidence but remain
-preflight-only. Lifecycle retains root-only owner authority. For serving,
+preflight-only. The private-object owner separately fences its SQL
+metadata/session/chunk transitions and revalidates the execution lease after
+object bytes have been read. Lifecycle retains root-only owner authority. For serving,
 every visited module (native and artifact) also captures its canonical
 StaticTenantLifecycleStore revision and exact optional tenant override,
 including absent intent. Core overrides remain irrelevant to policy.
@@ -1643,9 +1647,37 @@ executions, stop old selection/security writers, migrate and deploy all
 writers and effect consumers together; mixed-version writers can bypass the
 fence. No transport change is required. Cross-owner lock-order verification
 remains outstanding. Independent non-server broker
-compositions still need an explicitly supplied authority. External effects and
-objects/secrets/MCP/HTTP are not covered by this SQL commit guard.
+compositions still need an explicitly supplied authority. Physical object-store
+bytes, secrets, MCP and HTTP remain outside this SQL commit guard.
 See [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).
+
+### Private object capability effect boundary
+
+The server-composed `platform.data.objects` resolver receives the same
+execution SQL effect authorizer as structured data and events. The owner locks
+the exact execution authority on every metadata transaction, including reads,
+lists, put/delete receipts, upload-session creation and completion claims,
+chunk append, completed-upload replay, and the final session transition. The
+guard rechecks installation selection, capability grant constraints, security
+revision, direct credential/RBAC fences, and lease liveness before commit. Every
+object operation also locks the serving namespace and rejects an active object
+or record-copy migration hold before reading or publishing namespace state.
+
+Object-store bytes are not part of the SQL transaction. A normal object put
+writes to a private generated key before publishing metadata; chunk append
+writes a private staging key before opening the owner transaction. The owner
+transaction then revalidates session state and quota before publishing the
+chunk row, so no SQL authority lock spans object-store I/O. A known denied
+commit rolls back SQL and compensates the just-written bytes. An ambiguous
+storage/database failure does not delete bytes whose metadata commit may have
+succeeded. Object reads commit a fenced metadata snapshot, fetch bytes outside
+the transaction, and revalidate the exact execution authority before returning
+the response. Upload completion is resumable through the durable object
+idempotency receipt and the session's original idempotency key.
+
+This is not a distributed transaction or a complete orphan-recovery guarantee.
+Production fleet/write/retention cutover, ambiguous-outcome reconciliation and
+safe orphan collection remain open.
 
 ### Cross-owner transaction ordering
 

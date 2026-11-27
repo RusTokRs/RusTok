@@ -2246,7 +2246,8 @@ existing process-local clock guard and adds no new clock source or lease.
 
 ## Artifact SQL effect fencing (2026-11-27)
 
-For server-composed `platform.data` and `platform.events` calls, the host
+For server-composed `platform.data`, `platform.data.objects` and
+`platform.events` calls, the host
 prepares the Auth clock authority before opening the effect transaction. The
 transaction locks the direct tenant/user/session/role authority where
 applicable, all artifact activation fences in the exact dependency/co-requisite
@@ -2257,14 +2258,22 @@ authority, selection generations, tenant lifecycle/override intent, deployment
 readiness and captured HTTP channel generation are also revalidated under
 their owner fences. Those locks remain held through commit; the direct
 credential deadline and execution lease are checked again immediately before
-commit. Structured-data reads/writes and event-outbox publication use this
-fence; delete-receipt replay is fenced too.
+commit. Structured-data operations, object metadata/session/chunk transitions
+and event-outbox publication use this fence; object put/delete receipts and
+upload-completion replay are fenced too. Object namespace migration holds are
+checked under the namespace row lock. Physical object-store writes and reads
+remain outside the SQL transaction; chunk staging happens before the owner
+transaction, object-read output is revalidated after the storage fetch, and
+ambiguous writes retain their durable owner receipt for retry.
 
 This is not yet a universal effect transaction. Full effective-policy revision,
 operational maintenance authority, deferred/background channel context and
-continuous worker/node liveness remain unfenced. HTTP, MCP, secrets and
-object-storage effects do not share the SQL commit fence and still rely on
-per-call admission plus owner-specific checks. The `platform.http` transport
+continuous worker/node liveness remain unfenced. HTTP, MCP and secrets do not
+share the SQL commit fence and still rely on per-call admission plus
+owner-specific checks. The `platform.data.objects` owner fences its SQL
+metadata/session/chunk transitions, but physical object-store I/O is not
+transactional with SQL and still needs complete ambiguous-outcome recovery and
+safe orphan collection. The `platform.http` transport
 also disables process/system proxies and bounds DNS plus the full request
 deadline, but this does not create an atomic external-effect fence or make
 remote timeout outcomes replay-safe. PostgreSQL cross-owner lock
@@ -2353,3 +2362,22 @@ The host-global `eventsStatus.iggyMode` field reports the initialized
 `EventRuntime` mode. An initialized Outbox-only runtime reports `inactive`;
 the deployment setting is used only before runtime initialization. This is
 diagnostic state, not proof of broker health or cross-replica readiness.
+
+## Authenticated RBAC snapshot epoch binding
+
+The common JWT extractor captures the existing process-local cache epoch before
+resolving persisted authority and checks it before returning CurrentUser. HTTP,
+GraphQL and WebSocket scopes keep that exact token; later targeted/full cache
+invalidation makes matching authenticated scope lookups and captured leases
+fail closed. Stripe collisions can conservatively reject unrelated actors.
+Trusted grant-only scopes remain task-local. Remote delivery lag, raw SQL and
+already admitted effects are not fenced; source regression unrun.
+
+## Durable static RBAC request authority
+
+The common extractor retains its original coherent static actor revision.
+Scope-aware permission and role decisions and GraphQL root admission now
+compare it with the owner read, failing closed on drift or unavailable evidence.
+WebSocket revalidation compares the revision as well as effective grants.
+The original ceiling is never refreshed. Service OAuth, module availability,
+non-scope consumers and in-flight effects are separate; source regressions unrun.

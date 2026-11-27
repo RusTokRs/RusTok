@@ -192,7 +192,7 @@ pub(crate) async fn persist_artifact_data_object(
     let quota = quota.validate()?;
     let backend =
         SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-    ensure_active_namespace(transaction, scope, backend).await?;
+    ensure_active_object_namespace(transaction, scope, backend).await?;
     if let Some((existing, expected_revision)) =
         find_artifact_data_object_operation(transaction, scope, upload.idempotency_key).await?
     {

@@ -138,7 +138,7 @@ impl OutboxRetention {
     /// delivery state cannot be bypassed by a stale candidate scan.
     pub async fn prune_once(&self) -> Result<OutboxPruneReport> {
         self.config.validate()?;
-        let cutoff = rustok_outbox_storage::database_now(&self.db).await?
+        let cutoff = rustok_outbox_storage::observe_database_clock(&self.db).await?
             .checked_sub_signed(self.config.retention)
             .ok_or_else(|| Error::Validation("outbox retention cutoff is out of range".to_string()))?;
 
@@ -170,6 +170,9 @@ impl OutboxRetention {
 
         let batch_exhausted = candidate_ids.len() as u64 >= self.config.batch_size;
         let txn = self.begin_event_delete().await?;
+        let cutoff = cutoff.min(rustok_outbox_storage::database_now(&txn).await?
+            .checked_sub_signed(self.config.retention)
+            .ok_or_else(|| Error::Validation("outbox retention cutoff is out of range".to_string()))?);
         let deleted = entity::Entity::delete_many()
             .filter(entity::Column::Id.is_in(candidate_ids))
             .filter(entity::Column::Status.eq(SysEventStatus::Dispatched))
@@ -205,13 +208,16 @@ impl OutboxRetention {
     // subscription. A SHARE table lock conflicts with the registry writer's
     // ROW EXCLUSIVE lock, including inserts of previously absent keys. Take
     // it before the final DELETE, then use a fresh READ COMMITTED snapshot.
-    // SQLite serializes writers; the DELETE is the first data statement.
+    // SQLite reserves its writer before the final clock check and DELETE.
     async fn begin_event_delete(&self) -> Result<DatabaseTransaction> {
         let txn = self.db.begin().await?;
         if self.db.get_database_backend() == DatabaseBackend::Postgres {
             txn.execute_unprepared("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
                 .await?;
             txn.execute_unprepared("LOCK TABLE sys_event_consumers IN SHARE MODE")
+                .await?;
+        } else if self.db.get_database_backend() == DatabaseBackend::Sqlite {
+            txn.execute_unprepared("UPDATE sys_events SET claimed_at = claimed_at WHERE 1 = 0")
                 .await?;
         }
         Ok(txn)
@@ -244,6 +250,9 @@ impl OutboxRetention {
             }
             if !candidate_ids.is_empty() {
                 let txn = self.begin_event_delete().await?;
+                let cutoff = cutoff.min(rustok_outbox_storage::database_now(&txn).await?
+                    .checked_sub_signed(failed_retention)
+                    .ok_or_else(|| Error::Validation("outbox failed retention cutoff is out of range".to_string()))?);
                 pruned_failed = entity::Entity::delete_many()
                     .filter(entity::Column::Id.is_in(candidate_ids))
                     .filter(entity::Column::Status.eq(SysEventStatus::Failed))

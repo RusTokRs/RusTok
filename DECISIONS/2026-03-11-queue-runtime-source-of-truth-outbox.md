@@ -35,3 +35,18 @@ For these requirements, the codebase already has a specialized layer `rustok-out
 
 **Follow-up**
 - Maintain references to this ADR in server runtime governance documents and in the central event architecture as a policy anchor.
+
+## Relay execution boundary
+
+Relay passes reserve at most max_concurrency rows per dispatch wave and
+advance a stable (created_at, id) cursor within the invocation. Due/reclaim
+eligibility uses one initial SQL-clock horizon. A shared pass guard serializes
+clones of a relay instance, including aborted tasks until they actually exit.
+Independent relay instances/processes still coordinate through SQL claims;
+there is no deployment-wide concurrency quota. Reports count the joined
+durable outcomes of the specific pass, not differences of lifetime counters.
+A failed or cancelled pass can have committed earlier outcomes.
+Retry uses equal jitter between half the capped exponential delay and the cap
+(with a one millisecond floor). Startup validates relay configuration before
+connecting broker transports. Waves deliberately trade some utilization for
+bounded reservation; a slower event can delay the next wave.

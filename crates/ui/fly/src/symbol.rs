@@ -384,6 +384,12 @@ pub fn convert_component_to_symbol(
         FlyError::InvalidSymbolReference("the page root cannot become a symbol".to_string())
     })?;
     let fragment = ProjectFragment::from_component(document, component_id)?;
+    if !fragment.extensions.is_empty() {
+        return Err(FlyError::InvalidSymbolReference(
+            "symbol definitions cannot yet preserve component runtime bindings, conditions, or repeaters"
+                .to_string(),
+        ));
+    }
     let definition = SymbolDescriptor {
         id: symbol_id.to_string(),
         name,
@@ -1381,6 +1387,37 @@ mod tests {
             .collect();
         assert!(codes.contains(&"symbol_reference_missing"));
         assert!(codes.contains(&"symbol_instance_with_children"));
+    }
+
+    #[test]
+    fn symbol_conversion_rejects_runtime_catalogs_it_cannot_preserve() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flyRuntimeBindings": [{
+                "id": "binding-1",
+                "component_id": "hero",
+                "path": "user.name",
+                "target": "attribute",
+                "name": "aria-label"
+            }],
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{ "id": "hero", "type": "section" }]
+                }
+            }]
+        }))
+        .expect("document");
+        let before = document.clone();
+
+        let error = convert_component_to_symbol(&document, "hero", "cta", None)
+            .expect_err("conversion must not silently discard runtime bindings");
+
+        assert!(matches!(
+            error,
+            FlyError::InvalidSymbolReference(message) if message.contains("runtime bindings")
+        ));
+        assert_eq!(document, before);
     }
 
     #[test]

@@ -104,6 +104,7 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
                 "m20261127_000008_sqlite_oauth_user_cascade",
                 "m20261126_000060_enforce_oauth_family_identity",
                 "m20250101_000004_create_sessions",
+                "m20261127_000011_session_evidence_integrity",
             ],
         ),
         MigrationDependencyDescriptor::new(

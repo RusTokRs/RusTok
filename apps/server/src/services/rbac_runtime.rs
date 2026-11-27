@@ -39,6 +39,7 @@ impl From<rustok_rbac::PermissionCacheResolutionError<sea_orm::DbErr>> for Error
 /// Feed authenticated request evidence to the canonical owner policy engine.
 /// A matching snapshot preserves the caller's permission ceiling.
 struct RequestPermissionResolver {
+    db: DatabaseConnection,
     runtime: ServerRuntimePermissionResolver,
 }
 
@@ -51,6 +52,8 @@ impl PermissionResolver for RequestPermissionResolver {
         tenant_id: &uuid::Uuid,
         user_id: &uuid::Uuid,
     ) -> Result<PermissionResolution> {
+        super::rbac_request_scope::ensure_scope_authority(Some(&self.db), tenant_id, user_id)
+            .await?;
         if let Some(permissions) = super::rbac_request_scope::permissions_for(tenant_id, user_id) {
             return Ok(PermissionResolution {
                 permissions,
@@ -174,6 +177,12 @@ fn current_permission_cache_token(key: &PermissionCacheKey) -> Option<u64> {
     Some(permission_cache_token(global_epoch, key_epoch))
 }
 
+/// The same bounded local token fences cache fills and admitted request scopes.
+/// None is terminal epoch exhaustion, never a usable token.
+pub(crate) fn request_authority_epoch(tenant_id: uuid::Uuid, actor_id: uuid::Uuid) -> Option<u64> {
+    current_permission_cache_token(&(tenant_id, actor_id))
+}
+
 fn advance_permission_cache_epoch(epoch: &AtomicU32) {
     let mut current = epoch.load(Ordering::Acquire);
     loop {
@@ -225,6 +234,7 @@ pub(crate) async fn authorize_request(
 ) -> Result<AuthorizationRuntimeOutcome> {
     let started_at = Instant::now();
     let resolver = RequestPermissionResolver {
+        db: db.clone(),
         runtime: resolver(db),
     };
     let decision = match check {
