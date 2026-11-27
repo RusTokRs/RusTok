@@ -1158,42 +1158,52 @@ fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
             format!("symbol definitions form a reference cycle: {cycle}"),
         ));
     }
-    document.project().visit_components(|component, _, path| {
-        let Some(symbol_id) = component.symbol_id.as_deref() else {
-            return;
+    for instance in crate::symbol::symbol_instances_in_document(document) {
+        let path = instance.path;
+        if instance.malformed_symbol_id {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "invalid_symbol_id",
+                &path,
+                "symbol reference must be a string identifier",
+            ));
+            continue;
+        }
+        let Some(symbol_id) = instance.symbol_id.as_deref() else {
+            continue;
         };
         if crate::validate_identifier(symbol_id).is_err() {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
                 "invalid_symbol_id",
-                path,
+                &path,
                 format!("symbol reference `{symbol_id}` is not a valid identifier"),
             ));
         } else if !catalog.contains_key(symbol_id) {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
                 "symbol_reference_missing",
-                path,
+                &path,
                 format!("component references missing symbol `{symbol_id}`"),
             ));
         }
-        if component.id.is_none() {
+        if instance.component_id.is_none() {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
                 "symbol_instance_without_id",
-                path,
+                &path,
                 "symbol instance must carry a component id",
             ));
         }
-        if !component.components.is_empty() {
+        if instance.has_children {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
                 "symbol_instance_with_children",
-                path,
+                &path,
                 "symbol instance must not carry children at rest; definition content is expanded at resolution",
             ));
         }
-    });
+    }
 }
 
 #[cfg(test)]
@@ -1372,6 +1382,47 @@ mod tests {
 
         assert!(report.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "page_content_slot_cannot_have_children"
+        }));
+    }
+
+    #[test]
+    fn validates_symbol_references_inside_object_valued_opaque_children() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [{
+                "id": "cta",
+                "components": [{ "id": "cta-1", "type": "text" }]
+            }],
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": {
+                        "id": "opaque-parent",
+                        "type": "custom-wrapper",
+                        "components": {
+                            "id": "nested-slot",
+                            "type": "symbol",
+                            "symbolId": "missing",
+                            "components": { "id": "opaque-child" }
+                        }
+                    }
+                }
+            }]
+        }))
+        .expect("document");
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "symbol_reference_missing"
+                && diagnostic.path.contains("nested-slot")
+        }));
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "symbol_instance_with_children"
+                && diagnostic.path.contains("nested-slot")
         }));
     }
 
