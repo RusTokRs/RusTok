@@ -328,6 +328,64 @@ async fn preview_rejects_site_symbols_whose_stored_identity_does_not_match_conte
 }
 
 #[tokio::test]
+async fn preview_ignores_corrupt_symbol_rows_from_other_locales() -> TestResult<()> {
+    let db = fixture().await?;
+    let tenant = Uuid::new_v4();
+    let service = PageTemplateService::new(db.clone());
+    let actor = SecurityContext::system();
+    symbol(&db, tenant, "en", "header").await?;
+    symbol(&db, tenant, "ru", "header").await?;
+
+    let row = site_symbol::Entity::find_by_id((
+        tenant,
+        "ru".to_string(),
+        "header".to_string(),
+    ))
+    .one(&db)
+    .await?
+    .ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Russian site symbol fixture was not inserted",
+        )
+    })?;
+    let mut active: site_symbol::ActiveModel = row.into();
+    active.content = Set(json!({
+        "id": "different-symbol",
+        "components": [{
+            "id": "section",
+            "type": "text",
+            "content": "Corrupt Russian identity"
+        }]
+    }));
+    active.update(&db).await?;
+
+    let source = json!({
+        "pages": [{
+            "id": "home",
+            "flyPageMeta": {
+                "title": "Home",
+                "description": "Preview",
+                "slug": "home"
+            },
+            "component": { "id": "root", "type": "wrapper", "components": [] }
+        }]
+    })
+    .to_string();
+
+    service
+        .preview_document(tenant, &actor, "default", "en", &source)
+        .await
+        .expect("English preview must not read the Russian catalog");
+    let error = service
+        .preview_document(tenant, &actor, "default", "ru", &source)
+        .await
+        .expect_err("Russian preview must reject its own mismatched symbol identity");
+    assert!(error.to_string().contains("identity mismatch"));
+    Ok(())
+}
+
+#[tokio::test]
 async fn authoring_requires_tenant_wide_authority() -> TestResult<()> {
     let db = fixture().await?;
     let tenant = Uuid::new_v4();
