@@ -1,5 +1,6 @@
 use crate::{
-    AssetCommand, AssetDescriptor, ComponentNode, EditorCommand, FlyEditor, FlyError, FlyResult,
+    AssetCommand, AssetDescriptor, ComponentChildren, ComponentNode, EditorCommand, FlyEditor,
+    FlyError, FlyResult,
     IdGenerator, ProjectDocument, StyleRuleCommand, StyleRuleDescriptor,
 };
 use serde::{Deserialize, Serialize};
@@ -255,10 +256,13 @@ fn collect_component_asset_ids(
             {
                 asset_ids.insert(asset_id.clone());
             }
-            if let Some(children) = object.children() {
-                for child in children {
-                    collect_component_asset_ids(child, asset_ids);
+            match &object.components {
+                ComponentChildren::Nodes(children) => {
+                    for child in children {
+                        collect_component_asset_ids(child, asset_ids);
+                    }
                 }
+                ComponentChildren::Opaque(raw) => collect_opaque_asset_ids(raw, asset_ids),
             }
         }
         ComponentNode::Opaque(raw) => collect_opaque_asset_ids(raw, asset_ids),
@@ -266,21 +270,28 @@ fn collect_component_asset_ids(
 }
 
 fn collect_opaque_asset_ids(raw: &Value, asset_ids: &mut BTreeSet<String>) {
-    let Some(object) = raw.as_object() else {
-        return;
-    };
-    if let Some(attributes) = object.get("attributes").and_then(Value::as_object)
-        && let Some(asset_id) = attributes
-            .get("data-fly-asset-id")
-            .and_then(Value::as_str)
-        && !asset_id.trim().is_empty()
-    {
-        asset_ids.insert(asset_id.to_string());
-    }
-    if let Some(children) = object.get("components").and_then(Value::as_array) {
-        for child in children {
-            collect_opaque_asset_ids(child, asset_ids);
+    match raw {
+        Value::Array(children) => {
+            for child in children {
+                collect_opaque_asset_ids(child, asset_ids);
+            }
         }
+        Value::Object(object) => {
+            if let Some(attributes) = object.get("attributes").and_then(Value::as_object)
+                && let Some(asset_id) = attributes
+                    .get("data-fly-asset-id")
+                    .and_then(Value::as_str)
+                && !asset_id.trim().is_empty()
+            {
+                asset_ids.insert(asset_id.to_string());
+            }
+            if let Some(children) = object.get("components").and_then(Value::as_array) {
+                for child in children {
+                    collect_opaque_asset_ids(child, asset_ids);
+                }
+            }
+        }
+        _ => {}
     }
 }
 
