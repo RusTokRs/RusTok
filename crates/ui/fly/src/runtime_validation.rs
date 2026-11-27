@@ -8,16 +8,24 @@ use crate::{
 use std::collections::BTreeSet;
 
 pub fn validate_runtime_extensions(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
-    let mut diagnostics = extract_runtime_context_contract(document).definition_diagnostics;
-    diagnostics.extend(validate_project_locale_policy(document));
-    diagnostics.extend(validate_translation_definitions(document));
-    diagnostics.extend(validate_localized_page_routes(document));
-    diagnostics.extend(validate_internal_page_links(document));
-    diagnostics.extend(validate_component_actions(document));
-    diagnostics.extend(validate_component_public_urls(document));
-    diagnostics.extend(validate_binding_definitions(document));
-    diagnostics.extend(validate_dynamic_definitions(document));
-    diagnostics.extend(analyze_runtime_context_dependencies(document).diagnostics);
+    let resolved_document = if crate::document_has_symbol_instances(document) {
+        crate::resolve_symbol_instances(document).ok()
+    } else {
+        None
+    };
+    let effective_document = resolved_document.as_ref().unwrap_or(document);
+
+    let mut diagnostics =
+        extract_runtime_context_contract(effective_document).definition_diagnostics;
+    diagnostics.extend(validate_project_locale_policy(effective_document));
+    diagnostics.extend(validate_translation_definitions(effective_document));
+    diagnostics.extend(validate_localized_page_routes(effective_document));
+    diagnostics.extend(validate_internal_page_links(effective_document));
+    diagnostics.extend(validate_component_actions(effective_document));
+    diagnostics.extend(validate_component_public_urls(effective_document));
+    diagnostics.extend(validate_binding_definitions(effective_document));
+    diagnostics.extend(validate_dynamic_definitions(effective_document));
+    diagnostics.extend(analyze_runtime_context_dependencies(effective_document).diagnostics);
     deduplicate_diagnostics(&mut diagnostics);
     diagnostics
 }
