@@ -523,3 +523,11 @@ exists.
 - GraphQL role locator integrity: update and delete revalidate the exact tenant,
   UUID and slug under the role lock; stale locators cannot bypass break-glass
   protection. SQLite transport regressions authored, unrun.
+
+- Artifact catalog lock closure: admission orders permission and normalized
+  locale keys; projection orders persisted keys. Migration 000016 covers
+  installation and translation FK parent waits and relation admission for
+  existing artifact grant/receipt guards. Opt-in PostgreSQL regression covers
+  parent row/table contention, retry, wrong tuple and metadata-only update.
+  Compilation and runtime evidence remain pending; arbitrary bulk DML,
+  generation coupling for direct relation writes and cross-owner edges remain open.

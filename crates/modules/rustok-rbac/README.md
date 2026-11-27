@@ -230,3 +230,9 @@ PostgreSQL uses a nonwaiting per-identity advisory fence for witness inserts.
 The migration cannot reconstruct identities deleted before cutover, and does
 not protect privileged DDL/restore, other authority kinds, or SQLite
 natural-key REPLACE with a different UUID. Source regressions are unrun.
+
+Artifact catalog admission orders permission keys and normalized localization
+keys; projection reads the corresponding persisted keys in order. Migration
+000016 rejects late PostgreSQL catalog FK parent waits and adds nonwaiting
+relation admission to artifact grant/receipt guards. SQLite retains its
+serialized writer and existing FKs. PostgreSQL regression authored, unrun.

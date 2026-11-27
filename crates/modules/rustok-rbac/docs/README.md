@@ -347,3 +347,16 @@ PostgreSQL uses a nonwaiting per-identity advisory fence for witness inserts.
 The migration cannot reconstruct identities deleted before cutover, and does
 not protect privileged DDL/restore, other authority kinds, or SQLite
 natural-key REPLACE with a different UUID. Source regressions are unrun.
+
+## Artifact catalog parent and batch lock order
+
+Release admission visits permission keys and canonical localization keys in
+sorted order, independent of caller ordering. Scoped projection orders its
+release definition and translation reads by the same logical keys within a
+backend. Migration 000016 guards installation-to-definition and both
+translation FK edges with relation and exact parent KEY SHARE NOWAIT; metadata
+updates with unchanged translation parent need no new lock. Existing artifact
+grant/receipt guards also take parent relation locks NOWAIT. Contention rejects
+the transaction with 55P03; retry only the complete owner transaction. SQLite
+retains serialized writers and existing FKs. This is not a proof of arbitrary
+bulk SQL or global deadlock freedom; PostgreSQL regression unrun.

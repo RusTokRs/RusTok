@@ -27,6 +27,7 @@ pub(crate) mod m20261127_000003_create_rbac_role_grant_revision;
 mod m20261127_000006_fence_rbac_relation_parents;
 mod m20261127_000012_fence_rbac_invalidation_generation;
 mod m20261127_000013_preserve_rbac_identity_witnesses;
+mod m20261127_000016_fence_artifact_catalog_parents;
 mod membership_revision;
 pub mod module;
 pub mod ports;

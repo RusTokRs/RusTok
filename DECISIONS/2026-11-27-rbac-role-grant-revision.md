@@ -88,3 +88,14 @@ repair remain outside a complete cross-owner ordering proof. PostgreSQL
 regression evidence is authored but unrun.
 The PostgreSQL regression covers both historical opposite lock orders.
 Compilation and execution evidence are pending.
+
+## Artifact catalog lock ordering extension (2026-11-27)
+
+The separate artifact vocabulary owner orders admission by permission key and
+normalized locale; projection orders persisted keys. PostgreSQL migration 000016
+prevents late waits on the exact installation and translation FK parents and
+on relation locks for existing grant/receipt parent guards. Canonical FK
+constraints remain; metadata-only translation updates require no new parent.
+55P03 requires whole-transaction retry. SQLite retains writer serialization.
+This does not extend static role revision authority to artifact vocabulary or
+prove global deadlock freedom. Source regression authored, unrun.
