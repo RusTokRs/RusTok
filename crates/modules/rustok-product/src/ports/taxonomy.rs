@@ -125,7 +125,9 @@ pub trait ProductTaxonomyPort: TaxonomyTermNamesReadPort {
         input: ProductTaxonomyCategoryTranslationInput,
     ) -> Result<(), CommerceError>;
 
-    /// Loads scoped product categories from the taxonomy provider.
+    /// Loads scoped product categories from the taxonomy provider without inventing
+    /// root placements for missing hierarchy rows. Only an explicitly empty ID
+    /// selection may succeed without an available provider.
     async fn load_scoped_categories(
         &self,
         conn: TaxonomyConnection<'_>,
@@ -206,17 +208,44 @@ impl ProductTaxonomyPort for NoopProductTaxonomyPort {
         &self,
         _conn: TaxonomyConnection<'_>,
         _tenant_id: Uuid,
-        _category_ids: Option<&[Uuid]>,
+        category_ids: Option<&[Uuid]>,
         _locale: &str,
         _fallback_locale: Option<&str>,
     ) -> Result<Vec<ProductTaxonomyCategorySnapshot>, CommerceError> {
-        Ok(Vec::new())
+        if category_ids.is_some_and(|ids| ids.is_empty()) {
+            return Ok(Vec::new());
+        }
+        Err(rustok_core::error::Error::External(
+            "Product category reads require an active Taxonomy capability".to_owned(),
+        )
+        .into())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn missing_taxonomy_does_not_hide_categories() {
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let tenant_id = Uuid::new_v4();
+        let category_ids = [Uuid::new_v4()];
+        for selection in [None, Some(category_ids.as_slice())] {
+            let result = NoopProductTaxonomyPort
+                .load_scoped_categories((&db).into(), tenant_id, selection, "en", None)
+                .await;
+            assert!(matches!(
+                result,
+                Err(CommerceError::Core(rustok_core::error::Error::External(_)))
+            ));
+        }
+        let empty = NoopProductTaxonomyPort
+            .load_scoped_categories((&db).into(), tenant_id, Some(&[]), "en", None)
+            .await
+            .unwrap();
+        assert!(empty.is_empty());
+    }
 
     #[tokio::test]
     async fn missing_taxonomy_does_not_hide_stored_tag_relations() {
