@@ -192,3 +192,49 @@ consent-presence check alone could not distinguish an old epoch from a new grant
 - OAuth access validation now performs a durable row lookup. This is the
   intended cost of pre-TTL revocation. Operators must run the additive migration
   before enabling the fence in production.
+
+## Delegated user-administration transaction extension (2026-11-27)
+
+An authenticated scope carries the exact admitted access registration identity,
+client/app, digest, original scopes, precise issuance timestamp and consent
+epoch. It is not a client-supplied mutation parameter and the digest is omitted
+from Debug. GraphQL HTTP and WebSocket initialization must not replace it with
+a grant-only scope. A delegated user-admin write acquires PostgreSQL tenant
+key-share protection (manifest reconciliation locks tenant before apps), then
+the OAuth app mutation fence, ordered user rows and exact access registration,
+then the existing invite/module-policy/role fences. SQLite reserves the writer
+on the app lock before transactional reads. Validate the live app grant/scopes,
+registration subject, identity, digest, epoch, revocation and deadline, and
+live consent using the same scope check as the extractor. Filter current grants
+through the original scopes; the original request grant ceiling remains
+independently required. Keep credential fences through commit; do not reacquire
+app locks after users. No raw access JWT is retained in the request scope.
+
+This source slice does not cover service-principal administration, OAuth
+app/consent admin mutations, RBAC role-definition writes, artifact permissions,
+all tenant activity races or global cross-module deadlock freedom. SQLite
+regression authored, compile and live PostgreSQL contention tests unrun.
+
+## OAuth administration owner-transaction extension (2026-11-27)
+
+All six OAuth admin writes now enter the host provider's common authority
+decision before invoking the owner service on the same transaction. The
+transport guard is preflight only. Direct consent requires real direct-session
+evidence, not a grant-only scope or principal-kind label. Service JWTs retain
+the same exact registration evidence as delegated JWTs; service subject is the
+issuer app rather than a user row. Live service grants are scope- and
+module-policy-filtered. For app create/update/rotate/revoke require both the
+original request and current settings authority; create/update and rotation
+also check the corresponding delegation ceiling. App/tenant-bound prepared
+secret material is hashed outside the SQL transaction; rotation preserves CAS.
+Response projection and final credential time checks occur before commit.
+
+Acquire tenant FK protection before UUID-ordered issuer and target OAuth app
+locks, then actor user and direct session or OAuth registration, then module
+policy and role grants. An operation may deliberately revoke its own
+credential; the authorization decision is made under the original live
+fences before the write, and the original deadline remains exclusive.
+This is a source-level implementation, not evidence of global deadlock
+freedom. PostgreSQL tenant key-share protects FK ordering, not all changes
+to tenant activity; the latter and RBAC/artifact transaction authority still
+need cross-module verification. Compile and regression tests remain unrun.

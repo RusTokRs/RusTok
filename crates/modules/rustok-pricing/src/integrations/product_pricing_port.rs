@@ -2,6 +2,10 @@
 //!
 //! Provides transactional price authoring/cleanup and catalog price projections without
 //! exposing private Pricing persistence entities or table structures to Product.
+use rust_decimal::Decimal;
+use rustok_core::events::ValidateEvent;
+use rustok_events::DomainEvent;
+use rustok_outbox::TransactionalEventBus;
 
 use async_trait::async_trait;
 use rustok_commerce_foundation::CommerceError as PricingError;
@@ -36,6 +40,43 @@ fn sort_catalog_base_prices(models: &mut [price::Model]) {
             .then_with(|| left_is_secondary.cmp(&right_is_secondary))
             .then_with(|| left.currency_code.cmp(&right.currency_code))
     });
+}
+
+fn price_event_amount(amount: Decimal, currency: &str) -> Result<i64, ProductError> {
+    crate::services::pricing::types::validate_price_precision(amount, None, currency)
+        .map_err(map_catalog_scope_error)?;
+    rustok_core::money::to_minor_units_exact(amount, currency).map_err(|_| {
+        ProductError::Validation(
+            "Price amount cannot be represented exactly in currency minor units".to_owned(),
+        )
+    })
+}
+
+fn price_event_predecessor(saved: &price::Model) -> Result<i64, ProductError> {
+    let currency = saved.currency_code.trim().to_ascii_uppercase();
+    if saved.currency_code != currency {
+        return Err(ProductError::Conflict(
+            "Stored base price currency is not canonical".to_owned(),
+        ));
+    }
+    price_event_amount(saved.amount, &currency)
+}
+
+fn price_event_successor(
+    saved: &price::Model,
+    authored: &InitialPrice,
+) -> Result<i64, ProductError> {
+    let currency = authored.currency_code.trim().to_ascii_uppercase();
+    if saved.currency_code != currency
+        || saved.amount != authored.amount
+        || saved.compare_at_amount != authored.compare_at_amount
+    {
+        return Err(ProductError::Validation(
+            "Persisted price differs from the authored price".to_owned(),
+        ));
+    }
+    validate_catalog_price_precision(std::slice::from_ref(authored))?;
+    price_event_amount(saved.amount, &saved.currency_code)
 }
 
 fn map_catalog_scope_error(error: PricingError) -> ProductError {
@@ -75,11 +116,40 @@ fn canonicalize_initial_price_channel_scope(
 /// Adapter providing ProductPricingPort backed by the native Pricing database.
 pub struct PricingProductPricingPortAdapter {
     _db: DatabaseConnection,
+    event_bus: TransactionalEventBus,
 }
 
 impl PricingProductPricingPortAdapter {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { _db: db }
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        Self { _db: db, event_bus }
+    }
+
+    async fn publish_price_updated_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        variant_id: Uuid,
+        product_id: Uuid,
+        currency: String,
+        old_amount: Option<i64>,
+        new_amount: i64,
+    ) -> Result<(), ProductError> {
+        let event = DomainEvent::PriceUpdated {
+            variant_id,
+            product_id,
+            currency,
+            old_amount,
+            new_amount,
+        };
+        event
+            .validate()
+            .map_err(|error| ProductError::Validation(format!("Invalid price event: {error}")))?;
+        let _event_id = self
+            .event_bus
+            .publish_in_tx_with_envelope_id(txn, tenant_id, Some(actor_id), event)
+            .await?;
+        Ok(())
     }
 }
 
@@ -89,21 +159,21 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
         &self,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
-        prices: Vec<InitialPrice>,
-    ) -> Result<(), rustok_product::CommerceError> {
-        validate_catalog_price_precision(&prices)?;
-        let mut prices = prices;
-        let mut validated_variants = HashSet::new();
+        actor_id: Uuid,
+        mut prices: Vec<InitialPrice>,
+    ) -> Result<(), ProductError> {
+        let mut variant_products = HashMap::new();
         let mut identities = HashSet::new();
         for price in &mut prices {
-            if validated_variants.insert(price.variant_id) {
-                crate::services::pricing::scope::load_variant_for_update_in_tx(
+            if !variant_products.contains_key(&price.variant_id) {
+                let variant = crate::services::pricing::scope::load_variant_for_update_in_tx(
                     txn,
                     tenant_id,
                     price.variant_id,
                 )
                 .await
                 .map_err(map_catalog_scope_error)?;
+                variant_products.insert(price.variant_id, variant.product_id);
             }
             let channel_scope = crate::services::pricing::scope::resolve_channel_scope_in_tx(
                 txn,
@@ -120,32 +190,203 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
                 price.currency_code.trim().to_ascii_uppercase(),
             );
             if !identities.insert(identity) {
-                return Err(rustok_product::CommerceError::Validation(
+                return Err(ProductError::Validation(
                     "Duplicate initial price for the same variant, channel and currency"
                         .to_owned(),
                 ));
             }
         }
 
+        validate_catalog_price_precision(&prices)?;
+        let authored_prices = prices.clone();
         BootstrapService::create_initial_prices_in_tx(txn, prices)
             .await
-            .map_err(rustok_product::CommerceError::from)
+            .map_err(ProductError::from)?;
+
+        if authored_prices.is_empty() {
+            return Ok(());
+        }
+
+        let variant_ids = variant_products.keys().copied().collect::<Vec<_>>();
+        let mut saved_prices = BootstrapService::load_prices_for_variants(txn, &variant_ids)
+            .await
+            .map_err(ProductError::from)?;
+        saved_prices.sort_by(|left, right| {
+            left.variant_id
+                .cmp(&right.variant_id)
+                .then_with(|| left.channel_id.cmp(&right.channel_id))
+                .then_with(|| left.channel_slug.cmp(&right.channel_slug))
+                .then_with(|| left.currency_code.cmp(&right.currency_code))
+        });
+        if saved_prices.len() != authored_prices.len() {
+            return Err(ProductError::Conflict(
+                "Persisted initial prices could not be matched to their inputs".to_owned(),
+            ));
+        }
+
+        let mut seen = HashSet::new();
+        for saved in saved_prices {
+            if saved.price_list_id.is_some()
+                || saved.region_id.is_some()
+                || saved.min_quantity.is_some()
+                || saved.max_quantity.is_some()
+            {
+                return Err(ProductError::Conflict(
+                    "Unexpected contextual price found during initial price verification"
+                        .to_owned(),
+                ));
+            }
+            let authored = authored_prices
+                .iter()
+                .find(|candidate| {
+                    candidate.variant_id == saved.variant_id
+                        && candidate.channel_id == saved.channel_id
+                        && candidate.channel_slug.as_deref() == saved.channel_slug.as_deref()
+                        && candidate
+                            .currency_code
+                            .trim()
+                            .eq_ignore_ascii_case(&saved.currency_code)
+                })
+                .ok_or_else(|| {
+                    ProductError::Conflict(
+                        "Persisted initial price identity differs from its input".to_owned(),
+                    )
+                })?;
+            let identity = (
+                saved.variant_id,
+                saved.channel_id,
+                saved.channel_slug.clone(),
+                saved.currency_code.clone(),
+            );
+            if !seen.insert(identity) {
+                return Err(ProductError::Conflict(
+                    "Persisted initial price identity is ambiguous".to_owned(),
+                ));
+            }
+            let product_id = variant_products.get(&saved.variant_id).copied().ok_or_else(|| {
+                ProductError::Conflict(
+                    "Initial price variant lost its tenant-owned Product binding".to_owned(),
+                )
+            })?;
+            let new_amount = price_event_successor(&saved, authored)?;
+            self.publish_price_updated_in_tx(
+                txn,
+                tenant_id,
+                actor_id,
+                saved.variant_id,
+                product_id,
+                saved.currency_code,
+                None,
+                new_amount,
+            )
+            .await?;
+        }
+
+        if seen.len() != authored_prices.len() {
+            return Err(ProductError::Conflict(
+                "Not every initial price produced a persisted successor".to_owned(),
+            ));
+        }
+        Ok(())
     }
 
     async fn replace_catalog_base_prices_in_tx(
         &self,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
+        actor_id: Uuid,
         variant_id: Uuid,
         prices: Vec<InitialPrice>,
-    ) -> Result<(), rustok_product::CommerceError> {
+    ) -> Result<(), ProductError> {
+        let variant = crate::services::pricing::scope::load_variant_for_update_in_tx(
+            txn,
+            tenant_id,
+            variant_id,
+        )
+        .await
+        .map_err(map_catalog_scope_error)?;
+        if prices.iter().any(|price| {
+            price.variant_id != variant_id
+                || price.channel_id.is_some()
+                || price.channel_slug.is_some()
+        }) {
+            return Err(ProductError::Validation(
+                "Catalog base-price replacement accepts only unscoped prices for its Variant"
+                    .to_owned(),
+            ));
+        }
         validate_catalog_price_precision(&prices)?;
-        crate::services::pricing::scope::load_variant_for_update_in_tx(txn, tenant_id, variant_id)
-            .await
-            .map_err(map_catalog_scope_error)?;
+
+        let mut old_amounts = HashMap::new();
+        if !prices.is_empty() {
+            let existing =
+                BootstrapService::load_catalog_base_prices_for_variants(txn, &[variant_id])
+                    .await
+                    .map_err(ProductError::from)?;
+            for saved in existing {
+                let currency = saved.currency_code.clone();
+                let amount = price_event_predecessor(&saved)?;
+                if old_amounts.insert(currency, amount).is_some() {
+                    return Err(ProductError::Conflict(
+                        "Ambiguous stored base prices prevent catalog replacement".to_owned(),
+                    ));
+                }
+            }
+        }
+
+        let mut authored_by_currency = HashMap::new();
+        for authored in prices.iter().cloned() {
+            let currency = authored.currency_code.trim().to_ascii_uppercase();
+            if authored_by_currency.insert(currency, authored).is_some() {
+                return Err(ProductError::Validation(
+                    "Duplicate catalog base-price currency".to_owned(),
+                ));
+            }
+        }
+
         BootstrapService::replace_catalog_base_prices_in_tx(txn, variant_id, prices)
             .await
-            .map_err(rustok_product::CommerceError::from)
+            .map_err(ProductError::from)?;
+
+        let mut saved_prices =
+            BootstrapService::load_catalog_base_prices_for_variants(txn, &[variant_id])
+                .await
+                .map_err(ProductError::from)?;
+        saved_prices.sort_by(|left, right| left.currency_code.cmp(&right.currency_code));
+        if saved_prices.len() != authored_by_currency.len() {
+            return Err(ProductError::Conflict(
+                "Persisted catalog base prices could not be matched to their inputs".to_owned(),
+            ));
+        }
+
+        for saved in saved_prices {
+            let currency = saved.currency_code.clone();
+            let authored = authored_by_currency.remove(&currency).ok_or_else(|| {
+                ProductError::Conflict(
+                    "Persisted catalog base-price currency differs from its input".to_owned(),
+                )
+            })?;
+            let new_amount = price_event_successor(&saved, &authored)?;
+            let old_amount = old_amounts.remove(&currency);
+            self.publish_price_updated_in_tx(
+                txn,
+                tenant_id,
+                actor_id,
+                variant_id,
+                variant.product_id,
+                currency,
+                old_amount,
+                new_amount,
+            )
+            .await?;
+        }
+
+        if !authored_by_currency.is_empty() {
+            return Err(ProductError::Conflict(
+                "Not every catalog base price produced a persisted successor".to_owned(),
+            ));
+        }
+        Ok(())
     }
 
     async fn delete_prices_for_variants_in_tx(
@@ -360,8 +601,11 @@ fn select_storefront_list_price_candidates<'a>(
 }
 
 /// Creates an in-process adapter implementing `ProductPricingPort`.
-pub fn in_process_product_pricing_port(db: DatabaseConnection) -> Arc<dyn ProductPricingPort> {
-    Arc::new(PricingProductPricingPortAdapter::new(db))
+pub fn in_process_product_pricing_port(
+    db: DatabaseConnection,
+    event_bus: TransactionalEventBus,
+) -> Arc<dyn ProductPricingPort> {
+    Arc::new(PricingProductPricingPortAdapter::new(db, event_bus))
 }
 
 #[cfg(test)]
@@ -745,4 +989,31 @@ mod tests {
         assert!(!is_storefront_list_price_candidate(&min_tier));
         assert!(!is_storefront_list_price_candidate(&max_tier));
     }
+    #[test]
+    fn price_event_amount_requires_exact_currency_minor_units() {
+        assert_eq!(
+            price_event_amount(Decimal::new(1234, 2), "USD").unwrap(),
+            1234
+        );
+        assert!(price_event_amount(Decimal::new(12345, 3), "USD").is_err());
+    }
+
+    #[test]
+    fn price_event_successor_uses_the_persisted_exact_amount() {
+        let authored = initial_price(Uuid::from_u128(100));
+        let saved = price::Model {
+            amount: authored.amount,
+            compare_at_amount: authored.compare_at_amount,
+            ..candidate(1, None, None, None, None, None, 0)
+        };
+
+        assert_eq!(price_event_successor(&saved, &authored).unwrap(), 1000);
+
+        let mismatched = price::Model {
+            amount: Decimal::new(1100, 2),
+            ..saved
+        };
+        assert!(price_event_successor(&mismatched, &authored).is_err());
+    }
+
 }

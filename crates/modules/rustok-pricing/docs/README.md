@@ -33,7 +33,12 @@ exactness and this narrower storage range for amount and compare-at amount.
 Product lifecycle adapters return invalid authored money as a typed validation
 refusal before bootstrap price persistence; bootstrap also independently checks
 the owner rule. Direct Pricing authoring and stored-price resolution use the
-same validation. No historical migration or price row is rewritten.
+same validation. No historical migration or price row is rewritten. The Product
+lifecycle adapter receives the shared TransactionalEventBus and initiating actor
+through ProductPricingPort; it publishes PriceUpdated from each persisted initial
+or replacement successor in the same transaction. Complete base-price clears and
+aggregate price-row deletion are signaled by VariantUpdated, VariantDeleted or
+ProductDeleted because PriceUpdated has no deletion payload.
 Focused regressions are authored but not executed.
 
 Batch base-price authoring admits every input before row or event mutation,

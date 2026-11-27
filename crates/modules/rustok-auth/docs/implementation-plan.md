@@ -626,3 +626,36 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 - Built-in/custom create, update and delete independently revalidate the persisted active user actor and current module-filtered grants/hierarchy under user, module and ordered role locks. Preserve request permission/role ceilings and the existing last-active-SuperAdmin continuity guard. A service principal is not a user actor, even with a colliding subject ID.
 - Materialize missing built-in destinations in the owner transaction before checking exact persisted grants; deny a missing requested role after the lock. Existing user locks are UUID ordered and deduplicated; static role locks cover actor and target memberships, destination and continuity role.
 - Source regression covers stale request after demotion, disabled actor, service UUID collision and allowed built-in creation. Compilation, live PostgreSQL contention and other mutation paths remain open. The admin context does not carry proving session or OAuth registration evidence; no end-to-end credential mutation fence is claimed.
+
+## Transaction-bound administrative credential authority
+
+- Source slice: the HTTP/WS host scope binds the admitted credential deadline,
+  principal kind, session identity and account recovery revision. User-admin
+  create/update/deactivate and invite issue/revoke lock the direct initiating
+  session in user-before-session order and check expiry after policy locks
+  and before commit. RBAC role assignment uses the same user port.
+- Delegated user-admin source slice: admitted access registration ID, digest,
+  client/app, original scopes, precise issuance and consent epoch are retained.
+  Acquire tenant FK protection (PostgreSQL), app, ordered users, registration,
+  then existing invite/policy/role locks. Validate live registration and consent
+  with the extractor's canonical scope checks. GraphQL HTTP and WebSocket
+  initialization no longer replace credential evidence with a grant-only scope.
+  Re-filter current role grants through the original OAuth scopes.
+- OAuth administration source slice: all six admin mutations share the
+  provider authority decision and caller-owned OAuth write transaction.
+  The HTTP/WS scope retains exact service access registration evidence as
+  well as delegated evidence. Tenant FK protection precedes UUID-ordered
+  issuer/target apps, then actor/session or access registration, module
+  policy and role grants. Require original and live settings/delegation
+  ceilings for app administration, exact direct session for personal consent,
+  and the earliest signed/durable credential deadline before commit.
+  Expensive secret hashing remains outside the transaction, with prepared
+  rotation bound to app/tenant and a locked CAS. The outer guard no longer
+  writes independently. Regression scenarios authored for revoked direct
+  sessions and service registrations.
+- Pending: extend the owner mutation context to all transports, apply
+  transaction authority to RBAC role-definition writes, account for artifact
+  permissions and prove cross-module lock ordering (including tenant active
+  state and all bulk credential revocation paths). Grant-only internal user
+  scopes remain an explicit compatibility boundary. Compile and PostgreSQL
+  contention/revocation tests remain unrun.

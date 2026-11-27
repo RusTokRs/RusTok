@@ -101,7 +101,11 @@ live in `src/features/installer/model.rs`, HTTP request code lives only in
 holding raw REST wiring. The removed `src/features/installer/api.rs` facade must not be restored.
 The wizard includes one instance-root field. The server normalizes and binds it;
 production ignores unrestricted client placement and requires the host-selected
-`RUSTOK_INSTANCE_ROOT`.
+`RUSTOK_INSTANCE_ROOT`. The status DTO consumes the server's latest job ID and
+state, restores protected job polling after the operator re-enters the setup token,
+and treats `recovery_required` (including unknown future job states) as unresolved:
+Apply stays disabled. Recovery-required jobs also attempt receipt retrieval so a
+remote target's explicit conflict is shown instead of an empty receipt list.
 
 The host-owned cache health operator page keeps its read model in
 `src/features/cache/model.rs` and selects native or GraphQL transport only through

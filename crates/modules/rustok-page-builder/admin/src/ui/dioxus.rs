@@ -411,7 +411,7 @@ fn controller_session_key(controller: &AdminCanvasController) -> String {
     )
 }
 
-fn canvas_instance_id(
+pub(super) fn canvas_instance_id(
     page_id: &str,
     active_page_index: usize,
     revision_id: &str,

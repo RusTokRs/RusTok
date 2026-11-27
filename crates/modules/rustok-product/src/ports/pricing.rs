@@ -79,18 +79,22 @@ impl AsPricingConnection for crate::services::write_transaction::ProductWriteTra
 pub trait ProductPricingPort: Send + Sync {
     /// Validates tenant-owned channel scopes and authors initial prices in the active
     /// product write transaction.
+    /// The actor is preserved in each Pricing-owned PriceUpdated outbox envelope.
     async fn create_initial_prices_in_tx(
         &self,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
+        actor_id: Uuid,
         prices: Vec<InitialPrice>,
     ) -> Result<(), CommerceError>;
 
     /// Replaces tenant-owned variant unscoped base prices in the active product write transaction.
+    /// The actor is preserved in each Pricing-owned PriceUpdated outbox envelope.
     async fn replace_catalog_base_prices_in_tx(
         &self,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
+        actor_id: Uuid,
         variant_id: Uuid,
         prices: Vec<InitialPrice>,
     ) -> Result<(), CommerceError>;

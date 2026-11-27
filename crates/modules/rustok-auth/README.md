@@ -100,6 +100,29 @@ it never provisions a service or adds grants. Human transport authentication is 
 
 ### Known Limitations / Pending Implementation
 
+User-administration transactions (create/update/deactivate user and
+issue/revoke invite, including RBAC role assignment through the user port)
+carry the admitted HTTP/WS credential deadline and account recovery
+revision in the host request scope. Direct session credentials lock the
+initiating session after ordered user locks, validate the exact subject and
+live absolute/sliding deadlines, and recheck time after policy/role locks
+and before commit. Grant-only internal scopes do not claim credential
+authority. Delegated user administration now carries the admitted registration
+identity, digest, scopes, issuance time and consent epoch, locks the OAuth app
+before ordered users, locks the registration, checks current app/consent policy
+and restricts current grants to the original scopes. HTTP GraphQL and WS scope
+construction preserve these facts. OAuth app create/update/rotate/revoke and
+personal consent grant/revoke now run the host authority check and owner
+write in the same transaction. Direct consent requires admitted direct
+session evidence; service clients carry their exact access registration
+and use live app grants intersected with admitted scopes. All involved app
+rows are acquired in UUID order before user/session/registration and
+policy/role fences. The outer OAuth guard performs preflight only, and the
+secret preparation remains outside SQL transactions. RBAC role-definition
+mutations, artifact authority, fully typed owner context and global
+PostgreSQL deadlock evidence remain open. Compilation and runtime
+verification are pending.
+
 OAuth authorization rechecks the locked direct-session/access deadline after
 consent and code writes, and code consumption rejects future-dated and expired
 codes using one admission timestamp. Service and delegated token exchanges

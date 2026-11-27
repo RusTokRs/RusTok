@@ -85,6 +85,8 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
         let expected_instance_id = instance_id.clone();
         move |_| {
             let iframe_id = iframe_id.get_untracked();
+            #[cfg(target_arch = "wasm32")]
+            let identity_runtime = runtime.clone();
             let expected_instance_id = expected_instance_id.get_untracked();
             ready.set(false);
             pointer.set(None);
@@ -101,6 +103,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                     runtime.dispatch(UiIntent::CancelDrag);
                 }
                 bridge_subscription.set_value(None);
+                let identity_runtime = identity_runtime.clone();
                 let decoder_instance = expected_instance_id.clone();
                 let message_runtime = runtime.clone();
                 match fly_leptos::IframeJsonSubscription::subscribe_by_element_id(
@@ -110,6 +113,17 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                     // opaque origin, so this side must accept exactly that value.
                     crate::ui::browser_adapter::PAGE_BUILDER_CANVAS_EXPECTED_ORIGIN,
                     move |payload, last_sequence| {
+                        let current_instance = identity_runtime.controller.with(|controller| {
+                            canvas_instance_id(
+                                controller.page_id(),
+                                controller.active_page_index(),
+                                controller.revision_id(),
+                                &controller.editor().revision().project_hash.hex(),
+                            )
+                        });
+                        if current_instance != decoder_instance {
+                            return None;
+                        }
                         decode_canvas_message(payload, &decoder_instance, last_sequence)
                     },
                     move |message| {
