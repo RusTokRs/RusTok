@@ -152,10 +152,11 @@ pub(crate) fn check_production_environment(
     if let Some((variable, password)) = configured_superadmin_password() {
         let trimmed_password = password.trim();
         if known_sample_superadmin_password(trimmed_password).is_some()
-            || trimmed_password.len() < 8
+            || trimmed_password.chars().count() < crate::auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS
         {
             return Err(crate::error::Error::Message(format!(
-                "FATAL: env var {variable} contains a weak or known sample superadmin password. Set a unique secret of at least 8 characters before starting the release build."
+                "FATAL: env var {variable} contains a weak or known sample superadmin password. Set a unique secret of at least {} characters before starting the release build.",
+                crate::auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS
             )));
         }
     }
@@ -681,6 +682,19 @@ mod tests {
                 .expect_err("short superadmin password must fail");
         assert!(
             error_short
+                .to_string()
+                .contains("weak or known sample superadmin password")
+        );
+
+        let multibyte_short = "🔐".repeat(crate::auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS - 1);
+        unsafe {
+            std::env::set_var("SUPERADMIN_PASSWORD", &multibyte_short);
+        }
+        let error_multibyte =
+            check_production_environment(&secret, "postgres://app:strong@db/rustok", true)
+                .expect_err("passwords below the character limit must fail regardless of UTF-8 byte length");
+        assert!(
+            error_multibyte
                 .to_string()
                 .contains("weak or known sample superadmin password")
         );
