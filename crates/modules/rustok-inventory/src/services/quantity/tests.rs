@@ -2,6 +2,8 @@
 
 use super::*;
 
+use sea_orm::{ConnectOptions, Database, TransactionTrait};
+
 fn level(item: Uuid, stocked: i32, reserved: i32, incoming: i32) -> Level {
     Level {
         id: Uuid::new_v4(),
@@ -400,4 +402,70 @@ async fn projection_loader_rejects_ambiguous_items_and_excess_original_levels() 
     );
     rows[MAX_QUANTITY_LEVELS].clone().insert(&db).await.unwrap();
     assert!(load_projection_levels(&db, &bindings).await.is_err());
+}
+
+
+#[tokio::test]
+async fn sqlite_quantity_snapshot_reserves_writer_before_plan_reads() {
+    let path = std::env::temp_dir().join(format!(
+        "rustok-inventory-quantity-writer-{}.sqlite",
+        Uuid::new_v4()
+    ));
+    let url = format!("sqlite://{}?mode=rwc", path.display());
+
+    let mut owner_options = ConnectOptions::new(url.clone());
+    owner_options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
+    let owner = Database::connect(owner_options)
+        .await
+        .expect("owner database should connect");
+    owner
+        .execute_unprepared(
+            "CREATE TABLE inventory_items (id TEXT PRIMARY KEY NOT NULL, updated_at TEXT NOT NULL)",
+        )
+        .await
+        .expect("inventory item lock table should exist");
+
+    let mut observer_options = ConnectOptions::new(url);
+    observer_options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
+    let observer = Database::connect(observer_options)
+        .await
+        .expect("independent observer database should connect");
+    observer
+        .execute_unprepared("PRAGMA busy_timeout = 0")
+        .await
+        .expect("observer lock timeout should be disabled");
+
+    let transaction = owner.begin().await.expect("owner transaction should begin");
+    require_current_snapshot(&transaction)
+        .await
+        .expect("quantity writer should reserve SQLite before reading the plan");
+
+    let concurrent_write = observer
+        .execute_unprepared(
+            "UPDATE inventory_items SET updated_at = updated_at WHERE 1 = 0",
+        )
+        .await;
+    assert!(
+        concurrent_write.is_err(),
+        "another SQLite writer must not pass the quantity snapshot reservation"
+    );
+
+    transaction
+        .rollback()
+        .await
+        .expect("owner rollback should release the writer reservation");
+    observer
+        .execute_unprepared("UPDATE inventory_items SET updated_at = updated_at WHERE 1 = 0")
+        .await
+        .expect("another writer should proceed after rollback");
+
+    drop(observer);
+    drop(owner);
+    let _ = std::fs::remove_file(path);
 }
