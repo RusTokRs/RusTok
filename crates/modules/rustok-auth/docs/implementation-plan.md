@@ -625,9 +625,19 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 
 - Built-in/custom create, update and delete independently revalidate the persisted active user actor and current module-filtered grants/hierarchy under user, module and ordered role locks. Preserve request permission/role ceilings and the existing last-active-SuperAdmin continuity guard. A service principal is not a user actor, even with a colliding subject ID.
 - Materialize missing built-in destinations in the owner transaction before checking exact persisted grants; deny a missing requested role after the lock. Existing user locks are UUID ordered and deduplicated; static role locks cover actor and target memberships, destination and continuity role.
-- Source regression covers stale request after demotion, disabled actor, service UUID collision and allowed built-in creation. Compilation, live PostgreSQL contention and other mutation paths remain open. The admin context does not carry proving session or OAuth registration evidence; no end-to-end credential mutation fence is claimed.
+- Source regression covers stale request after demotion, disabled actor, service UUID collision and allowed built-in creation. Compilation, live PostgreSQL contention and other mutation paths remain open. This initial slice lacked proving session or OAuth registration evidence; the subsequent transaction-bound slices below extend it.
 
 ## Transaction-bound administrative credential authority
+
+- All user-admin mutations now use the same pre-transaction clock admission
+  and module-policy preparation as OAuth and RBAC control-plane writes.
+  The active tenant row is checked and fenced for both direct and delegated
+  user actors before users/credentials; PostgreSQL FOR SHARE prevents
+  concurrent non-key changes to is_active, whereas KEY SHARE did not.
+  SQLite retains a conditional write-before-read fence. The stale direct
+  credential regression now also covers tenant deactivation with no user
+  creation. Multi-connection PostgreSQL tenant-deactivation and lock-order
+  evidence remain pending; no global deadlock guarantee is claimed.
 
 - Source slice: the HTTP/WS host scope binds the admitted credential deadline,
   principal kind, session identity and account recovery revision. User-admin
@@ -636,7 +646,7 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   and before commit. RBAC role assignment uses the same user port.
 - Delegated user-admin source slice: admitted access registration ID, digest,
   client/app, original scopes, precise issuance and consent epoch are retained.
-  Acquire tenant FK protection (PostgreSQL), app, ordered users, registration,
+  Acquire the active tenant fence (PostgreSQL FOR SHARE or SQLite write-before-read), app, ordered users, registration,
   then existing invite/policy/role locks. Validate live registration and consent
   with the extractor's canonical scope checks. GraphQL HTTP and WebSocket
   initialization no longer replace credential evidence with a grant-only scope.
@@ -644,7 +654,7 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 - OAuth administration source slice: all six admin mutations share the
   provider authority decision and caller-owned OAuth write transaction.
   The HTTP/WS scope retains exact service access registration evidence as
-  well as delegated evidence. Tenant FK protection precedes UUID-ordered
+  well as delegated evidence. The active tenant fence precedes UUID-ordered
   issuer/target apps, then actor/session or access registration, module
   policy and role grants. Require original and live settings/delegation
   ceilings for app administration, exact direct session for personal consent,

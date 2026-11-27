@@ -344,7 +344,8 @@ impl ServerAuthAdminMutationProvider {
                 let tenant = tx
                     .query_one_raw(Statement::from_sql_and_values(
                         DbBackend::Postgres,
-                        "SELECT id FROM tenants WHERE id = $1 AND is_active = TRUE FOR KEY SHARE",
+                        // KEY SHARE protects only identity/FKs, not a change to is_active.
+                        "SELECT id FROM tenants WHERE id = $1 AND is_active = TRUE FOR SHARE",
                         [context.tenant_id.into()],
                     ))
                     .await
@@ -420,22 +421,6 @@ impl ServerAuthAdminMutationProvider {
             }
         }
         Ok((target, issuer))
-    }
-
-    async fn lock_delegated_admin_app(
-        &self,
-        tx: &sea_orm::DatabaseTransaction,
-        context: &AuthAdminMutationContext,
-    ) -> Result<Option<oauth_apps::Model>, AuthAdminMutationError> {
-        let evidence = credential_for_admin(context)?;
-        if evidence
-            .as_ref()
-            .is_some_and(|e| e.principal_kind == AuthPrincipalKind::DelegatedUser)
-        {
-            Ok(self.lock_admin_oauth_apps(tx, context, None).await?.1)
-        } else {
-            Ok(None)
-        }
     }
 
     /// The app and actor fences are already held. Check the exact access
@@ -604,7 +589,8 @@ impl ServerAuthAdminMutationProvider {
         Ok(())
     }
 
-    /// Lock the delegated app first, then all existing users before module and role state. Request evidence
+    /// Lock the active tenant and any delegated app first, then all existing users
+    /// before module and role state. Request evidence
     /// remains a ceiling; the independently resolved live actor must also
     /// authorize the operation. The target is returned from its locked read.
     async fn lock_user_admin_authority(
@@ -631,7 +617,7 @@ impl ServerAuthAdminMutationProvider {
                 "user administration requires a user actor".to_string(),
             ));
         }
-        let delegated_app = self.lock_delegated_admin_app(tx, context).await?;
+        let delegated_app = self.lock_admin_oauth_apps(tx, context, None).await?.1;
         let mut ids = vec![context.actor_id];
         if let Some(target) = target_id {
             ids.push(target);
@@ -893,13 +879,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         } else {
             &[Permission::USERS_CREATE, Permission::USERS_MANAGE]
         };
-        crate::services::rbac_module_availability::prepare_invite_module_policy(
-            &self.db,
-            self.invite_registry.as_ref(),
-        )
-        .await
-        .map_err(super::internal_admin_error)?;
-        let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
+        let tx = self.prepare_admin_transaction(true).await?;
         let target_slug = custom_slug.clone().unwrap_or_else(|| role.to_string());
         let (_, current_role, current_permissions, credential_deadline) = self
             .lock_user_admin_authority(
@@ -1121,13 +1101,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let requested_slug = requested_custom_slug
             .clone()
             .or_else(|| requested_role.as_ref().map(ToString::to_string));
-        crate::services::rbac_module_availability::prepare_invite_module_policy(
-            &self.db,
-            self.invite_registry.as_ref(),
-        )
-        .await
-        .map_err(super::internal_admin_error)?;
-        let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
+        let tx = self.prepare_admin_transaction(true).await?;
         let (locked_user, live_actor_role, live_permissions, credential_deadline) = self
             .lock_user_admin_authority(
                 &tx,
@@ -1458,14 +1432,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         .await?;
 
         let request_role = self.actor_role(context).await?;
-        crate::services::rbac_module_availability::prepare_invite_module_policy(
-            &self.db,
-            self.invite_registry.as_ref(),
-        )
-        .await
-        .map_err(super::internal_admin_error)?;
         let event_bus = &self.event_bus;
-        let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
+        let tx = self.prepare_admin_transaction(true).await?;
         let (user, live_actor_role, _, credential_deadline) = self
             .lock_user_admin_authority(
                 &tx,
@@ -1564,17 +1532,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let email = rustok_auth::normalize_email(&command.email)
             .map_err(|error| AuthAdminMutationError::Validation(error.to_string()))?;
 
-        rustok_auth::application_clock::admit_now(&self.db)
-            .await
-            .map_err(super::internal_admin_error)?;
-        crate::services::rbac_module_availability::prepare_invite_module_policy(
-            &self.db,
-            self.invite_registry.as_ref(),
-        )
-        .await
-        .map_err(super::internal_admin_error)?;
-        let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
-        let delegated_app = self.lock_delegated_admin_app(&tx, context).await?;
+        let tx = self.prepare_admin_transaction(true).await?;
+        let delegated_app = self.lock_admin_oauth_apps(&tx, context, None).await?.1;
         // Membership and account-status writers serialize on this user
         // fence. Do not issue a durable invitation for a removed, disabled
         // or demoted actor based solely on a stale request snapshot.
@@ -1770,18 +1729,12 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         )
         .await?;
 
-        crate::services::rbac_module_availability::prepare_invite_module_policy(
-            &self.db,
-            self.invite_registry.as_ref(),
-        )
-        .await
-        .map_err(super::internal_admin_error)?;
-        // For delegated callers acquire the OAuth app fence before the
-        // acceptance-compatible actor -> invite -> policy -> roles order.
+        // Acquire the active tenant and any delegated OAuth app fence before
+        // the acceptance-compatible actor -> invite -> policy -> roles order.
         // Revoking an invite does not require its original issuer or
         // destination role to remain valid.
-        let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
-        let delegated_app = self.lock_delegated_admin_app(&tx, context).await?;
+        let tx = self.prepare_admin_transaction(true).await?;
+        let delegated_app = self.lock_admin_oauth_apps(&tx, context, None).await?.1;
         let actor =
             AuthLifecycleService::lock_user_for_mutation(&tx, context.tenant_id, context.actor_id)
                 .await
@@ -2178,6 +2131,45 @@ mod tests {
         )
         .await;
         assert!(allowed.is_ok(), "{allowed:?}");
+
+        // A tenant disabled after request admission must not authorize any
+        // user-admin mutation, even with a still-live direct session.
+        tenants::ActiveModel {
+            id: Set(tenant.id),
+            is_active: Set(false),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .unwrap();
+        let inactive_tenant = with_rbac_request_scope(
+            Some(authenticated(current.access_token_expires_at)),
+            async {
+                provider
+                    .create_user(
+                        &authenticated_context(current.access_token_expires_at),
+                        create("tenant-inactive@example.test"),
+                    )
+                    .await
+            },
+        )
+        .await;
+        assert!(matches!(inactive_tenant, Err(AuthAdminMutationError::Unauthorized)));
+        assert!(
+            users::Entity::find_by_email(&db, tenant.id, "tenant-inactive@example.test")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        tenants::ActiveModel {
+            id: Set(tenant.id),
+            is_active: Set(true),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .unwrap();
+
         let expired_at = chrono::Utc::now();
         let expired = with_rbac_request_scope(Some(authenticated(expired_at)), async {
             provider
