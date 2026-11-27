@@ -126,9 +126,17 @@ fn apply_symbol_command_inner(
             },
         )?;
     }
-    // Do not let an upsert silently replace a malformed or dangling catalog with a
-    // newly well-formed list; callers must repair the existing source explicitly.
-    strict_catalog(document)?;
+    // Preserve malformed catalog source instead of treating a non-array block as empty.
+    if document
+        .project()
+        .extensions
+        .get(FLY_SYMBOLS_FIELD)
+        .is_some_and(|block| !block.is_array())
+    {
+        return Err(FlyError::InvalidSymbolReference(format!(
+            "{FLY_SYMBOLS_FIELD} must be an array"
+        )));
+    }
 
     match command {
         SymbolCommand::Upsert { symbol } => {
@@ -212,8 +220,7 @@ fn apply_symbol_command_inner(
                 .map(|(_, entry)| entry)
                 .collect();
             if let Some(index) = entries.iter().position(|entry| {
-                SymbolDescriptor::from_value(entry)
-                    .is_some_and(|existing| existing.id == descriptor.id)
+                entry.get("id").and_then(Value::as_str) == Some(descriptor.id.as_str())
             }) {
                 entries[index] = stored_symbol;
             } else {
