@@ -1505,9 +1505,21 @@ selection lock, SQL admission takes all artifact slug locks in ascending
 order (platform then tenant per slug), reselects the complete artifact set,
 validates each durable sandbox policy and security revision, and keeps the
 locks through commit. Non-SQL calls compare fresh closure evidence but remain
-preflight-only. Lifecycle retains root-only owner authority; static members
-are traversed but static overrides/composition, registry writers and deployment
-readiness are not transactionally fenced. Each artifact lease also captures
+preflight-only. Lifecycle retains root-only owner authority. For serving,
+every visited module (native and artifact) also captures its canonical
+StaticTenantLifecycleStore revision and exact optional tenant override,
+including absent intent. Core overrides remain irrelevant to policy.
+The SQL effect takes platform slug locks for the entire mixed closure in
+ascending order (and the tenant selection lock for each artifact), then
+compares lifecycle revision and override on the same transaction. Both
+override commit paths take the same platform lock before writing intent,
+journal and aggregate revision; static settings commits already use it.
+A concurrent first override cannot bypass the absent-row fence, and
+disable/clear or disable/enable cannot revive the prior lifecycle revision.
+Settings changes conservatively invalidate leases because they advance the
+same owner revision. Active claims alone are not treated as committed
+intent changes; no lock spans guest hooks. Platform composition, registry
+writers and deployment readiness are not transactionally fenced. Each artifact lease also captures
 both platform and tenant selection generations on the permanent slug fences.
 Successful activation, deactivation, rollback, uninstall and explicit artifact
 tenant enable/disable advance the affected scope in the same transaction as

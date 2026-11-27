@@ -3609,3 +3609,16 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   pending. Drain executions, stop old writers and coordinate migration and
   deployment. Static dependency lifecycle/overrides and composition remain
   separate outstanding authority.
+
+- Source-wired tenant lifecycle/override continuity for every visited module
+  in the serving closure, including native dependencies reached transitively.
+  Capture the canonical aggregate revision and compare optional override
+  intent against policy facts on the selection snapshot. Acquire all visited
+  platform slug locks in sorted order before SQL checks; artifact tenant
+  locks remain ordered per slug. Both override commit paths share the same
+  platform fence; existing settings commit fence is reused. Preserve Core
+  override semantics, inherited intent and separate lifecycle hook admission.
+  Source regression extends mixed closure with first native override, stale
+  policy denial and override-clear ABA. No new migration. Tests, compilation,
+  concurrent PostgreSQL and cross-owner lock-order evidence remain pending;
+  active composition, registry mutations and readiness are not fenced.

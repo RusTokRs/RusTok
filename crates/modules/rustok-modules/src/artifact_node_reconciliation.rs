@@ -682,15 +682,75 @@ impl SeaOrmArtifactNodeReadiness {
     }
 }
 
-/// Exact artifact members and security revisions of an admitted serving
-/// closure. Private fields prevent constructing authority from guest input.
-/// Static members are traversed by the policy evaluator but their mutable
-/// lifecycle/composition facts are not yet fenced on the effect transaction.
+/// Exact artifact members, security revisions and tenant lifecycle/override
+/// evidence for every visited module (including native dependencies).
+/// Private fields prevent constructing authority from guest input.
+/// Platform composition changes are a separate owner boundary.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArtifactServingClosure {
     tenant_id: Uuid,
     artifacts: BTreeMap<String, (InstalledModuleArtifact, u64)>,
     generations: BTreeMap<String, crate::ArtifactSelectionGeneration>,
+    tenant_intents: BTreeMap<String, ServingTenantIntent>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ServingTenantIntent {
+    lifecycle_revision: u64,
+    override_intent: ServingOverrideIntent,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ServingOverrideIntent {
+    IgnoredCore,
+    Exact(Option<bool>),
+}
+
+impl ServingOverrideIntent {
+    fn from_policy_facts(
+        facts: &[crate::ModuleEffectivePolicyFact],
+    ) -> Result<Self, ModuleArtifactNodeReconciliationError> {
+        use crate::{ModuleDefinitionKind, ModuleEffectivePolicyFact as Fact};
+        let denied = || ModuleArtifactNodeReconciliationError::AssignmentUnavailable;
+        let mut kind = None;
+        let mut recorded = None;
+        for fact in facts {
+            match fact {
+                Fact::Definition { module_kind, .. } => {
+                    if kind.replace(module_kind).is_some() {
+                        return Err(denied());
+                    }
+                }
+                Fact::TenantOverride { enabled } => {
+                    if recorded.replace(*enabled).is_some() {
+                        return Err(denied());
+                    }
+                }
+                _ => {}
+            }
+        }
+        match kind.ok_or_else(denied)? {
+            ModuleDefinitionKind::Core if recorded.is_none() => Ok(Self::IgnoredCore),
+            ModuleDefinitionKind::Core => Err(denied()),
+            ModuleDefinitionKind::Optional => Ok(Self::Exact(recorded)),
+        }
+    }
+
+    async fn require_current_on(
+        &self,
+        tx: &DatabaseTransaction,
+        tenant_id: Uuid,
+        slug: &str,
+    ) -> Result<(), ModuleArtifactNodeReconciliationError> {
+        if let Self::Exact(expected) = self {
+            let current = crate::recovery::read_tenant_override_enabled(tx, tenant_id, slug)
+                .await.map_err(store_error)?;
+            if &current != expected {
+                return Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable);
+            }
+        }
+        Ok(())
+    }
 }
 
 impl ArtifactServingClosure {
@@ -701,7 +761,7 @@ impl ArtifactServingClosure {
         policy: &crate::ModuleEffectivePolicy,
         selected: &BTreeMap<String, InstalledModuleArtifact>,
     ) -> Result<Self, ModuleArtifactNodeReconciliationError> {
-        let required = serving_artifact_closure(tenant_id, root, policy, selected)?;
+        let (required, visited) = serving_artifact_closure(tenant_id, root, policy, selected)?;
         let mut artifacts = BTreeMap::new();
         for item in required {
             let decision = policy.get_decision(&item.release.slug)
@@ -729,8 +789,21 @@ impl ArtifactServingClosure {
                 .await.map_err(store_error)?;
             generations.insert(slug.clone(), generation);
         }
+        let mut tenant_intents = BTreeMap::new();
+        for slug in visited {
+            let decision = policy.get_decision(&slug)
+                .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
+            let override_intent = ServingOverrideIntent::from_policy_facts(&decision.facts)?;
+            override_intent.require_current_on(&tx, tenant_id, &slug).await?;
+            let lifecycle = crate::StaticTenantLifecycleStore::snapshot(&tx, tenant_id, &slug)
+                .await.map_err(store_error)?;
+            tenant_intents.insert(slug, ServingTenantIntent {
+                lifecycle_revision: lifecycle.revision,
+                override_intent,
+            });
+        }
         tx.commit().await.map_err(store_error)?;
-        Ok(Self { tenant_id, artifacts, generations })
+        Ok(Self { tenant_id, artifacts, generations, tenant_intents })
     }
 
     pub fn root_security_revision(&self, root: &InstalledModuleArtifact) -> Option<u64> {
@@ -755,14 +828,28 @@ impl ArtifactServingClosure {
             return Err(denied());
         }
         crate::backend::set_tenant_scope(tx, self.tenant_id).await.map_err(store_error)?;
-        for slug in self.artifacts.keys() {
+        // All visited slugs share the platform lock with native/artifact
+        // override writers, even when neither aggregate nor override exists.
+        // Keep the same ordering for mixed native/artifact closures.
+        for slug in self.tenant_intents.keys() {
             acquire_artifact_activation_lock(tx, &ModuleInstallationScope::Platform, slug)
                 .await.map_err(store_error)?;
-            acquire_artifact_activation_lock(
-                tx, &ModuleInstallationScope::Tenant { tenant_id: self.tenant_id }, slug,
-            ).await.map_err(store_error)?;
+            if self.artifacts.contains_key(slug) {
+                acquire_artifact_activation_lock(
+                    tx, &ModuleInstallationScope::Tenant { tenant_id: self.tenant_id }, slug,
+                ).await.map_err(store_error)?;
+            }
         }
-        if self.generations.len() != self.artifacts.len() {
+        for (slug, intent) in &self.tenant_intents {
+            let current = crate::StaticTenantLifecycleStore::snapshot(tx, self.tenant_id, slug)
+                .await.map_err(store_error)?;
+            if current.revision != intent.lifecycle_revision {
+                return Err(denied());
+            }
+            intent.override_intent.require_current_on(tx, self.tenant_id, slug).await?;
+        }
+        if self.generations.len() != self.artifacts.len()
+            || self.artifacts.keys().any(|slug| !self.tenant_intents.contains_key(slug)) {
             return Err(denied());
         }
         for slug in self.artifacts.keys() {
@@ -830,7 +917,7 @@ pub(crate) fn serving_artifact_closure<'a>(
     root: &InstalledModuleArtifact,
     policy: &crate::ModuleEffectivePolicy,
     selected: &'a BTreeMap<String, InstalledModuleArtifact>,
-) -> Result<Vec<&'a InstalledModuleArtifact>, ModuleArtifactNodeReconciliationError> {
+) -> Result<(Vec<&'a InstalledModuleArtifact>, BTreeSet<String>), ModuleArtifactNodeReconciliationError> {
     use crate::{ArtifactInstallationTarget, ModuleDefinitionSource, ModuleEffectivePolicyFact};
     let denied = || ModuleArtifactNodeReconciliationError::AssignmentUnavailable;
     if selected.get(&root.release.slug) != Some(root) {
@@ -932,7 +1019,7 @@ pub(crate) fn serving_artifact_closure<'a>(
     }
     // Stable order is useful for diagnostics and deterministic read behavior.
     required.sort_by_key(|item| item.installation_id);
-    Ok(required)
+    Ok((required, visited))
 }
 
 impl<A, T> SeaOrmModuleArtifactNodeReconciliationService<A, T>

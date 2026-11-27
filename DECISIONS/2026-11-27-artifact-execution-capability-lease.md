@@ -70,9 +70,20 @@ Capture generations with exact selected identities in one database snapshot;
 compare under the already-held sorted slug locks before SQL effects. Lifecycle
 captures its root generation. This conservative generation may invalidate
 leases even when a scope mutation does not change the effective winner.
-Static dependency lifecycle/composition, registry mutation fencing, full
-effective-policy revision and deployment readiness remain open; PostgreSQL
-cross-owner lock-order and runtime evidence remain required.
+The serving closure also binds every visited module's canonical tenant
+lifecycle revision and policy-relevant override intent (including absent
+intent); Core continues to ignore overrides. Native and artifact override
+commits acquire the existing platform slug fence before the first state
+write. Static settings commits already acquire it. SQL admission locks
+every visited slug in ascending order (platform then artifact tenant),
+checks the revision and current intent, and retains locks through commit.
+Outstanding lifecycle claims are not treated as committed intent. No effect
+transaction spans guest execution. Settings changes may conservatively
+invalidate leases through the shared lifecycle revision.
+Composition, registry mutation fencing, full effective-policy revision and
+deployment readiness remain open; PostgreSQL cross-owner lock-order and
+runtime evidence remain required. Mixed-closure tenant intent fencing
+requires no additional migration; coordinate override writers and readers.
 
 ## Context, events and migration
 

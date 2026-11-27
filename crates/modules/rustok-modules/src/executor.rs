@@ -478,6 +478,11 @@ pub(crate) async fn execute_module_toggle(
             .transaction::<_, Option<TenantModuleStateRecord>, ModuleLifecycleExecutionError>(
                 |transaction| {
                     Box::pin(async move {
+                        // Same platform slug fence as serving SQL admission. Take it
+                        // before touching the override, journal or aggregate revision.
+                        crate::installation::acquire_artifact_activation_lock(
+                            transaction, &crate::ModuleInstallationScope::Platform, &module_slug,
+                        ).await.map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
                         let state = apply_tenant_override_enabled(
                             transaction,
                             tenant_id,
@@ -682,6 +687,11 @@ pub(crate) async fn execute_module_toggle(
         .transaction::<_, Option<TenantModuleStateRecord>, ModuleLifecycleExecutionError>(
             |transaction| {
                 Box::pin(async move {
+                    // Same platform slug fence as serving SQL admission. Take it
+                    // before touching the override, journal or aggregate revision.
+                    crate::installation::acquire_artifact_activation_lock(
+                        transaction, &crate::ModuleInstallationScope::Platform, &module_slug,
+                    ).await.map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
                     let state = apply_tenant_override_enabled(
                         transaction,
                         tenant_id,

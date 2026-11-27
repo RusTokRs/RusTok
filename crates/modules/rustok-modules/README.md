@@ -184,7 +184,9 @@ production readiness. The documented implementation and operational gaps include
   are also fenced, including implicit clear and quarantine/clear ABA.
   Artifact scope selection generations fence lifecycle ABA on the exact
   serving closure. Migration 000095 requires coordinated writer/reader
-  cutover. Full effective-policy (including static dependencies), registry status, deployment readiness,
+  cutover. Mixed native/artifact serving closures also fence tenant lifecycle
+  revision and optional override intent. Full effective-policy (including
+  active composition), registry status, deployment readiness,
   cross-owner lock ordering and external-effect fencing remain open; see the
   [SQL capability authority contract](./docs/README.md#sql-capability-effect-authority).
   Source regressions and compilation/concurrent PostgreSQL evidence remain unrun.

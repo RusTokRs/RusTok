@@ -12380,12 +12380,23 @@ mod tests {
             });
             selected.insert(slug.to_string(), item);
         }
+        catalog.insert(crate::ModuleDefinition {
+            slug: "native_provider".into(), version: "1.0.0".into(),
+            kind: crate::ModuleDefinitionKind::Optional,
+            source: crate::ModuleDefinitionSource::PlatformNative { distribution_version: "1.0.0".into() },
+            dependencies: vec![], permissions: vec![], settings_schema_digest: None,
+            schema_documents: vec![], bindings: vec![], ui: vec![], capabilities: vec![],
+        }).unwrap();
         let policy = ModuleEffectivePolicyQuery::new(
-            &catalog, ["z_root".to_string(), "a_provider".to_string()], [], inputs,
+            &catalog, ["z_root".to_string(), "a_provider".to_string(), "native_provider".to_string()], [], inputs,
         ).with_corequisites([crate::ModuleEffectivePolicyCoRequisite {
             module_slug: "z_root".to_string(),
             required_module_slug: "a_provider".to_string(),
             version_requirement: "^1.0".to_string(),
+        }, crate::ModuleEffectivePolicyCoRequisite {
+            module_slug: "a_provider".into(),
+            required_module_slug: "native_provider".into(),
+            version_requirement: "^1.0".into(),
         }]).execute().unwrap();
         let root = &selected["z_root"];
         let provider = &selected["a_provider"];
@@ -12399,6 +12410,35 @@ mod tests {
             &db, tenant_id, root, &policy, &missing,
         ).await.is_err());
 
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        closure.require_current_on(&tx).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        // Inherited native intent is absent at admission. Exercise the
+        // same owner aggregate/override primitives used by toggle commits.
+        for (revision, enabled) in [(0, Some(false)), (1, None)] {
+            let key = Uuid::new_v4();
+            let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+            acquire_artifact_activation_lock(&tx, &ModuleInstallationScope::Platform, "native_provider").await.unwrap();
+            crate::StaticTenantLifecycleStore::claim(&tx, tenant_id, "native_provider", revision, key).await.unwrap();
+            crate::recovery::apply_tenant_override_enabled(&tx, tenant_id, "native_provider", enabled).await.unwrap();
+            crate::StaticTenantLifecycleStore::advance(&tx, tenant_id, "native_provider", revision, key).await.unwrap();
+            crate::StaticTenantLifecycleStore::release(&tx, tenant_id, "native_provider", key).await.unwrap();
+            tx.commit().await.unwrap();
+            let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+            assert!(closure.require_current_on(&tx).await.is_err());
+            tx.rollback().await.unwrap();
+            if enabled == Some(false) {
+                assert!(crate::ArtifactServingClosure::from_policy_selection(
+                    &db, tenant_id, root, &policy, &selected,
+                ).await.is_err(), "stale policy must not authorize newly recorded override");
+            }
+        }
+        // Clearing the override restores inherited intent, but not the
+        // old revision. A new lease may use the restored native module.
+        let closure = crate::ArtifactServingClosure::from_policy_selection(
+            &db, tenant_id, root, &policy, &selected,
+        ).await.unwrap();
         let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
         closure.require_current_on(&tx).await.unwrap();
         tx.rollback().await.unwrap();
@@ -12446,11 +12486,15 @@ mod tests {
             });
         }
         let policy = ModuleEffectivePolicyQuery::new(
-            &catalog, ["z_root".to_string(), "a_provider".to_string()], [], inputs,
+            &catalog, ["z_root".to_string(), "a_provider".to_string(), "native_provider".to_string()], [], inputs,
         ).with_corequisites([crate::ModuleEffectivePolicyCoRequisite {
             module_slug: "z_root".to_string(),
             required_module_slug: "a_provider".to_string(),
             version_requirement: "^1.0".to_string(),
+        }, crate::ModuleEffectivePolicyCoRequisite {
+            module_slug: "a_provider".into(),
+            required_module_slug: "native_provider".into(),
+            version_requirement: "^1.0".into(),
         }]).execute().unwrap();
         let refreshed = crate::ArtifactServingClosure::from_policy_selection(
             &db, tenant_id, root, &policy, &selected,
