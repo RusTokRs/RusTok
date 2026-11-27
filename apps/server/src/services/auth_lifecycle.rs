@@ -904,6 +904,10 @@ impl AuthLifecycleService {
         observed_user: &users::Model,
     ) -> std::result::Result<(), AuthLifecycleError> {
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
+        if !crate::services::auth_invite::lock_active_auth_tenant(&tx, tenant_id).await? {
+            tx.rollback().await.map_err(AuthLifecycleError::from)?;
+            return Err(AuthLifecycleError::TenantInactive);
+        }
         let user = Self::find_user_for_update_in_tx(&tx, tenant_id, observed_user.id).await?;
         let now = rustok_auth::application_clock::verified_now(&tx).await?;
         if let Some(user) = user.filter(|u| {
@@ -2324,6 +2328,32 @@ mod tests {
         )
         .await;
         assert!(matches!(login, Err(AuthLifecycleError::TenantInactive)));
+
+        let failed_login = AuthLifecycleService::login_with_config(
+            &ctx,
+            &config,
+            tenant.id,
+            &user.email,
+            "WrongPassword123!",
+            None,
+            None,
+            false,
+        )
+        .await;
+        assert!(matches!(
+            failed_login,
+            Err(AuthLifecycleError::TenantInactive)
+        ));
+        let unchanged_user = users::Entity::find_by_id(user.id)
+            .one(&db)
+            .await
+            .expect("reload user")
+            .expect("user");
+        assert_eq!(
+            unchanged_user.failed_login_count, 0,
+            "a request that loses tenant admission must not mutate login lockout state"
+        );
+
         assert_eq!(
             users::Entity::find()
                 .filter(users::Column::TenantId.eq(tenant.id))
