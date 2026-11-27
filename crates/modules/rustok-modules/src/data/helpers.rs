@@ -86,14 +86,14 @@ pub(crate) async fn commit_artifact_data_effect(
     transaction: DatabaseTransaction,
     guard: Option<Box<dyn crate::ArtifactSqlEffectCommitGuard>>,
 ) -> Result<(), ArtifactDataError> {
-    if let Some(guard) = guard.as_ref()
-        && guard.check_before_commit(&transaction).await.is_err()
-    {
-        return Err(rollback_artifact_data_error(
-            transaction,
-            ArtifactDataError::PolicyDenied,
-        )
-        .await);
+    if let Some(guard) = guard.as_ref() {
+        if guard.check_before_commit(&transaction).await.is_err() {
+            return Err(rollback_artifact_data_error(
+                transaction,
+                ArtifactDataError::PolicyDenied,
+            )
+            .await);
+        }
     }
     transaction.commit().await.map_err(storage_error)
 }
