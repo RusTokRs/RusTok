@@ -1,5 +1,6 @@
 use super::*;
 
+use super::concurrency::next_revision;
 use rustok_api::TenantLocale;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -288,11 +289,10 @@ impl CatalogService {
             });
         }
 
-        let handle = request
-            .target
-            .handle
-            .clone()
-            .unwrap_or_else(|| slugify(&request.target.title));
+        let handle = product_translation_handle(
+            request.target.handle.as_deref(),
+            &request.target.title,
+        );
 
         if let Some(existing) = target.cloned() {
             let mut active: entities::product_translation::ActiveModel = existing.into();
@@ -320,6 +320,14 @@ impl CatalogService {
             .await
             .map_err(|error| map_product_unique_violation(error, &handle, &target_locale, None))?;
         }
+
+        // Translation writes are Product aggregate writes too. Advancing the same
+        // predecessor revision prevents an already-open Product editor from saving
+        // an older translation snapshot over this exact-locale update.
+        let mut product_active: entities::product::ActiveModel = product.clone().into();
+        product_active.revision = Set(next_revision(product.revision)?);
+        product_active.updated_at = Set(Utc::now().into());
+        product_active.update(&txn).await?;
 
         let translations_after = load_product_translations(&txn, tenant_id, product_id).await?;
         let target_after =

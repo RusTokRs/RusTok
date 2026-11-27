@@ -167,6 +167,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         "Meta description saisonniere",
         "first",
     );
+    let revision_before_apply = owner.get_product(tenant_id, product_id).await?.revision;
     let first_receipt = first_provider
         .apply_patch(
             apply_context(tenant_id, "first-apply", "product-first-apply"),
@@ -185,6 +186,11 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     );
     assert_eq!(replay.resource_revision, first_receipt.resource_revision);
     assert_eq!(replay.target_revision, first_receipt.target_revision);
+    assert_eq!(
+        owner.get_product(tenant_id, product_id).await?.revision,
+        revision_before_apply + 1,
+        "a replay must not advance the Product predecessor a second time"
+    );
 
     let first_snapshot = first_provider
         .read_resource(read_context(tenant_id, "replica-one"), read_request.clone())

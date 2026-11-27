@@ -65,6 +65,13 @@ fn validate_tenant_locale(locale: &str) -> Result<(), ValidationError> {
     }
 }
 
+fn validate_product_translation_title(title: &str) -> Result<(), ValidationError> {
+    if title.trim().is_empty() {
+        return Err(ValidationError::new("product_translation_title"));
+    }
+    Ok(())
+}
+
 fn default_brand_role() -> String {
     "manufacturer".to_string()
 }
@@ -164,6 +171,7 @@ pub struct ProductTranslationInput {
     #[validate(custom(function = "validate_tenant_locale"))]
     pub locale: String,
     #[validate(length(min = 1, max = 255, message = "Title must be 1-255 characters"))]
+    #[validate(custom(function = "validate_product_translation_title"))]
     pub title: String,
     #[validate(length(max = 255, message = "Handle must be max 255 characters"))]
     pub handle: Option<String>,

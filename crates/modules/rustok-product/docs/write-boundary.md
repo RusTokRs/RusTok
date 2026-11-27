@@ -102,8 +102,8 @@ Architecture status is Accepted; implementation status remains In progress, not 
 `ProductCatalogCommandPort` remains the lifecycle/variant/image boundary. Independent EAV authoring
 and value writes use the receipt-bound `ProductCatalogSchemaWritePort`. Editorial create/update
 compose `ProductAttributeValueBatch` through the shared transaction writer, not through the schema
-port, and use only the enclosing catalog receipt. Standalone Product value save/clear and exact-locale
-value Translation apply advance the Product business revision so a stale aggregate draft cannot
+port, and use only the enclosing catalog receipt. Standalone Product value save/clear, exact-locale value Translation apply, and exact-locale
+Product translation apply advance the Product business revision so a stale aggregate draft cannot
 overwrite those edits unnoticed. The embedded writer does not advance it again.
 
 ## Variant business revision and Index watermark
