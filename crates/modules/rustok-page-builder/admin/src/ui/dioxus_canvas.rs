@@ -7,6 +7,7 @@ use fly_ui::{
     CanvasRect, ResizeHandle, ResizeResult, ResizeSession, UiIntent, ViewportState,
 };
 
+use super::dioxus::canvas_instance_id;
 use crate::core::{page_builder_resize_policy, session::EditorSessionState};
 use crate::editor::{CanvasComponentGeometry, CanvasResourceLimit};
 
@@ -155,6 +156,18 @@ pub fn DioxusIsolatedCanvas(
         let expected_instance = instance_id.clone();
         let intent_instance = intent_instance_id.clone();
         move |payload: String| {
+            let current_instance = {
+                let current = session.read();
+                canvas_instance_id(
+                    current.controller.page_id(),
+                    current.controller.active_page_index(),
+                    current.controller.revision_id(),
+                    &current.controller.editor().revision().project_hash.hex(),
+                )
+            };
+            if current_instance != expected_instance {
+                return;
+            }
             #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
             if let Some((_, message)) =
                 decode_canvas_message(&payload, &expected_instance, None)
