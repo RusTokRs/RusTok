@@ -25,8 +25,8 @@ mod schedule_worker;
 mod symbols;
 pub(crate) use helpers::normalize_locale;
 pub(crate) use symbols::{
-    content_has_symbol_instances, lock_site_symbol_catalog_in_tx, replace_symbol_block,
-    resolve_content_symbols, symbol_used_by_any_page, template_symbol_ids,
+    content_has_symbol_instances, load_site_symbols_by_locale, lock_site_symbol_catalog_in_tx,
+    replace_symbol_block, resolve_content_symbols, symbol_used_by_any_page, template_symbol_ids,
 };
 mod translation_apply;
 
