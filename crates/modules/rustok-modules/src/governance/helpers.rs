@@ -402,3 +402,111 @@ pub(crate) fn publication_evidence_digest_sha256(
     }
     hex::encode(hasher.finalize())
 }
+
+
+/// Resolve a validation child to its request without locking the child, then
+/// acquire the request row first. The caller must re-read the child constrained
+/// to the returned request ID before using any mutable evidence.
+#[derive(Clone, Copy)]
+pub(crate) enum ValidationRequestLocator {
+    JobId,
+    StageId,
+    ClaimId,
+}
+
+pub(crate) async fn lock_validation_request(
+    tx: &DatabaseTransaction,
+    backend: SupportedBackend,
+    locator: ValidationRequestLocator,
+    identity: &str,
+) -> Result<Option<String>, ModuleGovernanceError> {
+    let (table, column) = match locator {
+        ValidationRequestLocator::JobId => ("registry_validation_jobs", "id"),
+        ValidationRequestLocator::StageId => ("registry_validation_stages", "id"),
+        ValidationRequestLocator::ClaimId => ("registry_validation_stages", "claim_id"),
+    };
+    let lock = if backend == SupportedBackend::Postgres {
+        " FOR UPDATE OF r"
+    } else {
+        ""
+    };
+    let row = tx.query_one_raw(Statement::from_sql_and_values(
+        backend.db_backend(),
+        format!(
+            "SELECT r.id FROM {table} child JOIN registry_publish_requests r ON r.id = child.request_id WHERE child.{column} = {}{lock}",
+            backend.placeholder(1),
+        ),
+        vec![identity.to_string().into()],
+    )).await.map_err(store_error)?;
+    row.as_ref().map(|row| required_column(row, "id")).transpose()
+}
+
+/// Lock only the child in the subsequent read, after retaining its request.
+pub(crate) fn validation_child_lock(backend: SupportedBackend, locator: ValidationRequestLocator) -> &'static str {
+    match (backend, locator) {
+        (SupportedBackend::Postgres, ValidationRequestLocator::JobId) => " FOR UPDATE OF j",
+        (SupportedBackend::Postgres, _) => " FOR UPDATE OF s",
+        (SupportedBackend::Sqlite, _) => "",
+    }
+}
+
+#[cfg(test)]
+mod validation_lock_tests {
+    use super::*;
+    use sea_orm::{Database, DatabaseConnection, DbBackend, TransactionTrait};
+    use std::time::Duration;
+
+    async fn transaction(db: &DatabaseConnection, schema: &str) -> DatabaseTransaction {
+        let tx = crate::backend::begin_fenced_transaction(db).await.unwrap();
+        tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        tx
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_MODULES_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_validation_request_fence_waits_without_holding_the_child() {
+        let db = Database::connect(std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").unwrap()).await.unwrap();
+        assert_eq!(db.get_database_backend(), DbBackend::Postgres);
+        let schema = format!("validation_request_fence_{}", uuid::Uuid::new_v4().simple());
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
+        let setup = transaction(&db, &schema).await;
+        setup.execute_unprepared(
+            "CREATE TABLE registry_publish_requests (id TEXT PRIMARY KEY, revision BIGINT NOT NULL);
+             CREATE TABLE registry_validation_stages (id TEXT PRIMARY KEY, request_id TEXT NOT NULL REFERENCES registry_publish_requests(id), claim_id TEXT);
+             CREATE TABLE registry_validation_jobs (id TEXT PRIMARY KEY, request_id TEXT NOT NULL REFERENCES registry_publish_requests(id));
+             INSERT INTO registry_publish_requests VALUES ('request', 1);
+             INSERT INTO registry_validation_stages VALUES ('stage', 'request', 'claim');
+             INSERT INTO registry_validation_jobs VALUES ('job', 'request');"
+        ).await.unwrap();
+        setup.commit().await.unwrap();
+
+        for (locator, key, table, child) in [
+            (ValidationRequestLocator::StageId, "stage", "registry_validation_stages", "stage"),
+            (ValidationRequestLocator::ClaimId, "claim", "registry_validation_stages", "stage"),
+            (ValidationRequestLocator::JobId, "job", "registry_validation_jobs", "job"),
+        ] {
+            let owner = transaction(&db, &schema).await;
+            owner.execute_unprepared("SELECT id FROM registry_publish_requests WHERE id = 'request' FOR UPDATE").await.unwrap();
+            let worker_db = db.clone();
+            let worker_schema = schema.clone();
+            let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+            let mut worker = tokio::spawn(async move {
+                let tx = transaction(&worker_db, &worker_schema).await;
+                ready_tx.send(()).unwrap();
+                let request = lock_validation_request(&tx, SupportedBackend::Postgres, locator, key).await.unwrap();
+                assert_eq!(request.as_deref(), Some("request"));
+                tx.rollback().await.unwrap();
+            });
+            ready_rx.await.unwrap();
+            assert!(tokio::time::timeout(Duration::from_millis(150), &mut worker).await.is_err());
+            owner.execute_unprepared(&format!("SELECT id FROM {table} WHERE id = '{child}' FOR UPDATE NOWAIT")).await.unwrap();
+            owner.commit().await.unwrap();
+            tokio::time::timeout(Duration::from_secs(5), worker).await.unwrap().unwrap();
+        }
+
+        let tx = transaction(&db, &schema).await;
+        assert!(lock_validation_request(&tx, SupportedBackend::Postgres, ValidationRequestLocator::ClaimId, "missing").await.unwrap().is_none());
+        tx.rollback().await.unwrap();
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+    }
+}

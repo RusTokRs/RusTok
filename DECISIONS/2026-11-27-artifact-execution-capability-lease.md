@@ -302,3 +302,10 @@ revoked session/role/grant and changed policy/readiness, both Rhai worker and
 Wasm paths, owner background/lifecycle compatibility, concurrency and timing.
 Source regressions cover scope propagation/invalidation and pre/post launch
 lease checks; compilation and the remaining integration evidence are pending.
+
+Registry validation job claims (including invalid-work-item terminalization),
+remote stage claims, completion and requeue now acquire the request row before
+the child row. Re-read the child under the same request identity after waiting;
+remote lease predicates use the live database clock. The heartbeat remains
+child-only. This removes the inspected request/child blocking inversion;
+PostgreSQL contention tests and broader registry receipt guards remain pending.

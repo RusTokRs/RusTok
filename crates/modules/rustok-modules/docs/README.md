@@ -1633,3 +1633,10 @@ invisible parents, and retains existing FK constraints. SET NULL cascades and
 unchanged release request references need no new request parent lock. Retry
 55P03 from a new transaction. Source regressions are authored, unrun. Other
 implicit FK/receipt/generation ordering remains open.
+
+Validation claim, remote completion and expired-claim requeue acquire the
+publish request before locking its job/stage, matching manual stage reports
+and enqueue. Locate without locking a child, then re-read it under the exact
+request fence and child row lock; use PostgreSQL read committed and a live
+clock for remote lease predicates. The lock-order regression is authored,
+unrun; broader owner/worker contention evidence remains open.
