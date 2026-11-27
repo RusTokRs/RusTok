@@ -102,6 +102,13 @@ impl RelayEnvelope {
         }
     }
 
+    fn identity(&self) -> (Uuid, Uuid) {
+        match self {
+            Self::Root(envelope) => (envelope.id, envelope.tenant_id),
+            Self::Contract(envelope) => (envelope.id(), envelope.tenant_id()),
+        }
+    }
+
     fn schema_version(&self) -> u16 {
         match self {
             Self::Root(envelope) => envelope.schema_version,
@@ -360,8 +367,37 @@ impl OutboxRelay {
         }
     }
 
+    // A batch claim may expire while a row waits for a dispatch slot.
+    // Re-arm only the exact pending claim, before invoking the target.
+    async fn refresh_claim(&self, model: &entity::Model) -> Result<entity::Model> {
+        if model.claimed_by.is_none() || model.claimed_at.is_none() {
+            return Err(Error::External(format!(
+                "outbox event {} has no dispatch claim",
+                model.id
+            )));
+        }
+        let now = Utc::now();
+        let result = entity::Entity::update_many()
+            .filter(entity::Column::Id.eq(model.id))
+            .filter(entity::Column::Status.eq(SysEventStatus::Pending))
+            .filter(entity::Column::ClaimedBy.eq(model.claimed_by.clone()))
+            .filter(entity::Column::ClaimedAt.eq(model.claimed_at))
+            .set(entity::ActiveModel {
+                claimed_at: Set(Some(now)),
+                ..Default::default()
+            })
+            .exec(&self.db)
+            .await?;
+        self.ensure_claim_owned(model.id, result.rows_affected)?;
+        let mut refreshed = model.clone();
+        refreshed.claimed_at = Some(now);
+        Ok(refreshed)
+    }
+
     async fn process_claimed_event(&self, model: &entity::Model) -> Result<()> {
         let started = Instant::now();
+        let refreshed = self.refresh_claim(model).await?;
+        let model = &refreshed;
         let event_id = model.id;
         let envelope = match Self::decode_envelope(model) {
             Ok(envelope) => envelope,
@@ -385,6 +421,13 @@ impl OutboxRelay {
         };
 
         let publish_timeout = self.config.publish_timeout;
+        // Renewal and decoding consume the lease too. Do not start an
+        // external effect unless the configured timeout fits the budget.
+        if started.elapsed() >= self.config.claim_ttl.saturating_sub(publish_timeout) {
+            return Err(Error::External(format!(
+                "outbox event {event_id} dispatch lease budget exhausted before publication"
+            )));
+        }
         let publish_result = match envelope {
             RelayEnvelope::Root(envelope) => {
                 tokio::time::timeout(publish_timeout, self.target.publish(envelope)).await
@@ -404,8 +447,8 @@ impl OutboxRelay {
 
         match publish_result {
             Ok(()) => {
-                tracing::info!(event_id = %event_id, latency_ms = elapsed_ms, "Outbox event dispatched");
                 self.mark_dispatched(model).await?;
+                tracing::info!(event_id = %event_id, latency_ms = elapsed_ms, "Outbox event dispatched");
                 self.record_processed(&model.event_type, elapsed_ms, true);
                 Ok(())
             }
@@ -459,11 +502,13 @@ impl OutboxRelay {
                 envelope.schema_version()
             ))
         })?;
-        if model.event_type != envelope.event_type()
+        let (id, tenant_id) = envelope.identity();
+        if !model.matches_envelope_identity(id, tenant_id)
+            || model.event_type != envelope.event_type()
             || model.schema_version != envelope_schema_version
         {
             return Err(Error::Validation(format!(
-                "outbox row metadata does not match envelope: row=`{}`/{} envelope=`{}`/{}",
+                "outbox row identity, tenant or schema metadata does not match envelope: row=`{}`/{} envelope=`{}`/{}",
                 model.event_type,
                 model.schema_version,
                 envelope.event_type(),
@@ -782,6 +827,19 @@ mod tests {
         .await
         .expect("insert contract event");
 
+        let stored = entity::Entity::find_by_id(event_id)
+            .one(&db)
+            .await
+            .expect("query")
+            .expect("event");
+        assert!(OutboxRelay::decode_envelope(&stored).is_ok());
+        let mut wrong_id = stored.clone();
+        wrong_id.id = Uuid::new_v4();
+        assert!(OutboxRelay::decode_envelope(&wrong_id).is_err());
+        let mut wrong_tenant = stored.clone();
+        wrong_tenant.tenant_id = Some(Uuid::new_v4());
+        assert!(OutboxRelay::decode_envelope(&wrong_tenant).is_err());
+
         let target = Arc::new(CaptureContractPublish {
             event_types: Mutex::new(Vec::new()),
         });
@@ -802,6 +860,50 @@ mod tests {
             event_types,
             vec!["marketplace.listing.published".to_string()]
         );
+    }
+
+    #[tokio::test]
+    async fn queued_claim_is_refreshed_and_old_snapshot_is_fenced() {
+        let db = database().await;
+        let envelope = EventEnvelope::new(
+            Uuid::new_v4(),
+            None,
+            rustok_events::DomainEvent::UserLoggedIn { user_id: Uuid::new_v4() },
+        );
+        let event_id = envelope.id;
+        crate::OutboxTransport::new(db.clone())
+            .publish(envelope)
+            .await
+            .expect("persist event");
+        entity::Entity::update_many()
+            .filter(entity::Column::Id.eq(event_id))
+            .set(entity::ActiveModel {
+                claimed_by: Set(Some("queued-worker".to_string())),
+                claimed_at: Set(Some(Utc::now() - chrono::Duration::minutes(5))),
+                ..Default::default()
+            })
+            .exec(&db)
+            .await
+            .expect("queue claim");
+        let queued = entity::Entity::find_by_id(event_id)
+            .one(&db)
+            .await
+            .expect("query")
+            .expect("event");
+        let relay = OutboxRelay::new(db, Arc::new(RejectUnexpectedPublish));
+        assert!(OutboxRelay::decode_envelope(&queued).is_ok());
+        let mut wrong_id = queued.clone();
+        wrong_id.id = Uuid::new_v4();
+        assert!(OutboxRelay::decode_envelope(&wrong_id).is_err());
+        let mut wrong_tenant = queued.clone();
+        wrong_tenant.tenant_id = Some(Uuid::new_v4());
+        assert!(OutboxRelay::decode_envelope(&wrong_tenant).is_err());
+
+        let renewed = relay.refresh_claim(&queued).await.expect("renew claim");
+        assert_eq!(renewed.claimed_by, queued.claimed_by);
+        assert!(renewed.claimed_at > queued.claimed_at);
+        assert!(relay.mark_dispatched(&queued).await.is_err());
+        relay.mark_dispatched(&renewed).await.expect("current claim");
     }
 
     #[tokio::test]
@@ -843,6 +945,8 @@ mod tests {
                 ..RelayConfig::default()
             },
         );
+        assert!(relay.refresh_claim(&old_model).await.is_err());
+        assert!(relay.process_claimed_event(&old_model).await.is_err());
         assert!(relay.mark_dispatched(&old_model).await.is_err());
 
         let event = entity::Entity::find_by_id(event_id)

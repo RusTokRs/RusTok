@@ -35,7 +35,10 @@ infrastructure for the platform event runtime.
 
 - Claim ownership is stored in `sys_events.claimed_by` and `sys_events.claimed_at`.
 - PostgreSQL claim uses `FOR UPDATE SKIP LOCKED`; SQLite/test environment uses guarded update fallback.
-- `claim_ttl` determines when a stuck claim can be reclaimed.
+- `claim_ttl` determines when a stuck claim can be reclaimed. Before dispatch,
+  refresh the exact pending claim and check that the publish timeout fits
+  the remaining lease budget. Reclaimed rows cannot start publication from
+  a stale snapshot.
 - `RelayConfig.max_concurrency` limits parallel dispatch.
 - Retry uses exponential backoff from `backoff_base` to `backoff_max`.
 - Runtime `apps/server` selects `max_attempts` from `rustok.events.dlq.max_attempts` if DLQ is enabled, otherwise from `rustok.events.relay_retry_policy.max_attempts`.

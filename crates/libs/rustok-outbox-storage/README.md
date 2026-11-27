@@ -16,3 +16,6 @@ that transaction before taking the aggregate lock. This is not a lease renewal
 or a fence for external side effects. The caller controls commit and rollback.
 Configure Outbox to deliver committed events from that database. See the
 [Outbox runtime contract](../../modules/rustok-outbox/README.md).
+
+Replay verifies the stored row ID and any populated tenant projection against
+the decoded envelope. Historical null projections remain permitted.

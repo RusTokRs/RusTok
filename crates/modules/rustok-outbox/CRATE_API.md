@@ -39,7 +39,10 @@
 - Supports transaction-only sealed-contract write-once boundaries keyed by an exact caller-owned envelope UUID, with optional exact predecessor causation.
 - Relays root events through `EventTransport::publish`.
 - Relays bounded typed families through `EventTransport::publish_contract`.
-- Validates payload metadata against the durable row before dispatch.
+- Validates registered payload ID, populated tenant projection, type and schema
+  version against the durable row before dispatch. Historical null tenant
+  projections remain permitted.
+- Refreshes the fenced claim before dispatch and checks the timeout budget.
 - Retains delivered rows for a configured window: `OutboxRetention::prune_once` deletes only
   `dispatched` rows whose `dispatched_at` is older than the window, in bounded batches, and never
   touches `pending` (still owed) or `failed` (DLQ) rows.

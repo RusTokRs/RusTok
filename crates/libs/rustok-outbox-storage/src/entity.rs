@@ -43,6 +43,16 @@ pub struct Model {
     pub dispatched_at: Option<DateTime<Utc>>,
 }
 
+impl Model {
+    /// Checks the canonical envelope identity against the durable row.
+    /// Null projections are allowed for historical and platform-scoped rows.
+    pub fn matches_envelope_identity(&self, id: Uuid, tenant_id: Uuid) -> bool {
+        !id.is_nil()
+            && self.id == id
+            && self.tenant_id.is_none_or(|stored| !stored.is_nil() && stored == tenant_id)
+    }
+}
+
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 

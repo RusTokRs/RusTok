@@ -115,14 +115,19 @@ environment variables over the `RelayConfig` defaults:
   Each claim pass fences its rows with a unique `{worker_id}:{uuid}` owner
   value, so two relays sharing a configured `worker_id` cannot complete each
   other's claims.
-- Dispatch concurrency is bounded by `RelayConfig.max_concurrency`.
+- Dispatch concurrency is bounded by `RelayConfig.max_concurrency`. A queued
+  claim is refreshed by a conditional pending/token/timestamp update before
+  dispatch. A reclaimed or terminal row cannot reach the target through the
+  stale worker. Renewal and decoding consume the lease budget; publication
+  starts only if the timeout fits. At-least-once delivery remains unchanged.
 - A single dispatch is bounded by `RelayConfig.publish_timeout`, which must
   stay below `claim_ttl` (validated): a dispatch that outlives its lease can
   be reclaimed and delivered twice while still running.
 - Delivery is at-least-once and unordered across concurrent dispatches;
   consumers must be idempotent and tolerant of reordering.
 - Permanent dispatch failures (undecodable payload, envelope/row metadata
-  mismatch, unregistered schema, transport-side validation) move the event
+  mismatch (ID, populated tenant projection, event type or schema version),
+  unregistered schema, transport-side validation) move the event
   straight to `failed` (DLQ) without burning the retry budget. Transient
   failures follow the retry policy below.
 - Retry uses exponential backoff from `backoff_base` up to `backoff_max`.

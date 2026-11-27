@@ -149,3 +149,12 @@ or alternate queue. Server targets await explicit local sealed handlers; Iggy-fi
 retry preserves the original identity and is at-least-once. Compilation, actual SQL rollback,
 configured relay/Iggy receive/cursor ACK, crash/restart and DLQ evidence remain open. See the
 [API](../CRATE_API.md#fresh-sealed-facts-and-local-acknowledgement-2026-11-01-source-only).
+
+## Dispatch admission and envelope identity (2026-11-27, source only)
+
+Refresh the exact pending claim at dispatch admission and check the remaining
+lease budget before publication. Root and sealed-contract relay and storage
+replay reject conflicting durable identity and populated tenant projections.
+Historical null projections remain readable. Source regressions cover queued
+renewal, stale claims and both envelope families. Compilation, database
+contention, real target cancellation and broker idempotency remain unverified.

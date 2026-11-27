@@ -124,7 +124,7 @@ impl OutboxTransport {
             .validate_registered_schema()
             .map_err(|error| write_once_unavailable(envelope_id, event_type.as_str(), error))?;
 
-        if stored_envelope.id() != stored.id
+        if !stored.matches_envelope_identity(stored_envelope.id(), stored_envelope.tenant_id())
             || stored_envelope.event_type() != stored.event_type.as_str()
             || i16::try_from(stored_envelope.schema_version()).ok() != Some(stored.schema_version)
         {
@@ -342,7 +342,8 @@ impl EventTransport for OutboxTransport {
                     "outbox event id {envelope_id} already belongs to different canonical facts"
                 ))
             })?;
-        if stored.event_type != event_type
+        if !stored.matches_envelope_identity(stored_envelope.id, stored_envelope.tenant_id)
+            || stored.event_type != event_type
             || stored.schema_version != schema_version
             || !same_root_publication(&stored_envelope, &payload_envelope)
         {
