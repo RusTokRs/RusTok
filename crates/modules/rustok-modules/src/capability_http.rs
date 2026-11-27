@@ -603,7 +603,7 @@ impl CapabilityBroker for ArtifactHttpCapabilityBroker {
             "OPTIONS" => Method::OPTIONS,
             _ => return Err(SandboxError::InvalidRequest("HTTP method is unsupported".into())),
         };
-        let mutating = matches!(method, Method::POST | Method::PUT | Method::PATCH | Method::DELETE);
+        let mutating = matches!(method.as_str(), "POST" | "PUT" | "PATCH" | "DELETE");
         let receipt_key = if mutating {
             Some(http_effect_receipt_key(call, input)?)
         } else {
