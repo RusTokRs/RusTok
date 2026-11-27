@@ -372,3 +372,19 @@ the same UUID to revive old recovery or membership evidence. The witness
 has no user FK or account PII and survives deletion. Pre-cutover deletions,
 other credential IDs, privileged DDL and database restore are not covered.
 See the RBAC owner documentation. Source regressions unrun.
+
+### Permanent credential identity evidence
+
+Auth migration 000014 preserves UUID birth claims for sessions, OAuth apps,
+client IDs, token registrations (including family roots), and authorization
+codes. OAuth token/code digests are also consumed permanently: hard deletion
+and a fresh UUID cannot revive a previously registered digest. These claims
+have no foreign keys, survive cleanup and cascade, and roll back with failed
+births. PostgreSQL claims use nonwaiting per-key advisory fences; SQLite
+rejects implicit replacement of a live refresh-family member and preserves
+ordinary rotation after predecessor revocation. Token/code digest and client
+identity updates are forbidden. Direct session digest rotation is unchanged.
+Witness storage grows with credential births; no plaintext is retained.
+Pre-cutover removed identities, direct session digest reuse, in-place terminal
+timestamp regression, tenant identity and privileged DDL/restore are not
+covered by this migration. Source regressions unrun.

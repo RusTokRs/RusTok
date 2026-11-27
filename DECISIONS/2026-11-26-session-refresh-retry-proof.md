@@ -273,3 +273,10 @@ parent. Existing inconsistent session identities stop cutover without silent
 repair. This is ordinary DML protection, not authorization of parent deletion
 or protection against privileged DDL. Source regression tests and explicit
 isolated history-aging fixtures are unrun.
+
+Auth migration 000014 adds a permanent session UUID birth witness without
+a foreign key to sessions. Cleanup cannot release that UUID, and a rolled
+back creation consumes no witness. Current/history digest rotation and
+retention are unchanged; a permanent raw refresh digest non-reuse contract
+and terminal revocation timestamp integrity are separate pending work.
+Source regressions unrun.

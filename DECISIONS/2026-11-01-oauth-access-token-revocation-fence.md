@@ -304,3 +304,15 @@ no partial credential revocation. SQLite uses its serialized writer. The
 existing mutation predicates remain authoritative. This covers broad user/app
 writers, not every family replay and cross-owner receipt path. PostgreSQL
 contention regression is authored, unrun.
+
+## Permanent registration identity (2026-11-27)
+
+Auth migration 000014 records append-only OAuth app/client/token/code UUID
+and token/code digest claims on actual row birth. Hard deletion and family
+retention cannot release a claimed identity or digest. Token/code hash and
+client-ID updates are forbidden; SQLite prevents REPLACE of the unique live
+refresh family member even with recursive triggers disabled. Consent re-grant
+and managed app reactivation retain their existing contracts. The claim
+history is independent of the live token table; no plaintext is stored.
+Pre-cutover deletions, terminal timestamp rewrites and privileged DDL/restore
+are outside this guarantee. Regression sources unrun.

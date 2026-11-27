@@ -722,3 +722,11 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   App-wide scope includes consents; user scope preserves delegated-only tokens.
   PostgreSQL source contention test unrun. Family replay and consent paths,
   cross-owner receipts and outbox still require closure.
+
+- Credential identity continuation: Auth migration 000014 adds append-only
+  session, OAuth app/client/token/code UUID claims and OAuth token/code digest
+  claims. SQLite rejects alternate refresh-family REPLACE; normal rotation and
+  rollback remain supported. Source regressions authored, unrun; incremental
+  migration, lock contention and storage growth require verification. Tenant
+  identity, terminal state transitions and direct session digest continuity
+  remain open.
