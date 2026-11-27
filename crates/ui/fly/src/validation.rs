@@ -1082,6 +1082,18 @@ fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
         ));
     }
     for (path, entry) in entries {
+        if crate::symbol::symbol_definition_size_exceeds_limit(&entry) {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "symbol_definition_limit_exceeded",
+                &path,
+                format!(
+                    "symbol definition exceeds {} bytes",
+                    crate::MAX_SYMBOL_DEFINITION_BYTES
+                ),
+            ));
+            continue;
+        }
         let Some(descriptor) = crate::SymbolDescriptor::from_value(&entry) else {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
@@ -1091,12 +1103,30 @@ fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
             ));
             continue;
         };
-        if let Err(reason) = crate::validate_identifier(&descriptor.id) {
+        if let Err(error) = crate::symbol::validate_definition(&descriptor) {
+            let message = error.to_string();
+            let code = if message.contains("exceeds") {
+                "symbol_definition_limit_exceeded"
+            } else if message.contains("duplicate component id") {
+                "duplicate_symbol_component_id"
+            } else if message.contains("component id") {
+                "invalid_symbol_component_id"
+            } else if message.contains("duplicate HTML id") {
+                "duplicate_symbol_html_id"
+            } else if message.contains("duplicate form id") {
+                "duplicate_symbol_form_id"
+            } else if message.contains("form id") {
+                "symbol_form_dom_id_conflict"
+            } else if message.contains("symbol id") {
+                "invalid_symbol_id"
+            } else {
+                "invalid_symbol_definition"
+            };
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
-                "invalid_symbol_id",
+                code,
                 &path,
-                format!("symbol id `{}` is invalid: {reason}", descriptor.id),
+                message,
             ));
         }
         if catalog.insert(descriptor.id.clone(), descriptor).is_some() {
@@ -1109,28 +1139,6 @@ fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
         }
     }
     for (symbol_id, descriptor) in &catalog {
-        let mut ids = BTreeSet::new();
-        for component in &descriptor.components {
-            let mut collected = Vec::new();
-            component.collect_ids(&mut collected);
-            for id in collected {
-                if crate::validate_identifier(&id).is_err() {
-                    report.diagnostics.push(diagnostic(
-                        ValidationSeverity::Error,
-                        "invalid_symbol_component_id",
-                        format!("{FLY_SYMBOLS_FIELD}({symbol_id})"),
-                        format!("symbol component id `{id}` is not a valid identifier"),
-                    ));
-                } else if !ids.insert(id.clone()) {
-                    report.diagnostics.push(diagnostic(
-                        ValidationSeverity::Error,
-                        "duplicate_symbol_component_id",
-                        format!("{FLY_SYMBOLS_FIELD}({symbol_id})"),
-                        format!("symbol contains duplicate component id `{id}`"),
-                    ));
-                }
-            }
-        }
         for reference in crate::symbol_references(&descriptor.components) {
             if !catalog.contains_key(&reference) {
                 report.diagnostics.push(diagnostic(
@@ -1283,6 +1291,60 @@ mod tests {
                 .count(),
             3
         );
+    }
+
+    #[test]
+    fn project_validation_rejects_symbol_definitions_over_the_raw_byte_limit() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [{
+                "id": "large-symbol",
+                "components": [{ "id": "symbol-root", "type": "wrapper" }],
+                "unknownExtension": "x".repeat(crate::MAX_SYMBOL_DEFINITION_BYTES + 1)
+            }],
+            "pages": [{
+                "component": { "id": "page-root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "symbol_definition_limit_exceeded"
+        }));
+    }
+
+    #[test]
+    fn project_validation_enforces_symbol_component_limits() {
+        let children = (0..crate::MAX_SYMBOL_COMPONENTS)
+            .map(|index| json!({ "id": format!("symbol-child-{index}"), "type": "text" }))
+            .collect::<Vec<_>>();
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [{
+                "id": "large-symbol",
+                "components": [{
+                    "id": "symbol-root",
+                    "type": "wrapper",
+                    "components": children
+                }]
+            }],
+            "pages": [{
+                "component": { "id": "page-root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "symbol_definition_limit_exceeded"
+        }));
     }
 
     #[test]
