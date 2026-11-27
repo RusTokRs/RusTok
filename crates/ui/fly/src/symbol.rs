@@ -564,7 +564,7 @@ fn symbol_instance_facts_in_components(
     instances
 }
 
-fn symbol_asset_dangling_references(
+pub(crate) fn symbol_asset_dangling_references(
     descriptor: &SymbolDescriptor,
 ) -> BTreeSet<String> {
     let mut references = BTreeSet::new();
