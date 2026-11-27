@@ -124,8 +124,17 @@ impl RbacArtifactPermissionAssignmentService {
     ) -> Result<ArtifactRolePermissionAssignmentResult, ArtifactPermissionAssignmentError> {
         validate_command(&command)?;
         ensure_supported_backend(transaction.get_database_backend())?;
+        // PostgreSQL FK checks on the acting user must not acquire a user
+        // lock after a role lock (user administration uses user -> role).
+        // SQLite first obtains its writer fence through role_exists.
+        if transaction.get_database_backend() == DbBackend::Postgres {
+            lock_assignment_actor(transaction, &command).await?;
+        }
         if !role_exists(transaction, &command).await? {
             return Err(ArtifactPermissionAssignmentError::RoleNotFound);
+        }
+        if transaction.get_database_backend() == DbBackend::Sqlite {
+            lock_assignment_actor(transaction, &command).await?;
         }
         let artifact_permission =
             resolve_artifact_permission_identity(transaction, &command).await?;
@@ -156,18 +165,21 @@ impl RbacArtifactPermissionAssignmentService {
         } else {
             revoke_permission(transaction, &artifact_permission, &command).await?
         };
-        if changed
-            && let Err(error) = self
-                .event_publisher
+        if changed {
+            // The artifact continuity receipt uses the same durable RBAC
+            // generation as static grants. Never change its authority behind
+            // that receipt, and never advance it for retries or state no-ops.
+            crate::reserve_permission_invalidation_generation(transaction)
+                .await
+                .map_err(database_error)?;
+            self.event_publisher
                 .publish_assignment_changed(
                     transaction,
                     command.tenant_id,
                     command.actor_id,
                     assignment_event(operation_id, &artifact_permission, &command),
                 )
-                .await
-        {
-            return Err(error);
+                .await?;
         }
 
         Ok(ArtifactRolePermissionAssignmentResult { applied: true })
@@ -404,6 +416,37 @@ async fn insert_operation(
     Ok((result.rows_affected() == 1).then_some(operation_id))
 }
 
+// Protect actor identity before roles on PostgreSQL, including owner-only
+// calls. The authenticated host has already locked and validated the user.
+async fn lock_assignment_actor(
+    transaction: &DatabaseTransaction,
+    command: &ArtifactRolePermissionAssignmentCommand,
+) -> Result<(), ArtifactPermissionAssignmentError> {
+    let backend = transaction.get_database_backend();
+    let sql = placeholders(backend, match backend {
+        DbBackend::Postgres => "SELECT 1 FROM users WHERE id = {actor_id} AND tenant_id = {tenant_id} FOR KEY SHARE",
+        _ => "SELECT 1 FROM users WHERE id = {actor_id} AND tenant_id = {tenant_id}",
+    });
+    if transaction
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            sql,
+            vec![
+                uuid_value(backend, command.actor_id),
+                uuid_value(backend, command.tenant_id),
+            ],
+        ))
+        .await
+        .map_err(database_error)?
+        .is_none()
+    {
+        return Err(ArtifactPermissionAssignmentError::InvalidCommand(
+            "actor does not exist in the requested tenant",
+        ));
+    }
+    Ok(())
+}
+
 async fn role_exists(
     transaction: &DatabaseTransaction,
     command: &ArtifactRolePermissionAssignmentCommand,
@@ -436,7 +479,12 @@ async fn resolve_artifact_permission_identity(
     let requested_scope_key = scope_key(command.scope, command.tenant_id);
     let sql = placeholders(
         backend,
-        "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key} LIMIT 1",
+        // Definitions are immutable, but a concurrent delete must not
+        // invalidate the exact parent between resolution and receipt/write.
+        match backend {
+            DbBackend::Postgres => "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key} LIMIT 1 FOR KEY SHARE",
+            _ => "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key} LIMIT 1",
+        },
     );
     transaction
         .query_one_raw(Statement::from_sql_and_values(

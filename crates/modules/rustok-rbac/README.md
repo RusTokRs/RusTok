@@ -135,7 +135,12 @@ transaction. Lock the direct session, current static module policy and
 the actor/target role union before evaluating live grants; require the
 admitted permission ceiling and a final credential deadline before commit.
 Missing host authority denies writes. Artifact operations retain their
-exact registered scope, idempotency receipt and transactional event. This
+exact registered scope, idempotency receipt and transactional event. Every
+actual artifact grant or revoke advances the existing durable RBAC generation
+in the same transaction; exact retries and state no-ops do not. Missing,
+negative or exhausted generation state denies changes. The owner protects
+actor identity before roles on PostgreSQL and retains the exact immutable
+permission definition through commit. This
 does not establish artifact-runtime entitlement or global inter-module
 lock ordering; compile and contention evidence remain pending.
 
