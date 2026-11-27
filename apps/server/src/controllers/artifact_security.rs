@@ -190,16 +190,16 @@ async fn execute_security_command(
     input: ArtifactSecurityCommandRequest,
     action: SecurityAction,
 ) -> Result<Response> {
-    let expected_revision = input.expected_revision.parse::<u64>().map_err(|_| {
-        Error::BadRequest(
-            "expectedRevision must be an unsigned 64-bit decimal string".to_string(),
-        )
-    })?;
     let db = ctx.db_clone();
     let provider = artifact_security_authority_provider(&ctx).map_err(map_authorization_error)?;
     let authorizer = ServerArtifactSecurityAuthorizer::new(provider, &auth, principal, tenant_id)
         .await
         .map_err(map_authorization_error)?;
+    let expected_revision = input.expected_revision.parse::<u64>().map_err(|_| {
+        Error::BadRequest(
+            "expectedRevision must be an unsigned 64-bit decimal string".to_string(),
+        )
+    })?;
     let command = build_module_artifact_security_command(
         ArtifactReleaseRef {
             slug: input.module_slug,

@@ -1253,15 +1253,17 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
   control returns typed framework-neutral `rustok-api` snapshots, so GraphQL
   only wraps canonical facts and does not map SeaORM models.
 - The build progress WebSocket at `GET /ws/builds` authenticates its bearer
-  credential and admits only effective `modules:read`, `modules:list`, or
-  `modules:manage` permissions. It uses the same live authority lease as the
-  GraphQL WebSocket: it checks the tenant, token, session, and effective RBAC
-  snapshot on a 30-second interval and before forwarding an event; authority
-  lookup is bounded to five seconds and the remaining token lifetime. An expiry
+  credential and explicit host-global read authority (HostAuthority::Read).
+  Tenant modules:read, modules:list, and modules:manage grants do not authorize
+  this platform-wide stream. The bearer session/tenant lease is revalidated on
+  a 30-second interval and before forwarding an event; authority lookup is
+  bounded to five seconds and the remaining token lifetime. The host-authority
+  context is captured at upgrade, so host-token rotation requires reconnecting
+  existing sockets. An expiry
   deadline starts a bounded close; outbound writes are bounded by five seconds
   and the remaining token lifetime.
-  Authority changes attempt a 4401 close; a blocked or disconnected peer may see
-  only a dropped connection. The hub is an
+  Bearer-session or tenant-authority changes attempt a 4401 close; a blocked or
+  disconnected peer may see only a dropped connection. The hub is an
   atomic process-local singleton, not a distributed or durable event stream.
 - Effective-module-policy snapshots carry an owner-produced tenant/revision
   cache identity, but the server's `get_latest` path does not compare it to an
@@ -1599,7 +1601,10 @@ idempotencyKey)` is the corresponding headless action path. It resolves the
   an explicit contract before widening or replacing this surface.
 - GraphQL build history and active-build reads use the host-composed read-only
   `rustok-build::SharedBuildControl`. Pagination limits are enforced by the
-  owner, and the transport does not import build persistence entities.
+  owner, and the transport does not import build persistence entities. These
+  reads and the GraphQL buildProgress subscription require HostAuthority::Read;
+  the module GraphQL permission extension does not treat them as tenant module
+  reads.
 - Native admin and GraphQL marketplace reads share the host-composed
   `SharedModuleMarketplaceCatalog`. The server adapter combines active local
   composition with configured remote registry providers, applies durable
@@ -2304,6 +2309,10 @@ and retaining them through commit. Exact idempotency replay also requires
 current authorization, so a stale request snapshot cannot authorize a replay.
 Successful commands clear the process-local effective module-policy cache
 across all tenants, because the security aggregate is global to the release.
+policyRevision is caller-provided audit/idempotency metadata, not an
+authorization credential. reasonDetail is free-text audit evidence and is not
+part of the semantic idempotency fingerprint; callers should reuse the original
+command body and UUID key for retries.
 The owner-side SQL execution fence remains authoritative for already-running
 artifact work.
 

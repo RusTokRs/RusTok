@@ -219,10 +219,7 @@ matching BFFs and revoke pre-cutover sessions; bare cookies are rejected.
 - The Forum/Taxonomy host adapter's Rust/real-owner regressions and mounted
   GraphQL/REST/native/SEO/Search acceptance remain unexecuted in this environment;
   source registration does not prove production runtime readiness.
-- Platform build history and the process-local build-event hub are exposed to
-  tenant module-read permissions. The host-global versus tenant visibility
-  contract is unresolved and must be decided before changing all transports and
-  clients. Build progress is not a durable cross-process stream.
+- Platform build history, active-build reads, GraphQL buildProgress and GET /ws/builds are host-global and require explicit HostAuthority::Read; tenant module-read/list/manage permissions alone do not grant access. The GraphQL module-permission classifier does not add a second tenant gate to these host-authorized fields. The process-local BuildEventHub is not a durable or distributed stream, so progress can be missed across restarts or replicas. The WebSocket captures host authority at upgrade; rotating the host token requires reconnecting existing sockets.
 - Installer HTTP jobs heartbeat every 30 seconds. A five-minute heartbeat gap
   atomically moves a stale `running` job to `recovery_required`; both states
   share one database-enforced admission slot, so a stale attempt is never

@@ -191,11 +191,6 @@ async fn execute_security_command(
     idempotency_key: Uuid,
     action: SecurityAction,
 ) -> Result<ArtifactSecurityReceiptGql> {
-    let expected_revision = expected_revision.parse::<u64>().map_err(|_| {
-        <FieldError as GraphQLError>::bad_user_input(
-            "expectedRevision must be an unsigned 64-bit decimal string",
-        )
-    })?;
     let (auth, principal, tenant_id) = authorized_request(ctx)?;
     let runtime_ctx = ctx.data::<ServerRuntimeContext>()?.clone();
     let db = ctx.data::<DatabaseConnection>()?.clone();
@@ -204,6 +199,11 @@ async fn execute_security_command(
     let authorizer = ServerArtifactSecurityAuthorizer::new(provider, &auth, principal, tenant_id)
         .await
         .map_err(map_authorization_error)?;
+    let expected_revision = expected_revision.parse::<u64>().map_err(|_| {
+        <FieldError as GraphQLError>::bad_user_input(
+            "expectedRevision must be an unsigned 64-bit decimal string",
+        )
+    })?;
     let command = build_module_artifact_security_command(
         ArtifactReleaseRef {
             slug: module_slug,

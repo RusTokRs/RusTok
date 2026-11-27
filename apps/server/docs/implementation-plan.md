@@ -3565,3 +3565,17 @@ Regression source was added for authorization, command identity, response
 cache policy, error mapping, GraphQL field classification and OpenAPI bearer
 requirements. Tests, compilation and formatting were not run at the maintainer's
 request.
+
+
+## Follow-up audit — host-global build visibility (2026-11-27)
+
+The build history, active-build, and buildProgress resolvers require
+HostAuthority::Read, and GET /ws/builds checks host authority at upgrade. The
+GraphQL module-permission classifier nevertheless classified those fields as
+tenant modules:read. That redundant gate could block a legitimate host
+operator without tenant modules:read. The classifier is now aligned with the
+resolver-level host boundary; regressions assert these host-global fields do
+not receive a tenant module policy. The process-local BuildEventHub remains
+non-durable/non-distributed, and existing WebSocket connections retain the
+host-authority context captured at upgrade. Host-token rotation therefore
+requires reconnecting sockets.
