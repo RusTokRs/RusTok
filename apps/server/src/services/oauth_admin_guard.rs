@@ -435,8 +435,8 @@ mod tests {
         ));
         let guarded = GuardedOAuthAdminProvider::new(db.clone(), inner);
 
-        // Neither a delegated token nor an unknown principal kind may grant
-        // consent through the registered (guarded) provider composition.
+        // Delegated and service credentials cannot grant or revoke consent
+        // through the registered (guarded) provider composition.
         for principal_kind in [
             Some(rustok_api::AuthPrincipalKind::DelegatedUser),
             Some(rustok_api::AuthPrincipalKind::Service),
@@ -719,10 +719,12 @@ mod tests {
             principal_kind,
         };
 
-        assert!(require_direct_user_consent(&context(Some(
-            rustok_api::AuthPrincipalKind::DirectUser
-        )))
-        .is_ok());
+        assert!(
+            require_direct_user_consent(&context(Some(
+                rustok_api::AuthPrincipalKind::DirectUser
+            )))
+            .is_ok()
+        );
         for principal_kind in [
             Some(rustok_api::AuthPrincipalKind::DelegatedUser),
             Some(rustok_api::AuthPrincipalKind::Service),
