@@ -31,7 +31,7 @@ fn full_and_inline_modes_can_drive_commands() {
         let effects = machine
             .dispatch(UiIntent::execute(EditorCommand::Patch {
                 component_id: "hero".to_string(),
-                patch: Default::default(),
+                patch: ComponentPatch::default().set_field("content", json!("Hello")),
             }))
             .expect("editable presentation");
         assert!(matches!(&effects[0], UiEffect::Command(_)));
@@ -165,9 +165,10 @@ fn author_profiles_save_drafts_and_publish_only_reviewers_do_not() {
             publish: true,
             ..CapabilityState::full()
         });
-    let mutation = reviewer.dispatch(UiIntent::execute(EditorCommand::Patch {
-        component_id: "hero".to_string(),
-        patch: Default::default(),
+    let mutation = reviewer.dispatch(UiIntent::execute(EditorCommand::Insert {
+        parent_id: None,
+        index: 0,
+        component: ComponentNode::object("section"),
     }));
     assert_eq!(
         mutation,
@@ -655,7 +656,7 @@ fn save_acknowledgement_cannot_clean_edits_made_during_save() {
     machine
         .dispatch(UiIntent::execute(EditorCommand::Patch {
             component_id: "hero".to_string(),
-            patch: Default::default(),
+            patch: ComponentPatch::default().set_field("content", json!("first edit")),
         }))
         .expect("first edit");
     machine
@@ -667,7 +668,7 @@ fn save_acknowledgement_cannot_clean_edits_made_during_save() {
     machine
         .dispatch(UiIntent::execute(EditorCommand::Patch {
             component_id: "hero".to_string(),
-            patch: Default::default(),
+            patch: ComponentPatch::default().set_field("content", json!("second edit")),
         }))
         .expect("second edit");
     let effects = machine
@@ -947,6 +948,25 @@ fn a_read_only_session_accepts_an_empty_patch_as_a_noop() {
 }
 
 #[test]
+fn an_empty_page_patch_is_a_noop_without_edit_capability_or_write_fencing() {
+    let intent = UiIntent::execute(EditorCommand::Page {
+        command: fly::PageCommand::Patch {
+            locator: fly::PageLocator::by_id("home"),
+            patch: fly::PagePatch::default(),
+        },
+    });
+    assert!(!intent.mutates_document());
+    assert!(!intent.requires_write_fence());
+
+    let mut machine = FlyUiStateMachine::new(Presentation::ReadOnly);
+    machine
+        .dispatch(intent)
+        .expect("an empty page patch is a no-op");
+    assert!(!machine.state.dirty.dirty);
+    assert_eq!(machine.state.dirty.command_sequence, 0);
+}
+
+#[test]
 fn selection_remains_possible_without_edit_capability_or_dirtying_the_document() {
     // `Select` requires no capability by design: inspecting a read-only preview is legitimate.
     // It must also stay outside the document-mutation path used for preview invalidation and
@@ -1092,7 +1112,7 @@ fn revision_conflict_fences_mutations_across_policy_refresh_and_rehydration() {
     for intent in [
         UiIntent::execute(EditorCommand::Patch {
             component_id: "hero".into(),
-            patch: ComponentPatch::default(),
+            patch: ComponentPatch::default().set_field("content", json!("conflicting edit")),
         }),
         UiIntent::Undo,
         UiIntent::Redo,
