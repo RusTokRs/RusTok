@@ -873,6 +873,171 @@ mod tests {
         assert!(!response_body_len_within_limit(usize::MAX, 1, usize::MAX));
     }
 
+
+
+    #[derive(Clone)]
+    struct AllowHttpEffectAuthorizer;
+
+    struct AllowHttpEffectFence;
+
+    struct AllowHttpEffectGuard;
+
+    #[async_trait]
+    impl crate::ArtifactSqlEffectAuthorizer for AllowHttpEffectAuthorizer {
+        async fn prepare(
+            &self,
+            _call: &CapabilityCall,
+        ) -> SandboxResult<Box<dyn crate::ArtifactSqlEffectFence>> {
+            Ok(Box::new(AllowHttpEffectFence))
+        }
+    }
+
+    #[async_trait]
+    impl crate::ArtifactSqlEffectFence for AllowHttpEffectFence {
+        async fn lock_on(
+            &self,
+            _tx: &sea_orm::DatabaseTransaction,
+        ) -> SandboxResult<Box<dyn crate::ArtifactSqlEffectCommitGuard>> {
+            Ok(Box::new(AllowHttpEffectGuard))
+        }
+    }
+
+    #[async_trait]
+    impl crate::ArtifactSqlEffectCommitGuard for AllowHttpEffectGuard {
+        async fn check_before_commit(
+            &self,
+            _tx: &sea_orm::DatabaseTransaction,
+        ) -> SandboxResult<()> {
+            Ok(())
+        }
+    }
+
+    async fn http_receipt_fixture() -> (DatabaseConnection, ArtifactHttpCapabilityBroker) {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("SQLite database");
+        db.execute_unprepared(
+            "CREATE TABLE module_artifact_http_effect_receipts (
+                tenant_id TEXT NOT NULL,
+                installation_id TEXT NOT NULL,
+                execution_idempotency_key TEXT NOT NULL,
+                request_idempotency_key TEXT NOT NULL,
+                request_digest TEXT NOT NULL,
+                status TEXT NOT NULL,
+                response TEXT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                completed_at TEXT NULL,
+                PRIMARY KEY (tenant_id, installation_id, execution_idempotency_key, request_idempotency_key)
+            )",
+        )
+        .await
+        .expect("HTTP receipt table");
+        let mut broker =
+            ArtifactHttpCapabilityBroker::with_database(db.clone(), Duration::from_secs(1))
+                .expect("HTTP broker");
+        broker.effect_authorizer = Some(Arc::new(AllowHttpEffectAuthorizer));
+        (db, broker)
+    }
+
+    fn receipt_test_call(
+        tenant_id: Uuid,
+        installation_id: Uuid,
+        execution_key: Uuid,
+        request_key: Option<Uuid>,
+        body: &str,
+    ) -> CapabilityCall {
+        let mut input = json!({
+            "method": "POST",
+            "url": "https://api.example.test/v1/items",
+            "headers": {},
+            "body": body,
+        });
+        if let Some(request_key) = request_key {
+            input["idempotency_key"] = json!(request_key.to_string());
+        }
+        CapabilityCall {
+            execution_id: Uuid::new_v4(),
+            subject: SandboxSubject::ModuleArtifact {
+                installation_id,
+                slug: "http-receipt-test".to_string(),
+                version: "1.0.0".to_string(),
+                digest: "sha256:test".to_string(),
+            },
+            context: rustok_sandbox::CapabilityCallContext {
+                phase: rustok_sandbox::ExecutionPhase::Event,
+                tenant_id: Some(tenant_id),
+                actor_id: None,
+                trace_id: None,
+                idempotency_key: Some(execution_key),
+            },
+            capability: CapabilityName::new("platform.http").expect("capability"),
+            operation: "request".to_string(),
+            input,
+        }
+    }
+
+    #[tokio::test]
+    async fn mutating_http_receipts_never_replay_an_unresolved_dispatch() {
+        let (_db, broker) = http_receipt_fixture().await;
+        let call = receipt_test_call(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            None,
+            "payload",
+        );
+        let key = http_effect_receipt_key(&call, call.input.as_object().expect("input"))
+            .expect("receipt key");
+        assert!(broker.claim_effect_receipt(&call, &key).await.unwrap().is_none());
+        assert!(broker.claim_effect_receipt(&call, &key).await.is_err());
+        broker.mark_effect_receipt_ambiguous(&call, &key).await;
+        assert!(broker.claim_effect_receipt(&call, &key).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn completed_http_receipt_replays_response_and_rejects_key_reuse() {
+        let (_db, broker) = http_receipt_fixture().await;
+        let tenant_id = Uuid::new_v4();
+        let installation_id = Uuid::new_v4();
+        let execution_key = Uuid::new_v4();
+        let request_key = Uuid::new_v4();
+        let call = receipt_test_call(
+            tenant_id,
+            installation_id,
+            execution_key,
+            Some(request_key),
+            "first",
+        );
+        let key = http_effect_receipt_key(&call, call.input.as_object().expect("input"))
+            .expect("receipt key");
+        assert!(broker.claim_effect_receipt(&call, &key).await.unwrap().is_none());
+        let response = json!({ "status": 201, "headers": {}, "body": "created" });
+        broker
+            .complete_effect_receipt(&call, &key, &response)
+            .await
+            .expect("complete receipt");
+        assert_eq!(
+            broker.claim_effect_receipt(&call, &key).await.unwrap(),
+            Some(response)
+        );
+
+        let changed = receipt_test_call(
+            tenant_id,
+            installation_id,
+            execution_key,
+            Some(request_key),
+            "different",
+        );
+        let changed_key =
+            http_effect_receipt_key(&changed, changed.input.as_object().expect("input"))
+                .expect("changed receipt key");
+        assert!(matches!(
+            broker.claim_effect_receipt(&changed, &changed_key).await,
+            Err(SandboxError::CapabilityConstraintDenied { .. })
+        ));
+    }
+
     #[test]
     fn transition_prefixes_cannot_smuggle_private_ipv4() {
         // NAT64 64:ff9b::a9fe:a9fe embeds 169.254.169.254 (metadata).
