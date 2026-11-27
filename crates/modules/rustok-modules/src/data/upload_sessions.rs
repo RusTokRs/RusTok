@@ -321,7 +321,6 @@ where
                 .map(|value| u64::try_from(value).map_err(|_| ArtifactDataError::ObjectIntegrity))
                 .transpose()?
                 .ok_or(ArtifactDataError::ObjectIntegrity)?;
-            commit_artifact_data_effect(transaction, guard).await?;
             let expected_revision: Option<i64> =
                 row.try_get("", "expected_revision").map_err(storage_error)?;
             let session = StoredArtifactDataObjectUploadSession {
