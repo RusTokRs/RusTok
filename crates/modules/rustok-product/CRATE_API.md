@@ -10,7 +10,7 @@
 - `fulfillment`: Product shipping and fulfillment requirement definitions.
 - `migrations`: SeaORM database migrations for product schema and variant definitions.
 - `module`: Lifecycle descriptor `ProductModule` implementing `RusToKModule`.
-- `ports`: Owner-defined cross-boundary read ports and projection request types.
+- `ports`: Owner-defined cross-boundary read ports and projection request types, including the shared `ProductTaxonomyPortFactory` composition seam.
 - `services`: Domain services for catalog operations, schema handling, and media references.
   `services::catalog_references` provides tenant-scoped existence and Variant parent
   checks and source Product locking for co-located extensions inside their transaction.
@@ -33,6 +33,7 @@
 - **Runtime Extensions**:
   - `ProductRuntimeSelected` typed marker registered into `ModuleRuntimeExtensions`
   - `ProductSeoTargetProvider` registered via `rustok_seo_targets::register_seo_target_provider`
+  - `ProductTaxonomyPortFactory` supplied by Distribution when Product and Taxonomy are selected; native SSR injects the database-bound adapter into Product catalog/schema services
 - **Database Migrations**: Sea-ORM migrations defined in `src/migrations/mod.rs` with dependency on `taxonomy` migration sequence.
 
 ### Selected identity capability
@@ -69,7 +70,7 @@ moves them into `rustok-product-ports` with a runtime-independent build.
 
 ## Domain Collaborations
 
-- **Taxonomy**: Product categorization, hierarchical taxonomy tree bindings, and storefront breadcrumbs.
+- **Taxonomy**: Product categorization, hierarchical taxonomy tree bindings, and storefront breadcrumbs. Distribution selects the native adapter through `ProductTaxonomyPortFactory`; native SSR category directories, effective forms, category-filtered catalog lists/facets, and tag-name reads consume the injected provider.
 - **Pricing Collaboration**: Transaction-aware initial price creation, base-price replacement, cleanup, and catalog projections via `ProductPricingPort`. Write calls forward the initiating actor and share the host transactional outbox; Pricing emits a validated `PriceUpdated` event for each persisted initial/replacement row in the same transaction. Product/Variant lifecycle events cover complete base-price clears and price-row deletion. Co-located direct Pricing base-price writers use `services::catalog_references::record_catalog_base_price_change_in_tx` with the locked Variant and exact `PriceUpdated` envelope to advance the catalog predecessor and refresh ledger atomically.
 - **Inventory**: Tenant-scoped available-quantity projections plus transaction-aware initial
   inventory provisioning, SKU synchronization and guarded cleanup. Every projected level must

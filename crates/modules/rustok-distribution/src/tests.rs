@@ -160,6 +160,10 @@ fn selected_product_bridge_publishes_schema_and_source_factory() {
             && factory.factory_name() == super::product_index::PRODUCT_INDEX_SOURCE
     }));
     assert!(extensions.contains::<rustok_product::ports::ProductTaxonomyPortFactory>());
+    let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(
+        sea_orm::DatabaseConnection::default(),
+    ));
+    assert!(host.shared_get::<rustok_product::ports::ProductTaxonomyPortFactory>().is_some());
 }
 
 #[cfg(feature = "ai-translation")]

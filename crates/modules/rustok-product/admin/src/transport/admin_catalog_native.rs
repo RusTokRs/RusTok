@@ -274,7 +274,8 @@ async fn product_admin_catalog_list_native(
             attribute_filters,
         )
         .map_err(|error| map_product_service_error(error, "admin_catalog_list_input"))?;
-        let taxonomy_port = crate::transport::native_server_adapter::product_taxonomy_port_from_context(&runtime_ctx)?;
+        let taxonomy_port =
+            crate::transport::native_server_adapter::product_taxonomy_port_from_context(&runtime_ctx)?;
         let service = CatalogService::new(runtime_ctx.db_clone(), event_bus)
             .with_taxonomy_port(taxonomy_port);
         let port_context = product_admin_read_port_context(
@@ -446,7 +447,8 @@ async fn product_admin_catalog_facets_native(
             attribute_filters,
         )
         .map_err(|error| map_product_service_error(error, "admin_catalog_facets_input"))?;
-        let taxonomy_port = crate::transport::native_server_adapter::product_taxonomy_port_from_context(&runtime_ctx)?;
+        let taxonomy_port =
+            crate::transport::native_server_adapter::product_taxonomy_port_from_context(&runtime_ctx)?;
         let service = CatalogService::new(runtime_ctx.db_clone(), event_bus)
             .with_taxonomy_port(taxonomy_port);
         let port_context = product_admin_read_port_context(

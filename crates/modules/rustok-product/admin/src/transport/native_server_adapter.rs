@@ -1837,3 +1837,27 @@ mod filterable_search_option_tests {
         assert_eq!(codes, vec!["color", "size"]);
     }
 }
+
+
+#[cfg(all(test, feature = "ssr"))]
+mod taxonomy_factory_tests {
+    use super::product_taxonomy_port_from_context;
+    use rustok_product::ports::{
+        NoopProductTaxonomyPort, ProductTaxonomyPortFactory, SharedProductTaxonomyPort,
+    };
+
+    fn noop_taxonomy_port(
+        _db: sea_orm::DatabaseConnection,
+    ) -> SharedProductTaxonomyPort {
+        std::sync::Arc::new(NoopProductTaxonomyPort)
+    }
+
+    #[test]
+    fn native_admin_requires_and_resolves_the_selected_taxonomy_factory() {
+        let host = rustok_api::HostRuntimeContext::new(sea_orm::DatabaseConnection::default());
+        assert!(product_taxonomy_port_from_context(&host).is_err());
+
+        let host = host.with_shared_value(ProductTaxonomyPortFactory(noop_taxonomy_port));
+        assert!(product_taxonomy_port_from_context(&host).is_ok());
+    }
+}

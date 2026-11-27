@@ -31,6 +31,7 @@
 
 - Registers all active platform domain modules into the core registry.
 - Bridges product indices when `mod-product` feature is enabled.
+- Publishes the Product Taxonomy port factory when Product and Taxonomy are both selected, while retaining an explicitly registered host factory.
 - Bridges inventory stock index when `mod-inventory` feature is enabled.
 - Bridges AI translation factories when `ai-translation` feature is enabled.
 
