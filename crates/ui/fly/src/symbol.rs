@@ -614,7 +614,14 @@ fn validate_symbol_interaction_fields(
         })?;
     }
     if let Some(raw) = fields.get(crate::FLY_ACTION_FIELD) {
-        serde_json::from_value::<crate::ComponentAction>(raw.clone()).map_err(|error| {
+        let action = serde_json::from_value::<crate::ComponentAction>(raw.clone()).map_err(
+            |error| {
+                FlyError::InvalidSymbolReference(format!(
+                    "symbol `{symbol_id}` contains an invalid action: {error}"
+                ))
+            },
+        )?;
+        crate::action::validate_action_syntax(&action).map_err(|error| {
             FlyError::InvalidSymbolReference(format!(
                 "symbol `{symbol_id}` contains an invalid action: {error}"
             ))
@@ -1709,6 +1716,33 @@ mod tests {
         .unwrap()
         .html;
         assert_eq!(html.matches(" id=\"contact\"").count(), 1, "{html}");
+    }
+
+    #[test]
+    fn symbol_definitions_reject_invalid_action_syntax() {
+        let document = document_with(
+            object("root", "wrapper", vec![instance("slot", "cta")]),
+            vec![json!({
+                "id": "cta",
+                "components": [{
+                    "id": "link",
+                    "type": "link",
+                    "flyAction": {
+                        "kind": "navigate_url",
+                        "href": "javascript:alert(1)"
+                    }
+                }]
+            })],
+        );
+
+        let error = resolve_symbol_instances(&document)
+            .expect_err("symbol actions must satisfy the same safe syntax as page actions");
+
+        assert!(matches!(
+            error,
+            FlyError::InvalidSymbolReference(message)
+                if message.contains("navigation href")
+        ));
     }
 
     #[test]
