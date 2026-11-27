@@ -1214,7 +1214,11 @@ UUID order with FOR UPDATE NOWAIT, excluding the proving session if requested.
 OAuth bulk revocation also reserves the required relation mode before each
 row probe. Contention aborts the owner transaction instead of waiting under
 earlier locks. PostgreSQL regressions cover row and relation contention,
-scope isolation and repeat revocation; compile/runtime verification remains pending.
+scope isolation and repeat revocation. RFC 7009 family revocation, refresh
+replay and authorization-code replay also share an exact-scope token writer:
+its live-row predicate is identical for ordered PostgreSQL NOWAIT admission
+and UPDATE. Unrelated token families are not locked. Compile/runtime
+verification remains pending.
 
 ### Permanent credential identity evidence
 

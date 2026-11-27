@@ -4,7 +4,8 @@ use rustok_api::context::scope_matches;
 use rustok_auth::{AuthRefreshRetryKey, OauthAccessTokenInput, TokenRequest, TokenResponse};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
-    QueryFilter, QuerySelect, Set, TransactionTrait, sea_query::Expr,
+    QueryFilter, QueryOrder, QuerySelect, QueryTrait, Set, TransactionTrait,
+    sea_query::{Expr, LockBehavior, LockType},
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -1015,16 +1016,15 @@ async fn detect_oauth_refresh_reuse(
         "OAuth refresh token reuse detected; revoking token family"
     );
 
-    let result = OAuthTokens::update_many()
-        .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
-        .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
-        .filter(oauth_tokens::Column::AppId.eq(app_id))
-        .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
-        .filter(oauth_tokens::Column::UserId.eq(user_id))
-        .filter(oauth_tokens::Column::RevokedAt.is_null())
-        .filter(oauth_tokens::Column::FamilyId.eq(family_id))
-        .exec(&tx)
-        .await;
+    let result = revoke_oauth_token_scope_in_tx(
+        &tx,
+        sea_orm::Condition::all()
+            .add(oauth_tokens::Column::AppId.eq(app_id))
+            .add(oauth_tokens::Column::TenantId.eq(tenant_id))
+            .add(oauth_tokens::Column::UserId.eq(user_id))
+            .add(oauth_tokens::Column::FamilyId.eq(family_id)),
+        now,
+    ).await;
     if let Err(error) = result {
         tracing::error!(
             %error,
@@ -1120,24 +1120,20 @@ async fn revoke_authorization_code_family(
     Ok(true)
 }
 
-async fn revoke_authorization_code_family_in_tx<C>(
-    db: &C,
+async fn revoke_authorization_code_family_in_tx(
+    db: &sea_orm::DatabaseTransaction,
     code: &oauth_codes::Model,
-) -> Result<(), OAuthTokenProtocolError>
-where
-    C: ConnectionTrait,
-{
-    let now = Utc::now();
-    let revoked = OAuthTokens::update_many()
-        .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
-        .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
-        .filter(oauth_tokens::Column::AuthorizationCodeId.eq(code.id))
-        .filter(oauth_tokens::Column::AppId.eq(code.app_id))
-        .filter(oauth_tokens::Column::TenantId.eq(code.tenant_id))
-        .filter(oauth_tokens::Column::UserId.eq(code.user_id))
-        .filter(oauth_tokens::Column::GrantType.eq(AUTHORIZATION_CODE_GRANT))
-        .filter(oauth_tokens::Column::RevokedAt.is_null())
-        .exec(db)
+) -> Result<(), OAuthTokenProtocolError> {
+    let revoked = revoke_oauth_token_scope_in_tx(
+        db,
+        sea_orm::Condition::all()
+            .add(oauth_tokens::Column::AuthorizationCodeId.eq(code.id))
+            .add(oauth_tokens::Column::AppId.eq(code.app_id))
+            .add(oauth_tokens::Column::TenantId.eq(code.tenant_id))
+            .add(oauth_tokens::Column::UserId.eq(code.user_id))
+            .add(oauth_tokens::Column::GrantType.eq(AUTHORIZATION_CODE_GRANT)),
+        Utc::now(),
+    )
         .await
         .map_err(|_| {
             OAuthTokenProtocolError::server_error("Failed to revoke replayed authorization code")
@@ -1147,10 +1143,43 @@ where
         tenant_id = %code.tenant_id,
         user_id = %code.user_id,
         authorization_code_id = %code.id,
-        revoked_tokens = revoked.rows_affected,
+        revoked_tokens = revoked,
         "OAuth authorization code replay detected; revoked issued token family"
     );
     Ok(())
+}
+
+/// Revoke an exact token scope while holding the canonical app mutation
+/// fence. Use one predicate for admission and mutation, including the live
+/// row filter, so unrelated families never participate in late row locking.
+pub(crate) async fn revoke_oauth_token_scope_in_tx(
+    tx: &sea_orm::DatabaseTransaction,
+    scope: sea_orm::Condition,
+    now: chrono::DateTime<Utc>,
+) -> Result<u64, sea_orm::DbErr> {
+    let live = scope.add(oauth_tokens::Column::RevokedAt.is_null());
+    match tx.get_database_backend() {
+        DbBackend::Postgres => {
+            tx.execute_unprepared("LOCK TABLE oauth_tokens IN ROW EXCLUSIVE MODE NOWAIT")
+                .await?;
+            let query = OAuthTokens::find()
+                .select_only()
+                .column(oauth_tokens::Column::Id)
+                .filter(live.clone())
+                .order_by_asc(oauth_tokens::Column::Id)
+                .lock_with_behavior(LockType::Update, LockBehavior::Nowait);
+            tx.query_all_raw(query.build(DbBackend::Postgres)).await?;
+        }
+        DbBackend::Sqlite => {}
+        _ => return Err(sea_orm::DbErr::Custom("unsupported OAuth token revocation database".into())),
+    }
+    let result = OAuthTokens::update_many()
+        .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
+        .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
+        .filter(live)
+        .exec(tx)
+        .await?;
+    Ok(result.rows_affected)
 }
 
 /// A broad revocation may intersect another owner (app-wide versus
@@ -3306,6 +3335,78 @@ mod tests {
         check.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
         assert_eq!(super::revoke_user_delegated_tokens_in_tx(&check, tenant, user, now).await.unwrap(), 0);
         check.commit().await.unwrap();
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_AUTH_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_exact_oauth_family_revocation_rejects_busy_scope_only() {
+        use sea_orm::{Condition, DbBackend, Statement};
+        use std::time::Duration;
+
+        let db = Database::connect(std::env::var("RUSTOK_AUTH_TEST_DATABASE_URL").unwrap())
+            .await.unwrap();
+        assert_eq!(db.get_database_backend(), DbBackend::Postgres);
+        let schema = format!("oauth_exact_revoke_{}", Uuid::new_v4().simple());
+        let family = Uuid::new_v4();
+        let target = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let tenant = Uuid::new_v4();
+        let app = Uuid::new_v4();
+        let subject = Uuid::new_v4();
+        db.execute_unprepared(&format!(
+            "CREATE SCHEMA {schema};
+             CREATE TABLE {schema}.oauth_tokens (
+                id UUID PRIMARY KEY, tenant_id UUID, app_id UUID, user_id UUID,
+                family_id UUID, revoked_at TIMESTAMPTZ, updated_at TIMESTAMPTZ);
+             INSERT INTO {schema}.oauth_tokens VALUES
+                ('{target}', '{tenant}', '{app}', '{subject}', '{family}', NULL, NULL),
+                ('{other}', '{tenant}', '{app}', '{subject}', '{other}', NULL, NULL)"
+        )).await.unwrap();
+        let scope = || Condition::all()
+            .add(oauth_tokens::Column::TenantId.eq(tenant))
+            .add(oauth_tokens::Column::AppId.eq(app))
+            .add(oauth_tokens::Column::UserId.eq(subject))
+            .add(oauth_tokens::Column::FamilyId.eq(family));
+
+        for lock in [
+            format!("SELECT id FROM {schema}.oauth_tokens WHERE id = '{target}' FOR UPDATE"),
+            format!("LOCK TABLE {schema}.oauth_tokens IN SHARE MODE"),
+        ] {
+            let holder = db.begin().await.unwrap();
+            holder.execute_unprepared(&lock).await.unwrap();
+            let tx = db.begin().await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+            let error = tokio::time::timeout(
+                Duration::from_secs(3),
+                super::revoke_oauth_token_scope_in_tx(&tx, scope(), Utc::now()),
+            ).await.expect("exact revocation must not wait").unwrap_err();
+            assert_eq!(
+                rustok_core::resilience::retry::PostgresTransactionConflict::classify(
+                    DbBackend::Postgres, &error,
+                ),
+                Some(rustok_core::resilience::retry::PostgresTransactionConflict::LockUnavailable),
+            );
+            tx.rollback().await.unwrap();
+            holder.rollback().await.unwrap();
+        }
+
+        let holder = db.begin().await.unwrap();
+        holder.execute_unprepared(&format!(
+            "SELECT id FROM {schema}.oauth_tokens WHERE id = '{other}' FOR UPDATE"
+        )).await.unwrap();
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        assert_eq!(super::revoke_oauth_token_scope_in_tx(&tx, scope(), Utc::now()).await.unwrap(), 1);
+        assert_eq!(super::revoke_oauth_token_scope_in_tx(&tx, scope(), Utc::now()).await.unwrap(), 0);
+        tx.commit().await.unwrap();
+        holder.rollback().await.unwrap();
+
+        let row = db.query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            format!("SELECT COUNT(*) AS remaining FROM {schema}.oauth_tokens WHERE revoked_at IS NULL"),
+        )).await.unwrap().unwrap();
+        assert_eq!(row.try_get::<i64>("", "remaining").unwrap(), 1);
         db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
     }
 

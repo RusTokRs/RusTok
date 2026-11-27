@@ -830,3 +830,10 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   PostgreSQL row/table contention, isolation and repeat-revocation regressions.
   No new retries or external effects; compilation and runtime evidence unrun.
   Administrative receipt/FK and full cross-owner ordering remain open.
+
+- Exact OAuth lineage revocation continuation: RFC 7009, refresh replay and
+  authorization-code replay reuse one caller-transaction token writer with
+  identical scope for NOWAIT admission and UPDATE. PostgreSQL source regression
+  covers exact row/table contention, unrelated-family isolation and repeat
+  revocation. Protective replay remains independent of tenant active state.
+  Compilation/runtime evidence unrun; no automatic replay of security effects.

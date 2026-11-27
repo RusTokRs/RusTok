@@ -1023,16 +1023,11 @@ impl OAuthAppService {
                 Some(user_id) => family_scope.add(oauth_tokens::Column::UserId.eq(user_id)),
                 None => family_scope.add(oauth_tokens::Column::UserId.is_null()),
             };
-            OAuthTokens::update_many()
-                .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
-                .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
-                .filter(family_scope)
-                // A repeated RFC 7009 request must not rewrite the original
-                // revocation timestamp of an already-invalid family member.
-                .filter(oauth_tokens::Column::RevokedAt.is_null())
-                .exec(&tx)
-                .await
-                .map_err(|_| Error::InternalServerError)?;
+            // The shared writer preserves terminal timestamps and never
+            // waits for a later token row or relation while holding the app.
+            crate::services::oauth_token_service::revoke_oauth_token_scope_in_tx(
+                &tx, family_scope, now,
+            ).await?;
         }
 
         tx.commit().await.map_err(|_| Error::InternalServerError)?;
