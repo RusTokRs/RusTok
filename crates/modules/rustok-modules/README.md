@@ -267,3 +267,9 @@ registry platform trigger entry is fenced by migration 000098. Migration 000099
 also rejects contended late release/request and publication/yank/unyank receipt
 FK parent acquisition (PostgreSQL 55P03). Retry from a new transaction; broader
 FK/receipt ordering and PostgreSQL runtime verification remain open.
+
+Registry validation request-first locking and migration 000100 extend the
+nonblocking FK admission boundary to review/validation/evidence receipts,
+request staging, admissions, release artifacts and owner transfer receipts.
+PostgreSQL contention and migration verification remain pending; the broader
+Auth/RBAC and cross-owner FK order is not certified.

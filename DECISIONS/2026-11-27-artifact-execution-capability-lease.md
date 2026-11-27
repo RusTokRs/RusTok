@@ -308,4 +308,12 @@ remote stage claims, completion and requeue now acquire the request row before
 the child row. Re-read the child under the same request identity after waiting;
 remote lease predicates use the live database clock. The heartbeat remains
 child-only. This removes the inspected request/child blocking inversion;
-PostgreSQL contention tests and broader registry receipt guards remain pending.
+PostgreSQL contention tests remain pending. Migration 000100 extends the
+nonblocking FK parent guard to review/create/upload/validation receipts,
+evidence, validation jobs/stages, build/external/Alloy staging, platform
+admissions, release artifacts and owner transfer receipts. Request precedes
+evidence or release; guards run on INSERT and explicit FK-column UPDATE, not
+metadata-only heartbeat writes. Existing FK actions remain authoritative;
+missing or invisible parents reject, and 55P03 requires a fresh transaction.
+This does not certify arbitrary SQL, other owner receipts, or full Auth/RBAC
+lock ordering.

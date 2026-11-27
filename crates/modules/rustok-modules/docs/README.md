@@ -1640,3 +1640,12 @@ and enqueue. Locate without locking a child, then re-read it under the exact
 request fence and child row lock; use PostgreSQL read committed and a live
 clock for remote lease predicates. The lock-order regression is authored,
 unrun; broader owner/worker contention evidence remains open.
+
+Migration 000100 adds request-child and owner-receipt FK guards, including
+review/create/upload/validation receipts, evidence and its receipt, job/stage,
+build/external/Alloy staging, platform admission and release artifact identity.
+The guards run on INSERT or explicit FK-column UPDATE, taking request before
+evidence/release with KEY SHARE NOWAIT. Metadata-only heartbeat updates do not
+acquire a parent fence. Existing FK actions are retained. Retry SQLSTATE 55P03
+from a new transaction; missing/invisible parents fail closed. Source-only
+regressions cover all listed parent classes; no runtime proof yet.

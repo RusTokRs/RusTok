@@ -3661,3 +3661,13 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   classes, direct receipt updates, canonical lock reuse, retry and cascade;
   compilation and runtime/migration checks remain pending. Other registry
   review/evidence/validation receipts and cross-owner FK edges remain open.
+
+- Registry validation ordering: job claim (including invalid work-item
+  terminalization), remote claim, completion and expired claim requeue now
+  lock the request before the child, re-read the exact linked identity and
+  use live SQL clock predicates for remote leases. Migration 000100 extends
+  nonblocking parent guards to remaining inspected registry request children
+  and owner transfer receipts. Metadata-only heartbeat does not add a parent
+  lock. Source regressions are authored, unrun. Auth/OAuth/RBAC and other
+  cross-owner FK edges, full service contention, runtime and rollout evidence
+  remain open.
