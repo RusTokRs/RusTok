@@ -1011,3 +1011,81 @@ async fn upload_completion_and_begin_replay_use_the_idempotency_key() {
             .expect("remove upload replay test storage");
     }
 }
+
+
+#[tokio::test]
+async fn upload_chunk_replay_does_not_acknowledge_a_purged_namespace() {
+    let database = Database::connect("sqlite::memory:")
+        .await
+        .expect("sqlite database");
+    for migration in ModulesModule.migrations() {
+        migration
+            .up(&sea_orm_migration::SchemaManager::new(&database))
+            .await
+            .expect("module migration");
+    }
+    let directory =
+        std::env::temp_dir().join(format!("rustok-artifact-upload-purge-{}", Uuid::new_v4()));
+    let storage = StorageRuntime::local(&LocalStorageConfig {
+        base_dir: directory.to_string_lossy().into_owned(),
+        base_url: "/private".to_string(),
+        fsync: false,
+    })
+    .expect("local storage");
+    let scope = ArtifactDataScope {
+        policy_revision: 5,
+        ..test_scope(Uuid::new_v4(), "upload_purge_module")
+    };
+    setup_test_serving_namespace(&database, &scope).await;
+    let uploads = SeaOrmArtifactDataObjectUploadService::with_infrastructure_and_quota(
+        database.clone(),
+        storage,
+        ExactArtifactDataAuthorizer {
+            scope: scope.clone(),
+        },
+        ControlPlaneInfrastructure::default(),
+        ArtifactDataQuota::default(),
+    );
+    let session = uploads
+        .begin(
+            &scope,
+            ArtifactDataObjectUploadSessionRequest {
+                name: "uploads/purge.bin".to_string(),
+                content_type: "application/octet-stream".to_string(),
+                expected_revision: None,
+                idempotency_key: Uuid::new_v4(),
+            },
+        )
+        .await
+        .expect("begin upload");
+    let chunk = ArtifactDataObjectUploadChunk {
+        session_id: session.session_id,
+        sequence: 0,
+        data: Bytes::from_static(b"chunk"),
+    };
+    uploads
+        .append_chunk(&scope, chunk.clone())
+        .await
+        .expect("append initial chunk");
+    database
+        .execute_unprepared(&format!(
+            "DELETE FROM module_artifact_data_owner_references
+             WHERE tenant_id = '{}' AND data_owner_id = '{}' AND namespace_instance_id = '{}'",
+            scope.tenant_id, scope.data_owner_id, scope.namespace_instance_id
+        ))
+        .await
+        .expect("retire namespace owner reference");
+    assert_eq!(
+        uploads
+            .append_chunk(&scope, chunk)
+            .await
+            .expect_err("a purged namespace must not acknowledge a duplicate chunk"),
+        ArtifactDataError::NamespacePurged
+    );
+    drop(uploads);
+    if directory.exists() {
+        tokio::fs::remove_dir_all(directory)
+            .await
+            .expect("remove upload purge test storage");
+    }
+}
