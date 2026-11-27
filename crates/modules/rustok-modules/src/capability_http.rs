@@ -110,6 +110,20 @@ fn embedded_ipv4(ipv6: std::net::Ipv6Addr) -> Option<Ipv4Addr> {
     None
 }
 
+/// Returns true only for more-specific IANA allocations inside
+/// 2001::/23 that are explicitly marked globally reachable.
+fn is_globally_reachable_ietf_assignment(ipv6: std::net::Ipv6Addr) -> bool {
+    let segments = ipv6.segments();
+    segments[0] == 0x2001
+        && ((segments[1] == 0x0001
+            && segments[2..7] == [0; 5]
+            && (1..=3).contains(&segments[7]))
+            || segments[1] == 0x0003 // AMT 2001:3::/32
+            || (segments[1] == 0x0004 && segments[2] == 0x0112) // AS112-v6
+            || (segments[1] == 0x0020 && (segments[2] & 0xfff0) == 0) // ORCHIDv2
+            || (segments[1] == 0x0030 && (segments[2] & 0xfff0) == 0)) // DETs
+}
+
 fn is_disallowed_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(ipv4) => is_disallowed_ipv4(ipv4),
@@ -139,18 +153,13 @@ fn is_disallowed_ip(ip: IpAddr) -> bool {
                 // Deprecated site-local unicast remains locally routable on
                 // networks that still configure it.
                 || (segments[0] & 0xffc0) == 0xfec0
-                // Reject non-globally-reachable special-purpose ranges,
-                // but retain more-specific IANA allocations that are marked
-                // globally reachable (for example PCP anycast and AMT).
-                || (segments[0] == 0x2001 && segments[1] == 0x0000) // Teredo 2001::/32
-                || (segments[0] == 0x2001
-                    && segments[1] == 0x0002
-                    && segments[2] == 0x0000) // Benchmarking 2001:2::/48
-                || (segments[0] == 0x2001
-                    && segments[1] == 0x0010
-                    && (segments[2] & 0xfff0) == 0) // Deprecated ORCHID 2001:10::/28
+                // 2001::/23 is IANA protocol-assignment space. Permit only
+                // its specific globally reachable allocations; deny Teredo,
+                // benchmarking, deprecated ORCHID and unassigned subranges.
+                || ((segments[0] == 0x2001 && (segments[1] & 0xfe00) == 0)
+                    && !is_globally_reachable_ietf_assignment(ipv6))
                 || (segments[0] == 0x2001 && segments[1] == 0x0db8) // Documentation
-                || (segments[0] == 0x3fff && (segments[1] & 0xf000) == 0) // Documentation 3fff::/20
+                || (segments[0] == 0x3fff && (segments[1] & 0xf000) == 0) // Documentation
                 || (segments[0] == 0x0100
                     && segments[1] == 0
                     && segments[2] == 0
@@ -632,14 +641,25 @@ mod tests {
         ));
         // More-specific IANA assignments in 2001::/23 that are explicitly
         // globally reachable remain usable when an artifact grants them.
-        assert!(!is_disallowed_ip(
-            "2001:1::1".parse().expect("pcp anycast")
+        for address in [
+            "2001:1::1",       // PCP anycast
+            "2001:1::2",       // TURN anycast
+            "2001:1::3",       // DNS-SD anycast
+            "2001:3::1",       // AMT
+            "2001:4:112::1",   // AS112-v6
+            "2001:20::1",      // ORCHIDv2
+            "2001:30::1",      // DETs
+        ] {
+            assert!(!is_disallowed_ip(
+                address.parse().expect("globally reachable IANA allocation")
+            ));
+        }
+        // Unassigned subranges in the IETF block are not implicitly public.
+        assert!(is_disallowed_ip(
+            "2001:1::4".parse().expect("unassigned IETF special address")
         ));
-        assert!(!is_disallowed_ip(
-            "2001:3::1".parse().expect("amt ipv6")
-        ));
-        assert!(!is_disallowed_ip(
-            "2001:20::1".parse().expect("orchid v2 ipv6")
+        assert!(is_disallowed_ip(
+            "2001:5::1".parse().expect("unassigned IETF special address")
         ));
         // Ordinary public IPv6 is unaffected.
         assert!(!is_disallowed_ip(
