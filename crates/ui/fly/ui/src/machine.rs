@@ -490,9 +490,11 @@ impl FlyUiStateMachine {
             self.state.drag = None;
             self.state.overlays.insertion = None;
         }
-        if !capabilities.styles {
-            self.state.overlays.resize_handles_visible = false;
-        }
+        // Visibility is derived state. Recompute it on both capability withdrawal and
+        // restoration so a temporary read-only presentation cannot leave resize handles
+        // permanently hidden after the original selection geometry becomes editable again.
+        self.state.overlays.resize_handles_visible =
+            self.state.overlays.selected.is_some() && capabilities.styles;
         self.state.capabilities = capabilities;
     }
 

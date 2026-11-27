@@ -54,6 +54,43 @@ fn presentation_switch_restores_edit_capabilities() {
 }
 
 #[test]
+fn resize_handles_follow_effective_style_capability_across_policy_round_trips() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    let rect = legal_candidate().rect;
+    machine
+        .dispatch(UiIntent::Select(Some("hero".into())))
+        .expect("select component");
+    machine
+        .dispatch(UiIntent::SetSelectedOverlay(Some(rect)))
+        .expect("set selected geometry");
+    assert!(machine.state.overlays.resize_handles_visible);
+
+    machine
+        .dispatch(UiIntent::SetPresentation(Presentation::ReadOnly))
+        .expect("withdraw presentation editability");
+    assert!(!machine.state.overlays.resize_handles_visible);
+    assert_eq!(machine.state.overlays.selected, Some(rect));
+
+    machine
+        .dispatch(UiIntent::SetPresentation(Presentation::Inline))
+        .expect("restore presentation editability");
+    assert!(machine.state.overlays.resize_handles_visible);
+
+    machine
+        .dispatch(UiIntent::SetEditableCapabilities(CapabilityState {
+            styles: false,
+            ..CapabilityState::full()
+        }))
+        .expect("withdraw style capability");
+    assert!(!machine.state.overlays.resize_handles_visible);
+
+    machine
+        .dispatch(UiIntent::SetEditableCapabilities(CapabilityState::full()))
+        .expect("restore style capability");
+    assert!(machine.state.overlays.resize_handles_visible);
+}
+
+#[test]
 fn restricted_capabilities_survive_presentation_round_trip() {
     let restricted = CapabilityState {
         assets: false,

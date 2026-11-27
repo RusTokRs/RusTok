@@ -219,10 +219,7 @@ matching BFFs and revoke pre-cutover sessions; bare cookies are rejected.
 - The Forum/Taxonomy host adapter's Rust/real-owner regressions and mounted
   GraphQL/REST/native/SEO/Search acceptance remain unexecuted in this environment;
   source registration does not prove production runtime readiness.
-- Platform build history and the process-local build-event hub are exposed to
-  tenant module-read permissions. The host-global versus tenant visibility
-  contract is unresolved and must be decided before changing all transports and
-  clients. Build progress is not a durable cross-process stream.
+- Platform build history, active-build reads, GraphQL buildProgress and GET /ws/builds are host-global and require explicit HostAuthority::Read; tenant module-read/list/manage permissions alone do not grant access. The GraphQL module-permission classifier does not add a second tenant gate to these host-authorized fields. The process-local BuildEventHub is not a durable or distributed stream, so progress can be missed across restarts or replicas. The WebSocket captures host authority at upgrade; rotating the host token requires reconnecting existing sockets.
 - Installer HTTP jobs heartbeat every 30 seconds. A five-minute heartbeat gap
   atomically moves a stale `running` job to `recovery_required`; both states
   share one database-enforced admission slot, so a stale attempt is never
@@ -270,7 +267,30 @@ matching BFFs and revoke pre-cutover sessions; bare cookies are rejected.
   response cannot be recovered from the old token. Durable incident/retry
   evidence and two-replica failure-injection verification remain pending.
 
-- Artifact execution leases now bind each host execution to its exact installation, sandbox grant constraints and direct request scope. Structured-data and event-outbox SQL effects recheck the current exact installation/grant and lock direct Auth/RBAC authority through transaction commit. The serving lease also binds exact dependency/co-requisite closure, security, scope generations, tenant lifecycle/override and active composition revision/hash. SQL admission takes the canonical composition shared row lock after closure locks; composition replacement/restore does not renew older leases. The serving closure also binds the converged deployment state revision, head, owner readiness digest and exact node assignment observation revisions. SQL admission shares the reconciliation state row lock with ledger writers after selection fences. Full effective-policy revision, contextual channel/maintenance authority, registry mutation state and continuous node liveness remain unfenced; non-SQL effects (HTTP, MCP, secrets and object storage) still rely on per-call host admission and owner-specific checks rather than the same commit fence. PostgreSQL cross-owner lock ordering/contention and deployed worker/runtime/cancellation evidence remain unverified. Do not treat the in-memory lease as durable replay authority or automatically retry ambiguous effects. **Owners:** server host, `rustok-modules`, Auth/RBAC and individual capability owners. **Removal condition:** add owner-side fences for the remaining policy/readiness and non-SQL effect boundaries, then pass PostgreSQL contention and both in-process/worker runtime regressions. See the [execution capability lease ADR](../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md); source regressions remain unrun at the user's request.
+- Artifact execution leases bind each host execution to its exact installation,
+  sandbox grant constraints, direct request scope, dependency/co-requisite
+  closure, security revisions, selection generations, tenant lifecycle/override
+  intent, active composition revision/hash, deployment readiness and exact
+  node-assignment observations. For server-composed structured-data and
+  event-outbox SQL effects, admission locks direct Auth/RBAC authority, all
+  artifact activation fences in the closure, active composition, reconciliation
+  state, registry release authority and captured HTTP channel generation. The
+  current installation/grant and capability constraints are rechecked, and the
+  fences remain held through commit. Composition replacement/restore does not
+  renew older leases. Remaining gaps are full effective-policy revision,
+  operational maintenance authority, deferred/background channel context and
+  continuous worker/node liveness. Non-SQL effects (HTTP, MCP, secrets and
+  object storage) still rely on per-call host admission and owner-specific
+  checks rather than the same commit fence. PostgreSQL cross-owner lock
+  ordering/contention and deployed worker/runtime/cancellation evidence remain
+  unverified. Do not treat the in-memory lease as durable replay authority or
+  automatically retry ambiguous effects. **Owners:** server host,
+  `rustok-modules`, Auth/RBAC and individual capability owners. **Removal
+  condition:** add owner-side fences for the remaining effective-policy/
+  maintenance and non-SQL effect boundaries, then pass PostgreSQL contention
+  and both in-process/worker runtime regressions. See the [execution capability
+  lease ADR](../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md);
+  source regressions remain unrun at the user's request.
 
 
 ## Acknowledged sealed delivery (source only)

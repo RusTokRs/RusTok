@@ -214,6 +214,7 @@ impl EffectiveModulePolicyService {
         tenant_id: uuid::Uuid,
         supported_payload_kinds: &[rustok_modules::ArtifactPayloadKind],
         channel: Option<ModuleEffectivePolicyChannelInput>,
+        maintenance: ModuleEffectivePolicyMaintenanceInput,
     ) -> Result<
         (
             ModuleEffectivePolicy,
@@ -228,7 +229,12 @@ impl EffectiveModulePolicyService {
         let policy = ModuleControlPlane::new(db.clone())
             .lifecycle(registry, manifest.settings.default_enabled)
             .with_corequisites(co_requisites)
-            .artifact_serving_policy_for_context(tenant_id, supported_payload_kinds, channel, None)
+            .artifact_serving_policy_for_context(
+                tenant_id,
+                supported_payload_kinds,
+                channel,
+                Some(maintenance),
+            )
             .await
             .map_err(map_effective_policy_error)?;
         Ok((policy, composition))

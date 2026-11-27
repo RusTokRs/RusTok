@@ -1818,7 +1818,10 @@ enforcement, and uses exact idempotency receipts plus revision CAS. Quarantine
 can be cleared only through an authorized command; revocation is terminal. A
 tenant's enablement row is never rewritten by these transitions. The read-only
 security resolver contributes registry status and redacted security evidence to
-`ModuleEffectivePolicy`. Focused policy evidence now asserts the complete
+`ModuleEffectivePolicy`. The host authorizer's time-bounded credential is
+rechecked immediately before both transition and exact-replay commits, after
+the platform slug lock and durable writes, so an expired credential rolls back
+the complete transaction. Focused policy evidence now asserts the complete
 execution distinction: quarantine and emergency revocation deny a still
 tenant-enabled module, while ordinary registry yanking does not stop an
 already-installed clear release.

@@ -358,9 +358,9 @@ test('server page activation clears the previous selection before the next mutat
   const activation = (await requests(page))[0];
   expect(activation.body?.payload).toMatchObject({
     page_index: 1,
-    page_id: 'about',
-    selected_component_id: 'hero-title'
+    page_id: 'about'
   });
+  expect(activation.body?.payload).not.toHaveProperty('selected_component_id');
 
   await page.evaluate(async () => {
     const root = document.querySelector('#fly-root');

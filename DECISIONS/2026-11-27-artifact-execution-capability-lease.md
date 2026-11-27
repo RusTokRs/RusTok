@@ -83,9 +83,9 @@ invalidate leases through the shared lifecycle revision.
 Serving policy derivation now retains the exact verified active owner
 composition revision/hash from which defaults and co-requisites were read.
 Reject a changed composition after closure/readiness derivation and compare
-its identity at each capability preflight. After mixed-closure fences, SQL
+its identity at each capability preflight. Before mixed-closure fences, SQL
 admission takes the existing owner shared active-snapshot row lock (SQLite
-already owns its write reservation), revalidates the canonical stored hash
+reserves the writer at the owner boundary), revalidates the canonical stored hash
 and compares both revision and hash. Composition CAS writes conflict with
 this lock; restoration of the same manifest cannot renew an old lease.
 Missing composition must not be bootstrapped by revalidation. Unrelated
@@ -94,15 +94,14 @@ Lifecycle hooks remain root-only. Serving closures also bind converged
 deployment state revision, head IDs, owner-derived readiness digest, node ID
 and exact assignment observation revisions for all artifact members. Capture
 readiness in one read snapshot and reject a changed head; no selection-only
-closure can authorize a serving SQL effect. After mixed-selection fences and
-before the composition lock, acquire the existing reconciliation state row
+closure can authorize a serving SQL effect. After composition and mixed-selection fences, acquire the existing reconciliation state row
 shared lock (SQLite already has its write reservation), compare head/revision,
 recompute the persisted digest and check each required live/observed
 assignment and observation revision. The ledger owner serializes requests,
 claims, heartbeats and reports using the exclusive state row lock. A restored
 head cannot revive an older revision. Fresh preflight compares the same
 evidence, not a tenant policy digest. This does not fence independent compiled
-registry changes, contextual maintenance,
+registry changes,
 full effective-policy revision or continuous worker/node liveness. PostgreSQL
 cross-owner lock-order and runtime evidence remain required. Mixed-closure
 tenant intent and composition identity fencing require no additional
@@ -121,8 +120,7 @@ eligibility is retained; unavailable status denies admission. A fresh lease
 may admit a yanked release but an earlier lease is invalidated by the mutation.
 The witness is checked for the exact root and every artifact in the serving
 dependency/co-requisite closure, including non-SQL preflight. SQL admission
-checks it after sorted platform/tenant slug fences and before readiness and
-composition locks; lifecycle remains root-only. No lock is held across guest
+checks it after composition and sorted platform/tenant slug fences and before readiness; lifecycle remains root-only. No lock is held across guest
 execution. Stop old writers and drain leases before migration and rollout;
 downgrade would discard continuity evidence and is rejected. PostgreSQL
 cross-owner ordering and execution tests remain required.
@@ -138,14 +136,79 @@ structured SQL effects take the owner shared generation lock after composition
 and readiness locks. No new migration is required. Channel writes advance the
 existing trigger-backed generation; unrelated changes conservatively invalidate
 contextual leases. Lifecycle remains owner-only. Deferred transport and
-background channel context, operational maintenance authority, and full
+background channel context, and full
 cross-owner ordering are not implemented by this change.
+
+## Operational maintenance authority
+
+Migration 000097 introduces a Modules-owned singleton serving-maintenance
+state and revision history. It is separate from operations-tool upgrades,
+data-copy authorization, and lifecycle intent. Active scopes form a union:
+all tenants/all modules, one tenant/all modules, all tenants/one module,
+or one tenant/one module. The platform owner replaces the normalized set
+with an expected revision through an injected transaction-bound authorizer.
+The owner locks the singleton after authorization, advances the revision
+only on a changed set, and records the command context and reason atomically.
+A no-op does not advance it. Missing or invalid evidence denies serving;
+SQL guards prohibit resetting or deleting the singleton.
+
+Artifact serving captures the tenant projection, including an inactive
+revision, and evaluates it through the canonical mixed policy. All selected
+dependencies and co-requisites participate. The lease retains exact evidence;
+fresh capability checks reject changed revisions even after an on/off ABA.
+SQL effects retain the shared maintenance row lock after composition and
+Channel authority (SQLite writer reservation) until commit. Global revision
+changes conservatively invalidate all serving leases. Lifecycle/recovery
+admission remains a separate owner path; no maintenance lease is required
+to remove the gate. The gate is not proof of quiescence of external effects.
+
+No HTTP/GraphQL/CLI mutation or concrete platform operator authorization
+adapter is introduced here. Hosts must not expose the owner replacement API
+until that boundary is composed and checked. Native/static serving and
+cached operator projections are not wired to this durable gate in this step.
+Drain old serving nodes and leases before relying on migration 000097;
+downgrade is denied. Direct administrative SQL is not an authorized writer.
+
+## Cross-owner transaction lock order (first integration)
+
+For the Auth/RBAC and artifact serving/security/lifecycle seams examined here,
+the canonical order, omitting gates not required by a particular operation, is:
+
+1. active tenant, sorted OAuth app identities, sorted user identities,
+   exact credential/session and consent authority;
+2. active composition shared row, then tenant lifecycle policy cursor
+   where the operation needs static policy authority;
+3. sorted role identities and current role-derived authority;
+4. sorted module slugs, platform then tenant per slug; selection,
+   lifecycle/registry/security evidence under these owner fences;
+5. deployment reconciliation state and observation evidence;
+6. Channel generation, then operational maintenance revision;
+7. effect-specific domain state, receipts and transactional events.
+
+Never discover a new earlier-ranked identity while holding later fences:
+abort and restart from the unlocked locator if necessary. Reacquiring an
+already-owned slug or cursor is permitted. No new lock may be acquired in a
+late recheck; use the transaction's retained owner authority.
+
+Previously static lifecycle commit took the slug and then the lifecycle
+cursor, while security administration took the cursor and then the slug.
+Lifecycle now locks the cursor and validates the expected predecessor before
+the slug on the state-commit path. No-op paths that publish no revision
+transition retain only the slug fence. Direct artifact SQL admission now
+checks the exact composition after credential locks and before role locks;
+background serving acquires composition before the mixed closure. SQLite's
+composition owner obtains its own write reservation before reading. Root
+grant/security/registry checks finish before Channel and maintenance locks.
+
+This is a partial cross-owner order, not an exhaustive proof. Reconciliation
+writers' installation/admission row locks, arbitrary SQL trigger entry,
+FK-induced locks, other domain effects and external effects need separate
+analysis. Do not infer production deadlock freedom from the authored tests.
 
 ## Context, events and migration
 
 Tenant, actor, phase, binding, release/installation, capability, execution ID,
-trace and idempotency identity remain bound. Operational maintenance and
-non-HTTP channel policy inputs still require owner wiring. Locale, currency and timezone do not
+trace and idempotency identity remain bound. Non-HTTP channel policy inputs and the maintenance operator transport still require owner wiring. Locale, currency and timezone do not
 participate. The lease is not an event or durable record; existing audit and
 idempotency/reconciliation semantics remain unchanged. Migration 000095 adds
 a nonnegative selection generation to the permanent activation lock row.

@@ -422,12 +422,18 @@ impl ArtifactSqlEffectFence for SqlEffectFence {
             // Same transaction as the effect. No independently committed
             // credential or membership check and no second pool checkout.
             let (keys, deadline) = scope
-                .run(provider.lock_artifact_runtime_permission_keys_on(
-                    tx,
-                    self.lease.tenant_id(),
-                    actor_id,
-                    &self.lease.artifact,
-                ))
+                .run(
+                    provider.lock_artifact_runtime_permission_keys_on(
+                        tx,
+                        self.lease.tenant_id(),
+                        actor_id,
+                        &self.lease.artifact,
+                        self.lease
+                            .serving_authority
+                            .as_ref()
+                            .map(|authority| &authority.composition),
+                    ),
+                )
                 .await
                 .map_err(|_| self.deny())?;
             if !keys.contains(&self.lease.binding.permission) {
@@ -442,25 +448,21 @@ impl ArtifactSqlEffectFence for SqlEffectFence {
         // Acquire the complete artifact closure before taking any individual
         // root lock. Overlapping serving closures use the same slug order.
         if let Some(authority) = &self.lease.serving_authority {
+            // The direct credential adapter already holds composition before
+            // roles. Background work has no credential/role locks, so acquire
+            // its composition fence here, before any slug or readiness lock.
+            if self.lease.direct_scope.is_none() {
+                authority
+                    .composition
+                    .require_current_in_transaction(tx)
+                    .await
+                    .map_err(|_| self.deny())?;
+            }
             authority
                 .closure
                 .require_current_on(tx)
                 .await
                 .map_err(|_| self.deny())?;
-            // The closure already owns the SQLite write reservation; on
-            // PostgreSQL the shared composition row lock conflicts with CAS
-            // replacement. Retain it until the SQL effect commits.
-            authority
-                .composition
-                .require_current_in_transaction(tx)
-                .await
-                .map_err(|_| self.deny())?;
-            if let Some(channel) = &authority.channel {
-                channel
-                    .require_current_on(tx)
-                    .await
-                    .map_err(|_| self.deny())?;
-            }
         } else {
             self.lease
                 .lifecycle_generation
@@ -491,6 +493,21 @@ impl ArtifactSqlEffectFence for SqlEffectFence {
             .require_current_on(tx)
             .await
             .map_err(|_| self.deny())?;
+        // Finish all slug-bound root checks before later independent owner
+        // gates. These are retained until commit, not across guest execution.
+        if let Some(authority) = &self.lease.serving_authority {
+            if let Some(channel) = &authority.channel {
+                channel
+                    .require_current_on(tx)
+                    .await
+                    .map_err(|_| self.deny())?;
+            }
+            authority
+                .maintenance
+                .require_current_on(tx)
+                .await
+                .map_err(|_| self.deny())?;
+        }
         let original = self
             .lease
             .policy

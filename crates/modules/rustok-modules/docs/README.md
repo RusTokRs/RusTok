@@ -480,7 +480,11 @@ revision CAS, platform authorization, exact idempotency replay, and outbox
 events. The owner calls the host authorizer inside the transition transaction,
 before replay and before taking the platform slug activation lock; the host
 must retain direct credential and current RBAC row fences through commit.
-Therefore an exact idempotency replay still requires current authorization.
+The owner then calls the host's final authority check immediately before both
+new-state and exact-replay commits, after lock waits and all writes, so a
+time-bounded direct credential cannot expire while the transaction is pending.
+Therefore an exact idempotency replay still requires current authorization
+and a still-live credential at its commit boundary.
 The read-only security resolver feeds effective policy with redacted
 status/revision/release facts; quarantine and revoke block new execution, while
 a revoked state cannot be cleared.
@@ -1472,7 +1476,7 @@ failure or cancellation; the broker checks membership again after async reads.
 This is process-local admission, not an atomic external-effect fence or a
 continuous interrupt for capability-free computation. In-flight calls may
 complete, and a post-launch denial preserves ambiguous-outcome semantics.
-Operational maintenance policy, deferred/background channel context, external owner transactional authority,
+Operational maintenance operator authorization/transport and native serving, deferred/background channel context, external owner transactional authority,
 performance and actual worker callback verification remain open. See
 [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).
 
@@ -1557,7 +1561,7 @@ whose state revision changed. Fresh non-SQL preflight compares the same
 readiness evidence without an effect lock. Lifecycle hooks retain their
 separate root-only admission. This protects the durable ledger, not live
 executor availability or independent worker liveness. Contextual
-maintenance inputs and deferred/background channel context are not transactionally fenced. HTTP channel resolution is now re-read from the owner without the TTL cache, bracketed by the durable generation and matched to the middleware-selected channel. The mixed serving policy evaluates its exact bindings for every closure member; unresolved HTTP context retains the generation as well. Capability preflight reuses the captured input and compares the generation. Structured SQL effects hold the Channel-owned generation row after readiness/composition fences until commit. No new migration is needed. Registry authority
+deferred/background channel context is not transactionally fenced. Operational serving maintenance now has a Modules-owned singleton revision and history (migration 000097), with global, tenant, module and tenant/module scopes combined by union. The owner replacement service requires an injected transaction-bound platform authorizer and predecessor CAS. Its normalized scope changes and command history commit together. The artifact resolver captures active or inactive maintenance evidence, includes it in the mixed policy and checks the exact revision through every serving lease and structured SQL effect. The shared row lock follows composition and Channel fences. Native/static serving, concrete operator authority and transport remain open; recovery/lifecycle remain separate owner paths. Drain old serving processes and leases before relying on the migration; downgrade is denied. HTTP channel resolution is now re-read from the owner without the TTL cache, bracketed by the durable generation and matched to the middleware-selected channel. The mixed serving policy evaluates its exact bindings for every closure member; unresolved HTTP context retains the generation as well. Capability preflight reuses the captured input and compares the generation. Structured SQL effects hold the Channel-owned generation row after readiness/composition fences until commit. No new migration is needed. Registry authority
 is checked under the sorted platform/tenant slug fences, before readiness and
 composition locks. Non-SQL effects remain preflight-only; lifecycle checks only
 the root. Drain old writers and leases before applying migration 000096; witness
@@ -1582,3 +1586,14 @@ remains outstanding. Independent non-server broker
 compositions still need an explicitly supplied authority. External effects and
 objects/secrets/MCP/HTTP are not covered by this SQL commit guard.
 See [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).
+
+### Cross-owner transaction ordering
+
+For the inspected Auth/RBAC and artifact serving/security/lifecycle boundaries,
+acquire credentials before composition, lifecycle policy cursor (when needed),
+roles, sorted module slugs (platform then tenant), readiness, Channel and
+maintenance. Lifecycle state commit validates the cursor predecessor before
+acquiring its slug fence; no-transition commits do not acquire a cursor.
+Direct serving SQL checks composition before roles; background serving checks
+composition before closure locks. SQLite composition reserves its writer
+itself. See the [execution authority ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md) for the scoped ordering and remaining audit gaps.

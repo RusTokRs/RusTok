@@ -38,9 +38,7 @@ impl ModuleGraphqlField {
                 | "marketplace"
                 | "marketplaceModule"
                 | "moduleOperationRecoveryPlan"
-                | "failedModuleOperationRecoveryPlans"
-                | "activeBuild"
-                | "buildHistory",
+                | "failedModuleOperationRecoveryPlans",
             ) => ModuleAuthority::Read,
             (OperationType::Query, "marketplaceRegistryFreshness" | "moduleArtifactSecurity") => {
                 ModuleAuthority::Manage
@@ -64,7 +62,6 @@ impl ModuleGraphqlField {
                 | "clearModuleArtifactQuarantine"
                 | "revokeModuleArtifact",
             ) => ModuleAuthority::Manage,
-            (OperationType::Subscription, "buildProgress") => ModuleAuthority::Read,
             _ => return None,
         };
 
@@ -84,8 +81,6 @@ impl ModuleGraphqlField {
                 "moduleArtifactSecurity" => "moduleArtifactSecurity",
                 "moduleOperationRecoveryPlan" => "moduleOperationRecoveryPlan",
                 "failedModuleOperationRecoveryPlans" => "failedModuleOperationRecoveryPlans",
-                "activeBuild" => "activeBuild",
-                "buildHistory" => "buildHistory",
                 "executeArtifactUiAction" => "executeArtifactUiAction",
                 "installModule" => "installModule",
                 "uninstallModule" => "uninstallModule",
@@ -102,7 +97,6 @@ impl ModuleGraphqlField {
                 "quarantineModuleArtifact" => "quarantineModuleArtifact",
                 "clearModuleArtifactQuarantine" => "clearModuleArtifactQuarantine",
                 "revokeModuleArtifact" => "revokeModuleArtifact",
-                "buildProgress" => "buildProgress",
                 _ => return None,
             },
             authority,
@@ -257,6 +251,8 @@ mod tests {
                         contributionId: "apply"
                     ) { executionId }
                     moduleCompositionSnapshot { revision }
+                    activeBuild { buildId }
+                    buildHistory { buildId }
                 }
             "#,
         );
@@ -307,21 +303,19 @@ mod tests {
                 .any(|field| field.name == "moduleCompositionSnapshot"
                     && field.authority == ModuleAuthority::Read)
         );
+        assert!(!policy.0.iter().any(|field| {
+            matches!(field.name, "activeBuild" | "buildHistory")
+        }));
 
         let mut sub_request =
             Request::new(r#"subscription BuildState { buildProgress { buildId } }"#);
         classify_document(&mut sub_request).expect("subscription document should parse");
-        let sub_policy = sub_request
-            .data
-            .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
-            .and_then(|value| value.downcast_ref::<ModuleGraphqlDocumentPolicy>())
-            .expect("subscription module policy should be attached");
         assert!(
-            sub_policy
-                .0
-                .iter()
-                .any(|field| field.name == "buildProgress"
-                    && field.authority == ModuleAuthority::Read)
+            sub_request
+                .data
+                .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
+                .is_none(),
+            "buildProgress is guarded by host authority in its resolver, not tenant module permissions"
         );
     }
 

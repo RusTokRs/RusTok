@@ -297,3 +297,8 @@ an unchanged frame. Failures propagate to the existing Outbox retry path; duplic
 original-source identity, not a newly fabricated event. This is not a raw-table relay or another
 bus. Two new regression definitions are uncompiled/unrun; real backend subscription/worker/
 restart evidence remains open. See the [Inventory packet](../rustok-inventory/contracts/evidence/reservation-events-source.json).
+
+- `ModuleArtifactSecurityAuthorizer::ensure_authority_at_commit` is invoked
+  immediately before both new-transition and exact-replay commits. Host
+  adapters use it to recheck time-bounded credentials after owner lock waits;
+  expiry rolls back the state, receipt and outbox writes.

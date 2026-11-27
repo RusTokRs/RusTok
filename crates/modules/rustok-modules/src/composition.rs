@@ -69,7 +69,7 @@ impl ModuleCompositionIdentity {
     }
 
     /// Retain the owner row's shared lock through the effect commit.
-    /// On SQLite the caller must already have obtained its write reservation.
+    /// On SQLite the owner obtains the write reservation itself.
     /// Neither this check nor the nonlocking check bootstraps missing state.
     pub async fn require_current_in_transaction(
         &self,
@@ -456,11 +456,30 @@ impl SeaOrmModuleCompositionService {
         Self::read_active_snapshot_on(connection, false).await
     }
 
-    /// Hold the active composition against owner CAS updates.
-    /// SQLite callers must already own the transaction's write fence.
+    /// Hold the active composition against owner CAS updates. SQLite has
+    /// no row lock: reserve the writer before reading, even for background
+    /// callers that have not acquired another owner fence yet.
     pub async fn lock_active_snapshot_in_transaction(
         transaction: &sea_orm::DatabaseTransaction,
     ) -> Result<ModuleCompositionSnapshot, ModuleCompositionError> {
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
+        if backend == SupportedBackend::Sqlite {
+            let result = transaction
+                .execute_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
+                    format!(
+                        "UPDATE platform_state SET revision = revision WHERE id = {}",
+                        backend.placeholder(1)
+                    ),
+                    vec![ACTIVE_MODULE_COMPOSITION_ID.into()],
+                ))
+                .await
+                .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
+            if result.rows_affected() != 1 {
+                return Err(ModuleCompositionError::MissingActiveComposition);
+            }
+        }
         Self::read_active_snapshot_on(transaction, true).await
     }
 
@@ -810,11 +829,9 @@ mod tests {
         assert_eq!(restored.manifest_hash, initial.manifest_hash);
         assert_eq!(restored.revision, 3);
         let renewed = restored.identity();
-        // Model the already-held SQLite owner write reservation.
+        // The owner must take its own SQLite write reservation without
+        // requiring a prior slug lock or modifying the active revision.
         let tx = crate::backend::begin_fenced_transaction(&database)
-            .await
-            .unwrap();
-        tx.execute_unprepared("UPDATE platform_state SET revision = revision WHERE id = 'active'")
             .await
             .unwrap();
         assert!(matches!(
@@ -839,6 +856,14 @@ mod tests {
             service.active_snapshot().await,
             Err(ModuleCompositionError::MissingActiveComposition)
         ));
+        let tx = crate::backend::begin_fenced_transaction(&database)
+            .await
+            .unwrap();
+        assert!(matches!(
+            renewed.require_current_in_transaction(&tx).await,
+            Err(ModuleCompositionError::MissingActiveComposition)
+        ));
+        tx.rollback().await.unwrap();
     }
 
     #[tokio::test]
