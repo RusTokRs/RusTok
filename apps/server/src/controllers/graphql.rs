@@ -13,7 +13,7 @@ use axum::{
         rejection::JsonRejection,
         ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
     },
-    http::{HeaderMap, StatusCode, header},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
     routing::get,
 };
@@ -28,6 +28,7 @@ use rustok_tenant::{TenantLocalePolicyPort, TenantService};
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::common::RequestContext;
+use rustok_web::CspNonce;
 use crate::context::{AuthContext, TenantContext};
 use crate::extractors::auth::{
     OptionalCurrentUser, WebSocketAuthLease, resolve_current_user_from_access_token,
@@ -208,11 +209,63 @@ fn persisted_query_hash(req: &async_graphql::Request) -> Option<&str> {
     (hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit())).then_some(hash)
 }
 
-async fn graphql_playground() -> impl axum::response::IntoResponse {
+async fn graphql_playground(
+    csp_nonce: Option<Extension<CspNonce>>,
+) -> Response {
+    if crate::common::settings::is_production_security_mode() {
+        return graphql_playground_status_response(StatusCode::NOT_FOUND);
+    }
+
+    let Some(Extension(nonce)) = csp_nonce else {
+        tracing::error!("GraphQL Playground request is missing its CSP nonce");
+        return graphql_playground_status_response(StatusCode::INTERNAL_SERVER_ERROR);
+    };
+
     tracing::debug!("Handling GraphQL playground HTML request");
-    axum::response::Html(async_graphql::http::playground_source(
-        GraphQLPlaygroundConfig::new("/api/graphql").subscription_endpoint("/api/graphql/ws"),
-    ))
+    let source = async_graphql::http::playground_source(
+        GraphQLPlaygroundConfig::new(GRAPHQL_HTTP_PATH)
+            .subscription_endpoint(GRAPHQL_WS_PATH),
+    );
+    let Some(html) = nonce_graphql_playground_html(&source, nonce.as_str()) else {
+        tracing::error!("GraphQL Playground template changed; refusing to serve HTML without a nonce");
+        return graphql_playground_status_response(StatusCode::INTERNAL_SERVER_ERROR);
+    };
+
+    let mut response = axum::response::Html(html).into_response();
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
+fn graphql_playground_status_response(status: StatusCode) -> Response {
+    let mut response = status.into_response();
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
+fn nonce_graphql_playground_html(source: &str, nonce: &str) -> Option<String> {
+    const INLINE_SCRIPT_TAG: &str = "<script type=\"text/javascript\">";
+
+    // The pinned async-graphql Playground template has one inline bootstrap
+    // script and one external CDN script. Fail closed if an upgrade changes it.
+    if source.matches("<script").count() != 2
+        || source.matches(INLINE_SCRIPT_TAG).count() != 1
+    {
+        return None;
+    }
+
+    let nonce_script_tag = format!(
+        "<script type=\"text/javascript\" nonce=\"{}\">",
+        nonce
+    );
+    Some(
+        source
+            .replace(INLINE_SCRIPT_TAG, &nonce_script_tag)
+            .replace("//cdn.jsdelivr.net/", "https://cdn.jsdelivr.net/"),
+    )
 }
 
 async fn graphql_schema_sdl(Extension(schema): Extension<Arc<AppSchema>>) -> impl IntoResponse {
@@ -962,7 +1015,8 @@ mod tests {
     use super::{
         GRAPHQL_HTTP_PATH, WS_CONNECTION_INIT_TIMEOUT, WS_CONNECTION_INIT_TIMEOUT_CLOSE,
         WS_CONNECTION_INIT_TIMEOUT_REASON, WS_INCOMING_QUEUE_CAPACITY, WS_MAX_FRAME_SIZE,
-        WS_MAX_MESSAGE_SIZE, graphql_http_response, graphql_permissions,
+        WS_MAX_MESSAGE_SIZE, GraphQLPlaygroundConfig, graphql_http_response,
+        graphql_permissions, nonce_graphql_playground_html,
     };
     use crate::{
         common::settings::RustokSettings, middleware::tenant,
@@ -975,6 +1029,31 @@ mod tests {
     use rustok_migrations::SqliteTestMigrator as Migrator;
     use sea_orm::{ActiveModelTrait, Set};
     use serial_test::serial;
+
+    #[test]
+    fn graphql_playground_html_nonces_inline_bootstrap_and_uses_https_cdn() {
+        let source = async_graphql::http::playground_source(
+            GraphQLPlaygroundConfig::new(GRAPHQL_HTTP_PATH)
+                .subscription_endpoint("/api/graphql/ws"),
+        );
+        let html = nonce_graphql_playground_html(&source, "test-nonce")
+            .expect("known async-graphql Playground template");
+
+        assert_eq!(
+            html.matches("<script type=\"text/javascript\" nonce=\"test-nonce\">")
+                .count(),
+            1
+        );
+        assert!(!html.contains("<script type=\"text/javascript\">"));
+        assert!(!html.contains("//cdn.jsdelivr.net/"));
+        assert!(html.contains("https://cdn.jsdelivr.net/"));
+        assert!(html.contains("https://fonts.googleapis.com"));
+    }
+
+    #[test]
+    fn graphql_playground_template_changes_fail_closed() {
+        assert!(nonce_graphql_playground_html("<html></html>", "test-nonce").is_none());
+    }
 
     #[test]
     fn persisted_query_telemetry_accepts_only_sha256_hex_identifiers() {

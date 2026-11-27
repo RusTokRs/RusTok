@@ -24,6 +24,10 @@ const API_CSP: &str =
 /// forms. Keep the document isolated from scripts and external resources while
 /// permitting its nonce-bearing style block and same-origin form submission.
 const OAUTH_BROWSER_CSP_TEMPLATE: &str = "default-src 'none'; script-src 'none'; style-src {nonce}; img-src 'none'; font-src 'none'; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+/// GraphQL Playground is a development-only HTML document. Its upstream template
+/// loads fixed CDN assets and has inline bootstrap/style markup; keep this policy
+/// narrow and never use it for GraphQL POST or WebSocket requests.
+const GRAPHQL_PLAYGROUND_CSP_TEMPLATE: &str = "default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'; script-src {nonce} https://cdn.jsdelivr.net; script-src-attr 'none'; style-src 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; img-src https://cdn.jsdelivr.net data:; font-src https://fonts.gstatic.com data:; connect-src 'self' ws: wss:; worker-src 'none'";
 const RICHTEXT_FRAME_CSP: &str = "default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'none'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
 /// UI-compatible enforced CSP for embedded admin/storefront shells.
 ///
@@ -66,7 +70,10 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
         "security_headers entry"
     );
     let oauth_browser_document = is_oauth_browser_document(&path, &method);
-    let csp_nonce = ((!is_api_surface(&path) || oauth_browser_document)
+    let graphql_playground_document = is_graphql_playground_document(&path, &method);
+    let csp_nonce = ((!is_api_surface(&path)
+        || oauth_browser_document
+        || graphql_playground_document)
         && !is_richtext_frame_surface(&path))
     .then(CspNonce::generate);
     if let Some(nonce) = csp_nonce.as_ref() {
@@ -206,6 +213,12 @@ fn is_oauth_browser_document(path: &str, method: &axum::http::Method) -> bool {
         || (path == "/api/oauth/consent" && method.as_str() == "POST")
 }
 
+fn is_graphql_playground_document(path: &str, method: &axum::http::Method) -> bool {
+    path == "/api/graphql"
+        && method.as_str() == "GET"
+        && !crate::common::settings::is_production_security_mode()
+}
+
 fn is_api_surface(path: &str) -> bool {
     // Match reserved route families on segment boundaries. The registry's
     // mutation API and protocol discovery are not UI documents, while paths
@@ -305,6 +318,15 @@ fn select_request_csp(
             .unwrap_or_else(|| API_CSP.to_string());
     }
 
+    if is_graphql_playground_document(path, method) {
+        return csp_nonce
+            .map(|nonce| {
+                GRAPHQL_PLAYGROUND_CSP_TEMPLATE
+                    .replace("{nonce}", nonce.source_expression().as_str())
+            })
+            .unwrap_or_else(|| API_CSP.to_string());
+    }
+
     select_csp(path, csp_nonce, allow_plaintext_websocket)
 }
 
@@ -322,9 +344,9 @@ fn select_report_only_csp(path: &str, csp_nonce: Option<&CspNonce>) -> Option<St
 mod tests {
     use super::{
         API_CSP, REPORTING_ENDPOINTS, RICHTEXT_FRAME_PATH, handle_csp_report,
-        is_oauth_browser_document, is_richtext_frame_surface, parse_env_flag,
-        richtext_cache_control, security_headers, select_csp, select_report_only_csp,
-        select_request_csp,
+        is_graphql_playground_document, is_oauth_browser_document,
+        is_richtext_frame_surface, parse_env_flag, richtext_cache_control,
+        security_headers, select_csp, select_report_only_csp, select_request_csp,
     };
     use crate::middleware::csp_reports::CSP_REPORT_PATH;
     use axum::{
@@ -423,6 +445,64 @@ mod tests {
                 "/api/oauth/authorize",
                 &Method::GET,
                 None,
+                false
+            ),
+            API_CSP
+        );
+    }
+
+    #[test]
+    fn graphql_playground_csp_is_dev_only_and_get_only() {
+        let nonce = CspNonce::generate();
+        let enabled = !crate::common::settings::is_production_security_mode();
+
+        assert_eq!(
+            is_graphql_playground_document("/api/graphql", &Method::GET),
+            enabled
+        );
+        assert!(!is_graphql_playground_document(
+            "/api/graphql",
+            &Method::POST
+        ));
+        assert!(!is_graphql_playground_document(
+            "/api/graphql/ws",
+            &Method::GET
+        ));
+
+        let policy = select_request_csp(
+            "/api/graphql",
+            &Method::GET,
+            Some(&nonce),
+            false,
+        );
+        if enabled {
+            assert!(policy.contains(nonce.source_expression().as_str()), "{policy}");
+            assert!(policy.contains("https://cdn.jsdelivr.net"), "{policy}");
+            assert!(policy.contains("https://fonts.googleapis.com"), "{policy}");
+            assert!(policy.contains("connect-src 'self' ws: wss:"), "{policy}");
+            let script_policy = policy
+                .split(';')
+                .find(|directive| directive.trim_start().starts_with("script-src "))
+                .expect("script-src directive");
+            assert!(!script_policy.contains("unsafe-inline"), "{script_policy}");
+            assert_eq!(
+                select_request_csp(
+                    "/api/graphql",
+                    &Method::GET,
+                    None,
+                    false
+                ),
+                API_CSP
+            );
+        } else {
+            assert_eq!(policy, API_CSP);
+        }
+
+        assert_eq!(
+            select_request_csp(
+                "/api/graphql",
+                &Method::POST,
+                Some(&nonce),
                 false
             ),
             API_CSP

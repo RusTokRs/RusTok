@@ -601,9 +601,12 @@ without UI nonce or report-only headers. OAuth browser documents are a narrow,
 method-scoped exception: `GET /api/oauth/authorize` and `POST /api/oauth/consent`
 receive an isolated deny-by-default policy with a per-response style nonce and
 `form-action 'self'`; OAuth JSON/token methods, including `POST /api/oauth/authorize`,
-remain on the strict API policy. Their responses remain non-cacheable. Focused
-classifier, rendered-HTML and HTTP middleware regressions are authored but
-unrun.
+remain on the strict API policy. The GraphQL Playground at `GET /api/graphql`
+is available only outside production security mode; its HTML bootstrap receives
+a nonce and a dedicated policy limited to jsDelivr, Google Fonts, and same-origin
+HTTP/WebSocket connections. Its HTML is `no-store`; release/production builds
+return 404, while `POST /api/graphql` remains strict API. Focused classifier,
+rendered-HTML and HTTP middleware regressions are authored but unrun.
 
 The CSP report collector accepts legacy browser reports containing both
 `effective-directive` and `violated-directive`, preferring the nonblank

@@ -1,5 +1,25 @@
 # Server App — Implementation Plan
 
+## GraphQL Playground CSP and production exposure (2026-11-27)
+
+`GET /api/graphql` returned the async-graphql Playground HTML while the
+path-only API classifier applied `API_CSP`, blocking its bootstrap script,
+styles, CDN assets and GraphQL/WebSocket connections. The Playground also
+remained exposed in release/production builds despite being a developer tool.
+It is now disabled whenever production security mode is active. In
+non-production mode, the GET route receives a dedicated CSP with a nonce for
+the inline bootstrap, fixed jsDelivr/Google Fonts origins, same-origin HTTP and
+WebSocket connections, and no inline script allowance. Protocol-relative CDN
+URLs are normalized to HTTPS, template drift fails closed, and the nonce-bearing
+HTML is `no-store`. GraphQL POST and WebSocket routes retain strict API CSP.
+
+Focused policy and template regressions were added. Maintainer verification
+remains pending: `cargo check -p rustok-server`,
+`cargo test -p rustok-server --lib graphql_playground_csp_is_dev_only_and_get_only`,
+and `cargo test -p rustok-server --lib graphql_playground_html_nonces_inline_bootstrap_and_uses_https_cdn`.
+Tests and compilation were not run in this session.
+
+
 ## OAuth browser document CSP and consent form repair (2026-11-27)
 
 The OAuth authorization and consent pages are HTML documents served from
