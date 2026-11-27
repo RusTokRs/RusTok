@@ -1,7 +1,11 @@
 records-heading = Записи
 route-not-found = Страница не найдена
 records-title = Название
+records-search = Поиск по названию
+records-search-invalid = Введите корректный поисковый запрос.
 records-status = Статус
+records-all-statuses = Все статусы
+records-apply-filters = Применить фильтры
 records-locale = Язык записи
 records-published = Опубликована
 records-draft = Черновик

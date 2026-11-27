@@ -7,6 +7,7 @@ import type {
   RowData,
   StockFeatures
 } from '@tanstack/react-table';
+import { useTranslations } from '@rustok/next-fluent/client';
 import { PlusCircle, XCircle } from 'lucide-react';
 
 import { Badge } from '@/shared/ui/shadcn/badge';
@@ -54,6 +55,7 @@ export function DataTableFacetedFilter<
   options,
   multiple
 }: DataTableFacetedFilterProps<TData, TValue>) {
+  const t = useTranslations('data-table');
   const [open, setOpen] = React.useState(false);
 
   const columnFilterValue = column?.getFilterValue();
@@ -102,7 +104,9 @@ export function DataTableFacetedFilter<
           {hasSelectionForKey(Array.from(selectedValues), facetKey) ? (
             <div
               role='button'
-              aria-label={`Clear ${title} filter`}
+              aria-label={
+                title ? t('clear-named-filter', { title }) : t('clear-filters')
+              }
               tabIndex={0}
               onClick={onReset}
               className='focus-visible:ring-ring rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-1 focus-visible:outline-none'
@@ -131,7 +135,7 @@ export function DataTableFacetedFilter<
                     variant='secondary'
                     className='rounded-sm px-1 font-normal'
                   >
-                    {selectedValues.size} selected
+                    {t('facet-selection', { selected: selectedValues.size })}
                   </Badge>
                 ) : (
                   options
@@ -155,7 +159,7 @@ export function DataTableFacetedFilter<
         <Command>
           <CommandInput placeholder={title} />
           <CommandList className='max-h-full'>
-            <CommandEmpty>No results found.</CommandEmpty>
+            <CommandEmpty>{t('no-filter-options')}</CommandEmpty>
             <CommandGroup className='max-h-[18.75rem] overflow-x-hidden overflow-y-auto'>
               {options.map((option) => {
                 const isSelected = selectedValues.has(option.value);
@@ -194,7 +198,7 @@ export function DataTableFacetedFilter<
                     onSelect={() => onReset()}
                     className='justify-center text-center'
                   >
-                    Clear filters
+                    {t('clear-filters')}
                   </CommandItem>
                 </CommandGroup>
               </>

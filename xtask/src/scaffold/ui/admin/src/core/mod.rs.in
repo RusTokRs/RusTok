@@ -1,9 +1,10 @@
 use rustok_grid::{GridColumnDef, GridPagination};
 
 use crate::i18n::t;
-use crate::model::{Record, RecordFilter, RecordPage};
+use crate::model::{Record, RecordPage};
 
 pub(crate) mod editor;
+pub(crate) mod list;
 pub(crate) mod settings;
 
 pub(crate) fn columns(locale: Option<&str>) -> Vec<GridColumnDef> {
@@ -29,28 +30,12 @@ pub(crate) fn pagination(page: &RecordPage) -> GridPagination {
     GridPagination::new(page.page as usize, usize::from(page.per_page), page.total)
 }
 
-pub(crate) fn select_page(filter: &mut RecordFilter, page: usize) {
-    filter.page = u32::try_from(page).unwrap_or(u32::MAX).max(1);
-}
-
-pub(crate) fn select_page_size(filter: &mut RecordFilter, size: usize) {
-    if let Ok(size) = u16::try_from(size) {
-        filter.per_page = Some(size);
-        filter.page = 1;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn grid_uses_owner_size_until_the_operator_picks_a_size() {
-        let mut filter = RecordFilter::default();
-        select_page(&mut filter, 2);
-        assert_eq!((filter.page, filter.per_page), (2, None));
-        select_page_size(&mut filter, 50);
-        assert_eq!((filter.page, filter.per_page), (1, Some(50)));
+    fn columns_follow_the_ui_locale() {
         assert_eq!(columns(Some("ru"))[0].title, "Название");
     }
 }

@@ -43,11 +43,15 @@ export function DataTablePagination<TData extends RowData = any>({
       {...props}
     >
       <div className='text-muted-foreground flex-1 text-sm whitespace-nowrap'>
-        {selected > 0 ? t('selection', { selected, total }) : t('total', { total })}
+        {selected > 0
+          ? t('selection', { selected, total })
+          : t('total', { total })}
       </div>
       <div className='flex flex-col-reverse items-center gap-4 sm:flex-row sm:gap-6 lg:gap-8'>
         <div className='flex items-center space-x-2'>
-          <p className='text-sm font-medium whitespace-nowrap'>{t('rows-per-page')}</p>
+          <p className='text-sm font-medium whitespace-nowrap'>
+            {t('rows-per-page')}
+          </p>
           <Select
             value={String(pageSize)}
             onValueChange={(value) => {

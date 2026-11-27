@@ -99,6 +99,10 @@ pub(super) fn render(
                 "__MAX_PAGE_SIZE__",
                 &super::persistence::MAX_PAGE_SIZE.to_string(),
             )
+            .replace(
+                "__MAX_TITLE_CHARS__",
+                &super::persistence::MAX_TITLE_CHARS.to_string(),
+            )
             .replace("__PAGE_SIZE_KEY__", super::persistence::PAGE_SIZE_KEY)
             .replace(
                 "__PUBLIC_DISCOVERY_KEY__",

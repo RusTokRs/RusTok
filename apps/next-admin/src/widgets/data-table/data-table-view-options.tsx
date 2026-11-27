@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactTable, RowData, StockFeatures } from '@tanstack/react-table';
+import { useTranslations } from '@rustok/next-fluent/client';
 import { Settings2 } from 'lucide-react';
 
 import { Button } from '@/shared/ui/shadcn/button';
@@ -28,6 +29,7 @@ interface DataTableViewOptionsProps<TData extends RowData = any> {
 export function DataTableViewOptions<TData extends RowData = any>({
   table
 }: DataTableViewOptionsProps<TData>) {
+  const t = useTranslations('data-table');
   const columns = React.useMemo(
     () =>
       table
@@ -43,22 +45,22 @@ export function DataTableViewOptions<TData extends RowData = any>({
     <Popover>
       <PopoverTrigger asChild>
         <Button
-          aria-label='Toggle columns'
+          aria-label={t('toggle-columns')}
           role='combobox'
           variant='outline'
           size='sm'
           className='ml-auto hidden h-8 lg:flex'
         >
           <Settings2 />
-          View
+          {t('view')}
           <CaretSortIcon className='ml-auto opacity-50' />
         </Button>
       </PopoverTrigger>
       <PopoverContent align='end' className='w-44 p-0'>
         <Command>
-          <CommandInput placeholder='Search columns...' />
+          <CommandInput placeholder={t('search-columns')} />
           <CommandList>
-            <CommandEmpty>No columns found.</CommandEmpty>
+            <CommandEmpty>{t('no-columns')}</CommandEmpty>
             <CommandGroup>
               {columns.map((column) => (
                 <CommandItem

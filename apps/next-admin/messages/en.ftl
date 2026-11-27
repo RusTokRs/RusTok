@@ -1,3 +1,31 @@
+data-table-empty = No results.
+data-table-total =
+    { $total ->
+        [one] { $total } row total
+       *[other] { $total } rows total
+    }
+data-table-selection =
+    { $total ->
+        [one] { $selected } of { $total } row selected
+       *[other] { $selected } of { $total } rows selected
+    }
+data-table-rows-per-page = Rows per page
+data-table-page-of = Page { $page } of { $pages }
+data-table-first-page = Go to first page
+data-table-previous-page = Go to previous page
+data-table-next-page = Go to next page
+data-table-last-page = Go to last page
+data-table-reset = Reset
+data-table-reset-filters = Reset filters
+data-table-toggle-columns = Toggle columns
+data-table-view = View
+data-table-search-columns = Search columns...
+data-table-no-columns = No columns found.
+data-table-clear-named-filter = Clear { $title } filter
+data-table-facet-selection = { $selected } selected
+data-table-no-filter-options = No results found.
+data-table-clear-filters = Clear filters
+
 richText-bold = Bold
 richText-italic = Italic
 richText-strike = Strike

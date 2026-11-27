@@ -1,0 +1,112 @@
+use leptos::prelude::*;
+use rustok_forms_leptos::{
+    Form, FormField, FormLabel, FormMessage, FormSearchInput, FormSelect, SubmitButton,
+};
+use rustok_ui_core::UiRouteQueryWrite;
+use rustok_ui_forms::{FieldOption, FormState};
+
+use crate::{core::list, i18n::t, model::RecordFilter};
+
+#[component]
+pub(super) fn RecordFilters(
+    filter: Memo<RecordFilter>,
+    locale: Option<String>,
+    on_apply: Callback<UiRouteQueryWrite>,
+) -> impl IntoView {
+    let applied = Memo::new(move |_| filter.with(|value| list::FilterFields::from(value)));
+    let draft = RwSignal::new(applied.get_untracked());
+    let form = RwSignal::new(FormState::idle());
+    #[cfg(not(feature = "ssr"))]
+    Effect::new(move |_| {
+        draft.set(applied.get());
+        form.set(FormState::idle());
+    });
+
+    let locale = StoredValue::new(locale);
+    let copy = move |key, fallback| locale.with_value(|locale| t(locale.as_deref(), key, fallback));
+    let search_label = copy("records-search", "Search titles");
+    let search_placeholder = search_label.clone();
+    let publication_options = vec![
+        FieldOption::new("", copy("records-all-statuses", "All statuses")),
+        FieldOption::new(list::DRAFT, copy("records-draft", "Draft")),
+        FieldOption::new(list::PUBLISHED, copy("records-published", "Published")),
+    ];
+    let order_options = vec![
+        FieldOption::new(
+            list::NEWEST,
+            copy("records-newest", "Recently updated first"),
+        ),
+        FieldOption::new(
+            list::OLDEST,
+            copy("records-oldest", "Least recently updated first"),
+        ),
+    ];
+    let submit = move |()| {
+        let write = locale
+            .with_value(|locale| draft.with_untracked(|fields| fields.write(locale.as_deref())));
+        match write {
+            Ok(write) => {
+                form.set(FormState::idle());
+                on_apply.run(write);
+            }
+            Err(error) => form.set(FormState::with_field_errors(vec![error])),
+        }
+    };
+
+    view! {
+        <Form state=form auto_submitting=false on_submit=submit class="flex flex-wrap items-start gap-3">
+            <FormField name=list::SEARCH>
+                <FormLabel>{search_label}</FormLabel>
+                <FormSearchInput
+                    value=Signal::derive(move || draft.with(|fields| fields.search.clone()))
+                    on_input=move |search| draft.update(|fields| fields.search = search)
+                    placeholder=search_placeholder
+                />
+                <FormMessage />
+            </FormField>
+            <FormField name=list::PUBLICATION>
+                <FormLabel>{copy("records-status", "Status")}</FormLabel>
+                <FormSelect
+                    value=Signal::derive(move || draft.with(|fields| fields.publication.clone()))
+                    options=publication_options
+                    on_change=move |publication| draft.update(|fields| fields.publication = publication)
+                />
+            </FormField>
+            <FormField name=list::ORDER>
+                <FormLabel>{copy("records-order", "Record order")}</FormLabel>
+                <FormSelect
+                    value=Signal::derive(move || draft.with(|fields| fields.order.clone()))
+                    options=order_options
+                    on_change=move |order| draft.update(|fields| fields.order = order)
+                />
+            </FormField>
+            <SubmitButton class="mt-6">{copy("records-apply-filters", "Apply filters")}</SubmitButton>
+        </Form>
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::*;
+    use crate::model::Publication;
+
+    #[test]
+    fn filters_render_the_localized_deep_link_state() {
+        Owner::new().with(|| {
+            let filter = Memo::new(|_| RecordFilter {
+                search: Some("Русский".into()),
+                publication: Some(Publication::Published),
+                ..RecordFilter::default()
+            });
+            let html = view! {
+                <RecordFilters filter=filter locale=Some("ru".into()) on_apply=Callback::new(|_| {}) />
+            }
+            .to_html();
+            assert!(html.contains("Поиск по названию"));
+            assert!(html.contains("Применить фильтры"));
+            assert!(html.contains("type=\"search\""));
+            assert!(html.contains("name=\"q\""));
+            assert!(html.contains("value=\"PUBLISHED\" selected"));
+        });
+    }
+}

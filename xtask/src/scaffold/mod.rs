@@ -709,6 +709,9 @@ mod tests {
         assert!(
             planned(&next_root.join("settings/records/page.tsx")).contains("showRecords={true}")
         );
+        let next_table = root.join("apps/next-admin/packages").join(&route);
+        assert!(planned(&next_table.join("src/components/record-table.tsx"))
+            .contains("serverPagination={{ pageIndex: page.page - 1, pageSize: page.perPage }}"));
         assert!(planned(&root.join(super::registration_toml::ADMIN_HOST))
             .contains(&format!("{package}-admin/ssr")));
         assert!(!module_dir.exists());

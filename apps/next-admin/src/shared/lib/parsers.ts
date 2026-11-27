@@ -8,6 +8,15 @@ import type {
   ExtendedColumnSort
 } from '@/types/data-table';
 
+export const parseAsPositiveSafeInteger = createParser({
+  parse: (raw) => {
+    if (!/^\d+$/.test(raw)) return null;
+    const value = Number(raw);
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  },
+  serialize: String
+});
+
 const sortingItemSchema = z.object({
   id: z.string(),
   desc: z.boolean()

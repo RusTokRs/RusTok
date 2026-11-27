@@ -79,7 +79,7 @@ export function parseFilters(query: RouteQuery): RecordFilter {
     page: positiveInteger(query.page, 4_294_967_295) ?? 1,
     perPage: positiveInteger(query.perPage, MAX_PAGE_SIZE),
     search:
-      search && Array.from(search).length <= 200 && !search.includes('\0')
+      search && Array.from(search).length <= __MAX_TITLE_CHARS__ && !search.includes('\0')
         ? search
         : undefined,
     publication:

@@ -2,14 +2,16 @@
 
 import {
   type ColumnDef,
+  type PaginationState,
   type RowData,
   type StockFeatures
 } from '@tanstack/react-table';
 import { calculatePageCount } from '@rustok/ui-grid';
-import { parseAsInteger, useQueryState } from 'nuqs';
+import { useQueryState } from 'nuqs';
 import * as React from 'react';
 
 import { useDataTable } from '@/shared/hooks/use-data-table';
+import { parseAsPositiveSafeInteger } from '@/shared/lib/parsers';
 import { DataTable } from './data-table';
 import { DataTableSkeleton } from './data-table-skeleton';
 import { DataTableToolbar } from './data-table-toolbar';
@@ -36,6 +38,8 @@ export interface DataTableShellProps<TData extends RowData = any> {
   clientPagination?: boolean;
   /** Rows per page before the user changes it; the route keeps the choice across reloads. */
   defaultPageSize?: number;
+  /** Page index and size from the server response that supplied these rows. */
+  serverPagination?: PaginationState;
   /** Stable owner identity; prevents a selection on page N selecting a different row on page N+1. */
   getRowId?: (row: TData, index: number) => string;
   /** Complete server route state; lets pending filters detect facet/category navigation. */
@@ -60,6 +64,7 @@ export function DataTableShell<TData extends RowData = any>({
   totalItems,
   clientPagination = false,
   defaultPageSize = 20,
+  serverPagination,
   getRowId,
   routeQuery,
   debounceMs = 500,
@@ -71,10 +76,14 @@ export function DataTableShell<TData extends RowData = any>({
 }: DataTableShellProps<TData>) {
   const [pageSize] = useQueryState(
     'perPage',
-    parseAsInteger.withDefault(defaultPageSize)
+    parseAsPositiveSafeInteger.withDefault(defaultPageSize)
   );
   const rowCount = typeof totalItems === 'number' ? totalItems : data.length;
-  const pageCount = calculatePageCount(rowCount, pageSize);
+  const resolvedPagination = clientPagination ? undefined : serverPagination;
+  const pageCount = calculatePageCount(
+    rowCount,
+    resolvedPagination?.pageSize ?? pageSize
+  );
 
   const { table } = useDataTable({
     data,
@@ -82,6 +91,7 @@ export function DataTableShell<TData extends RowData = any>({
     getRowId,
     routeQuery,
     pageCount,
+    serverPagination: resolvedPagination,
     rowCount: clientPagination ? undefined : rowCount,
     clientPagination,
     // Keep the table's own URL parser on the same default as the shell's
