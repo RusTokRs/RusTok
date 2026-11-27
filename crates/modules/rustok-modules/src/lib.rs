@@ -267,7 +267,7 @@ pub use artifact_capability_router::{
 };
 pub use artifact_cas::StorageArtifactBlobStore;
 pub use artifact_node_reconciliation::{
-    MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS, ModuleArtifactNodeAgentPort,
+    ArtifactServingClosure, MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS, ModuleArtifactNodeAgentPort,
     ModuleArtifactNodeAssignment, ModuleArtifactNodeAssignmentClaimCommand,
     ModuleArtifactNodeAssignmentHeartbeatCommand, ModuleArtifactNodeAssignmentHeartbeatReceipt,
     ModuleArtifactNodeAssignmentReport, ModuleArtifactNodeAssignmentReportReceipt,

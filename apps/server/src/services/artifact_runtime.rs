@@ -69,13 +69,12 @@ struct ServerArtifactEffectivePolicyResolver {
     execution_authority: ExecutionAuthority,
 }
 
-#[async_trait]
-impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
-    async fn resolve(
+impl ServerArtifactEffectivePolicyResolver {
+    async fn resolve_with_closure(
         &self,
         tenant_id: uuid::Uuid,
         artifact: &InstalledModuleArtifact,
-    ) -> Result<ModuleEffectivePolicy, ArtifactEffectivePolicyResolveError> {
+    ) -> Result<(ModuleEffectivePolicy, Option<rustok_modules::ArtifactServingClosure>), ArtifactEffectivePolicyResolveError> {
         let policy =
             crate::services::effective_module_policy::EffectiveModulePolicyService::resolve_artifact_serving(
                 &self.db,
@@ -97,10 +96,10 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
             )
             .is_none()
         {
-            return Ok(policy);
+            return Ok((policy, None));
         }
-        self.node_readiness
-            .require_active_policy_closure(tenant_id, artifact, &policy)
+        let closure = self.node_readiness
+            .capture_active_policy_closure(tenant_id, artifact, &policy)
             .await
             .map_err(|error| match error {
                 rustok_modules::ModuleArtifactNodeReconciliationError::Store(_) => {
@@ -108,7 +107,18 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
                 }
                 _ => ArtifactEffectivePolicyResolveError::NodeNotReady(error.to_string()),
             })?;
-        Ok(policy)
+        Ok((policy, Some(closure)))
+    }
+}
+
+#[async_trait]
+impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
+    async fn resolve(
+        &self,
+        tenant_id: uuid::Uuid,
+        artifact: &InstalledModuleArtifact,
+    ) -> Result<ModuleEffectivePolicy, ArtifactEffectivePolicyResolveError> {
+        self.resolve_with_closure(tenant_id, artifact).await.map(|(policy, _)| policy)
     }
 
     async fn begin_execution(

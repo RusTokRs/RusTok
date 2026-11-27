@@ -357,7 +357,16 @@ async fn require_current_snapshot(txn: &DatabaseTransaction) -> WriteResult<()> 
                  AND trx.END_EVENT_ID IS NULL
                  AND trx.AUTOCOMMIT = 'NO'"
         }
-        DbBackend::Sqlite => return Ok(()),
+        DbBackend::Sqlite => {
+            // INVARIANT: SQLite has no row-level FOR UPDATE. This no-op write reserves the
+            // database writer before QuantityPlan reads Product, Variant, item and level state;
+            // it is the BEGIN IMMEDIATE-equivalent boundary for this deferred transaction.
+            txn.execute_unprepared(
+                "UPDATE inventory_items SET updated_at = updated_at WHERE 1 = 0",
+            )
+            .await?;
+            return Ok(());
+        }
         _ => {
             return Err(QuantityWriteError::Rejected(
                 QuantityWriteBlocker::IsolationUnsupported,
@@ -380,6 +389,7 @@ async fn require_current_snapshot(txn: &DatabaseTransaction) -> WriteResult<()> 
 
 fn current_read<E: EntityTrait>(txn: &DatabaseTransaction, query: Select<E>) -> Select<E> {
     if txn.get_database_backend() == DbBackend::Sqlite {
+        // INVARIANT: require_current_snapshot reserved the SQLite writer before these reads.
         query
     } else {
         query.lock_exclusive()

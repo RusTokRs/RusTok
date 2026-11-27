@@ -493,6 +493,19 @@ impl SeaOrmArtifactNodeReadiness {
         artifact: &InstalledModuleArtifact,
         policy: &crate::ModuleEffectivePolicy,
     ) -> Result<(), ModuleArtifactNodeReconciliationError> {
+        self.capture_active_policy_closure(tenant_id, artifact, policy)
+            .await
+            .map(|_| ())
+    }
+
+    /// Capture the same exact serving closure that passed readiness admission.
+    /// This is owner-issued host evidence, not a guest token or a durable grant.
+    pub async fn capture_active_policy_closure(
+        &self,
+        tenant_id: Uuid,
+        artifact: &InstalledModuleArtifact,
+        policy: &crate::ModuleEffectivePolicy,
+    ) -> Result<ArtifactServingClosure, ModuleArtifactNodeReconciliationError> {
         let before = load_state(&self.db, false).await?;
         let observed_id = before
             .observed_id
@@ -507,15 +520,17 @@ impl SeaOrmArtifactNodeReadiness {
             .into_iter()
             .map(|item| (item.release.slug.clone(), item))
             .collect::<BTreeMap<_, _>>();
-        let required = serving_artifact_closure(tenant_id, artifact, policy, &selected)?;
-        for item in required {
+        let closure = ArtifactServingClosure::from_policy_selection(
+            tenant_id, artifact, policy, &selected,
+        )?;
+        for (item, _) in closure.artifacts.values() {
             self.require_active(item, &readiness_revision).await?;
         }
         let after = load_state(&self.db, false).await?;
         if before.revision != after.revision || before.observed_id != after.observed_id {
             return Err(ModuleArtifactNodeReconciliationError::StaleReconciliation);
         }
-        Ok(())
+        Ok(closure)
     }
 
     /// Requires the complete durable assignment identity and current owner
@@ -665,6 +680,117 @@ impl SeaOrmArtifactNodeReadiness {
             Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)
         }
     }
+}
+
+/// Exact artifact members and security revisions of an admitted serving
+/// closure. Private fields prevent constructing authority from guest input.
+/// Static members are traversed by the policy evaluator but their mutable
+/// lifecycle/composition facts are not yet fenced on the effect transaction.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArtifactServingClosure {
+    tenant_id: Uuid,
+    artifacts: BTreeMap<String, (InstalledModuleArtifact, u64)>,
+}
+
+impl ArtifactServingClosure {
+    pub(crate) fn from_policy_selection(
+        tenant_id: Uuid,
+        root: &InstalledModuleArtifact,
+        policy: &crate::ModuleEffectivePolicy,
+        selected: &BTreeMap<String, InstalledModuleArtifact>,
+    ) -> Result<Self, ModuleArtifactNodeReconciliationError> {
+        let required = serving_artifact_closure(tenant_id, root, policy, selected)?;
+        let mut artifacts = BTreeMap::new();
+        for item in required {
+            let decision = policy.get_decision(&item.release.slug)
+                .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
+            let revision = clear_security_revision(&decision.facts)?;
+            artifacts.insert(item.release.slug.clone(), (item.clone(), revision));
+        }
+        Ok(Self { tenant_id, artifacts })
+    }
+
+    pub fn root_security_revision(&self, root: &InstalledModuleArtifact) -> Option<u64> {
+        self.artifacts.get(&root.release.slug)
+            .filter(|(item, _)| item == root)
+            .map(|(_, revision)| *revision)
+    }
+
+    /// Acquire all selection fences in slug order (platform then tenant for
+    /// each slug), before reading any member. The caller retains the locks
+    /// through commit. No pool checkout or guest code may run under them.
+    pub async fn require_current_on(
+        &self,
+        tx: &DatabaseTransaction,
+    ) -> Result<(), ModuleArtifactNodeReconciliationError> {
+        use crate::installation::{
+            acquire_artifact_activation_lock, resolve_active_many_in_transaction,
+            resolve_sandbox_policy_on,
+        };
+        let denied = || ModuleArtifactNodeReconciliationError::AssignmentUnavailable;
+        if self.tenant_id.is_nil() || self.artifacts.is_empty() {
+            return Err(denied());
+        }
+        crate::backend::set_tenant_scope(tx, self.tenant_id).await.map_err(store_error)?;
+        for slug in self.artifacts.keys() {
+            acquire_artifact_activation_lock(tx, &ModuleInstallationScope::Platform, slug)
+                .await.map_err(store_error)?;
+            acquire_artifact_activation_lock(
+                tx, &ModuleInstallationScope::Tenant { tenant_id: self.tenant_id }, slug,
+            ).await.map_err(store_error)?;
+        }
+        let releases = self.artifacts.values()
+            .map(|(item, _)| item.release.clone()).collect::<Vec<_>>();
+        let current = resolve_active_many_in_transaction(tx, &releases, self.tenant_id)
+            .await.map_err(store_error)?;
+        if current.len() != self.artifacts.len() {
+            return Err(denied());
+        }
+        for ((expected, revision), actual) in self.artifacts.values().zip(current) {
+            let actual = actual.map_err(store_error)?;
+            if &actual != expected {
+                return Err(denied());
+            }
+            // A matching installation revision alone cannot prove that its
+            // durable policy is still present and decodable.
+            resolve_sandbox_policy_on(tx, &actual, self.tenant_id)
+                .await.map_err(store_error)?;
+            crate::SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
+                tx, &actual.release, *revision,
+            ).await.map_err(store_error)?;
+        }
+        Ok(())
+    }
+}
+
+fn clear_security_revision(
+    facts: &[crate::ModuleEffectivePolicyFact],
+) -> Result<u64, ModuleArtifactNodeReconciliationError> {
+    use crate::{
+        ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecurityStatus, ModuleEffectivePolicyFact,
+    };
+    let denied = || ModuleArtifactNodeReconciliationError::AssignmentUnavailable;
+    let mut security = None;
+    let mut registry = None;
+    for fact in facts {
+        match fact {
+            ModuleEffectivePolicyFact::ArtifactSecurity { revision, status, .. } => {
+                if *status != ModuleArtifactSecurityStatus::Clear || security.replace(*revision).is_some() {
+                    return Err(denied());
+                }
+            }
+            ModuleEffectivePolicyFact::RegistryRelease { status } => {
+                if *status == ModuleArtifactRegistryReleaseStatus::Unavailable
+                    || registry.replace(*status).is_some()
+                {
+                    return Err(denied());
+                }
+            }
+            _ => {}
+        }
+    }
+    registry.ok_or_else(denied)?;
+    security.ok_or_else(denied)
 }
 
 /// Pure closure validation. Every selected artifact must still match the
@@ -3191,6 +3317,29 @@ mod tests {
     use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
 
     use super::*;
+
+    #[test]
+    fn closure_security_evidence_must_be_unique_clear_and_available() {
+        use crate::{
+            ModuleArtifactRegistryReleaseStatus as RegistryStatus,
+            ModuleArtifactSecurityStatus as SecurityStatus, ModuleEffectivePolicyFact as Fact,
+        };
+        let clear = Fact::ArtifactSecurity {
+            revision: 2, status: SecurityStatus::Clear, policy_revision: None, reason_code: None,
+        };
+        let registry = Fact::RegistryRelease { status: RegistryStatus::Unlisted };
+        assert_eq!(clear_security_revision(&[clear.clone(), registry.clone()]).unwrap(), 2);
+        assert!(clear_security_revision(&[clear.clone()]).is_err());
+        assert!(clear_security_revision(&[registry.clone()]).is_err());
+        assert!(clear_security_revision(&[clear.clone(), clear.clone(), registry.clone()]).is_err());
+        assert!(clear_security_revision(&[clear.clone(), registry.clone(), registry.clone()]).is_err());
+        assert!(clear_security_revision(&[clear, Fact::RegistryRelease {
+            status: RegistryStatus::Unavailable,
+        }]).is_err());
+        assert!(clear_security_revision(&[Fact::ArtifactSecurity {
+            revision: 1, status: SecurityStatus::Quarantined, policy_revision: None, reason_code: None,
+        }, registry]).is_err());
+    }
 
     #[derive(Clone)]
     struct AllowAuthorizer;

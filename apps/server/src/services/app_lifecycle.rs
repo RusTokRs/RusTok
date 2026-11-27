@@ -12,9 +12,9 @@ use crate::services::event_transport_factory::{
 };
 use crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle;
 use crate::services::outbox_retention_worker::spawn_outbox_retention_worker;
-#[cfg(feature = "mod-seo")]
-use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
 use crate::services::server_runtime_context::{ServerRuntimeContext, published_worker_running};
+#[cfg(feature = "mod-seo")]
+use rustok_core::ModuleRuntimeExtensions;
 use rustok_modules::ModuleControlPlane;
 #[cfg(feature = "mod-seo")]
 use rustok_seo::{SeoApplicationServices, SeoWorkerAuthorization};
@@ -699,6 +699,16 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
         return Ok(());
     }
 
+    // Validate every feature-specific worker dependency before publishing any
+    // worker handles. A missing module registry must fail startup here rather
+    // than panic asynchronously after the other workers have started.
+    #[cfg(feature = "mod-seo")]
+    let seo_runtime_extensions = if seo_worker_enabled {
+        Some(seo_worker_runtime_extensions(&runtime_ctx)?)
+    } else {
+        None
+    };
+
     // Register the graceful-shutdown handle atomically so concurrent bootstrap calls cannot
     // create divergent stop channels.
     let stop_handle = StopHandle::ensure(&runtime_ctx);
@@ -814,8 +824,12 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
                     .to_string(),
             )
         })?;
+        let runtime_extensions = seo_runtime_extensions.clone().ok_or_else(|| {
+            Error::Message("SEO worker module runtime extensions were not prepared".to_string())
+        })?;
         runtime_ctx.shared_insert(spawn_seo_bulk_worker_handle(
             runtime_ctx.clone(),
+            runtime_extensions,
             stop_rx.clone(),
             authorization,
             seo_bulk_worker_enabled,
@@ -1988,6 +2002,7 @@ fn spawn_remote_executor_reaper_handle(
 #[cfg(feature = "mod-seo")]
 fn spawn_seo_bulk_worker_handle(
     runtime_ctx: ServerRuntimeContext,
+    runtime_extensions: std::sync::Arc<ModuleRuntimeExtensions>,
     stop_rx: tokio::sync::watch::Receiver<bool>,
     authorization: SeoWorkerAuthorization,
     bulk_enabled: bool,
@@ -2007,6 +2022,7 @@ fn spawn_seo_bulk_worker_handle(
         instance_id,
         _handle: tokio::spawn(seo_worker_loop(
             runtime_ctx,
+            runtime_extensions,
             stop_rx,
             authorization,
             bulk_enabled,
@@ -2087,8 +2103,22 @@ async fn remote_executor_reaper_loop(
 }
 
 #[cfg(feature = "mod-seo")]
+fn seo_worker_runtime_extensions(
+    runtime_ctx: &ServerRuntimeContext,
+) -> Result<std::sync::Arc<ModuleRuntimeExtensions>> {
+    runtime_ctx
+        .shared_get::<std::sync::Arc<ModuleRuntimeExtensions>>()
+        .ok_or_else(|| {
+            Error::Message(
+                "ModuleRuntimeExtensions are unavailable for SEO worker startup".to_string(),
+            )
+        })
+}
+
+#[cfg(feature = "mod-seo")]
 async fn seo_worker_loop(
     runtime_ctx: ServerRuntimeContext,
+    runtime_extensions: std::sync::Arc<ModuleRuntimeExtensions>,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
     authorization: SeoWorkerAuthorization,
     bulk_enabled: bool,
@@ -2096,7 +2126,6 @@ async fn seo_worker_loop(
     index_repair_enabled: bool,
 ) {
     let event_bus = transactional_event_bus_from_context(&runtime_ctx);
-    let runtime_extensions = module_runtime_extensions_from_ctx(&runtime_ctx);
     let service = match SeoApplicationServices::from_runtime_extensions(
         runtime_ctx.db_clone(),
         event_bus,
@@ -3381,6 +3410,34 @@ mod installer_job_task_registry_tests {
             "aborting the timed-out JoinSet must drop the in-flight task"
         );
         assert!(!registry.spawn(async {}), "drained registry stays closed");
+    }
+}
+
+#[cfg(all(test, feature = "mod-seo"))]
+mod seo_worker_runtime_extension_tests {
+    use super::seo_worker_runtime_extensions;
+    use crate::services::server_runtime_context::ServerRuntimeContext;
+    use rustok_core::ModuleRuntimeExtensions;
+    use sea_orm::DatabaseConnection;
+    use std::sync::Arc;
+
+    #[test]
+    fn seo_worker_startup_rejects_missing_module_runtime_extensions() {
+        let runtime = ServerRuntimeContext::new(DatabaseConnection::default(), Default::default());
+
+        assert!(seo_worker_runtime_extensions(&runtime).is_err());
+    }
+
+    #[test]
+    fn seo_worker_startup_uses_the_registered_module_runtime_extensions() {
+        let runtime = ServerRuntimeContext::new(DatabaseConnection::default(), Default::default());
+        let expected = Arc::new(ModuleRuntimeExtensions::default());
+        runtime.shared_insert(Arc::clone(&expected));
+
+        let actual = seo_worker_runtime_extensions(&runtime)
+            .expect("registered module runtime extensions");
+
+        assert!(Arc::ptr_eq(&actual, &expected));
     }
 }
 

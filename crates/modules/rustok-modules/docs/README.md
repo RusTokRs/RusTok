@@ -1498,9 +1498,17 @@ calls. SQL effects verify it inside the transaction under the platform slug
 activation fence, shared by quarantine, clear and revoke writers. This fences
 first quarantine even without a security row, and quarantine followed by
 clear cannot revive an older lease. The registry status is sampled but its
-independent writers are not fenced by this increment. Full effective policy
-(including dependency security, static overrides and deployment readiness)
-and cross-owner lock-order verification remain outstanding. Upgrade all
+independent writers are not fenced by this increment. For ordinary serving, the same owner closure used by node readiness is
+captured in the lease, including exact artifact members reached through
+dependencies and co-requisites and their security revisions. Before any root
+selection lock, SQL admission takes all artifact slug locks in ascending
+order (platform then tenant per slug), reselects the complete artifact set,
+validates each durable sandbox policy and security revision, and keeps the
+locks through commit. Non-SQL calls compare fresh closure evidence but remain
+preflight-only. Lifecycle retains root-only owner authority; static members
+are traversed but static overrides/composition, registry writers, deployment
+readiness and installation disable/re-enable ABA are not transactionally
+fenced. Cross-owner lock-order verification remains outstanding. Upgrade all
 security writers and effect consumers together; old writers bypass the slug
 fence. No schema or transport change is required. Independent non-server broker
 compositions still need an explicitly supplied authority. External effects and
