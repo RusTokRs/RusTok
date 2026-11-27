@@ -17,6 +17,8 @@ SSR-first browser adapter assets and protocol contracts for Fly editors.
   selection change emits `fly:select` for SSR form retargeting without posting a duplicate select.
 - Resolve classic SSR drop edges from the canvas layout axis and direction (flex, grid, inline,
   writing mode and reverse flow), not from a vertical-only assumption.
+- Cancel host-owned drags when the pointer leaves the iframe; mouse pointer-up outside the child
+  browsing context cannot complete the child runtime's drag.
 - Provide `FLY_ACTIONS_JS` for published actions. Target resolution and tab, accordion and slider
   group traversal are confined to the nearest landing body (or standalone document body), with
   renderer-owned hooks preferred to authored IDs. Tab panels may sit outside a nested tablist

@@ -244,6 +244,44 @@ test('nested scrolling refreshes component geometry and parent overlays', async 
     .toBeLessThan(initialTop - 70);
 });
 
+test('leaving the iframe cancels a host-owned drag instead of leaving it armed', async ({
+  page
+}) => {
+  await mountRuntime(
+    page,
+    `
+      <section
+        id="drop-target"
+        data-fly-component-id="drop-target"
+        data-fly-index="0"
+        style="width:240px;height:120px"
+      >Drop target</section>
+    `
+  );
+  const root = page.locator('#fly-root');
+  await page.locator('#begin-drag').click();
+  await expect(root).toHaveAttribute('data-fly-dragging', 'block');
+
+  const target = page.frameLocator('#canvas-a-frame').locator('#drop-target');
+  const bounds = await target.boundingBox();
+  if (!bounds) throw new Error('Drop target unavailable');
+  await page.mouse.move(
+    bounds.x + bounds.width / 2,
+    bounds.y + bounds.height / 2
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    bounds.x + bounds.width + 40,
+    bounds.y + bounds.height + 40
+  );
+
+  await expect(root).not.toHaveAttribute('data-fly-dragging', 'block');
+  await page.mouse.up();
+  await expect(
+    page.locator('[data-fly-browser-overlay="insertion"]')
+  ).toHaveCSS('display', 'none');
+});
+
 test('horizontal flex drop targets use the row axis instead of the vertical default', async ({
   page
 }) => {

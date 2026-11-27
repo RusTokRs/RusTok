@@ -1635,6 +1635,16 @@ export class FlyBrowserAdapter {
       },
       { signal },
     );
+    // Mouse pointer-up is not delivered to an iframe after the pointer leaves its
+    // browsing context. Cancel the host-owned drag at the boundary so it cannot
+    // remain armed and commit unexpectedly when the pointer later re-enters.
+    this.iframe.addEventListener(
+      "pointerleave",
+      () => {
+        if (this.activeDrag) this.cancelDrag();
+      },
+      { signal },
+    );
     this.iframe.addEventListener(
       "load",
       () => {
