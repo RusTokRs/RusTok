@@ -1235,9 +1235,11 @@ transaction. It never selects or revives a historical row, even after repeated
 grants. Direct active consent updates are not yet forbidden by the schema. OAuth application reactivation is
 unchanged. SQLite prevents hidden-rowid replacement on tokens, codes and
 consents and implicit replacement of an active consent by another UUID.
+Issued OAuth token scopes/expiry and authorization-code subject, redirect,
+scopes, PKCE and creation/expiry claims cannot be modified after issuance.
 Pre-cutover removed identities, reuse of a consent epoch under a fresh UUID,
-direct mutation of nonterminal credential claims, and privileged DDL/restore
-remain outside this protection. Source regressions unrun.
+direct session deadline mutation, and privileged DDL/restore remain outside
+this protection. Source regressions unrun.
 
 ## OAuth consent revocation retry admission
 

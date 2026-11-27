@@ -749,3 +749,10 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   when no active consent is present. The terminal guard must never be bypassed
   to revive a revoked row. Timestamp-based epoch binding remains a separate
   open cross-reader contract. Source regressions unrun.
+
+- Issued OAuth claims: token scopes/expiry and code subject, redirect URI,
+  scopes, PKCE and timestamps are immutable after issuance on both backends.
+  Extractor negative fixtures now insert malformed legacy claims at birth
+  instead of modifying an issued registration. Database regressions cover
+  attempted live-claim mutation and no-op updates. Session deadline and
+  durable consent epoch binding remain open. Source regressions unrun.

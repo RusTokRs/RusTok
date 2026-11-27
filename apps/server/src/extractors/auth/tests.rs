@@ -254,6 +254,19 @@ async fn registered_service_token(
     app: &oauth_apps::Model,
     scopes: &[String],
 ) -> String {
+    registered_service_token_with_registration(db, config, app, scopes, serde_json::json!(scopes), Utc::now()).await
+}
+
+// Insert a deliberately inconsistent legacy registration at birth rather
+// than rewriting an immutable credential after issuance.
+async fn registered_service_token_with_registration(
+    db: &DatabaseConnection,
+    config: &AuthConfig,
+    app: &oauth_apps::Model,
+    scopes: &[String],
+    stored_scopes: serde_json::Value,
+    created_at: chrono::DateTime<Utc>,
+) -> String {
     let token_id = Uuid::new_v4();
     let token = encode_oauth_access_token(
         config,
@@ -279,11 +292,11 @@ async fn registered_service_token(
         grant_type: Set("client_credentials".to_string()),
         token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
         consent_granted_at: Set(None),
-        scopes: Set(serde_json::json!(scopes)),
+        scopes: Set(stored_scopes),
         expires_at: Set((now + Duration::minutes(15)).into()),
         revoked_at: Set(None),
         last_used_at: Set(None),
-        created_at: Set(now.into()),
+        created_at: Set(created_at.into()),
         updated_at: Set(now.into()),
     }
     .insert(db)
@@ -325,8 +338,6 @@ async fn oauth_service_token_intersects_app_permissions_with_scopes() {
 
 #[tokio::test]
 async fn oauth_service_token_rejects_future_registration() {
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-
     let db = setup_test_db_with_migrations::<Migrator>().await;
     ensure_oauth_apps_table(&db).await;
     let tenant = tenants::ActiveModel::new(
@@ -351,18 +362,11 @@ async fn oauth_service_token_rejects_future_registration() {
             .is_ok()
     );
 
-    let row = oauth_tokens::Entity::find()
-        .filter(oauth_tokens::Column::TokenHash.eq(crate::auth::hash_refresh_token(&token)))
-        .one(&db)
-        .await
-        .unwrap()
-        .unwrap();
-    let mut changed: oauth_tokens::ActiveModel = row.into();
-    changed.created_at = Set((Utc::now() + Duration::minutes(1)).into());
-    changed
-        .update(&db)
-        .await
-        .expect("set future registration creation");
+    let token = registered_service_token_with_registration(
+        &db, runtime.require_auth_config().unwrap(), &app,
+        &["forum:*".to_string()], serde_json::json!(["forum:*"]),
+        Utc::now() + Duration::minutes(1),
+    ).await;
     let error = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
         .await
         .expect_err("future registration must not authorize access");
@@ -377,8 +381,6 @@ async fn oauth_service_token_rejects_future_registration() {
 
 #[tokio::test]
 async fn oauth_service_token_rejects_corrupt_or_mismatched_registered_scopes() {
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-
     let db = setup_test_db_with_migrations::<Migrator>().await;
     ensure_oauth_apps_table(&db).await;
     let tenant = tenants::ActiveModel::new(
@@ -403,12 +405,6 @@ async fn oauth_service_token_rejects_corrupt_or_mismatched_registered_scopes() {
             .is_ok()
     );
 
-    let mut row = oauth_tokens::Entity::find()
-        .filter(oauth_tokens::Column::TokenHash.eq(crate::auth::hash_refresh_token(&token)))
-        .one(&db)
-        .await
-        .expect("load access registration")
-        .expect("access row exists");
     for (stored, message) in [
         (serde_json::json!([]), "OAuth access token scopes mismatch"),
         (
@@ -420,9 +416,10 @@ async fn oauth_service_token_rejects_corrupt_or_mismatched_registered_scopes() {
             "OAuth access token scopes mismatch",
         ),
     ] {
-        let mut changed: oauth_tokens::ActiveModel = row.into();
-        changed.scopes = Set(stored);
-        row = changed.update(&db).await.expect("change registered scopes");
+        let token = registered_service_token_with_registration(
+            &db, runtime.require_auth_config().unwrap(), &app,
+            &["forum:*".to_string()], stored, Utc::now(),
+        ).await;
         let error = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
             .await
             .expect_err("inconsistent registration must fail closed");

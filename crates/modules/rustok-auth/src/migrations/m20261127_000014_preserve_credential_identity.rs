@@ -92,6 +92,17 @@ const TERMINAL_FIELDS: &[(&str, &str)] = &[
     ("oauth_consents", "revoked_at"),
 ];
 
+// OAuth token family identity already guards lineage and subject; these
+// additional claims are fixed at issuance. A code is a one-shot grant,
+// not a mutable request that can acquire new scopes or PKCE parameters.
+const ISSUED_CLAIMS: &[(&str, &[&str])] = &[
+    ("oauth_tokens", &["scopes", "expires_at"]),
+    ("oauth_authorization_codes", &[
+        "app_id", "user_id", "tenant_id", "redirect_uri", "scopes",
+        "code_challenge", "code_challenge_method", "expires_at", "created_at",
+    ]),
+];
+
 const POSTGRES_TERMINAL: &str = r#"
 CREATE FUNCTION auth_guard_terminal_credential() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE old_value jsonb := to_jsonb(OLD); new_value jsonb := to_jsonb(NEW);
@@ -102,6 +113,17 @@ BEGIN
     END IF;
     RETURN NEW;
 END; $$;
+
+CREATE FUNCTION auth_guard_issued_oauth_claims() RETURNS trigger LANGUAGE plpgsql AS $
+DECLARE field_name text;
+BEGIN
+    FOREACH field_name IN ARRAY TG_ARGV LOOP
+        IF (to_jsonb(NEW) -> field_name) IS DISTINCT FROM (to_jsonb(OLD) -> field_name) THEN
+            RAISE EXCEPTION 'Issued OAuth credential claims are immutable' USING ERRCODE = '23514';
+        END IF;
+    END LOOP;
+    RETURN NEW;
+END; $;
 
 CREATE FUNCTION auth_guard_revoked_oauth_rotation() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -291,6 +313,24 @@ impl MigrationTrait for Migration {
             };
             db.execute_unprepared(&sql).await?;
         }
+        for &(table, fields) in ISSUED_CLAIMS {
+            let sql = match backend {
+                DatabaseBackend::Postgres => {
+                    let arguments = fields.iter().map(|field| format!("'{field}'")).collect::<Vec<_>>().join(", ");
+                    format!("CREATE TRIGGER auth_issued_claims_guard BEFORE UPDATE ON {table}
+                        FOR EACH ROW EXECUTE FUNCTION auth_guard_issued_oauth_claims({arguments})")
+                }
+                DatabaseBackend::Sqlite => {
+                    let predicate = fields.iter().map(|field| format!("NEW.{field} IS NOT OLD.{field}"))
+                        .collect::<Vec<_>>().join(" OR ");
+                    format!("CREATE TRIGGER auth_issued_claims_guard_{table} BEFORE UPDATE ON {table}
+                        WHEN {predicate}
+                        BEGIN SELECT RAISE(ABORT, 'Issued OAuth credential claims are immutable'); END")
+                }
+                _ => unreachable!("backend checked"),
+            };
+            db.execute_unprepared(&sql).await?;
+        }
         if backend == DatabaseBackend::Sqlite {
             // A fresh UUID must not displace an unrelated credential via
             // a hidden rowid conflict with recursive triggers disabled.
@@ -362,7 +402,18 @@ mod tests {
              INSERT INTO oauth_authorization_codes (id, code_hash) VALUES ('{A}', 'old-code');
              ALTER TABLE sessions ADD COLUMN revoked_at TIMESTAMP;
              ALTER TABLE oauth_tokens ADD COLUMN last_used_at TIMESTAMP;
-             ALTER TABLE oauth_authorization_codes ADD COLUMN used_at TIMESTAMP;"
+             ALTER TABLE oauth_authorization_codes ADD COLUMN used_at TIMESTAMP;
+             ALTER TABLE oauth_tokens ADD COLUMN scopes TEXT NOT NULL DEFAULT 'profile';
+             ALTER TABLE oauth_tokens ADD COLUMN expires_at TIMESTAMP NOT NULL DEFAULT '2026-02-01';
+             ALTER TABLE oauth_authorization_codes ADD COLUMN app_id UUID;
+             ALTER TABLE oauth_authorization_codes ADD COLUMN user_id UUID;
+             ALTER TABLE oauth_authorization_codes ADD COLUMN tenant_id UUID;
+             ALTER TABLE oauth_authorization_codes ADD COLUMN redirect_uri TEXT NOT NULL DEFAULT 'https://example.com/callback';
+             ALTER TABLE oauth_authorization_codes ADD COLUMN scopes TEXT NOT NULL DEFAULT 'profile';
+             ALTER TABLE oauth_authorization_codes ADD COLUMN code_challenge TEXT NOT NULL DEFAULT 'challenge';
+             ALTER TABLE oauth_authorization_codes ADD COLUMN code_challenge_method TEXT NOT NULL DEFAULT 'S256';
+             ALTER TABLE oauth_authorization_codes ADD COLUMN expires_at TIMESTAMP NOT NULL DEFAULT '2026-02-01';
+             ALTER TABLE oauth_authorization_codes ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT '2026-01-01';"
         )).await.unwrap();
     }
 
@@ -469,6 +520,22 @@ mod tests {
         writes
     }
 
+    fn issued_claim_writes() -> Vec<String> {
+        vec![
+            "UPDATE oauth_tokens SET scopes = 'other'".into(),
+            "UPDATE oauth_tokens SET expires_at = '2026-03-01'".into(),
+            format!("UPDATE oauth_authorization_codes SET app_id = '{D}'"),
+            format!("UPDATE oauth_authorization_codes SET user_id = '{D}'"),
+            format!("UPDATE oauth_authorization_codes SET tenant_id = '{D}'"),
+            "UPDATE oauth_authorization_codes SET redirect_uri = 'https://other.example/callback'".into(),
+            "UPDATE oauth_authorization_codes SET scopes = 'other'".into(),
+            "UPDATE oauth_authorization_codes SET code_challenge = 'other'".into(),
+            "UPDATE oauth_authorization_codes SET code_challenge_method = 'plain'".into(),
+            "UPDATE oauth_authorization_codes SET expires_at = '2026-03-01'".into(),
+            "UPDATE oauth_authorization_codes SET created_at = '2026-01-02'".into(),
+        ]
+    }
+
     async fn revoke_fixture(db: &impl ConnectionTrait) {
         for &(table, field) in TERMINAL_FIELDS {
             db.execute_unprepared(&format!(
@@ -490,6 +557,11 @@ mod tests {
         Migration.up(&SchemaManager::new(&tx)).await.unwrap();
         tx.commit().await.unwrap();
 
+        for sql in issued_claim_writes() {
+            assert!(db.execute_unprepared(&sql).await.is_err(), "{sql}");
+        }
+        db.execute_unprepared("UPDATE oauth_tokens SET scopes = scopes;
+            UPDATE oauth_authorization_codes SET expires_at = expires_at").await.unwrap();
         // Editing the scopes of an active consent remains legal.
         db.execute_unprepared("UPDATE oauth_consents SET scopes = 'email'").await.unwrap();
         assert!(db.execute_unprepared(&format!(
@@ -530,9 +602,22 @@ mod tests {
         fixture(&tx).await;
         seed_consent(&tx).await;
         Migration.up(&SchemaManager::new(&tx)).await.unwrap();
+        tx.commit().await.unwrap();
+        // Verify the claims guard before revocation: a live credential
+        // cannot acquire a different grant or a longer lifetime.
+        for sql in issued_claim_writes() {
+            let tx = db.begin().await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+            assert!(tx.execute_unprepared(&sql).await.is_err(), "{sql}");
+            tx.rollback().await.unwrap();
+        }
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        tx.execute_unprepared("UPDATE oauth_tokens SET scopes = scopes;
+            UPDATE oauth_authorization_codes SET expires_at = expires_at").await.unwrap();
         revoke_fixture(&tx).await;
         tx.commit().await.unwrap();
-        for sql in terminal_writes() {
+        for sql in terminal_writes().into_iter().chain(issued_claim_writes()) {
             let tx = db.begin().await.unwrap();
             tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
             assert!(tx.execute_unprepared(&sql).await.is_err(), "{sql}");

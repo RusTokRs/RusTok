@@ -354,3 +354,10 @@ app/subject-locked transaction. This also repairs the old unfiltered lookup
 that could select a terminal row after a revoke or several grants. No history
 is rewritten. Timestamp-based epoch comparison remains in readers; permanent
 UUID claims alone do not yet replace that comparison. Source regressions unrun.
+
+Issued OAuth token scopes and expiry, and authorization-code client, subject,
+tenant, redirect URI, scopes, PKCE and creation/expiry fields are immutable
+under ordinary PostgreSQL and SQLite DML. Revocation and consumption remain
+permitted; existing token lineage guards remain authoritative. Runtime
+admission still validates claims to reject malformed legacy records and
+never relies solely on schema constraints. Source regressions unrun.
