@@ -23,7 +23,11 @@ a set via delete/insert conservatively advances it. Rollback rolls back the
 epoch. Overflow and decreasing the epoch fail closed. PostgreSQL rejects
 TRUNCATE of user_roles; maintenance must use row deletion. SQLite rejects
 relation-ID replacement across users to prevent silent conflict-delete bypass.
-Trusted maintenance must not disable triggers or reuse deleted user IDs.
+Migration 000013 replaces the ordinary-DML non-reuse assumption with a
+permanent UUID witness for all users present at cutover or inserted later.
+A deleted user UUID cannot be recreated, and user ID updates are forbidden.
+Trusted maintenance must not disable triggers; pre-cutover deleted identities
+and privileged restore remain outside the witness history.
 
 The epoch update locks the same user row as Auth's issuer mutation fence.
 SQLite readers must already own its write fence. Writers should lock users

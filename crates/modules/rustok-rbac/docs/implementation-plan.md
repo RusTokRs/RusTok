@@ -495,3 +495,11 @@ exists.
   Added an opt-in PostgreSQL exact-set regression covering both directions of
   comparison, tenant isolation and FK cascades, and extended the SQLite
   regression for raw static-grant deletion/reinsertion. Tests remain unrun.
+
+- Static authority UUID continuity: migration 000013 preserves user, role and
+  permission birth witnesses without a global row lock; same-ID replacement,
+  deletion/recreation and direct witness reset fail closed. SQLite alternate
+  UUID encodings share one witness. Existing identity history before migration,
+  different-ID natural-key replacement, other credential/tenant identities and
+  revision-based cache optimization remain open. Source regressions authored;
+  migration and PostgreSQL contention evidence unrun.

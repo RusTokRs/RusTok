@@ -311,3 +311,16 @@ watermark or a pub/sub notification to be observed by the next such decision.
 The extra database read is intentional; this does not revoke already admitted
 request snapshots or make direct DML advance the recovery watermark. No new
 global write locks or duplicate generation reservation are introduced.
+
+### Permanent static authority identities
+
+Migration 000013 backfills and retains an append-only UUID witness for each
+existing user, role and permission and for every subsequent successful insert.
+A deleted UUID cannot be reused, including SQLite same-ID REPLACE and alternate
+text/blob UUID encodings; UUID updates are forbidden. Conflict-do-nothing and
+rolled-back births consume nothing. Witnesses contain only kind and UUID, no
+email, role slug or permission payload, and have no cascading foreign keys.
+PostgreSQL uses a nonwaiting per-identity advisory fence for witness inserts.
+The migration cannot reconstruct identities deleted before cutover, and does
+not protect privileged DDL/restore, other authority kinds, or SQLite
+natural-key REPLACE with a different UUID. Source regressions are unrun.

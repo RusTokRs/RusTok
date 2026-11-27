@@ -207,3 +207,16 @@ insertion, deletion, replacement and non-increasing or non-integer updates.
 Normal reservations advance by one; deliberate forward-only recovery may skip
 values. Missing/corrupt predecessor storage requires offline recovery.
 Privileged DDL and database restoration remain separate. Tests unrun.
+
+### Permanent static authority identities
+
+Migration 000013 backfills and retains an append-only UUID witness for each
+existing user, role and permission and for every subsequent successful insert.
+A deleted UUID cannot be reused, including SQLite same-ID REPLACE and alternate
+text/blob UUID encodings; UUID updates are forbidden. Conflict-do-nothing and
+rolled-back births consume nothing. Witnesses contain only kind and UUID, no
+email, role slug or permission payload, and have no cascading foreign keys.
+PostgreSQL uses a nonwaiting per-identity advisory fence for witness inserts.
+The migration cannot reconstruct identities deleted before cutover, and does
+not protect privileged DDL/restore, other authority kinds, or SQLite
+natural-key REPLACE with a different UUID. Source regressions are unrun.

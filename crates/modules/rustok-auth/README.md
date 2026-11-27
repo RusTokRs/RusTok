@@ -365,3 +365,10 @@ PostgreSQL retention uses ordered nonblocking candidate locks and app-first
 OAuth family deletion with fresh whole-family expiry checks. Contention rolls
 back the complete sweep; the next attempt starts a new transaction. SQLite
 retains serialized writes. Source regressions are unrun.
+
+The RBAC-owned migration 000013 retains permanent user/role/permission UUID
+birth witnesses. A post-cutover hard-deleted user cannot be recreated under
+the same UUID to revive old recovery or membership evidence. The witness
+has no user FK or account PII and survives deletion. Pre-cutover deletions,
+other credential IDs, privileged DDL and database restore are not covered.
+See the RBAC owner documentation. Source regressions unrun.

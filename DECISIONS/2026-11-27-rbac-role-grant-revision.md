@@ -17,9 +17,14 @@ advance it; presentation-only writes do not. Overflow and decrease fail
 closed. Permission identity (id, tenant, resource, action) is immutable:
 create a new permission and replace links instead of changing its meaning
 in place. PostgreSQL forbids truncating role_permissions. Trusted maintenance
-must not disable triggers, reuse role UUIDs, or use SQLite REPLACE on parent
-roles/permissions or conflict-update parent identities. Existing owner
-writers use explicit insert-do-nothing and delete/update.
+must not disable triggers or use SQLite REPLACE on parent roles/permissions
+or conflict-update parent identities. Migration 000013 enforces permanent
+user, role and permission UUID non-reuse in ordinary DML, including same-ID
+SQLite replacement. Existing owner writers retain explicit insert-do-nothing
+and delete/update. The append-only witness records only kind and UUID,
+not live authority or a global generation, and cannot reconstruct identities
+deleted before cutover. Natural-key replacement with a different UUID remains
+outside this specific identity guarantee.
 
 Auth locks the issuer user first, then all issuer membership role rows
 and the exact destination role ordered by ID, before reading grants.
