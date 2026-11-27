@@ -274,9 +274,26 @@ fn invoke_capability(
 fn register_http_functions(engine: &mut Engine, host: SandboxHost, context: RhaiCapabilityContext) {
     register_http_get_functions(engine, host.clone(), context.clone());
     register_http_post_functions(engine, host.clone(), context.clone());
+
+    let request_host = host.clone();
+    let request_context = context.clone();
     engine.register_fn(
         "http_request",
         move |method: &str, url: &str, body: Dynamic, headers: Map| {
+            invoke_http(
+                &request_host,
+                &request_context,
+                &method.to_ascii_uppercase(),
+                url,
+                dynamic_to_json(body),
+                headers,
+                None,
+            )
+        },
+    );
+    engine.register_fn(
+        "http_request",
+        move |method: &str, url: &str, body: Dynamic, headers: Map, idempotency_key: &str| {
             invoke_http(
                 &host,
                 &context,
@@ -284,6 +301,7 @@ fn register_http_functions(engine: &mut Engine, host: SandboxHost, context: Rhai
                 url,
                 dynamic_to_json(body),
                 headers,
+                Some(idempotency_key.to_string()),
             )
         },
     );
@@ -297,11 +315,11 @@ fn register_http_get_functions(
     let get_host = host.clone();
     let get_context = context.clone();
     engine.register_fn("http_get", move |url: &str| {
-        invoke_http(&get_host, &get_context, "GET", url, Value::Null, Map::new())
+        invoke_http(&get_host, &get_context, "GET", url, Value::Null, Map::new(), None)
     });
 
     engine.register_fn("http_get", move |url: &str, headers: Map| {
-        invoke_http(&host, &context, "GET", url, Value::Null, headers)
+        invoke_http(&host, &context, "GET", url, Value::Null, headers, None)
     });
 }
 
@@ -320,13 +338,56 @@ fn register_http_post_functions(
             url,
             dynamic_to_json(body),
             Map::new(),
+            None,
         )
     });
 
+    let post_host = host.clone();
+    let post_context = context.clone();
     engine.register_fn(
         "http_post",
         move |url: &str, body: Dynamic, headers: Map| {
-            invoke_http(&host, &context, "POST", url, dynamic_to_json(body), headers)
+            invoke_http(
+                &post_host,
+                &post_context,
+                "POST",
+                url,
+                dynamic_to_json(body),
+                headers,
+                None,
+            )
+        },
+    );
+
+    let post_host = host.clone();
+    let post_context = context.clone();
+    engine.register_fn(
+        "http_post",
+        move |url: &str, body: Dynamic, idempotency_key: &str| {
+            invoke_http(
+                &post_host,
+                &post_context,
+                "POST",
+                url,
+                dynamic_to_json(body),
+                Map::new(),
+                Some(idempotency_key.to_string()),
+            )
+        },
+    );
+
+    engine.register_fn(
+        "http_post",
+        move |url: &str, body: Dynamic, headers: Map, idempotency_key: &str| {
+            invoke_http(
+                &host,
+                &context,
+                "POST",
+                url,
+                dynamic_to_json(body),
+                headers,
+                Some(idempotency_key.to_string()),
+            )
         },
     );
 }
@@ -338,19 +399,24 @@ fn invoke_http(
     url: &str,
     body: Value,
     headers: Map,
+    idempotency_key: Option<String>,
 ) -> Map {
     let headers = parse_http_headers(headers);
+    let mut input = json!({
+        "method": method,
+        "url": url,
+        "headers": headers,
+        "body": body,
+    });
+    if let Some(idempotency_key) = idempotency_key {
+        input["idempotency_key"] = json!(idempotency_key);
+    }
     let response = invoke_capability(
         host,
         context,
         "platform.http",
         "request",
-        json!({
-            "method": method,
-            "url": url,
-            "headers": headers,
-            "body": body,
-        }),
+        input,
     );
     format_http_response(response)
 }
