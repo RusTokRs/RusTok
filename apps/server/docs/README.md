@@ -2260,10 +2260,11 @@ their owner fences. Those locks remain held through commit; the direct
 credential deadline and execution lease are checked again immediately before
 commit. Structured-data operations, object metadata/session/chunk transitions
 and event-outbox publication use this fence; object put/delete receipts and
-upload-completion replay are fenced too. The physical object-store writes and
-reads remain outside the SQL transaction; object-read output is revalidated
-after the storage fetch, and ambiguous writes retain their durable owner
-receipt for retry.
+upload-completion replay are fenced too. Object namespace migration holds are
+checked under the namespace row lock. Physical object-store writes and reads
+remain outside the SQL transaction; chunk staging happens before the owner
+transaction, object-read output is revalidated after the storage fetch, and
+ambiguous writes retain their durable owner receipt for retry.
 
 This is not yet a universal effect transaction. Full effective-policy revision,
 operational maintenance authority, deferred/background channel context and
