@@ -106,6 +106,9 @@ where
             .await?;
         let (transaction, guard) =
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        ensure_active_namespace(&transaction, scope, backend).await?;
         let object = find_artifact_data_object(&transaction, scope, name).await?;
         commit_artifact_data_effect(transaction, guard).await?;
         Ok(object.map(|stored| stored.object))
@@ -128,6 +131,9 @@ where
             .await?;
         let (transaction, guard) =
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        ensure_active_namespace(&transaction, scope, backend).await?;
         let stored = find_artifact_data_object(&transaction, scope, name).await?;
         commit_artifact_data_effect(transaction, guard).await?;
         let Some(stored) = stored else {
@@ -353,6 +359,7 @@ where
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        ensure_active_namespace(&transaction, scope, backend).await?;
         let limit = i64::from(page.limit) + 1;
         let prefix = format!("{}%", escape_like_prefix(&page.prefix));
         let (query, values) = match page.after_key {
