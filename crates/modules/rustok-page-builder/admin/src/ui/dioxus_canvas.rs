@@ -110,7 +110,7 @@ pub fn DioxusIsolatedCanvas(
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     let mut captured_element = use_signal(|| None::<Element>);
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-    let mut resize_context = use_signal(|| None::<(String, CanvasRect, f64)>);
+    let mut resize_context = use_signal(|| None::<DioxusResizeContext>);
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     let mut listener_handles = use_signal(|| Vec::<EventListenerHandle>::new());
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
@@ -146,7 +146,12 @@ pub fn DioxusIsolatedCanvas(
     let next_resize_context = (instance_is_current && selected_can_resize)
         .then(|| selected_id.clone().zip(selected_rect))
         .flatten()
-        .map(|(component_id, rect)| (component_id, rect, zoom));
+        .map(|(component_id, rect)| DioxusResizeContext {
+            instance_id: instance_id.clone(),
+            component_id,
+            rect,
+            zoom,
+        });
 
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     let resize_effect_inputs = (resize_root_id.clone(), next_resize_context.clone());
@@ -157,11 +162,13 @@ pub fn DioxusIsolatedCanvas(
         move |payload: String| {
             let current_instance = {
                 let current = session.read();
+                let revision = current.controller.editor().revision();
                 canvas_instance_id(
                     current.controller.page_id(),
                     current.controller.active_page_index(),
                     current.controller.revision_id(),
-                    &current.controller.editor().revision().project_hash.hex(),
+                    &revision.project_hash.hex(),
+                    revision.command_sequence,
                 )
             };
             if current_instance != expected_instance {
@@ -301,19 +308,23 @@ pub fn DioxusIsolatedCanvas(
                     let Some(handle) = parse_resize_handle(&handle_name) else {
                         return;
                     };
-                    let Some((component_id, rect, coordinate_scale)) =
-                        resize_context.peek().clone()
-                    else {
+                    let Some(context) = resize_context.peek().clone() else {
                         return;
                     };
+                    if !resize_context_is_current(
+                        &context,
+                        live_resize_context(session, geometry, &context.instance_id).as_ref(),
+                    ) {
+                        return;
+                    }
                     let policy = page_builder_resize_policy();
                     let active = BrowserResizeSession::begin_scaled(
-                        component_id,
+                        context.component_id,
                         handle,
-                        rect,
+                        context.rect,
                         &event,
                         policy,
-                        coordinate_scale,
+                        context.zoom,
                     );
                     if let Err(error) = set_pointer_capture(&handle_element, active.pointer_id) {
                         if let Some(handler) = on_error {
@@ -336,9 +347,33 @@ pub fn DioxusIsolatedCanvas(
                     let Some(active) = resize_session.peek().clone() else {
                         return;
                     };
-                    if active.accepts(&event) {
-                        resize_preview.set(active.update(&event));
+                    if !active.accepts(&event) {
+                        return;
                     }
+                    let Some(captured) = resize_context.peek().clone() else {
+                        cancel_resize_session(
+                            resize_session,
+                            resize_preview,
+                            captured_element,
+                            None,
+                            true,
+                            on_error,
+                        );
+                        return;
+                    };
+                    let current = live_resize_context(session, geometry, &captured.instance_id);
+                    if !resize_context_is_current(&captured, current.as_ref()) {
+                        cancel_resize_session(
+                            resize_session,
+                            resize_preview,
+                            captured_element,
+                            None,
+                            true,
+                            on_error,
+                        );
+                        return;
+                    }
+                    resize_preview.set(active.update(&event));
                 },
             );
 
@@ -352,6 +387,29 @@ pub fn DioxusIsolatedCanvas(
                         return;
                     };
                     if !active.accepts(&event) {
+                        return;
+                    }
+                    let Some(captured) = resize_context.peek().clone() else {
+                        cancel_resize_session(
+                            resize_session,
+                            resize_preview,
+                            captured_element,
+                            None,
+                            true,
+                            on_error,
+                        );
+                        return;
+                    };
+                    let current = live_resize_context(session, geometry, &captured.instance_id);
+                    if !resize_context_is_current(&captured, current.as_ref()) {
+                        cancel_resize_session(
+                            resize_session,
+                            resize_preview,
+                            captured_element,
+                            None,
+                            true,
+                            on_error,
+                        );
                         return;
                     }
                     let result = active
@@ -553,11 +611,7 @@ pub fn DioxusIsolatedCanvas(
                                 let (x, y) = resize_handle_position(rect, handle);
                                 let name = resize_handle_name(handle);
                                 let cursor = resize_handle_cursor(handle);
-                                let keyboard_resize_context = resize_context_for_keyboard(
-                                    selected_id.clone(),
-                                    selected_rect,
-                                    zoom,
-                                );
+                                let keyboard_resize_context = next_resize_context.clone();
                                 rsx! {
                                     circle {
                                         cx: "{x}",
@@ -575,15 +629,26 @@ pub fn DioxusIsolatedCanvas(
                                         onkeydown: {
                                             let intent_instance_id = intent_instance_id.clone();
                                             move |event| {
-                                                let Some((component_id, rect, _zoom)) =
-                                                    keyboard_resize_context.clone()
+                                                let Some(context) = keyboard_resize_context.clone()
                                                 else {
                                                     return;
                                                 };
+                                                let current = live_resize_context(
+                                                    session,
+                                                    geometry,
+                                                    &context.instance_id,
+                                                );
+                                                if !resize_context_is_current(
+                                                    &context,
+                                                    current.as_ref(),
+                                                ) {
+                                                    return;
+                                                }
+                                                let component_id = context.component_id.clone();
                                                 let resize = ResizeSession {
                                                     component_id: component_id.clone(),
                                                     handle,
-                                                    start_rect: rect,
+                                                    start_rect: context.rect,
                                                     start_x: 0.0,
                                                     start_y: 0.0,
                                                     policy: page_builder_resize_policy(),
@@ -631,14 +696,65 @@ pub fn DioxusIsolatedCanvas(
     }
 }
 
-fn resize_context_for_keyboard(
-    selected_id: Option<String>,
-    selected_rect: Option<CanvasRect>,
+#[cfg(any(all(target_arch = "wasm32", feature = "dioxus-web"), test))]
+#[derive(Debug, Clone, PartialEq)]
+struct DioxusResizeContext {
+    instance_id: String,
+    component_id: String,
+    rect: CanvasRect,
     zoom: f64,
-) -> Option<(String, CanvasRect, f64)> {
-    selected_id
-        .zip(selected_rect)
-        .map(|(id, rect)| (id, rect, zoom))
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+fn live_resize_context(
+    session: Signal<EditorSessionState>,
+    geometry: Signal<BTreeMap<String, CanvasComponentGeometry>>,
+    expected_instance_id: &str,
+) -> Option<DioxusResizeContext> {
+    let current = session.read();
+    let controller = &current.controller;
+    let revision = controller.editor().revision();
+    let instance_id = canvas_instance_id(
+        controller.page_id(),
+        controller.active_page_index(),
+        controller.revision_id(),
+        &revision.project_hash.hex(),
+        revision.command_sequence,
+    );
+    if instance_id != expected_instance_id {
+        return None;
+    }
+
+    let capabilities = controller.ui().state.capabilities;
+    if !capabilities.edit || !capabilities.styles {
+        return None;
+    }
+    let selected = controller.selected_component_view()?;
+    if selected.is_root || selected.is_locked {
+        return None;
+    }
+    let rect = geometry
+        .read()
+        .get(&selected.id)
+        .map(|component| canvas_rect(component.rect))?;
+    if !rect.is_valid() {
+        return None;
+    }
+
+    Some(DioxusResizeContext {
+        instance_id,
+        component_id: selected.id,
+        rect,
+        zoom: f64::from(controller.ui().state.viewport.zoom.max(0.01)),
+    })
+}
+
+#[cfg(any(all(target_arch = "wasm32", feature = "dioxus-web"), test))]
+fn resize_context_is_current(
+    captured: &DioxusResizeContext,
+    current: Option<&DioxusResizeContext>,
+) -> bool {
+    current == Some(captured)
 }
 
 fn canvas_rect(rect: fly_web::BrowserRect) -> CanvasRect {
@@ -898,4 +1014,43 @@ fn update_drag_candidates(
         .controller
         .hit_candidates(position, geometries);
     on_ui_intent.call(UiIntent::UpdateHitTest(candidates));
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resize_gesture_snapshot_is_fenced_by_identity_target_geometry_and_zoom() {
+        let captured = DioxusResizeContext {
+            instance_id: "canvas-sequence-7".to_string(),
+            component_id: "hero-title".to_string(),
+            rect: CanvasRect {
+                x: 10.0,
+                y: 20.0,
+                width: 300.0,
+                height: 80.0,
+            },
+            zoom: 1.0,
+        };
+        assert!(resize_context_is_current(&captured, Some(&captured)));
+
+        let mut changed = captured.clone();
+        changed.instance_id = "canvas-sequence-8".to_string();
+        assert!(!resize_context_is_current(&captured, Some(&changed)));
+
+        let mut changed = captured.clone();
+        changed.component_id = "hero-subtitle".to_string();
+        assert!(!resize_context_is_current(&captured, Some(&changed)));
+
+        let mut changed = captured.clone();
+        changed.rect.width += 1.0;
+        assert!(!resize_context_is_current(&captured, Some(&changed)));
+
+        let mut changed = captured.clone();
+        changed.zoom = 1.25;
+        assert!(!resize_context_is_current(&captured, Some(&changed)));
+        assert!(!resize_context_is_current(&captured, None));
+    }
 }
