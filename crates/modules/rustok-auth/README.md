@@ -135,6 +135,15 @@ now share pre-transaction application-clock admission. The active tenant is
 fenced before app/user/credential locks, including direct user administration:
 PostgreSQL uses FOR SHARE (not FK-only KEY SHARE), SQLite a conditional
 write-before-read fence. The inactive-tenant regression is authored, unrun.
+Artifact runtime HTTP/GraphQL dispatch, UI projection and audit now require
+the admitted direct session, rechecking tenant, actor, session, current role
+grants and credential deadline in a short host transaction. OAuth delegated
+and service credentials are denied until an explicit dynamic permission
+delegation contract exists. The shared runtime policy check also guards UI
+reads and durable receipt replay. SQL locks are not held across sandbox
+execution; policy/installation and external execution are not atomically
+fenced by this slice. A claimed operation denied at recheck requires the
+existing reconciliation flow.
 Artifact-runtime entitlement, remaining scope-independent owner
 contract work and global PostgreSQL deadlock evidence remain open.
 Compilation and runtime verification are pending.
