@@ -87,14 +87,18 @@ fn is_disallowed_ipv4(ipv4: Ipv4Addr) -> bool {
         || octets[0] >= 240
 }
 
-/// Extracts the IPv4 address embedded in transition/compatibility prefixes
+/// Extracts the IPv4 address embedded in transition/translation formats
 /// whose traffic can be delivered to that IPv4 destination: the NAT64
-/// well-known prefix `64:ff9b::/96`, deprecated IPv4-compatible `::/96`,
-/// and 6to4 `2002::/16`. The non-globally-routable RFC 8215 local-use
-/// prefix `64:ff9b:1::/48` is rejected separately.
+/// well-known prefix `64:ff9b::/96`, IPv4-translated
+/// `::ffff:0:0:0/96`, deprecated IPv4-compatible `::/96`, 6to4
+/// `2002::/16`, and ISATAP interface identifiers. The non-global RFC 8215
+/// local-use prefix `64:ff9b:1::/48` is rejected separately.
 fn embedded_ipv4(ipv6: std::net::Ipv6Addr) -> Option<Ipv4Addr> {
     let segments = ipv6.segments();
-    if segments[..6] == [0x0064, 0xff9b, 0, 0, 0, 0] || segments[..6] == [0; 6] {
+    if segments[..6] == [0x0064, 0xff9b, 0, 0, 0, 0]
+        || segments[..6] == [0; 6]
+        || segments[..6] == [0, 0, 0, 0, 0xffff, 0]
+    {
         return Some(Ipv4Addr::from(
             u32::from(segments[6]) << 16 | u32::from(segments[7]),
         ));
@@ -102,6 +106,12 @@ fn embedded_ipv4(ipv6: std::net::Ipv6Addr) -> Option<Ipv4Addr> {
     if segments[0] == 0x2002 {
         return Some(Ipv4Addr::from(
             u32::from(segments[1]) << 16 | u32::from(segments[2]),
+        ));
+    }
+    // ISATAP encodes IPv4 in the low 32 bits of the interface identifier.
+    if matches!(segments[4], 0x0000 | 0x0200) && segments[5] == 0x5efe {
+        return Some(Ipv4Addr::from(
+            u32::from(segments[6]) << 16 | u32::from(segments[7]),
         ));
     }
     None
@@ -142,29 +152,20 @@ fn is_disallowed_ip(ip: IpAddr) -> bool {
             if let Some(ipv4) = embedded_ipv4(ipv6) {
                 return is_disallowed_ipv4(ipv4);
             }
-            ipv6.is_loopback()
-                || ipv6.is_unspecified()
-                || ipv6.is_multicast()
-                || (segments[0] & 0xfe00) == 0xfc00
-                || (segments[0] & 0xffc0) == 0xfe80
-                // Deprecated site-local unicast remains locally routable on
-                // networks that still configure it.
-                || (segments[0] & 0xffc0) == 0xfec0
+            // After screening known IPv4 translation/tunnel forms above,
+            // accept only global-unicast IPv6 destinations (2000::/3).
+            // This rejects all non-global ranges, including loopback, link-local,
+            // ULA, site-local, multicast and unallocated address space.
+            (segments[0] & 0xe000) != 0x2000
                 // 2001::/23 is IANA protocol-assignment space. Permit only
                 // its specific globally reachable allocations; deny Teredo,
                 // benchmarking, deprecated ORCHID and unassigned subranges.
                 || ((segments[0] == 0x2001 && (segments[1] & 0xfe00) == 0)
                     && !is_globally_reachable_ietf_assignment(ipv6))
                 || (segments[0] == 0x2001 && segments[1] == 0x0db8) // Documentation
-                || (segments[0] == 0x3fff && (segments[1] & 0xf000) == 0) // Documentation
-                || (segments[0] == 0x0100
-                    && segments[1] == 0
-                    && segments[2] == 0
-                    && segments[3] == 0) // Discard-only 100::/64
-                || (segments[0] == 0x0100
-                    && segments[1] == 0
-                    && segments[2] == 0
-                    && segments[3] == 1) // Dummy prefix 100:0:0:1::/64
+                // 3f00::/8 contains IANA-reserved space, the former 6bone and
+                // the 3fff::/20 documentation prefix.
+                || (segments[0] & 0xff00) == 0x3f00
                 || segments[0] == 0x5f00 // Segment Routing SIDs 5f00::/16
         }
     }
@@ -603,6 +604,24 @@ mod tests {
         assert!(is_disallowed_ip(
             "64:ff9b:1::808:808".parse().expect("local-use nat64 public address")
         ));
+        // IPv4-translated addresses and ISATAP identifiers also carry an
+        // embedded IPv4 destination and must pass the same private-range rules.
+        assert!(is_disallowed_ip(
+            "::ffff:0:a9fe:a9fe".parse().expect("ipv4-translated metadata address")
+        ));
+        assert!(!is_disallowed_ip(
+            "::ffff:0:808:808".parse().expect("ipv4-translated public address")
+        ));
+        assert!(is_disallowed_ip(
+            "2606:4700:4700:0:0:5efe:a9fe:a9fe"
+                .parse()
+                .expect("ISATAP metadata address")
+        ));
+        assert!(!is_disallowed_ip(
+            "2606:4700:4700:0:200:5efe:808:808"
+                .parse()
+                .expect("ISATAP public address")
+        ));
         // Deprecated IPv4-compatible addresses cannot bypass IPv4 screening.
         assert!(is_disallowed_ip(
             "::a9fe:a9fe".parse().expect("ipv4-compatible metadata address")
@@ -610,8 +629,7 @@ mod tests {
         assert!(!is_disallowed_ip(
             "::808:808".parse().expect("ipv4-compatible public address")
         ));
-        // Deprecated site-local and IETF special-purpose IPv6 ranges are not
-        // valid public destinations (the latter includes Teredo).
+        // Non-global and IANA-reserved IPv6 ranges are not public destinations.
         assert!(is_disallowed_ip("fec0::1".parse().expect("site-local ipv6")));
         assert!(is_disallowed_ip(
             "2001:0:4136:e378:8000:63bf:3fff:fdd2"
@@ -626,6 +644,12 @@ mod tests {
         ));
         assert!(is_disallowed_ip(
             "3fff::1".parse().expect("new documentation ipv6")
+        ));
+        assert!(is_disallowed_ip(
+            "3ffe::1".parse().expect("reserved 6bone ipv6")
+        ));
+        assert!(is_disallowed_ip(
+            "4000::1".parse().expect("non-global-unicast ipv6")
         ));
         assert!(is_disallowed_ip(
             "100::1".parse().expect("discard-only ipv6")
