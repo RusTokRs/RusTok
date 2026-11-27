@@ -404,7 +404,6 @@ async fn projection_loader_rejects_ambiguous_items_and_excess_original_levels() 
     assert!(load_projection_levels(&db, &bindings).await.is_err());
 }
 
-
 #[tokio::test]
 async fn sqlite_quantity_snapshot_reserves_writer_before_plan_reads() {
     let path = std::env::temp_dir().join(format!(

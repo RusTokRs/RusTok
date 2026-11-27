@@ -3,8 +3,9 @@
 ## Known Limitations / Pending Implementation
 
 - `InventoryProductPort` currently has a local database adapter. Quantity changes and
-  Product/variant deletion require tenant identity checks and database-appropriate write locks in the same transaction as Inventory writes: row locks
-  on PostgreSQL/MySQL and a SQLite writer reservation before quantity-plan reads. Checkout reservation SQL also reads Product variants.
+  Product/variant deletion require tenant identity checks and database-appropriate locks in
+  the same transaction as Inventory writes: row locks on PostgreSQL/MySQL and a SQLite writer
+  reservation before owner reads. Checkout reservation SQL also reads Product variants.
   Starting Product as a separate process does not remove these shared-schema dependencies.
   Zero-quantity reserve and release report zero availability for SKUs without Inventory
   records. Verify Inventory backfill before moving catalog consumers off the shared schema.
