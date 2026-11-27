@@ -282,3 +282,36 @@ success, or protection against arbitrary privileged DML. Stop/drain old relays
 before migrating and do not mix old writers with ledger-aware relays.
 Regression sources are authored; compilation, SQL lifecycle and crash/remote
 effect evidence remain pending.
+
+## Durable fanout recovery (source only)
+
+The relay pins a versioned delivery route per event before invoking any target
+or wrapper. An incompatible route refuses delivery before external I/O; review
+and drain pending/DLQ events before changing profiles or broker routing.
+The server external-Iggy fanout records primary acceptance in a separate
+short SQL transaction under the exact live claim and open dispatch intent.
+On retry, a committed checkpoint skips the primary call and retries local
+delivery. A crash between broker acceptance and checkpoint commit is still
+ambiguous and can redeliver. The original event UUID remains the broker ID.
+The same route also pins whether local delivery was required when fanout
+first reached its validated registry. A mismatch fails closed.
+
+Local handlers, cache rotations and other process-local effects are not
+skipped on the basis of another host's success. Bundled Iggy is deliberately
+not eligible for primary skipping because the configured local path is not
+proof of shared durable broker identity. External configuration fingerprint
+covers credential-free endpoint routing, protocol/TLS domain, stream and
+serialization, not remote broker identity or retention. Replacing a broker
+behind the same endpoints requires reviewed recovery; never reuse a route
+checkpoint against a different broker. The standalone broker-only relay has
+a distinct route from the server fanout; do not run different route owners
+against the same pending queue. Generic library targets use an unclassified
+route unless the host explicitly supplies a stable one.
+
+The route and checkpoint share the event retention lifecycle, including DLQ
+replay; replay does not silently discard confirmed evidence. Old relay
+binaries must be stopped/drained before migration
+`m20261127_000205_create_outbox_delivery_checkpoints`. No SQL transaction
+spans broker I/O. This is not an exactly-once guarantee, a complete
+per-handler receipt system, or a proof that the broker retained an accepted
+message. Source regression tests are authored, not executed.

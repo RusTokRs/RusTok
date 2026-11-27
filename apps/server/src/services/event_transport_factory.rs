@@ -181,7 +181,7 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                     "registered event transport is not a transactional outbox".to_string(),
                 ));
             }
-            let (relay_target, listener_bus, iggy_mode) = match delivery_profile {
+            let (relay_target, listener_bus, iggy_mode, delivery_route) = match delivery_profile {
                 EventDeliveryProfile::Outbox => {
                     let local = MemoryTransport::with_capacity(channel_capacity);
                     let listener_bus = local.event_bus();
@@ -189,6 +189,7 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                         Arc::new(LocalEventDeliveryTransport { local }) as Arc<dyn EventTransport>,
                         listener_bus,
                         None,
+                        "server-local-v1".to_owned(),
                     )
                 }
                 EventDeliveryProfile::OutboxIggy => {
@@ -212,9 +213,11 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                     // after the rest of event-runtime construction succeeds.
                     iggy_transport_handle = Some(Arc::clone(&iggy_transport));
                     let transport: Arc<dyn EventTransport> = iggy_transport;
+                    let route = format!("server-iggy-fanout-v1:{}", iggy_config.outbox_route_fingerprint());
+                    let checkpoint_enabled = iggy_config.mode == rustok_iggy::config::IggyMode::External;
                     let (transport, listener_bus) =
-                        transport_with_local_delivery(transport, channel_capacity);
-                    (transport, listener_bus, Some(iggy_config.mode))
+                        transport_with_local_delivery_policy(transport, channel_capacity, checkpoint_enabled);
+                    (transport, listener_bus, Some(iggy_config.mode), route)
                 }
             };
             let relay_target: Arc<dyn EventTransport> = Arc::new(
@@ -226,7 +229,7 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
             let relay_target = tenant_generation_transport(ctx, &cache, relay_target);
             let relay_config = RelayRuntimeConfig {
                 interval: Duration::from_millis(settings.events.relay_interval_ms),
-                relay: OutboxRelay::new(ctx.db_clone(), relay_target).with_config(relay_policy_config),
+                relay: OutboxRelay::new(ctx.db_clone(), relay_target).with_config(relay_policy_config).with_delivery_route(delivery_route),
             };
 
             EventRuntime {
@@ -614,13 +617,22 @@ fn outbox_relay_worker_context() -> PortContext {
     .with_deadline(Duration::from_secs(600))
 }
 
+#[cfg(test)]
 fn transport_with_local_delivery(
     primary: Arc<dyn EventTransport>,
     channel_capacity: usize,
 ) -> (Arc<dyn EventTransport>, EventBus) {
+    transport_with_local_delivery_policy(primary, channel_capacity, false)
+}
+
+fn transport_with_local_delivery_policy(
+    primary: Arc<dyn EventTransport>,
+    channel_capacity: usize,
+    checkpoint_enabled: bool,
+) -> (Arc<dyn EventTransport>, EventBus) {
     let local = MemoryTransport::with_capacity(channel_capacity);
     let listener_bus = local.event_bus();
-    let transport = LocalDeliveryFanoutTransport { primary, local };
+    let transport = LocalDeliveryFanoutTransport { primary, local, checkpoint_enabled };
     (Arc::new(transport), listener_bus)
 }
 
@@ -683,17 +695,18 @@ impl EventTransport for LocalEventDeliveryTransport {
 struct LocalDeliveryFanoutTransport {
     primary: Arc<dyn EventTransport>,
     local: MemoryTransport,
+    checkpoint_enabled: bool,
 }
 
 #[async_trait]
 impl EventTransport for LocalDeliveryFanoutTransport {
     async fn publish(&self, envelope: EventEnvelope) -> rustok_core::Result<()> {
         // Refuse before remote publication if the local listener registry is unavailable.
-        // A projection failure after primary acceptance is still returned so the outbox
-        // retries the same identity; remote consumers must be idempotent.
+        // A committed external-primary checkpoint survives local failure.
+        // Without that evidence the original event identity can redeliver.
         let local_bus = self.local.event_bus();
         local_bus.ensure_local_listeners_running()?;
-        self.primary.publish(envelope.clone()).await?;
+        rustok_outbox::publish_primary_with_checkpoint(envelope.id, true, self.checkpoint_enabled, self.primary.publish(envelope.clone())).await?;
         let event_id = envelope.id;
         let event_type = envelope.event.event_type();
         if let Err(error) = local_bus.publish_root_envelope_and_wait(envelope).await {
@@ -724,10 +737,9 @@ impl EventTransport for LocalDeliveryFanoutTransport {
                 "Required sealed module delivery is unavailable; retain the original outbox identity".to_owned(),
             ));
         }
-        // The configured Iggy connector must accept the unchanged frame first. A required
-        // local projection failure retains this outbox identity for retry, even if that
-        // republishes the same frame remotely. Remote consumers must be idempotent.
-        self.primary.publish_contract(envelope.clone()).await?;
+        // Pin the local delivery obligation and retain confirmed primary
+        // acceptance before attempting the process-local projection.
+        rustok_outbox::publish_primary_with_checkpoint(envelope.id(), deliver_locally, self.checkpoint_enabled, self.primary.publish_contract(envelope.clone())).await?;
         if deliver_locally {
             let event_id = envelope.id();
             let event_type = envelope.event_type().to_owned();

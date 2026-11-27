@@ -15,7 +15,7 @@ use rustok_core::events::EventTransport;
 use rustok_core::{Error, Result};
 use rustok_events::{ContractEventEnvelope, EventEnvelope};
 
-use crate::{attempts, entity};
+use crate::{attempts, checkpoints, entity};
 use crate::entity::SysEventStatus;
 use crate::ports::OutboxRelayRunOnceProjection;
 
@@ -259,6 +259,7 @@ pub struct OutboxRelay {
     config: RelayConfig,
     metrics: Arc<RelayMetrics>,
     pass_lock: Arc<tokio::sync::Mutex<()>>,
+    delivery_route: String,
 }
 
 impl std::fmt::Debug for OutboxRelay {
@@ -270,6 +271,46 @@ impl std::fmt::Debug for OutboxRelay {
     }
 }
 
+
+#[derive(Clone)]
+struct DeliveryScope {
+    relay: OutboxRelay,
+    model: entity::Model,
+    attempt_id: Uuid,
+}
+
+tokio::task_local! {
+    static DELIVERY_SCOPE: DeliveryScope;
+}
+
+/// Execute the primary leg of acknowledged fanout. Only the current relay
+/// task can record/skip durable acceptance. Direct non-relay callers retain
+/// ordinary at-least-once behavior. Do not spawn this call into another task.
+pub async fn publish_primary_with_checkpoint<F>(
+    event_id: Uuid,
+    local_required: bool,
+    checkpoint_enabled: bool,
+    publish: F,
+) -> Result<()>
+where
+    F: std::future::Future<Output = Result<()>> + Send,
+{
+    let Ok(scope) = DELIVERY_SCOPE.try_with(Clone::clone) else {
+        return publish.await;
+    };
+    if scope.model.id != event_id {
+        return Err(Error::Validation("outbox fanout event does not match dispatch scope".into()));
+    }
+    if scope.relay.prepare_primary(&scope, local_required, checkpoint_enabled).await? {
+        return Ok(());
+    }
+    publish.await?;
+    if checkpoint_enabled {
+        scope.relay.confirm_primary(&scope).await?;
+    }
+    Ok(())
+}
+
 impl OutboxRelay {
     pub fn new(db: DatabaseConnection, target: Arc<dyn EventTransport>) -> Self {
         Self {
@@ -278,11 +319,19 @@ impl OutboxRelay {
             config: RelayConfig::default(),
             metrics: Arc::new(RelayMetrics::default()),
             pass_lock: Arc::new(tokio::sync::Mutex::new(())),
+            delivery_route: "unclassified-v1".into(),
         }
     }
 
     pub fn with_config(mut self, config: RelayConfig) -> Self {
         self.config = config;
+        self
+    }
+
+    /// Stable host-owned route identity, including the delivery profile.
+    /// Existing event routes are never silently rebound.
+    pub fn with_delivery_route(mut self, route: impl Into<String>) -> Self {
+        self.delivery_route = route.into();
         self
     }
 
@@ -628,14 +677,15 @@ impl OutboxRelay {
             self.release_unpublished_claim(model, Some(attempt_id)).await?;
             return Err(Error::External(format!("outbox event {event_id} dispatch lease budget exhausted after intent")));
         }
-        let publish_result = match envelope {
-            RelayEnvelope::Root(envelope) => {
-                tokio::time::timeout(publish_timeout, self.target.publish(envelope)).await
-            }
-            RelayEnvelope::Contract(envelope) => {
-                tokio::time::timeout(publish_timeout, self.target.publish_contract(envelope)).await
-            }
-        };
+        let scope = DeliveryScope { relay: self.clone(), model: model.clone(), attempt_id };
+        let publish_result = DELIVERY_SCOPE.scope(scope, async {
+            tokio::time::timeout(publish_timeout, async {
+                match envelope {
+                    RelayEnvelope::Root(envelope) => self.target.publish(envelope).await,
+                    RelayEnvelope::Contract(envelope) => self.target.publish_contract(envelope).await,
+                }
+            }).await
+        }).await;
         let publish_result = match publish_result {
             Ok(result) => result,
             Err(_elapsed) => Err(Error::External(format!(
@@ -753,6 +803,80 @@ impl OutboxRelay {
         self.ensure_claim_owned(model.id, result.rows_affected)
     }
 
+
+    async fn bind_delivery_route(&self, txn: &DatabaseTransaction, model: &entity::Model) -> Result<()> {
+        if self.delivery_route.is_empty() || self.delivery_route.len() > 128 || self.delivery_route.trim() != self.delivery_route {
+            return Err(Error::Validation("invalid outbox delivery route key".into()));
+        }
+        if let Some(row) = checkpoints::Entity::find_by_id(model.id).one(txn).await? {
+            if row.route_key != self.delivery_route {
+                return Err(Error::Validation("outbox delivery route changed; reconcile event before retry".into()));
+            }
+        } else {
+            checkpoints::Entity::insert(checkpoints::ActiveModel {
+                event_id: Set(model.id), route_key: Set(self.delivery_route.clone()),
+                local_required: Set(None), primary_confirmed_at: Set(None),
+            }).exec_without_returning(txn).await?;
+        }
+        Ok(())
+    }
+
+    async fn lock_delivery_scope(&self, txn: &DatabaseTransaction, scope: &DeliveryScope) -> Result<DateTime<Utc>> {
+        self.lock_current_claim(txn, &scope.model).await?;
+        let now = rustok_outbox_storage::database_now(txn).await?;
+        let claimed_at = scope.model.claimed_at.ok_or_else(|| Error::External("missing outbox claim timestamp".into()))?;
+        let ttl = chrono::Duration::from_std(self.config.claim_ttl)
+            .map_err(|_| Error::Validation("outbox lease duration out of range".into()))?;
+        if now < claimed_at || now.signed_duration_since(claimed_at) >= ttl {
+            return Err(Error::External("outbox fanout lease expired".into()));
+        }
+        let open = attempts::Entity::find_by_id(scope.attempt_id)
+            .filter(attempts::Column::EventId.eq(scope.model.id))
+            .filter(attempts::Column::ClaimToken.eq(scope.model.claimed_by.clone().ok_or_else(|| Error::External("missing claim token".into()))?))
+            .filter(attempts::Column::State.eq(attempts::OPEN))
+            .one(txn).await?;
+        if open.is_none() {
+            return Err(Error::External("outbox fanout dispatch intent is no longer open".into()));
+        }
+        Ok(now)
+    }
+
+    async fn prepare_primary(&self, scope: &DeliveryScope, local_required: bool, checkpoint_enabled: bool) -> Result<bool> {
+        let txn = self.db.begin().await?;
+        self.lock_delivery_scope(&txn, scope).await?;
+        let row = checkpoints::Entity::find_by_id(scope.model.id).one(&txn).await?
+            .ok_or_else(|| Error::External("missing outbox delivery checkpoint".into()))?;
+        if row.route_key != self.delivery_route || row.local_required.is_some_and(|old| old != local_required) {
+            return Err(Error::Validation("outbox fanout topology changed; reconcile event before retry".into()));
+        }
+        if row.local_required.is_none() {
+            let result = checkpoints::Entity::update_many()
+                .filter(checkpoints::Column::EventId.eq(scope.model.id))
+                .filter(checkpoints::Column::LocalRequired.is_null())
+                .set(checkpoints::ActiveModel { local_required: Set(Some(local_required)), ..Default::default() })
+                .exec(&txn).await?;
+            self.ensure_claim_owned(scope.model.id, result.rows_affected)?;
+        }
+        let skip = checkpoint_enabled && row.primary_confirmed_at.is_some();
+        txn.commit().await?;
+        Ok(skip)
+    }
+
+    async fn confirm_primary(&self, scope: &DeliveryScope) -> Result<()> {
+        let txn = self.db.begin().await?;
+        let now = self.lock_delivery_scope(&txn, scope).await?;
+        let result = checkpoints::Entity::update_many()
+            .filter(checkpoints::Column::EventId.eq(scope.model.id))
+            .filter(checkpoints::Column::RouteKey.eq(self.delivery_route.clone()))
+            .filter(checkpoints::Column::LocalRequired.is_not_null())
+            .filter(checkpoints::Column::PrimaryConfirmedAt.is_null())
+            .set(checkpoints::ActiveModel { primary_confirmed_at: Set(Some(now)), ..Default::default() })
+            .exec(&txn).await?;
+        self.ensure_claim_owned(scope.model.id, result.rows_affected)?;
+        txn.commit().await?;
+        Ok(())
+    }
+
     async fn begin_dispatch_attempt(&self, model: &entity::Model) -> Result<Option<Uuid>> {
         let txn = self.db.begin().await?;
         self.lock_current_claim(&txn, model).await?;
@@ -765,6 +889,7 @@ impl OutboxRelay {
             txn.rollback().await?;
             return Ok(None);
         }
+        self.bind_delivery_route(&txn, model).await?;
         let id = Uuid::new_v4();
         attempts::Entity::insert(attempts::ActiveModel {
             id: Set(id),
@@ -1249,6 +1374,49 @@ mod tests {
         assert_eq!(unchanged.claimed_by, renewed.claimed_by);
         relay.mark_dispatched(&renewed, attempt).await.expect("current claim");
         assert_eq!(attempts::Entity::find_by_id(attempt).one(&relay.db).await.unwrap().unwrap().state, attempts::CONFIRMED);
+    }
+
+    #[tokio::test]
+    async fn confirmed_primary_survives_retry_but_route_cannot_be_rebound() {
+        let db = database().await;
+        let envelope = EventEnvelope::new(
+            Uuid::new_v4(), None,
+            rustok_events::DomainEvent::UserLoggedIn { user_id: Uuid::new_v4() },
+        );
+        let event_id = envelope.id;
+        crate::OutboxTransport::new(db.clone()).publish(envelope).await.unwrap();
+        let relay = OutboxRelay::new(db.clone(), Arc::new(RejectUnexpectedPublish))
+            .with_delivery_route("external-fanout-v1");
+        let horizon = rustok_outbox_storage::observe_database_clock(&db).await.unwrap();
+        let claimed = relay.claim_batch(1, horizon, None).await.unwrap().pop().unwrap();
+        let renewed = relay.refresh_claim(&claimed).await.unwrap();
+        let attempt_id = relay.begin_dispatch_attempt(&renewed).await.unwrap().unwrap();
+        let scope = DeliveryScope { relay: relay.clone(), model: renewed.clone(), attempt_id };
+        DELIVERY_SCOPE.scope(scope, async {
+            publish_primary_with_checkpoint(event_id, true, true, async { Ok(()) }).await.unwrap();
+        }).await;
+        relay.mark_failed_attempt(&renewed, Error::External("local failure".into()), false, Some(attempt_id)).await.unwrap();
+        entity::Entity::update_many().filter(entity::Column::Id.eq(event_id))
+            .set(entity::ActiveModel { next_attempt_at: Set(None), ..Default::default() })
+            .exec(&db).await.unwrap();
+
+        // A freshly constructed relay reuses only the committed primary checkpoint.
+        let restarted = OutboxRelay::new(db.clone(), Arc::new(RejectUnexpectedPublish))
+            .with_delivery_route("external-fanout-v1");
+        let horizon = rustok_outbox_storage::observe_database_clock(&db).await.unwrap();
+        let claimed = restarted.claim_batch(1, horizon, None).await.unwrap().pop().unwrap();
+        let renewed = restarted.refresh_claim(&claimed).await.unwrap();
+        let changed = restarted.clone().with_delivery_route("local-only-v1");
+        assert!(changed.begin_dispatch_attempt(&renewed).await.is_err());
+        let attempt_id = restarted.begin_dispatch_attempt(&renewed).await.unwrap().unwrap();
+        let scope = DeliveryScope { relay: restarted.clone(), model: renewed.clone(), attempt_id };
+        DELIVERY_SCOPE.scope(scope, async {
+            assert!(publish_primary_with_checkpoint(event_id, false, true, async { Ok(()) }).await.is_err());
+            publish_primary_with_checkpoint(event_id, true, true, async {
+                Err(Error::External("confirmed primary must not be invoked again".into()))
+            }).await.unwrap();
+        }).await;
+        restarted.mark_dispatched(&renewed, attempt_id).await.unwrap();
     }
 
     #[tokio::test]

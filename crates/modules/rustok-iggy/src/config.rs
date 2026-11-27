@@ -222,6 +222,38 @@ impl Default for RetentionConfig {
     }
 }
 
+impl IggyConfig {
+    /// Configured routing identity, not proof of broker cluster identity.
+    /// Do not include passwords, URL userinfo/query, or process arguments.
+    pub fn outbox_route_fingerprint(&self) -> String {
+        use sha2::{Digest, Sha256};
+        let endpoint = match self.mode {
+            IggyMode::External => serde_json::json!({
+                "addresses": self.external.addresses.iter().map(|address| {
+                    let endpoint = address.split(['?', '#']).next().unwrap_or_default();
+                    endpoint.rsplit('@').next().unwrap_or_default()
+                }).collect::<Vec<_>>(),
+                "protocol": self.external.protocol,
+                "tls": self.external.tls_enabled,
+                "tls_domain": self.external.tls_domain,
+            }),
+            IggyMode::Bundled => serde_json::json!({
+                "data_dir": self.bundled.data_dir,
+                "tcp_port": self.bundled.tcp_port,
+            }),
+        };
+        let route = serde_json::json!({
+            "version": 1,
+            "mode": self.mode,
+            "serialization": self.serialization,
+            "stream": self.topology.stream_name,
+            "partitions": self.topology.domain_partitions,
+            "endpoint": endpoint,
+        });
+        format!("{:x}", Sha256::digest(route.to_string().as_bytes()))
+    }
+}
+
 impl From<&IggyConfig> for ConnectorConfig {
     fn from(config: &IggyConfig) -> Self {
         let mode = match config.mode {
@@ -265,6 +297,18 @@ impl From<&IggyConfig> for ConnectorConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn route_fingerprint_tracks_routing_not_credentials() {
+        let mut config = IggyConfig { mode: IggyMode::External, ..Default::default() };
+        config.external.addresses = vec!["iggy://alice:secret@broker.example:8090".into()];
+        let before = config.outbox_route_fingerprint();
+        config.external.password = "rotated".into();
+        config.external.addresses = vec!["iggy://bob:new-secret@broker.example:8090".into()];
+        assert_eq!(before, config.outbox_route_fingerprint());
+        config.topology.stream_name = "other-stream".into();
+        assert_ne!(before, config.outbox_route_fingerprint());
+    }
 
     #[test]
     fn iggy_config_defaults() {

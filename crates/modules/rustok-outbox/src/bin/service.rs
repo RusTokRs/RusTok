@@ -26,6 +26,7 @@ async fn main() -> Result<()> {
         .map_err(|error| anyhow!("Outbox execution policy preflight failed: {error}"))?;
     let config_path = env::var_os(IGGY_CONFIG_ENV).context(IGGY_CONFIG_ENV)?;
     let config = read_broker_config(Path::new(&config_path)).await?;
+    let delivery_route = format!("standalone-iggy-v1:{}", config.outbox_route_fingerprint());
     let broker = Arc::new(
         tokio::time::timeout(CONNECT_TIMEOUT, IggyTransport::new(config))
             .await
@@ -37,7 +38,7 @@ async fn main() -> Result<()> {
                 anyhow!("Outbox could not initialize the configured Iggy transport")
             })?,
     );
-    let relay = OutboxRelay::new(database, broker.clone()).with_config(relay_config);
+    let relay = OutboxRelay::new(database, broker.clone()).with_config(relay_config).with_delivery_route(delivery_route);
     tracing::info!("Outbox relay started");
     let result = run_until_shutdown(&relay).await;
     let shutdown = tokio::time::timeout(CONNECT_TIMEOUT, broker.shutdown())

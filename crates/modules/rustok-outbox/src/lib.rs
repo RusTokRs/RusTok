@@ -30,6 +30,7 @@
 //! - **Module Entry Point**: [`OutboxModule`] exposes canonical module metadata and migrations.
 
 mod attempts;
+mod checkpoints;
 pub mod module;
 pub mod ports;
 pub mod relay;
@@ -42,6 +43,7 @@ pub use ports::{
 };
 pub use relay::{
     MAX_RELAY_BATCH_SIZE, MAX_RELAY_CONCURRENCY, OutboxRelay, RelayConfig, RelayMetricsSnapshot,
+    publish_primary_with_checkpoint,
 };
 pub use retention::{
     DEFAULT_OUTBOX_RETENTION_BATCH_SIZE, OutboxPruneReport, OutboxRetention, OutboxRetentionConfig,

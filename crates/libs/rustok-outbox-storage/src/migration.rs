@@ -27,10 +27,12 @@ impl MigrationTrait for SysEventsMigration {
         create_outbox_execution_policy_integrity(manager).await?;
         create_outbox_temporal_clock_integrity(manager).await?;
         create_outbox_dispatch_attempts(manager).await?;
+        create_outbox_delivery_checkpoints(manager).await?;
         txn.commit().await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        drop_outbox_delivery_checkpoints(manager).await?;
         drop_outbox_dispatch_attempts(manager).await?;
         drop_outbox_execution_policy(manager).await?;
         drop_outbox_temporal_clock(manager).await?;
@@ -1166,5 +1168,39 @@ impl MigrationTrait for OutboxDispatchAttemptsMigration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         drop_outbox_dispatch_attempts(manager).await
+    }
+}
+
+pub async fn create_outbox_delivery_checkpoints(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager.get_connection().execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS outbox_delivery_checkpoints (
+            event_id UUID NOT NULL PRIMARY KEY REFERENCES sys_events(id) ON DELETE CASCADE,
+            route_key VARCHAR(128) NOT NULL,
+            local_required BOOLEAN,
+            primary_confirmed_at TIMESTAMP WITH TIME ZONE,
+            CHECK (primary_confirmed_at IS NULL OR local_required IS NOT NULL)
+        )",
+    ).await?;
+    Ok(())
+}
+
+pub async fn drop_outbox_delivery_checkpoints(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager.get_connection().execute_unprepared("DROP TABLE IF EXISTS outbox_delivery_checkpoints").await?;
+    Ok(())
+}
+
+#[derive(DeriveMigrationName)]
+pub struct OutboxDeliveryCheckpointsMigration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for OutboxDeliveryCheckpointsMigration {
+    fn use_transaction(&self) -> Option<bool> { Some(true) }
+
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        create_outbox_delivery_checkpoints(manager).await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        drop_outbox_delivery_checkpoints(manager).await
     }
 }
