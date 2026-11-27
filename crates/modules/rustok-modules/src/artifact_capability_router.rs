@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, DatabaseTransaction, TransactionTrait};
 use uuid::Uuid;
 
 use rustok_sandbox::{
@@ -246,6 +246,56 @@ pub trait ArtifactSqlEffectFence: Send + Sync {
 #[async_trait]
 pub trait ArtifactSqlEffectCommitGuard: Send + Sync {
     async fn check_before_commit(&self, tx: &sea_orm::DatabaseTransaction) -> SandboxResult<()>;
+}
+
+/// Starts a short owner transaction for a capability operation that must be
+/// admitted against the exact live execution. The returned guard is checked
+/// immediately before commit; callers must finish this transaction before
+/// invoking guest-controlled or external code.
+pub(crate) async fn begin_artifact_capability_effect(
+    db: &DatabaseConnection,
+    call: &CapabilityCall,
+    authorizer: &dyn ArtifactSqlEffectAuthorizer,
+) -> SandboxResult<(
+    DatabaseTransaction,
+    Box<dyn ArtifactSqlEffectCommitGuard>,
+)> {
+    let tenant_id = call
+        .context
+        .tenant_id
+        .ok_or_else(|| SandboxError::CapabilityDenied(call.capability.clone()))?;
+    let transaction = crate::backend::begin_fenced_transaction(db)
+        .await
+        .map_err(|_| SandboxError::HostCapability {
+            capability: call.capability.clone(),
+            message: "capability effect transaction could not be started".to_string(),
+        })?;
+    crate::backend::set_tenant_scope(&transaction, tenant_id)
+        .await
+        .map_err(|_| SandboxError::CapabilityDenied(call.capability.clone()))?;
+    let fence = authorizer.prepare(call).await?;
+    let guard = fence.lock_on(&transaction).await?;
+    Ok((transaction, guard))
+}
+
+/// Commits a short capability-admission transaction only while the exact
+/// execution and credential fence remain valid.
+pub(crate) async fn commit_artifact_capability_effect(
+    transaction: DatabaseTransaction,
+    guard: Box<dyn ArtifactSqlEffectCommitGuard>,
+    capability: &CapabilityName,
+) -> SandboxResult<()> {
+    if guard.check_before_commit(&transaction).await.is_err() {
+        let _ = transaction.rollback().await;
+        return Err(SandboxError::CapabilityDenied(capability.clone()));
+    }
+    transaction
+        .commit()
+        .await
+        .map_err(|_| SandboxError::HostCapability {
+            capability: capability.clone(),
+            message: "capability effect transaction could not be committed".to_string(),
+        })
 }
 
 /// Capability-name router for independently owned artifact capability
