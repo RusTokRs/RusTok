@@ -138,22 +138,75 @@ fn apply_symbol_command_inner(
                 )
             })?;
             validate_definition(&descriptor)?;
-            for asset in &descriptor.assets {
-                let asset_descriptor = crate::AssetDescriptor::from_value(asset.clone())
-                    .ok_or_else(|| {
+
+            // A symbol asset id shares the page-wide asset namespace. Never overwrite a
+            // different page asset or capture a dangling page reference when importing a
+            // definition; remap the symbol and its component references as one unit.
+            let mut symbol_assets = descriptor.assets.clone();
+            let mut symbol_components = descriptor.components.clone();
+            let mut existing_asset_references = BTreeSet::new();
+            for page in &document.project().pages {
+                if let Some(root) = page.component.as_ref() {
+                    crate::fragment::collect_component_asset_ids(
+                        root,
+                        &mut existing_asset_references,
+                    );
+                }
+            }
+            let mut asset_id_generator =
+                crate::SequentialIdGenerator::new("fly-symbol-asset");
+            crate::fragment::remap_fragment_asset_ids(
+                &mut symbol_assets,
+                &mut symbol_components,
+                &document.project().assets,
+                &existing_asset_references,
+                &mut asset_id_generator,
+            )?;
+
+            let mut stored_symbol = symbol.clone();
+            let stored_object = stored_symbol.as_object_mut().ok_or_else(|| {
+                FlyError::InvalidSymbolReference("symbol definition must be an object".to_string())
+            })?;
+            stored_object.insert(
+                "assets".to_string(),
+                Value::Array(symbol_assets.clone()),
+            );
+            stored_object.insert(
+                "components".to_string(),
+                serde_json::to_value(&symbol_components)
+                    .map_err(|error| FlyError::Encode(error.to_string()))?,
+            );
+            let stored_descriptor = SymbolDescriptor::from_value(&stored_symbol).ok_or_else(|| {
+                FlyError::InvalidSymbolReference("remapped symbol definition is invalid".to_string())
+            })?;
+            validate_definition(&stored_descriptor)?;
+
+            let mut merged_assets = document.project().assets.clone();
+            for raw in &symbol_assets {
+                let asset_descriptor = crate::AssetDescriptor::from_value(raw.clone()).ok_or_else(
+                    || {
                         FlyError::InvalidAssetReference(
                             "symbol asset must be an object with src, source, or url".to_string(),
                         )
-                    })?;
-                if let Some(index) = document.project().assets.iter().position(|candidate| {
-                    crate::AssetDescriptor::from_value(candidate.clone())
+                    },
+                )?;
+                let existing = merged_assets.iter().find(|candidate| {
+                    crate::AssetDescriptor::from_value((*candidate).clone())
                         .is_some_and(|candidate| candidate.id == asset_descriptor.id)
-                }) {
-                    document.project_mut().assets[index] = asset.clone();
+                });
+                if let Some(existing) = existing {
+                    if existing != raw {
+                        return Err(FlyError::InvalidAssetReference(format!(
+                            "symbol asset id \`{}\` conflicts with an existing project asset",
+                            asset_descriptor.id
+                        )));
+                    }
                 } else {
-                    document.project_mut().assets.push(asset.clone());
+                    merged_assets.push(raw.clone());
                 }
             }
+            document.project_mut().assets = merged_assets;
+
             let mut entries: Vec<Value> = SymbolDescriptor::entries_from_document(document)
                 .into_iter()
                 .map(|(_, entry)| entry)
@@ -162,9 +215,9 @@ fn apply_symbol_command_inner(
                 SymbolDescriptor::from_value(entry)
                     .is_some_and(|existing| existing.id == descriptor.id)
             }) {
-                entries[index] = symbol.clone();
+                entries[index] = stored_symbol;
             } else {
-                entries.push(symbol.clone());
+                entries.push(stored_symbol);
             }
             if entries.len() > MAX_SYMBOL_DEFINITIONS {
                 return Err(FlyError::InvalidSymbolReference(format!(
@@ -2194,6 +2247,57 @@ mod tests {
 
         assert!(matches!(error, FlyError::InvalidSymbolReference(_)));
         assert_eq!(document, before);
+    }
+
+    #[test]
+    fn symbol_upsert_does_not_overwrite_colliding_page_assets() {
+        let mut document = document_with(object("root", "wrapper", vec![]), Vec::new());
+        document.project_mut().assets = vec![
+            json!({ "id": "shared", "src": "/media/page.webp" }),
+        ];
+        let symbol = json!({
+            "id": "gallery",
+            "assets": [{ "id": "shared", "src": "/media/symbol.webp" }],
+            "components": [{
+                "id": "image",
+                "type": "image",
+                "attributes": {
+                    "src": "/media/symbol.webp",
+                    "data-fly-asset-id": "shared"
+                }
+            }]
+        });
+
+        apply_symbol_command(
+            &mut document,
+            &SymbolCommand::Upsert { symbol },
+        )
+        .expect("upsert");
+
+        let page_asset = AssetDescriptor::from_value(document.project().assets[0].clone())
+            .expect("page asset");
+        assert_eq!(page_asset.id, "shared");
+        assert_eq!(page_asset.source, "/media/page.webp");
+
+        let descriptor = SymbolDescriptor::catalog_from_document(&document)
+            .remove("gallery")
+            .expect("stored symbol");
+        let symbol_asset = AssetDescriptor::from_value(descriptor.assets[0].clone())
+            .expect("symbol asset");
+        assert_ne!(symbol_asset.id, "shared");
+        assert_eq!(symbol_asset.source, "/media/symbol.webp");
+        assert_eq!(
+            descriptor.components[0]
+                .as_object()
+                .expect("image")
+                .attributes["data-fly-asset-id"],
+            symbol_asset.id
+        );
+        assert!(
+            document.project().assets.iter()
+                .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
+                .any(|asset| asset.id == symbol_asset.id && asset.source == "/media/symbol.webp")
+        );
     }
 
     #[test]
