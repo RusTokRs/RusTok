@@ -473,21 +473,28 @@ the publication event was replayed. The Search library and server host both
 passed scoped checks with default features disabled. The generated Leptos
 admin package passed all 12 SSR-profile tests and `xtask` passed 81 scaffold tests.
 
-The persisted owner now contributes a localized relational Index source.
-`src/integrations/index.rs` owns tenant-scoped keyset scans and exact-locale
-point reads. Distribution registers a schema and source factory through the
-generic Index catalogs. Replay preserves record revisions and returns deletion
-mutations for unpublished copies. The scaffold matrix exercises registration
-and PostgreSQL mutation persistence, including missing locales, tenant
-isolation, and replay of an older update after withdrawal. Incremental Index
-delivery and public query admission remain open.
+The persisted owner contributes a localized relational Index source.
+`src/integrations/index.rs` owns tenant-scoped keyset scans, exact-locale point
+reads and a single-snapshot read of all copies for one record. Distribution
+registers the schema, source factory and live listener through the Index
+catalogs. Publication, published title changes and withdrawal enqueue a sealed
+Index refresh in the same transaction as the owner state and the Search
+invalidation. Replay and refresh share per-copy revision identity and return
+deletion mutations for withdrawn or unpublished copies. The embedded query
+runtime combines the owner publication and revision predicate with explicit
+tenant module enablement and the boolean public discovery opt-in before
+pagination and exact count. The public request adapter still needs to check
+the host-resolved channel through Channel authority.
 
-The selected Distribution fixture passed its registration test and the
-PostgreSQL Index scenario. It exercised separate English and Russian rows,
-locale-scoped scans, cross-locale cursor rejection, missing locales and
-foreign-tenant keys. After withdrawal, Index persisted the owner tombstone and
-reported `StaleIgnored` for a delayed upsert. The current Distribution library
-also passed `cargo check -p rustok-distribution --no-default-features --lib`.
+The selected Distribution fixture passed schema registration and the live
+Outbox relay and Index scenario on disposable PostgreSQL. A forced failure on
+the Russian copy left the event pending after the English copy committed.
+Redelivery completed both copies. The scenario exercised published title
+changes, withdrawal, late delivery, stale replay, foreign tenants, missing
+locales and cross-locale cursor rejection. All seven record tests passed with
+GraphQL enabled, including the PostgreSQL Search path and SQLite rollback when
+the second Outbox insert fails. The current Distribution library passed
+`cargo check -p rustok-distribution --no-default-features --lib`.
 
 - [ ] Close Blog reference-verifier drift and retain actual reference execution
   evidence before certifying it for propagation. Do not preserve obsolete source

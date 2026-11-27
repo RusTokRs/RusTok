@@ -88,3 +88,59 @@ impl ValidateEvent for LocalizedIndexRefreshEvent {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ContractEventEnvelope;
+
+    #[test]
+    fn refresh_is_acknowledged_by_the_matching_module_listener() {
+        let event = LocalizedIndexRefreshEvent {
+            module_slug: "test_records".into(),
+            entity_type: "record".into(),
+            record_id: Uuid::new_v4(),
+            source_version: i64::MAX as u64,
+        };
+        let envelope = ContractEventEnvelope::new(Uuid::new_v4(), None, event.clone()).unwrap();
+        let round_trip: ContractEventEnvelope =
+            serde_json::from_value(serde_json::to_value(envelope).unwrap()).unwrap();
+        let payload = round_trip.payload().unwrap();
+        assert_eq!(payload, &ContractEventPayload::LocalizedIndexRefresh(event));
+        assert!(payload.requires_module_delivery());
+    }
+
+    #[test]
+    fn refresh_rejects_out_of_scope_identifiers_and_revisions() {
+        let valid = LocalizedIndexRefreshEvent {
+            module_slug: "test_records".into(),
+            entity_type: "record".into(),
+            record_id: Uuid::new_v4(),
+            source_version: 1,
+        };
+        for invalid in [
+            LocalizedIndexRefreshEvent {
+                module_slug: "Test Records".into(),
+                ..valid.clone()
+            },
+            LocalizedIndexRefreshEvent {
+                entity_type: "../record".into(),
+                ..valid.clone()
+            },
+            LocalizedIndexRefreshEvent {
+                record_id: Uuid::nil(),
+                ..valid.clone()
+            },
+            LocalizedIndexRefreshEvent {
+                source_version: 0,
+                ..valid.clone()
+            },
+            LocalizedIndexRefreshEvent {
+                source_version: i64::MAX as u64 + 1,
+                ..valid
+            },
+        ] {
+            assert!(ContractEventEnvelope::new(Uuid::new_v4(), None, invalid).is_err());
+        }
+    }
+}

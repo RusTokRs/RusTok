@@ -69,11 +69,19 @@ record through creation, update, and deletion.
 
 ## Localized record Index bridge
 
-The `localized_record_index` adapter composes localized record replay for native
+The `localized_record_index` adapter composes replay and live refresh for native
 owners that register `rustok-api::localized_index::LocalizedIndexSource`. It
 derives a tenant-scoped, locale-required schema and maps the owner's revisioned
-results to Index mutations. The source factory uses the existing PostgreSQL
-replay runtime and does not read owner tables in Distribution.
+results to Index mutations through the owner read port. The Index lifecycle
+registers a listener for the owner's module and entity. A sealed
+`index.localized_record.refresh_requested` fact supplies the tenant, record and
+minimum committed revision. The listener reads every exact translation in one
+owner snapshot and acknowledges delivery after persisting all copies. Each copy
+uses the same deterministic mutation identity as replay, allowing partial
+delivery to resume safely. Query admission combines the owner's current
+publication, exact locale and revision with the control plane's explicit
+enablement and discovery setting in the same PostgreSQL snapshot as the page
+and exact count. Channel availability belongs to the public request adapter.
 
 ## Selected Inventory Index bridge
 

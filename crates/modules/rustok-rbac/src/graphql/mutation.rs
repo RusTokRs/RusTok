@@ -10,13 +10,13 @@ use uuid::Uuid;
 use crate::RbacPresentationResourceKind;
 
 use super::control_plane::{
-    availability_snapshot, prepare_statement, require_direct_control_plane_user,
+    prepare_statement, require_direct_control_plane_user,
 };
 use super::types::{
     AssignUserRolePayload, CreateRoleInput, DeleteRolePayload, RbacGraphqlUserRole, RoleInfo,
     RoleMutationPayload, UpdateRoleInput,
 };
-use super::{RbacGraphqlRoleWriteError, RbacGraphqlRoleWriterHandle};
+use super::{RbacGraphqlRoleWriteError, RbacGraphqlRoleWriterHandle, RbacMutationAuthorityHandle, RbacLockedMutationAuthority};
 
 #[derive(InputObject)]
 pub struct AssignUserRoleInput {
@@ -47,6 +47,31 @@ fn map_role_write_error(error: RbacGraphqlRoleWriteError) -> FieldError {
             <FieldError as GraphQLError>::internal_error(&message)
         }
     }
+}
+
+const ROLE_MANAGEMENT: &[Permission] = &[Permission::SETTINGS_MANAGE, Permission::USERS_MANAGE];
+
+async fn prepare_role_authority(ctx: &Context<'_>) -> Result<RbacMutationAuthorityHandle> {
+    let handle = ctx.data_opt::<RbacMutationAuthorityHandle>().cloned().ok_or_else(|| {
+        <FieldError as GraphQLError>::internal_error("RBAC mutation authority is unavailable")
+    })?;
+    handle.0.prepare().await.map_err(map_role_write_error)?;
+    Ok(handle)
+}
+
+async fn lock_role_authority(
+    handle: &RbacMutationAuthorityHandle,
+    tx: &sea_orm::DatabaseTransaction,
+    auth: &AuthContext,
+    tenant_id: Uuid,
+    target_role_id: Option<Uuid>,
+) -> Result<RbacLockedMutationAuthority> {
+    let authority = handle.0.lock(tx, tenant_id, auth.user_id, target_role_id, ROLE_MANAGEMENT)
+        .await.map_err(map_role_write_error)?;
+    if !ROLE_MANAGEMENT.iter().any(|p| has_effective_permission(&authority.permissions, p)) {
+        return Err(<FieldError as GraphQLError>::permission_denied("current role management permission required"));
+    }
+    Ok(authority)
 }
 
 /// Map a storage failure to a generic internal error. Raw database errors
@@ -344,8 +369,7 @@ impl RbacMutation {
 
         let validated_permissions =
             parse_and_authorize_role_permissions(&auth.permissions, &input.permissions)?;
-        let availability = availability_snapshot(ctx, tenant.id).await;
-        reject_newly_dormant_grants(availability.as_ref(), &validated_permissions, &[])?;
+        let authority_handle = prepare_role_authority(ctx).await?;
 
         let role_id = rustok_core::generate_id();
         let tx = db
@@ -353,10 +377,18 @@ impl RbacMutation {
             .await
             .map_err(|e| internal_db_error("rbac role mutation", e))?;
 
+        let authority = match lock_role_authority(&authority_handle, &tx, auth, tenant.id, None).await {
+            Ok(authority) => authority,
+            Err(err) => return Err(abort_tx(tx, err).await),
+        };
+        let availability = &authority.availability;
+
         // The uniqueness check runs inside the creating transaction; the
         // UNIQUE (tenant_id, slug) index remains the final arbiter under
         // concurrency and its violation is reported as a clean conflict.
         let tx_outcome: Result<Vec<String>> = async {
+            authorize_role_permissions(&authority.permissions, availability.as_ref(), &validated_permissions, &[])?;
+            reject_newly_dormant_grants(availability.as_ref(), &validated_permissions, &[])?;
             let check_sql = "SELECT id FROM roles WHERE tenant_id = ? AND slug = ? LIMIT 1";
             let existing = tx
                 .query_one_raw(prepare_statement(
@@ -405,6 +437,9 @@ impl RbacMutation {
             Err(err) => return Err(abort_tx(tx, err).await),
         };
 
+        if let Err(error) = authority_handle.0.ensure_deadline(&tx, &authority).await {
+            return Err(abort_tx(tx, map_role_write_error(error)).await);
+        }
         tx.commit()
             .await
             .map_err(|e| internal_db_error("rbac role mutation", e))?;
@@ -526,7 +561,7 @@ impl RbacMutation {
         // adding a *new* grant of a disabled module is refused. The existing
         // grants are read under the role row lock below to avoid a concurrent
         // permission replacement racing this check.
-        let availability = availability_snapshot(ctx, tenant.id).await;
+        let authority_handle = prepare_role_authority(ctx).await?;
 
         // Resolve the optional host notifier before the transaction. The durable
         // generation remains mandatory even when no fast-path notifier exists.
@@ -541,6 +576,12 @@ impl RbacMutation {
             .begin()
             .await
             .map_err(|e| internal_db_error("rbac role mutation", e))?;
+
+        let authority = match lock_role_authority(&authority_handle, &tx, auth, tenant.id, Some(role_id)).await {
+            Ok(authority) => authority,
+            Err(err) => return Err(abort_tx(tx, err).await),
+        };
+        let availability = &authority.availability;
 
         // Lock and read current metadata inside the transaction so concurrent
         // renames/edits or deletes are serialized cleanly with zero TOCTOU.
@@ -613,6 +654,9 @@ impl RbacMutation {
                     availability.as_ref(),
                     new_permissions,
                     &current_grants,
+                )?;
+                authorize_role_permissions(
+                    &authority.permissions, availability.as_ref(), new_permissions, &current_grants,
                 )?;
                 reject_newly_dormant_grants(
                     availability.as_ref(),
@@ -779,6 +823,9 @@ impl RbacMutation {
             Err(err) => return Err(abort_tx(tx, err).await),
         };
 
+        if let Err(error) = authority_handle.0.ensure_deadline(&tx, &authority).await {
+            return Err(abort_tx(tx, map_role_write_error(error)).await);
+        }
         tx.commit()
             .await
             .map_err(|e| internal_db_error("rbac role mutation", e))?;
@@ -881,10 +928,15 @@ impl RbacMutation {
             ));
         }
 
+        let authority_handle = prepare_role_authority(ctx).await?;
         let tx = db
             .begin()
             .await
             .map_err(|e| internal_db_error("rbac role mutation", e))?;
+        let authority = match lock_role_authority(&authority_handle, &tx, auth, tenant.id, Some(role_id)).await {
+            Ok(authority) => authority,
+            Err(err) => return Err(abort_tx(tx, err).await),
+        };
 
         // Re-verify the role inside the deleting transaction: the lookup
         // above ran outside it, so a concurrent delete must surface as
@@ -988,6 +1040,9 @@ impl RbacMutation {
             return Err(abort_tx(tx, err).await);
         }
 
+        if let Err(error) = authority_handle.0.ensure_deadline(&tx, &authority).await {
+            return Err(abort_tx(tx, map_role_write_error(error)).await);
+        }
         tx.commit()
             .await
             .map_err(|e| internal_db_error("rbac role mutation", e))?;

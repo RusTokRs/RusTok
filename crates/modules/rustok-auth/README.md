@@ -119,7 +119,10 @@ and use live app grants intersected with admitted scopes. All involved app
 rows are acquired in UUID order before user/session/registration and
 policy/role fences. The outer OAuth guard performs preflight only, and the
 secret preparation remains outside SQL transactions. RBAC role-definition
-mutations, artifact authority, fully typed owner context and global
+mutations and artifact grant/revoke REST handlers now invoke the same
+direct-session authority fence on their RBAC-owned transaction, including
+live module/static role permission checks and final credential expiry.
+Fully typed owner context, artifact-runtime entitlement and global
 PostgreSQL deadlock evidence remain open. Compilation and runtime
 verification are pending.
 

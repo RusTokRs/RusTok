@@ -373,6 +373,89 @@ impl ServerAuthAdminMutationProvider {
     }
 }
 
+/// Host implementation of the RBAC owner's transaction admission port.
+/// Use the same direct credential fence as Auth/OAuth, but let RBAC own
+/// its write transaction and exact destination role locks.
+#[async_trait]
+impl rustok_rbac::graphql::RbacMutationAuthority for ServerAuthAdminMutationProvider {
+    async fn prepare(&self) -> Result<(), rustok_rbac::graphql::RbacGraphqlRoleWriteError> {
+        rustok_auth::application_clock::admit_now(&self.db).await.map_err(internal_admin_error)
+            .map_err(map_rbac_authority_error)?;
+        crate::services::rbac_module_availability::prepare_invite_module_policy(
+            &self.db, self.invite_registry.as_ref(),
+        ).await.map_err(internal_admin_error).map_err(map_rbac_authority_error)
+    }
+
+    async fn lock(
+        &self, tx: &sea_orm::DatabaseTransaction, tenant_id: Uuid, actor_id: Uuid,
+        target_role_id: Option<Uuid>, required: &[Permission],
+    ) -> Result<rustok_rbac::graphql::RbacLockedMutationAuthority, rustok_rbac::graphql::RbacGraphqlRoleWriteError> {
+        self.lock_rbac_control_plane(tx, tenant_id, actor_id, target_role_id, required)
+            .await.map_err(map_rbac_authority_error)
+    }
+
+    async fn ensure_deadline(
+        &self, tx: &sea_orm::DatabaseTransaction, authority: &rustok_rbac::graphql::RbacLockedMutationAuthority,
+    ) -> Result<(), rustok_rbac::graphql::RbacGraphqlRoleWriteError> {
+        self.ensure_user_admin_credential_deadline(tx, Some(authority.deadline))
+            .await.map_err(map_rbac_authority_error)
+    }
+}
+
+fn map_rbac_authority_error(error: AuthAdminMutationError) -> rustok_rbac::graphql::RbacGraphqlRoleWriteError {
+    use rustok_rbac::graphql::RbacGraphqlRoleWriteError as E;
+    match error {
+        AuthAdminMutationError::Unauthorized => E::Forbidden("live direct credential required".into()),
+        AuthAdminMutationError::Forbidden(message) => E::Forbidden(message),
+        AuthAdminMutationError::NotFound(message) => E::NotFound(message),
+        _ => E::Internal("RBAC transaction authority unavailable".into()),
+    }
+}
+
+impl ServerAuthAdminMutationProvider {
+    async fn lock_rbac_control_plane(
+        &self, tx: &sea_orm::DatabaseTransaction, tenant_id: Uuid, actor_id: Uuid,
+        target_role_id: Option<Uuid>, required: &[Permission],
+    ) -> Result<rustok_rbac::graphql::RbacLockedMutationAuthority, AuthAdminMutationError> {
+        let context = AuthAdminMutationContext {
+            tenant_id, actor_id, request_id: None, locale: None,
+            principal_kind: Some(AuthPrincipalKind::DirectUser),
+        };
+        let evidence = credential_for(&tenant_id, &actor_id).flatten()
+            .filter(|e| e.principal_kind == AuthPrincipalKind::DirectUser)
+            .ok_or(AuthAdminMutationError::Unauthorized)?;
+        let request = self.request_permissions(&context)?;
+        if !required.iter().any(|p| has_effective_permission(&request, p)) {
+            return Err(AuthAdminMutationError::Forbidden("RBAC request authority required".into()));
+        }
+        // Shared tenant fence precedes users, credentials, policy and roles.
+        self.lock_admin_oauth_apps(tx, &context, None).await?;
+        let actor = AuthLifecycleService::lock_user_for_mutation(tx, tenant_id, actor_id)
+            .await.map_err(internal_admin_error)?
+            .filter(|user| user.is_active()).ok_or(AuthAdminMutationError::Unauthorized)?;
+        let deadline = self.lock_user_admin_credential(tx, &context, &actor, None)
+            .await?.ok_or(AuthAdminMutationError::Unauthorized)?.min(evidence.expires_at);
+        let (_, availability) = crate::services::rbac_module_availability::lock_invite_module_policy(
+            &self.db, tx, self.invite_registry.as_ref(), tenant_id,
+        ).await.map_err(internal_admin_error)?;
+        if !rustok_rbac::lock_role_definition_authority_on(tx, tenant_id, actor_id, target_role_id)
+            .await.map_err(internal_admin_error)?
+        {
+            return Err(AuthAdminMutationError::NotFound("role".into()));
+        }
+        let mut permissions = RbacService::get_user_permissions_authoritative(tx, &tenant_id, &actor_id)
+            .await.map_err(internal_admin_error)?;
+        if let Some(snapshot) = &availability {
+            permissions = snapshot.active_permissions(&permissions);
+        }
+        if !required.iter().any(|p| has_effective_permission(&permissions, p)) {
+            return Err(AuthAdminMutationError::Forbidden("current RBAC management permission required".into()));
+        }
+        self.ensure_user_admin_credential_deadline(tx, Some(deadline)).await?;
+        Ok(rustok_rbac::graphql::RbacLockedMutationAuthority { permissions, availability, deadline })
+    }
+}
+
 fn map_service_error(error: crate::error::Error) -> AuthAdminMutationError {
     match error {
         crate::error::Error::NotFound => AuthAdminMutationError::NotFound("oauth app".to_string()),

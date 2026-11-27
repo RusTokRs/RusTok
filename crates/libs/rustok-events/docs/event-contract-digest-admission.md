@@ -11,6 +11,20 @@ The previously stale baseline was regenerated and admitted through PR #3390. `Pr
 merged through PR #3401 with the typed Product locale/ProductVariant refresh family, while the Product-family
 canonical digest remained follow-up work.
 
+## Localized record Index refresh admission
+
+`LocalizedIndexRefreshEvent` adds the sealed
+`index.localized_record.refresh_requested` v1 fact. The payload identifies the
+owner module, entity, record UUID and minimum committed owner revision. The
+tenant is part of the envelope. Dispatch requires acknowledgement from the
+matching module listener.
+
+The canonical Rust generator regenerated the artifact from the current tree,
+including the Checkout and Inventory definitions recorded as pending below.
+The output updates the registry and sealed payload and envelope digests. Both
+root digests match the preceding artifact. The consuming modules record
+their runtime verification in their own implementation plans.
+
 ## Maintainer-provided Product-family generator output
 
 After pulling `main`, the maintainer reported:

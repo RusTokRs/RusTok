@@ -66,6 +66,10 @@ and makes injected clock/ID/event-writer infrastructure request-dependent.
   still required for child rows. It rejects ambiguous
   parent identities through the tenant-owned SQLite key projection, mixed
   representations, and orphaned matching rows.
+- `postgres_discovery_tenants` publishes a PostgreSQL read for static module
+  discovery. It accepts validated declaration identifiers and projects tenant
+  IDs whose lifecycle intent is explicitly enabled and whose setting is the
+  JSON boolean true. Consumers can use this read within their query snapshot.
 - The lifecycle policy and its transaction-bound consumer share one bounded
   tenant-override reader. SQLite validates both possible UUID representations
   against a unique tenant parent and rejects mixed or orphaned rows, including
