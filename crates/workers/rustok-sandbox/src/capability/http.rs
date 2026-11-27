@@ -218,3 +218,89 @@ fn parse_http_call_inputs(call: &CapabilityCall) -> SandboxResult<(&str, Url)> {
     })?;
     Ok((method, url))
 }
+
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use super::{path_matches_prefix, validate_http_request_shape};
+    use crate::{
+        CapabilityCall, CapabilityCallContext, CapabilityName, ExecutionPhase, SandboxSubject,
+    };
+
+    fn call(method: &str, extra: serde_json::Value, execution_key: Option<Uuid>) -> CapabilityCall {
+        let mut input = json!({
+            "method": method,
+            "url": "https://api.example.test/v1/items",
+            "headers": {},
+            "body": null,
+        });
+        if let (Some(target), Some(source)) = (input.as_object_mut(), extra.as_object()) {
+            for (key, value) in source {
+                target.insert(key.clone(), value.clone());
+            }
+        }
+        CapabilityCall {
+            execution_id: Uuid::new_v4(),
+            subject: SandboxSubject::ModuleArtifact {
+                installation_id: Uuid::new_v4(),
+                slug: "http-test".to_string(),
+                version: "1.0.0".to_string(),
+                digest: "sha256:test".to_string(),
+            },
+            context: CapabilityCallContext {
+                phase: ExecutionPhase::Event,
+                tenant_id: Some(Uuid::new_v4()),
+                actor_id: None,
+                trace_id: None,
+                idempotency_key: execution_key,
+            },
+            capability: CapabilityName::new("platform.http").expect("capability"),
+            operation: "request".to_string(),
+            input,
+        }
+    }
+
+    #[test]
+    fn mutating_http_requires_stable_execution_identity() {
+        let call = call("POST", json!({}), None);
+        assert!(validate_http_request_shape(&call, "POST").is_err());
+    }
+
+    #[test]
+    fn mutating_http_can_derive_a_per_request_key_from_its_semantic_request() {
+        let call = call("POST", json!({}), Some(Uuid::new_v4()));
+        assert!(validate_http_request_shape(&call, "POST").is_ok());
+    }
+
+    #[test]
+    fn explicit_http_request_key_must_be_a_non_nil_uuid() {
+        let call = call(
+            "POST",
+            json!({ "idempotency_key": "not-a-uuid" }),
+            Some(Uuid::new_v4()),
+        );
+        assert!(validate_http_request_shape(&call, "POST").is_err());
+    }
+
+    #[test]
+    fn guest_cannot_override_platform_idempotency_header() {
+        let call = call(
+            "POST",
+            json!({ "headers": { "Idempotency-Key": "guest-controlled" } }),
+            Some(Uuid::new_v4()),
+        );
+        assert!(validate_http_request_shape(&call, "POST").is_err());
+    }
+
+    #[test]
+    fn path_prefix_matching_respects_segment_boundaries() {
+        assert!(path_matches_prefix("/api/v1/items", "/api"));
+        assert!(path_matches_prefix("/api", "/api"));
+        assert!(!path_matches_prefix("/apix/items", "/api"));
+        assert!(!path_matches_prefix("/api-v2/items", "/api"));
+        assert!(path_matches_prefix("/anything", "/"));
+    }
+}
