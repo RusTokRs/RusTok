@@ -4,7 +4,7 @@ mod validation;
 
 pub use materialize::*;
 pub use model::*;
-pub(crate) use validation::decode_form;
+pub(crate) use validation::{decode_form, validate_action_syntax};
 pub use validation::*;
 
 /// The form materializer leaves conflicting or invalid interaction contracts untouched.
