@@ -49,8 +49,10 @@ pub(super) async fn create(
     tenant_slug: Option<String>,
     scope: ProductWriteScope,
     idempotency_key: String,
-    input: VariantDraft,
+    mut input: VariantDraft,
 ) -> VariantCreateOutcome {
+    input.attribute_values =
+        crate::product_schema_graphql::normalize_product_attribute_batches(input.attribute_values);
     let result: Result<Response, _> = execute_with_metadata(
         &graphql_url(),
         GraphqlRequest::new(

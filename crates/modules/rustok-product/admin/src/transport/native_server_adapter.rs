@@ -6,8 +6,9 @@ use crate::model::{
     BindCategoryAttributeDraft, BindSchemaAttributeDraft, CatalogCategoryDraft,
     CatalogCategoryList, CategoryAttributeGroupDraft, ProductAttributeDraft, ProductAttributeList,
     ProductAttributeOptionDraft, ProductAttributeSchemaDraft, ProductAttributeSchemaGroupDraft,
-    ProductAttributeSchemaList, ProductAttributeValueItem, ProductAttributeValuePatchDraft,
-    ProductCatalogSearchOptions, ProductEffectiveForm, SetCategorySchemaModeDraft,
+    ProductAttributeSchemaList, ProductAttributeValueBatchDraft, ProductAttributeValueItem,
+    ProductAttributeValuePatchDraft, ProductCatalogSearchOptions, ProductEffectiveForm,
+    SetCategorySchemaModeDraft,
 };
 #[cfg(feature = "ssr")]
 use crate::model::{
@@ -478,6 +479,24 @@ fn map_attribute_value(
 }
 
 #[cfg(feature = "ssr")]
+pub(super) fn parse_attribute_value_batches(
+    batches: Vec<ProductAttributeValueBatchDraft>,
+) -> Result<Vec<rustok_product::dto::ProductAttributeValueBatch>, ServerFnError> {
+    batches
+        .into_iter()
+        .map(|batch| {
+            Ok(rustok_product::dto::ProductAttributeValueBatch {
+                locale: batch.locale,
+                patches: batch
+                    .patches
+                    .into_iter()
+                    .map(parse_attribute_value_patch)
+                    .collect::<Result<Vec<_>, _>>()?,
+            })
+        })
+        .collect()
+}
+
 fn parse_attribute_value_patch(
     draft: ProductAttributeValuePatchDraft,
 ) -> Result<rustok_product::services::ProductAttributeValuePatch, ServerFnError> {

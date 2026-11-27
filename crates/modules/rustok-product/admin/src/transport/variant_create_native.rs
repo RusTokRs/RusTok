@@ -10,7 +10,9 @@ use crate::model::{VariantCreateOutcome, VariantDraft};
 use leptos::prelude::*;
 
 #[cfg(feature = "ssr")]
-use super::native_server_adapter::{catalog_update_scope, parse_uuid, write_context};
+use super::native_server_adapter::{
+    catalog_update_scope, parse_attribute_value_batches, parse_uuid, write_context,
+};
 
 #[cfg(feature = "ssr")]
 fn owner_input(
@@ -25,6 +27,7 @@ fn owner_input(
         sku: input.sku,
         barcode: input.barcode,
         shipping_profile_slug: input.shipping_profile_slug,
+        attribute_values: parse_attribute_value_batches(input.attribute_values)?,
         axis_values: input
             .axis_values
             .into_iter()
