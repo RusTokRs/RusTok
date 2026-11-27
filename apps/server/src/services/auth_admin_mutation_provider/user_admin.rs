@@ -37,7 +37,7 @@ use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::rbac_cache_invalidation::publish_user_rbac_invalidation;
 use crate::services::rbac_invalidation_generation::reserve_rbac_invalidation_generation;
 use crate::services::rbac_request_scope::{
-    OAuthCredentialEvidence, credential_for, permissions_for, role_for,
+    OAuthCredentialEvidence, credential_for_admin, permissions_for, role_for,
 };
 use crate::services::rbac_service::RbacService;
 
@@ -61,9 +61,7 @@ pub(super) fn scope_live_admin_permissions(
     context: &AuthAdminMutationContext,
     permissions: Vec<Permission>,
 ) -> Result<Vec<Permission>, AuthAdminMutationError> {
-    match credential_for(&context.tenant_id, &context.actor_id)
-        .ok_or(AuthAdminMutationError::Unauthorized)?
-    {
+    match credential_for_admin(context)? {
         Some(evidence) if evidence.principal_kind != AuthPrincipalKind::DirectUser => {
             let delegated = evidence.oauth.ok_or(AuthAdminMutationError::Unauthorized)?;
             Ok(rustok_api::context::restrict_permissions_to_scopes(
@@ -307,6 +305,7 @@ impl ServerAuthAdminMutationProvider {
         &self,
         context: &AuthAdminMutationContext,
     ) -> Result<UserRole, AuthAdminMutationError> {
+        credential_for_admin(context)?;
         role_for(&context.tenant_id, &context.actor_id).ok_or_else(|| {
             AuthAdminMutationError::Forbidden(
                 "user administration requires a request-bound role snapshot".to_string(),
@@ -324,8 +323,7 @@ impl ServerAuthAdminMutationProvider {
         target_id: Option<Uuid>,
     ) -> Result<(Option<oauth_apps::Model>, Option<oauth_apps::Model>), AuthAdminMutationError>
     {
-        let evidence = credential_for(&context.tenant_id, &context.actor_id)
-            .ok_or(AuthAdminMutationError::Unauthorized)?;
+        let evidence = credential_for_admin(context)?;
         if evidence.as_ref().is_some_and(|e| {
             context
                 .principal_kind
@@ -429,8 +427,7 @@ impl ServerAuthAdminMutationProvider {
         tx: &sea_orm::DatabaseTransaction,
         context: &AuthAdminMutationContext,
     ) -> Result<Option<oauth_apps::Model>, AuthAdminMutationError> {
-        let evidence = credential_for(&context.tenant_id, &context.actor_id)
-            .ok_or(AuthAdminMutationError::Unauthorized)?;
+        let evidence = credential_for_admin(context)?;
         if evidence
             .as_ref()
             .is_some_and(|e| e.principal_kind == AuthPrincipalKind::DelegatedUser)
@@ -521,15 +518,14 @@ impl ServerAuthAdminMutationProvider {
         actor: &users::Model,
         delegated_app: Option<&oauth_apps::Model>,
     ) -> Result<Option<DateTime<Utc>>, AuthAdminMutationError> {
-        let evidence = credential_for(&context.tenant_id, &context.actor_id)
-            .ok_or(AuthAdminMutationError::Unauthorized)?;
+        let evidence = credential_for_admin(context)?;
         if context.principal_kind == Some(AuthPrincipalKind::Service) {
             return Err(AuthAdminMutationError::Forbidden(
                 "user administration requires a user actor".to_string(),
             ));
         }
-        // An explicit grant-only internal scope has no bearer credential.
-        // Authenticated HTTP/WS constructors always carry evidence.
+        // Only an explicit owner SQL test fixture may lack bearer evidence.
+        // The production credential_for_admin boundary rejects that variant.
         let Some(evidence) = evidence else {
             return Ok(None);
         };
@@ -1950,6 +1946,7 @@ mod tests {
             request_id: None,
             locale: Some("en".to_string()),
             principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
+            credential_authority: rustok_auth::CredentialAuthority::TrustedInternal,
         };
         let scope = || {
             RbacRequestScope::new(
@@ -2111,6 +2108,7 @@ mod tests {
             request_id: None,
             locale: Some("en".to_string()),
             principal_kind: Some(AuthPrincipalKind::DirectUser),
+            credential_authority: rustok_auth::CredentialAuthority::TrustedInternal,
         };
         let scope = || {
             RbacRequestScope::new(
@@ -2163,19 +2161,30 @@ mod tests {
             oauth_credential: None,
         };
         let authenticated = |deadline| RbacRequestScope::authenticated(&current, deadline);
+        let authenticated_context = |deadline| AuthAdminMutationContext {
+            credential_authority: authenticated(deadline).admin_credential().unwrap(),
+            ..context.clone()
+        };
         let allowed = with_rbac_request_scope(
             Some(authenticated(current.access_token_expires_at)),
             async {
                 provider
-                    .create_user(&context, create("session-allowed@example.test"))
+                    .create_user(
+                        &authenticated_context(current.access_token_expires_at),
+                        create("session-allowed@example.test"),
+                    )
                     .await
             },
         )
         .await;
         assert!(allowed.is_ok(), "{allowed:?}");
-        let expired = with_rbac_request_scope(Some(authenticated(chrono::Utc::now())), async {
+        let expired_at = chrono::Utc::now();
+        let expired = with_rbac_request_scope(Some(authenticated(expired_at)), async {
             provider
-                .create_user(&context, create("jwt-expired@example.test"))
+                .create_user(
+                    &authenticated_context(expired_at),
+                    create("jwt-expired@example.test"),
+                )
                 .await
         })
         .await;
@@ -2192,7 +2201,10 @@ mod tests {
             Some(authenticated(current.access_token_expires_at)),
             async {
                 provider
-                    .create_user(&context, create("session-revoked@example.test"))
+                    .create_user(
+                        &authenticated_context(current.access_token_expires_at),
+                        create("session-revoked@example.test"),
+                    )
                     .await
             },
         )
@@ -2337,6 +2349,7 @@ mod tests {
                 request_id: None,
                 locale: Some("en".to_string()),
                 principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
+                credential_authority: rustok_auth::CredentialAuthority::TrustedInternal,
             };
             let scope = RbacRequestScope::new(
                 tenant.id,
@@ -2464,6 +2477,7 @@ mod tests {
             request_id: None,
             locale: Some("en".to_string()),
             principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
+            credential_authority: rustok_auth::CredentialAuthority::TrustedInternal,
         };
         let scope = || {
             RbacRequestScope::new(

@@ -21,7 +21,7 @@ use crate::models::{oauth_apps, oauth_consents, oauth_tokens, tenants, users};
 use crate::services::cache_runtime::ensure_cache_service;
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::oauth_app::{self, OAuthAppService};
-use crate::services::rbac_request_scope::{credential_for, permissions_for};
+use crate::services::rbac_request_scope::{bind_admin_context, credential_for_admin, permissions_for};
 use crate::services::auth_lifecycle::AuthLifecycleService;
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -186,6 +186,7 @@ impl ServerAuthAdminMutationProvider {
         &self,
         context: &AuthAdminMutationContext,
     ) -> Result<Vec<Permission>, AuthAdminMutationError> {
+        credential_for_admin(context)?;
         permissions_for(&context.tenant_id, &context.actor_id).ok_or_else(|| {
             AuthAdminMutationError::Forbidden(
                 "auth administration requires a request-bound effective permission snapshot"
@@ -296,8 +297,7 @@ impl ServerAuthAdminMutationProvider {
         &self, tx: &sea_orm::DatabaseTransaction, context: &AuthAdminMutationContext,
         app_id: Option<Uuid>, settings_required: bool,
     ) -> Result<LockedOAuthAdminAuthority, AuthAdminMutationError> {
-        let evidence = credential_for(&context.tenant_id, &context.actor_id)
-            .ok_or(AuthAdminMutationError::Unauthorized)?;
+        let evidence = credential_for_admin(context)?;
         if !settings_required {
             require_direct_user_context(context)?;
             if !evidence.as_ref().is_some_and(|e| e.principal_kind == AuthPrincipalKind::DirectUser) {
@@ -376,6 +376,33 @@ impl ServerAuthAdminMutationProvider {
 /// Host implementation of the RBAC owner's transaction admission port.
 /// Use the same direct credential fence as Auth/OAuth, but let RBAC own
 /// its write transaction and exact destination role locks.
+impl rustok_auth::AuthAdminCredentialResolver for ServerAuthAdminMutationProvider {
+    fn bind(
+        &self,
+        auth: rustok_auth::AdminCredentialRequest<'_>,
+        principal_kind: AuthPrincipalKind,
+        locale: Option<String>,
+    ) -> Result<AuthAdminMutationContext, AuthAdminMutationError> {
+        let context = bind_admin_context(auth.tenant_id, auth.user_id, principal_kind, locale)?;
+        use rustok_auth::CredentialAuthority;
+        let matches = match &context.credential_authority {
+            CredentialAuthority::DirectSession { session_id, .. } =>
+                auth.session_id == *session_id && auth.client_id.is_none() && auth.grant_type == "direct",
+            CredentialAuthority::DelegatedOAuth { registration, .. } =>
+                auth.client_id == Some(registration.client_id) && auth.grant_type == "authorization_code"
+                    && auth.session_id.is_nil() && auth.scopes == registration.scopes.as_slice(),
+            CredentialAuthority::ServiceOAuth { registration, .. } =>
+                auth.user_id == registration.app_id && auth.client_id == Some(registration.client_id)
+                    && auth.grant_type == "client_credentials" && auth.session_id.is_nil() && auth.scopes == registration.scopes.as_slice(),
+            CredentialAuthority::TrustedInternal => false,
+        };
+        if !matches {
+            return Err(AuthAdminMutationError::Unauthorized);
+        }
+        Ok(context)
+    }
+}
+
 #[async_trait]
 impl rustok_rbac::graphql::RbacMutationAuthority for ServerAuthAdminMutationProvider {
     async fn prepare(&self) -> Result<(), rustok_rbac::graphql::RbacGraphqlRoleWriteError> {
@@ -417,13 +444,8 @@ impl ServerAuthAdminMutationProvider {
         &self, tx: &sea_orm::DatabaseTransaction, tenant_id: Uuid, actor_id: Uuid,
         target_role_id: Option<Uuid>, required: &[Permission],
     ) -> Result<rustok_rbac::graphql::RbacLockedMutationAuthority, AuthAdminMutationError> {
-        let context = AuthAdminMutationContext {
-            tenant_id, actor_id, request_id: None, locale: None,
-            principal_kind: Some(AuthPrincipalKind::DirectUser),
-        };
-        let evidence = credential_for(&tenant_id, &actor_id).flatten()
-            .filter(|e| e.principal_kind == AuthPrincipalKind::DirectUser)
-            .ok_or(AuthAdminMutationError::Unauthorized)?;
+        let context = bind_admin_context(tenant_id, actor_id, AuthPrincipalKind::DirectUser, None)?;
+        let evidence = credential_for_admin(&context)?.ok_or(AuthAdminMutationError::Unauthorized)?;
         let request = self.request_permissions(&context)?;
         if !required.iter().any(|p| has_effective_permission(&request, p)) {
             return Err(AuthAdminMutationError::Forbidden("RBAC request authority required".into()));
@@ -515,6 +537,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         limit: u64,
     ) -> Result<Vec<AuthorizedOAuthAppRecord>, AuthAdminMutationError> {
         require_direct_user_context(context)?;
+        credential_for_admin(context)?.ok_or(AuthAdminMutationError::Unauthorized)?;
         let consents = oauth_consents::Entity::find()
             .filter(oauth_consents::Column::UserId.eq(context.actor_id))
             .filter(oauth_consents::Column::TenantId.eq(context.tenant_id))

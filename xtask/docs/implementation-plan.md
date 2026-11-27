@@ -496,6 +496,14 @@ GraphQL enabled, including the PostgreSQL Search path and SQLite rollback when
 the second Outbox insert fails. The current Distribution library passed
 `cargo check -p rustok-distribution --no-default-features --lib`.
 
+A freshly generated admin owner passed the selected Distribution PostgreSQL
+query scenario. Page contents and exact counts stayed empty for a missing
+setting, inherited or disabled intent, boolean false and string true. Another
+tenant's opt-in did not open the scope. Exact copies and an explicit locale
+fallback became visible after opt-in. Editing or withdrawing a record fenced
+the previous revision before Outbox delivered the refresh. The scaffold tests
+and the generated owner's source layout check passed.
+
 - [ ] Close Blog reference-verifier drift and retain actual reference execution
   evidence before certifying it for propagation. Do not preserve obsolete source
   markers or copy confirmed FFA/localization defects into generated modules.

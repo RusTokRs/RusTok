@@ -25,7 +25,7 @@ impl OAuthQuery {
         let apps = runtime(ctx)?
             .port()
             .list_oauth_apps(
-                &mutation_context(ctx, auth),
+                &mutation_context(ctx, auth)?,
                 app_type.map(|value| value.as_str().to_string()),
                 limit,
             )
@@ -50,7 +50,7 @@ impl OAuthQuery {
         let auth = require_auth_context(ctx)?;
         runtime(ctx)?
             .port()
-            .get_oauth_app(&mutation_context(ctx, auth), id)
+            .get_oauth_app(&mutation_context(ctx, auth)?, id)
             .await
             .map(|app| app.map(OAuthAppGql))
             .map_err(map_error)
@@ -66,7 +66,7 @@ impl OAuthQuery {
         let limit = clamp_limit(limit);
         let apps = runtime(ctx)?
             .port()
-            .list_authorized_oauth_apps(&mutation_context(ctx, auth), limit)
+            .list_authorized_oauth_apps(&mutation_context(ctx, auth)?, limit)
             .await
             .map_err(map_error)?;
         metrics::record_read_path_budget(

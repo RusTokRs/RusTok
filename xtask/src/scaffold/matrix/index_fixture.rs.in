@@ -204,6 +204,13 @@ async fn assert_index_replay(db: DatabaseConnection) {
     );
     assert_projected_copies(&db, tenant, draft.id, published.revision, false).await;
     public.expect("ru", None).await;
+    index_query::PublicQueries {
+        tenant: foreign,
+        ..public
+    }
+    .set_discovery(Some(true), serde_json::json!(true))
+    .await;
+    public.expect("ru", None).await;
     for (enabled, setting) in [
         (None, serde_json::json!(true)),
         (Some(false), serde_json::json!(true)),
@@ -219,6 +226,7 @@ async fn assert_index_replay(db: DatabaseConnection) {
     public.expect("en", Some("English")).await;
     public.expect("ru", Some("Русский")).await;
     public.expect("de", None).await;
+    public.expect_fallback("de", "ru", Some("Русский")).await;
 
     for (scope, revision) in [
         (foreign, published.revision),
@@ -357,6 +365,7 @@ async fn assert_index_replay(db: DatabaseConnection) {
         .unwrap();
     public.expect("en", None).await;
     public.expect("ru", None).await;
+    public.expect_fallback("de", "ru", None).await;
     bus.publish_contract_envelope(original).await.unwrap();
     assert_projected_copies(&db, tenant, draft.id, withdrawn.revision, true).await;
     assert_eq!(relay.process_pending_once(None).await.unwrap(), 2);

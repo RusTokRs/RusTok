@@ -277,6 +277,7 @@ mod tests {
                 request_id: None,
                 locale: Some("en".to_string()),
                 principal_kind,
+                credential_authority: rustok_auth::CredentialAuthority::TrustedInternal,
             };
             let grant_result = guarded
                 .grant_oauth_app_consent(&context, created.app.id, vec!["profile".to_string()])
@@ -335,6 +336,7 @@ mod tests {
             request_id: None,
             locale: Some("en".to_string()),
             principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
+            credential_authority: rustok_auth::CredentialAuthority::TrustedInternal,
         };
         let created = scope_runtime_copy_locale(
             "en".to_string(),
@@ -530,6 +532,7 @@ mod tests {
             request_id: None,
             locale: Some("en".to_string()),
             principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
+            credential_authority: rustok_auth::CredentialAuthority::TrustedInternal,
         };
         let provider = ServerAuthAdminMutationProvider::new(
             &ServerRuntimeContext::new(db.clone(), Default::default()),
@@ -588,6 +591,7 @@ mod tests {
             request_id: None,
             locale: Some("en".to_string()),
             principal_kind,
+            credential_authority: rustok_auth::CredentialAuthority::TrustedInternal,
         };
 
         assert!(

@@ -96,6 +96,13 @@ event. Index queries use the owner's published revision and exact translation
 predicate and the module control plane's explicit discovery decision in the
 same PostgreSQL snapshot as filtering, pagination and counting. Public request
 adapters also require trusted tenant, locale and Channel availability.
+The persisted profile with an explicit admin resource contributes a public
+records GraphQL query beside its existing admin operations. The field derives
+tenant, channel ID and exact locale from the resolved request and accepts
+cursor pagination. It checks the current Channel-owned module binding before
+executing the Index query. Missing, inactive and foreign channels return an
+empty page. Provider failures return an operation error. Public field names
+use the host's storefront principal policy.
 
 ## Failure semantics
 

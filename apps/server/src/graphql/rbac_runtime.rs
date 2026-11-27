@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_auth::{
-    AuthAdminMutationContext, AuthAdminMutationError, UpdateUserCommand, UserAdminMutationRuntime,
+    AuthAdminMutationError, UpdateUserCommand, UserAdminMutationRuntime,
 };
 use rustok_cache::CacheService;
 use rustok_core::{ModuleRuntimeExtensions, UserRole};
@@ -31,15 +31,9 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
         self.runtime
             .port()
             .update_user(
-                &AuthAdminMutationContext {
-                    actor_id: *actor_id,
-                    tenant_id: *tenant_id,
-                    request_id: None,
-                    locale: None,
-                    // The GraphQL control plane admits direct users only.
-                    // The host scope independently binds the actual credential.
-                    principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
-                },
+                &crate::services::rbac_request_scope::bind_admin_context(
+                    *tenant_id, *actor_id, rustok_api::AuthPrincipalKind::DirectUser, None,
+                ).map_err(map_auth_admin_error)?,
                 UpdateUserCommand {
                     id: *user_id,
                     email: None,
@@ -69,15 +63,9 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
         self.runtime
             .port()
             .update_user(
-                &AuthAdminMutationContext {
-                    actor_id: *actor_id,
-                    tenant_id: *tenant_id,
-                    request_id: None,
-                    locale: None,
-                    // The GraphQL control plane admits direct users only.
-                    // The host scope independently binds the actual credential.
-                    principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
-                },
+                &crate::services::rbac_request_scope::bind_admin_context(
+                    *tenant_id, *actor_id, rustok_api::AuthPrincipalKind::DirectUser, None,
+                ).map_err(map_auth_admin_error)?,
                 UpdateUserCommand {
                     id: *user_id,
                     email: None,

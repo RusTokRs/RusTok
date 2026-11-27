@@ -925,6 +925,7 @@ async fn delegated_user_admin_rejects_revoked_registration_and_consent_epoch() {
         request_id: None,
         locale: Some("en".into()),
         principal_kind: Some(AuthPrincipalKind::DelegatedUser),
+        credential_authority: scope().admin_credential().unwrap(),
     };
     let create = |email: &str| CreateUserCommand {
         email: email.into(),
@@ -1046,6 +1047,7 @@ async fn oauth_admin_mutations_reject_revoked_direct_session() {
         request_id: None,
         locale: Some("en".into()),
         principal_kind: Some(AuthPrincipalKind::DirectUser),
+        credential_authority: scope().admin_credential().unwrap(),
     };
     let create = |slug: &str| CreateOAuthAppCommand {
         name: "OAuth target".into(),
@@ -1211,6 +1213,7 @@ async fn oauth_admin_rejects_revoked_service_registration() {
         request_id: None,
         locale: Some("en".into()),
         principal_kind: Some(AuthPrincipalKind::Service),
+        credential_authority: scope().admin_credential().unwrap(),
     };
     let provider = ServerAuthAdminMutationProvider::new(
         runtime.runtime_ctx(),
@@ -1668,54 +1671,113 @@ async fn final_authority_check_rejects_membership_aba_and_revoked_session() {
     assert!(revalidate!(&restored).await.is_err());
 }
 
-
 #[tokio::test]
 async fn rbac_control_plane_transaction_rejects_revoked_session_and_live_grant_loss() {
     use crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider;
     use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
-    use rustok_rbac::graphql::{RbacMutationAuthority, RbacGraphqlRoleWriteError};
+    use rustok_rbac::graphql::{RbacGraphqlRoleWriteError, RbacMutationAuthority};
     use sea_orm::TransactionTrait;
 
     let db = setup_test_db_with_migrations::<Migrator>().await;
     let runtime = test_auth_runtime(db.clone());
     let tenant = tenants::ActiveModel::new("RBAC authority", &format!("tenant-{}", Uuid::new_v4()))
-        .insert(&db).await.unwrap();
+        .insert(&db)
+        .await
+        .unwrap();
     let (actor, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
     rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
-        &db, tenant.id, actor.id, UserRole::SuperAdmin,
-    ).await.unwrap();
-    let token = encode_access_token(runtime.require_auth_config().unwrap(), actor.id, tenant.id, UserRole::SuperAdmin, session_id).unwrap();
-    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token).await.unwrap();
+        &db,
+        tenant.id,
+        actor.id,
+        UserRole::SuperAdmin,
+    )
+    .await
+    .unwrap();
+    let token = encode_access_token(
+        runtime.require_auth_config().unwrap(),
+        actor.id,
+        tenant.id,
+        UserRole::SuperAdmin,
+        session_id,
+    )
+    .unwrap();
+    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await
+        .unwrap();
     let scope = || RbacRequestScope::authenticated(&admitted, admitted.access_token_expires_at);
-    let provider = ServerAuthAdminMutationProvider::new(runtime.runtime_ctx(), runtime.require_auth_config().unwrap().clone());
+    let provider = ServerAuthAdminMutationProvider::new(
+        runtime.runtime_ctx(),
+        runtime.require_auth_config().unwrap().clone(),
+    );
     let required = [Permission::SETTINGS_MANAGE, Permission::USERS_MANAGE];
     provider.prepare().await.unwrap();
     let tx = db.begin().await.unwrap();
-    let authority = with_rbac_request_scope(Some(scope()), provider.lock(&tx, tenant.id, actor.id, None, &required))
-        .await.unwrap();
+    let authority = with_rbac_request_scope(
+        Some(scope()),
+        provider.lock(&tx, tenant.id, actor.id, None, &required),
+    )
+    .await
+    .unwrap();
     provider.ensure_deadline(&tx, &authority).await.unwrap();
     tx.rollback().await.unwrap();
 
     let tx = db.begin().await.unwrap();
-    rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(&tx, tenant.id, actor.id, UserRole::Customer)
-        .await.unwrap();
+    rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(
+        &tx,
+        tenant.id,
+        actor.id,
+        UserRole::Customer,
+    )
+    .await
+    .unwrap();
     tx.commit().await.unwrap();
     provider.prepare().await.unwrap();
     let tx = db.begin().await.unwrap();
-    let denied = with_rbac_request_scope(Some(scope()), provider.lock(&tx, tenant.id, actor.id, None, &required)).await;
-    assert!(matches!(denied, Err(RbacGraphqlRoleWriteError::Forbidden(_))));
+    let denied = with_rbac_request_scope(
+        Some(scope()),
+        provider.lock(&tx, tenant.id, actor.id, None, &required),
+    )
+    .await;
+    assert!(matches!(
+        denied,
+        Err(RbacGraphqlRoleWriteError::Forbidden(_))
+    ));
     tx.rollback().await.unwrap();
 
     let tx = db.begin().await.unwrap();
-    rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(&tx, tenant.id, actor.id, UserRole::SuperAdmin)
-        .await.unwrap();
+    rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(
+        &tx,
+        tenant.id,
+        actor.id,
+        UserRole::SuperAdmin,
+    )
+    .await
+    .unwrap();
     tx.commit().await.unwrap();
     sessions::ActiveModel {
-        id: Set(session_id), revoked_at: Set(Some(Utc::now().into())), ..Default::default()
-    }.update(&db).await.unwrap();
+        id: Set(session_id),
+        revoked_at: Set(Some(Utc::now().into())),
+        ..Default::default()
+    }
+    .update(&db)
+    .await
+    .unwrap();
     provider.prepare().await.unwrap();
     let tx = db.begin().await.unwrap();
-    let denied = with_rbac_request_scope(Some(scope()), provider.lock(&tx, tenant.id, actor.id, None, &[Permission::MODULES_MANAGE])).await;
-    assert!(matches!(denied, Err(RbacGraphqlRoleWriteError::Forbidden(_))));
+    let denied = with_rbac_request_scope(
+        Some(scope()),
+        provider.lock(
+            &tx,
+            tenant.id,
+            actor.id,
+            None,
+            &[Permission::MODULES_MANAGE],
+        ),
+    )
+    .await;
+    assert!(matches!(
+        denied,
+        Err(RbacGraphqlRoleWriteError::Forbidden(_))
+    ));
     tx.rollback().await.unwrap();
 }

@@ -468,7 +468,7 @@ async fn resolve_service_token_permissions(
         effective_permissions,
         inferred_role,
         access_row.expires_at.with_timezone(&chrono::Utc),
-        crate::services::rbac_request_scope::OAuthCredentialEvidence::from_registration(
+        crate::services::rbac_request_scope::oauth_credential_from_registration(
             &access_row,
             client_id,
             token_scopes,
@@ -627,7 +627,7 @@ pub async fn resolve_current_user_from_access_token(
         delegated_credential_issued_at = Some(access_row.created_at.with_timezone(&chrono::Utc));
         durable_credential_expires_at = access_row.expires_at.with_timezone(&chrono::Utc);
         oauth_credential = Some(
-            crate::services::rbac_request_scope::OAuthCredentialEvidence::from_registration(
+            crate::services::rbac_request_scope::oauth_credential_from_registration(
                 &access_row,
                 client_id,
                 &claims.scopes,

@@ -46,6 +46,7 @@ pub use module::AuthModule;
 
 pub use admin_mutations::{
     AuthAdminMutationContext, AuthAdminMutationError, AuthorizedOAuthAppRecord,
+    AdminCredentialRequest, AuthAdminCredentialResolver, AuthAdminCredentialResolverHandle, CredentialAuthority, OAuthAdminCredentialEvidence,
     CreateOAuthAppCommand, CreateUserCommand, IssueUserInviteCommand, IssuedUserInviteResult,
     OAuthAdminPort, OAuthAdminRuntime, OAuthAppMutationRecord, OAuthAppSecretResult,
     UpdateOAuthAppCommand, UpdateUserCommand, UserAdminMutationPort, UserAdminMutationRuntime,

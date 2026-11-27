@@ -1,0 +1,10 @@
+query __MODULE_STEM__StorefrontRecords($first: Int!, $after: String) {
+  storefront__MODULE_STEM__Records(first: $first, after: $after) {
+    items {
+      id
+      title
+    }
+    hasMore
+    nextCursor
+  }
+}

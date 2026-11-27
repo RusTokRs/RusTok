@@ -222,21 +222,23 @@ pub(crate) fn map_user_mutation_error(error: AuthAdminMutationError) -> FieldErr
 }
 
 pub(crate) fn user_mutation_context(
+    ctx: &Context<'_>,
     auth: &AuthContext,
     tenant: &TenantContext,
     locale: String,
-) -> AuthAdminMutationContext {
-    AuthAdminMutationContext {
-        actor_id: auth.user_id,
-        tenant_id: tenant.id,
-        request_id: None,
-        locale: Some(locale),
-        principal_kind: rustok_api::AuthPrincipalKind::from_authenticated_facts(
-            &auth.grant_type,
-            auth.client_id,
-            auth.session_id,
-        ),
+) -> Result<AuthAdminMutationContext> {
+    if auth.tenant_id != tenant.id {
+        return Err(<FieldError as GraphQLError>::unauthenticated());
     }
+    let principal = ctx.data::<rustok_api::AuthPrincipalContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    let extensions = ctx.data::<Arc<ModuleRuntimeExtensions>>()?;
+    let resolver = extensions.get::<rustok_auth::AuthAdminCredentialResolverHandle>()
+        .ok_or_else(|| <FieldError as GraphQLError>::internal_error("Auth admin credential resolver is unavailable"))?;
+    resolver.0.bind(rustok_auth::AdminCredentialRequest {
+        tenant_id: auth.tenant_id, user_id: auth.user_id, session_id: auth.session_id,
+        client_id: auth.client_id, grant_type: &auth.grant_type, scopes: &auth.scopes,
+    }, principal.kind, Some(locale)).map_err(map_user_mutation_error)
 }
 
 fn user_from_mutation_record(record: UserMutationRecord) -> User {
@@ -847,7 +849,7 @@ impl RootMutation {
         user_mutation_runtime(ctx)?
             .port()
             .create_user(
-                &user_mutation_context(auth, tenant, locale),
+                &user_mutation_context(ctx, auth, tenant, locale)?,
                 CreateUserCommand {
                     email: input.email,
                     password: input.password,
@@ -879,7 +881,7 @@ impl RootMutation {
         let issued = user_mutation_runtime(ctx)?
             .port()
             .issue_user_invite(
-                &user_mutation_context(auth, tenant, locale),
+                &user_mutation_context(ctx, auth, tenant, locale)?,
                 IssueUserInviteCommand {
                     email: input.email,
                     role: input.role,
@@ -901,7 +903,7 @@ impl RootMutation {
         let locale = effective_request_locale(ctx, tenant);
         user_mutation_runtime(ctx)?
             .port()
-            .revoke_user_invite(&user_mutation_context(auth, tenant, locale), id)
+            .revoke_user_invite(&user_mutation_context(ctx, auth, tenant, locale)?, id)
             .await
             .map(UserInvite::from)
             .map_err(map_user_mutation_error)
@@ -921,7 +923,7 @@ impl RootMutation {
         user_mutation_runtime(ctx)?
             .port()
             .update_user(
-                &user_mutation_context(auth, tenant, locale),
+                &user_mutation_context(ctx, auth, tenant, locale)?,
                 UpdateUserCommand {
                     id,
                     email: input.email,
@@ -950,7 +952,7 @@ impl RootMutation {
         user_mutation_runtime(ctx)?
             .port()
             .update_user(
-                &user_mutation_context(auth, tenant, locale),
+                &user_mutation_context(ctx, auth, tenant, locale)?,
                 UpdateUserCommand {
                     id,
                     email: None,
@@ -975,7 +977,7 @@ impl RootMutation {
         let locale = effective_request_locale(ctx, tenant);
         user_mutation_runtime(ctx)?
             .port()
-            .delete_user(&user_mutation_context(auth, tenant, locale), id)
+            .delete_user(&user_mutation_context(ctx, auth, tenant, locale)?, id)
             .await
             .map_err(map_user_mutation_error)?;
         Ok(DeleteUserPayload { success: true })

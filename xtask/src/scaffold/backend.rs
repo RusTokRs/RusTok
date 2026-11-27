@@ -23,8 +23,8 @@ pub(crate) fn render_backend(opts: &ScaffoldOptions, pascal: &str) -> Vec<(PathB
     };
     let (graphql_dependency, graphql_feature) = if opts.admin_resource.is_some() {
         (
-            "async-graphql = { workspace = true, optional = true }\n",
-            "admin = [\"rustok-api/server\"]\ngraphql = [\"dep:async-graphql\", \"admin\"]\n",
+            "async-graphql = { workspace = true, optional = true }\nrustok-channel-ports = { workspace = true, optional = true }\nrustok-index = { workspace = true, optional = true }\n",
+            "admin = [\"rustok-api/server\"]\ngraphql = [\"dep:async-graphql\", \"dep:rustok-channel-ports\", \"dep:rustok-index\", \"admin\"]\n",
         )
     } else {
         ("", "")
@@ -137,7 +137,7 @@ nav_label_key = "settings-records-nav"
     };
     let graphql_manifest = if opts.admin_resource.is_some() {
         format!(
-            "\n[provides.graphql]\nquery = \"graphql::{pascal}AdminQuery\"\nmutation = \"graphql::{pascal}AdminMutation\"\nruntime_data_factory = \"graphql::attach_schema_data\"\n"
+            "\n[provides.graphql]\nquery = \"graphql::{pascal}Query\"\nmutation = \"graphql::{pascal}AdminMutation\"\nruntime_data_factory = \"graphql::attach_schema_data\"\n"
         )
     } else {
         String::new()
@@ -622,7 +622,7 @@ mod tests {
         let graphql = &manifest["provides"]["graphql"];
         assert_eq!(
             graphql["query"].as_str(),
-            Some("graphql::ExampleAdminQuery")
+            Some("graphql::ExampleQuery")
         );
         assert_eq!(
             graphql["mutation"].as_str(),

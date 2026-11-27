@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_graphql::{Context, FieldError, Result};
 use rustok_api::{
     AuthContext, RequestContext, SharedStaticModuleSettingsReader, TenantContext,
@@ -6,11 +8,15 @@ use rustok_api::{
     },
 };
 use rustok_core::SecurityContext;
+use rustok_channel_ports::ChannelPublicModuleReadPort;
+use rustok_index::SharedIndexQueryRuntime;
 
 use crate::{__ENTITY__Service, RecordError, admin_record_revision, admin_record_security};
 
 pub struct __MODULE_STEM__AdminGraphqlData {
     settings: SharedStaticModuleSettingsReader,
+    pub(super) channel: Option<Arc<dyn ChannelPublicModuleReadPort>>,
+    pub(super) index: Option<SharedIndexQueryRuntime>,
 }
 
 pub fn attach_schema_data(
@@ -19,7 +25,11 @@ pub fn attach_schema_data(
     let settings = inputs.shared_get().ok_or_else(|| {
         "__SLUG__ admin GraphQL requires the host module settings reader".to_owned()
     })?;
-    Ok(__MODULE_STEM__AdminGraphqlData { settings })
+    Ok(__MODULE_STEM__AdminGraphqlData {
+        settings,
+        channel: inputs.shared_get(),
+        index: inputs.shared_get(),
+    })
 }
 
 pub(super) struct AdminRequest<'a> {

@@ -181,16 +181,17 @@ pub mod module_event_dispatcher {
             )
         })?;
 
+        if registry.contains("channel") {
+            extensions.get_or_insert_with(|| {
+                rustok_channel::in_process_public_module_read_port(db.clone())
+            });
+        }
         #[cfg(feature = "mod-blog")]
-        let blog_channels = if let Some(provider) = extensions.get().cloned().or_else(|| {
-            (registry.contains("blog") && registry.contains("channel"))
-                .then(|| rustok_channel::in_process_public_module_read_port(db.clone()))
-        }) {
-            extensions.insert(provider.clone());
-            rustok_blog::BlogChannelAvailability::from_port(provider)
-        } else {
-            rustok_blog::BlogChannelAvailability::default()
-        };
+        let blog_channels = extensions
+            .get()
+            .cloned()
+            .map(rustok_blog::BlogChannelAvailability::from_port)
+            .unwrap_or_default();
 
         #[cfg(feature = "mod-taxonomy")]
         {
