@@ -141,14 +141,18 @@ where
                     .map(|value| u64::try_from(value).map_err(|_| ArtifactDataError::ObjectIntegrity))
                     .transpose()?
                     .ok_or(ArtifactDataError::ObjectIntegrity)?;
-                let (stored, _) = find_artifact_data_object_operation(
+                let (stored, expected_revision) = find_artifact_data_object_operation(
                     &transaction,
                     scope,
                     request.idempotency_key,
                 )
                 .await?
                 .ok_or(ArtifactDataError::ObjectIntegrity)?;
-                if stored.object.revision != completed_revision {
+                if stored.object.revision != completed_revision
+                    || stored.object.name != request.name
+                    || stored.object.content_type != request.content_type
+                    || expected_revision != request.expected_revision
+                {
                     return Err(ArtifactDataError::ObjectIntegrity);
                 }
                 Some(stored.object)
@@ -418,13 +422,16 @@ where
         {
             ArtifactDataObjectUploadCompletion::Active(session) => session,
             ArtifactDataObjectUploadCompletion::Completed {
-                idempotency_key,
+                session,
                 completed_revision,
             } => {
-                let object = self
-                    .completed_upload_object(scope, idempotency_key)
+                let (object, expected_revision) = self
+                    .completed_upload_object(scope, session.idempotency_key)
                     .await?;
                 if object.revision != completed_revision
+                    || object.name != session.name
+                    || object.content_type != session.content_type
+                    || expected_revision != session.expected_revision
                     || object.size_bytes != request.size_bytes
                     || object.digest_sha256 != request.digest_sha256
                 {
