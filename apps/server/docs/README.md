@@ -2230,3 +2230,23 @@ invalidation and the original credential deadline. A clock discontinuity that
 is latched while guest work is running therefore fails closed before a later
 capability admission or successful output release. The change reuses the
 existing process-local clock guard and adds no new clock source or lease.
+
+## Artifact SQL effect fencing (2026-11-27)
+
+For server-composed `platform.data` and `platform.events` calls, the host now
+prepares the Auth clock authority before opening the effect transaction. The
+transaction then locks the direct tenant/user/session/role authority where
+applicable, acquires the platform-then-tenant artifact activation locks,
+re-resolves the exact active installation and current sandbox grant, and
+compares its constraints with the execution lease. Those locks remain held
+through commit, and the direct credential deadline plus execution lease are
+checked again immediately before commit. Structured-data reads/writes and
+event-outbox publication use this fence; delete-receipt replay is fenced too.
+
+This is not yet a universal effect transaction: full effective-policy revision,
+dependency closure/security, registry mutation state and deployment readiness
+are not all held through commit, and HTTP, MCP, secrets and object-storage
+capabilities do not share this SQL commit fence. PostgreSQL cross-owner lock
+ordering/contention and deployed worker/runtime evidence remain pending. See
+the [execution capability lease ADR](../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md)
+and the server [Known Limitations / Pending Implementation](../README.md#known-limitations--pending-implementation).
