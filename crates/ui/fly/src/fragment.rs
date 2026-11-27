@@ -146,10 +146,17 @@ impl ProjectFragment {
         let mut staged = editor.clone();
         self.remap_ids_avoiding(&mut staged.id_generator, reserved)?;
         let existing_assets = staged.document().project().assets.clone();
+        let mut existing_asset_references = BTreeSet::new();
+        for page in &staged.document().project().pages {
+            if let Some(root) = page.component.as_ref() {
+                collect_component_asset_ids(root, &mut existing_asset_references);
+            }
+        }
         remap_fragment_asset_ids(
             &mut self.assets,
             &mut self.components,
             &existing_assets,
+            &existing_asset_references,
             &mut staged.id_generator,
         )?;
         let mut inserted_ids = Vec::new();
@@ -190,6 +197,7 @@ fn remap_fragment_asset_ids(
     assets: &mut [Value],
     components: &mut [ComponentNode],
     existing_assets: &[Value],
+    existing_asset_references: &BTreeSet<String>,
     generator: &mut impl IdGenerator,
 ) -> FlyResult<()> {
     let mut existing_by_id = BTreeMap::new();
@@ -200,6 +208,7 @@ fn remap_fragment_asset_ids(
     }
 
     let mut reserved = existing_by_id.keys().cloned().collect::<BTreeSet<_>>();
+    reserved.extend(existing_asset_references.iter().cloned());
     let mut seen = BTreeSet::new();
     let mut mapping = BTreeMap::new();
     for raw in assets {
@@ -213,9 +222,12 @@ fn remap_fragment_asset_ids(
             )));
         }
         reserved.insert(asset.id.clone());
-        if let Some(existing) = existing_by_id.get(&asset.id)
-            && existing != raw
-        {
+        let conflicts_with_existing_record = existing_by_id
+            .get(&asset.id)
+            .is_some_and(|existing| existing != raw);
+        let conflicts_with_dangling_reference = !existing_by_id.contains_key(&asset.id)
+            && existing_asset_references.contains(&asset.id);
+        if conflicts_with_existing_record || conflicts_with_dangling_reference {
             let replacement =
                 crate::id_reference::allocate_generated_id(generator, "asset", &mut reserved);
             set_asset_identity(raw, &replacement)?;
@@ -229,6 +241,45 @@ fn remap_fragment_asset_ids(
         }
     }
     Ok(())
+}
+
+fn collect_component_asset_ids(
+    component: &ComponentNode,
+    asset_ids: &mut BTreeSet<String>,
+) {
+    match component {
+        ComponentNode::Object(object) => {
+            if let Some(Value::String(asset_id)) =
+                object.attributes.get("data-fly-asset-id")
+                && !asset_id.trim().is_empty()
+            {
+                asset_ids.insert(asset_id.clone());
+            }
+            for child in object.children() {
+                collect_component_asset_ids(child, asset_ids);
+            }
+        }
+        ComponentNode::Opaque(raw) => collect_opaque_asset_ids(raw, asset_ids),
+    }
+}
+
+fn collect_opaque_asset_ids(raw: &Value, asset_ids: &mut BTreeSet<String>) {
+    let Some(object) = raw.as_object() else {
+        return;
+    };
+    if let Some(attributes) = object.get("attributes").and_then(Value::as_object)
+        && let Some(asset_id) = attributes
+            .get("data-fly-asset-id")
+            .and_then(Value::as_str)
+        && !asset_id.trim().is_empty()
+    {
+        asset_ids.insert(asset_id.to_string());
+    }
+    if let Some(children) = object.get("components").and_then(Value::as_array) {
+        for child in children {
+            collect_opaque_asset_ids(child, asset_ids);
+        }
+    }
 }
 
 fn set_asset_identity(raw: &mut Value, id: &str) -> FlyResult<()> {
@@ -589,6 +640,71 @@ mod tests {
         assert_eq!(
             inserted_component.attributes["src"],
             "/source.webp"
+        );
+    }
+
+    #[test]
+    fn pasted_assets_do_not_claim_dangling_asset_ids_used_by_the_target() {
+        let source = GrapesJsCodec::decode_value(json!({
+            "assets": [{ "id": "shared", "src": "/source.webp" }],
+            "pages": [{
+                "component": {
+                    "id": "source-root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "hero",
+                        "type": "image",
+                        "attributes": {
+                            "src": "/source.webp",
+                            "data-fly-asset-id": "shared"
+                        }
+                    }]
+                }
+            }]
+        }))
+        .expect("source");
+        let target = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "target-root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "existing",
+                        "type": "section",
+                        "attributes": { "data-fly-asset-id": "shared" }
+                    }]
+                }
+            }]
+        }))
+        .expect("target");
+        let fragment = ProjectFragment::from_component(&source, "hero").expect("fragment");
+        let mut editor = FlyEditor::new(target, RegistrySet::with_builtins());
+
+        let inserted = fragment
+            .insert(&mut editor, Some("target-root".to_string()), 1)
+            .expect("paste");
+
+        assert_eq!(
+            editor
+                .document()
+                .component("existing")
+                .expect("existing component")
+                .attributes["data-fly-asset-id"],
+            "shared"
+        );
+        let pasted = editor.document().component(&inserted[0]).expect("pasted");
+        let pasted_asset_id = pasted.attributes["data-fly-asset-id"]
+            .as_str()
+            .expect("pasted asset id");
+        assert_ne!(pasted_asset_id, "shared");
+        assert!(
+            editor
+                .document()
+                .project()
+                .assets
+                .iter()
+                .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
+                .any(|asset| asset.id == pasted_asset_id && asset.source == "/source.webp")
         );
     }
 
