@@ -1116,3 +1116,20 @@ not a transaction spanning all authority owners, a fence for downstream
 in-flight writes, or rollback protection for the authority stores. Source
 regression authored; compilation, real contention and cache-bypass evidence
 remain pending.
+
+## Transactional user administration authority (source only)
+
+User creation (built-in and custom), update and deletion now lock the persisted
+actor and any existing target in ascending UUID order, resolve current module
+policy under the owner fence and lock the union of actor/target roles, requested
+role and (for existing targets) the continuity role in role UUID order. Both the
+request ceiling and live grants/hierarchy must authorize the operation; a
+missing or inactive actor, or a service principal, is refused. Delegated user
+requests retain their original scoped permission ceiling. Missing built-in
+roles are materialized in the transaction before checking exact persisted
+role grants; absent destination after the role fence is rejected. Existing
+last-active-SuperAdmin continuity and transactional event publication remain
+in force. This does not bind the initiating session/JWT or delegated access
+registration to the write: the current admin port lacks that evidence. Other
+RBAC writers, artifact grants and cross-owner lock order still require audit.
+Source regressions authored; compilation and PostgreSQL contention unverified.

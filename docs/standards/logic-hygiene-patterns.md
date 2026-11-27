@@ -3148,3 +3148,16 @@ snapshot. Optimistic reads are not a distributed transaction or a guarantee
 against changes after the last observation. Source regression authored, unrun.
 See [access resolver](../../apps/server/src/extractors/auth/mod.rs) and
 [RBAC revisions](../../crates/modules/rustok-rbac/src/role_grant_revision.rs).
+
+### P-AUTH-USER-ADMIN-STALE-ACTOR — Authorize against both request and locked live authority
+
+Built-in provisioning and existing-user administration could rely on the
+request snapshot after the actor had lost grants or become inactive. Lock
+actor and target users in stable UUID order, resolve locked module policy,
+materialize missing built-in destinations and lock the union of static role
+rows before reading grants and hierarchy. Require both request and current
+authority for the operation and exact destination grants; retain the existing
+continuity guard. Never interpret a service app ID as a user ID. Source
+regression authored, unrun; initiating credential evidence and other owners'
+lock order remain separate. See [user admin](../../apps/server/src/services/auth_admin_mutation_provider/user_admin.rs)
+and [RBAC role fences](../../crates/modules/rustok-rbac/src/role_grant_revision.rs).

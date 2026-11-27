@@ -620,3 +620,9 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 - Read static membership/grant revision in a single RBAC-owner query before and after user policy resolution; reject changed authority (including membership ABA).
 - Recheck current tenant/account/session or OAuth app, access registration and consent after asynchronous policy and clock work; never extend the original observed deadline or restore lost capabilities.
 - Regression covers final admission after membership ABA and session revocation. Compilation, PostgreSQL contention, cross-replica runtime, exact atomic admission and downstream mutation fences remain open.
+
+## Transactional user administration authority (2026-11-27)
+
+- Built-in/custom create, update and delete independently revalidate the persisted active user actor and current module-filtered grants/hierarchy under user, module and ordered role locks. Preserve request permission/role ceilings and the existing last-active-SuperAdmin continuity guard. A service principal is not a user actor, even with a colliding subject ID.
+- Materialize missing built-in destinations in the owner transaction before checking exact persisted grants; deny a missing requested role after the lock. Existing user locks are UUID ordered and deduplicated; static role locks cover actor and target memberships, destination and continuity role.
+- Source regression covers stale request after demotion, disabled actor, service UUID collision and allowed built-in creation. Compilation, live PostgreSQL contention and other mutation paths remain open. The admin context does not carry proving session or OAuth registration evidence; no end-to-end credential mutation fence is claimed.
