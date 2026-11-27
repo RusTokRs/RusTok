@@ -176,7 +176,37 @@ impl EffectiveModulePolicyService {
         registry: &ModuleRegistry,
         tenant_id: uuid::Uuid,
     ) -> Result<EffectiveModulePolicySnapshot, PlatformCompositionError> {
-        let manifest = PlatformCompositionService::active_manifest(db).await?;
+        let composition = PlatformCompositionService::active_snapshot(db).await?;
+        Self::resolve_snapshot_from_composition(db, registry, tenant_id, composition).await
+    }
+
+    /// Retain the composition revision that actually supplied the policy
+    /// inputs. Revalidation must not recreate a missing active composition.
+    pub(super) async fn resolve_authority_snapshot(
+        db: &DatabaseConnection,
+        registry: &ModuleRegistry,
+        tenant_id: uuid::Uuid,
+        initialize: bool,
+    ) -> Result<(i64, EffectiveModulePolicySnapshot), PlatformCompositionError> {
+        let composition = if initialize {
+            PlatformCompositionService::active_snapshot(db).await?
+        } else {
+            let owner = ModuleControlPlane::new(db.clone()).composition();
+            PlatformCompositionService::snapshot_from_owner(owner.active_snapshot().await?)?
+        };
+        let revision = composition.revision;
+        let snapshot =
+            Self::resolve_snapshot_from_composition(db, registry, tenant_id, composition).await?;
+        Ok((revision, snapshot))
+    }
+
+    async fn resolve_snapshot_from_composition(
+        db: &DatabaseConnection,
+        registry: &ModuleRegistry,
+        tenant_id: uuid::Uuid,
+        composition: super::platform_composition::PlatformCompositionSnapshot,
+    ) -> Result<EffectiveModulePolicySnapshot, PlatformCompositionError> {
+        let manifest = composition.manifest;
         let co_requisites = ManifestManager::module_policy_corequisites(&manifest)?;
         let default_enabled_modules = manifest.settings.default_enabled;
         let policy = ModuleControlPlane::new(db.clone())

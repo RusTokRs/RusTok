@@ -519,9 +519,10 @@ mod tests {
     }
 
     fn current_user(tenant_id: Uuid) -> CurrentUser {
+        let actor_id = Uuid::new_v4();
         CurrentUser {
             user: users::Model {
-                id: Uuid::new_v4(),
+                id: actor_id,
                 tenant_id,
                 email: "flex-admin@example.com".to_string(),
                 password_hash: "hash".to_string(),
@@ -557,7 +558,11 @@ mod tests {
             scopes: Vec::new(),
             grant_type: "direct".to_string(),
             access_token_expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
+            rbac_epoch: crate::services::rbac_runtime::request_authority_epoch(tenant_id, actor_id)
+                .expect("fixture authority epoch"),
+            static_authority_revision: None,
             oauth_credential: None,
+            module_policy_authority: None,
         }
     }
 

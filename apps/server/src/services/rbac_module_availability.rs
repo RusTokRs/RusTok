@@ -80,25 +80,103 @@ pub async fn permission_availability_for(
     .map(Some)
 }
 
-/// Credential admission must not trust a process-local TTL cache on another
-/// replica. Use the current owner policy; the compiled ownership catalog is
-/// still safe to reuse.
+/// Immutable observation of the Modules owner's static policy. Registry
+/// inputs are trusted host composition, not permission authority. Equality
+/// compares the tenant-bound evidence, not the registry's pointer identity.
+#[derive(Clone)]
+pub(crate) struct RequestModulePolicyAuthority {
+    registry: ModuleRegistry,
+    ownership: Arc<BTreeMap<String, String>>,
+    composition_revision: i64,
+    identity: rustok_modules::EffectivePolicyCacheIdentity,
+    availability: PermissionAvailability,
+}
+
+impl std::fmt::Debug for RequestModulePolicyAuthority {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RequestModulePolicyAuthority")
+            .field("composition_revision", &self.composition_revision)
+            .field("identity", &self.identity)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PartialEq for RequestModulePolicyAuthority {
+    fn eq(&self, other: &Self) -> bool {
+        self.composition_revision == other.composition_revision
+            && self.identity == other.identity
+            && self.availability == other.availability
+    }
+}
+
+impl Eq for RequestModulePolicyAuthority {}
+
+impl RequestModulePolicyAuthority {
+    async fn resolve(
+        db: &sea_orm::DatabaseConnection,
+        registry: ModuleRegistry,
+        ownership: Arc<BTreeMap<String, String>>,
+        tenant_id: uuid::Uuid,
+        initialize: bool,
+    ) -> Result<Self> {
+        let (composition_revision, snapshot) =
+            EffectiveModulePolicyService::resolve_authority_snapshot(
+                db, &registry, tenant_id, initialize,
+            )
+            .await
+            .map_err(|error| Error::Message(format!("module policy resolution failed: {error}")))?;
+        let enabled = snapshot.policy.into_enabled_modules().into_iter().collect();
+        let availability = PermissionAvailability::new((*ownership).clone(), enabled);
+        Ok(Self {
+            registry,
+            ownership,
+            composition_revision,
+            identity: snapshot.cache_identity,
+            availability,
+        })
+    }
+
+    pub(crate) fn availability(&self) -> &PermissionAvailability {
+        &self.availability
+    }
+
+    pub(crate) fn covers(&self, permissions: &[rustok_api::Permission]) -> bool {
+        permissions.iter().all(|permission| self.availability.is_active(permission))
+    }
+
+    pub(crate) async fn is_current(
+        &self,
+        db: &sea_orm::DatabaseConnection,
+        tenant_id: uuid::Uuid,
+        permissions: &[rustok_api::Permission],
+    ) -> Result<bool> {
+        if self.identity.tenant_id() != tenant_id || !self.covers(permissions) {
+            return Ok(false);
+        }
+        let live = Self::resolve(
+            db, self.registry.clone(), Arc::clone(&self.ownership), tenant_id, false,
+        )
+        .await?;
+        Ok(self == &live)
+    }
+}
+
+/// Use the current owner policy, never the process-local TTL cache. Retain
+/// the exact observation used to filter the admitted grants.
 pub(crate) async fn authoritative_permission_availability_for(
     ctx: &ServerRuntimeContext,
     tenant_id: uuid::Uuid,
-) -> Result<Option<PermissionAvailability>> {
+    initialize: bool,
+) -> Result<Option<Arc<RequestModulePolicyAuthority>>> {
     let Some(registry) = ctx.shared_get::<ModuleRegistry>() else {
         return Ok(None);
     };
     let ownership = permission_ownership(ctx, &registry)?;
-    let policy = EffectiveModulePolicyService::resolve(ctx.db(), &registry, tenant_id)
+    RequestModulePolicyAuthority::resolve(ctx.db(), registry, ownership, tenant_id, initialize)
         .await
-        .map_err(|error| Error::Message(format!("module policy resolution failed: {error}")))?;
-    let enabled: BTreeSet<String> = policy.into_enabled_modules().into_iter().collect();
-    Ok(Some(PermissionAvailability::new(
-        (*ownership).clone(),
-        enabled,
-    )))
+        .map(Arc::new)
+        .map(Some)
 }
 
 pub(super) async fn resolve_permission_availability(

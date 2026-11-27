@@ -240,6 +240,7 @@ fn service_current_user_builds_service_security_context() {
         rbac_epoch: 0, // SecurityContext-only fixture, never admitted as a request.
         static_authority_revision: None,
         oauth_credential: None,
+        module_policy_authority: None,
     };
 
     assert_eq!(
@@ -533,6 +534,7 @@ async fn oauth_service_token_rejects_subject_that_is_not_the_app_id() {
         &["forum:*".to_string()],
         "",
         None,
+        true,
     )
     .await
     .expect_err("service token subject must equal app id");
@@ -1724,6 +1726,66 @@ async fn admitted_direct_scope_rejects_revoked_session_without_rbac_notification
         assert!(RbacService::get_user_permissions(&db, &tenant.id, &user.id).await.is_err());
         assert!(RbacService::get_user_role(&db, &tenant.id, &user.id).await.is_err());
         assert!(crate::services::rbac_request_scope::permissions_for(&tenant.id, &user.id).is_none());
+    }).await;
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn admitted_scope_rejects_module_policy_drift_without_notification() {
+    use crate::models::tenant_modules;
+    use crate::services::effective_module_policy::EffectiveModulePolicyService;
+    use crate::services::rbac_request_scope::{
+        RbacRequestScope, ensure_scope_authority, with_rbac_request_scope,
+    };
+    use sea_orm::EntityTrait;
+
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let runtime = test_auth_runtime(db.clone());
+    let registry = crate::modules::build_registry();
+    let module_slug = registry.list().into_iter()
+        .find(|module| !registry.is_core(module.slug()))
+        .expect("optional module in composed registry")
+        .slug();
+    runtime.runtime_ctx().shared_insert(registry.clone());
+    let tenant = tenants::ActiveModel::new(
+        "Module authority", &format!("tenant-{}", Uuid::new_v4()),
+    ).insert(&db).await.unwrap();
+    let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+    rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+        &db, tenant.id, user.id, UserRole::Manager,
+    ).await.unwrap();
+    let token = encode_access_token(
+        runtime.require_auth_config().unwrap(), user.id, tenant.id, UserRole::Manager, session_id,
+    ).unwrap();
+    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await.unwrap();
+    assert!(admitted.module_policy_authority.is_some());
+    let scope = RbacRequestScope::authenticated(&admitted, admitted.access_token_expires_at);
+    let lease = super::WebSocketAuthLease::new(token.clone(), &admitted);
+    let enabled = EffectiveModulePolicyService::is_enabled(&db, &registry, tenant.id, module_slug)
+        .await.unwrap();
+    with_rbac_request_scope(Some(scope), async {
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &user.id).await.is_ok());
+        let override_row = tenant_modules::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant.id),
+            module_slug: Set(module_slug.to_string()),
+            enabled: Set(Some(!enabled)),
+            settings: Set(serde_json::json!({})),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        }.insert(&db).await.unwrap();
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &user.id).await.is_err());
+        assert!(lease.revalidate(&runtime).await.is_err());
+        tenant_modules::Entity::delete_by_id(override_row.id).exec(&db).await.unwrap();
+        // Restoration cannot resurrect the already invalidated scope.
+        assert!(RbacService::get_user_permissions(&db, &tenant.id, &user.id).await.is_err());
+    }).await;
+    let fresh = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await.unwrap();
+    let fresh_scope = RbacRequestScope::authenticated(&fresh, fresh.access_token_expires_at);
+    with_rbac_request_scope(Some(fresh_scope), async {
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &user.id).await.is_ok());
     }).await;
 }
 

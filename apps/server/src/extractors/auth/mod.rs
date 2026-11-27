@@ -7,6 +7,7 @@ use crate::models::{
     sessions::Entity as Sessions,
     users::{self, Entity as Users},
 };
+use crate::services::rbac_module_availability::RequestModulePolicyAuthority;
 use crate::services::rbac_service::RbacService;
 use axum::{
     extract::{FromRef, FromRequestParts},
@@ -48,6 +49,7 @@ pub struct CurrentUser {
     pub(crate) static_authority_revision: Option<std::sync::Arc<rustok_rbac::StaticActorAuthorityRevision>>,
     pub(crate) oauth_credential:
         Option<crate::services::rbac_request_scope::OAuthCredentialEvidence>,
+    pub(crate) module_policy_authority: Option<std::sync::Arc<RequestModulePolicyAuthority>>,
 }
 
 impl CurrentUser {
@@ -410,10 +412,14 @@ async fn active_permissions_for_tenant(
     tenant_id: uuid::Uuid,
     principal_id: uuid::Uuid,
     permissions: Vec<Permission>,
-) -> Result<Vec<Permission>, (StatusCode, &'static str)> {
-    let availability =
+    initialize: bool,
+) -> Result<
+    (Vec<Permission>, Option<std::sync::Arc<RequestModulePolicyAuthority>>),
+    (StatusCode, &'static str),
+> {
+    let authority =
         crate::services::rbac_module_availability::authoritative_permission_availability_for(
-            ctx, tenant_id,
+            ctx, tenant_id, initialize,
         )
         .await
         .map_err(|error| {
@@ -428,7 +434,11 @@ async fn active_permissions_for_tenant(
                 "Module policy unavailable",
             )
         })?;
-    Ok(filter_available_permissions(permissions, availability))
+    let active = filter_available_permissions(
+        permissions,
+        authority.as_ref().map(|policy| policy.availability().clone()),
+    );
+    Ok((active, authority))
 }
 
 async fn resolve_service_token_permissions(
@@ -440,12 +450,14 @@ async fn resolve_service_token_permissions(
     token_scopes: &[String],
     access_token: &str,
     jti: Option<uuid::Uuid>,
+    initialize_policy: bool,
 ) -> Result<
     (
         Vec<Permission>,
         UserRole,
         chrono::DateTime<chrono::Utc>,
         crate::services::rbac_request_scope::OAuthCredentialEvidence,
+        Option<std::sync::Arc<RequestModulePolicyAuthority>>,
     ),
     (StatusCode, &'static str),
 > {
@@ -485,8 +497,10 @@ async fn resolve_service_token_permissions(
         )
     })?;
     let effective_permissions = restrict_permissions_to_scopes(&granted_permissions, token_scopes);
-    let effective_permissions =
-        active_permissions_for_tenant(ctx, tenant_id, client_id, effective_permissions).await?;
+    let (effective_permissions, module_policy_authority) =
+        active_permissions_for_tenant(
+            ctx, tenant_id, client_id, effective_permissions, initialize_policy,
+        ).await?;
     let inferred_role = infer_user_role_from_permissions(&effective_permissions);
     if claimed_role != &inferred_role {
         RbacService::record_claim_role_mismatch();
@@ -508,6 +522,7 @@ async fn resolve_service_token_permissions(
             client_id,
             token_scopes,
         ),
+        module_policy_authority,
     ))
 }
 
@@ -686,7 +701,8 @@ pub async fn resolve_current_user_from_access_token(
         .await?;
     }
 
-    let (user, permissions, inferred_role, session_id, actor_kind) = match principal_kind {
+    let (user, permissions, inferred_role, session_id, actor_kind, module_policy_authority) =
+        match principal_kind {
         AuthPrincipalKind::DirectUser | AuthPrincipalKind::DelegatedUser => {
             let user = Users::find_by_id(claims.sub)
                 .filter(users::Column::TenantId.eq(tenant_id))
@@ -734,11 +750,12 @@ pub async fn resolve_current_user_from_access_token(
             // everywhere, while the persisted role grants remain intact and
             // reactivate when the module is enabled again. Availability
             // resolution failures fail closed, like role resolution above.
-            let granted_permissions = active_permissions_for_tenant(
+            let (granted_permissions, module_policy_authority) = active_permissions_for_tenant(
                 ctx.runtime_ctx(),
                 tenant_id,
                 user.id,
                 granted_permissions,
+                true,
             )
             .await?;
 
@@ -772,6 +789,7 @@ pub async fn resolve_current_user_from_access_token(
                 effective_role,
                 claims.session_id,
                 SecurityActorKind::User,
+                module_policy_authority,
             )
         }
         AuthPrincipalKind::Service => {
@@ -779,7 +797,7 @@ pub async fn resolve_current_user_from_access_token(
                 StatusCode::UNAUTHORIZED,
                 "OAuth service token is missing client_id",
             ))?;
-            let (permissions, inferred_role, registration_expires_at, registration) =
+            let (permissions, inferred_role, registration_expires_at, registration, module_policy_authority) =
                 resolve_service_token_permissions(
                     ctx.runtime_ctx(),
                     tenant_id,
@@ -789,6 +807,7 @@ pub async fn resolve_current_user_from_access_token(
                     &claims.scopes,
                     access_token,
                     claims.jti,
+                    true,
                 )
                 .await?;
             durable_credential_expires_at = registration_expires_at;
@@ -800,6 +819,7 @@ pub async fn resolve_current_user_from_access_token(
                 inferred_role,
                 uuid::Uuid::nil(),
                 SecurityActorKind::Service,
+                module_policy_authority,
             )
         }
     };
@@ -862,7 +882,7 @@ pub async fn resolve_current_user_from_access_token(
     // asynchronous authority resolution and the independent clock commit.
     // Check the live owner state again; a shortened deadline never extends
     // or silently changes the admitted snapshot.
-    revalidate_admitted_authority(
+    let live_module_policy_authority = revalidate_admitted_authority(
         ctx,
         tenant_id,
         &claims,
@@ -877,6 +897,14 @@ pub async fn resolve_current_user_from_access_token(
         static_authority_revision.as_ref(),
     )
     .await?;
+
+    // Do not bind a different policy observation to an earlier grant read,
+    // even when the permissions happen to be equal.
+    if live_module_policy_authority != module_policy_authority
+        || module_policy_authority.as_ref().is_some_and(|policy| !policy.covers(&permissions))
+    {
+        return Err(authority_changed);
+    }
 
     // A healthy replacement keyring need not retain the original key.
     decode_access_token(auth_config, access_token)
@@ -933,6 +961,7 @@ pub async fn resolve_current_user_from_access_token(
         rbac_epoch,
         static_authority_revision: static_authority_revision.map(std::sync::Arc::new),
         oauth_credential,
+        module_policy_authority,
     })
 }
 
@@ -960,16 +989,16 @@ async fn revalidate_admitted_authority(
     durable_deadline: chrono::DateTime<chrono::Utc>,
     admitted_at: chrono::DateTime<chrono::Utc>,
     static_revision: Option<&rustok_rbac::StaticActorAuthorityRevision>,
-) -> Result<(), (StatusCode, &'static str)> {
+) -> Result<Option<std::sync::Arc<RequestModulePolicyAuthority>>, (StatusCode, &'static str)> {
     let db = ctx.runtime_ctx().db();
     let changed = (
         StatusCode::UNAUTHORIZED,
         "Credential authority changed during admission",
     );
     let database_error = (StatusCode::INTERNAL_SERVER_ERROR, "Database error");
-    if principal_kind == AuthPrincipalKind::Service {
+    let current_policy = if principal_kind == AuthPrincipalKind::Service {
         let client_id = claims.client_id.ok_or(changed)?;
-        let (current_permissions, current_role, current_deadline, _) =
+        let (current_permissions, current_role, current_deadline, _, current_policy) =
             resolve_service_token_permissions(
                 ctx.runtime_ctx(),
                 tenant_id,
@@ -979,6 +1008,7 @@ async fn revalidate_admitted_authority(
                 &claims.scopes,
                 access_token,
                 claims.jti,
+                false,
             )
             .await?;
         if &current_role != role
@@ -989,6 +1019,7 @@ async fn revalidate_admitted_authority(
         {
             return Err(changed);
         }
+        current_policy
     } else {
         let current_user = Users::find_by_id(original_user.id)
             .filter(users::Column::TenantId.eq(tenant_id))
@@ -1065,11 +1096,12 @@ async fn revalidate_admitted_authority(
             }
             AuthPrincipalKind::Service => return Err(changed),
         }
-        let active = active_permissions_for_tenant(
+        let (active, current_policy) = active_permissions_for_tenant(
             ctx.runtime_ctx(),
             tenant_id,
             original_user.id,
             permissions.to_vec(),
+            false,
         )
         .await?;
         if permissions
@@ -1083,7 +1115,8 @@ async fn revalidate_admitted_authority(
         if static_revision != Some(&current_revision) {
             return Err(changed);
         }
-    }
+        current_policy
+    };
     let tenant = crate::models::tenants::Entity::find_by_id(tenant_id)
         .one(db)
         .await
@@ -1092,7 +1125,7 @@ async fn revalidate_admitted_authority(
     if !tenant.is_active {
         return Err((StatusCode::FORBIDDEN, "Tenant is unavailable"));
     }
-    Ok(())
+    Ok(current_policy)
 }
 
 /// Revalidate admitted credential evidence at an asynchronous request

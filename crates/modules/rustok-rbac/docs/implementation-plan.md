@@ -673,3 +673,24 @@ closed. Callers must retain the transaction through the effect. Raw user
 status DML bypassing the owner, privileged database maintenance, and complete
 cross-owner lock ordering are not covered by this change. PostgreSQL
 regression source authored; compilation and execution remain pending.
+
+## Continuous static module-policy observation (2026-11-27)
+
+JWT admission retains the tenant-bound effective-policy content identity,
+composition revision and availability used to filter the original grants.
+The final admission compares that evidence with the independently resolved
+current owner policy. Authenticated scope-aware async checks re-observe the
+same evidence through the uncached Modules owner, after live credential and
+static RBAC observations. A difference (even if the grant set is unchanged),
+missing composition or read failure terminally invalidates the scope and its
+captured clones; it never refreshes the original ceiling. WebSocket admission
+compares the same evidence through the existing scope equality. Uncomposed
+hosts and trusted grant-only scopes retain their existing contracts.
+
+The recheck does not initialize missing composition, take writer fences or
+introduce new migrations. This is an optimistic observation, not an atomic
+revocation/effect fence. The effective-policy digest may repeat after a
+lifecycle ABA; the durable tenant lifecycle sequence and raw-DML continuity
+are separate work. Sync-only and unscoped consumers are not covered. Source
+regression covers policy drift without a notification and terminal invalidation
+after restoration; compilation and execution remain pending.

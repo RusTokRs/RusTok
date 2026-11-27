@@ -558,6 +558,7 @@ mod tests {
             rbac_epoch,
             static_authority_revision: None,
             oauth_credential: None,
+            module_policy_authority: None,
         }
     }
 

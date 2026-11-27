@@ -20,6 +20,7 @@ pub struct RbacRequestScope {
     credential: Option<RequestCredentialAuthority>,
     admitted_epoch: Option<u64>,
     static_revision: Option<Arc<rustok_rbac::StaticActorAuthorityRevision>>,
+    module_policy_authority: Option<Arc<super::rbac_module_availability::RequestModulePolicyAuthority>>,
     // Losing verification already observed at admission must not keep an
     // authenticated snapshot alive, even when the runtime policy is absent here.
     email_verified_at_admission: bool,
@@ -96,6 +97,7 @@ impl RbacRequestScope {
             credential: None,
             admitted_epoch: None,
             static_revision: None,
+            module_policy_authority: None,
             email_verified_at_admission: false,
         }
     }
@@ -114,6 +116,7 @@ impl RbacRequestScope {
         );
         scope.admitted_epoch = Some(current.rbac_epoch);
         scope.static_revision = current.static_authority_revision.clone();
+        scope.module_policy_authority = current.module_policy_authority.clone();
         scope.email_verified_at_admission = current.user.is_email_verified();
         scope.credential = Some(RequestCredentialAuthority {
             principal_kind: current.principal_kind,
@@ -488,6 +491,21 @@ pub(crate) async fn ensure_scope_authority(
         credential.principal_kind.is_human_user()
     }) {
         state.valid.store(false, Ordering::Release);
+    }
+    // Recheck the original module-policy evidence with the owner, not the
+    // TTL cache. Failure or drift is terminal for all captured clones.
+    ensure_scope_not_invalidated(tenant_id, actor_id)?;
+    if let Some(policy) = &state.scope.module_policy_authority {
+        let current = match db {
+            Some(db) => policy
+                .is_current(db, *tenant_id, &state.scope.permissions)
+                .await
+                .is_ok_and(|current| current),
+            None => false,
+        };
+        if !current {
+            state.valid.store(false, Ordering::Release);
+        }
     }
     // Recheck the local epoch and credential deadline after the DB await.
     ensure_scope_not_invalidated(tenant_id, actor_id)
