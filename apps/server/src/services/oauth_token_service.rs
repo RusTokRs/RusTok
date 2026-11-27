@@ -1743,7 +1743,9 @@ async fn commit_refresh_rotation(
         require_email_verification,
     )
     .await?;
-    validate_locked_oauth_consent(
+    // Token registration UUID binding is a separate cutover. This path
+    // still enforces the persisted timestamp epoch until that migration.
+    let _current_consent_id = validate_locked_oauth_consent(
         &tx,
         &current_app,
         current.tenant_id,

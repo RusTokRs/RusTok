@@ -84,4 +84,42 @@ mod tests {
         db.execute_unprepared("UPDATE oauth_authorization_codes SET consent_id = consent_id, used_at = '2026-11-27'")
             .await.unwrap();
     }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_AUTH_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_code_generation_is_write_once_including_legacy_null() {
+        let db = Database::connect(std::env::var("RUSTOK_AUTH_TEST_DATABASE_URL").unwrap())
+            .await.unwrap();
+        assert_eq!(db.get_database_backend(), DatabaseBackend::Postgres);
+        let schema = format!("oauth_code_generation_{}", uuid::Uuid::new_v4().simple());
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared(&format!(
+            "CREATE SCHEMA {schema}; SET LOCAL search_path TO {schema};
+             CREATE TABLE oauth_authorization_codes (id UUID PRIMARY KEY, used_at TIMESTAMPTZ);
+             INSERT INTO oauth_authorization_codes (id) VALUES ('{ID}')"
+        )).await.unwrap();
+        Migration.up(&SchemaManager::new(&tx)).await.unwrap();
+        tx.execute_unprepared(&format!(
+            "INSERT INTO oauth_authorization_codes (id, consent_id) VALUES ('{CONSENT}', '{CONSENT}')"
+        )).await.unwrap();
+        tx.commit().await.unwrap();
+        for sql in [
+            format!("UPDATE oauth_authorization_codes SET consent_id = '{CONSENT}' WHERE id = '{ID}'"),
+            format!("UPDATE oauth_authorization_codes SET consent_id = NULL WHERE id = '{CONSENT}'"),
+            format!("UPDATE oauth_authorization_codes SET consent_id = '{ID}' WHERE id = '{CONSENT}'"),
+        ] {
+            let tx = db.begin().await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+            assert!(tx.execute_unprepared(&sql).await.is_err(), "{sql}");
+            tx.rollback().await.unwrap();
+        }
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared(&format!(
+            "SET LOCAL search_path TO {schema};
+             UPDATE oauth_authorization_codes SET consent_id = consent_id, used_at = '2026-11-27T00:00:00Z'"
+        )).await.unwrap();
+        tx.commit().await.unwrap();
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+    }
+
 }
