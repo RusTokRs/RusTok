@@ -1,9 +1,6 @@
 //! Upload session management, reaping, validation, and completion.
 
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
-    Value as SqlValue,
-};
+use sea_orm::{ConnectionTrait, Statement};
 use uuid::Uuid;
 
 use super::constants::*;
