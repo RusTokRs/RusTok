@@ -61,8 +61,9 @@ impl HttpCapabilityConstraints {
 
     pub(crate) fn validate(&self, call: &CapabilityCall) -> SandboxResult<()> {
         let (method, url) = parse_http_call_inputs(call)?;
+        validate_http_request_shape(call, method)?;
         self.validate_url_scheme_and_auth(call, &url)?;
-        self.validate_http_rules(call, method, &url)
+        self.validate_http_rules(call, &method.to_ascii_uppercase(), &url)
     }
 
     fn validate_url_scheme_and_auth(&self, call: &CapabilityCall, url: &Url) -> SandboxResult<()> {
@@ -115,7 +116,7 @@ impl HttpCapabilityConstraints {
         if !self
             .path_prefixes
             .iter()
-            .any(|prefix| url.path().starts_with(prefix))
+            .any(|prefix| path_matches_prefix(url.path(), prefix))
         {
             return Err(SandboxError::CapabilityConstraintDenied {
                 capability: call.capability.clone(),
@@ -124,6 +125,78 @@ impl HttpCapabilityConstraints {
         }
         Ok(())
     }
+}
+
+fn path_matches_prefix(path: &str, prefix: &str) -> bool {
+    if prefix == "/" || path == prefix {
+        return true;
+    }
+    if prefix.ends_with('/') {
+        return path.starts_with(prefix);
+    }
+    path.strip_prefix(prefix)
+        .is_some_and(|remainder| remainder.starts_with('/'))
+}
+
+fn validate_http_request_shape(call: &CapabilityCall, method: &str) -> SandboxResult<()> {
+    let input = call
+        .input
+        .as_object()
+        .ok_or_else(|| SandboxError::CapabilityConstraintDenied {
+            capability: call.capability.clone(),
+            reason: "HTTP input must be an object".to_string(),
+        })?;
+    if input
+        .keys()
+        .any(|field| !matches!(field.as_str(), "method" | "url" | "headers" | "body" | "idempotency_key"))
+    {
+        return Err(SandboxError::CapabilityConstraintDenied {
+            capability: call.capability.clone(),
+            reason: "HTTP input contains an unsupported field".to_string(),
+        });
+    }
+    if input
+        .get("headers")
+        .is_some_and(|headers| {
+            headers.as_object().is_none_or(|headers| {
+                headers.iter().any(|(name, value)| {
+                    name.eq_ignore_ascii_case("idempotency-key") || !value.is_string()
+                })
+            })
+        })
+    {
+        return Err(SandboxError::CapabilityConstraintDenied {
+            capability: call.capability.clone(),
+            reason: "HTTP headers must be string values and must not set Idempotency-Key".to_string(),
+        });
+    }
+
+    if matches!(method.to_ascii_uppercase().as_str(), "POST" | "PUT" | "PATCH" | "DELETE") {
+        let key = input
+            .get("idempotency_key")
+            .and_then(Value::as_str)
+            .and_then(|value| uuid::Uuid::parse_str(value).ok())
+            .filter(|key| !key.is_nil());
+        if key.is_none() || call.context.idempotency_key.is_none_or(uuid::Uuid::is_nil) {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: call.capability.clone(),
+                reason: "mutating HTTP requests require an execution idempotency key and a per-request idempotency_key UUID".to_string(),
+            });
+        }
+    } else if input
+        .get("idempotency_key")
+        .is_some_and(|value| {
+            value.as_str()
+                .and_then(|key| uuid::Uuid::parse_str(key).ok())
+                .is_none_or(uuid::Uuid::is_nil)
+        })
+    {
+        return Err(SandboxError::CapabilityConstraintDenied {
+            capability: call.capability.clone(),
+            reason: "HTTP idempotency_key must be a non-nil UUID".to_string(),
+        });
+    }
+    Ok(())
 }
 
 fn parse_http_call_inputs(call: &CapabilityCall) -> SandboxResult<(&str, Url)> {
