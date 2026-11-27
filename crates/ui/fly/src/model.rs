@@ -424,6 +424,41 @@ fn check_opaque_node_ids_stable<'a>(
         })
 }
 
+fn check_opaque_children_ids_stable<'a>(
+    value: &'a Value,
+    seen: &mut std::collections::HashSet<&'a str>,
+) -> bool {
+    match value {
+        Value::Array(children) => children
+            .iter()
+            .all(|child| check_opaque_node_ids_stable(child, seen)),
+        Value::Object(_) => check_opaque_node_ids_stable(value, seen),
+        _ => true,
+    }
+}
+
+fn check_opaque_node_ids_stable<'a>(
+    value: &'a Value,
+    seen: &mut std::collections::HashSet<&'a str>,
+) -> bool {
+    let Some(object) = value.as_object() else {
+        return true;
+    };
+    if let Some(id) = object.get("id").and_then(Value::as_str)
+        && (validate_identifier(id).is_err() || !seen.insert(id))
+    {
+        return false;
+    }
+    object
+        .get("components")
+        .and_then(Value::as_array)
+        .is_none_or(|children| {
+            children
+                .iter()
+                .all(|child| check_opaque_node_ids_stable(child, seen))
+        })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct GrapesProject {
     #[serde(default)]
