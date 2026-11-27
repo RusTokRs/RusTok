@@ -924,15 +924,20 @@ fn an_empty_batch_is_still_accepted_when_editing_is_allowed() {
 }
 
 #[test]
-fn selection_remains_possible_without_edit_capability() {
+fn selection_remains_possible_without_edit_capability_or_dirtying_the_document() {
     // `Select` requires no capability by design: inspecting a read-only preview is legitimate.
-    // The empty-batch fix must not have swept that up.
+    // It must also stay outside the document-mutation path used for preview invalidation and
+    // peer-write fencing.
     let mut machine = FlyUiStateMachine::new(Presentation::ReadOnly);
+    let intent = UiIntent::execute(EditorCommand::Select {
+        component_id: Some("hero".to_string()),
+    });
+    assert!(!intent.mutates_document());
     machine
-        .dispatch(UiIntent::execute(EditorCommand::Select {
-            component_id: Some("hero".to_string()),
-        }))
+        .dispatch(intent)
         .expect("selection must stay available in a read-only session");
+    assert!(!machine.state.dirty.dirty);
+    assert_eq!(machine.state.dirty.command_sequence, 0);
 }
 
 #[test]
