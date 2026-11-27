@@ -7,6 +7,10 @@
  */
 
 import { graphqlRequest } from '@/lib/graphql';
+import {
+  requireOwnerResult,
+  requireOwnerWriteConfirmation
+} from './write-confirmation';
 import type {
   GqlOpts,
   ProductBundle,
@@ -256,7 +260,7 @@ export async function createBundle(
     opts.tenantSlug
   );
 
-  return data.createBundle;
+  return requireOwnerResult(data.createBundle, 'Bundle creation');
 }
 
 /**
@@ -326,7 +330,7 @@ export async function updateBundle(
     opts.tenantSlug
   );
 
-  return data.updateBundle;
+  return requireOwnerResult(data.updateBundle, 'Bundle update');
 }
 
 /**
@@ -352,7 +356,7 @@ export async function deleteBundle(
     opts.tenantSlug
   );
 
-  return data?.deleteBundle ?? true;
+  return requireOwnerWriteConfirmation(data?.deleteBundle, 'Bundle deletion');
 }
 
 /**
@@ -401,7 +405,7 @@ export async function addBundleItem(
     opts.tenantSlug
   );
 
-  return data.addBundleItem;
+  return requireOwnerResult(data.addBundleItem, 'Bundle item creation');
 }
 
 /**
@@ -428,5 +432,5 @@ export async function removeBundleItem(
     opts.tenantSlug
   );
 
-  return data?.removeBundleItem ?? true;
+  return requireOwnerWriteConfirmation(data?.removeBundleItem, 'Bundle item removal');
 }

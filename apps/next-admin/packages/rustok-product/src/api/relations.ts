@@ -9,6 +9,10 @@
  */
 
 import { graphqlRequest, type GqlOpts } from '@/lib/graphql';
+import {
+  requireOwnerResult,
+  requireOwnerWriteConfirmation
+} from './write-confirmation';
 import type {
   ProductRelation,
   ProductRelationType,
@@ -115,7 +119,7 @@ export async function addProductRelation(
     opts.tenantSlug
   );
 
-  return data.addProductRelation;
+  return requireOwnerResult(data.addProductRelation, 'Product relation creation');
 }
 
 /**
@@ -141,7 +145,7 @@ export async function removeProductRelation(
     opts.tenantSlug
   );
 
-  return data.removeProductRelation;
+  return requireOwnerWriteConfirmation(data.removeProductRelation, 'Product relation removal');
 }
 
 /**
@@ -179,5 +183,18 @@ export async function reorderProductRelations(
     opts.tenantSlug
   );
 
-  return data.reorderProductRelations || [];
+  const result = requireOwnerResult(
+    data.reorderProductRelations,
+    'Product relation reorder'
+  );
+  const expectedIds = new Set(orderedRelationIds);
+  const actualIds = new Set(result.map((relation) => relation.id));
+  if (
+    expectedIds.size !== orderedRelationIds.length ||
+    actualIds.size !== expectedIds.size ||
+    [...expectedIds].some((id) => !actualIds.has(id))
+  ) {
+    throw new Error('Product relation reorder returned an incomplete result');
+  }
+  return result;
 }

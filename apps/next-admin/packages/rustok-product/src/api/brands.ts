@@ -7,6 +7,10 @@
  */
 
 import { graphqlRequest, type GqlOpts } from '@/lib/graphql';
+import {
+  requireOwnerResult,
+  requireOwnerWriteConfirmation
+} from './write-confirmation';
 import type {
   BrandSummary,
   BrandFilterInput,
@@ -185,7 +189,7 @@ export async function createBrand(
     { tenantId: opts.tenantId, locale: opts.locale }
   );
 
-  return data.createBrand;
+  return requireOwnerResult(data.createBrand, 'Brand creation');
 }
 
 export async function updateBrand(
@@ -214,7 +218,7 @@ export async function updateBrand(
     { tenantId: opts.tenantId, locale: opts.locale }
   );
 
-  return data.updateBrand;
+  return requireOwnerResult(data.updateBrand, 'Brand update');
 }
 
 export async function deleteBrand(opts: GqlOpts, id: string): Promise<boolean> {
@@ -227,5 +231,5 @@ export async function deleteBrand(opts: GqlOpts, id: string): Promise<boolean> {
     locale: opts.locale
   });
 
-  return data.deleteBrand;
+  return requireOwnerWriteConfirmation(data.deleteBrand, 'Brand deletion');
 }
