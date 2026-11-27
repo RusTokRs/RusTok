@@ -284,10 +284,13 @@ matching BFFs and revoke pre-cutover sessions; bare cookies are rejected.
   operational maintenance authority, deferred/background channel context and
   continuous worker/node liveness. Non-SQL effects (HTTP, MCP, secrets and
   object storage) still rely on per-call host admission and owner-specific
-  checks rather than the same commit fence. PostgreSQL cross-owner lock
-  ordering/contention and deployed worker/runtime/cancellation evidence remain
-  unverified. Do not treat the in-memory lease as durable replay authority or
-  automatically retry ambiguous effects. **Owners:** server host,
+  checks, plus a post-invocation authority recheck before output release,
+  rather than the same commit fence. Physical object-store I/O, HTTP, MCP and
+  secret use are not cancelled or made transactional by that recheck.
+  PostgreSQL cross-owner lock ordering/contention and deployed
+  worker/runtime/cancellation evidence remain unverified. Do not treat the
+  in-memory lease as durable replay authority or automatically retry ambiguous
+  effects. **Owners:** server host,
   `rustok-modules`, Auth/RBAC and individual capability owners. **Removal
   condition:** add owner-side fences for the remaining effective-policy/
   maintenance and non-SQL effect boundaries, then pass PostgreSQL contention
