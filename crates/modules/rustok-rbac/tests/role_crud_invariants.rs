@@ -1487,3 +1487,135 @@ async fn stale_role_slug_cannot_mutate_or_delete_renamed_break_glass_role() {
         assert_eq!(editor_state(&db).await, before);
     }
 }
+
+
+/// Test adapter deliberately denies the second admission. The real host
+/// checks credentials; this owner fixture verifies that it is called again.
+struct DenyRetryAuthority {
+    attempts: std::sync::atomic::AtomicUsize,
+    locks: std::sync::atomic::AtomicUsize,
+}
+
+#[async_trait::async_trait]
+impl RbacMutationAuthority for DenyRetryAuthority {
+    async fn prepare(&self) -> Result<(), RbacGraphqlRoleWriteError> {
+        self.attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(())
+    }
+
+    async fn lock(
+        &self,
+        _tx: &sea_orm::DatabaseTransaction,
+        _tenant_id: Uuid,
+        _actor_id: Uuid,
+        _target_role_id: Option<Uuid>,
+        _required: &[Permission],
+    ) -> Result<RbacLockedMutationAuthority, RbacGraphqlRoleWriteError> {
+        if self.locks.fetch_add(1, std::sync::atomic::Ordering::SeqCst) > 0 {
+            return Err(RbacGraphqlRoleWriteError::Forbidden("credential revoked".into()));
+        }
+        Ok(RbacLockedMutationAuthority {
+            permissions: vec![Permission::SETTINGS_MANAGE, Permission::POSTS_MANAGE],
+            availability: None,
+            deadline: chrono::Utc::now() + chrono::Duration::minutes(1),
+        })
+    }
+
+    async fn ensure_deadline(
+        &self,
+        _tx: &sea_orm::DatabaseTransaction,
+        _authority: &RbacLockedMutationAuthority,
+    ) -> Result<(), RbacGraphqlRoleWriteError> {
+        panic!("a denied retry must not reach commit")
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires RUSTOK_RBAC_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+async fn postgres_role_update_retries_authority_after_generation_conflict() {
+    use sea_orm::{ConnectOptions, DbBackend, TransactionTrait};
+    use std::sync::{Arc, Mutex, atomic::Ordering};
+
+    let url = std::env::var("RUSTOK_RBAC_TEST_DATABASE_URL").unwrap();
+    let admin = Database::connect(&url).await.unwrap();
+    assert_eq!(admin.get_database_backend(), DbBackend::Postgres);
+    let namespace = format!("rbac_graphql_retry_{}", Uuid::new_v4().simple());
+    admin.execute_unprepared(&format!("CREATE SCHEMA {namespace}")).await.unwrap();
+    // One pooled connection keeps this isolated test schema's session search
+    // path for both the preflight lookup and each new owner transaction.
+    let mut options = ConnectOptions::new(url);
+    options.max_connections(1).min_connections(1);
+    let db = Database::connect(options).await.unwrap();
+    db.execute_unprepared(&format!("SET search_path TO {namespace}")).await.unwrap();
+    db.execute_unprepared(
+        "CREATE TABLE roles (
+            id UUID PRIMARY KEY, tenant_id UUID NOT NULL, name TEXT NOT NULL,
+            slug TEXT NOT NULL, description TEXT, is_system BOOLEAN NOT NULL DEFAULT FALSE,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (tenant_id, slug)
+        );
+        CREATE TABLE permissions (
+            id UUID PRIMARY KEY, tenant_id UUID NOT NULL, resource TEXT NOT NULL,
+            action TEXT NOT NULL, description TEXT, UNIQUE (tenant_id, resource, action)
+        );
+        CREATE TABLE role_permissions (
+            id UUID PRIMARY KEY, role_id UUID NOT NULL, permission_id UUID NOT NULL,
+            UNIQUE (role_id, permission_id)
+        );
+        CREATE TABLE rbac_invalidation_state (
+            scope TEXT PRIMARY KEY, generation BIGINT NOT NULL, updated_at TIMESTAMPTZ NOT NULL
+        );
+        INSERT INTO rbac_invalidation_state VALUES ('permissions', 0, CURRENT_TIMESTAMP)"
+    ).await.unwrap();
+
+    let schema = test_schema(
+        db.clone(), Uuid::new_v4(), Uuid::new_v4(),
+        vec![Permission::SETTINGS_MANAGE, Permission::POSTS_MANAGE],
+    );
+    create_editor(&schema).await;
+
+    let holder = admin.begin().await.unwrap();
+    holder.execute_unprepared(&format!(
+        "SELECT generation FROM {namespace}.rbac_invalidation_state FOR UPDATE"
+    )).await.unwrap();
+
+    let authority = Arc::new(DenyRetryAuthority {
+        attempts: std::sync::atomic::AtomicUsize::new(0),
+        locks: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let observations = Arc::new(Mutex::new(Vec::new()));
+    let writer = rustok_rbac::graphql::RbacGraphqlRoleWriterHandle(Arc::new(
+        RecordingGrantNotifier {
+            db: db.clone(),
+            observations: observations.clone(),
+            fail: false,
+        },
+    ));
+    let response = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        schema.execute(async_graphql::Request::new(
+            "mutation { updateRole(input: {slug: \"editor\", name: \"Must Roll Back\", permissions: [\"posts:update\"]}) { success } }"
+        ).data(RbacMutationAuthorityHandle(authority.clone())).data(writer)),
+    ).await.expect("generation contention must not block GraphQL retry");
+    assert_eq!(response.errors.len(), 1);
+    assert!(response.errors[0].message.contains("credential revoked"));
+    assert_eq!(authority.attempts.load(Ordering::SeqCst), 2);
+    assert_eq!(authority.locks.load(Ordering::SeqCst), 2);
+    assert!(observations.lock().unwrap().is_empty());
+    holder.rollback().await.unwrap();
+
+    let row = db.query_one_raw(sea_orm::Statement::from_string(
+        DbBackend::Postgres, "SELECT name FROM roles WHERE slug = 'editor'",
+    )).await.unwrap().unwrap();
+    assert_eq!(row.try_get::<String>("", "name").unwrap(), "Editor");
+    let grants = db.query_all_raw(sea_orm::Statement::from_string(
+        DbBackend::Postgres,
+        "SELECT p.action FROM roles r JOIN role_permissions rp ON rp.role_id = r.id JOIN permissions p ON p.id = rp.permission_id WHERE r.slug = 'editor'",
+    )).await.unwrap();
+    assert_eq!(grants.len(), 1);
+    assert_eq!(grants[0].try_get::<String>("", "action").unwrap(), "read");
+    assert_eq!(rustok_rbac::read_permission_invalidation_generation(&db).await.unwrap(), 0);
+    drop(schema);
+    db.close().await.unwrap();
+    admin.execute_unprepared(&format!("DROP SCHEMA {namespace} CASCADE")).await.unwrap();
+}

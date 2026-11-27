@@ -19,8 +19,12 @@ retries typed account insertion/role assignment failures; admin update
 retries generation reservation conflicts before event publication. GraphQL role
 create/update/delete now retry typed owner SQL failures after explicit rollback
 and fresh host authority; update/delete retain the original target UUID.
-Host admission/deadline and commit failures are not replayed. Other request-bound
-Auth retry and end-to-end PostgreSQL re-admission evidence remain open. An optional legacy host callback still needs its own generation
+Host admission/deadline and commit failures are not replayed. An opt-in
+PostgreSQL GraphQL fixture holds the real generation row, denies the second
+host lock call and verifies rollback of name/grants, unchanged generation and
+no notifier call. The adapter is a test double, not real session revocation.
+Compilation, execution, actual host credential re-admission and other Auth
+retry evidence remain open. An optional legacy host callback still needs its own generation
 reconciliation. Added owner/host regressions have not been compiled or executed.
 
 This is a durable watermark plus eventual watchdog reconciliation, not an outbox,

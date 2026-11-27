@@ -314,13 +314,11 @@ async fn grant_role_permissions_in_tx(
                 find_perm_sql,
                 vec![tenant_id.into(), resource.into(), action.into()],
             ))
-            .await
-            ?;
+            .await?;
 
         let perm_id = match perm_row {
             Some(row) => row
-                .try_get::<Uuid>("", "id")
-                ?,
+                .try_get::<Uuid>("", "id")?,
             None => {
                 let new_perm_id = rustok_core::generate_id();
                 let ins_perm_sql = "INSERT INTO permissions (id, tenant_id, resource, action, description) VALUES (?, ?, ?, ?, NULL) ON CONFLICT (tenant_id, resource, action) DO NOTHING";
@@ -334,8 +332,7 @@ async fn grant_role_permissions_in_tx(
                         action.into(),
                     ],
                 ))
-                .await
-                ?;
+                .await?;
 
                 let persisted_row = tx
                     .query_one_raw(prepare_statement(
@@ -343,16 +340,14 @@ async fn grant_role_permissions_in_tx(
                         find_perm_sql,
                         vec![tenant_id.into(), resource.into(), action.into()],
                     ))
-                    .await
-                    ?
+                    .await?
                     .ok_or_else(|| {
                         <FieldError as GraphQLError>::internal_error(
                             "Permission could not be retrieved after insert",
                         )
                     })?;
                 persisted_row
-                    .try_get::<Uuid>("", "id")
-                    ?
+                    .try_get::<Uuid>("", "id")?
             }
         };
 
@@ -363,8 +358,7 @@ async fn grant_role_permissions_in_tx(
             link_sql,
             vec![link_id.into(), role_id.into(), perm_id.into()],
         ))
-        .await
-        ?;
+        .await?;
 
         granted.push(format!("{resource}:{action}"));
     }
@@ -472,8 +466,7 @@ impl RbacMutation {
                         check_sql,
                         vec![tenant.id.into(), slug.clone().into()],
                     ))
-                    .await
-                    ?;
+                    .await?;
                 if existing.is_some() {
                     return Err(<FieldError as GraphQLError>::bad_user_input(&format!(
                         "A role with slug '{slug}' already exists in this tenant"
@@ -701,21 +694,17 @@ impl RbacMutation {
                         lock_role_sql,
                         vec![tenant.id.into(), role_id.into(), slug.clone().into()],
                     ))
-                    .await
-                    ?
+                    .await?
                     .ok_or_else(|| {
                         <FieldError as GraphQLError>::not_found(&format!("Role '{slug}' not found"))
                     })?;
 
                 let current_name: String = tx_role
-                    .try_get("", "name")
-                    ?;
+                    .try_get("", "name")?;
                 let current_desc: Option<String> = tx_role
-                    .try_get("", "description")
-                    ?;
+                    .try_get("", "description")?;
                 let is_system: bool = tx_role
-                    .try_get("", "is_system")
-                    ?;
+                    .try_get("", "is_system")?;
 
                 if let Some(new_permissions) = parsed_update_permissions.as_ref() {
                     let current_rows = tx
@@ -724,16 +713,13 @@ impl RbacMutation {
                             "SELECT p.resource, p.action FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = ? AND p.tenant_id = ?",
                             vec![role_id.into(), tenant.id.into()],
                         ))
-                        .await
-                        ?;
+                        .await?;
                     let mut current_grants = Vec::with_capacity(current_rows.len());
                     for row in current_rows {
                         let resource: String = row
-                            .try_get("", "resource")
-                            ?;
+                            .try_get("", "resource")?;
                         let action: String = row
-                            .try_get("", "action")
-                            ?;
+                            .try_get("", "action")?;
                         current_grants.push(format!("{resource}:{action}"));
                     }
                     authorize_role_permissions(
@@ -771,8 +757,7 @@ impl RbacMutation {
                             role_id.into(),
                         ],
                     ))
-                    .await
-                    ?;
+                    .await?;
                 if update_result.rows_affected() != 1 {
                     return Err(<FieldError as GraphQLError>::not_found(&format!(
                         "Role '{slug}' not found"
@@ -793,13 +778,11 @@ impl RbacMutation {
                                     requested_locale.as_str().into(),
                                 ],
                             ))
-                            .await
-                            ?;
+                            .await?;
                         let (existing_loc_name, existing_loc_desc) = match existing_loc {
                             Some(row) => (
                                 Some(
-                                    row.try_get::<String>("", "name")
-                                        ?,
+                                    row.try_get::<String>("", "name")?,
                                 ),
                                 row.try_get::<Option<String>>("", "description")
                                     ?,
@@ -834,8 +817,7 @@ impl RbacMutation {
                                 loc_desc.into(),
                             ],
                         ))
-                        .await
-                        ?;
+                        .await?;
                         loc_name
                     } else {
                         new_name
@@ -849,8 +831,7 @@ impl RbacMutation {
                         del_links_sql,
                         vec![role_id.into()],
                     ))
-                    .await
-                    ?;
+                    .await?;
 
                     grant_role_permissions_in_tx(&tx, backend, tenant.id, role_id, new_permissions)
                         .await?
@@ -862,16 +843,13 @@ impl RbacMutation {
                             cur_perms_sql,
                             vec![role_id.into(), tenant.id.into()],
                         ))
-                        .await
-                        ?;
+                        .await?;
                     let mut existing_permissions = Vec::with_capacity(rows.len());
                     for row in rows {
                         let resource: String = row
-                            .try_get("", "resource")
-                            ?;
+                            .try_get("", "resource")?;
                         let action: String = row
-                            .try_get("", "action")
-                            ?;
+                            .try_get("", "action")?;
                         existing_permissions.push(format!("{resource}:{action}"));
                     }
                     existing_permissions
@@ -882,8 +860,7 @@ impl RbacMutation {
                 let committed_generation = if permissions_updated {
                     Some(
                         crate::reserve_permission_invalidation_generation(&tx)
-                            .await
-                            ?,
+                            .await?,
                     )
                 } else {
                     None
@@ -1054,8 +1031,7 @@ impl RbacMutation {
                         lock_role_sql,
                         vec![tenant.id.into(), role_id.into(), slug.clone().into()],
                     ))
-                    .await
-                    ?;
+                    .await?;
                 if tx_role.is_none() {
                     return Err(<FieldError as GraphQLError>::not_found(&format!(
                         "Role '{slug}' not found"
@@ -1068,16 +1044,14 @@ impl RbacMutation {
                 let count_sql = "SELECT COUNT(*) as cnt FROM user_roles WHERE role_id = ?";
                 let count_row = tx
                     .query_one_raw(prepare_statement(backend, count_sql, vec![role_id.into()]))
-                    .await
-                    ?
+                    .await?
                     .ok_or_else(|| {
                         <FieldError as GraphQLError>::internal_error(
                             "Role assignment count query returned no row",
                         )
                     })?;
                 let count: i64 = count_row
-                    .try_get("", "cnt")
-                    ?;
+                    .try_get("", "cnt")?;
                 if count > 0 {
                     return Err(<FieldError as GraphQLError>::bad_user_input(&format!(
                         "Cannot delete role '{slug}' because it is currently assigned to {count} user(s). Reassign them first."
@@ -1090,8 +1064,7 @@ impl RbacMutation {
                     del_links_sql,
                     vec![role_id.into()],
                 ))
-                .await
-                ?;
+                .await?;
 
                 // Artifact grant cleanup is part of the same transaction: if it
                 // fails, the whole delete rolls back instead of leaving orphaned
@@ -1103,8 +1076,7 @@ impl RbacMutation {
                     del_artifact_links_sql,
                     vec![role_id.into()],
                 ))
-                .await
-                ?;
+                .await?;
 
                 let del_artifact_ops_sql =
                     "DELETE FROM rbac_artifact_role_permission_operations WHERE role_id = ?";
@@ -1113,8 +1085,7 @@ impl RbacMutation {
                     del_artifact_ops_sql,
                     vec![role_id.into()],
                 ))
-                .await
-                ?;
+                .await?;
 
                 let del_role_sql = "DELETE FROM roles WHERE id = ?";
                 let delete_result = tx
@@ -1123,8 +1094,7 @@ impl RbacMutation {
                         del_role_sql,
                         vec![role_id.into()],
                     ))
-                    .await
-                    ?;
+                    .await?;
                 if delete_result.rows_affected() != 1 {
                     return Err(<FieldError as GraphQLError>::not_found(&format!(
                         "Role '{slug}' not found"
