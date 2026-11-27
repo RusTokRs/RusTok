@@ -1153,7 +1153,6 @@ where
     Ok(())
 }
 
-
 /// A broad revocation may intersect another owner (app-wide versus
 /// user-wide). Its caller already holds the corresponding owner mutation
 /// fence. Never acquire a new app after a user: prelock exact credential
@@ -1633,7 +1632,8 @@ async fn commit_authorization_code_exchange(
     let tx = db.begin().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to begin authorization-code exchange")
     })?;
-    let current_app = match lock_issuance_oauth_app(&tx, authenticated_app.id, code.tenant_id).await {
+    let current_app = match lock_issuance_oauth_app(&tx, authenticated_app.id, code.tenant_id).await
+    {
         Ok(app) => app,
         Err(error) => {
             tx.rollback().await.map_err(|_| {
@@ -1854,7 +1854,8 @@ async fn commit_refresh_rotation(
     let tx = db.begin().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to begin refresh-token rotation")
     })?;
-    let current_app = match lock_issuance_oauth_app(&tx, authenticated_app.id, current.tenant_id).await {
+    let current_app = match lock_issuance_oauth_app(&tx, authenticated_app.id, current.tenant_id).await
+    {
         Ok(app) => app,
         Err(error) => {
             tx.rollback().await.map_err(|_| {
@@ -2096,11 +2097,14 @@ mod tests {
 
     #[tokio::test]
     async fn issuance_rejects_inactive_tenant_before_reading_client() {
-        let db = Database::connect("sqlite::memory:").await.expect("SQLite database");
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("SQLite database");
         let backend = db.get_database_backend();
         let schema = Schema::new(backend);
         db.execute_raw(backend.build(&schema.create_table_from_entity(tenants::Entity)))
-            .await.expect("tenants table");
+            .await
+            .expect("tenants table");
         let mut tenant = tenants::ActiveModel::new("Inactive OAuth tenant", "inactive-oauth");
         tenant.is_active = Set(false);
         let tenant = tenant.insert(&db).await.expect("tenant");
@@ -2718,13 +2722,17 @@ mod tests {
 
     #[tokio::test]
     async fn inactive_tenant_after_code_preflight_still_revokes_replayed_lineage() {
-        let db = Database::connect("sqlite::memory:").await.expect("SQLite database");
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("SQLite database");
         let backend = db.get_database_backend();
         let schema = Schema::new(backend);
         db.execute_raw(backend.build(&schema.create_table_from_entity(tenants::Entity)))
-            .await.expect("tenants table");
+            .await
+            .expect("tenants table");
         db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_apps::Entity)))
-            .await.expect("oauth_apps table");
+            .await
+            .expect("oauth_apps table");
         db.execute_unprepared(
             r#"CREATE TABLE oauth_tokens (
                 id TEXT PRIMARY KEY NOT NULL,
@@ -2744,7 +2752,9 @@ mod tests {
                 token_kind TEXT NOT NULL DEFAULT 'refresh',
                 consent_granted_at TEXT NULL
             )"#,
-        ).await.expect("oauth_tokens table");
+        )
+        .await
+        .expect("oauth_tokens table");
         db.execute_unprepared(
             r#"CREATE TABLE oauth_authorization_codes (
                 id TEXT PRIMARY KEY NOT NULL,
@@ -2761,12 +2771,15 @@ mod tests {
                 used_at TEXT NULL,
                 created_at TEXT NOT NULL
             )"#,
-        ).await.expect("oauth_authorization_codes table");
+        )
+        .await
+        .expect("oauth_authorization_codes table");
 
         let tenant_id = Uuid::new_v4();
         let app_id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
-        let mut tenant = tenants::ActiveModel::new("Inactive replay tenant", "inactive-replay-tenant");
+        let mut tenant =
+            tenants::ActiveModel::new("Inactive replay tenant", "inactive-replay-tenant");
         tenant.id = Set(tenant_id);
         tenant.is_active = Set(false);
         tenant.insert(&db).await.expect("inactive tenant");
@@ -2799,7 +2812,10 @@ mod tests {
         let replayed_snapshot = make_code(Uuid::new_v4(), None);
         let mut replayed_row: oauth_codes::ActiveModel = replayed_snapshot.clone().into();
         replayed_row.used_at = Set(Some(now.into()));
-        replayed_row.insert(&db).await.expect("insert concurrently consumed code");
+        replayed_row
+            .insert(&db)
+            .await
+            .expect("insert concurrently consumed code");
 
         let unused_snapshot = make_code(Uuid::new_v4(), None);
         let unused_row: oauth_codes::ActiveModel = unused_snapshot.clone().into();
@@ -2826,15 +2842,31 @@ mod tests {
         let replayed_family = Uuid::new_v4();
         let replayed_access_id = Uuid::new_v4();
         let replayed_refresh_id = Uuid::new_v4();
-        make_token(replayed_access_id, replayed_snapshot.id, replayed_family, "access")
-            .insert(&db).await.expect("replayed access row");
-        make_token(replayed_refresh_id, replayed_snapshot.id, replayed_family, "refresh")
-            .insert(&db).await.expect("replayed refresh row");
+        make_token(
+            replayed_access_id,
+            replayed_snapshot.id,
+            replayed_family,
+            "access",
+        )
+        .insert(&db)
+        .await
+        .expect("replayed access row");
+        make_token(
+            replayed_refresh_id,
+            replayed_snapshot.id,
+            replayed_family,
+            "refresh",
+        )
+        .insert(&db)
+        .await
+        .expect("replayed refresh row");
 
         let unused_family = Uuid::new_v4();
         let unused_token_id = Uuid::new_v4();
         make_token(unused_token_id, unused_snapshot.id, unused_family, "access")
-            .insert(&db).await.expect("unused code access row");
+            .insert(&db)
+            .await
+            .expect("unused code access row");
 
         let prepared = PreparedOAuthTokens {
             access_token: "not-published".to_string(),
@@ -2858,12 +2890,19 @@ mod tests {
             &test_clock,
         )
         .await
-        .expect_err("a concurrent code replay must revoke its lineage even after tenant deactivation");
+        .expect_err(
+            "a concurrent code replay must revoke its lineage even after tenant deactivation",
+        );
         assert_eq!(replay_error.error, "invalid_grant");
         for id in [replayed_access_id, replayed_refresh_id] {
             assert!(
-                oauth_tokens::Entity::find_by_id(id).one(&db).await.expect("lookup")
-                    .expect("token").revoked_at.is_some(),
+                oauth_tokens::Entity::find_by_id(id)
+                    .one(&db)
+                    .await
+                    .expect("lookup")
+                    .expect("token")
+                    .revoked_at
+                    .is_some(),
                 "every token issued from the replayed code must be revoked"
             );
         }
@@ -2880,8 +2919,13 @@ mod tests {
         .expect_err("an unused code must remain an inactive-client rejection");
         assert_eq!(unused_error.error, "invalid_client");
         assert!(
-            oauth_tokens::Entity::find_by_id(unused_token_id).one(&db).await.expect("lookup")
-                .expect("token").revoked_at.is_none(),
+            oauth_tokens::Entity::find_by_id(unused_token_id)
+                .one(&db)
+                .await
+                .expect("lookup")
+                .expect("token")
+                .revoked_at
+                .is_none(),
             "an unused code must not revoke its token lineage"
         );
     }
@@ -2894,7 +2938,8 @@ mod tests {
         db.execute_raw(backend.build(&schema.create_table_from_entity(tenants::Entity)))
             .await.expect("tenants table");
         db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_apps::Entity)))
-            .await.expect("oauth_apps table");
+            .await
+            .expect("oauth_apps table");
         db.execute_unprepared(
             r#"CREATE TABLE oauth_tokens (
                 id TEXT PRIMARY KEY NOT NULL,
@@ -2914,12 +2959,15 @@ mod tests {
                 token_kind TEXT NOT NULL DEFAULT 'refresh',
                 consent_granted_at TEXT NULL
             )"#,
-        ).await.expect("oauth_tokens table");
+        )
+        .await
+        .expect("oauth_tokens table");
 
         let tenant_id = Uuid::new_v4();
         let app_id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
-        let mut tenant = tenants::ActiveModel::new("Inactive refresh tenant", "inactive-refresh-tenant");
+        let mut tenant =
+            tenants::ActiveModel::new("Inactive refresh tenant", "inactive-refresh-tenant");
         tenant.id = Set(tenant_id);
         tenant.is_active = Set(false);
         tenant.insert(&db).await.expect("inactive tenant");
@@ -2955,17 +3003,24 @@ mod tests {
             updated_at: Set(now.into()),
         };
         let current = make_token(family_id, stale_hash, None, None)
-            .insert(&db).await.expect("preflight refresh snapshot");
+            .insert(&db)
+            .await
+            .expect("preflight refresh snapshot");
         let rotated_at = now - chrono::Duration::minutes(2);
         let mut stored_stale: oauth_tokens::ActiveModel = current.clone().into();
         stored_stale.revoked_at = Set(Some(rotated_at.into()));
         stored_stale.last_used_at = Set(Some(rotated_at.into()));
         stored_stale.updated_at = Set(rotated_at.into());
-        stored_stale.update(&db).await.expect("simulate concurrent rotation");
+        stored_stale
+            .update(&db)
+            .await
+            .expect("simulate concurrent rotation");
 
         let live_id = Uuid::new_v4();
         make_token(live_id, "live-successor", None, None)
-            .insert(&db).await.expect("live family descendant");
+            .insert(&db)
+            .await
+            .expect("live family descendant");
 
         let prepared = PreparedOAuthTokens {
             access_token: "not-published".to_string(),
@@ -2985,11 +3040,18 @@ mod tests {
             &test_clock,
         )
         .await
-        .expect_err("a concurrent refresh replay must revoke its family even after tenant deactivation");
+        .expect_err(
+            "a concurrent refresh replay must revoke its family even after tenant deactivation",
+        );
         assert_eq!(error.error, "invalid_grant");
         assert!(
-            oauth_tokens::Entity::find_by_id(live_id).one(&db).await.expect("lookup")
-                .expect("live descendant").revoked_at.is_some(),
+            oauth_tokens::Entity::find_by_id(live_id)
+                .one(&db)
+                .await
+                .expect("lookup")
+                .expect("live descendant")
+                .revoked_at
+                .is_some(),
             "a replayed refresh must revoke every live family descendant"
         );
     }
