@@ -16,12 +16,19 @@
 //!     cargo test -p rustok-product --test postgres_facet_counts -- --ignored
 //! ```
 
+use async_trait::async_trait;
+use rustok_api::{PortContext, PortError};
 use rustok_product::{
-    AdminProductListQuery, AdminProductListQueryExt, CatalogService, StorefrontCatalogFacet,
-    StorefrontProductListQuery, StorefrontProductListQueryExt,
+    AdminProductListQuery, AdminProductListQueryExt, CatalogService, CommerceError,
+    ProductTaxonomyCategorySnapshot, ProductTaxonomyCategoryTranslationInput, ProductTaxonomyPort,
+    StorefrontCatalogFacet, StorefrontProductListQuery, StorefrontProductListQueryExt,
+    TaxonomyConnection,
 };
+use rustok_taxonomy_ports::{ReadTaxonomyTermNamesRequest, TaxonomyTermNamesReadPort};
 use rustok_test_utils::mock_transactional_event_bus;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement};
+use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[path = "support/postgres.rs"]
@@ -121,7 +128,7 @@ async fn seed_catalog(db: &DatabaseConnection) -> Result<(), Box<dyn std::error:
 INSERT INTO tenants (id) VALUES ('{TENANT_A}'), ('{TENANT_B}');
 
 INSERT INTO taxonomy_terms (id, tenant_id, kind, scope_type, scope_value, canonical_key)
-VALUES ('{CATEGORY_A}', '{TENANT_A}', 'category', 'module', 'product', 'lamps');
+VALUES ('{CATEGORY_A}', '{TENANT_A}', 'category', 'module', 'product', 'product-category-{CATEGORY_A}');
 INSERT INTO catalog_categories (id, tenant_id, code, path) VALUES
     ('{CATEGORY_A}', '{TENANT_A}', 'lamps', 'lamps');
 
@@ -434,8 +441,108 @@ fn labelled_buckets(facet: &StorefrontCatalogFacet) -> Vec<(String, String, u64)
         .collect()
 }
 
+#[derive(Clone, Copy)]
+struct FacetTaxonomyPort;
+
+fn facet_taxonomy_unavailable() -> CommerceError {
+    CommerceError::Validation(
+        "the catalog facet fixture does not provide unrelated Taxonomy operations".to_owned(),
+    )
+}
+
+#[async_trait]
+impl TaxonomyTermNamesReadPort for FacetTaxonomyPort {
+    async fn read_term_names(
+        &self,
+        _context: PortContext,
+        request: ReadTaxonomyTermNamesRequest,
+    ) -> Result<BTreeMap<Uuid, String>, PortError> {
+        if request.term_ids.is_empty() {
+            return Ok(BTreeMap::new());
+        }
+        Err(PortError::unavailable(
+            "taxonomy.term_names_unavailable",
+            "Taxonomy term names are not part of the catalog facet fixture",
+        ))
+    }
+}
+
+#[async_trait]
+impl ProductTaxonomyPort for FacetTaxonomyPort {
+    async fn resolve_term_names_in_tx(
+        &self,
+        _txn: &DatabaseTransaction,
+        _tenant_id: Uuid,
+        term_ids: &[Uuid],
+        _locale: &str,
+        _fallback_locale: Option<&str>,
+    ) -> Result<HashMap<Uuid, String>, CommerceError> {
+        if term_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        Err(facet_taxonomy_unavailable())
+    }
+
+    async fn ensure_product_tags_in_tx(
+        &self,
+        _txn: &DatabaseTransaction,
+        _tenant_id: Uuid,
+        _locale: &str,
+        tag_names: &[String],
+    ) -> Result<Vec<Uuid>, CommerceError> {
+        if tag_names.is_empty() {
+            return Ok(Vec::new());
+        }
+        Err(facet_taxonomy_unavailable())
+    }
+
+    async fn sync_category_translation_in_tx(
+        &self,
+        _txn: &DatabaseTransaction,
+        _tenant_id: Uuid,
+        _input: ProductTaxonomyCategoryTranslationInput,
+    ) -> Result<(), CommerceError> {
+        Err(facet_taxonomy_unavailable())
+    }
+
+    async fn load_scoped_categories(
+        &self,
+        _conn: TaxonomyConnection<'_>,
+        tenant_id: Uuid,
+        category_ids: Option<&[Uuid]>,
+        _locale: &str,
+        _fallback_locale: Option<&str>,
+    ) -> Result<Vec<ProductTaxonomyCategorySnapshot>, CommerceError> {
+        if tenant_id != TENANT_A {
+            return Err(facet_taxonomy_unavailable());
+        }
+        let ids = category_ids
+            .map(<[Uuid]>::to_vec)
+            .unwrap_or_else(|| vec![CATEGORY_A]);
+        if ids.iter().any(|category_id| *category_id != CATEGORY_A) {
+            return Err(facet_taxonomy_unavailable());
+        }
+        Ok(ids
+            .into_iter()
+            .map(|id| ProductTaxonomyCategorySnapshot {
+                id,
+                parent_id: None,
+                canonical_key: format!("product-category-{id}"),
+                scope_type: "module".to_owned(),
+                scope_value: Some("product".to_owned()),
+                slug: "lamps".to_owned(),
+                name: "Lamps".to_owned(),
+                description: None,
+                position: 0,
+                available_locales: vec!["en-US".to_owned()],
+            })
+            .collect())
+    }
+}
+
 fn service(db: &DatabaseConnection) -> CatalogService {
     CatalogService::new(db.clone(), mock_transactional_event_bus())
+        .with_taxonomy_port(Arc::new(FacetTaxonomyPort))
 }
 
 async fn storefront_facets(
