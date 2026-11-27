@@ -417,6 +417,10 @@ enum RunnerRoute {
     Fail { claim_id: String },
 }
 
+pub(super) fn is_remote_runner_path(path: &str) -> bool {
+    runner_route(path).is_some()
+}
+
 fn runner_route(path: &str) -> Option<RunnerRoute> {
     if path == CLAIM_PATH {
         return Some(RunnerRoute::Claim);
