@@ -2371,13 +2371,6 @@ mod tests {
         .await
         .expect("login");
         let first_hash = hash_refresh_token(&first.refresh_token);
-        let first_preflight = sessions::Entity::find()
-            .filter(sessions::Column::TenantId.eq(tenant.id))
-            .filter(sessions::Column::TokenHash.eq(&first_hash))
-            .one(&db)
-            .await
-            .expect("load preflight session")
-            .expect("preflight session");
         let (_, rotated) = AuthLifecycleService::refresh_with_config_db(
             &db,
             &config,
@@ -2420,7 +2413,7 @@ mod tests {
             .await
             .expect("load second preflight session")
             .expect("second preflight session");
-        let (_, second_rotated) = AuthLifecycleService::refresh_with_config_db(
+        let (_second_rotated, _) = AuthLifecycleService::refresh_with_config_db(
             &db,
             &config,
             tenant.id,
