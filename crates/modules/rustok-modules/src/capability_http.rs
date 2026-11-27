@@ -26,6 +26,7 @@ use crate::backend::SupportedBackend;
 use uuid::Uuid;
 
 pub const DEFAULT_MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024; // 10 MB
+pub const DEFAULT_MAX_REQUEST_BYTES: usize = 1024 * 1024; // 1 MB
 
 #[derive(Clone)]
 struct HttpEffectReceiptKey {
@@ -133,6 +134,7 @@ pub struct ArtifactHttpCapabilityBroker {
     client: Client,
     timeout: Duration,
     max_response_bytes: usize,
+    max_request_bytes: usize,
     db: Option<DatabaseConnection>,
     effect_authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>,
 }
@@ -166,6 +168,7 @@ impl ArtifactHttpCapabilityBroker {
             client,
             timeout,
             max_response_bytes,
+            max_request_bytes: DEFAULT_MAX_REQUEST_BYTES,
             db: None,
             effect_authorizer: None,
         })
@@ -638,6 +641,18 @@ impl CapabilityBroker for ArtifactHttpCapabilityBroker {
                 .map_err(|_| http_host_error(call, "pinned HTTP client could not be constructed"))?,
             None => self.client.clone(),
         };
+        let body = input.get("body").filter(|body| !body.is_null());
+        if let Some(body) = body {
+            let body_size = match body.as_str() {
+                Some(body) => body.len(),
+                None => serde_json::to_vec(body)
+                    .map_err(|_| SandboxError::InvalidRequest("HTTP request body could not be encoded".into()))?
+                    .len(),
+            };
+            if body_size > self.max_request_bytes {
+                return Err(http_host_error(call, "HTTP request body exceeds the configured limit"));
+            }
+        }
         let mut request_builder = client.request(method.clone(), url_str).timeout(remaining_timeout);
         if let Some(headers_obj) = input.get("headers") {
             let headers = headers_obj.as_object().ok_or_else(|| {
@@ -674,10 +689,10 @@ impl CapabilityBroker for ArtifactHttpCapabilityBroker {
             );
             request_builder = request_builder.header("Idempotency-Key", remote_key);
         }
-        if let Some(body_val) = input.get("body") {
+        if let Some(body_val) = body {
             if let Some(body_str) = body_val.as_str() {
                 request_builder = request_builder.body(body_str.to_string());
-            } else if !body_val.is_null() {
+            } else {
                 request_builder = request_builder.json(body_val);
             }
         }
