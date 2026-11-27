@@ -73,6 +73,102 @@ struct ServerArtifactEffectivePolicyResolver {
 struct ArtifactServingAuthority {
     closure: rustok_modules::ArtifactServingClosure,
     composition: rustok_modules::ModuleCompositionIdentity,
+    channel: Option<ArtifactChannelAuthority>,
+}
+
+/// Exact request resolution input, retained only by the host. The owner
+/// generation covers binding, active state, target and resolution-rule ABA.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ArtifactChannelAuthority {
+    tenant_id: uuid::Uuid,
+    generation: u64,
+    input: Option<rustok_modules::ModuleEffectivePolicyChannelInput>,
+}
+
+impl ArtifactChannelAuthority {
+    async fn capture(
+        db: &DatabaseConnection,
+        tenant_id: uuid::Uuid,
+    ) -> std::result::Result<Option<Self>, ArtifactEffectivePolicyResolveError> {
+        use rustok_channel::{ChannelResolver, read_resolution_invalidation_generation};
+        use sha2::{Digest, Sha256};
+        let Some(request) = crate::middleware::channel::artifact_channel_request() else {
+            // Non-HTTP callers have their own owner admission, without an
+            // implicit channel or an actor-derived channel selector.
+            return Ok(None);
+        };
+        let denied = || {
+            ArtifactEffectivePolicyResolveError::Store(
+                "artifact channel authority changed or is unavailable".into(),
+            )
+        };
+        if request.facts.tenant_id != tenant_id {
+            return Err(denied());
+        }
+        let generation = read_resolution_invalidation_generation(db)
+            .await
+            .map_err(|_| denied())?;
+        let decision = ChannelResolver::new(db.clone())
+            .resolve(&request.facts)
+            .await
+            .map_err(|_| denied())?;
+        let selected = decision.detail.as_ref().map(|detail| detail.channel.id);
+        if selected != request.selected_channel_id
+            || read_resolution_invalidation_generation(db)
+                .await
+                .map_err(|_| denied())?
+                != generation
+        {
+            return Err(denied());
+        }
+        let input = if let Some(detail) = decision.detail {
+            if detail.channel.tenant_id != tenant_id || !detail.channel.is_active {
+                return Err(denied());
+            }
+            let mut hash = Sha256::new();
+            hash.update(b"rustok:artifact-channel-authority:v1");
+            hash.update(tenant_id.as_bytes());
+            hash.update(detail.channel.id.as_bytes());
+            hash.update(generation.to_be_bytes());
+            Some(rustok_modules::ModuleEffectivePolicyChannelInput {
+                tenant_id,
+                channel_id: detail.channel.id,
+                surface: "http".into(),
+                channel_revision: format!("sha256:{}", hex::encode(hash.finalize())),
+                active: detail.channel.is_active,
+                bindings: detail
+                    .module_bindings
+                    .into_iter()
+                    .map(
+                        |binding| rustok_modules::ModuleEffectivePolicyChannelBinding {
+                            module_slug: binding.module_slug,
+                            enabled: binding.is_enabled,
+                        },
+                    )
+                    .collect(),
+            })
+        } else {
+            None
+        };
+        Ok(Some(Self {
+            tenant_id,
+            generation,
+            input,
+        }))
+    }
+
+    async fn is_current(&self, db: &DatabaseConnection) -> bool {
+        rustok_channel::read_resolution_invalidation_generation(db)
+            .await
+            .is_ok_and(|current| current == self.generation)
+    }
+
+    async fn require_current_on(
+        &self,
+        tx: &sea_orm::DatabaseTransaction,
+    ) -> rustok_channel::ChannelResult<()> {
+        rustok_channel::require_resolution_invalidation_generation_on(tx, self.generation).await
+    }
 }
 
 impl ServerArtifactEffectivePolicyResolver {
@@ -84,12 +180,35 @@ impl ServerArtifactEffectivePolicyResolver {
         (ModuleEffectivePolicy, Option<ArtifactServingAuthority>),
         ArtifactEffectivePolicyResolveError,
     > {
+        let channel = ArtifactChannelAuthority::capture(&self.db, tenant_id).await?;
+        self.resolve_with_channel(tenant_id, artifact, channel)
+            .await
+    }
+
+    async fn resolve_with_channel(
+        &self,
+        tenant_id: uuid::Uuid,
+        artifact: &InstalledModuleArtifact,
+        channel: Option<ArtifactChannelAuthority>,
+    ) -> std::result::Result<
+        (ModuleEffectivePolicy, Option<ArtifactServingAuthority>),
+        ArtifactEffectivePolicyResolveError,
+    > {
+        if channel
+            .as_ref()
+            .is_some_and(|authority| authority.tenant_id != tenant_id)
+        {
+            return Err(ArtifactEffectivePolicyResolveError::Store(
+                "artifact channel tenant mismatch".into(),
+            ));
+        }
         let (policy, composition) =
             crate::services::effective_module_policy::EffectiveModulePolicyService::resolve_artifact_serving(
                 &self.db,
                 &self.registry,
                 tenant_id,
                 &self.supported_payload_kinds,
+                channel.as_ref().and_then(|authority| authority.input.clone()),
             )
             .await
             .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?;
@@ -129,11 +248,19 @@ impl ServerArtifactEffectivePolicyResolver {
                 "active composition changed during artifact serving admission".into(),
             ));
         }
+        if let Some(authority) = &channel {
+            if !authority.is_current(&self.db).await {
+                return Err(ArtifactEffectivePolicyResolveError::Store(
+                    "artifact channel authority changed during serving admission".into(),
+                ));
+            }
+        }
         Ok((
             policy,
             Some(ArtifactServingAuthority {
                 closure,
                 composition,
+                channel,
             }),
         ))
     }

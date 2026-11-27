@@ -12,7 +12,9 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 #[path = "channel.rs"]
 mod base;
 
-pub(crate) use base::{build_request_facts_for_context, resolve_channel_context_for_facts};
+pub(crate) use base::{
+    artifact_channel_request, build_request_facts_for_context, resolve_channel_context_for_facts,
+};
 
 // Server functions share the wildcard `/api/fn/{*fn_name}` route, so the host has to classify
 // the channel mutation endpoints here. Keep this list transport-only; exact parity with the

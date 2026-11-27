@@ -102,17 +102,50 @@ assignment and observation revision. The ledger owner serializes requests,
 claims, heartbeats and reports using the exclusive state row lock. A restored
 head cannot revive an older revision. Fresh preflight compares the same
 evidence, not a tenant policy digest. This does not fence independent compiled
-registry changes, contextual channel/maintenance, registry mutation,
+registry changes, contextual maintenance,
 full effective-policy revision or continuous worker/node liveness. PostgreSQL
 cross-owner lock-order and runtime evidence remain required. Mixed-closure
 tenant intent and composition identity fencing require no additional
 migration; coordinate writers and readers.
 
+Registry release authority is independent of emergency security revision.
+Migration 000096 introduces a permanent monotonic witness for each registry
+(slug, version), including release absence. Row insert, delete, status change
+and checksum change advance it atomically; unchanged metadata, rejected writes,
+transaction rollback and idempotent replay do not. Publication, yank and unyank
+take the platform activation fence before release/request row locks. The database
+mutation trigger also takes that fence. Direct SQL maintenance must use the
+same order; unrestricted administrative DDL, TRUNCATE and tampering with the
+witness are outside this runtime contract. Existing active/yanked/unlisted
+eligibility is retained; unavailable status denies admission. A fresh lease
+may admit a yanked release but an earlier lease is invalidated by the mutation.
+The witness is checked for the exact root and every artifact in the serving
+dependency/co-requisite closure, including non-SQL preflight. SQL admission
+checks it after sorted platform/tenant slug fences and before readiness and
+composition locks; lifecycle remains root-only. No lock is held across guest
+execution. Stop old writers and drain leases before migration and rollout;
+downgrade would discard continuity evidence and is rejected. PostgreSQL
+cross-owner ordering and execution tests remain required.
+
+HTTP artifact serving now captures the exact Channel owner resolution and global
+durable generation, re-resolving canonical request facts without the TTL cache
+and rejecting a different selected channel. A generation read before and after
+owner resolution prevents mixed binding snapshots. The existing neutral channel
+input enters the mixed artifact policy, including every dependency/co-requisite.
+For unresolved HTTP context, retain the generation even without a channel input.
+Fresh checks reuse the captured channel input and compare the generation;
+structured SQL effects take the owner shared generation lock after composition
+and readiness locks. No new migration is required. Channel writes advance the
+existing trigger-backed generation; unrelated changes conservatively invalidate
+contextual leases. Lifecycle remains owner-only. Deferred transport and
+background channel context, operational maintenance authority, and full
+cross-owner ordering are not implemented by this change.
+
 ## Context, events and migration
 
 Tenant, actor, phase, binding, release/installation, capability, execution ID,
-trace and idempotency identity remain bound. Channel and maintenance policy
-inputs still require owner wiring. Locale, currency and timezone do not
+trace and idempotency identity remain bound. Operational maintenance and
+non-HTTP channel policy inputs still require owner wiring. Locale, currency and timezone do not
 participate. The lease is not an event or durable record; existing audit and
 idempotency/reconciliation semantics remain unchanged. Migration 000095 adds
 a nonnegative selection generation to the permanent activation lock row.

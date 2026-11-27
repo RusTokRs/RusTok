@@ -13,10 +13,15 @@ impl SeaOrmModuleGovernanceService {
         command: ModuleReleaseYankCommand,
     ) -> Result<ModuleReleaseYankResult, ModuleGovernanceError> {
         command.validate()?;
-        let tx = self.db.begin().await.map_err(store_error)?;
+        let tx = crate::backend::begin_fenced_transaction(&self.db).await.map_err(store_error)?;
         crate::backend::set_platform_scope(&tx)
             .await
             .map_err(store_error)?;
+        // Match execution admission: platform slug before registry rows.
+        // Do not consult the lifecycle journal claim for a registry mutation.
+        crate::installation::acquire_artifact_activation_lock(
+            &tx, &crate::ModuleInstallationScope::Platform, &command.slug,
+        ).await.map_err(store_error)?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| backend.placeholder(n);
         let now = backend.now_sql();
@@ -143,10 +148,15 @@ impl SeaOrmModuleGovernanceService {
         command: ModuleReleaseUnyankCommand,
     ) -> Result<ModuleReleaseUnyankResult, ModuleGovernanceError> {
         command.validate()?;
-        let tx = self.db.begin().await.map_err(store_error)?;
+        let tx = crate::backend::begin_fenced_transaction(&self.db).await.map_err(store_error)?;
         crate::backend::set_platform_scope(&tx)
             .await
             .map_err(store_error)?;
+        // Match execution admission: platform slug before registry rows.
+        // Do not consult the lifecycle journal claim for a registry mutation.
+        crate::installation::acquire_artifact_activation_lock(
+            &tx, &crate::ModuleInstallationScope::Platform, &command.slug,
+        ).await.map_err(store_error)?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| backend.placeholder(n);
         let now = backend.now_sql();

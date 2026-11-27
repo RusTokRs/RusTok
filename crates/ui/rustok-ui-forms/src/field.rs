@@ -344,6 +344,16 @@ pub struct FieldDescriptor {
 }
 
 impl FieldDescriptor {
+    /// Whether this descriptor represents a multiple-choice select field.
+    pub fn is_multiple_select(&self) -> bool {
+        matches!(self.kind, FieldKind::Select) && self.constraints.multiple
+    }
+
+    /// Whether the dynamic-form payload can represent this field without data loss.
+    pub fn supports_dynamic_form(&self) -> bool {
+        !matches!(self.kind, FieldKind::File)
+    }
+
     /// Create a minimal field descriptor with name and kind.
     pub fn new(name: impl Into<String>, kind: FieldKind) -> Self {
         Self {
@@ -578,7 +588,16 @@ impl FieldDescriptor {
 
     /// Validate a value using this descriptor's constraints.
     pub fn validate(&self, value: &str) -> Result<(), Vec<FieldError>> {
-        self.constraints.validate(&self.name, value)
+        // Delegate kind, option and constraint validation to the form schema, so the same
+        // descriptor does not accept different values depending on its entry point.
+        let schema = crate::schema::FormSchema::new("").with_field(self.clone());
+        let data = std::collections::HashMap::from([(self.name.clone(), value.to_string())]);
+        let errors = schema.validate_map(&data);
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
     }
 }
 
@@ -623,6 +642,29 @@ mod tests {
 
         let descriptor = FieldDescriptor::new("score", FieldKind::Number).constraints(constraints);
         assert!(descriptor.validate("50.0").is_ok());
+    }
+
+    #[test]
+    fn dynamic_form_capabilities_match_payload_shape() {
+        assert!(FieldDescriptor::new("name", FieldKind::Text).supports_dynamic_form());
+        assert!(FieldDescriptor::new("choice", FieldKind::Select).supports_dynamic_form());
+        assert!(!FieldDescriptor::new("file", FieldKind::File).supports_dynamic_form());
+        let multiple = FieldDescriptor::new("choices", FieldKind::Select).multiple(true);
+        assert!(multiple.is_multiple_select());
+        assert!(multiple.supports_dynamic_form());
+    }
+
+    #[test]
+    fn descriptor_uses_the_same_validation_as_a_schema() {
+        let email = FieldDescriptor::new("email", FieldKind::Email).required();
+        assert!(email.validate("invalid").is_err());
+        assert!(email.validate("user@example.com").is_ok());
+        let consent = FieldDescriptor::new("consent", FieldKind::Checkbox).required();
+        assert!(consent.validate("false").is_err());
+        assert!(consent.validate("true").is_ok());
+        let number = FieldDescriptor::new("number", FieldKind::Number);
+        assert!(number.validate("NaN").is_err());
+        assert!(number.validate(" 42 ").is_ok());
     }
 
     #[test]

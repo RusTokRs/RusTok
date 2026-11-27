@@ -438,13 +438,21 @@ test("composite state invalidates paging and applies rows in contract order", ()
     ];
     const cellOf = (row, columnId) => (columnId === "name" ? grid.cellText(row.name) : grid.cellNumber(row.price));
     let rowsState = grid.createGridState({ pagination: grid.createPagination(1, 2, rows.length) });
-    assert.deepEqual(grid.applyGridRows(rowsState, rows, cellOf).map((row) => row.name), ["hat", "shirt"]);
+    assert.deepEqual(grid.applyGridRows(rowsState, rows, cellOf).rows.map((row) => row.name), ["hat", "shirt"]);
     rowsState = { ...rowsState, sort: grid.setSortState("price", "desc") };
     rowsState = { ...rowsState, pagination: grid.goToPage(rowsState.pagination, 2) };
-    assert.deepEqual(grid.applyGridRows(rowsState, rows, cellOf).map((row) => row.price), [30, 20]);
+    assert.deepEqual(grid.applyGridRows(rowsState, rows, cellOf).rows.map((row) => row.price), [30, 20]);
     rowsState = grid.setGridFilter(rowsState, "name", "o").state;
     rowsState = { ...rowsState, pagination: grid.goToPage(rowsState.pagination, 1) };
-    assert.deepEqual(grid.applyGridRows(rowsState, rows, cellOf).map((row) => row.name), ["coat", "boots"]);
+    assert.deepEqual(grid.applyGridRows(rowsState, rows, cellOf).rows.map((row) => row.name), ["coat", "boots"]);
+    const projection = grid.applyGridRows({ ...rowsState, pagination: grid.goToPage(rowsState.pagination, 3) }, rows, cellOf);
+    assert.equal(projection.pagination.total, 2);
+    assert.equal(projection.pagination.page, 1);
+    assert.deepEqual(projection.rows.map((row) => row.name), ["coat", "boots"]);
+    const empty = grid.applyGridRows(rowsState, [], cellOf);
+    assert.equal(empty.pagination.total, 0);
+    assert.equal(empty.pagination.page, 1);
+    assert.deepEqual(empty.rows, []);
   `);
 });
 

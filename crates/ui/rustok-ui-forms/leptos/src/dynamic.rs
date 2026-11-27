@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use leptos::prelude::*;
 use rustok_ui_forms::field::{FieldDescriptor, FieldKind};
 use rustok_ui_forms::schema::FormSchema;
-use rustok_ui_forms::{DirtyTracker, FormState};
+use rustok_ui_forms::{DirtyTracker, DynamicFormPayload, FormState};
 
 use crate::button::{ResetButton, SubmitButton};
 use crate::context::FormContext;
@@ -22,11 +22,53 @@ use crate::inputs::{
     FormTextarea,
 };
 
-/// Individual dynamic field renderer mapping a [`FieldDescriptor`] to the appropriate input control.
+/// Give each control its field context before constructing it.
 #[component]
 fn DynamicFieldItem(
     field: FieldDescriptor,
     values: RwSignal<HashMap<String, String>>,
+    selections: RwSignal<HashMap<String, Vec<String>>>,
+) -> impl IntoView {
+    if matches!(field.kind, FieldKind::Hidden) {
+        return view! { <DynamicFieldControl field=field values=values selections=selections /> }
+            .into_any();
+    }
+
+    let name = field.name.clone();
+    let is_boolean = matches!(field.kind, FieldKind::Checkbox | FieldKind::Switch);
+    let is_multi = field.is_multiple_select();
+    let required = field.constraints.required;
+    let label = field.label.clone();
+    let description = if field.supports_dynamic_form() {
+        field.description.clone()
+    } else {
+        let warning = "This form does not support file fields.";
+        Some(match &field.description {
+            Some(description) => format!("{description} {warning}"),
+            None => warning.to_string(),
+        })
+    };
+    view! {
+        <FormField name=name>
+            {(!is_boolean && !is_multi).then(|| label.map(|label| view! {
+                <FormLabel required=required>{label}</FormLabel>
+            })).flatten()}
+            <DynamicFieldControl field=field values=values selections=selections />
+            {(!is_boolean).then(|| description.map(|description| view! {
+                <FormDescription>{description}</FormDescription>
+            })).flatten()}
+            <FormMessage />
+        </FormField>
+    }
+    .into_any()
+}
+
+/// Construct a control only after the enclosing FormField has provided its context.
+#[component]
+fn DynamicFieldControl(
+    field: FieldDescriptor,
+    values: RwSignal<HashMap<String, String>>,
+    selections: RwSignal<HashMap<String, Vec<String>>>,
 ) -> impl IntoView {
     let name = field.name.clone();
     let name_for_val = name.clone();
@@ -48,7 +90,7 @@ fn DynamicFieldItem(
     });
 
     let form_ctx = use_context::<FormContext>();
-    let field_disabled = field.disabled;
+    let field_disabled = field.disabled || !field.supports_dynamic_form();
     let disabled_sig = Signal::derive(move || {
         if field_disabled {
             true
@@ -93,6 +135,9 @@ fn DynamicFieldItem(
                 value=value_sig
                 on_input=on_input_cb
                 placeholder=placeholder
+                disabled=disabled_sig
+                required=required
+                on_clear=Callback::new(move |()| on_input_cb.run(String::new()))
             />
         }
         .into_any(),
@@ -108,6 +153,38 @@ fn DynamicFieldItem(
         }
         .into_any(),
 
+        FieldKind::Select if field.is_multiple_select() => {
+            let group_label = field.label.clone().unwrap_or_else(|| name.clone());
+            let group_name = name.clone();
+            let options = field.options.clone();
+            view! {
+                <fieldset aria-required=if required { "true" } else { "false" }>
+                    <legend class="text-sm font-medium">{group_label}</legend>
+                    {options.into_iter().enumerate().map(|(index, option)| {
+                        let selected_name = group_name.clone();
+                        let selected_value = option.value.clone();
+                        let checked = Signal::derive(move || selections.with(|map| {
+                            map.get(&selected_name).is_some_and(|values| values.contains(&selected_value))
+                        }));
+                        let change_name = group_name.clone();
+                        let change_value = option.value.clone();
+                        let on_change = Callback::new(move |checked: bool| selections.update(|map| {
+                            let values = map.entry(change_name.clone()).or_default();
+                            if checked && !values.contains(&change_value) { values.push(change_value.clone()); }
+                            else if !checked { values.retain(|value| value != &change_value); }
+                        }));
+                        let option_disabled = option.disabled;
+                        let disabled = Signal::derive(move || option_disabled || disabled_sig.get());
+                        let id = format!("{}-option-{}", group_name, index);
+                        view! {
+                            <FormCheckbox id=id name=group_name.clone() label=option.label
+                                checked=checked on_change=on_change disabled=disabled />
+                        }
+                    }).collect_view()}
+                </fieldset>
+            }.into_any()
+        }
+
         FieldKind::Select => view! {
             <FormSelect
                 value=value_sig
@@ -116,7 +193,6 @@ fn DynamicFieldItem(
                 placeholder=placeholder
                 disabled=disabled_sig
                 required=required
-                multiple=field.constraints.multiple
             />
         }
         .into_any(),
@@ -329,65 +405,33 @@ fn DynamicFieldItem(
         }
     };
 
-    if matches!(field.kind, FieldKind::Hidden) {
-        return control;
-    }
-
-    if matches!(field.kind, FieldKind::Checkbox | FieldKind::Switch) {
-        return view! {
-            <FormField name=name>
-                {control}
-                <FormMessage />
-            </FormField>
-        }
-        .into_any();
-    }
-
-    let field_label_view = field.label.clone().map(|label| {
-        view! {
-            <FormLabel required=required>{label}</FormLabel>
-        }
-    });
-
-    let field_desc_view = field.description.clone().map(|desc| {
-        view! {
-            <FormDescription>{desc}</FormDescription>
-        }
-    });
-
-    view! {
-        <FormField name=name>
-            {field_label_view}
-            {control}
-            {field_desc_view}
-            <FormMessage />
-        </FormField>
-    }
-    .into_any()
+    control
 }
 
 /// Dynamic form component that renders an entire interactive form from a [`FormSchema`].
 ///
 /// Features:
-/// - Generates typed inputs for all [`FieldKind`] variants.
-/// - Validates payloads against [`FormSchema::validate_map`] on submission before calling `on_submit`.
+/// - Renders scalar and multiple-selection fields and disables unsupported file fields.
+/// - Validates payloads against [`FormSchema::validate_dynamic_form`] on submission before calling `on_submit`.
 /// - Displays field errors and form errors automatically.
-/// - Supports controlled and uncontrolled values/state.
+/// - Supports controlled or internal values and requires caller-owned submission state.
 /// - Auto-disables inputs and buttons during asynchronous submission.
 /// - Supports reset button with automatic restore of default schema values.
 #[component]
 pub fn DynamicForm(
     /// Declarative schema defining the form fields, labels, constraints, and kinds.
     schema: FormSchema,
-    /// Submission handler receiving validated form data (key-value map).
+    /// Submission handler receiving validated scalar and multiple-selection data.
     #[prop(into)]
-    on_submit: Callback<HashMap<String, String>>,
+    on_submit: Callback<DynamicFormPayload>,
     /// Optional externally controlled values map. If omitted, internal reactive state is maintained.
     #[prop(optional)]
     values: Option<RwSignal<HashMap<String, String>>>,
-    /// Optional externally controlled form state. If omitted, internal state is maintained.
+    /// Optional controlled multiple-selection values. Omitted selections start empty.
     #[prop(optional)]
-    state: Option<RwSignal<FormState>>,
+    selections: Option<RwSignal<HashMap<String, Vec<String>>>>,
+    /// Externally owned state; the submit handler must complete the submission on this signal.
+    state: RwSignal<FormState>,
     /// Optional dirty field tracker.
     #[prop(optional)]
     dirty_tracker: Option<RwSignal<DirtyTracker>>,
@@ -413,6 +457,9 @@ pub fn DynamicForm(
     let default_map = {
         let mut map = HashMap::new();
         for f in &schema.fields {
+            if f.is_multiple_select() {
+                continue;
+            }
             if let Some(ref def) = f.default_value {
                 map.insert(f.name.clone(), def.clone());
             } else if matches!(f.kind, FieldKind::Checkbox | FieldKind::Switch) {
@@ -434,13 +481,17 @@ pub fn DynamicForm(
     } else {
         RwSignal::new(default_map.clone())
     };
-    let form_state = state.unwrap_or_else(|| RwSignal::new(FormState::idle()));
+    let local_selections = selections.unwrap_or_else(|| RwSignal::new(HashMap::new()));
+    let form_state = state;
 
     let handle_submit = {
         let schema = schema.clone();
         Callback::new(move |()| {
-            let current = local_values.get_untracked();
-            let errors = schema.validate_map(&current);
+            let current = DynamicFormPayload {
+                values: local_values.get_untracked(),
+                selections: local_selections.get_untracked(),
+            };
+            let errors = schema.validate_dynamic_form(&current);
             if errors.is_empty() {
                 form_state.update(|s| {
                     s.clear_errors();
@@ -456,6 +507,7 @@ pub fn DynamicForm(
     let initial_for_reset = default_map.clone();
     let on_reset_btn = Callback::new(move |()| {
         local_values.set(initial_for_reset.clone());
+        local_selections.set(HashMap::new());
         if let Some(cb) = on_reset {
             cb.run(());
         }
@@ -471,15 +523,7 @@ pub fn DynamicForm(
         format!("space-y-6 {class}")
     };
 
-    let fields_view = schema
-        .fields
-        .iter()
-        .map(|f| {
-            view! {
-                <DynamicFieldItem field=f.clone() values=local_values />
-            }
-        })
-        .collect_view();
+    let fields = schema.fields.clone();
 
     let header_view = schema.title.clone().map(|title| {
         let desc_view = schema.description.clone().map(|desc| {
@@ -506,7 +550,9 @@ pub fn DynamicForm(
             {header_view}
             <FormError />
             <div class="space-y-4">
-                {fields_view}
+                {fields.into_iter().map(|field| view! {
+                    <DynamicFieldItem field=field values=local_values selections=local_selections />
+                }).collect_view()}
             </div>
             <div class="flex items-center gap-3 pt-4">
                 <SubmitButton submitting_text=submitting_txt>{submit_txt}</SubmitButton>
@@ -515,5 +561,125 @@ pub fn DynamicForm(
                 })}
             </div>
         </Form>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsupported_fields_are_disabled_and_explained() {
+        let state = RwSignal::new(FormState::idle());
+        let schema = FormSchema::new("test")
+            .with_field(FieldDescriptor::new("attachment", FieldKind::File).label("Attachment"))
+            .with_field(
+                FieldDescriptor::new("tags", FieldKind::Select)
+                    .multiple(true)
+                    .label("Tags")
+                    .options(vec![rustok_ui_forms::FieldOption::new("a", "Alpha")]),
+            );
+        let html = view! {
+            <DynamicForm schema=schema state=state on_submit=Callback::new(|_| ()) />
+        }
+        .to_html();
+        assert!(html.contains("This form does not support file fields."));
+        let file = html.split("type=\"file\"").nth(1).expect("file input");
+        assert!(
+            file.split('>')
+                .next()
+                .unwrap_or_default()
+                .contains("disabled")
+        );
+        assert!(html.contains("<fieldset"));
+        assert!(html.contains("Tags"));
+        assert!(html.contains("Alpha"));
+        assert!(html.contains("id=\"tags-option-0\""));
+    }
+
+    #[test]
+    fn multiple_selection_renders_initial_checked_options() {
+        let state = RwSignal::new(FormState::idle());
+        let selections =
+            RwSignal::new(HashMap::from([("tags".to_string(), vec!["b".to_string()])]));
+        let schema = FormSchema::new("test").with_field(
+            FieldDescriptor::new("tags", FieldKind::Select)
+                .multiple(true)
+                .label("Tags")
+                .options(vec![
+                    rustok_ui_forms::FieldOption::new("a", "Alpha"),
+                    rustok_ui_forms::FieldOption::new("b", "Beta"),
+                ]),
+        );
+        let html = view! {
+            <DynamicForm schema=schema state=state selections=selections on_submit=Callback::new(|_| ()) />
+        }.to_html();
+        let first = html
+            .split("id=\"tags-option-0\"")
+            .nth(1)
+            .expect("first checkbox");
+        let second = html
+            .split("id=\"tags-option-1\"")
+            .nth(1)
+            .expect("second checkbox");
+        assert!(
+            !first
+                .split('>')
+                .next()
+                .unwrap_or_default()
+                .contains("checked")
+        );
+        assert!(
+            second
+                .split('>')
+                .next()
+                .unwrap_or_default()
+                .contains("checked")
+        );
+    }
+
+    #[test]
+    fn multiple_options_reference_shared_field_error() {
+        let state = RwSignal::new(FormState::idle().with_field_error("tags", "Choose a tag"));
+        let schema = FormSchema::new("test").with_field(
+            FieldDescriptor::new("tags", FieldKind::Select)
+                .multiple(true)
+                .label("Tags")
+                .options(vec![rustok_ui_forms::FieldOption::new("a", "Alpha")]),
+        );
+        let html = view! {
+            <DynamicForm schema=schema state=state on_submit=Callback::new(|_| ()) />
+        }
+        .to_html();
+        let checkbox = html.split("id=\"tags-option-0\"").nth(1).expect("checkbox");
+        assert!(
+            checkbox
+                .split('>')
+                .next()
+                .unwrap_or_default()
+                .contains("aria-describedby=\"tags-message\"")
+        );
+        assert!(html.contains("id=\"tags-message\""));
+    }
+
+    #[test]
+    fn dynamic_fields_inherit_form_and_field_context() {
+        let state = RwSignal::new(FormState::idle().with_field_error("title", "Title is invalid"));
+        let schema = FormSchema::new("test").with_field(
+            FieldDescriptor::new("title", FieldKind::Text)
+                .label("Title")
+                .description("Enter a title"),
+        );
+        let html = view! {
+            <DynamicForm schema=schema state=state on_submit=Callback::new(|_| ()) />
+        }
+        .to_html();
+        assert!(html.contains("for=\"title\""));
+        assert!(html.contains("id=\"title\""));
+        assert!(html.contains("aria-invalid=\"true\""));
+        assert!(html.contains("aria-describedby=\"title-message\""));
+        assert!(html.contains("id=\"title-message\""));
+        assert!(html.contains("Title is invalid"));
+        assert!(html.contains("id=\"title-description\""));
     }
 }

@@ -19,7 +19,8 @@ use crate::{
         artifact_security::{
             ArtifactSecurityAuthorizationError, ArtifactSecurityReceiptView,
             ArtifactSecuritySnapshotView, ServerArtifactSecurityAuthorizer,
-            authorize_artifact_security_operator, build_module_artifact_security_command,
+            artifact_security_authority_provider, authorize_artifact_security_operator,
+            build_module_artifact_security_command,
         },
         server_runtime_context::ServerRuntimeContext,
     },
@@ -76,7 +77,8 @@ pub async fn get_artifact_security_snapshot(
     principal: AuthPrincipalContext,
     Query(query): Query<ArtifactSecurityLookup>,
 ) -> Result<Response> {
-    authorize_artifact_security_operator(&ctx.db_clone(), &auth, principal, tenant.id)
+    let db = ctx.db_clone();
+    authorize_artifact_security_operator(&db, &auth, principal, tenant.id)
         .await
         .map_err(map_authorization_error)?;
 
@@ -85,7 +87,7 @@ pub async fn get_artifact_security_snapshot(
         version: query.version,
         digest: query.payload_digest,
     };
-    let snapshot = ModuleControlPlane::new(ctx.db_clone())
+    let snapshot = ModuleControlPlane::new(db)
         .artifact_security_resolver()
         .resolve(&release)
         .await
@@ -207,7 +209,9 @@ async fn execute_security_command(
         Error::BadRequest("expectedRevision must be an unsigned 64-bit decimal string".to_string())
     })?;
     let db = ctx.db_clone();
-    let authorizer = ServerArtifactSecurityAuthorizer::new(db.clone(), &auth, principal, tenant_id)
+    let provider = artifact_security_authority_provider(&ctx).map_err(map_authorization_error)?;
+    let authorizer = ServerArtifactSecurityAuthorizer::new(provider, &auth, principal, tenant_id)
+        .await
         .map_err(map_authorization_error)?;
     let command = build_module_artifact_security_command(
         ArtifactReleaseRef {

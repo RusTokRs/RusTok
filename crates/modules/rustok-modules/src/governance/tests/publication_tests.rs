@@ -149,6 +149,7 @@ async fn publication_persists_release_binding_request_and_audit_facts_together()
         allow_owner_rebind: false,
         approval_override: None,
     };
+    let unlisted = registry_authority_fixture(&database).await;
     let service = SeaOrmModuleGovernanceService::new(database.clone());
     let blocked = service
         .publish_request(command.clone())
@@ -461,10 +462,16 @@ async fn publication_persists_release_binding_request_and_audit_facts_together()
         .await
         .expect("passed validation stage fixtures");
 
+    assert!(unlisted.is_current(&database).await.unwrap(), "failed publication must not advance authority");
     service
         .publish_request(command.clone())
         .await
         .expect("publish request");
+    assert!(!unlisted.is_current(&database).await.unwrap());
+    let published = crate::ArtifactRegistryExecutionAuthority::capture(&database, &ArtifactReleaseRef {
+        slug: "sample_module".into(), version: "1.0.0".into(),
+        digest: format!("sha256:{}", "a".repeat(64)),
+    }).await.unwrap();
     service
         .publish_request(command.clone())
         .await
@@ -476,6 +483,7 @@ async fn publication_persists_release_binding_request_and_audit_facts_together()
         .publish_request(changed_observability_replay)
         .await
         .expect("changed observability context replays publication");
+    assert!(published.is_current(&database).await.unwrap());
 
     let release_count = database
         .query_one_raw(Statement::from_string(

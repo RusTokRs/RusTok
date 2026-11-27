@@ -191,14 +191,17 @@ credentials. Two enforcement shapes exist:
   (`governance_actor_can_*`). Registry publication additionally enforces
   the validation-stage/approval-override gate inside the owner; host
   projections only mirror that decision.
-- All other owner commands are host-authorized: the composing host must
-  authenticate the caller and authorize the operation before invoking the
-  owner. This currently includes the registry governance review actions
-  (reject, request changes, hold, resume publish request): the owner
-  validates command shape, actor context, revisions, and state transitions
-  for them, but performs no in-service reviewer-capability check. The owner
-  never derives authorization from artifact payloads, descriptors, or
-  caller-supplied identity strings.
+- All other owner commands are host-authorized; the owner never derives
+  authorization from artifact payloads, descriptors, or caller-supplied
+  identity strings. Artifact security transitions invoke the host authorizer
+  inside the owner transaction, before idempotency replay and before the
+  platform slug activation lock. The host must acquire and retain direct
+  credential and current RBAC fences through the state, receipt, and outbox
+  commit. An exact receipt replay is not an authorization bypass.
+- Registry governance review actions (reject, request changes, hold, resume
+  publish request) remain pre-authorized by the composing host before owner
+  invocation; the owner validates command shape, actor context, revisions,
+  and state transitions but performs no in-service reviewer-capability check.
 
 Computing capability facts from an authenticated principal is always the
 host's responsibility; the owner only enforces the facts it is given.

@@ -6,7 +6,7 @@ For full contract specifications, public types, and invariants, see [CRATE_API.m
 
 ## Overview
 
-`rustok-ui-forms` is a pure **Framework-Free Core (FFA)** crate designed with zero DOM, zero UI framework dependencies, and zero RusToK-specific internal dependencies. It depends only on `serde` and `serde_json` for serialization.
+`rustok-ui-forms` is a pure **Framework-Free Core (FFA)** crate designed with zero DOM, zero UI framework dependencies, and zero RusToK-specific internal dependencies. It uses `serde`, `serde_json`, `regex`, and `url` for serialization and validation.
 
 It acts as the single canonical source of truth for:
 - Form submission lifecycle (`FormState`, `FormSubmissionStatus`)
@@ -40,8 +40,8 @@ It acts as the single canonical source of truth for:
   - `required`: Non-empty, non-whitespace string check.
   - `min_length` / `max_length` / `length_between`: Unicode-safe character counting (UTF-8 multi-byte friendly).
   - `min_length_bytes` / `max_length_bytes`: Byte length constraints.
-  - `email`: RFC-compliant syntax validation.
-  - `url`: Valid `http://` or `https://` protocol and host syntax.
+  - `email`: restricted unquoted ASCII dot-atom local-part and dotted-domain validation (not full RFC mailbox validation).
+  - `url`: HTTP(S) URL syntax validation; it is not an SSRF safety check.
   - `slug`: Kebab-case ASCII slug (`[a-z0-9-]`, no consecutive or boundary hyphens).
   - `matches`: Value equality check (e.g. password confirmation).
   - `min` / `max` / `range`: Generic numeric bounds `[min, max]` inclusive for `PartialOrd + Copy`.
@@ -68,7 +68,7 @@ It acts as the single canonical source of truth for:
 - `FieldDescriptor`: Builder pattern configuring name, kind, label, placeholder, constraints, options, disabled state, default values, with `.validate(value)` schema execution.
 - `FieldConstraints`: Builder pattern configuring required, min/max length, numeric range, step, pattern, accept, multiple, with `.validate(field, value)` execution.
 - `FieldOption`: Selectable options for dropdowns, radios, and checkbox groups with disabled state and tuple conversion.
-- `FormSchema`: Collective schema definition supporting validation against maps (`validate_map`) or JSON structures (`validate_json`).
+- `FormSchema`: Collective schema definition supporting validation against maps (`validate_map`) or JSON structures (`validate_json`). `validate_dynamic_form` validates typed multiple selections and rejects files, which the payload cannot yet represent. Required checkboxes and switches must be true (`true` or `1`).
 
 ### 5. `dirty` — Modification Tracking
 - `DirtyTracker`: Set-based tracker recording modified fields since last reset.
@@ -84,3 +84,11 @@ It acts as the single canonical source of truth for:
 
 - [`rustok-forms-leptos`](./leptos): Leptos 0.8 SSR-first component adapter with WAI-ARIA and RusToK styling tokens.
 - [`rustok-forms-dioxus`](./dioxus): Dioxus 0.7 component adapter with WAI-ARIA and RusToK styling tokens.
+
+## Known Limitations / Pending Implementation
+
+Dynamic forms submit `DynamicFormPayload`: `values` contains scalar strings and `selections`
+contains ordered multiple-select values. Required selections, duplicate values, unknown/disabled
+options and mismatched payload shapes are validated by the shared schema. File fields remain
+unsupported: adapters disable them and block submission instead of losing file data. Native file
+handles, transport and reset semantics still require a typed adapter contract and browser tests.

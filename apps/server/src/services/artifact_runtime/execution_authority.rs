@@ -11,10 +11,10 @@ use std::{
 use async_trait::async_trait;
 use rustok_modules::{
     ArtifactBindingDispatchError, ArtifactCapabilityExecution, ArtifactEffectivePolicyResolveError,
-    ArtifactExecutionLeaseGuard, ArtifactSqlEffectAuthorizer, ArtifactSqlEffectCommitGuard,
-    ArtifactSqlEffectFence, InstalledModuleArtifact, ModuleRuntimeBinding,
-    SeaOrmModuleArtifactSecurityResolver, lock_granted_artifact_capability_on,
-    resolve_granted_artifact_capability,
+    ArtifactExecutionLeaseGuard, ArtifactRegistryExecutionAuthority, ArtifactSqlEffectAuthorizer,
+    ArtifactSqlEffectCommitGuard, ArtifactSqlEffectFence, InstalledModuleArtifact,
+    ModuleRuntimeBinding, SeaOrmModuleArtifactSecurityResolver,
+    lock_granted_artifact_capability_on, resolve_granted_artifact_capability,
 };
 use rustok_sandbox::{
     CapabilityBroker, CapabilityCall, CapabilityCallContext, CapabilityGrant, CapabilityResponse,
@@ -46,6 +46,7 @@ struct ExecutionLease {
     binding: ModuleRuntimeBinding,
     effective_revision: Option<String>,
     security_revision: u64,
+    registry_authority: ArtifactRegistryExecutionAuthority,
     serving_authority: Option<ArtifactServingAuthority>,
     lifecycle_generation: Option<rustok_modules::ArtifactSelectionGeneration>,
     policy: SandboxPolicy,
@@ -191,13 +192,19 @@ impl ExecutionAuthority {
             .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?
             .execution_revision()
             .ok_or(ArtifactBindingDispatchError::AdmissionMismatch)?;
+        let registry_authority =
+            ArtifactRegistryExecutionAuthority::capture(&resolver.db, &artifact.release)
+                .await
+                .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?;
         let serving_authority = if let Some(revision) = effective_revision {
             let (current, authority) = resolver.resolve_with_closure(tenant_id, artifact).await?;
             if current.policy_revision() != revision {
                 return Err(ArtifactBindingDispatchError::AdmissionMismatch);
             }
             let authority = authority.ok_or(ArtifactBindingDispatchError::AdmissionMismatch)?;
-            if authority.closure.root_security_revision(artifact) != Some(security_revision) {
+            if authority.closure.root_security_revision(artifact) != Some(security_revision)
+                || authority.closure.root_registry_authority(artifact) != Some(&registry_authority)
+            {
                 return Err(ArtifactBindingDispatchError::AdmissionMismatch);
             }
             Some(authority)
@@ -232,6 +239,7 @@ impl ExecutionAuthority {
             binding: binding.clone(),
             effective_revision: effective_revision.map(str::to_owned),
             security_revision,
+            registry_authority,
             serving_authority,
             lifecycle_generation,
             policy: policy.clone(),
@@ -245,6 +253,7 @@ impl ExecutionAuthority {
         if !lease.credential_live()
             || !self.check_direct(&lease).await
             || !check_security(resolver, &lease).await
+            || !check_policy(resolver, &lease).await.unwrap_or(false)
         {
             return Err(lease.denial());
         }
@@ -299,6 +308,11 @@ async fn check_security(
         .resolve(&lease.artifact.release)
         .await
         .is_ok_and(|snapshot| snapshot.execution_revision() == Some(lease.security_revision))
+        && lease
+            .registry_authority
+            .is_current(&resolver.db)
+            .await
+            .unwrap_or(false)
 }
 
 async fn check_policy(
@@ -314,8 +328,12 @@ async fn check_policy(
                 None => false,
             });
     };
+    let channel = lease
+        .serving_authority
+        .as_ref()
+        .and_then(|authority| authority.channel.clone());
     let (policy, authority) = resolver
-        .resolve_with_closure(lease.tenant_id(), &lease.artifact)
+        .resolve_with_channel(lease.tenant_id(), &lease.artifact, channel)
         .await?;
     Ok(policy.policy_revision() == revision
         && authority.is_some()
@@ -437,6 +455,12 @@ impl ArtifactSqlEffectFence for SqlEffectFence {
                 .require_current_in_transaction(tx)
                 .await
                 .map_err(|_| self.deny())?;
+            if let Some(channel) = &authority.channel {
+                channel
+                    .require_current_on(tx)
+                    .await
+                    .map_err(|_| self.deny())?;
+            }
         } else {
             self.lease
                 .lifecycle_generation
@@ -462,6 +486,11 @@ impl ArtifactSqlEffectFence for SqlEffectFence {
         )
         .await
         .map_err(|_| self.deny())?;
+        self.lease
+            .registry_authority
+            .require_current_on(tx)
+            .await
+            .map_err(|_| self.deny())?;
         let original = self
             .lease
             .policy

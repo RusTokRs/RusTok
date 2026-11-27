@@ -748,7 +748,14 @@ pub fn FormCheckbox(
     let is_invalid = field.as_ref().map(|f| f.is_invalid()).unwrap_or(false);
 
     let name_attr = name.or(field_name);
-    let checkbox_id = id.or(field_id).or_else(|| name_attr.clone());
+    let checkbox_id = id.or(field_id.clone()).or_else(|| name_attr.clone());
+    let message_id = if is_invalid {
+        field_id
+            .or_else(|| checkbox_id.clone())
+            .map(|id| format!("{id}-message"))
+    } else {
+        None
+    };
 
     let border_color = if is_invalid {
         "border-destructive"
@@ -769,6 +776,8 @@ pub fn FormCheckbox(
                 disabled: is_disabled,
                 required: required,
                 "aria-invalid": if is_invalid { "true" } else { "false" },
+                aria_describedby: message_id.clone(),
+                aria_errormessage: message_id,
                 class: "mt-0.5 h-4 w-4 rounded border {border_color} text-primary focus:ring-1 focus:ring-offset-0 disabled:opacity-50 transition cursor-pointer",
                 onchange: move |_| {
                     if let Some(ref f) = field {
@@ -974,6 +983,9 @@ pub fn FormRadioGroup(
 /// Browser-safe file upload input.
 #[component]
 pub fn FormFileInput(
+    /// Receives the native form event; selected files are available through `event.files()`.
+    #[props(default)]
+    on_change: Option<EventHandler<FormEvent>>,
     /// Field name. Defaults to enclosing `FormField` name if omitted.
     #[props(default)]
     name: Option<String>,
@@ -1038,9 +1050,12 @@ pub fn FormFileInput(
             "aria-invalid": if is_invalid { "true" } else { "false" },
             aria_describedby: aria_desc,
             class: "{input_class}",
-            onchange: move |_| {
+            onchange: move |event| {
                 if let Some(ref f) = field {
                     f.mark_dirty();
+                }
+                if let Some(ref callback) = on_change {
+                    callback.call(event);
                 }
             }
         }

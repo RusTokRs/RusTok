@@ -505,7 +505,7 @@ mod tests {
 
     #[test]
     fn classifies_global_artifact_security_query_and_mutations_as_manage() {
-        let mut request = Request::new(
+        let mut query_request = Request::new(
             r#"
                 query ReadReleaseSecurity {
                     moduleArtifactSecurity(
@@ -514,6 +514,20 @@ mod tests {
                         payloadDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
                     ) { revision status }
                 }
+            "#,
+        );
+        classify_document(&mut query_request).expect("query should parse");
+        let query_policy = query_request
+            .data
+            .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
+            .and_then(|value| value.downcast_ref::<ModuleGraphqlDocumentPolicy>())
+            .expect("artifact security query policy should be attached");
+        assert_eq!(query_policy.0.len(), 1);
+        assert_eq!(query_policy.0[0].name, "moduleArtifactSecurity");
+        assert_eq!(query_policy.0[0].authority, ModuleAuthority::Manage);
+
+        let mut mutation_request = Request::new(
+            r#"
                 mutation ChangeReleaseSecurity {
                     quarantineModuleArtifact(
                         moduleSlug: "example"
@@ -548,28 +562,26 @@ mod tests {
                 }
             "#,
         );
-
-        classify_document(&mut request).expect("document should parse");
-        let policy = request
+        classify_document(&mut mutation_request).expect("mutations should parse");
+        let mutation_policy = mutation_request
             .data
             .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
             .and_then(|value| value.downcast_ref::<ModuleGraphqlDocumentPolicy>())
-            .expect("artifact security policy should be attached");
+            .expect("artifact security mutation policy should be attached");
 
-        assert_eq!(policy.0.len(), 4);
+        assert_eq!(mutation_policy.0.len(), 3);
         assert!(
-            policy
+            mutation_policy
                 .0
                 .iter()
                 .all(|field| field.authority == ModuleAuthority::Manage)
         );
         for name in [
-            "moduleArtifactSecurity",
             "quarantineModuleArtifact",
             "clearModuleArtifactQuarantine",
             "revokeModuleArtifact",
         ] {
-            assert!(policy.0.iter().any(|field| field.name == name));
+            assert!(mutation_policy.0.iter().any(|field| field.name == name));
         }
     }
 

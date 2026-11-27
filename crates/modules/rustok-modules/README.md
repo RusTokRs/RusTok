@@ -71,7 +71,10 @@ around the owner contracts.
   are removed.
 - Own artifact-release quarantine and terminal emergency revocation separately
   from registry yanking; security state blocks new execution while preserving
-  tenant enablement intent and records exact revisioned outbox evidence.
+  tenant enablement intent and records exact revisioned outbox evidence. The
+  owner invokes the host authorization port inside the transition transaction,
+  before replay and the platform slug lock, so credential and RBAC fences stay
+  held through commit.
 - Supply owner clock and identity ports through one
   `ControlPlaneInfrastructure` context rather than process-global calls.
 - Map installed artifacts to neutral sandbox requests and capability grants.
@@ -182,6 +185,8 @@ production readiness. The documented implementation and operational gaps include
   durable grants under the existing platform/tenant activation locks in the
   effect transaction. Exact release quarantine/revocation and security revision
   are also fenced, including implicit clear and quarantine/clear ABA.
+  Independent monotonic registry release authority fences publication, yank,
+  unyank and availability ABA for the root and entire serving artifact closure.
   Artifact scope selection generations fence lifecycle ABA on the exact
   serving closure. Migration 000095 requires coordinated writer/reader
   cutover. Mixed native/artifact serving closures also fence tenant lifecycle
@@ -189,7 +194,8 @@ production readiness. The documented implementation and operational gaps include
   revision/hash is captured with the serving policy and checked under the
   owner row lock in the SQL effect transaction. Serving closures bind and
   transactionally revalidate converged deployment ledger evidence. Full effective-policy,
-  contextual channel/maintenance, registry status, continuous node liveness,
+  HTTP channel context is now evaluated and fenced by the existing Channel generation.
+  Contextual operational maintenance, deferred/background channel context, continuous node liveness,
   cross-owner lock ordering and external-effect fencing remain open; see the
   [SQL capability authority contract](./docs/README.md#sql-capability-effect-authority).
   Source regressions and compilation/concurrent PostgreSQL evidence remain unrun.

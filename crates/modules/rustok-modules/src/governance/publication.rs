@@ -1,6 +1,6 @@
 //! Publication execution and transactional release activation.
 
-use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
+use sea_orm::{ConnectionTrait, Statement, Value};
 
 use super::admissions::*;
 use super::helpers::*;
@@ -18,11 +18,8 @@ impl SeaOrmModuleGovernanceService {
         command: ModulePublishRequestPublicationCommand,
     ) -> Result<(), ModuleGovernanceError> {
         command.validate()?;
-        let tx = self
-            .db
-            .begin()
-            .await
-            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let tx = crate::backend::begin_fenced_transaction(&self.db)
+            .await.map_err(store_error)?;
         crate::backend::set_platform_scope(&tx)
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -34,17 +31,24 @@ impl SeaOrmModuleGovernanceService {
         } else {
             ""
         };
-        tx.query_one_raw(Statement::from_sql_and_values(
+        // Discover the immutable slug without locking the request row first.
+        // Re-read it under the request lock after taking the platform fence.
+        let slug_query = |lock: &str| Statement::from_sql_and_values(
             backend.db_backend(),
-            format!(
-                "SELECT id FROM registry_publish_requests WHERE id = {}{request_lock}",
-                mark(1)
-            ),
+            format!("SELECT slug FROM registry_publish_requests WHERE id = {}{lock}", mark(1)),
             vec![command.request_id.clone().into()],
-        ))
-        .await
-        .map_err(store_error)?
-        .ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
+        );
+        let row = tx.query_one_raw(slug_query("")).await.map_err(store_error)?
+            .ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
+        let fenced_slug: String = required_column(&row, "slug")?;
+        crate::installation::acquire_artifact_activation_lock(
+            &tx, &crate::ModuleInstallationScope::Platform, &fenced_slug,
+        ).await.map_err(store_error)?;
+        let row = tx.query_one_raw(slug_query(request_lock)).await.map_err(store_error)?
+            .ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
+        if required_column::<String>(&row, "slug")? != fenced_slug {
+            return Err(ModuleGovernanceError::Store("registry publication slug changed during fence acquisition".into()));
+        }
         let command_approval_override = command
             .approval_override
             .as_ref()

@@ -1,16 +1,22 @@
-use crate::services::rbac_service::RbacService;
+use crate::services::{
+    auth_admin_mutation_provider::ServerAuthAdminMutationProvider,
+    rbac_runtime::{AuthorizationCheck, authorize_request},
+    server_runtime_context::ServerRuntimeContext,
+};
 use async_trait::async_trait;
 use rustok_api::{
     AuthContext, AuthPrincipalContext, AuthPrincipalKind, Permission, has_effective_permission,
 };
+use rustok_auth::{AdminCredentialRequest, AuthAdminCredentialResolver, AuthAdminMutationError};
 use rustok_modules::{
     ArtifactReleaseRef, ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecurityAuthorizer,
     ModuleArtifactSecurityCommand, ModuleArtifactSecurityError, ModuleArtifactSecurityReceipt,
     ModuleArtifactSecuritySnapshot, ModuleArtifactSecurityStatus, ModuleCommandContext,
 };
 use rustok_rbac::{RbacControlPlanePrincipal, require_direct_control_plane_user};
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use serde::Serialize;
+use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -56,8 +62,25 @@ fn validate_direct_operator(
     Ok(())
 }
 
-/// Check both the authenticated permission snapshot and the current persisted
-/// tenant grant. This avoids relying solely on a potentially stale access token.
+/// Resolve the request-scoped effective tenant permission through the
+/// canonical RBAC engine. Mutations use the transaction-bound authority below.
+async fn current_modules_manage_permission(
+    db: &DatabaseConnection,
+    tenant_id: &Uuid,
+    user_id: &Uuid,
+) -> Result<bool, ArtifactSecurityAuthorizationError> {
+    let outcome = authorize_request(
+        db,
+        tenant_id,
+        user_id,
+        AuthorizationCheck::Single(&Permission::MODULES_MANAGE),
+    )
+    .await
+    .map_err(|_| ArtifactSecurityAuthorizationError::PermissionCheckFailed)?;
+
+    Ok(outcome.decision.allowed)
+}
+
 pub async fn authorize_artifact_security_operator(
     db: &DatabaseConnection,
     auth: &AuthContext,
@@ -66,10 +89,7 @@ pub async fn authorize_artifact_security_operator(
 ) -> Result<(), ArtifactSecurityAuthorizationError> {
     validate_direct_operator(auth, principal, tenant_id)?;
 
-    let allowed =
-        RbacService::has_permission(db, &tenant_id, &auth.user_id, &Permission::MODULES_MANAGE)
-            .await
-            .map_err(|_| ArtifactSecurityAuthorizationError::PermissionCheckFailed)?;
+    let allowed = current_modules_manage_permission(db, &tenant_id, &auth.user_id).await?;
 
     if !allowed {
         return Err(ArtifactSecurityAuthorizationError::ModulesManageRequired);
@@ -95,12 +115,43 @@ fn command_is_bound_to_operator(
         && has_effective_permission(permissions, &Permission::MODULES_MANAGE)
 }
 
-/// Request-bound authorization evidence passed into the Modules owner. The owner
-/// still validates the global command envelope and persists the transition,
-/// receipt and redacted outbox event atomically.
+/// Retrieve the same host credential authority used by artifact execution and
+/// RBAC owner mutations. Missing composition is an authorization failure.
+pub(crate) fn artifact_security_authority_provider(
+    runtime_ctx: &ServerRuntimeContext,
+) -> Result<Arc<ServerAuthAdminMutationProvider>, ArtifactSecurityAuthorizationError> {
+    runtime_ctx
+        .shared_get::<Arc<rustok_core::ModuleRuntimeExtensions>>()
+        .and_then(|extensions| {
+            extensions
+                .get::<Arc<ServerAuthAdminMutationProvider>>()
+                .cloned()
+        })
+        .ok_or(ArtifactSecurityAuthorizationError::PermissionCheckFailed)
+}
+
+fn map_admin_authorization_error(error: AuthAdminMutationError) -> ModuleArtifactSecurityError {
+    match error {
+        AuthAdminMutationError::Unauthorized
+        | AuthAdminMutationError::Forbidden(_)
+        | AuthAdminMutationError::Validation(_)
+        | AuthAdminMutationError::NotFound(_) => ModuleArtifactSecurityError::AuthorizationDenied(
+            "direct session user with modules:manage required".to_string(),
+        ),
+        AuthAdminMutationError::CustomFieldsValidation(_)
+        | AuthAdminMutationError::Conflict(_)
+        | AuthAdminMutationError::Internal(_) => ModuleArtifactSecurityError::Store(
+            "artifact security authorization lookup failed".to_string(),
+        ),
+    }
+}
+
+/// Request-bound authorization evidence passed into the Modules owner. The
+/// owner invokes this adapter inside its transition transaction, before
+/// idempotency replay and before taking the platform release slug fence.
 #[derive(Clone)]
 pub struct ServerArtifactSecurityAuthorizer {
-    db: DatabaseConnection,
+    provider: Arc<ServerAuthAdminMutationProvider>,
     actor_id: Uuid,
     tenant_id: Uuid,
     principal_kind: AuthPrincipalKind,
@@ -108,15 +159,37 @@ pub struct ServerArtifactSecurityAuthorizer {
 }
 
 impl ServerArtifactSecurityAuthorizer {
-    pub fn new(
-        db: DatabaseConnection,
+    pub async fn new(
+        provider: Arc<ServerAuthAdminMutationProvider>,
         auth: &AuthContext,
         principal: AuthPrincipalContext,
         tenant_id: Uuid,
     ) -> Result<Self, ArtifactSecurityAuthorizationError> {
         validate_direct_operator(auth, principal, tenant_id)?;
+        // Bind the transport's exact session identity to the current admitted
+        // request scope; the transaction check below then revalidates that same
+        // credential while holding its user/session fences.
+        provider
+            .bind(
+                AdminCredentialRequest {
+                    tenant_id,
+                    user_id: auth.user_id,
+                    session_id: auth.session_id,
+                    client_id: auth.client_id,
+                    grant_type: &auth.grant_type,
+                    scopes: &auth.scopes,
+                },
+                principal.kind,
+                None,
+            )
+            .map_err(|_| ArtifactSecurityAuthorizationError::DirectSessionRequired)?;
+        // Admit the Auth application clock before the owner opens a transaction.
+        provider
+            .prepare_artifact_effect_authority()
+            .await
+            .map_err(|_| ArtifactSecurityAuthorizationError::PermissionCheckFailed)?;
         Ok(Self {
-            db,
+            provider,
             actor_id: auth.user_id,
             tenant_id,
             principal_kind: principal.kind,
@@ -126,6 +199,7 @@ impl ServerArtifactSecurityAuthorizer {
 
     async fn authorize_command(
         &self,
+        transaction: &DatabaseTransaction,
         command: &ModuleArtifactSecurityCommand,
     ) -> Result<(), ModuleArtifactSecurityError> {
         if !command_is_bound_to_operator(
@@ -140,20 +214,14 @@ impl ServerArtifactSecurityAuthorizer {
             ));
         }
 
-        let allowed = RbacService::has_permission(
-            &self.db,
-            &self.tenant_id,
-            &self.actor_id,
-            &Permission::MODULES_MANAGE,
-        )
-        .await
-        .map_err(|_| {
-            ModuleArtifactSecurityError::Store(
-                "artifact security authorization lookup failed".to_string(),
-            )
-        })?;
+        let required = [Permission::MODULES_MANAGE];
+        let authority = self
+            .provider
+            .lock_rbac_control_plane(transaction, self.tenant_id, self.actor_id, None, &required)
+            .await
+            .map_err(map_admin_authorization_error)?;
 
-        if allowed {
+        if has_effective_permission(&authority.permissions, &Permission::MODULES_MANAGE) {
             Ok(())
         } else {
             Err(ModuleArtifactSecurityError::AuthorizationDenied(
@@ -167,23 +235,26 @@ impl ServerArtifactSecurityAuthorizer {
 impl ModuleArtifactSecurityAuthorizer for ServerArtifactSecurityAuthorizer {
     async fn authorize_quarantine(
         &self,
+        transaction: &DatabaseTransaction,
         command: &ModuleArtifactSecurityCommand,
     ) -> Result<(), ModuleArtifactSecurityError> {
-        self.authorize_command(command).await
+        self.authorize_command(transaction, command).await
     }
 
     async fn authorize_clear_quarantine(
         &self,
+        transaction: &DatabaseTransaction,
         command: &ModuleArtifactSecurityCommand,
     ) -> Result<(), ModuleArtifactSecurityError> {
-        self.authorize_command(command).await
+        self.authorize_command(transaction, command).await
     }
 
     async fn authorize_revoke(
         &self,
+        transaction: &DatabaseTransaction,
         command: &ModuleArtifactSecurityCommand,
     ) -> Result<(), ModuleArtifactSecurityError> {
-        self.authorize_command(command).await
+        self.authorize_command(transaction, command).await
     }
 }
 

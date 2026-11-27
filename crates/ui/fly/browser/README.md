@@ -13,6 +13,10 @@ SSR-first browser adapter assets and protocol contracts for Fly editors.
   selection, toolbar intents, and route view state such as the previewed viewport. The
   attributes are a two-sided contract with the views that render them; see
   [the decision](../../../../DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md).
+- Reconcile accepted server responses back into the local selection mirror. A server-originated
+  selection change emits `fly:select` for SSR form retargeting without posting a duplicate select.
+- Resolve classic SSR drop edges from the canvas layout axis and direction (flex, grid, inline,
+  writing mode and reverse flow), not from a vertical-only assumption.
 - Provide `FLY_ACTIONS_JS` for published actions. Target resolution and tab, accordion and slider
   group traversal are confined to the nearest landing body (or standalone document body), with
   renderer-owned hooks preferred to authored IDs. Tab panels may sit outside a nested tablist
@@ -36,6 +40,8 @@ SSR-first browser adapter assets and protocol contracts for Fly editors.
 
 - `node --test crates/ui/fly/browser/tests/action_runtime.test.mjs` exercises action dispatch with a minimal DOM boundary.
 - `apps/next-frontend/tests/e2e/fly-actions.spec.ts` covers the shipped asset in Chromium, including actual scrolling and media emulation; it requires the Playwright dependencies and browser.
+- `apps/next-admin/tests/e2e/fly-browser-runtime.spec.ts` covers horizontal/reverse layout drop geometry.
+- `apps/next-admin/tests/e2e/fly-browser-ssr-controls.spec.ts` covers server-authoritative selection reconciliation after page navigation.
 - `cargo test -p fly-browser` covers the Rust protocol and asset contracts.
 
 ## Interactions

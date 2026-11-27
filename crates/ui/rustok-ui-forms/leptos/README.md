@@ -106,3 +106,18 @@ pub fn PostEditor() -> impl IntoView {
     }
 }
 ```
+
+## DynamicForm contract and limitations
+
+`DynamicForm` requires a caller-owned `state` signal. The submit handler must transition it
+to success or failure when its work finishes; otherwise the double-submit guard keeps the form
+disabled. The `DynamicFormPayload` contains scalar `values` and typed multiple `selections`. Multiple
+selections render as checkbox groups and are validated by the shared schema. Reset clears selections.
+File fields remain unsupported: they display a limitation message, are disabled, and block submission;
+use dedicated controls and an owner-defined typed upload/selection flow instead.
+Leptos `values` and `selections` are optional writable signals.
+
+`FormSelect` is single-select only: its value and callback carry one string.
+
+Standalone `FormFileInput` forwards its native change event via `on_change`; file handling and
+upload belong to the owning media/transport flow. This does not yet enable file fields in `DynamicForm`.

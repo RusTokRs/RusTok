@@ -477,7 +477,11 @@ ordinary discovery/install state and does not silently disable an already
 admitted tenant intent. `ModuleControlPlane::artifact_security` owns explicit
 quarantine, quarantine-clear, and terminal emergency-revoke commands with
 revision CAS, platform authorization, exact idempotency replay, and outbox
-events. The read-only security resolver feeds effective policy with redacted
+events. The owner calls the host authorizer inside the transition transaction,
+before replay and before taking the platform slug activation lock; the host
+must retain direct credential and current RBAC row fences through commit.
+Therefore an exact idempotency replay still requires current authorization.
+The read-only security resolver feeds effective policy with redacted
 status/revision/release facts; quarantine and revoke block new execution, while
 a revoked state cannot be cleared.
 Successful build results must carry the complete component, SBOM, provenance,
@@ -1468,7 +1472,7 @@ failure or cancellation; the broker checks membership again after async reads.
 This is process-local admission, not an atomic external-effect fence or a
 continuous interrupt for capability-free computation. In-flight calls may
 complete, and a post-launch denial preserves ambiguous-outcome semantics.
-Contextual channel/maintenance policy, external owner transactional authority,
+Operational maintenance policy, deferred/background channel context, external owner transactional authority,
 performance and actual worker callback verification remain open. See
 [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).
 
@@ -1497,13 +1501,20 @@ for implicit clear). Every host capability rechecks it, including lifecycle
 calls. SQL effects verify it inside the transaction under the platform slug
 activation fence, shared by quarantine, clear and revoke writers. This fences
 first quarantine even without a security row, and quarantine followed by
-clear cannot revive an older lease. The registry status is sampled but its
-independent writers are not fenced by this increment. For ordinary serving, the same owner closure used by node readiness is
+clear cannot revive an older lease. Registry release status has an independent
+per-(slug, version) monotonic authority witness (migration 000096). The permanent
+witness advances on row insert/delete or status/checksum changes, including
+unlisted-to-listed-to-unlisted ABA; no-op metadata changes and rolled-back
+transactions do not advance it. Publication, yank and unyank acquire the platform
+slug fence before registry row locks; mutation triggers share that fence. Yank
+remains a discovery/install fact: it invalidates old leases but does not prevent
+a fresh lease solely because the release is yanked. Unavailable status denies
+admission. For ordinary serving, the same owner closure used by node readiness is
 captured in the lease, including exact artifact members reached through
-dependencies and co-requisites and their security revisions. Before any root
+dependencies and co-requisites and their security and registry authority revisions. Before any root
 selection lock, SQL admission takes all artifact slug locks in ascending
 order (platform then tenant per slug), reselects the complete artifact set,
-validates each durable sandbox policy and security revision, and keeps the
+validates each durable sandbox policy, security revision and registry witness, and keeps the
 locks through commit. Non-SQL calls compare fresh closure evidence but remain
 preflight-only. Lifecycle retains root-only owner authority. For serving,
 every visited module (native and artifact) also captures its canonical
@@ -1546,8 +1557,13 @@ whose state revision changed. Fresh non-SQL preflight compares the same
 readiness evidence without an effect lock. Lifecycle hooks retain their
 separate root-only admission. This protects the durable ledger, not live
 executor availability or independent worker liveness. Contextual
-channel/maintenance inputs and registry writers are not transactionally
-fenced. Each artifact lease also captures
+maintenance inputs and deferred/background channel context are not transactionally fenced. HTTP channel resolution is now re-read from the owner without the TTL cache, bracketed by the durable generation and matched to the middleware-selected channel. The mixed serving policy evaluates its exact bindings for every closure member; unresolved HTTP context retains the generation as well. Capability preflight reuses the captured input and compares the generation. Structured SQL effects hold the Channel-owned generation row after readiness/composition fences until commit. No new migration is needed. Registry authority
+is checked under the sorted platform/tenant slug fences, before readiness and
+composition locks. Non-SQL effects remain preflight-only; lifecycle checks only
+the root. Drain old writers and leases before applying migration 000096; witness
+downgrade is denied. Direct SQL maintenance must follow the canonical lock order;
+DDL/TRUNCATE, witness tampering and complete cross-owner ordering are outside
+this guarantee. Each artifact lease also captures
 both platform and tenant selection generations on the permanent slug fences.
 Successful activation, deactivation, rollback, uninstall and explicit artifact
 tenant enable/disable advance the affected scope in the same transaction as

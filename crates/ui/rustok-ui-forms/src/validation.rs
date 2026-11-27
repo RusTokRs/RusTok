@@ -91,7 +91,8 @@ pub mod rules {
         }
     }
 
-    /// Validates basic email syntax (non-empty local part and domain, valid domain dots, no whitespace).
+    /// Validates an unquoted ASCII dot-atom email local part and a dotted domain.
+    /// This is a deliberately restricted UI policy, not full RFC mailbox validation.
     pub fn email(
         field: impl Into<String>,
         value: &str,
@@ -112,7 +113,9 @@ pub mod rules {
             && !user.starts_with('.')
             && !user.ends_with('.')
             && !user.contains("..")
-            && !user.contains(char::is_whitespace)
+            && user
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "!#$%&'*+-/=?^_`{|}~.".contains(c))
             && !domain.contains(char::is_whitespace)
             && !domain.starts_with('.')
             && !domain.ends_with('.')
@@ -143,25 +146,17 @@ pub mod rules {
             return Ok(());
         }
 
-        let rest = if let Some(r) = v.strip_prefix("https://") {
-            r
-        } else if let Some(r) = v.strip_prefix("http://") {
-            r
-        } else {
-            return Err(FieldError::new(field, message));
-        };
-
-        if rest.is_empty()
-            || rest.contains(char::is_whitespace)
-            || rest.starts_with('/')
-            || rest.starts_with(':')
-        {
-            return Err(FieldError::new(field, message));
-        }
-
-        let host = rest.split(['/', '?', '#']).next().unwrap_or("");
-
-        if host.is_empty() || host.starts_with('.') || host.ends_with('.') || host.contains("..") {
+        // Reject whitespace before parsing: the WHATWG parser otherwise tolerates some control
+        // characters. This checks syntax only, not whether a destination is safe to request.
+        let valid = (v.starts_with("http://") || v.starts_with("https://"))
+            && !v.contains(char::is_whitespace)
+            && url::Url::parse(v).is_ok_and(|parsed| {
+                matches!(parsed.scheme(), "http" | "https")
+                    && parsed.host_str().is_some_and(|host| {
+                        !host.starts_with('.') && !host.ends_with('.') && !host.contains("..")
+                    })
+            });
+        if !valid {
             return Err(FieldError::new(field, message));
         }
 
@@ -1207,6 +1202,8 @@ mod tests {
         assert!(rules::email("email", "user name@example.com", "Invalid").is_err());
         assert!(rules::email("email", "user@exam ple.com", "Invalid").is_err());
         assert!(rules::email("email", "user@a@b.com", "Invalid").is_err());
+        assert!(rules::email("email", "a()@example.com", "Invalid").is_err());
+        assert!(rules::email("email", "first+tag@example.com", "Invalid").is_ok());
     }
 
     #[test]
@@ -1222,6 +1219,8 @@ mod tests {
         assert!(rules::url("url", "not-a-url", "Invalid").is_err());
         assert!(rules::url("url", "ftp://example.com", "Invalid").is_err());
         assert!(rules::url("url", "https://.com", "Invalid").is_err());
+        assert!(rules::url("url", "https://example.com:abc", "Invalid").is_err());
+        assert!(rules::url("url", "http://[::1]:8080", "Invalid").is_ok());
     }
 
     #[test]

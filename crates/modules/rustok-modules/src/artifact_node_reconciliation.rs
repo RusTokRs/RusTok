@@ -802,6 +802,7 @@ pub struct ArtifactServingClosure {
     tenant_id: Uuid,
     artifacts: BTreeMap<String, (InstalledModuleArtifact, u64)>,
     generations: BTreeMap<String, crate::ArtifactSelectionGeneration>,
+    registry_authorities: BTreeMap<String, crate::ArtifactRegistryExecutionAuthority>,
     tenant_intents: BTreeMap<String, ServingTenantIntent>,
     readiness: Option<ServingDeploymentReadiness>,
 }
@@ -880,7 +881,7 @@ impl ArtifactServingClosure {
             let decision = policy
                 .get_decision(&item.release.slug)
                 .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
-            let revision = clear_security_revision(&decision.facts)?;
+            let (revision, _) = clear_security_evidence(&decision.facts)?;
             artifacts.insert(item.release.slug.clone(), (item.clone(), revision));
         }
         // Read selection and its generations in one owner snapshot. If
@@ -903,6 +904,7 @@ impl ArtifactServingClosure {
             return Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable);
         }
         let mut generations = BTreeMap::new();
+        let mut registry_authorities = BTreeMap::new();
         for ((slug, (expected, _)), actual) in artifacts.iter().zip(current) {
             if actual.map_err(store_error)? != *expected {
                 return Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable);
@@ -911,6 +913,18 @@ impl ArtifactServingClosure {
                 .await
                 .map_err(store_error)?;
             generations.insert(slug.clone(), generation);
+            let decision = policy
+                .get_decision(slug)
+                .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
+            let (_, status) = clear_security_evidence(&decision.facts)?;
+            let authority =
+                crate::ArtifactRegistryExecutionAuthority::load_on(&tx, &expected.release)
+                    .await
+                    .map_err(store_error)?;
+            if authority.status() != status {
+                return Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable);
+            }
+            registry_authorities.insert(slug.clone(), authority);
         }
         let mut tenant_intents = BTreeMap::new();
         for slug in visited {
@@ -937,6 +951,7 @@ impl ArtifactServingClosure {
             tenant_id,
             artifacts,
             generations,
+            registry_authorities,
             tenant_intents,
             readiness: None,
         })
@@ -947,6 +962,16 @@ impl ArtifactServingClosure {
             .get(&root.release.slug)
             .filter(|(item, _)| item == root)
             .map(|(_, revision)| *revision)
+    }
+
+    pub fn root_registry_authority(
+        &self,
+        root: &InstalledModuleArtifact,
+    ) -> Option<&crate::ArtifactRegistryExecutionAuthority> {
+        self.artifacts
+            .get(&root.release.slug)
+            .filter(|(item, _)| item == root)?;
+        self.registry_authorities.get(&root.release.slug)
     }
 
     /// Acquire all selection fences in slug order (platform then tenant for
@@ -1013,6 +1038,7 @@ impl ArtifactServingClosure {
                 .await?;
         }
         if self.generations.len() != self.artifacts.len()
+            || self.registry_authorities.len() != self.artifacts.len()
             || self
                 .artifacts
                 .keys()
@@ -1025,6 +1051,12 @@ impl ArtifactServingClosure {
                 .get(slug)
                 .ok_or_else(denied)?
                 .require_locked_on(tx)
+                .await
+                .map_err(store_error)?;
+            self.registry_authorities
+                .get(slug)
+                .ok_or_else(denied)?
+                .require_current_on(tx)
                 .await
                 .map_err(store_error)?;
         }
@@ -1061,9 +1093,10 @@ impl ArtifactServingClosure {
     }
 }
 
-fn clear_security_revision(
+fn clear_security_evidence(
     facts: &[crate::ModuleEffectivePolicyFact],
-) -> Result<u64, ModuleArtifactNodeReconciliationError> {
+) -> Result<(u64, crate::ModuleArtifactRegistryReleaseStatus), ModuleArtifactNodeReconciliationError>
+{
     use crate::{
         ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecurityStatus,
         ModuleEffectivePolicyFact,
@@ -1092,8 +1125,7 @@ fn clear_security_revision(
             _ => {}
         }
     }
-    registry.ok_or_else(denied)?;
-    security.ok_or_else(denied)
+    Ok((security.ok_or_else(denied)?, registry.ok_or_else(denied)?))
 }
 
 /// Pure closure validation. Every selected artifact must still match the
@@ -3662,19 +3694,19 @@ mod tests {
             status: RegistryStatus::Unlisted,
         };
         assert_eq!(
-            clear_security_revision(&[clear.clone(), registry.clone()]).unwrap(),
-            2
+            clear_security_evidence(&[clear.clone(), registry.clone()]).unwrap(),
+            (2, RegistryStatus::Unlisted)
         );
-        assert!(clear_security_revision(&[clear.clone()]).is_err());
-        assert!(clear_security_revision(&[registry.clone()]).is_err());
+        assert!(clear_security_evidence(&[clear.clone()]).is_err());
+        assert!(clear_security_evidence(&[registry.clone()]).is_err());
         assert!(
-            clear_security_revision(&[clear.clone(), clear.clone(), registry.clone()]).is_err()
-        );
-        assert!(
-            clear_security_revision(&[clear.clone(), registry.clone(), registry.clone()]).is_err()
+            clear_security_evidence(&[clear.clone(), clear.clone(), registry.clone()]).is_err()
         );
         assert!(
-            clear_security_revision(&[
+            clear_security_evidence(&[clear.clone(), registry.clone(), registry.clone()]).is_err()
+        );
+        assert!(
+            clear_security_evidence(&[
                 clear,
                 Fact::RegistryRelease {
                     status: RegistryStatus::Unavailable,
@@ -3683,7 +3715,7 @@ mod tests {
             .is_err()
         );
         assert!(
-            clear_security_revision(&[
+            clear_security_evidence(&[
                 Fact::ArtifactSecurity {
                     revision: 1,
                     status: SecurityStatus::Quarantined,
