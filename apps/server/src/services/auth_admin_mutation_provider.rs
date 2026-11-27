@@ -292,14 +292,16 @@ impl ServerAuthAdminMutationProvider {
         require_delegation_ceiling(&self.request_permissions(context)?, requested_permissions)
     }
 
-    async fn prepare_oauth_admin_transaction(
+    // Admit the credential clock and initialize policy before any owner
+    // transaction or row lock, including RBAC-owned transactions.
+    async fn prepare_admin_authority(
         &self,
-        settings_required: bool,
-    ) -> Result<sea_orm::DatabaseTransaction, AuthAdminMutationError> {
+        policy_required: bool,
+    ) -> Result<(), AuthAdminMutationError> {
         rustok_auth::application_clock::admit_now(&self.db)
             .await
             .map_err(internal_admin_error)?;
-        if settings_required {
+        if policy_required {
             crate::services::rbac_module_availability::prepare_invite_module_policy(
                 &self.db,
                 self.invite_registry.as_ref(),
@@ -307,6 +309,14 @@ impl ServerAuthAdminMutationProvider {
             .await
             .map_err(internal_admin_error)?;
         }
+        Ok(())
+    }
+
+    async fn prepare_admin_transaction(
+        &self,
+        policy_required: bool,
+    ) -> Result<sea_orm::DatabaseTransaction, AuthAdminMutationError> {
+        self.prepare_admin_authority(policy_required).await?;
         self.db.begin().await.map_err(internal_admin_error)
     }
 
@@ -422,7 +432,7 @@ impl ServerAuthAdminMutationProvider {
         app_id: Uuid,
         prepared: oauth_app::PreparedOAuthSecret,
     ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
-        let tx = self.prepare_oauth_admin_transaction(true).await?;
+        let tx = self.prepare_admin_transaction(true).await?;
         let authority = self
             .lock_oauth_admin_authority(&tx, context, Some(app_id), true)
             .await?;
@@ -501,17 +511,9 @@ impl rustok_auth::AuthAdminCredentialResolver for ServerAuthAdminMutationProvide
 #[async_trait]
 impl rustok_rbac::graphql::RbacMutationAuthority for ServerAuthAdminMutationProvider {
     async fn prepare(&self) -> Result<(), rustok_rbac::graphql::RbacGraphqlRoleWriteError> {
-        rustok_auth::application_clock::admit_now(&self.db)
+        self.prepare_admin_authority(true)
             .await
-            .map_err(internal_admin_error)
-            .map_err(map_rbac_authority_error)?;
-        crate::services::rbac_module_availability::prepare_invite_module_policy(
-            &self.db,
-            self.invite_registry.as_ref(),
-        )
-        .await
-        .map_err(internal_admin_error)
-        .map_err(map_rbac_authority_error)
+            .map_err(map_rbac_authority_error)
     }
 
     async fn lock(
@@ -737,7 +739,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         )
         .await
         .map_err(map_service_error)?;
-        let tx = self.prepare_oauth_admin_transaction(true).await?;
+        let tx = self.prepare_admin_transaction(true).await?;
         let authority = self
             .lock_oauth_admin_authority(&tx, context, None, true)
             .await?;
@@ -767,7 +769,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         self.authorize_delegated_permissions(context, &command.granted_permissions)
             .await?;
         let locale = self.effective_locale(context)?;
-        let tx = self.prepare_oauth_admin_transaction(true).await?;
+        let tx = self.prepare_admin_transaction(true).await?;
         let authority = self
             .lock_oauth_admin_authority(&tx, context, Some(command.id), true)
             .await?;
@@ -830,7 +832,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         app_id: Uuid,
     ) -> Result<OAuthAppMutationRecord, AuthAdminMutationError> {
         self.authorize(context).await?;
-        let tx = self.prepare_oauth_admin_transaction(true).await?;
+        let tx = self.prepare_admin_transaction(true).await?;
         let authority = self
             .lock_oauth_admin_authority(&tx, context, Some(app_id), true)
             .await?;
@@ -851,7 +853,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         scopes: Vec<String>,
     ) -> Result<(), AuthAdminMutationError> {
         require_direct_user_context(context)?;
-        let tx = self.prepare_oauth_admin_transaction(false).await?;
+        let tx = self.prepare_admin_transaction(false).await?;
         let authority = self
             .lock_oauth_admin_authority(&tx, context, Some(app_id), false)
             .await?;
@@ -874,7 +876,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         app_id: Uuid,
     ) -> Result<(), AuthAdminMutationError> {
         require_direct_user_context(context)?;
-        let tx = self.prepare_oauth_admin_transaction(false).await?;
+        let tx = self.prepare_admin_transaction(false).await?;
         let authority = self
             .lock_oauth_admin_authority(&tx, context, Some(app_id), false)
             .await?;

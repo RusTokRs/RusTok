@@ -130,6 +130,11 @@ bridge; production authenticated ports reject internal/grant-only
 authority. The host still corroborates the typed evidence with the
 valid request scope to preserve invalidation and prevent substitution.
 Explicit nested unauthenticated scopes mask outer credentials.
+All five user-admin writes, OAuth admin writes and RBAC control-plane writes
+now share pre-transaction application-clock admission. The active tenant is
+fenced before app/user/credential locks, including direct user administration:
+PostgreSQL uses FOR SHARE (not FK-only KEY SHARE), SQLite a conditional
+write-before-read fence. The inactive-tenant regression is authored, unrun.
 Artifact-runtime entitlement, remaining scope-independent owner
 contract work and global PostgreSQL deadlock evidence remain open.
 Compilation and runtime verification are pending.
