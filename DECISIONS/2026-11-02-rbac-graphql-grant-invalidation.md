@@ -74,7 +74,10 @@ acquire a new earlier-ranked identity. PostgreSQL reserves ROW EXCLUSIVE table
 and FOR UPDATE singleton fences with NOWAIT, consistent with the artifact grant
 trigger, so a late reservation cannot wait on either lock. Contention fails the
 owner transaction; any retry must start with fresh authorization and must not
-replay an uncertain commit. Reserve by UPDATE RETURNING, reject
+replay an uncertain commit. The owner reservation preserves the driver DbErr
+through the host write adapter; the standalone committed replacement uses the
+shared rollback-only retry contract. Request-bound administration still needs
+fresh credential admission before it can safely retry. Reserve by UPDATE RETURNING, reject
 invalid or exhausted integer storage without mutating it, and publish only
 the assigned committed generation. Do not use this global watermark as a
 per-role authorization fence. The seeded singleton is permanent under ordinary

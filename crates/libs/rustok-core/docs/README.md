@@ -47,8 +47,10 @@ and other invariants that the remaining RusToK modules rely on.
 
 `resilience::retry::rollback_for_transaction_retry` consumes a transaction,
 classifies only PostgreSQL driver 55P03/40P01/40001, requires successful
-explicit rollback and permits at most two retries (25/50 ms backoff).
+explicit rollback and permits at most two retries (25–37/50–75 ms jittered backoff).
 A caller must recreate admission and authorization from scratch and limit
 use to SQL-only pre-commit failures. No commit error is eligible through
 this API; generic RetryPolicy does not establish rollback or authority.
-The host OAuth consent-revoke path is the first consumer; regressions unrun.
+Host OAuth consent revoke and standalone RBAC committed role replacement
+consume this contract. Auth admin and GraphQL retries are not generally wired;
+regressions unrun.

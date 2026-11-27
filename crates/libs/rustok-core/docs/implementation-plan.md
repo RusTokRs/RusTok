@@ -85,6 +85,7 @@ and [root-delivery decision](../../../../DECISIONS/2026-11-18-acknowledged-root-
 
 - SQL transaction retry admission: typed driver conflict classifier and
   rollback-consuming bounded retry helper; generic RetryPolicy remains
-  unsuitable for auth writes. First live consumer is OAuth consent revocation.
+  unsuitable for auth writes. Live consumers are OAuth consent revocation and
+  standalone committed RBAC role replacement. Backoff includes bounded jitter.
   SQLite rollback and opt-in PostgreSQL driver/lock regressions authored,
   unrun. Other owner adapters and commit-uncertainty recovery remain open.

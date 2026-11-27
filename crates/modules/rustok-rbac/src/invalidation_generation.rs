@@ -7,7 +7,9 @@ const MAX_DURABLE_GENERATION: i64 = i64::MAX;
 #[derive(Debug, Error)]
 pub enum RbacInvalidationGenerationError {
     #[error("RBAC invalidation generation database error: {0}")]
-    Database(String),
+    Database(#[source] sea_orm::DbErr),
+    #[error("RBAC generation requires PostgreSQL or SQLite")]
+    UnsupportedBackend,
     #[error("durable RBAC invalidation generation is missing, invalid or exhausted")]
     MissingOrExhausted,
     #[error("durable RBAC invalidation generation is negative: {0}")]
@@ -32,13 +34,13 @@ pub async fn reserve_permission_invalidation_generation(
         // first, then fence the exact existing singleton without waiting.
         db.execute_unprepared("LOCK TABLE rbac_invalidation_state IN ROW EXCLUSIVE MODE NOWAIT")
             .await
-            .map_err(database_error)?;
+            .map_err(RbacInvalidationGenerationError::Database)?;
         db.query_one_raw(Statement::from_string(
             backend,
             format!("SELECT generation FROM rbac_invalidation_state WHERE scope = '{RBAC_PERMISSION_INVALIDATION_SCOPE}' FOR UPDATE NOWAIT"),
         ))
         .await
-        .map_err(database_error)?
+        .map_err(RbacInvalidationGenerationError::Database)?
         .ok_or(RbacInvalidationGenerationError::MissingOrExhausted)?;
     }
     let row = db
@@ -53,7 +55,7 @@ pub async fn reserve_permission_invalidation_generation(
             ),
         ))
         .await
-        .map_err(database_error)?
+        .map_err(RbacInvalidationGenerationError::Database)?
         .ok_or(RbacInvalidationGenerationError::MissingOrExhausted)?;
     decode_generation(&row)
 }
@@ -75,7 +77,7 @@ where
             ),
         ))
         .await
-        .map_err(database_error)?
+        .map_err(RbacInvalidationGenerationError::Database)?
         .ok_or(RbacInvalidationGenerationError::MissingOrExhausted)?;
     decode_generation(&row)
 }
@@ -86,17 +88,13 @@ fn integer_storage_guard(backend: DbBackend) -> Result<&'static str, RbacInvalid
         // SQLite's INTEGER affinity permits REAL values. Reject corrupt storage
         // before changing the row, even if a caller later commits an error.
         DbBackend::Sqlite => Ok(" AND typeof(generation) = 'integer'"),
-        _ => Err(database_error("RBAC generation requires PostgreSQL or SQLite")),
+        _ => Err(RbacInvalidationGenerationError::UnsupportedBackend),
     }
 }
 
 fn decode_generation(row: &sea_orm::QueryResult) -> Result<u64, RbacInvalidationGenerationError> {
-    let generation: i64 = row.try_get("", "generation").map_err(database_error)?;
+    let generation: i64 = row.try_get("", "generation").map_err(RbacInvalidationGenerationError::Database)?;
     u64::try_from(generation).map_err(|_| RbacInvalidationGenerationError::Negative(generation))
-}
-
-fn database_error(error: impl std::fmt::Display) -> RbacInvalidationGenerationError {
-    RbacInvalidationGenerationError::Database(error.to_string())
 }
 
 #[cfg(test)]
@@ -200,7 +198,13 @@ mod tests {
                 reserve_permission_invalidation_generation(&second),
             )
             .await.expect("late generation fence must not wait").unwrap_err();
-            assert!(matches!(error, super::RbacInvalidationGenerationError::Database(_)));
+            let super::RbacInvalidationGenerationError::Database(error) = error else {
+                panic!("expected typed database contention");
+            };
+            assert_eq!(
+                rustok_core::resilience::retry::PostgresTransactionConflict::classify(DbBackend::Postgres, &error),
+                Some(rustok_core::resilience::retry::PostgresTransactionConflict::LockUnavailable)
+            );
             second.rollback().await.unwrap();
             if commit_first {
                 first.commit().await.unwrap();
@@ -221,7 +225,13 @@ mod tests {
             reserve_permission_invalidation_generation(&writer),
         )
         .await.expect("late generation table fence must not wait").unwrap_err();
-        assert!(matches!(error, super::RbacInvalidationGenerationError::Database(_)));
+        let super::RbacInvalidationGenerationError::Database(error) = error else {
+            panic!("expected typed database contention");
+        };
+        assert_eq!(
+            rustok_core::resilience::retry::PostgresTransactionConflict::classify(DbBackend::Postgres, &error),
+            Some(rustok_core::resilience::retry::PostgresTransactionConflict::LockUnavailable)
+        );
         writer.rollback().await.unwrap();
         holder.rollback().await.unwrap();
 

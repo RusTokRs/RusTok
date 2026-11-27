@@ -162,7 +162,7 @@ pub async fn rollback_for_transaction_retry(
     );
     tx.rollback().await?;
     if let Some(delay) = delay {
-        tokio::time::sleep(delay).await;
+        tokio::time::sleep(transaction_retry_jitter(delay)).await;
         Ok(true)
     } else {
         Ok(false)
@@ -182,6 +182,13 @@ fn transaction_retry_delay(
         base: Duration::from_millis(25),
         max: Duration::from_millis(100),
     }.delay(attempt - 1))
+}
+
+// The platform delay is bounded to 25/50 ms; add up to 50% jitter to
+// prevent synchronized contenders from immediately colliding again.
+fn transaction_retry_jitter(base: Duration) -> Duration {
+    let upper_ms = (base.as_millis() / 2) as u64;
+    base.saturating_add(Duration::from_millis(rand::random_range(0..=upper_ms)))
 }
 
 #[cfg(test)]
@@ -211,6 +218,17 @@ mod tests {
             assert_eq!(transaction_retry_delay(Some(conflict), u32::MAX), None);
         }
         assert_eq!(transaction_retry_delay(None, 1), None);
+    }
+
+    #[test]
+    fn transaction_retry_jitter_stays_within_platform_bounds() {
+        for (base, upper) in [(25, 37), (50, 75)] {
+            for _ in 0..128 {
+                let delay = transaction_retry_jitter(Duration::from_millis(base));
+                assert!(delay >= Duration::from_millis(base));
+                assert!(delay <= Duration::from_millis(upper));
+            }
+        }
     }
 
     #[tokio::test]

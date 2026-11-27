@@ -8,8 +8,11 @@ its local permission cache and attempts namespace-wide fan-out after commit.
 Metadata-only updates do not reserve a generation; identical supplied grant sets
 are still rewritten and advance it. Missing/exhausted generation storage aborts
 the edit. PostgreSQL late reservation also rejects a contended table or row
-with NOWAIT; caller rollback is required, and automatic whole-transaction retry
-is not established for every caller. An optional legacy host callback still needs its own generation
+with NOWAIT; reservation retains the typed driver error through the server
+write adapter. Standalone committed role replacement retries typed pre-commit
+conflicts after explicit rollback and fresh locked facts; no-op and commit
+failure never retry. Nested bootstrap assignment errors and request-bound
+Auth/GraphQL whole-transaction retry remain open. An optional legacy host callback still needs its own generation
 reconciliation. Added owner/host regressions have not been compiled or executed.
 
 This is a durable watermark plus eventual watchdog reconciliation, not an outbox,
