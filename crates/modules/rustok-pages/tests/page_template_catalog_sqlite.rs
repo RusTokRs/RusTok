@@ -61,6 +61,7 @@ async fn catalog_is_tenant_and_exact_locale_scoped_with_revision_cas() -> TestRe
     let service = PageTemplateService::new(db.clone());
     let actor = SecurityContext::system();
     symbol(&db, tenant, "en", "header").await?;
+    symbol(&db, tenant, "en", "unused").await?;
     assert!(
         service
             .save(
