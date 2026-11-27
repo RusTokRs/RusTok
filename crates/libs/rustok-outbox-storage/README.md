@@ -71,3 +71,34 @@ startup. The floor begins at zero on migration; pre-upgrade history is not
 retroactively verified. Upgrade the schema before new workers and drain old
 workers that bypass the guard. A committed owner transaction may still be
 subject to cancellation and ambiguous broker effects.
+
+## Distributed execution admission (2026-11-27)
+
+The outbox_execution_policy singleton owns a per-database-schema budget
+(max_in_flight, default 8, range 1..1024) and the shared claim_ttl_ms.
+The first updated relay binds the TTL; subsequent embedded and standalone
+relays must match it before starting their brokers or claiming work.
+The local max_concurrency remains an upper bound, independent of the cluster
+budget. Existing sys_events claimed_by/claimed_at pairs are the only durable
+execution permits. Claim and refresh lock the policy before event rows;
+PostgreSQL uses READ COMMITTED, SKIP LOCKED for candidates and NOWAIT for
+refresh. The policy lock is released before any broker effect. Completed
+claims release capacity through existing conditional state transitions.
+Cancelled or crashed publications may retain reservations until expiry;
+transport effects remain at-least-once and may outlive cancellation.
+A sliding window replenishes a slot after a joined outcome rather than waiting
+for a whole wave. Claim failures stop new admission and drain active tasks.
+The pass cursor and initial eligibility horizon are preserved.
+
+Deployment: stop and drain all old relay processes before applying
+m20261127_000201_create_outbox_execution_policy. Old binaries bypass the
+budget. Ensure no old in-flight publications remain before starting new
+relays. Apply the migration before starting new workers; the schema helper
+does not reset an existing policy. For a deliberate policy change, stop and
+drain every relay, verify there are no live or ambiguous claims, then change
+the singleton max_in_flight and claim_ttl_ms through controlled database
+maintenance and align all runtime TTL settings before restart. No live
+policy editing API is provided; online cap reduction or TTL change is not
+supported. Multiple databases/schemas have independent budgets. Direct SQL
+claim mutations outside the protocol, primary clock anomalies, uncooperative
+transport cancellation and broker-side fencing remain outside this guarantee.
