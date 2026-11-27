@@ -1463,6 +1463,99 @@ mod tests {
     }
 
     #[test]
+    fn resolves_symbol_instances_nested_in_object_valued_opaque_children() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [{
+                "id": "cta",
+                "components": [{
+                    "id": "cta-root",
+                    "type": "section",
+                    "components": [{ "id": "cta-text", "type": "text", "content": "Buy" }]
+                }]
+            }],
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": {
+                        "id": "opaque-parent",
+                        "type": "custom-wrapper",
+                        "components": {
+                            "id": "slot",
+                            "type": "symbol",
+                            "symbolId": "cta",
+                            "components": []
+                        }
+                    }
+                }
+            }]
+        }))
+        .expect("document");
+
+        let resolved = resolve_symbol_instances(&document).expect("resolve");
+        let root = resolved.project().pages[0]
+            .component
+            .as_ref()
+            .and_then(ComponentNode::as_object)
+            .expect("root");
+        let crate::ComponentChildren::Opaque(parent) = &root.components else {
+            panic!("object-valued children must remain opaque")
+        };
+        let expanded = &parent["components"];
+        assert!(expanded.get("symbolId").is_none());
+        assert_eq!(expanded["components"][0]["id"], "slot-cta-root");
+        assert_eq!(expanded["components"][0]["components"][0]["id"], "slot-cta-text");
+    }
+
+    #[test]
+    fn symbol_cycles_include_references_inside_opaque_children() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [
+                {
+                    "id": "outer",
+                    "components": [{
+                        "id": "opaque-parent",
+                        "type": "custom-wrapper",
+                        "components": {
+                            "id": "inner-slot",
+                            "type": "symbol",
+                            "symbolId": "inner",
+                            "components": []
+                        }
+                    }]
+                },
+                {
+                    "id": "inner",
+                    "components": [{
+                        "id": "outer-slot",
+                        "type": "symbol",
+                        "symbolId": "outer",
+                        "components": []
+                    }]
+                }
+            ],
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "slot",
+                        "type": "symbol",
+                        "symbolId": "outer",
+                        "components": []
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+
+        assert!(matches!(
+            resolve_symbol_instances(&document),
+            Err(FlyError::SymbolCycle(_))
+        ));
+    }
+
+    #[test]
     fn commands_upsert_and_remove_definitions_transactionally() {
         let mut editor = FlyEditor::new(
             document_with(object("root", "wrapper", vec![]), Vec::new()),
@@ -1529,6 +1622,48 @@ mod tests {
         assert!(matches!(
             removal,
             Err(FlyError::InvalidSymbolReference(message))
+                if message.contains("cannot remove symbol `cta`")
+        ));
+    }
+
+    #[test]
+    fn remove_fails_closed_for_instances_inside_opaque_children() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [{
+                "id": "cta",
+                "components": [{ "id": "cta-1", "type": "text" }]
+            }],
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": {
+                        "id": "opaque-parent",
+                        "type": "custom-wrapper",
+                        "components": {
+                            "id": "nested-slot",
+                            "type": "symbol",
+                            "symbolId": "cta",
+                            "components": []
+                        }
+                    }
+                }
+            }]
+        }))
+        .expect("document");
+        let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+
+        let error = editor
+            .apply(EditorCommand::Symbol {
+                command: SymbolCommand::Remove {
+                    symbol_id: "cta".to_string(),
+                },
+            })
+            .expect_err("opaque instance must prevent definition removal");
+
+        assert!(matches!(
+            error,
+            FlyError::InvalidSymbolReference(message)
                 if message.contains("cannot remove symbol `cta`")
         ));
     }
@@ -1699,6 +1834,30 @@ mod tests {
 
         assert!(SymbolDescriptor::from_value(&raw).is_none());
         assert!(symbol_definition_size_exceeds_limit(&raw));
+    }
+
+    #[test]
+    fn symbol_definition_rejects_malformed_opaque_symbol_markers() {
+        let raw = json!({
+            "id": "outer",
+            "components": [{
+                "id": "opaque-parent",
+                "type": "custom-wrapper",
+                "components": {
+                    "id": "nested-slot",
+                    "type": "symbol",
+                    "symbolId": 42,
+                    "components": []
+                }
+            }]
+        });
+        let descriptor = SymbolDescriptor::from_value(&raw).expect("descriptor");
+
+        assert!(matches!(
+            validate_definition(&descriptor),
+            Err(FlyError::InvalidSymbolReference(message))
+                if message.contains("non-string symbolId")
+        ));
     }
 
     #[test]
