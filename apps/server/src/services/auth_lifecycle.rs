@@ -417,17 +417,19 @@ impl AuthLifecycleService {
         status: Option<rustok_core::UserStatus>,
         min_password_length: usize,
     ) -> std::result::Result<users::Model, AuthLifecycleError> {
-        Self::create_user_db(
-            ctx.db(),
+        let prepared = Self::prepare_new_user(email, password, name, min_password_length).await?;
+        let tx = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
+        let user = Self::create_user_in_tx(&tx, tenant_id, prepared, role, status).await?;
+        Self::publish_user_event_in_tx(
+            ctx,
+            &tx,
             tenant_id,
-            email,
-            password,
-            name,
-            role,
-            status,
-            min_password_length,
+            user.id,
+            DomainEvent::UserAccountRegistered { user_id: user.id },
         )
-        .await
+        .await?;
+        tx.commit().await.map_err(AuthLifecycleError::from)?;
+        Ok(user)
     }
 
     #[instrument(skip(db, password, email, name))]

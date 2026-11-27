@@ -25,9 +25,9 @@ pub struct AuthAdminMutationContext {
     /// Trusted principal classification of the caller, when the command
     /// arrives through an authenticated request boundary.
     ///
-    /// `None` is reserved for host-internal compositions that invoke the
-    /// administration ports without a request principal (for example RBAC
-    /// runtime wiring). Operations that act on the actor's own behalf —
+    /// `None` is reserved for trusted host-internal compositions without
+    /// a request principal. The host request scope independently carries
+    /// admitted credential evidence; classification alone is not a credential. Operations that act on the actor's own behalf —
     /// above all OAuth consent grant/revoke/list — must require
     /// `Some(AuthPrincipalKind::DirectUser)` and fail closed for delegated
     /// (`authorization_code`) and service (`client_credentials`) tokens:

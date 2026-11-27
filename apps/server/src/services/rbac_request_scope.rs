@@ -1,7 +1,8 @@
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use rustok_api::Permission;
+use chrono::{DateTime, Utc};
+use rustok_api::{AuthPrincipalKind, Permission};
 use rustok_core::UserRole;
 use uuid::Uuid;
 
@@ -11,6 +12,61 @@ pub struct RbacRequestScope {
     pub actor_id: Uuid,
     pub permissions: Vec<Permission>,
     pub role: UserRole,
+    credential: Option<RequestCredentialAuthority>,
+}
+
+/// Facts admitted by the common JWT extractor, never transport input.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct RequestCredentialAuthority {
+    pub(crate) principal_kind: AuthPrincipalKind,
+    pub(crate) session_id: Uuid,
+    pub(crate) expires_at: DateTime<Utc>,
+    pub(crate) recovery_revision: i64,
+    pub(crate) delegated: Option<DelegatedCredentialEvidence>,
+}
+
+/// Identity of the exact durable access registration admitted by the JWT
+/// extractor. Never accept these facts from a command payload or rederive
+/// them from a later consent grant.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct DelegatedCredentialEvidence {
+    pub(crate) registration_id: Uuid,
+    pub(crate) app_id: Uuid,
+    pub(crate) client_id: Uuid,
+    pub(crate) token_hash: String,
+    pub(crate) issued_at: DateTime<Utc>,
+    pub(crate) consent_granted_at: Option<sea_orm::prelude::DateTimeWithTimeZone>,
+    pub(crate) scopes: Vec<String>,
+}
+
+impl std::fmt::Debug for DelegatedCredentialEvidence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DelegatedCredentialEvidence")
+            .field("registration_id", &self.registration_id)
+            .field("app_id", &self.app_id)
+            .field("client_id", &self.client_id)
+            .field("issued_at", &self.issued_at)
+            .field("consent_granted_at", &self.consent_granted_at)
+            .finish_non_exhaustive()
+    }
+}
+
+impl DelegatedCredentialEvidence {
+    pub(crate) fn from_registration(
+        row: &crate::models::oauth_tokens::Model,
+        client_id: Uuid,
+        scopes: &[String],
+    ) -> Self {
+        Self {
+            registration_id: row.id,
+            app_id: row.app_id,
+            client_id,
+            token_hash: row.token_hash.clone(),
+            issued_at: row.created_at.with_timezone(&Utc),
+            consent_granted_at: row.consent_granted_at,
+            scopes: scopes.to_vec(),
+        }
+    }
 }
 
 impl RbacRequestScope {
@@ -27,7 +83,30 @@ impl RbacRequestScope {
             actor_id,
             permissions,
             role,
+            credential: None,
         }
+    }
+
+    /// Authenticated HTTP/WS scopes carry the original credential ceiling.
+    /// The grant-only constructor remains for trusted internal scopes and fixtures.
+    pub(crate) fn authenticated(
+        current: &crate::extractors::auth::CurrentUser,
+        deadline: DateTime<Utc>,
+    ) -> Self {
+        let mut scope = Self::new(
+            current.user.tenant_id,
+            current.user.id,
+            current.permissions.clone(),
+            current.inferred_role.clone(),
+        );
+        scope.credential = Some(RequestCredentialAuthority {
+            principal_kind: current.principal_kind,
+            session_id: current.session_id,
+            expires_at: deadline.min(current.access_token_expires_at),
+            recovery_revision: current.user.recovery_revision,
+            delegated: current.delegated_credential.clone(),
+        });
+        scope
     }
 
     fn matches(&self, tenant_id: &Uuid, actor_id: &Uuid) -> bool {
@@ -77,6 +156,23 @@ pub fn permissions_for(tenant_id: &Uuid, actor_id: &Uuid) -> Option<Vec<Permissi
             state
                 .matches_valid(tenant_id, actor_id)
                 .then(|| state.scope.permissions.clone())
+        })
+        .ok()
+        .flatten()
+}
+
+/// Distinguish an explicitly grant-only internal scope from a missing,
+/// mismatched or invalidated scope. Never fall back to internal authority
+/// when an authenticated request has lost its snapshot.
+pub(crate) fn credential_for(
+    tenant_id: &Uuid,
+    actor_id: &Uuid,
+) -> Option<Option<RequestCredentialAuthority>> {
+    CURRENT_RBAC_SCOPE
+        .try_with(|state| {
+            state
+                .matches_valid(tenant_id, actor_id)
+                .then(|| state.scope.credential.clone())
         })
         .ok()
         .flatten()
@@ -256,6 +352,31 @@ mod tests {
         })
         .await;
         assert!(ensure_scope_not_invalidated(&tenant_id, &actor_id).is_ok());
+    }
+
+    #[tokio::test]
+    async fn credential_evidence_is_bound_to_exact_valid_scope() {
+        let tenant = Uuid::new_v4();
+        let actor = Uuid::new_v4();
+        let mut scope = RbacRequestScope::new(
+            tenant, actor, vec![Permission::USERS_MANAGE], UserRole::Admin,
+        );
+        let credential = RequestCredentialAuthority {
+            principal_kind: AuthPrincipalKind::DirectUser,
+            session_id: Uuid::new_v4(),
+            expires_at: Utc::now(),
+            recovery_revision: 7,
+            delegated: None,
+        };
+        scope.credential = Some(credential.clone());
+        with_rbac_request_scope(Some(scope), async {
+            assert_eq!(credential_for(&tenant, &actor), Some(Some(credential)));
+            assert_eq!(credential_for(&tenant, &Uuid::new_v4()), None);
+            assert_eq!(credential_for(&Uuid::new_v4(), &actor), None);
+            invalidate_current_rbac_request_scope(&tenant, &actor);
+            assert_eq!(credential_for(&tenant, &actor), None);
+        }).await;
+        assert_eq!(credential_for(&tenant, &actor), None);
     }
 
     #[test]

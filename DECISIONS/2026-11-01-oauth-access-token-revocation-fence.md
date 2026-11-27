@@ -192,3 +192,25 @@ consent-presence check alone could not distinguish an old epoch from a new grant
 - OAuth access validation now performs a durable row lookup. This is the
   intended cost of pre-TTL revocation. Operators must run the additive migration
   before enabling the fence in production.
+
+## Delegated user-administration transaction extension (2026-11-27)
+
+An authenticated scope carries the exact admitted access registration identity,
+client/app, digest, original scopes, precise issuance timestamp and consent
+epoch. It is not a client-supplied mutation parameter and the digest is omitted
+from Debug. GraphQL HTTP and WebSocket initialization must not replace it with
+a grant-only scope. A delegated user-admin write acquires PostgreSQL tenant
+key-share protection (manifest reconciliation locks tenant before apps), then
+the OAuth app mutation fence, ordered user rows and exact access registration,
+then the existing invite/module-policy/role fences. SQLite reserves the writer
+on the app lock before transactional reads. Validate the live app grant/scopes,
+registration subject, identity, digest, epoch, revocation and deadline, and
+live consent using the same scope check as the extractor. Filter current grants
+through the original scopes; the original request grant ceiling remains
+independently required. Keep credential fences through commit; do not reacquire
+app locks after users. No raw access JWT is retained in the request scope.
+
+This source slice does not cover service-principal administration, OAuth
+app/consent admin mutations, RBAC role-definition writes, artifact permissions,
+all tenant activity races or global cross-module deadlock freedom. SQLite
+regression authored, compile and live PostgreSQL contention tests unrun.

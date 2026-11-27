@@ -31,3 +31,21 @@ At the same time, the RBAC source-of-truth migration to the relation model is al
 - Critical security scenarios (reset/change password) become predictable and verifiable through invariant tests.
 - Documentation and rollout gates can check consistency independently of the RBAC cutover.
 - The next step is to maintain parity with tests and not return business branches to the transport layer.
+
+## Administrative transaction extension (2026-11-27)
+
+The host-authenticated request scope retains the admitted effective deadline,
+principal kind, session identity and recovery revision. User-administration
+writes lock ordered users, then the direct initiating session, then applicable
+module policy and role state. The session must belong to the same tenant/actor
+and remain active. The earlier of the admitted deadline and locked session
+deadlines is checked after authorization locks and before commit using the
+Auth application clock and live credential authority. A self-directed account
+mutation may intentionally revoke its initiating session; do not re-read it
+as a prerequisite after that mutation. Existing trusted grant-only internal
+scopes are not bearer credential evidence.
+
+This is a source-level partial implementation: delegated registration and
+consent fencing, OAuth administration and RBAC role-definition transactions,
+artifact permissions and full inter-module lock ordering still require a
+shared owner contract and runtime verification.

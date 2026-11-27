@@ -631,7 +631,7 @@ impl CatalogService {
             self.pricing_port
                 .as_ref()
                 .ok_or_else(pricing_port_unavailable)?
-                .create_initial_prices_in_tx(&txn, tenant_id, initial_prices)
+                .create_initial_prices_in_tx(&txn, tenant_id, actor_id, initial_prices)
                 .await?;
         }
         debug!(
@@ -1697,7 +1697,7 @@ impl CatalogService {
             self.pricing_port
                 .as_ref()
                 .ok_or_else(pricing_port_unavailable)?
-                .create_initial_prices_in_tx(&txn, tenant_id, initial_prices)
+                .create_initial_prices_in_tx(&txn, tenant_id, actor_id, initial_prices)
                 .await?;
         }
 
@@ -1940,7 +1940,7 @@ impl CatalogService {
                 self.pricing_port
                     .as_ref()
                     .ok_or_else(pricing_port_unavailable)?
-                    .replace_catalog_base_prices_in_tx(&txn, tenant_id, variant_id, initial_prices)
+                    .replace_catalog_base_prices_in_tx(&txn, tenant_id, actor_id, variant_id, initial_prices)
                     .await?;
             }
         }

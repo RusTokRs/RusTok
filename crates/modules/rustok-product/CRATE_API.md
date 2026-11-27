@@ -70,7 +70,7 @@ moves them into `rustok-product-ports` with a runtime-independent build.
 ## Domain Collaborations
 
 - **Taxonomy**: Product categorization, hierarchical taxonomy tree bindings, and storefront breadcrumbs.
-- **Pricing Collaboration**: Transaction-aware initial price creation, replacement, cleanup, and catalog projections via `ProductPricingPort` during product and variant lifecycle. Co-located direct base-price writers use `services::catalog_references::record_catalog_base_price_change_in_tx` with the locked Variant and exact PriceUpdated envelope to advance the catalog predecessor and refresh ledger atomically.
+- **Pricing Collaboration**: Transaction-aware initial price creation, base-price replacement, cleanup, and catalog projections via `ProductPricingPort`. Write calls forward the initiating actor and share the host transactional outbox; Pricing emits a validated `PriceUpdated` event for each persisted initial/replacement row in the same transaction. Product/Variant lifecycle events cover complete base-price clears and price-row deletion. Co-located direct Pricing base-price writers use `services::catalog_references::record_catalog_base_price_change_in_tx` with the locked Variant and exact `PriceUpdated` envelope to advance the catalog predecessor and refresh ledger atomically.
 - **Inventory**: Tenant-scoped available-quantity projections plus transaction-aware initial
   inventory provisioning, SKU synchronization and guarded cleanup. Every projected level must
   resolve to a location owned by the requested tenant; missing/foreign bindings fail closed.
@@ -105,6 +105,7 @@ moves them into `rustok-product-ports` with a runtime-independent build.
 - **Publication Safety**: A published product cannot be hard-deleted directly (`CannotDeletePublished`); it must first be unpublished or archived.
 - **Handle Uniqueness**: Product handle/slug must be unique per locale across the tenant (`DuplicateHandle`).
 - **SKU Uniqueness**: Variant SKU must be unique across the tenant catalog (`DuplicateSku`).
+- **Inventory Ownership**: Inventory quantity remains Inventory-owned; quantity-only variant patches use `expected_inventory_quantity` and do not write ProductVariant or advance its business/Index revisions.
 - **Monetary & Measurement Bounds**: Non-negative decimal validation for prices, compare-at amounts, weights, and dimensions.
 - **Brand Associations & Primary Brand Invariant**: Products can be associated with multiple brands. When multiple brands are assigned, exactly one must be designated as primary (`is_primary = true`). If a single brand is assigned without explicit designation, it defaults to primary. Enforced by unique constraint `uq_product_brands` and partial unique index `uq_product_brands_primary` at the database level.
 
@@ -117,7 +118,8 @@ moves them into `rustok-product-ports` with a runtime-independent build.
 - `DomainEvent::VariantCreated { product_id, variant_id }`
 - `DomainEvent::VariantUpdated { product_id, variant_id }`
 - `DomainEvent::VariantDeleted { product_id, variant_id }`
-- `DomainEvent::ProductAttributeValuesChanged { product_id }`
+- `DomainEvent::PriceUpdated { variant_id, product_id, currency, old_amount, new_amount }`
+- `DomainEvent::ProductAttributeValuesChanged { product_id }
 
 ### Errors / Failure Codes
 

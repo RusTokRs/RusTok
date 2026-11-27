@@ -149,6 +149,17 @@ async fn insert_oauth_app(
     grant_types: &[&str],
     is_active: bool,
 ) -> oauth_apps::Model {
+    insert_oauth_app_with_scopes(db, tenant_id, app_type, grant_types, is_active, &["forum:*"]).await
+}
+
+async fn insert_oauth_app_with_scopes(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    app_type: &str,
+    grant_types: &[&str],
+    is_active: bool,
+    scopes: &[&str],
+) -> oauth_apps::Model {
     let model = oauth_apps::ActiveModel {
         id: Set(Uuid::new_v4()),
         tenant_id: Set(tenant_id),
@@ -160,7 +171,7 @@ async fn insert_oauth_app(
         client_id: Set(Uuid::new_v4()),
         client_secret_hash: Set(Some("hash".to_string())),
         redirect_uris: Set(serde_json::json!(["https://example.com/callback"])),
-        scopes: Set(serde_json::json!(["forum:*"])),
+        scopes: Set(serde_json::json!(scopes)),
         grant_types: Set(serde_json::json!(grant_types)),
         granted_permissions: Set(serde_json::json!(["forum_topics:list", "modules:list"])),
         manifest_ref: Set(None),
@@ -218,6 +229,7 @@ fn service_current_user_builds_service_security_context() {
         scopes: Vec::new(),
         grant_type: "client_credentials".to_string(),
         access_token_expires_at: Utc::now() + Duration::hours(1),
+        delegated_credential: None,
     };
 
     assert_eq!(
@@ -807,6 +819,83 @@ async fn oauth_access_token_with_stale_consent_epoch_is_rejected() {
             "OAuth token predates the current consent epoch",
         )
     );
+}
+
+#[tokio::test]
+async fn delegated_user_admin_rejects_revoked_registration_and_consent_epoch() {
+    use crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider;
+    use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
+    use rustok_auth::{AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UserAdminMutationPort};
+    use sea_orm::EntityTrait;
+
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let runtime = test_auth_runtime(db.clone());
+    let tenant = tenants::ActiveModel::new("Admin consent", &format!("tenant-{}", Uuid::new_v4()))
+        .insert(&db).await.unwrap();
+    let (actor, _) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+    rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+        &db, tenant.id, actor.id, UserRole::Admin,
+    ).await.unwrap();
+    // Include the customer's baseline permissions so the create command can
+    // independently authorize the destination role as well as USERS_CREATE.
+    let app = insert_oauth_app_with_scopes(
+        &db, tenant.id, "third_party", &["authorization_code"], true, &["*:*"],
+    ).await;
+    let now = Utc::now();
+    let consent = oauth_consents::ActiveModel {
+        id: Set(Uuid::new_v4()), app_id: Set(app.id), user_id: Set(actor.id),
+        tenant_id: Set(tenant.id), scopes: Set(serde_json::json!(["*:*"])),
+        granted_at: Set(now.into()), revoked_at: Set(None),
+    }.insert(&db).await.unwrap();
+    let id = Uuid::new_v4();
+    let token = encode_oauth_access_token(
+        runtime.require_auth_config().unwrap(), actor.id, tenant.id, UserRole::Admin,
+        app.client_id, &["*:*".to_string()], "authorization_code", 900, id,
+    ).unwrap();
+    let registration = oauth_tokens::ActiveModel {
+        id: Set(id), app_id: Set(app.id), user_id: Set(Some(actor.id)),
+        tenant_id: Set(tenant.id), token_hash: Set(crate::auth::hash_refresh_token(&token)),
+        family_id: Set(id), authorization_code_id: Set(None),
+        grant_type: Set("authorization_code".to_string()),
+        token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
+        consent_granted_at: Set(Some(consent.granted_at)),
+        scopes: Set(serde_json::json!(["*:*"])), expires_at: Set((now + Duration::minutes(15)).into()),
+        revoked_at: Set(None), last_used_at: Set(None), created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    }.insert(&db).await.unwrap();
+    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token).await.unwrap();
+    let scope = || RbacRequestScope::authenticated(&admitted, admitted.access_token_expires_at);
+    let provider = ServerAuthAdminMutationProvider::new(runtime.runtime_ctx(), runtime.require_auth_config().unwrap().clone());
+    let context = AuthAdminMutationContext {
+        actor_id: actor.id, tenant_id: tenant.id, request_id: None,
+        locale: Some("en".into()), principal_kind: Some(AuthPrincipalKind::DelegatedUser),
+    };
+    let create = |email: &str| CreateUserCommand {
+        email: email.into(), password: "Password123!Strong".into(), name: None,
+        role: Some("customer".into()), status: None, custom_fields: None,
+    };
+    with_rbac_request_scope(Some(scope()), provider.create_user(&context, create("delegated-ok@example.test")))
+        .await.unwrap();
+
+    // A changed consent epoch must fail even when a noncooperating writer
+    // omitted token revocation. The exact admitted epoch cannot be replaced.
+    oauth_consents::ActiveModel {
+        id: Set(consent.id), granted_at: Set((now + Duration::seconds(1)).into()),
+        ..Default::default()
+    }.update(&db).await.unwrap();
+    let denied = with_rbac_request_scope(Some(scope()), provider.create_user(&context, create("delegated-epoch@example.test"))).await;
+    assert!(matches!(denied, Err(AuthAdminMutationError::Unauthorized)), "{denied:?}");
+    oauth_consents::ActiveModel {
+        id: Set(consent.id), granted_at: Set(consent.granted_at), ..Default::default()
+    }.update(&db).await.unwrap();
+    oauth_tokens::ActiveModel {
+        id: Set(registration.id), revoked_at: Set(Some(Utc::now().into())), ..Default::default()
+    }.update(&db).await.unwrap();
+    let denied = with_rbac_request_scope(Some(scope()), provider.create_user(&context, create("delegated-revoked@example.test"))).await;
+    assert!(matches!(denied, Err(AuthAdminMutationError::Unauthorized)), "{denied:?}");
+    for email in ["delegated-epoch@example.test", "delegated-revoked@example.test"] {
+        assert!(users::Entity::find_by_email(&db, tenant.id, email).await.unwrap().is_none());
+    }
 }
 
 #[tokio::test]
