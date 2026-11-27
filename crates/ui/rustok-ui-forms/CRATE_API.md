@@ -19,11 +19,11 @@
 - `FormValidator`: Composable builder for multi-field validation and error accumulation.
 - `FieldError`: Field identifier and error message pair.
 - `ValidationIssue`: Structured validation error with hierarchical path segments.
-- `FieldDescriptor`: Schema descriptor defining UI reflection, kind, label, constraints, and options.
+- `FieldDescriptor`: Schema descriptor defining UI reflection, kind, label, constraints, and options; `validate` delegates to the same rules as `FormSchema::validate_map`.
 - `FieldKind`: Enum of supported field kinds (`Text`, `Email`, `Password`, `Number`, `Select`, `Checkbox`, `Radio`, `Textarea`, `Date`, etc.).
 - `FieldConstraints`: Bounds on length, range, requiredness, and patterns.
 - `FieldOption`: Value, label, and disabled state for select/radio controls.
-- `FormSchema`: Collection of field descriptors for declarative schema-driven forms.
+- `FormSchema`: Collection of field descriptors for declarative schema-driven forms. `validate_json` requires an object; `validate_dynamic_form` validates `DynamicFormPayload` scalar and multiple-selection values and rejects file fields until file transport exists.
 - `DirtyTracker`: Set-based dirty state tracker.
 - `FormStepTracker`: Multi-step form/wizard navigation tracker.
 
@@ -36,12 +36,13 @@
 ## Invariants & Guarantees
 - **Framework-Free Core (FFA)**: Zero DOM, zero UI framework dependencies (no Leptos, Dioxus, or web-sys types). All rules and states are testable in pure Rust without browser or DOM harness.
 - **Deterministic Validation**: Validation rules are pure, side-effect free functions; identical inputs always produce identical validation results.
-- **Unicode Safety**: String length constraints measure Unicode characters (scalar values/graphemes) rather than raw byte counts.
+- **Unicode Safety**: String length constraints measure Unicode scalar values (not grapheme clusters) rather than raw byte counts.
 - **Serialization Parity**: All public descriptors and state types implement `Serialize` and `Deserialize` for seamless transmission across SSR, hydration, and API boundaries.
 
 ## Dependencies & Boundaries
 - **Direct Dependencies**:
   - `serde`: Serialization traits for state and schema contracts.
   - `serde_json`: JSON value validation and payload parsing.
-  - `regex`: Standard regex pattern matching for email, phone, and custom pattern constraints.
+  - `regex`: Custom pattern constraints.
+  - `url`: HTTP(S) URL parsing (not an SSRF safety check).
 - **Zero Internal RusToK Dependencies**: `rustok-ui-forms` depends on no other RusToK internal crate, making it universally reusable across server, client, CLI, and test runners.
