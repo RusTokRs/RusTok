@@ -820,7 +820,8 @@ mod tests {
                     .strip_prefix("<style nonce=\"")
                     .and_then(|rest| rest.split_once('"').map(|(nonce, _)| nonce))
                     .expect("nonce-bearing OAuth style element");
-                assert!(policy.contains(&format!("'nonce-{nonce}'")), "{policy}");
+                let nonce_source = format!("'nonce-{nonce}'");
+                assert!(policy.contains(nonce_source.as_str()), "{policy}");
                 assert!(policy.contains("form-action 'self'"), "{policy}");
                 assert!(policy.contains("script-src 'none'"), "{policy}");
                 assert!(!policy.contains("unsafe-inline"), "{policy}");
@@ -876,7 +877,8 @@ mod tests {
                 .strip_prefix("<script nonce=\"")
                 .and_then(|rest| rest.split_once('"').map(|(nonce, _)| nonce))
                 .expect("nonce-bearing GraphQL bootstrap");
-            assert!(policy.contains(&format!("'nonce-{nonce}'")), "{policy}");
+            let nonce_source = format!("'nonce-{nonce}'");
+            assert!(policy.contains(nonce_source.as_str()), "{policy}");
             assert!(policy.contains("https://cdn.jsdelivr.net"), "{policy}");
             assert!(policy.contains("connect-src 'self' ws: wss:"), "{policy}");
         }

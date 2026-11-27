@@ -263,7 +263,7 @@ fn nonce_graphql_playground_html(source: &str, nonce: &str) -> Option<String> {
     );
     Some(
         source
-            .replace(INLINE_SCRIPT_TAG, &nonce_script_tag)
+            .replace(INLINE_SCRIPT_TAG, nonce_script_tag.as_str())
             .replace("//cdn.jsdelivr.net/", "https://cdn.jsdelivr.net/"),
     )
 }
