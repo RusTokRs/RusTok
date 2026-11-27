@@ -6,14 +6,15 @@ use crate::model::{
     BindCategoryAttributeDraft, BindSchemaAttributeDraft, CatalogCategoryDraft,
     CatalogCategoryList, CategoryAttributeGroupDraft, ProductAttributeDraft, ProductAttributeList,
     ProductAttributeOptionDraft, ProductAttributeSchemaDraft, ProductAttributeSchemaGroupDraft,
-    ProductAttributeSchemaList, ProductAttributeValueBatchDraft, ProductAttributeValueItem,
+    ProductAttributeSchemaList, ProductAttributeValueItem,
     ProductAttributeValuePatchDraft, ProductCatalogSearchOptions, ProductEffectiveForm,
     SetCategorySchemaModeDraft,
 };
 #[cfg(feature = "ssr")]
 use crate::model::{
     CatalogCategorySummary, ProductAttributeOptionSummary, ProductAttributeSchemaSummary,
-    ProductAttributeSummary, ProductCatalogSearchOption, ProductEffectiveFormAttribute,
+    ProductAttributeSummary, ProductAttributeValueBatchDraft, ProductCatalogSearchOption,
+    ProductEffectiveFormAttribute,
 };
 #[cfg(feature = "ssr")]
 use rustok_product::ProductCatalogSchemaWritePort;

@@ -257,10 +257,24 @@ need(graphql, 'mutation CreateBlogComment', files.graphql);
 need(graphql, 'createBlogComment', files.graphql);
 need(native, 'endpoint = "blog/storefront-data"', files.native);
 need(native, 'endpoint = "blog/comment-create"', files.native);
-need(native, 'create_public_comment(', files.native);
-need(native, 'require_blog_comment_channel_enabled', files.native);
 need(native, 'Blog is not available for the current channel', files.native);
-need(native, 'is_module_enabled_for_tenant', files.native);
+const nativeCreate =
+  native.match(/^async fn create_blog_comment_native\([\s\S]*?^\}/m)?.[0] ?? '';
+const nativeTenantCheck =
+  /rustok_api::is_tenant_module_enabled\(\s*runtime_ctx\.db\(\),\s*tenant\.id,\s*MODULE_SLUG\s*,?\s*\)\s*\.await/;
+const nativeChannelCheck =
+  /require_blog_comment_channel_enabled\(\s*&runtime_ctx,\s*tenant\.id,\s*request_context\.as_ref\(\)\s*,?\s*\)\s*\.await\?/;
+const nativeCommand = nativeCreate.indexOf('.create_public_comment(');
+const nativeTenantGate = nativeCreate.search(nativeTenantCheck);
+const nativeChannelGate = nativeCreate.search(nativeChannelCheck);
+if (
+  nativeTenantGate < 0 ||
+  nativeChannelGate < 0 ||
+  nativeCommand <= nativeTenantGate ||
+  nativeCommand <= nativeChannelGate
+) {
+  failures.push(`${files.native}: native comment creation must check the Blog tenant and channel before invoking the owner command`);
+}
 need(facade, 'pub async fn create_comment(', files.facade);
 need(facade, 'blog_comment_create', files.facade);
 need(ui, 'CommentComposer', files.ui);

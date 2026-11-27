@@ -37,7 +37,7 @@ fn make_peer_write_channel(
             controller.editor().revision().project_hash.hex(),
         )
     });
-    let on_conflict = move |conflict| {
+    let on_conflict = move |conflict: BrowserPeerWriteConflict| {
         let expected = controller.with_untracked(|controller| controller.revision_id().to_string());
         let actual = conflict.revision.clone();
         if let Some(Err(error)) = controller
@@ -129,7 +129,7 @@ pub struct AdminEditorRuntime {
     /// The Rust Leptos workspace dispatches saves outside the classic fly-browser JS adapter.
     /// Share its confirmed writes through the same advisory channel so sibling tabs are fenced.
     #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
-    peer_write_channel: RwSignal<Option<BrowserPeerWriteChannel>>,
+    peer_write_channel: StoredValue<Option<BrowserPeerWriteChannel>, LocalStorage>,
     #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
     peer_write_conflict: RwSignal<Option<BrowserPeerWriteConflict>>,
 }
@@ -150,7 +150,7 @@ impl AdminEditorRuntime {
         #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
         let peer_write_conflict = RwSignal::new(None);
         #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
-        let peer_write_channel = RwSignal::new(make_peer_write_channel(
+        let peer_write_channel = StoredValue::new_local(make_peer_write_channel(
             controller.clone(),
             peer_write_conflict.clone(),
             last_error.clone(),
@@ -225,7 +225,7 @@ impl AdminEditorRuntime {
                 return;
             }
             let hash = project_hash.hex();
-            if let Some(Err(error)) = self.peer_write_channel.with_untracked(|channel| {
+            if let Some(Err(error)) = self.peer_write_channel.with_value(|channel| {
                 channel
                     .as_ref()
                     .map(|channel| channel.post_confirmed_write(revision_id, &hash))

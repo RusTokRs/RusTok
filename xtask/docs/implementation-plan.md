@@ -520,6 +520,15 @@ the actual table and editor, which can fail after `cargo check` succeeds.
 The generated package declares a crate-local recursion limit for Leptos
 hydration view code generation.
 
+The Next.js dev host served its sign-in page and preserved the generated
+records route as the callback for an unauthenticated browser request.
+The embedded Leptos host build, including the generated module, reached the
+Page Builder and Product admin packages. Page Builder subsequently passed
+its scoped WASM hydration check and all 20 browser-intent unit tests.
+Product still failed at the shared variants
+panel binding and variant draft types in that full build. Authenticated
+navigation, table and settings interactions still need both mounted hosts.
+
 - [ ] Close Blog reference-verifier drift and retain actual reference execution
   evidence before certifying it for propagation. Do not preserve obsolete source
   markers or copy confirmed FFA/localization defects into generated modules.

@@ -251,6 +251,33 @@ without evidence of a failure is recorded separately below.
 
 Find likely edges with `rg -n '\bmod\s+\w+\s*;|#\[path\s*=|\binclude(_str|_bytes)?!' crates/modules -g '*.rs'`.
 
+### P-SOURCE-GUARD-ENTRYPOINT — check the operation that owns the invariant
+
+- **Category** — Verification. **Logic dimensions** — Preconditions and branch completeness.
+- **Observed failure** — The Blog comment write guard searched an entire adapter
+  for the name of a retired tenant check. Storefront reads also check tenant
+  enablement, so a global search for the replacement could still pass if the
+  write check disappeared. The Fly SSR form guard reported unused Move Page
+  fields because its read check ignored the payload readers it already used to
+  discover required fields.
+- **Implementation** — Inspect the selected entry point. Check that admission
+  precedes the owner command. When a handler delegates field reads to a
+  recognized helper, use that same evidence to check consumed and required
+  fields. Keep a passing example and a negative example that removes the
+  relevant read or gate. Use runtime tests for semantics the source check
+  cannot establish.
+
+```js
+const requiredKeys = requiredKeysOf(arm.text);
+if (!requiredKeys.has(name) && !arm.text.includes(`.get("${name}")`)) {
+  fail(`field ${name} is never read by its handler`);
+}
+```
+
+Find likely boundaries with `rg -n 'need\(native,|requiredKeysOf|never read by its handler' scripts/verify -g '*.mjs'`.
+See [Blog write guard](../../scripts/verify/verify-blog-comments-storefront-write-surface.mjs)
+and [Fly SSR controls](../../scripts/verify/verify-fly-ssr-control-contract.mjs).
+
 ### P-CARGO-FIXTURE-TARGET — shared integration fixtures
 
 - **Category** — Test discovery. **Logic dimensions** — Preconditions and branch completeness.

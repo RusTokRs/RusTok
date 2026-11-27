@@ -762,10 +762,13 @@ for (const [file, source] of adminSources) {
       continue;
     }
     if (typeName === null) {
+      const requiredKeys = requiredKeysOf(arm.text);
       for (const name of controls.keys()) {
-        if (!arm.text.includes(`.get("${name}")`)) fail(`${label}: field \`${name}\` is never read by its handler`);
+        if (!requiredKeys.has(name) && !arm.text.includes(`.get("${name}")`)) {
+          fail(`${label}: field \`${name}\` is never read by its handler`);
+        }
       }
-      for (const key of requiredKeysOf(arm.text)) {
+      for (const key of requiredKeys) {
         if (!controls.has(key)) {
           fail(`${label}: its handler requires \`${key}\` and the form has no control named \`${key}\``);
         }

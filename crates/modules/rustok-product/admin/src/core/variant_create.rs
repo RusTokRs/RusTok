@@ -480,16 +480,22 @@ mod tests {
 
     #[test]
     fn reload_retains_every_field_key_and_original_locale_without_a_product_read() {
+        let mut draft = input();
+        draft.attribute_values = serde_json::from_value(serde_json::json!([{
+            "locale": "en",
+            "patches": [{"attributeId": id(7), "kind": "text", "text": "Original"}]
+        }]))
+        .unwrap();
         let ready = VariantCreateRecord::new(scope()).unwrap();
-        let pending = ready.begin(input(), "en".into()).unwrap();
+        let pending = ready.begin(draft.clone(), "en".into()).unwrap();
         let mut changed_locale = scope();
         changed_locale.locale = "ru".into();
         let restored =
             VariantCreateRecord::decode(&pending.encode().unwrap(), &changed_locale).unwrap();
         assert_eq!(restored, pending);
-        assert_eq!(restored.state.input(), Some(&input()));
+        assert_eq!(restored.state.input(), Some(&draft));
         assert_eq!(restored.scope.locale, "en");
-        assert!(restored.begin(input(), "ru".into()).is_err());
+        assert!(restored.begin(draft, "ru".into()).is_err());
         assert!(restored.fresh("ru".into()).is_err());
     }
 

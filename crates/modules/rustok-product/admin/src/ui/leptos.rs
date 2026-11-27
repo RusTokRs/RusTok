@@ -509,14 +509,6 @@ fn ProductCatalogReference() -> impl IntoView {
         }
     };
 
-    let on_variant_mutated = {
-        let reload = reload_current_product.clone();
-        Callback::new(move |product_id: String| {
-            set_refresh_nonce.update(|value| *value += 1);
-            reload(product_id);
-        })
-    };
-
     let on_media_mutated = {
         let reload = reload_current_product.clone();
         Callback::new(move |product_id: String| {
@@ -1223,17 +1215,6 @@ fn ProductCatalogReference() -> impl IntoView {
                     </section>
 
                     <Show when=move || selected.get().is_some()>
-                        <ProductVariantsPanel
-                            locale=ui_locale.clone()
-                            product=selected.get()
-                            token=token
-                            tenant=tenant
-                            bootstrap=panel_bootstrap
-                            busy=busy
-                            set_busy=set_busy
-                            set_error=set_error
-                            on_variant_mutated=on_variant_mutated
-                        />
                         <ProductMediaPanel
                             locale=ui_locale.clone()
                             product=selected.get()
