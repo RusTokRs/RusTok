@@ -535,3 +535,361 @@ fn sandbox_object_data_adapter_keeps_list_continuations_inside_the_prefix() {
     });
     assert!(decode_object_data_capability_call(&call).is_err());
 }
+
+
+struct TestObjectEffectFence {
+    deny_on_lock: usize,
+    locks: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+struct TestObjectEffectGuard {
+    deny_commit: bool,
+}
+
+#[async_trait]
+impl crate::ArtifactSqlEffectFence for TestObjectEffectFence {
+    async fn lock_on(
+        &self,
+        tx: &DatabaseTransaction,
+    ) -> SandboxResult<Box<dyn crate::ArtifactSqlEffectCommitGuard>> {
+        tx.execute_unprepared("INSERT INTO test_effect_authority (marker) VALUES (1)")
+            .await
+            .expect("transaction-local object authority marker");
+        let lock = self
+            .locks
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
+        Ok(Box::new(TestObjectEffectGuard {
+            deny_commit: lock == self.deny_on_lock,
+        }))
+    }
+}
+
+#[async_trait]
+impl crate::ArtifactSqlEffectCommitGuard for TestObjectEffectGuard {
+    async fn check_before_commit(&self, tx: &DatabaseTransaction) -> SandboxResult<()> {
+        let row = tx
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS n FROM test_effect_authority".to_string(),
+            ))
+            .await
+            .expect("read transaction-local object authority")
+            .expect("object authority table");
+        assert!(row.try_get::<i64>("", "n").expect("authority count") > 0);
+        if self.deny_commit {
+            return Err(SandboxError::CapabilityDenied(
+                CapabilityName::new("platform.data.objects").expect("capability name"),
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn test_object_effect_fence(
+    deny_on_lock: usize,
+) -> Arc<dyn crate::ArtifactSqlEffectFence> {
+    Arc::new(TestObjectEffectFence {
+        deny_on_lock,
+        locks: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+    })
+}
+
+#[tokio::test]
+async fn object_and_upload_effect_fences_reject_stale_commits() {
+    let database = Database::connect("sqlite::memory:")
+        .await
+        .expect("sqlite database");
+    for migration in ModulesModule.migrations() {
+        migration
+            .up(&sea_orm_migration::SchemaManager::new(&database))
+            .await
+            .expect("module migration");
+    }
+    database
+        .execute_unprepared("CREATE TABLE test_effect_authority (marker INTEGER NOT NULL)")
+        .await
+        .expect("effect authority table");
+    let directory =
+        std::env::temp_dir().join(format!("rustok-artifact-object-fence-{}", Uuid::new_v4()));
+    let storage = StorageRuntime::local(&LocalStorageConfig {
+        base_dir: directory.to_string_lossy().into_owned(),
+        base_url: "/private".to_string(),
+        fsync: false,
+    })
+    .expect("local storage");
+    let scope = ArtifactDataScope {
+        policy_revision: 5,
+        ..test_scope(Uuid::new_v4(), "object_fence_module")
+    };
+    setup_test_serving_namespace(&database, &scope).await;
+    let authorizer = ExactArtifactDataAuthorizer {
+        scope: scope.clone(),
+    };
+    let broker = SeaOrmArtifactDataObjectBroker::with_infrastructure_and_quota(
+        database.clone(),
+        storage.clone(),
+        authorizer.clone(),
+        ControlPlaneInfrastructure::default(),
+        ArtifactDataQuota::default(),
+    );
+
+    let denied_put = broker
+        .clone()
+        .with_effect_fence(test_object_effect_fence(2));
+    assert_eq!(
+        denied_put
+            .put_object(
+                &scope,
+                ArtifactDataObjectUpload {
+                    name: "objects/denied.bin".to_string(),
+                    content_type: "application/octet-stream".to_string(),
+                    data: Bytes::from_static(b"private"),
+                    expected_revision: None,
+                    idempotency_key: Uuid::new_v4(),
+                },
+            )
+            .await
+            .expect_err("denied object commit"),
+        ArtifactDataError::PolicyDenied
+    );
+    let object_count = database
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT COUNT(*) AS n FROM module_artifact_data_objects".to_string(),
+        ))
+        .await
+        .expect("object count query")
+        .expect("object count row");
+    assert_eq!(object_count.try_get::<i64>("", "n").unwrap(), 0);
+
+    let stored = broker
+        .put_object(
+            &scope,
+            ArtifactDataObjectUpload {
+                name: "objects/delete.bin".to_string(),
+                content_type: "application/octet-stream".to_string(),
+                data: Bytes::from_static(b"keep"),
+                expected_revision: None,
+                idempotency_key: Uuid::new_v4(),
+            },
+        )
+        .await
+        .expect("store object before delete denial");
+    let denied_delete = broker
+        .clone()
+        .with_effect_fence(test_object_effect_fence(1));
+    assert_eq!(
+        denied_delete
+            .delete_object(
+                &scope,
+                ArtifactDataObjectDeleteRequest {
+                    name: stored.name.clone(),
+                    expected_revision: stored.revision,
+                    idempotency_key: Uuid::new_v4(),
+                },
+            )
+            .await
+            .expect_err("denied object delete"),
+        ArtifactDataError::PolicyDenied
+    );
+    assert!(
+        broker
+            .get_object(&scope, &stored.name)
+            .await
+            .expect("object still readable")
+            .is_some()
+    );
+
+    let uploads = SeaOrmArtifactDataObjectUploadService::with_infrastructure_and_quota(
+        database.clone(),
+        storage.clone(),
+        authorizer,
+        ControlPlaneInfrastructure::default(),
+        ArtifactDataQuota::default(),
+    );
+    let denied_begin = uploads
+        .clone()
+        .with_effect_fence(test_object_effect_fence(1));
+    assert_eq!(
+        denied_begin
+            .begin(
+                &scope,
+                ArtifactDataObjectUploadSessionRequest {
+                    name: "uploads/denied.bin".to_string(),
+                    content_type: "application/octet-stream".to_string(),
+                    expected_revision: None,
+                    idempotency_key: Uuid::new_v4(),
+                },
+            )
+            .await
+            .expect_err("denied upload session"),
+        ArtifactDataError::PolicyDenied
+    );
+
+    let session = uploads
+        .begin(
+            &scope,
+            ArtifactDataObjectUploadSessionRequest {
+                name: "uploads/resume.bin".to_string(),
+                content_type: "application/octet-stream".to_string(),
+                expected_revision: None,
+                idempotency_key: Uuid::new_v4(),
+            },
+        )
+        .await
+        .expect("upload session");
+    let denied_append = uploads
+        .clone()
+        .with_effect_fence(test_object_effect_fence(2));
+    assert_eq!(
+        denied_append
+            .append_chunk(
+                &scope,
+                ArtifactDataObjectUploadChunk {
+                    session_id: session.session_id,
+                    sequence: 0,
+                    data: Bytes::from_static(b"chunk"),
+                },
+            )
+            .await
+            .expect_err("denied upload chunk"),
+        ArtifactDataError::PolicyDenied
+    );
+    let chunk_count = database
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            format!(
+                "SELECT COUNT(*) AS n FROM module_artifact_data_object_upload_chunks WHERE session_id = '{}'",
+                session.session_id
+            ),
+        ))
+        .await
+        .expect("chunk count query")
+        .expect("chunk count row");
+    assert_eq!(chunk_count.try_get::<i64>("", "n").unwrap(), 0);
+
+    let denied_complete = uploads
+        .clone()
+        .with_effect_fence(test_object_effect_fence(2));
+    assert_eq!(
+        denied_complete
+            .complete(
+                &scope,
+                ArtifactDataObjectUploadCompleteRequest {
+                    session_id: session.session_id,
+                    size_bytes: 5,
+                    digest_sha256: crate::installation::sha256_digest(b"chunk"),
+                },
+            )
+            .await
+            .expect_err("denied upload completion claim"),
+        ArtifactDataError::PolicyDenied
+    );
+    let status = database
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            format!(
+                "SELECT status FROM module_artifact_data_object_upload_sessions WHERE session_id = '{}'",
+                session.session_id
+            ),
+        ))
+        .await
+        .expect("upload status query")
+        .expect("upload status row");
+    assert_eq!(status.try_get::<String>("", "status").unwrap(), "open");
+
+    drop(uploads);
+    drop(broker);
+    if directory.exists() {
+        tokio::fs::remove_dir_all(directory)
+            .await
+            .expect("remove object fence test storage");
+    }
+}
+
+#[tokio::test]
+async fn upload_completion_and_begin_replay_use_the_idempotency_key() {
+    let database = Database::connect("sqlite::memory:")
+        .await
+        .expect("sqlite database");
+    for migration in ModulesModule.migrations() {
+        migration
+            .up(&sea_orm_migration::SchemaManager::new(&database))
+            .await
+            .expect("module migration");
+    }
+    let directory =
+        std::env::temp_dir().join(format!("rustok-artifact-upload-replay-{}", Uuid::new_v4()));
+    let storage = StorageRuntime::local(&LocalStorageConfig {
+        base_dir: directory.to_string_lossy().into_owned(),
+        base_url: "/private".to_string(),
+        fsync: false,
+    })
+    .expect("local storage");
+    let scope = ArtifactDataScope {
+        policy_revision: 5,
+        ..test_scope(Uuid::new_v4(), "upload_replay_module")
+    };
+    setup_test_serving_namespace(&database, &scope).await;
+    let uploads = SeaOrmArtifactDataObjectUploadService::with_infrastructure_and_quota(
+        database,
+        storage,
+        ExactArtifactDataAuthorizer {
+            scope: scope.clone(),
+        },
+        ControlPlaneInfrastructure::default(),
+        ArtifactDataQuota::default(),
+    );
+    let idempotency_key = Uuid::from_u128(1);
+    let begin_request = ArtifactDataObjectUploadSessionRequest {
+        name: "uploads/final.bin".to_string(),
+        content_type: "application/octet-stream".to_string(),
+        expected_revision: None,
+        idempotency_key,
+    };
+    let session = uploads
+        .begin(&scope, begin_request.clone())
+        .await
+        .expect("begin upload");
+    assert_ne!(session.session_id, idempotency_key);
+    let payload = b"verified upload";
+    uploads
+        .append_chunk(
+            &scope,
+            ArtifactDataObjectUploadChunk {
+                session_id: session.session_id,
+                sequence: 0,
+                data: Bytes::copy_from_slice(payload),
+            },
+        )
+        .await
+        .expect("append upload chunk");
+    let complete_request = ArtifactDataObjectUploadCompleteRequest {
+        session_id: session.session_id,
+        size_bytes: payload.len() as u64,
+        digest_sha256: crate::installation::sha256_digest(payload),
+    };
+    let completed = uploads
+        .complete(&scope, complete_request.clone())
+        .await
+        .expect("complete upload");
+    assert_eq!(
+        uploads
+            .complete(&scope, complete_request)
+            .await
+            .expect("replay completed upload"),
+        completed
+    );
+    let replayed_session = uploads
+        .begin(&scope, begin_request)
+        .await
+        .expect("replay completed begin request");
+    assert_eq!(replayed_session.session_id, session.session_id);
+    assert_eq!(replayed_session.completed_object, Some(completed));
+    if directory.exists() {
+        tokio::fs::remove_dir_all(directory)
+            .await
+            .expect("remove upload replay test storage");
+    }
+}
