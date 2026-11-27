@@ -1216,6 +1216,8 @@ births. PostgreSQL claims use nonwaiting per-key advisory fences; SQLite
 rejects implicit replacement of a live refresh-family member and preserves
 ordinary rotation after predecessor revocation. Token/code digest and client
 identity updates are forbidden. Direct session digest rotation is unchanged.
+The SQLite witness table uses WITHOUT ROWID so a hidden row identity cannot
+be used to replace an unrelated consumed credential claim.
 Witness storage grows with credential births; no plaintext is retained.
 Pre-cutover removed identities, direct session digest reuse, in-place terminal
 timestamp regression, tenant identity and privileged DDL/restore are not

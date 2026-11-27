@@ -725,7 +725,8 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 
 - Credential identity continuation: Auth migration 000014 adds append-only
   session, OAuth app/client/token/code UUID claims and OAuth token/code digest
-  claims. SQLite rejects alternate refresh-family REPLACE; normal rotation and
+  claims. The SQLite witness table has no hidden rowid conflict key, and
+  SQLite rejects alternate refresh-family REPLACE; normal rotation and
   rollback remain supported. Source regressions authored, unrun; incremental
   migration, lock contention and storage growth require verification. Tenant
   identity, terminal state transitions and direct session digest continuity

@@ -343,7 +343,9 @@ A deleted UUID cannot be reused, including SQLite same-ID REPLACE and alternate
 text/blob UUID encodings; UUID updates are forbidden. Conflict-do-nothing and
 rolled-back births consume nothing. Witnesses contain only kind and UUID, no
 email, role slug or permission payload, and have no cascading foreign keys.
-PostgreSQL uses a nonwaiting per-identity advisory fence for witness inserts.
+The SQLite witness table uses WITHOUT ROWID, preventing replacement through
+an unrelated hidden row identity. PostgreSQL uses a nonwaiting per-identity
+advisory fence for witness inserts.
 The migration cannot reconstruct identities deleted before cutover, and does
 not protect privileged DDL/restore, other authority kinds, or SQLite
 natural-key REPLACE with a different UUID. Source regressions are unrun.

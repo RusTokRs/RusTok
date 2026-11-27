@@ -70,12 +70,14 @@ BEGIN
 END $$;
 "#;
 
+// No hidden rowid conflict key: REPLACE must not delete a different
+// permanent UUID claim when SQLite recursive triggers are disabled.
 const SQLITE_SETUP: &str = r#"
 CREATE TABLE rbac_identity_witnesses (
     kind TEXT NOT NULL CHECK (kind IN ('users', 'roles', 'permissions')),
     id TEXT NOT NULL CHECK (length(id) = 32 AND id NOT GLOB '*[^0-9a-f]*'),
     PRIMARY KEY (kind, id)
-);
+) WITHOUT ROWID;
 "#;
 
 const SQLITE_WITNESS_GUARDS: &str = r#"
@@ -226,6 +228,9 @@ mod tests {
             "DELETE FROM rbac_identity_witnesses".to_owned(),
             "UPDATE rbac_identity_witnesses SET id = id".to_owned(),
             format!("INSERT OR REPLACE INTO rbac_identity_witnesses VALUES ('users', '{}')", A.replace('-', "")),
+            format!("INSERT OR REPLACE INTO rbac_identity_witnesses (rowid, kind, id) VALUES (1, 'users', '{}')", C.replace('-', "")),
+            format!("INSERT OR REPLACE INTO rbac_identity_witnesses (_rowid_, kind, id) VALUES (1, 'users', '{}')", C.replace('-', "")),
+            format!("INSERT OR REPLACE INTO rbac_identity_witnesses (oid, kind, id) VALUES (1, 'users', '{}')", C.replace('-', "")),
             format!("INSERT OR IGNORE INTO users VALUES ('not-a-uuid', 'invalid')"),
         ] {
             assert!(db.execute_unprepared(&sql).await.is_err(), "{sql}");

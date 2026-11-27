@@ -123,13 +123,16 @@ impl MigrationTrait for Migration {
             DatabaseBackend::Postgres => "identity_key ~ '^[0-9a-f]{32}$'",
             _ => "typeof(identity_key) = 'text' AND length(identity_key) = 32 AND identity_key NOT GLOB '*[^0-9a-f]*'",
         };
+        // SQLite's hidden rowid would be a second conflict key: REPLACE
+        // could delete an unrelated consumed identity without a DELETE trigger.
+        let table_suffix = if backend == DatabaseBackend::Sqlite { " WITHOUT ROWID" } else { "" };
         db.execute_unprepared(&format!(
             "CREATE TABLE auth_credential_witnesses (
                 kind TEXT NOT NULL CHECK (kind IN ({KINDS})),
                 identity_key TEXT NOT NULL CHECK (length(identity_key) > 0 AND
                     (kind IN ('oauth_token_digest', 'oauth_code_digest') OR ({shape}))),
                 PRIMARY KEY (kind, identity_key)
-             )"
+             ){table_suffix}"
         )).await?;
         for &(table, column, kind, uuid) in CLAIMS {
             // No conflict suppression: existing alias or duplicate evidence
@@ -264,6 +267,12 @@ mod tests {
             "DELETE FROM auth_credential_witnesses".to_owned(),
             "UPDATE auth_credential_witnesses SET identity_key = identity_key".to_owned(),
             "INSERT OR REPLACE INTO auth_credential_witnesses VALUES ('oauth_code_digest', 'old-code')".to_owned(),
+            "INSERT OR REPLACE INTO auth_credential_witnesses (rowid, kind, identity_key)
+             VALUES (1, 'oauth_code_digest', 'different-code')".to_owned(),
+            "INSERT OR REPLACE INTO auth_credential_witnesses (_rowid_, kind, identity_key)
+             VALUES (1, 'oauth_token_digest', 'different-token')".to_owned(),
+            "INSERT OR REPLACE INTO auth_credential_witnesses (oid, kind, identity_key)
+             VALUES (1, 'oauth_code_digest', 'different-code')".to_owned(),
         ] {
             assert!(db.execute_unprepared(&sql).await.is_err(), "{sql}");
         }
