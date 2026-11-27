@@ -4,6 +4,23 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
+fn unique_invalid_component_ids(ids: impl IntoIterator<Item = String>) -> BTreeSet<String> {
+    let mut counts = BTreeMap::<String, usize>::new();
+    for id in ids {
+        *counts.entry(id).or_default() += 1;
+    }
+    counts
+        .into_iter()
+        .filter_map(|(id, count)| {
+            (count == 1 && validate_identifier(&id).is_err()).then_some(id)
+        })
+        .collect()
+}
+
+fn identity_id_mapping(ids: impl IntoIterator<Item = String>) -> BTreeMap<String, String> {
+    ids.into_iter().map(|id| (id.clone(), id)).collect()
+}
+
 /// A canonical GrapesJS document with private storage and cache-safe accessors.
 ///
 /// The project is intentionally not a public field. Read it through
@@ -212,8 +229,37 @@ impl ProjectDocument {
         // collide with them (or with authored/provider DOM identities).
         let mut reserved = crate::id_reference::project_identity_ids(self);
         let mut seen = BTreeSet::new();
-        self.project
-            .ensure_stable_ids(generator, &mut reserved, &mut seen);
+        let mut component_ids = Vec::new();
+        let mut dom_ids = Vec::new();
+        let mut form_ids = Vec::new();
+        for page in &self.project.pages {
+            if let Some(root) = page.component.as_ref() {
+                root.collect_ids(&mut component_ids);
+                root.collect_dom_ids(&mut dom_ids);
+                root.collect_form_ids(&mut form_ids);
+            }
+        }
+        let remappable_invalid_ids = unique_invalid_component_ids(component_ids);
+        let mut remapped_component_ids = BTreeMap::new();
+        self.project.ensure_stable_ids(
+            generator,
+            &mut reserved,
+            &mut seen,
+            &remappable_invalid_ids,
+            &mut remapped_component_ids,
+        );
+        if !remapped_component_ids.is_empty() {
+            let dom_mapping = identity_id_mapping(dom_ids.into_iter().chain(form_ids));
+            for page in &mut self.project.pages {
+                if let Some(root) = page.component.as_mut() {
+                    root.remap_ids_with_dom(&remapped_component_ids, &dom_mapping);
+                }
+            }
+            for style in &mut self.project.styles {
+                crate::style_rule::remap_component_style_rule(style, &remapped_component_ids);
+            }
+            remap_runtime_catalogs(&mut self.project.extensions, &remapped_component_ids);
+        }
     }
 }
 
@@ -294,10 +340,18 @@ impl GrapesProject {
         generator: &mut impl IdGenerator,
         reserved: &mut BTreeSet<String>,
         seen: &mut BTreeSet<String>,
+        remappable_invalid_ids: &BTreeSet<String>,
+        remapped_component_ids: &mut BTreeMap<String, String>,
     ) {
         for page in &mut self.pages {
             if let Some(root) = page.component.as_mut() {
-                root.ensure_stable_ids(generator, reserved, seen);
+                root.ensure_stable_ids_inner(
+                    generator,
+                    reserved,
+                    seen,
+                    remappable_invalid_ids,
+                    remapped_component_ids,
+                );
             }
         }
     }
@@ -526,11 +580,40 @@ impl ComponentNode {
         reserved: &mut BTreeSet<String>,
         seen: &mut BTreeSet<String>,
     ) {
+        let mut ids = Vec::new();
+        self.collect_ids(&mut ids);
+        let remappable_invalid_ids = unique_invalid_component_ids(ids);
+        let mut remapped_component_ids = BTreeMap::new();
+        self.ensure_stable_ids_inner(
+            generator,
+            reserved,
+            seen,
+            &remappable_invalid_ids,
+            &mut remapped_component_ids,
+        );
+        if !remapped_component_ids.is_empty() {
+            let mut dom_ids = Vec::new();
+            let mut form_ids = Vec::new();
+            self.collect_dom_ids(&mut dom_ids);
+            self.collect_form_ids(&mut form_ids);
+            let dom_mapping = identity_id_mapping(dom_ids.into_iter().chain(form_ids));
+            self.remap_ids_with_dom(&remapped_component_ids, &dom_mapping);
+        }
+    }
+
+    fn ensure_stable_ids_inner(
+        &mut self,
+        generator: &mut impl IdGenerator,
+        reserved: &mut BTreeSet<String>,
+        seen: &mut BTreeSet<String>,
+        remappable_invalid_ids: &BTreeSet<String>,
+        remapped_component_ids: &mut BTreeMap<String, String>,
+    ) {
         let Some(object) = self.as_object_mut() else {
             return;
         };
-        let current_id = object
-            .id
+        let original_id = object.id.clone();
+        let current_id = original_id
             .as_deref()
             .filter(|id| validate_identifier(id).is_ok());
         let needs_new_id = current_id.is_none_or(|id| !seen.insert(id.to_string()));
@@ -538,11 +621,25 @@ impl ComponentNode {
             let hint = object.component_type.as_deref().unwrap_or("node");
             let id = crate::id_reference::allocate_generated_id(generator, hint, reserved);
             seen.insert(id.clone());
+            if let Some(original_id) = original_id
+                .as_deref()
+                .filter(|id| remappable_invalid_ids.contains(*id))
+            {
+                remapped_component_ids
+                    .entry(original_id.to_string())
+                    .or_insert_with(|| id.clone());
+            }
             object.id = Some(id);
         }
         if let Some(children) = object.children_mut() {
             for child in children {
-                child.ensure_stable_ids(generator, reserved, seen);
+                child.ensure_stable_ids_inner(
+                    generator,
+                    reserved,
+                    seen,
+                    remappable_invalid_ids,
+                    remapped_component_ids,
+                );
             }
         }
     }
