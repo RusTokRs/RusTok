@@ -133,7 +133,11 @@ async function mountSsrControls(page: Page) {
           </div>
         </details>
       </div>
-      <ol class="fly-layers" aria-label="Layers">
+      <ol
+        class="fly-layers"
+        aria-label="Layers"
+        data-fly-wasm-hydrated="true"
+      >
         <li>
           <button
             id="layer-hero"
