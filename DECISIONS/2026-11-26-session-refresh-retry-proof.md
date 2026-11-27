@@ -240,3 +240,14 @@ documents reject conditional revalidation and are private/no-store; document
 responses vary by Cookie/Authorization. The shared helper gives explicit
 handler cookie transitions precedence. Standalone runtime composition and
 late response ordering remain open; no backend principal is fabricated.
+
+## Exact session lock routing (2026-11-27)
+
+Refresh uses the observed session ID after the user fence instead of locking
+by a potentially reassigned digest. Read history after the exact session lock.
+Both refresh-token and ID logout locate without a child lock, acquire the
+observed tenant user, then re-read the same session and prove the digest for
+credential logout. No broader lookup is permitted after the user lock.
+Known expired credentials still revoke; revoked/unknown behavior and the
+expected-ID history retry contract remain unchanged. SQLite lock-order probe
+source extended; runtime and PostgreSQL contention remain unverified.

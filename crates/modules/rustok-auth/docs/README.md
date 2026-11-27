@@ -1158,3 +1158,10 @@ and other users. Legacy orphan or cross-tenant lineage blocks the migration
 without deleting evidence. Physical deletion only; normal deactivation and
 revocation contracts remain unchanged. SQLite source regressions for cascade,
 rollback, tenant deletion, identity recreation and dirty preflight are unrun.
+
+Direct refresh and both logout paths now use the preflight digest/session ID
+only as a routing hint, lock the exact tenant user before the observed session,
+and re-check the exact linked identity and digest. Replay history is read only
+after the session fence; logout preserves existing expiry/revocation and
+expected-lineage semantics. SQLite user-before-session probe added; PostgreSQL
+contention and compile checks remain unrun.

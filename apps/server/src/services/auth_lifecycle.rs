@@ -1028,6 +1028,7 @@ impl AuthLifecycleService {
         }
     }
 
+    #[cfg(test)]
     async fn find_refresh_session_for_update_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: uuid::Uuid,
@@ -1040,6 +1041,7 @@ impl AuthLifecycleService {
     /// rotation when the response carrying the new cookie was lost.
     /// Resolve that digest as well, while holding the same row lock used by
     /// refresh, so a successful logout revokes the active lineage.
+    #[cfg(test)]
     async fn find_previous_refresh_session_for_update_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: uuid::Uuid,
@@ -1048,6 +1050,7 @@ impl AuthLifecycleService {
         Self::find_refresh_session_by_hash_for_update_in_tx(txn, tenant_id, token_hash, true).await
     }
 
+    #[cfg(test)]
     async fn find_refresh_session_by_hash_for_update_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: uuid::Uuid,
@@ -1154,36 +1157,28 @@ impl AuthLifecycleService {
             .await?
             .ok_or(AuthLifecycleError::UserNotFound)?;
 
-        let (session, historical_rotation) = match Self::find_refresh_session_for_update_in_tx(
-            &txn,
-            tenant_id,
-            &token_hash,
+        // The digest lookup was only a routing hint. Lock the exact observed
+        // session under the observed user, never another session that happens
+        // to own the digest by the time this transaction resumes.
+        let session = Self::find_session_record_for_update_in_tx(
+            &txn, tenant_id, observed.id, true,
         )
         .await?
-        {
-            Some(session) if session.id == observed.id && session.user_id == user.id => {
-                (session, None)
-            }
-            Some(_) => return Err(AuthLifecycleError::InvalidRefreshToken),
-            None => {
-                let eligible = Self::detect_refresh_reuse_in_tx(
-                    &txn,
-                    config,
-                    tenant_id,
-                    observed.id,
-                    user.id,
-                    &token_hash,
-                )
-                .await?;
-                match eligible {
-                    Some((session, rotated_at)) => (session, Some(rotated_at)),
-                    None => {
-                        // Commit a possible lineage revocation before reporting
-                        // an invalid historical credential.
-                        Self::credential_now(&txn, config).await?;
-                        txn.commit().await.map_err(AuthLifecycleError::from)?;
-                        return Err(AuthLifecycleError::InvalidRefreshToken);
-                    }
+        .filter(|session| session.user_id == user.id)
+        .ok_or(AuthLifecycleError::InvalidRefreshToken)?;
+        let (session, historical_rotation) = if session.token_hash == token_hash {
+            (session, None)
+        } else {
+            match Self::detect_refresh_reuse_in_tx(
+                &txn, config, session, &token_hash,
+            ).await? {
+                Some((session, rotated_at)) => (session, Some(rotated_at)),
+                None => {
+                    // Commit a possible lineage revocation before reporting
+                    // an invalid historical credential.
+                    Self::credential_now(&txn, config).await?;
+                    txn.commit().await.map_err(AuthLifecycleError::from)?;
+                    return Err(AuthLifecycleError::InvalidRefreshToken);
                 }
             }
         };
@@ -1367,37 +1362,30 @@ impl AuthLifecycleService {
         })
     }
 
-    /// Resolve immutable replay evidence under the already-held user fence.
-    /// Return a live session only during grace; outside grace revoke it
-    /// durably before the caller reports an invalid credential.
+    /// Read replay evidence only after acquiring the exact user and session
+    /// fences. Return a live session only during grace; outside grace revoke
+    /// it durably before the caller reports an invalid credential.
     async fn detect_refresh_reuse_in_tx(
         txn: &DatabaseTransaction,
         config: &AuthConfig,
-        tenant_id: uuid::Uuid,
-        session_id: uuid::Uuid,
-        user_id: uuid::Uuid,
+        session: sessions::Model,
         token_hash: &str,
     ) -> std::result::Result<
         Option<(sessions::Model, chrono::DateTime<chrono::FixedOffset>)>,
         AuthLifecycleError,
     > {
         let history = session_refresh_history::Entity::find_by_id(token_hash.to_owned())
-            .filter(session_refresh_history::Column::SessionId.eq(session_id))
+            .filter(session_refresh_history::Column::SessionId.eq(session.id))
             .inner_join(sessions::Entity)
-            .filter(sessions::Column::TenantId.eq(tenant_id))
+            .filter(sessions::Column::TenantId.eq(session.tenant_id))
             .one(txn)
             .await
             .map_err(AuthLifecycleError::from)?;
         let Some(history) = history else {
             return Ok(None);
         };
-        let Some(session) =
-            Self::find_session_by_id_for_update_in_tx(txn, tenant_id, session_id).await?
-        else {
-            return Ok(None);
-        };
         let now = Self::credential_now(txn, config).await?;
-        if session.user_id != user_id || !session.is_active_at(now) {
+        if !session.is_active_at(now) {
             return Ok(None);
         }
         if history
@@ -1626,51 +1614,62 @@ impl AuthLifecycleService {
         refresh_token: &str,
         expected_session_id: Option<uuid::Uuid>,
     ) -> std::result::Result<(), AuthLifecycleError> {
-        let txn = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
         let token_hash = hash_refresh_token(refresh_token);
-
-        let session = if let Some(expected) = expected_session_id {
-            // Lock the expected row, then independently prove possession of
-            // a credential of that exact tenant and lineage. History permits
-            // a confirmed retry of logout after multiple lost rotations.
-            let session =
-                Self::find_session_record_for_update_in_tx(&txn, tenant_id, expected, true)
-                    .await?
-                    .ok_or(AuthLifecycleError::SessionLineageMismatch)?;
-            let known = session.token_hash == token_hash
-                || session.previous_token_hash.as_deref() == Some(token_hash.as_str())
-                || session_refresh_history::Entity::find_by_id(token_hash.clone())
-                    .filter(session_refresh_history::Column::SessionId.eq(expected))
-                    .one(&txn)
-                    .await
-                    .map_err(AuthLifecycleError::from)?
-                    .is_some();
-            if !known {
-                return Err(AuthLifecycleError::SessionLineageMismatch);
-            }
-            // Logout is security-reducing: a known credential must remain
-            // able to revoke its session after the access/refresh deadline.
-            if session.revoked_at.is_some() {
-                return Err(AuthLifecycleError::SessionExpired);
-            }
-            session
+        let db = ctx.db();
+        // Locate without taking a session lock, then serialize on the user.
+        // A digest or expected ID is not proof of ownership until re-read.
+        let observed = if let Some(expected) = expected_session_id {
+            sessions::Entity::find_by_id(expected)
+                .filter(sessions::Column::TenantId.eq(tenant_id))
+                .one(db).await.map_err(AuthLifecycleError::from)?
+                .ok_or(AuthLifecycleError::SessionLineageMismatch)?
         } else {
-            match Self::find_refresh_session_for_update_in_tx(&txn, tenant_id, &token_hash).await? {
-                Some(session) => Some(session),
-                None => {
-                    Self::find_previous_refresh_session_for_update_in_tx(
-                        &txn,
-                        tenant_id,
-                        &token_hash,
-                    )
-                    .await?
-                }
+            let current = sessions::Entity::find()
+                .filter(sessions::Column::TenantId.eq(tenant_id))
+                .filter(sessions::Column::TokenHash.eq(&token_hash))
+                .one(db).await.map_err(AuthLifecycleError::from)?;
+            match current {
+                Some(session) => session,
+                None => sessions::Entity::find()
+                    .filter(sessions::Column::TenantId.eq(tenant_id))
+                    .filter(sessions::Column::PreviousTokenHash.eq(&token_hash))
+                    .filter(sessions::Column::RevokedAt.is_null())
+                    .one(db).await.map_err(AuthLifecycleError::from)?
+                    .ok_or(AuthLifecycleError::InvalidRefreshToken)?,
             }
-            .ok_or(AuthLifecycleError::InvalidRefreshToken)?
         };
 
+        let invalid = || if expected_session_id.is_some() {
+            AuthLifecycleError::SessionLineageMismatch
+        } else {
+            AuthLifecycleError::InvalidRefreshToken
+        };
+        let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
+        Self::lock_user_for_mutation(&txn, tenant_id, observed.user_id)
+            .await.map_err(AuthLifecycleError::from)?
+            .ok_or_else(invalid)?;
+        let session = Self::find_session_record_for_update_in_tx(
+            &txn, tenant_id, observed.id, true,
+        ).await?
+            .filter(|session| session.user_id == observed.user_id)
+            .ok_or_else(invalid)?;
+        let known = session.token_hash == token_hash
+            || session.previous_token_hash.as_deref() == Some(token_hash.as_str())
+            || (expected_session_id.is_some()
+                && session_refresh_history::Entity::find_by_id(token_hash.clone())
+                    .filter(session_refresh_history::Column::SessionId.eq(session.id))
+                    .one(&txn).await.map_err(AuthLifecycleError::from)?.is_some());
+        if !known {
+            return Err(invalid());
+        }
+        // Security-reducing logout accepts known expired credentials, never
+        // a different lineage. Preserve the existing revoked-row contract.
         if session.revoked_at.is_some() {
-            return Err(AuthLifecycleError::InvalidRefreshToken);
+            return Err(if expected_session_id.is_some() {
+                AuthLifecycleError::SessionExpired
+            } else {
+                AuthLifecycleError::InvalidRefreshToken
+            });
         }
 
         let user_id = session.user_id;
@@ -1708,8 +1707,22 @@ impl AuthLifecycleService {
         tenant_id: uuid::Uuid,
         session_id: uuid::Uuid,
     ) -> std::result::Result<(), AuthLifecycleError> {
-        let tx = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
-        let session = Self::find_session_by_id_for_update_in_tx(&tx, tenant_id, session_id).await?;
+        let db = ctx.db();
+        let Some(observed) = sessions::Entity::find_by_id(session_id)
+            .filter(sessions::Column::TenantId.eq(tenant_id))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .one(db).await.map_err(AuthLifecycleError::from)?
+        else {
+            return Ok(());
+        };
+        let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
+        if Self::lock_user_for_mutation(&tx, tenant_id, observed.user_id)
+            .await.map_err(AuthLifecycleError::from)?.is_none() {
+            tx.rollback().await.map_err(AuthLifecycleError::from)?;
+            return Ok(());
+        }
+        let session = Self::find_session_by_id_for_update_in_tx(&tx, tenant_id, session_id)
+            .await?.filter(|session| session.user_id == observed.user_id);
 
         // Logout stays idempotent: an unknown or already-revoked
         // session is a successful no-op and emits no event.
@@ -4985,6 +4998,18 @@ mod tests {
         .insert(&db)
         .await
         .expect("create tenant B session");
+
+        db.execute_unprepared("CREATE TABLE logout_fence_probe (seen INTEGER NOT NULL)")
+            .await.expect("create probe");
+        db.execute_unprepared(
+            "CREATE TRIGGER record_logout_user_fence AFTER UPDATE ON users
+             BEGIN INSERT INTO logout_fence_probe VALUES (1); END;",
+        ).await.expect("record user fence");
+        db.execute_unprepared(
+            "CREATE TRIGGER require_logout_user_fence BEFORE UPDATE ON sessions
+             WHEN NOT EXISTS (SELECT 1 FROM logout_fence_probe)
+             BEGIN SELECT RAISE(ABORT, 'session locked before user'); END;",
+        ).await.expect("require user fence");
 
         let runtime =
             ServerRuntimeContext::new(db.clone(), crate::common::RustokSettings::default());
