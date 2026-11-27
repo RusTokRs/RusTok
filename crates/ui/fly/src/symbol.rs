@@ -126,6 +126,9 @@ fn apply_symbol_command_inner(
             },
         )?;
     }
+    // Do not let an upsert silently replace a malformed or dangling catalog with a
+    // newly well-formed list; callers must repair the existing source explicitly.
+    strict_catalog(document)?;
 
     match command {
         SymbolCommand::Upsert { symbol } => {
@@ -1928,6 +1931,27 @@ mod tests {
             raw = json!({ "nested": raw });
         }
         assert!(SymbolDescriptor::from_value(&raw).is_none());
+    }
+
+    #[test]
+    fn direct_symbol_upsert_does_not_overwrite_a_malformed_catalog() {
+        let mut document = document_with(object("root", "wrapper", vec![]), Vec::new());
+        document
+            .project_mut()
+            .extensions
+            .insert(FLY_SYMBOLS_FIELD.to_string(), json!({"unexpected": true}));
+        let before = document.clone();
+
+        let error = apply_symbol_command(
+            &mut document,
+            &SymbolCommand::Upsert {
+                symbol: symbol_json("cta", vec![plain_component_json("cta-1")]),
+            },
+        )
+        .expect_err("malformed source catalog must be preserved");
+
+        assert!(matches!(error, FlyError::InvalidSymbolReference(_)));
+        assert_eq!(document, before);
     }
 
     #[test]
