@@ -399,7 +399,10 @@ impl CatalogService {
             .unwrap_or_else(|| serde_json::json!({}));
         let (normalized_metadata, normalized_tags) = normalize_create_product_metadata(
             input.tags.clone(),
-            input.shipping_profile_slug.clone().or_else(|| shipping_profile_slug.clone()),
+            input
+                .shipping_profile_slug
+                .clone()
+                .or_else(|| shipping_profile_slug.clone()),
             product_metadata,
         );
 
@@ -753,9 +756,7 @@ impl CatalogService {
                     .await?
                     .ok_or(CommerceError::ProductNotFound(product_id))?;
                 if existing.shipping_profile_slug.is_none() {
-                    let requested = resolve_shipping_profile_slug(None, metadata);
-                    let current = resolve_shipping_profile_slug(None, &existing.metadata);
-                    if requested != current { requested } else { None }
+                    resolve_shipping_profile_slug(None, metadata)
                 } else {
                     None
                 }
@@ -915,7 +916,10 @@ impl CatalogService {
                 Patch::Set(slug) => Set(normalize_shipping_profile_slug(slug)),
                 Patch::Keep | Patch::Clear => Set(None),
             };
-        } else if metadata_update.is_some() && input.metadata.is_some() && existing_product.shipping_profile_slug.is_none() {
+        } else if input.metadata.is_some()
+            && metadata_update.is_some()
+            && existing_product.shipping_profile_slug.is_none()
+        {
             // A legacy metadata-only binding is promoted to the typed owner column
             // when its metadata document is next written.
             product_active.shipping_profile_slug = Set(shipping_profile_input.clone());
