@@ -2173,15 +2173,21 @@ mod tests {
         assert_eq!(first_shared, second_shared);
         assert_eq!(first_dangling, second_dangling);
         assert_eq!(
-            resolved.component("legacy-shared").map(|component| {
-                component.attributes["data-fly-asset-id"].as_str()
-            }).flatten(),
+            resolved.component("legacy-shared").and_then(|component| {
+                component
+                    .attributes
+                    .get("data-fly-asset-id")
+                    .and_then(Value::as_str)
+            }),
             Some("shared")
         );
         assert_eq!(
-            resolved.component("legacy-dangling").map(|component| {
-                component.attributes["data-fly-asset-id"].as_str()
-            }).flatten(),
+            resolved.component("legacy-dangling").and_then(|component| {
+                component
+                    .attributes
+                    .get("data-fly-asset-id")
+                    .and_then(Value::as_str)
+            }),
             Some("dangling")
         );
         assert!(
@@ -2297,8 +2303,10 @@ mod tests {
             descriptor.components[0]
                 .as_object()
                 .expect("image")
-                .attributes["data-fly-asset-id"],
-            symbol_asset.id
+                .attributes
+                .get("data-fly-asset-id")
+                .and_then(Value::as_str),
+            Some(symbol_asset.id.as_str())
         );
         assert!(
             document.project().assets.iter()
