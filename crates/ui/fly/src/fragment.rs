@@ -1,7 +1,7 @@
 use crate::{
-    AssetCommand, AssetDescriptor, ComponentChildren, ComponentNode, EditorCommand, FlyEditor,
-    FlyError, FlyResult,
-    IdGenerator, ProjectDocument, StyleRuleCommand, StyleRuleDescriptor,
+    AssetCommand, AssetDescriptor, BindingCommand, ComponentChildren, ComponentNode,
+    DynamicCommand, EditorCommand, FlyEditor, FlyError, FlyResult, IdGenerator, ProjectDocument,
+    RuntimeBinding, RuntimeCondition, RuntimeRepeater, StyleRuleCommand, StyleRuleDescriptor,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -39,7 +39,13 @@ impl ProjectFragment {
         // graph, even though they are not exposed through the typed component visitor.
         node.collect_ids(&mut component_ids);
         let component_ids = component_ids.into_iter().collect::<BTreeSet<_>>();
+        let runtime_component_ids = component_ids
+            .iter()
+            .filter(|id| document.component(id.as_str()).is_some())
+            .cloned()
+            .collect::<BTreeSet<_>>();
         collect_node_asset_references(&node, &mut asset_references);
+        let extensions = collect_fragment_runtime_catalogs(document, &runtime_component_ids);
         let styles = document
             .project()
             .styles
@@ -75,7 +81,7 @@ impl ProjectFragment {
                 .into_iter()
                 .map(|provider| ProviderRequirement { provider })
                 .collect(),
-            extensions: Map::new(),
+            extensions,
         })
     }
 
@@ -109,6 +115,7 @@ impl ProjectFragment {
             component.collect_matching_dom_ids(&mut matching_ids);
         }
         reserved.extend(source_ids.iter().chain(&dom_ids).chain(&form_ids).cloned());
+        reserved.extend(fragment_runtime_catalog_ids(&self.extensions));
         let mapping = crate::id_reference::fresh_component_id_mapping(
             source_ids,
             "paste",
@@ -130,6 +137,12 @@ impl ProjectFragment {
         for style in &mut self.styles {
             crate::style_rule::remap_component_style_rule(style, &mapping);
         }
+        crate::id_reference::remap_runtime_catalogs(&mut self.extensions, &mapping);
+        remap_fragment_runtime_catalog_entry_ids(
+            &mut self.extensions,
+            generator,
+            &mut reserved,
+        )?;
         Ok(mapping)
     }
 
@@ -140,7 +153,10 @@ impl ProjectFragment {
         index: usize,
     ) -> FlyResult<Vec<String>> {
         // Validate and remap all roots together so cross-root references remain coherent.
-        let reserved = crate::id_reference::project_identity_ids(editor.document());
+        let mut reserved = crate::id_reference::project_identity_ids(editor.document());
+        reserved.extend(fragment_runtime_catalog_ids(
+            &editor.document().project().extensions,
+        ));
         let mut staged = editor.clone();
         self.remap_ids_avoiding(&mut staged.id_generator, reserved)?;
         let existing_assets = staged.document().project().assets.clone();
@@ -182,6 +198,7 @@ impl ProjectFragment {
                     command: StyleRuleCommand::UpsertRaw { rule },
                 }),
         );
+        commands.extend(fragment_runtime_catalog_commands(&self.extensions)?);
         if commands.is_empty() {
             return Ok(inserted_ids);
         }
@@ -376,6 +393,146 @@ impl RichTextPayload {
             extensions: Map::new(),
         }
     }
+}
+
+fn collect_fragment_runtime_catalogs(
+    document: &ProjectDocument,
+    component_ids: &BTreeSet<String>,
+) -> Map<String, Value> {
+    let mut extensions = Map::new();
+    for field in [
+        crate::FLY_RUNTIME_BINDINGS_FIELD,
+        crate::FLY_RUNTIME_CONDITIONS_FIELD,
+        crate::FLY_RUNTIME_REPEATERS_FIELD,
+    ] {
+        let Some(Value::Array(entries)) = document.project().extensions.get(field) else {
+            continue;
+        };
+        let selected = entries
+            .iter()
+            .filter(|entry| {
+                let Some(component_id) = entry.get("component_id").and_then(Value::as_str) else {
+                    return false;
+                };
+                if !component_ids.contains(component_id) {
+                    return false;
+                }
+                match field {
+                    crate::FLY_RUNTIME_BINDINGS_FIELD => {
+                        serde_json::from_value::<RuntimeBinding>((*entry).clone()).is_ok()
+                    }
+                    crate::FLY_RUNTIME_CONDITIONS_FIELD => {
+                        serde_json::from_value::<RuntimeCondition>((*entry).clone()).is_ok()
+                    }
+                    crate::FLY_RUNTIME_REPEATERS_FIELD => {
+                        serde_json::from_value::<RuntimeRepeater>((*entry).clone()).is_ok()
+                    }
+                    _ => false,
+                }
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if !selected.is_empty() {
+            extensions.insert(field.to_string(), Value::Array(selected));
+        }
+    }
+    extensions
+}
+
+fn fragment_runtime_catalog_ids(extensions: &Map<String, Value>) -> BTreeSet<String> {
+    let mut ids = BTreeSet::new();
+    for field in [
+        crate::FLY_RUNTIME_BINDINGS_FIELD,
+        crate::FLY_RUNTIME_CONDITIONS_FIELD,
+        crate::FLY_RUNTIME_REPEATERS_FIELD,
+    ] {
+        if let Some(Value::Array(entries)) = extensions.get(field) {
+            ids.extend(
+                entries
+                    .iter()
+                    .filter_map(|entry| entry.get("id").and_then(Value::as_str))
+                    .map(str::to_string),
+            );
+        }
+    }
+    ids
+}
+
+fn remap_fragment_runtime_catalog_entry_ids(
+    extensions: &mut Map<String, Value>,
+    generator: &mut impl IdGenerator,
+    reserved: &mut BTreeSet<String>,
+) -> FlyResult<()> {
+    for (field, hint) in [
+        (crate::FLY_RUNTIME_BINDINGS_FIELD, "binding"),
+        (crate::FLY_RUNTIME_CONDITIONS_FIELD, "condition"),
+        (crate::FLY_RUNTIME_REPEATERS_FIELD, "repeater"),
+    ] {
+        let Some(Value::Array(entries)) = extensions.get_mut(field) else {
+            continue;
+        };
+        for entry in entries {
+            let recognized = match field {
+                crate::FLY_RUNTIME_BINDINGS_FIELD => {
+                    serde_json::from_value::<RuntimeBinding>(entry.clone()).is_ok()
+                }
+                crate::FLY_RUNTIME_CONDITIONS_FIELD => {
+                    serde_json::from_value::<RuntimeCondition>(entry.clone()).is_ok()
+                }
+                crate::FLY_RUNTIME_REPEATERS_FIELD => {
+                    serde_json::from_value::<RuntimeRepeater>(entry.clone()).is_ok()
+                }
+                _ => false,
+            };
+            if !recognized {
+                continue;
+            }
+            let Some(object) = entry.as_object_mut() else {
+                return Err(FlyError::Decode(format!(
+                    "fragment runtime catalog entry in `{field}` must be an object"
+                )));
+            };
+            let id = crate::id_reference::allocate_generated_id(generator, hint, reserved);
+            object.insert("id".to_string(), Value::String(id));
+        }
+    }
+    Ok(())
+}
+
+fn fragment_runtime_catalog_commands(
+    extensions: &Map<String, Value>,
+) -> FlyResult<Vec<EditorCommand>> {
+    let mut commands = Vec::new();
+    if let Some(Value::Array(entries)) = extensions.get(crate::FLY_RUNTIME_BINDINGS_FIELD) {
+        for entry in entries {
+            let binding = serde_json::from_value::<RuntimeBinding>(entry.clone())
+                .map_err(|error| FlyError::Decode(format!("invalid fragment runtime binding: {error}")))?;
+            commands.push(EditorCommand::Binding {
+                command: BindingCommand::Upsert {
+                    binding: Box::new(binding),
+                },
+            });
+        }
+    }
+    if let Some(Value::Array(entries)) = extensions.get(crate::FLY_RUNTIME_CONDITIONS_FIELD) {
+        for entry in entries {
+            let condition = serde_json::from_value::<RuntimeCondition>(entry.clone())
+                .map_err(|error| FlyError::Decode(format!("invalid fragment runtime condition: {error}")))?;
+            commands.push(EditorCommand::Dynamic {
+                command: DynamicCommand::UpsertCondition { condition },
+            });
+        }
+    }
+    if let Some(Value::Array(entries)) = extensions.get(crate::FLY_RUNTIME_REPEATERS_FIELD) {
+        for entry in entries {
+            let repeater = serde_json::from_value::<RuntimeRepeater>(entry.clone())
+                .map_err(|error| FlyError::Decode(format!("invalid fragment runtime repeater: {error}")))?;
+            commands.push(EditorCommand::Dynamic {
+                command: DynamicCommand::UpsertRepeater { repeater },
+            });
+        }
+    }
+    Ok(commands)
 }
 
 fn collect_node_provider_requirements(
