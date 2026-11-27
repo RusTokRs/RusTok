@@ -94,10 +94,7 @@ fn is_disallowed_ipv4(ipv4: Ipv4Addr) -> bool {
 /// prefix `64:ff9b:1::/48` is rejected separately.
 fn embedded_ipv4(ipv6: std::net::Ipv6Addr) -> Option<Ipv4Addr> {
     let segments = ipv6.segments();
-    if segments[..6] == [0x0064, 0xff9b, 0, 0, 0, 0]
-        || segments[..3] == [0x0064, 0xff9b, 0x0001]
-        || segments[..6] == [0; 6]
-    {
+    if segments[..6] == [0x0064, 0xff9b, 0, 0, 0, 0] || segments[..6] == [0; 6] {
         return Some(Ipv4Addr::from(
             u32::from(segments[6]) << 16 | u32::from(segments[7]),
         ));
