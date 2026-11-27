@@ -613,6 +613,20 @@ fn validate_symbol_interaction_fields(
             ))
         })?;
     }
+    if let Some(raw) = fields.get(crate::FLY_PAGE_LINK_FIELD) {
+        let link = serde_json::from_value::<crate::InternalPageLink>(raw.clone()).map_err(
+            |error| {
+                FlyError::InvalidSymbolReference(format!(
+                    "symbol `{symbol_id}` contains an invalid internal page link: {error}"
+                ))
+            },
+        )?;
+        link.normalized().map_err(|error| {
+            FlyError::InvalidSymbolReference(format!(
+                "symbol `{symbol_id}` contains an invalid internal page link: {error}"
+            ))
+        })?;
+    }
     if let Some(raw) = fields.get(crate::FLY_ACTION_FIELD) {
         let action = serde_json::from_value::<crate::ComponentAction>(raw.clone()).map_err(
             |error| {
@@ -1711,6 +1725,33 @@ mod tests {
         .unwrap()
         .html;
         assert_eq!(html.matches(" id=\"contact\"").count(), 1, "{html}");
+    }
+
+    #[test]
+    fn symbol_definitions_reject_unsafe_internal_link_fallbacks() {
+        let document = document_with(
+            object("root", "wrapper", vec![instance("slot", "cta")]),
+            vec![json!({
+                "id": "cta",
+                "components": [{
+                    "id": "link",
+                    "type": "link",
+                    "flyPageLink": {
+                        "page_id": "home",
+                        "fallback_href": "javascript:alert(1)"
+                    }
+                }]
+            })],
+        );
+
+        let error = resolve_symbol_instances(&document)
+            .expect_err("symbol internal links must satisfy the shared safe URL policy");
+
+        assert!(matches!(
+            error,
+            FlyError::InvalidSymbolReference(message)
+                if message.contains("internal page link")
+        ));
     }
 
     #[test]
