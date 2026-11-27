@@ -133,8 +133,8 @@ environment variables over the `RelayConfig` defaults:
   consumers must be idempotent and tolerant of reordering.
 - Permanent dispatch failures (undecodable payload, envelope/row metadata
   mismatch (ID, populated tenant projection, event type or schema version),
-  unregistered schema, transport-side validation) move the event
-  straight to `failed` (DLQ) without burning the retry budget. Transient
+  unregistered schema) detected before transport invocation move the event
+  straight to `failed` (DLQ) without burning the retry budget. Transport
   failures follow the retry policy below.
 - Retry uses capped exponential backoff with equal jitter.
 - `max_attempts` is resolved by the server runtime from `rustok.events.dlq.max_attempts` when DLQ is enabled, otherwise from `rustok.events.relay_retry_policy.max_attempts`.
@@ -258,3 +258,32 @@ policy editing API is provided; online cap reduction or TTL change is not
 supported. Multiple databases/schemas have independent budgets. Direct SQL
 claim mutations outside the protocol, primary clock anomalies, uncooperative
 transport cancellation and broker-side fencing remain outside this guarantee.
+
+## Publication identity and acknowledgement boundary (2026-11-27)
+
+Canonical root and sealed event UUIDs now populate the Iggy message header
+ID without translation. Non-UUID publication keys, including the existing
+DLQ replay attempt keys, map to a fixed namespaced UUIDv5; nil UUIDs and
+empty keys are rejected. The namespace and the existing partition routing
+must remain stable across retries. Explicit direct-mode publication awaits
+the broker reply rather than accepting background enqueue as delivery.
+No-SDK external connections and publications fail closed. The dedicated
+poison-DLQ path retains its existing identity and partition mapping.
+The strength of the broker response still depends on topic/server durability
+and the reviewed broker deduplication policy. Successful direct send is not
+a physical persistence proof or consumer cursor acknowledgement. An empty
+confirmation list can be legitimate (including a duplicate response); no
+broker offsets or persistence guarantees are inferred. Older publications
+without the header identity cannot be retroactively deduplicated. Changing
+topology, partition count or broker destination requires coordinated drain
+and recovery. Do not treat SDK producer idempotence as cross-process Outbox
+exactly-once delivery.
+
+The relay sends invalid stored envelopes directly to its DLQ before invoking
+the target. Every target error, including validation/serialization after a
+remote send or a local projection, consumes the bounded ordinary retry
+budget instead of assuming there was no side effect. Timeout outcomes remain
+unconfirmed and may redeliver the same identity. A successful transport
+reply followed by SQL failure or process death may also redeliver; the
+existing fenced SQL acknowledgement and consumer idempotency still apply.
+No transaction spans the database and the broker.
