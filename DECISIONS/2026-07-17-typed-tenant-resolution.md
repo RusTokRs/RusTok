@@ -28,3 +28,12 @@ Adding a route to either non-tenant scope requires changing the canonical route 
 - Development fallback is observable only when it actually occurs.
 - Clock failures propagate from cache timestamp creation instead of becoming epoch zero.
 - Startup validation remains defense in depth but delegates to the same typed settings policy.
+
+## Durable namespace continuity (2026-11-27)
+
+Tenant UUID identifies the namespace, not a reusable routing label. Owner
+migration 000015 records a permanent UUID birth witness that survives parent
+deletion and cascades; ordinary DML cannot reuse it or mutate the UUID.
+Slug/domain remain routing identifiers and can be reused with a new UUID.
+Previously deleted IDs cannot be recovered during backfill; database restore
+and privileged DDL remain separate trust boundaries. Source tests unrun.
