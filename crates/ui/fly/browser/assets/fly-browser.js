@@ -19,6 +19,13 @@ const PEER_WRITE_CHANNEL_NAME = "fly:page-authoring-writes:v1";
 // Match fly-web/src/peer_write.rs: bounds are UTF-8 bytes, not UTF-16 units.
 const MAX_PEER_WRITE_FIELD_BYTES = 256;
 const MAX_PEER_WRITE_MESSAGE_BYTES = 1024;
+const SELECTION_HINT_FREE_INTENTS = new Set([
+  "select",
+  "focus_requested",
+  "activate_page",
+  "create_page",
+  "resolve_operation",
+]);
 const INTENT_REQUEST_TIMEOUT_CODE = "INTENT_REQUEST_TIMEOUT";
 const INTENT_REQUEST_ABORTED_CODE = "INTENT_REQUEST_ABORTED";
 const NETWORK_ERROR_CODE = "NETWORK_ERROR";
@@ -88,11 +95,29 @@ function nonEmptyString(value) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+// JavaScript stores UTF-16 code units while Rust String stores Unicode scalar values.
+// Reject lone surrogates, but keep valid pairs as ordinary non-BMP Unicode.
+function hasUnpairedSurrogate(value) {
+  for (var index = 0; index < value.length; index += 1) {
+    var code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      var next = value.charCodeAt(index + 1);
+      if (index + 1 >= value.length || next < 0xdc00 || next > 0xdfff) {
+        return true;
+      }
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function validPeerWriteField(value) {
   return typeof value === "string" &&
     value.length <= MAX_PEER_WRITE_FIELD_BYTES &&
     !/^\p{White_Space}*$/u.test(value) &&
-    !/[\uD800-\uDFFF]/u.test(value) &&
+    !hasUnpairedSurrogate(value) &&
     utf8ByteLength(value) <= MAX_PEER_WRITE_FIELD_BYTES;
 }
 
@@ -865,12 +890,9 @@ function normalizedIntent(adapter, input) {
       : {};
   delete payload.type;
   const commandSequence = Number(adapter.root.dataset.flyCommandSequence);
-  if (
-    intent !== "select" &&
-    intent !== "focus_requested" &&
-    adapter.selectedId &&
-    !payload.selected_component_id
-  ) {
+  if (SELECTION_HINT_FREE_INTENTS.has(intent)) {
+    delete payload.selected_component_id;
+  } else if (adapter.selectedId && !payload.selected_component_id) {
     payload.selected_component_id = adapter.selectedId;
   }
   return {
@@ -907,24 +929,42 @@ function containsPoint(rect, point) {
   );
 }
 
-function dropPosition(rect, point) {
-  const height = Math.max(Number(rect.height || 0), 1);
-  const ratio = (point.y - Number(rect.top || 0)) / height;
-  if (ratio <= 0.24) return "before";
-  if (ratio >= 0.76) return "after";
+function dropPosition(rect, point, axis = "vertical", reverse = false) {
+  const horizontal = axis === "horizontal";
+  const origin = Number(horizontal ? rect.left || 0 : rect.top || 0);
+  const extent = Math.max(
+    Number(horizontal ? rect.width || 0 : rect.height || 0),
+    1,
+  );
+  const coordinate = horizontal ? point.x : point.y;
+  const ratio = (coordinate - origin) / extent;
+  if (ratio <= 0.25) return reverse ? "after" : "before";
+  if (ratio >= 0.75) return reverse ? "before" : "after";
   return "inside";
 }
 
-function dropOverlayRect(rect, position) {
+function dropOverlayRect(rect, position, axis = "vertical", reverse = false) {
   if (!rect || position === "inside") return rect;
   const line = 4;
-  const top =
-    position === "before"
-      ? Number(rect.top || 0) - line / 2
-      : Number(rect.top || 0) + Number(rect.height || 0) - line / 2;
+  const beforeAtStart = !reverse;
+  const atStart = position === "before" ? beforeAtStart : !beforeAtStart;
+  if (axis === "horizontal") {
+    const left = Number(rect.left || 0);
+    return {
+      left: atStart
+        ? left - line / 2
+        : left + Number(rect.width || 0) - line / 2,
+      top: Number(rect.top || 0),
+      width: line,
+      height: Number(rect.height || 0),
+    };
+  }
+  const top = Number(rect.top || 0);
   return {
     left: Number(rect.left || 0),
-    top,
+    top: atStart
+      ? top - line / 2
+      : top + Number(rect.height || 0) - line / 2,
     width: Number(rect.width || 0),
     height: line,
   };
@@ -1020,6 +1060,7 @@ export class FlyBrowserAdapter {
     this.peerWriteChannel = null;
     this.lastSequence = null;
     this.geometry = new Map();
+    this.dropAxes = new Map();
     this.selectedId = null;
     this.hoveredId = null;
     this.activeDrag = null;
@@ -1234,6 +1275,7 @@ export class FlyBrowserAdapter {
     clearPendingOperationNotice(this);
     this.lastSequence = null;
     this.geometry.clear();
+    this.dropAxes.clear();
     this.selectedId = null;
     this.hoveredId = null;
     this.zoom = 1;
@@ -1266,7 +1308,12 @@ export class FlyBrowserAdapter {
     const wasmOwnsSelection =
       source === "ssr-control" &&
       this.root.querySelector("[data-fly-wasm-hydrated='true']");
-    if (this.postIntents && this.intentEndpoint && !wasmOwnsSelection) {
+    if (
+      this.postIntents &&
+      this.intentEndpoint &&
+      !wasmOwnsSelection &&
+      source !== "server"
+    ) {
       void this.emitIntent("select", { component_id: next });
     }
   }
@@ -1319,6 +1366,8 @@ export class FlyBrowserAdapter {
     if (message?.type === "geometry_snapshot") {
       if (isObject(message.resource_limit)) {
         this.geometry.clear();
+        this.dropAxes.clear();
+        this.activeDrop = null;
         this.drawSelection();
         this.drawDrop();
         reportResourceLimit(
@@ -1339,6 +1388,8 @@ export class FlyBrowserAdapter {
       );
       if (components.length > limit) {
         this.geometry.clear();
+        this.dropAxes.clear();
+        this.activeDrop = null;
         this.drawSelection();
         this.drawDrop();
         reportResourceLimit(
@@ -1370,9 +1421,15 @@ export class FlyBrowserAdapter {
         break;
       case "geometry_snapshot":
         this.geometry.clear();
+        this.dropAxes.clear();
+        this.activeDrop = null;
         for (const component of message.components || []) {
           if (component?.component_id && component?.rect) {
             this.geometry.set(component.component_id, component.rect);
+            this.dropAxes.set(component.component_id, {
+              axis: component.drop_axis === "horizontal" ? "horizontal" : "vertical",
+              reverse: component.drop_reverse === true,
+            });
           }
         }
         this.drawSelection();
@@ -1397,6 +1454,7 @@ export class FlyBrowserAdapter {
       case "teardown":
         this.root.dataset.flyCanvasConnected = "false";
         this.geometry.clear();
+        this.dropAxes.clear();
         // Not a selection: the canvas went away, and the forms that the server rendered still
         // name the component that the server holds. They keep it, so nothing is announced.
         this.selectedId = null;
@@ -1581,11 +1639,22 @@ export class FlyBrowserAdapter {
       },
       { signal },
     );
+    // Mouse pointer-up is not delivered to an iframe after the pointer leaves its
+    // browsing context. Cancel the host-owned drag at the boundary so it cannot
+    // remain armed and commit unexpectedly when the pointer later re-enters.
+    this.iframe.addEventListener(
+      "pointerleave",
+      () => {
+        if (this.activeDrag) this.cancelDrag();
+      },
+      { signal },
+    );
     this.iframe.addEventListener(
       "load",
       () => {
         this.lastSequence = null;
         this.geometry.clear();
+        this.dropAxes.clear();
         this.activeDrop = null;
         this.drawSelection();
         this.drawDrop();
@@ -1639,6 +1708,10 @@ export class FlyBrowserAdapter {
       candidates.push({
         componentId,
         rect,
+        dropAxis: this.dropAxes.get(componentId) || {
+          axis: "vertical",
+          reverse: false,
+        },
         area:
           Math.max(Number(rect.width || 0), 0) *
           Math.max(Number(rect.height || 0), 0),
@@ -1649,8 +1722,15 @@ export class FlyBrowserAdapter {
     this.activeDrop = target
       ? {
           target_component_id: target.componentId,
-          position: dropPosition(target.rect, point),
+          position: dropPosition(
+            target.rect,
+            point,
+            target.dropAxis.axis,
+            target.dropAxis.reverse,
+          ),
           rect: target.rect,
+          axis: target.dropAxis.axis,
+          reverse: target.dropAxis.reverse,
         }
       : null;
     this.drawDrop();
@@ -2311,6 +2391,17 @@ export class FlyBrowserAdapter {
         if (Number.isSafeInteger(state.command_sequence) && state.command_sequence >= 0) {
           this.root.dataset.flyCommandSequence = String(state.command_sequence);
         }
+        // The server is authoritative for selection after navigation and other
+        // controller transitions. In particular, ActivatePage clears the old
+        // page's selection; retaining it here would attach a stale component ID
+        // to the next mutation on the newly active page.
+        if (
+          Object.prototype.hasOwnProperty.call(state, "selected_component_id") &&
+          (state.selected_component_id === null ||
+            typeof state.selected_component_id === "string")
+        ) {
+          this.select(nonEmptyString(state.selected_component_id), "server");
+        }
         // A confirmed write makes other same-origin editors of this page stale.
         // The server remains the source of truth; this is a UX safety fence.
         // A persisted save can require SSR reload; that prevents queue replay,
@@ -2516,7 +2607,12 @@ export class FlyBrowserAdapter {
   drawDrop() {
     if (!this.overlays) return;
     const rect = this.activeDrop
-      ? dropOverlayRect(this.activeDrop.rect, this.activeDrop.position)
+      ? dropOverlayRect(
+          this.activeDrop.rect,
+          this.activeDrop.position,
+          this.activeDrop.axis,
+          this.activeDrop.reverse,
+        )
       : null;
     applyRect(this.overlays.insertion, rect, this.zoom);
   }

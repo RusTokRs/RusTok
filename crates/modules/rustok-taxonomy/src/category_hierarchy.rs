@@ -122,14 +122,22 @@ pub async fn lock_category_hierarchy_writer_in_tx(
     txn: &sea_orm::DatabaseTransaction,
     tenant_id: Uuid,
 ) -> TaxonomyResult<()> {
-    if txn.get_database_backend() == DatabaseBackend::Postgres {
-        txn.execute_raw(Statement::from_sql_and_values(
+    let statement = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             vec![tenant_id.to_string().into()],
-        ))
-        .await?;
-    }
+        ),
+        // SQLite has no advisory transaction locks. Reserve its single writer before hierarchy
+        // reads so Product's no-op writer reservation and Taxonomy moves serialize consistently.
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "UPDATE taxonomy_category_hierarchy SET position = position WHERE tenant_id = $1 AND 1 = 0",
+            vec![tenant_id.into()],
+        ),
+        _ => return Ok(()),
+    };
+    txn.execute_raw(statement).await?;
     Ok(())
 }
 

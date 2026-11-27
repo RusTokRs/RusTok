@@ -1,4 +1,5 @@
 import type { ReactTable, RowData, StockFeatures } from '@tanstack/react-table';
+import { useTranslations } from '@rustok/next-fluent/client';
 import { ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 import { Button } from '@/shared/ui/shadcn/button';
@@ -25,6 +26,14 @@ export function DataTablePagination<TData extends RowData = any>({
   className,
   ...props
 }: DataTablePaginationProps<TData>) {
+  const t = useTranslations('data-table');
+  const { pageIndex, pageSize } = table.state.pagination;
+  const selected = table.getFilteredSelectedRowModel().rows.length;
+  const total = table.getRowCount();
+  const availablePageSizes = [...new Set([...pageSizeOptions, pageSize])].sort(
+    (left, right) => left - right
+  );
+
   return (
     <div
       className={cn(
@@ -34,42 +43,42 @@ export function DataTablePagination<TData extends RowData = any>({
       {...props}
     >
       <div className='text-muted-foreground flex-1 text-sm whitespace-nowrap'>
-        {table.getFilteredSelectedRowModel().rows.length > 0 ? (
-          <>
-            {table.getFilteredSelectedRowModel().rows.length} of{' '}
-            {table.getFilteredRowModel().rows.length} row(s) selected.
-          </>
-        ) : (
-          <>{table.getFilteredRowModel().rows.length} row(s) total.</>
-        )}
+        {selected > 0
+          ? t('selection', { selected, total })
+          : t('total', { total })}
       </div>
       <div className='flex flex-col-reverse items-center gap-4 sm:flex-row sm:gap-6 lg:gap-8'>
         <div className='flex items-center space-x-2'>
-          <p className='text-sm font-medium whitespace-nowrap'>Rows per page</p>
+          <p className='text-sm font-medium whitespace-nowrap'>
+            {t('rows-per-page')}
+          </p>
           <Select
-            value={`${table.state.pagination.pageSize}`}
+            value={String(pageSize)}
             onValueChange={(value) => {
               table.setPageSize(Number(value));
             }}
           >
-            <SelectTrigger className='h-8 w-[4.5rem] [&[data-size]]:h-8'>
-              <SelectValue placeholder={table.state.pagination.pageSize} />
+            <SelectTrigger
+              aria-label={t('rows-per-page')}
+              className='h-8 w-[4.5rem] [&[data-size]]:h-8'
+            >
+              <SelectValue />
             </SelectTrigger>
             <SelectContent side='top'>
-              {pageSizeOptions.map((pageSize) => (
-                <SelectItem key={pageSize} value={`${pageSize}`}>
-                  {pageSize}
+              {availablePageSizes.map((size) => (
+                <SelectItem key={size} value={String(size)}>
+                  {size}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
         <div className='flex items-center justify-center text-sm font-medium'>
-          Page {table.state.pagination.pageIndex + 1} of {table.getPageCount()}
+          {t('page-of', { page: pageIndex + 1, pages: table.getPageCount() })}
         </div>
         <div className='flex items-center space-x-2'>
           <Button
-            aria-label='Go to first page'
+            aria-label={t('first-page')}
             variant='outline'
             size='icon'
             className='hidden size-8 lg:flex'
@@ -79,7 +88,7 @@ export function DataTablePagination<TData extends RowData = any>({
             <ChevronsLeft />
           </Button>
           <Button
-            aria-label='Go to previous page'
+            aria-label={t('previous-page')}
             variant='outline'
             size='icon'
             className='size-8'
@@ -89,7 +98,7 @@ export function DataTablePagination<TData extends RowData = any>({
             <ChevronLeftIcon />
           </Button>
           <Button
-            aria-label='Go to next page'
+            aria-label={t('next-page')}
             variant='outline'
             size='icon'
             className='size-8'
@@ -99,7 +108,7 @@ export function DataTablePagination<TData extends RowData = any>({
             <ChevronRightIcon />
           </Button>
           <Button
-            aria-label='Go to last page'
+            aria-label={t('last-page')}
             variant='outline'
             size='icon'
             className='hidden size-8 lg:flex'

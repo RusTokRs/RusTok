@@ -3460,9 +3460,19 @@ mod tests {
 
     #[test]
     fn ssr_workspace_exposes_browser_history_actions_but_hides_wasm_only_modes() {
+        let document: ProjectDocument = serde_json::from_value(serde_json::json!({
+            "project": {
+                "pages": [{
+                    "id": "page-1",
+                    "name": "Page One",
+                    "component": { "type": "wrapper", "id": "root", "components": [] }
+                }]
+            }
+        }))
+        .expect("document");
         let html = view! {
             <FlyEditorWorkspace
-                document=sample_document()
+                document=document
                 initial_page=0
                 on_intent=Callback::new(|_: BrowserIntentEnvelope| {})
             />
@@ -3507,7 +3517,6 @@ mod tests {
                 component_id=None
                 rules=fly::StyleRuleCatalog::default()
                 on_upsert=Callback::new(|_: ScopedStyleChange| {})
-                on_preview_breakpoint=None
                 intent_mode=true
             />
         }

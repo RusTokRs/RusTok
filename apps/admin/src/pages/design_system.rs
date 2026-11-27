@@ -985,7 +985,7 @@ pub fn DesignSystemPage() -> impl IntoView {
                         </CardHeader>
                         <CardContent>
                             <TableOfContents
-                                title=Some("On this page".to_string())
+                                title="On this page".to_string()
                                 sticky=false
                                 items=vec![
                                     TocItem::new("showcase-usage", "Usage", 2),
@@ -1043,7 +1043,7 @@ pub fn DesignSystemPage() -> impl IntoView {
                             );
                             view! {
                                 <DataGrid
-                                    aria_label="Showcase workspace grid"
+                                    aria_label="Showcase workspace grid".to_string()
                                     columns=columns
                                     data=Signal::derive(move || showcase_rows.get())
                                     key_fn=|row: &ShowcaseGridRow| row.id.clone()
@@ -1077,7 +1077,7 @@ pub fn DesignSystemPage() -> impl IntoView {
                                 </Button>
                             </div>
                             <DataGrid
-                                aria_label="Showcase empty grid"
+                                aria_label="Showcase empty grid".to_string()
                                 columns=vec![
                                     GridColumnDef::new("name", "Workspace"),
                                     GridColumnDef::new("seats", "Seats"),

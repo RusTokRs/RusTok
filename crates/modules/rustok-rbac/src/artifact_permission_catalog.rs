@@ -48,7 +48,11 @@ impl ArtifactPermissionRegistrationPort for RbacArtifactPermissionCatalog {
         let backend = self.db.get_database_backend();
         let transaction = self.db.begin().await.map_err(storage_error)?;
 
-        for permission in &request.permissions {
+        // Concurrent admissions of the same release may supply different input orders.
+        // Acquire definition and localization unique keys in canonical order.
+        let mut permissions: Vec<_> = request.permissions.iter().collect();
+        permissions.sort_unstable_by(|left, right| left.key.cmp(&right.key));
+        for permission in permissions {
             let release_permission_id = rustok_core::generate_id();
             transaction
                 .execute_raw(Statement::from_sql_and_values(
@@ -94,7 +98,9 @@ impl ArtifactPermissionRegistrationPort for RbacArtifactPermissionCatalog {
                 ));
             }
 
-            for localization in &permission.localizations {
+            let mut localizations: Vec<_> = permission.localizations.iter().collect();
+            localizations.sort_by_cached_key(|item| normalize_locale_tag(&item.locale));
+            for localization in localizations {
                 let normalized_locale =
                     normalize_locale_tag(&localization.locale).ok_or_else(|| {
                         PortError::invariant_violation(
@@ -523,10 +529,10 @@ fn release_translation_upsert_sql(backend: DbBackend) -> Result<&'static str, Po
 fn release_definitions_by_release_sql(backend: DbBackend) -> Result<&'static str, PortError> {
     match backend {
         DbBackend::Sqlite => Ok(
-            "SELECT id, permission_key FROM rbac_artifact_release_permission_definitions WHERE release_digest = ?1 AND module_slug = ?2",
+            "SELECT id, permission_key FROM rbac_artifact_release_permission_definitions WHERE release_digest = ?1 AND module_slug = ?2 ORDER BY permission_key",
         ),
         DbBackend::Postgres => Ok(
-            "SELECT id, permission_key FROM rbac_artifact_release_permission_definitions WHERE release_digest = $1 AND module_slug = $2",
+            "SELECT id, permission_key FROM rbac_artifact_release_permission_definitions WHERE release_digest = $1 AND module_slug = $2 ORDER BY permission_key",
         ),
         backend => Err(PortError::validation(
             "rbac.artifact_permission_backend_unsupported",
@@ -538,10 +544,10 @@ fn release_definitions_by_release_sql(backend: DbBackend) -> Result<&'static str
 fn release_translations_by_definition_sql(backend: DbBackend) -> Result<&'static str, PortError> {
     match backend {
         DbBackend::Sqlite => Ok(
-            "SELECT locale, label, description FROM rbac_artifact_release_permission_translations WHERE release_permission_id = ?1",
+            "SELECT locale, label, description FROM rbac_artifact_release_permission_translations WHERE release_permission_id = ?1 ORDER BY locale",
         ),
         DbBackend::Postgres => Ok(
-            "SELECT locale, label, description FROM rbac_artifact_release_permission_translations WHERE release_permission_id = $1",
+            "SELECT locale, label, description FROM rbac_artifact_release_permission_translations WHERE release_permission_id = $1 ORDER BY locale",
         ),
         backend => Err(PortError::validation(
             "rbac.artifact_permission_backend_unsupported",

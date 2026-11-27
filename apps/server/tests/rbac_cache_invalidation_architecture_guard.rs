@@ -293,7 +293,8 @@ fn invalidated_request_scope_blocks_unscoped_fallbacks() {
     let runtime = source("apps/server/src/services/rbac_runtime.rs");
     let service = source("apps/server/src/services/rbac_service.rs");
 
-    assert!(scope.contains("state.scope.matches(tenant_id, actor_id) && !state.valid.load"));
+    assert!(scope.contains("state.scope.matches(tenant_id, actor_id) && !state.is_valid()"));
+    assert!(scope.contains("checked_scope_read_distinguishes_absence_from_invalidation"));
     assert!(scope.contains("invalidate_current_rbac_request_scope_for_all"));
     let full = runtime
         .split("pub(crate) async fn invalidate_all_user_permissions_cache()")
@@ -315,7 +316,7 @@ fn invalidated_request_scope_blocks_unscoped_fallbacks() {
         .unwrap();
     assert!(
         request_resolver
-            .find("ensure_scope_not_invalidated")
+            .find("checked_permissions_for")
             .unwrap()
             < request_resolver
                 .find("self.runtime.resolve_permissions")
@@ -340,7 +341,12 @@ fn invalidated_request_scope_blocks_unscoped_fallbacks() {
             .split(next)
             .next()
             .unwrap();
-        assert!(body.find("ensure_scope_not_invalidated").unwrap() < body.find(fallback).unwrap());
+        let checked = if method.contains("permissions") {
+            "checked_permissions_for"
+        } else {
+            "checked_role_for"
+        };
+        assert!(body.find(checked).unwrap() < body.find(fallback).unwrap());
     }
     assert!(service.contains("invalidated_request_scope_never_falls_back_to_unscoped_grants"));
 }
@@ -363,10 +369,14 @@ fn graphql_root_authority_gate_precedes_followup_resolvers_and_membership_lookup
         .unwrap();
     assert!(resolve.contains("info.path_node.parent.is_none()"));
     assert!(
-        resolve.find("ensure_scope_not_invalidated").unwrap()
+        resolve.find("ensure_scope_authority").unwrap()
             < resolve.find("next.run(ctx, info).await").unwrap()
     );
-    assert!(resolve.contains("info.path_node.field_name()"));
+    assert!(resolve.contains("ensure_graphql_scope_binding"));
+    assert!(resolve.contains("SelectedMutationOperation"));
+    assert!(resolve.contains("info.path_node.to_string_vec()"));
+    assert!(security.contains("attached_scope_requires_matching_live_task_authority"));
+    assert!(security.contains("invalidated_query_blocks_nested_read_even_with_immutable_auth_context"));
     assert!(security.contains("invalidated_scope_blocks_later_root_but_keeps_committed_receipt"));
     assert!(security.contains("unrelated_invalidation_does_not_block_later_root"));
     let invalidation = host

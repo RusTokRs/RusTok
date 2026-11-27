@@ -1351,6 +1351,25 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         tenant_id: Uuid,
         supported_payload_kinds: &[crate::ArtifactPayloadKind],
     ) -> Result<ModuleEffectivePolicy, ModuleLifecycleDbWriterError> {
+        self.artifact_serving_policy_for_context(tenant_id, supported_payload_kinds, None, None).await
+    }
+
+    /// Evaluate contextual inputs against the same mixed artifact catalog.
+    /// The host is responsible for capturing and fencing the owner evidence.
+    pub async fn artifact_serving_policy_for_context(
+        &self,
+        tenant_id: Uuid,
+        supported_payload_kinds: &[crate::ArtifactPayloadKind],
+        channel: Option<ModuleEffectivePolicyChannelInput>,
+        maintenance: Option<ModuleEffectivePolicyMaintenanceInput>,
+    ) -> Result<ModuleEffectivePolicy, ModuleLifecycleDbWriterError> {
+        if channel.as_ref().is_some_and(|channel| channel.tenant_id != tenant_id) {
+            return Err(ModuleLifecycleDbWriterError::Policy(
+                ModuleEffectivePolicyError::InvalidChannelInput(
+                    "channel tenant_id does not match the policy tenant".into(),
+                ),
+            ));
+        }
         let installations = SeaOrmArtifactInstallationStore::with_infrastructure(
             self.db.clone(),
             self.infrastructure.clone(),
@@ -1384,8 +1403,8 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             defaults,
             self.overrides(tenant_id).await?,
             inputs,
-            None,
-            None,
+            channel,
+            maintenance,
         )
         .with_corequisites(self.co_requisites.iter().cloned())
         .execute()

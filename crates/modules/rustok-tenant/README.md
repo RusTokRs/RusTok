@@ -62,3 +62,15 @@
 - [CRATE_API.md](CRATE_API.md)
 - [Module docs](./docs/README.md)
 - [Platform docs index](../../../docs/index.md)
+
+### Permanent tenant identity
+
+Migration 000015 claims each existing and newly inserted tenant UUID in
+`tenant_uuid_witnesses`. The claim survives tenant deletion and dependent
+cascades. UUID updates and witness deletion/replacement are forbidden;
+conflict-do-nothing and rolled-back births consume nothing. SQLite normalizes
+UUID text/blob forms and PostgreSQL uses a nonwaiting per-UUID advisory
+fence. Slug/domain changes and reuse with a fresh UUID retain their current
+contract; natural-key REPLACE with a fresh UUID is not guarded here.
+Pre-cutover deleted IDs and privileged DDL/restore are outside this guarantee.
+Regression sources authored; migration execution remains pending.

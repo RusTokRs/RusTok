@@ -835,7 +835,7 @@ pub struct ProductAttributeValueItem {
     pub detached: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ProductAttributeValuePatchDraft {
     #[serde(rename = "attributeId")]
     pub attribute_id: String,
@@ -972,7 +972,7 @@ pub struct BindCategoryAttributeDraft {
     pub default_variant_axis: Option<bool>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ProductAttributeValueBatchDraft {
     pub locale: String,
     pub patches: Vec<ProductAttributeValuePatchDraft>,

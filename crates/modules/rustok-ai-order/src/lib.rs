@@ -230,7 +230,7 @@ mod tests {
     #[test]
     fn rejects_confidence_over_100() {
         let err = validate_order_ops_assistant_confidence(101).unwrap_err();
-        assert!(err.contains("between 0 and 100"));
+        assert_eq!(err, super::OrderOpsAssistantPayloadError::InvalidConfidence);
     }
 
     #[test]

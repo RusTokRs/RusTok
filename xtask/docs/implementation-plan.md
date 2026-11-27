@@ -520,9 +520,71 @@ the actual table and editor, which can fail after `cargo check` succeeds.
 The generated package declares a crate-local recursion limit for Leptos
 hydration view code generation.
 
-- [ ] Close Blog reference-verifier drift and retain actual reference execution
-  evidence before certifying it for propagation. Do not preserve obsolete source
-  markers or copy confirmed FFA/localization defects into generated modules.
+The Next.js dev host served its sign-in page and preserved the generated
+records route as the callback for an unauthenticated browser request.
+The embedded Leptos host build, including the generated module, reached the
+Page Builder and Product admin packages. Page Builder subsequently passed
+its scoped WASM hydration check and all 20 browser-intent unit tests.
+The Product package passed its WASM hydration check after routing Variant
+editing through the mounted editor and aligning the draft's typed values. A
+focused native test confirmed that mutation recovery retains Variant
+attributes and rejects a changed value for the same pending request.
+The next Trunk build passed the earlier Product and Pages type errors and
+reached a hydration code-generation depth limit in Groups. After the Groups
+fix, Trunk reached the host and identified three outdated showcase props,
+which were aligned with the shared UI components. Cargo then emitted the
+host's WASM. Trunk's offline asset step required the exact wasm-bindgen CLI
+version from the lockfile. For the same compiled host and module selection,
+`data-no-demangle` reduced the packaged debug WASM from 1,635,214,115 to
+513,575,429 bytes. Chromium rejected the original at its 1 GiB module limit
+and compiled the compact bundle over HTTP. The bundle contains the generated
+module identity and route. Chromium opened that route in both packaged Leptos
+browser profiles and reached the login form. Authenticated navigation, table
+and settings interactions still need both mounted hosts.
+
+The Next.js host resolves the locale once and forwards it under both the
+RusToK request header and the header read by next-fluent. The module can
+keep using the shared Fluent provider and server translation calls. A
+middleware check exercised explicit selection, the saved cookie and the
+default locale. The Chromium smoke passed against the live Next.js host. It
+opened the Russian sign-in page, switched to English in the real selector,
+and confirmed the language after reload.
+
+The shared Next table now uses the owner total for its counter and Fluent
+for its empty state, pagination, filter and column controls. A focused render
+used a page size of 7 and an owner total of 41. It displayed page 3 of 6 and
+the full total in both languages. The generated table uses the page and size
+returned by the owner, including the tenant default when the URL size is
+invalid. A focused check with the actual TanStack table confirmed that a
+next-page action only changes the page parameter, while a size change updates
+the size. The live authenticated scenario still needs to verify the
+settings-to-table flow.
+
+The generated Leptos list now uses the shared route-query reader and writer.
+It restores title search, publication filter, sort order and pagination from
+the URL. Applying filters resets the page and retains the tenant's default
+size unless the operator selected a size. The generated owner and both
+clients use the same title length bound. The fresh `scaffold_filters_proof`
+module passed layout and publish metadata validation and its Leptos CSR
+and hydrate profiles checked on `wasm32-unknown-unknown`. A focused native
+render test used the generated filter code, platform forms and both Fluent
+catalogs. It verified the localized form, restoration of the selected
+status and the typed query changes for search and pagination.
+
+The standalone Leptos SSR shell uses progressive enhancement under the
+[standalone admin delivery ADR](../../DECISIONS/2026-11-13-standalone-admin-editor-delivery.md).
+The generated workspace still needs a browser action binding for that
+profile. The CSR and hydrate profiles already provide the Leptos event
+bindings, with GraphQL and native transports respectively. A standalone
+SSR render verifies the initial document. Readiness for standalone SSR also
+requires exercising its actions in the browser.
+
+- [ ] Retain live Blog reference execution before certifying it for propagation.
+  The current source-layout, admin and storefront boundaries, Next GraphQL client
+  documents, Comments ports and projection, Search projection and category
+  reindex checks pass. The Blog library passed 193 tests, and the separately
+  selected title-filter and locale-storage contract passed on PostgreSQL 16.13.
+  The mounted operator scenarios still need runtime evidence.
 - [ ] Generalize the existing reference validation by module and implemented
   responsibility. For every invariant, record applicability or an explicit
   reason it is absent, its negative behavior test, runtime preconditions and

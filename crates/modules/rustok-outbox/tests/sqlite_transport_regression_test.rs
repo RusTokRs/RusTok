@@ -5,8 +5,8 @@ use rustok_core::{Error, Result};
 use rustok_events::{ContractEventEnvelope, DomainEvent, EventEnvelope, RbacRoleMutationEvent};
 use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
 use sea_orm::{
-    ConnectOptions, Database, DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait,
-    TransactionTrait,
+    ActiveModelTrait, ConnectOptions, Database, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, PaginatorTrait, Set, TransactionTrait,
 };
 use sea_orm_migration::MigrationTrait;
 use sea_orm_migration::prelude::SchemaManager;
@@ -229,4 +229,32 @@ async fn write_to_outbox_in_transaction_works_on_sqlite() {
 
     let count = SysEvents::find().count(&db).await.unwrap();
     assert_eq!(count, 1);
+}
+
+#[tokio::test]
+async fn unfenced_transport_ack_cannot_steal_a_relay_claim() {
+    let db = setup_test_db().await;
+    rustok_outbox::RelayConfig::default().verify_execution_admission(&db).await.expect("bind execution policy");
+    let transport = OutboxTransport::new(db.clone());
+    let envelope = EventEnvelope::new(
+        Uuid::new_v4(), None,
+        DomainEvent::UserLoggedIn { user_id: Uuid::new_v4() },
+    );
+    let id = envelope.id;
+    transport.publish(envelope).await.expect("event");
+    let mut claimed: rustok_outbox::entity::ActiveModel =
+        SysEvents::find_by_id(id).one(&db).await.unwrap().unwrap().into();
+    claimed.claimed_by = Set(Some("other-relay".to_string()));
+    claimed.claimed_at = Set(Some(chrono::Utc::now()));
+    claimed.update(&db).await.expect("claim");
+    assert!(transport.acknowledge(id).await.is_err());
+    let stored = SysEvents::find_by_id(id).one(&db).await.unwrap().unwrap();
+    assert_eq!(stored.status, rustok_outbox::entity::SysEventStatus::Pending);
+    assert_eq!(stored.claimed_by.as_deref(), Some("other-relay"));
+    let mut released: rustok_outbox::entity::ActiveModel = stored.into();
+    released.claimed_by = Set(None);
+    released.claimed_at = Set(None);
+    released.update(&db).await.expect("release");
+    transport.acknowledge(id).await.expect("unclaimed ack");
+    transport.acknowledge(id).await.expect("idempotent ack");
 }

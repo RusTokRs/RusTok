@@ -58,6 +58,7 @@ struct DraftRecoveryRecord {
     updated_at_ms: u64,
 }
 
+#[derive(Clone)]
 pub(crate) struct DraftRecoveryBootstrap {
     pub store: Option<DraftRecoveryStore>,
     pub base: DraftRecoveryBase,
@@ -445,6 +446,17 @@ impl DraftRecoveryStore {
                 format!("Cannot persist local draft in browser storage: {error:?}")
             })?;
             self.sequence.set(sequence);
+
+            // This new immutable record contains the merged state and supersedes every exact
+            // record consumed during bootstrap. Retire those snapshots after the replacement
+            // is durable; concurrent peer writes use different keys and are left untouched.
+            let consumed_records = self.consumed_records.borrow().clone();
+            if let Err(error) = self.clear_if_unchanged(&consumed_records) {
+                tracing::warn!(
+                    error = %error,
+                    "Local draft was saved but consumed recovery records could not be retired"
+                );
+            }
 
             // Never overwrite a key another tab may have read. The new immutable record is
             // committed first; older versions for this writer can then be retired safely.
@@ -1592,6 +1604,33 @@ mod tests {
                 .any(|loaded| loaded.record.writer_id == "writer-b"
                     && loaded.record.record_id == "b1")
         );
+    }
+
+    #[test]
+    fn a_new_writer_can_compact_a_full_scope_of_consumed_recovery_records() {
+        let mut entries = (0..MAX_RECOVERY_RECORDS_PER_SCOPE)
+            .map(|index| {
+                let writer_id = format!("writer-{index}");
+                let record_id = format!("record-{index}");
+                let key = format!("{writer_id}:{record_id}");
+                (
+                    test_record_ref(&key),
+                    test_recovery_record(&writer_id, &record_id, 1, &[]),
+                )
+            })
+            .collect::<Vec<_>>();
+        let superseded = entries
+            .iter()
+            .map(|(reference, _)| reference.key.as_str())
+            .collect::<Vec<_>>();
+        let mut latest = test_recovery_record("writer-new", "record-new", 1, &[]);
+        latest.supersedes = superseded.iter().map(|key| (*key).to_string()).collect();
+        entries.push((test_record_ref("writer-new:record-new"), latest));
+
+        let loaded = latest_recovery_records(entries).expect("valid compacted recovery lineage");
+        assert_eq!(loaded.records.len(), 1);
+        assert_eq!(loaded.records[0].record.writer_id, "writer-new");
+        assert_eq!(loaded.supersedes_keys.len(), MAX_RECOVERY_RECORDS_PER_SCOPE);
     }
 
     #[test]

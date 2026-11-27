@@ -41,7 +41,7 @@ async fn insert_admission(db: &DatabaseConnection, installation_id: Uuid, eviden
     .await
     .expect("insert installation");
     db.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Sqlite,
+        DatabaseBackend::Sqlite,
         "INSERT INTO module_artifact_admissions
          (installation_id, revision, verification_evidence, status)
          VALUES (?1, 1, ?2, 'admitted')"
@@ -176,7 +176,7 @@ async fn reverification_cursor_continues_after_the_bounded_fresh_scan_prefix() {
     let db = setup_db().await;
     let fresh_evidence = evidence_json(1, 1);
     db.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Sqlite,
+        DatabaseBackend::Sqlite,
         "WITH RECURSIVE seq(value) AS (
              SELECT 1
              UNION ALL SELECT value + 1 FROM seq WHERE value < 8200
@@ -191,7 +191,7 @@ async fn reverification_cursor_continues_after_the_bounded_fresh_scan_prefix() {
     .await
     .expect("insert fresh installations");
     db.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Sqlite,
+        DatabaseBackend::Sqlite,
         "WITH RECURSIVE seq(value) AS (
              SELECT 1
              UNION ALL SELECT value + 1 FROM seq WHERE value < 8200

@@ -46,6 +46,9 @@ Local documentation for `apps/next-admin`.
   shared by endpoint. Query results also use `no-cache` and HTTP `no-store`;
 - effective locale is selected by the host/runtime layer via `x-rustok-effective-locale`
   and `@rustok/next-fluent`; module-owned packages read the host-provided locale, not a cookie/query fallback chain;
+- the proxy forwards the same resolved locale through next-fluent's
+  `x-next-locale` request header so server components and the top-level provider
+  load the same language on each request;
 - user language selection in Next Admin is stored in the host-owned cookie `rustok-admin-locale`;
   middleware normalizes the effective locale in order `?locale` → cookie → `x-rustok-effective-locale`
   → `Accept-Language` → `en`, and the UI uses dropdown in header and auth screens;
@@ -173,6 +176,12 @@ and surface read errors. Runtime and browser verification remain required.
 - shared API helper `src/shared/api/seo.ts` provides typed access to SEO control-plane: `seoTargets`, diagnostics, sitemap status/jobs, bulk jobs and job detail with REST primary (rollout-gated) + GraphQL secondary path strategy;
 - semantic SEO error taxonomy (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, transport failures) is considered canonical for Next hosts and is reused not only in `next-admin`, but also in Next storefront SEO runtime adapters;
 - package naming contract for module-owned admin UI remains `@rustok/*-admin`.
+- shared `DataTableShell` uses the owner query's filtered total for a
+  server-paginated list. A module with server-validated page parameters passes
+  the response's page and size as `serverPagination`. Moving between pages
+  leaves the tenant's default size in effect until the operator selects a size.
+  The shared table and pagination controls read their UI copy from the host
+  Fluent catalogs. Modules provide their own column labels and filter values.
 
 ## SEO operator readiness evidence
 

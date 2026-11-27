@@ -7,7 +7,12 @@ RBAC invalidation generation with a supplied grant replacement. The server clear
 its local permission cache and attempts namespace-wide fan-out after commit.
 Metadata-only updates do not reserve a generation; identical supplied grant sets
 are still rewritten and advance it. Missing/exhausted generation storage aborts
-the edit. An optional legacy host callback still needs its own generation
+the edit. PostgreSQL late reservation also rejects a contended table or row
+with NOWAIT; reservation retains the typed driver error through the server
+write adapter. Standalone committed role replacement retries typed pre-commit
+conflicts after explicit rollback and fresh locked facts; no-op and commit
+failure never retry. Nested bootstrap assignment errors and request-bound
+Auth/GraphQL whole-transaction retry remain open. An optional legacy host callback still needs its own generation
 reconciliation. Added owner/host regressions have not been compiled or executed.
 
 This is a durable watermark plus eventual watchdog reconciliation, not an outbox,
@@ -28,6 +33,38 @@ contract changes `resolve_permissions_with_cache` and the runtime adapter's
 conversion bound; external Rust consumers must migrate. Multi-query consistency,
 commit-time revocation fences, and multi-replica recovery remain separate gates.
 See [the decision](../../../../DECISIONS/2026-11-02-rbac-cache-resolution-consistency.md).
+
+## Coherent static permission reads (2026-11-27)
+
+Cached misses and uncached decisions share one tenant/user-scoped SQL relation
+read rather than separately sampling membership and role grants. The relation
+store contract now requires a coherent read, including custom implementations;
+the old split-load methods are removed. Source regressions cover malformed
+cross-tenant grants and membership, cache misses, and caller-transaction
+revocation. Compilation, PostgreSQL concurrent execution and distributed cache
+recovery remain pending; a statement snapshot is not a revocation fence.
+
+## Transaction-bound management ceiling (2026-11-27)
+
+The control-plane host and GraphQL owner intersect admitted and live effective
+grants before evaluating the management OR gate. Independent successful
+checks against disjoint grant sets are no longer sufficient. The host rechecks
+request scope after lock/read waits. Regressions cover wildcard narrowing,
+disjoint management alternatives on create/update/delete, and unchanged state
+on denial. Compile and execution evidence remain pending. Artifact purge
+authorization and global inter-module fences remain separate work.
+
+## Standalone role lock hierarchy (2026-11-27)
+
+PostgreSQL standalone replacement takes the target user fence, then the
+existing target membership, destination and SuperAdmin continuity roles in
+canonical UUID order before per-role checks. Bootstrap assignment fences
+the user and exact system role before touching shared permission vocabulary;
+a late role conflict fails via NOWAIT. Lazy missing-role creation and bulk
+repair remain outside a complete cross-owner ordering proof. PostgreSQL
+regression evidence is authored but unrun.
+The regression holds the lower UUID and checks that a blocked replacement
+has not taken the higher UUID, in both former orders. Compilation is pending.
 
 ## FFA/FBA status
 
@@ -456,3 +493,103 @@ exists.
 - Evidence: `node scripts/verify/verify-rbac-fba.mjs, node scripts/verify/verify-owner-fba-runtime-order.mjs, and node scripts/verify/verify-rbac-admin-boundary.mjs passed after the registry correction. Retained CI evidence remains recorded above; no broad local Cargo pass is claimed.`
 - Next action: `execute and retain the exact-head formatting, Events/RBAC/Admin/server compilation, focused tests, source verifiers, and cargo xtask module validate/test rbac gates; classify every failure against the RBAC diff before moving into migration compatibility and PostgreSQL rollback evidence. Keep the verification cursor on cycle-001/core-rbac.`
 - Resume command: `cargo fmt --all -- --check`
+
+- Global lock hierarchy continuation: migration 000012 protects the RBAC
+  watermark from ordinary SQL reset/removal/replacement; user-admin response
+  reads precede reservation. Generation-bearing outbox and final credential
+  deadline remain in the transaction tail. Authored SQLite and PostgreSQL
+  regressions, including actual generation contention. Compilation, migration
+  execution, direct relation invalidation coupling and global lock evidence
+  remain pending.
+
+- Direct relation mutation continuation: validate every persisted cache-hit
+  candidate against an exact current grant set, then recheck local token.
+  This closes stale unscoped cache use on direct SQL or missed notifications
+  without introducing an early global generation lock. A hit now requires a
+  read query. Source regressions authored; compile, PostgreSQL query parity
+  and performance evidence remain pending. Raw-DML generation coupling,
+  request-snapshot revocation and relation incarnation continuity remain open.
+  Added an opt-in PostgreSQL exact-set regression covering both directions of
+  comparison, tenant isolation and FK cascades, and extended the SQLite
+  regression for raw static-grant deletion/reinsertion. Tests remain unrun.
+
+- Static authority UUID continuity: migration 000013 preserves user, role and
+  permission birth witnesses without a global row lock; same-ID replacement,
+  deletion/recreation and direct witness reset fail closed. SQLite alternate
+  UUID encodings share one witness. Existing identity history before migration,
+  different-ID natural-key replacement, other credential/tenant identities and
+  revision-based cache optimization remain open. Source regressions authored;
+  migration and PostgreSQL contention evidence unrun.
+  Additional regression exercises tenant FK cascades, rollback and rejection
+  of UUID reuse with the same revision in another tenant. The PostgreSQL
+  contention assertion requires the exact witness-busy error. Owner migration
+  registration is guarded; execution remains pending.
+
+- GraphQL role locator integrity: update and delete revalidate the exact tenant,
+  UUID and slug under the role lock; stale locators cannot bypass break-glass
+  protection. SQLite transport regressions authored, unrun.
+
+- Artifact catalog lock closure: admission orders permission and normalized
+  locale keys; projection orders persisted keys. Migration 000016 covers
+  installation and translation FK parent waits and relation admission for
+  existing artifact grant/receipt guards. Opt-in PostgreSQL regression covers
+  parent row/table contention, retry, wrong tuple and metadata-only update.
+  Compilation and runtime evidence remain pending; arbitrary bulk DML,
+  generation coupling for direct relation writes and cross-owner edges remain open.
+  Extended the 000016 PostgreSQL regression to install the actual 000006
+  predecessor and exercise both artifact grant and operation receipt guards
+  against all three FK parents (row and relation contention), exact tenant
+  rejection and reentrant owner locks. No migration SQL change; unrun.
+
+- Artifact grant generation coupling: migration 000017 advances the existing
+  watermark on actual grant row changes, including direct SQL. PostgreSQL
+  uses deferred constraint triggers and NOWAIT for late watermark/role locks;
+  SQLite uses its serialized writer. Remove explicit duplicate owner
+  reservation; cutover advances once. Regression sources cover direct SQL,
+  rollback, no-ops, exhaustion and PostgreSQL commit/role contention. Drain
+  old writers. Static direct relation coupling, bulk ordering, retry and
+  execution evidence remain open.
+
+- Request snapshot temporal admission: matching credential-bearing scopes
+  terminally expire on the original deadline or an unhealthy Auth local clock
+  sample, including captured artifact scopes and GraphQL root admission.
+  Source regressions authored, unrun; cross-task, cross-replica and durable
+  direct-SQL revocation remain open.
+
+- Process-local request snapshot revocation: bind JWT admission and HTTP/WS
+  scopes to the existing cache epoch, reject pre-entry and cross-task changes,
+  and retain the original token for captured leases. Authenticated stripe
+  collisions are conservative denials. Source regressions unrun; durable
+  revocation and unscoped snapshot consumers remain open.
+
+- Durable static request authority: retain the admitted membership/role grant
+  revision in CurrentUser and scope, validate at scope-aware async service and
+  GraphQL root boundaries, compare it on WS revalidation. Source regression
+  covers membership and raw grant ABA, missing evidence and new admission;
+  unrun. Synchronous consumers, service OAuth, module/credential revocation,
+  commit-time fencing and cross-replica runtime evidence remain open.
+
+- Fallible scope lookup and synchronous REST admission: invalid matching
+  scopes cannot be interpreted as absent by service/resolver fallback;
+  CurrentUser single/any/all gates check their deadline and local epoch
+  and any matching scope ceiling. Source regressions authored, unrun.
+  Other immutable AuthContext/SecurityContext consumers and durable
+  credential, module-policy and nested field checks remain open.
+
+- GraphQL immutable context binding: require the original HTTP/WS admission
+  marker to match live task-local scope, AuthContext ceiling and credential
+  facts. Nested query fields check local validity; selected mutation
+  payloads retain committed receipt serialization. Source regressions cover
+  absent/substituted authority, widened context, aliases and operation
+  selection. Unrun. Fresh protected reads nested inside mutation payloads
+  and durable nested read authority remain open.
+
+- Revision-bound permission cache: bracket production fills with durable
+  revision reads and recheck the local epoch after publication. Bound hits
+  compare exact grants and original revision in one statement. Legacy entries
+  retain exact validation; missing/corrupt evidence and storage failure do not
+  authorize stale grants. Source regression covers raw grant ABA and mutation
+  during publication, plus transient subject visibility between absent
+  revision observations and bounded rejection of repeated contradictions.
+  Tests and performance evidence pending; revision-only
+  optimization requires a trustworthy database incarnation/restore contract.

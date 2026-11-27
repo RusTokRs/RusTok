@@ -28,8 +28,9 @@ contract:
 
 - A consumer registers the exact event types it requires before its worker and
   Outbox retention are started.
-- A dispatched event is eligible for retention only after every registered
-  consumer for its event type has acknowledged that event ID.
+- An event is eligible for retention only after every registered consumer for
+  its event type has acknowledged that event ID. This includes the optional
+  age-based failed-event retention policy; pending events are never pruned.
 - A consumer acknowledges only after its own durable terminal receipt has
   committed. Retryable failures do not acknowledge.
 - Where a consumer's terminal receipt and Outbox acknowledgement share the
@@ -100,11 +101,28 @@ types is unacknowledged; the caller must first stop the consumer and quiesce
 those event producers.
 
 - Registration is idempotent and committed before the retention worker starts.
+- Registration and retirement serialize through a PostgreSQL SHARE ROW
+  EXCLUSIVE registry lock at READ COMMITTED. Retirement then acquires
+  SHARE on sys_events with NOWAIT before drain reads. SQLite reserves its
+  writer before the drain. Producers must still be quiesced operationally;
+  events committed after retirement are not owed to the retired consumer.
+- Drain checks require both the consumer key and event type on each receipt.
+  Retirement preserves terminal receipts for the same consumer identity.
+- ACK takes the registry SHARE lock with NOWAIT and locks the source and
+  subscription rows through the owner transaction on PostgreSQL. SQLite
+  reserves its writer. Contention requires owner rollback and retry. Only
+  trusted startup backfill of terminal receipts may accept an absent event.
 - Receipt and acknowledgement are committed in one owner transaction.
 - Duplicate workers may race to acknowledge the same event; the unique key
   makes the operation idempotent.
-- Retention rechecks the acknowledgement predicate in its delete statement,
-  not only in its candidate scan.
+- Retention rechecks the acknowledgement predicate in every event delete,
+  not only in its candidate scan. PostgreSQL takes a SHARE lock on
+  `sys_event_consumers` before the final READ COMMITTED delete statement,
+  serializing against the ROW EXCLUSIVE lock acquired by registry writers.
+  A newly committed registration therefore precedes the deletion snapshot or
+  follows the deletion; it cannot retroactively recover already-pruned rows.
+  SQLite serializes writes. The lock covers only the bounded event delete,
+  not broker I/O or receipt pruning.
 - If a consumer is unhealthy, retained rows may exceed the nominal retention
   window. This is intentional backpressure on storage, not permission to lose
   an unconsumed event.
@@ -163,3 +181,14 @@ window without losing events it has not yet accepted or permanently rejected.
 The tradeoff is that unacknowledged rows remain stored until the consumer
 recovers or its registration is explicitly retired. The same mechanism can
 protect future durable consumers without teaching Outbox their domain schema.
+
+## Consumer ACK admission and retention bounds (source only)
+
+PostgreSQL consumer ACK reserves the source event row exclusively with NOWAIT
+and reads its subscription with NOWAIT under the registry SHARE fence. This
+serializes canonical ACK writers for one event without waiting while holding
+owner locks. Contention requires rollback and retry of the owner transaction.
+Trusted backfill may skip a missing event only for a currently registered
+consumer. Live ACK still requires an existing event and exact event type.
+Source regressions are unrun; PostgreSQL multi-connection contention,
+compilation and runtime verification remain open.

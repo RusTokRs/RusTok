@@ -237,6 +237,9 @@ splits the backend and the external Trunk host.
 `apps/admin` in standalone debug runs as a CSR host, so Trunk must build the binary artifact
 `rustok-admin`, not the library artifact `rustok_admin`. This is specified in `index.html` via
 `data-target-name="rustok-admin"`: the binary runs `main()` and mounts the shell in `body`.
+The Trunk entry uses `data-no-demangle` to keep the debug WASM's Rust symbol
+names compact. In a build with the generated module, Chromium rejected the
+demangled asset at its 1 GiB module limit and compiled the compact asset.
 
 Tailwind CSS for this debug profile is built by the Trunk post-build hook `scripts\tailwind-build.cmd`.
 The hook writes `output.css` to `TRUNK_STAGING_DIR`, so CSS survives the `dist` cleanup inside the Trunk pipeline.

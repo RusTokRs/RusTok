@@ -57,6 +57,7 @@ fn create_test_product_input(tags: &[&str]) -> CreateProductInput {
             barcode: None,
             shipping_profile_slug: None,
             axis_values: vec![],
+            attribute_values: vec![],
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
                 channel_id: None,

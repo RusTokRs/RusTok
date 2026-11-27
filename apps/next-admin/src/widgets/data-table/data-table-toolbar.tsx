@@ -6,6 +6,7 @@ import type {
   RowData,
   StockFeatures
 } from '@tanstack/react-table';
+import { useTranslations } from '@rustok/next-fluent/client';
 import * as React from 'react';
 
 import { DataTableDateFilter } from './data-table-date-filter';
@@ -29,6 +30,7 @@ export function DataTableToolbar<TData extends RowData = any>({
   className,
   ...props
 }: DataTableToolbarProps<TData>) {
+  const t = useTranslations('data-table');
   const isFiltered = table.state.columnFilters.length > 0;
 
   const columns = React.useMemo(
@@ -56,14 +58,14 @@ export function DataTableToolbar<TData extends RowData = any>({
         ))}
         {isFiltered && (
           <Button
-            aria-label='Reset filters'
+            aria-label={t('reset-filters')}
             variant='outline'
             size='sm'
             className='border-dashed'
             onClick={onReset}
           >
             <Cross2Icon />
-            Reset
+            {t('reset')}
           </Button>
         )}
       </div>

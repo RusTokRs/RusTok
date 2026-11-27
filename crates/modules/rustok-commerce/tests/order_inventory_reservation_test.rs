@@ -112,6 +112,7 @@ async fn create_product_and_variant(catalog: &CatalogService, tenant_id: Uuid) -
                     barcode: None,
                     shipping_profile_slug: None,
                     axis_values: vec![],
+                    attribute_values: vec![],
                     prices: vec![PriceInput {
                         currency_code: "USD".to_string(),
                         channel_id: None,

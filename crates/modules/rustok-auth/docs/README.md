@@ -742,6 +742,8 @@ rather than extends them. Publication after commit rechecks the local latch
 without another potentially failing DB round trip. Explicit revocations do not
 require this clock check.
 
+`application_clock::local_now` exposes a guarded host UTC sample for local
+credential deadline decisions; it does not perform durable DB corroboration.
 The application clock latch is shared with retention within one process,
 assuming a single trusted application primary; it is independent of the
 JWT authority latch. Slow/inconclusive DB observations deny the operation
@@ -1133,3 +1135,141 @@ in force. This does not bind the initiating session/JWT or delegated access
 registration to the write: the current admin port lacks that evidence. Other
 RBAC writers, artifact grants and cross-owner lock order still require audit.
 Source regressions authored; compilation and PostgreSQL contention unverified.
+
+### Auth credential FK admission
+
+Migration 000007 guards PostgreSQL OAuth app tenant references, credential
+app/user/tenant references, application translations, deferred family root
+references, invite issuance/consumption and email-change requests. Acquire
+FK-compatible KEY SHARE NOWAIT before a late FK check, in tenant/app/user/root
+order where applicable. This is referential admission, not active credential
+or permission authorization. Existing lineage and FK constraints still apply.
+Unchanged references, metadata-only revocation and nullable user SET NULL
+cascades do not acquire a new parent lock. Missing/invisible parents fail
+closed; busy parents reject with SQLSTATE 55P03. Retry from a fresh transaction.
+SQLite retains its serialized writer and existing guards. PostgreSQL regression
+source covers contention, canonical reuse, metadata and user cascade; compile,
+migration and runtime verification are pending. Session/history and broader
+bulk revocation, administrative receipt and outbox ordering remain open.
+
+SQLite migration 000008 implements the missing token user-delete cascade
+(the original SQLite token table has no user FK; PostgreSQL already has the
+composite user FK). The AFTER DELETE user trigger deletes exact tenant/user
+non-root members before roots, retaining NULL-subject service credentials
+and other users. Legacy orphan or cross-tenant lineage blocks the migration
+without deleting evidence. Physical deletion only; normal deactivation and
+revocation contracts remain unchanged. SQLite source regressions for cascade,
+rollback, tenant deletion, identity recreation and dirty preflight are unrun.
+
+Direct refresh and both logout paths now use the preflight digest/session ID
+only as a routing hint, lock the exact tenant user before the observed session,
+and re-check the exact linked identity and digest. Replay history is read only
+after the session fence; logout preserves existing expiry/revocation and
+expected-lineage semantics. SQLite user-before-session probe added; PostgreSQL
+contention and compile checks remain unrun.
+
+Platform migration 000010 fences PostgreSQL session tenant/user FK and
+refresh-history session FK writes with KEY SHARE NOWAIT. History updates and
+deletes also retain the parent when present, so retention holding a session
+row cannot wait on a history writer that needs that same session. The existing
+cascade remains authoritative; this does not enforce history immutability or
+add a composite session tenant/user FK. SQLite is unchanged. Source regression
+covers contention and owner cascade; runtime verification remains open.
+
+PostgreSQL retention now acquires candidate OAuth applications in UUID order
+with FOR UPDATE NOWAIT before any child deletion, scopes the sweep to those
+apps, locks the family root and all members, and rechecks the entire expiry
+horizon before deleting descendants then roots. Code replay evidence remains
+until no token references it. Session/invite/recovery and code candidates
+use ordered nonblocking row locks. A busy candidate aborts the entire sweep;
+retry later from a fresh transaction. SQLite retains its serialized writer.
+Clock cutoffs, final corroboration and all-or-nothing semantics are unchanged.
+The source regression exercises app/session/member/code contention and rollback,
+plus retained lineage and retry; execution, large sweeps and external DDL/direct
+SQL are not certified.
+
+Platform migration 000011 makes session ID, tenant, user and creation time
+immutable and enforces tenant/user parent integrity (PostgreSQL composite FK,
+SQLite insert and parent-move guards). History is append-only: UPDATE and
+independent DELETE are rejected while the parent exists; PostgreSQL TRUNCATE
+is denied, SQLite REPLACE is rejected for existing sessions/history. Existing
+parent cascade remains valid. Migration rejects dirty scoped identities
+without deleting history. Tests that age history explicitly restore the
+SQLite guard inside an isolated fixture transaction. No runtime bypass.
+This protects ordinary DML, not privileged trigger disabling or parent
+removal outside the retention contract. Compile and runtime tests unrun.
+
+Broad user credential revocation (password change/recovery/admin account
+changes) and app credential revocation prelock exact token and pending-code
+rows in UUID order with PostgreSQL NOWAIT; app revocation also prelocks
+consents. No new app lock is acquired after a user lock. Existing mutation
+scope and transaction rollback semantics remain; SQLite serializes writers.
+The new PostgreSQL regression covers token/code contention and unrelated
+user isolation; compile/runtime verification remains pending.
+
+### Permanent credential identity evidence
+
+Auth migration 000014 preserves UUID birth claims for sessions, OAuth apps,
+client IDs, token registrations (including family roots), authorization
+codes and consent rows. Session refresh and OAuth token/code digests are consumed permanently:
+hard deletion
+and a fresh UUID cannot revive a previously registered digest. These claims
+have no foreign keys, survive cleanup and cascade, and roll back with failed
+births. PostgreSQL claims use nonwaiting per-key advisory fences; SQLite
+rejects implicit replacement of a live refresh-family member and preserves
+ordinary rotation after predecessor revocation. Token/code digest and client
+identity updates are forbidden. Current and historical session digests are
+backfilled without conflict suppression; every successful session birth or
+changed digest claims a fresh identity in the same transaction. No-op updates
+and rolled-back rotations consume nothing. The independent replay history
+retains its existing grace-window and cleanup semantics.
+The SQLite witness table uses WITHOUT ROWID so a hidden row identity cannot
+be used to replace an unrelated consumed credential claim.
+Witness storage grows with credential births; no plaintext is retained.
+Terminal revocation timestamps on sessions, tokens and consents, and used_at
+on authorization codes, are immutable once set. Revoked OAuth token last-use
+evidence cannot be rewritten to forge a rotation; a revoked consent retains
+its original grant and subject. The canonical grant writer always invalidates exact-subject tokens and codes,
+retires the active consent if present, and inserts a fresh UUID in the same
+transaction. It never selects or revives a historical row, even after repeated
+grants. Consent scopes and granted_at are immutable even while active. OAuth application reactivation is
+unchanged. SQLite prevents hidden-rowid replacement on tokens, codes and
+consents and implicit replacement of an active consent by another UUID.
+Issued OAuth token scopes/expiry and authorization-code subject, redirect,
+scopes, PKCE and creation/expiry claims cannot be modified after issuance.
+An explicit session absolute deadline may be shortened but not cleared or
+extended; NULL legacy deadlines can be materialized, and the runtime still
+applies the original creation-time cap. SQLite rejects ambiguous changes
+within its date comparison precision. Pre-cutover removed identities, reuse
+of a consent timestamp under a fresh UUID, sliding expiry manipulation, and
+privileged DDL/restore remain outside this protection. Source regressions unrun.
+
+## OAuth consent revocation retry admission
+
+The authenticated host revokes consent under its existing app/user/session
+fence, then prelocks exact tenant/app/user live tokens, unused codes and
+active consent rows in the canonical bulk order. The SQL-only owner body
+preserves driver errors until rollback admission. Core permits fresh retry
+only for PostgreSQL 55P03, 40P01 or 40001 and successful explicit rollback,
+with at most three attempts total. Each attempt repeats durable clock
+admission, current app/user/session authorization and final credential
+deadline validation. Authorization and deadline failures, unmapped storage
+errors, rollback failure and every commit error are not auto-replayed. No
+external effects run in the retried body. Trusted low-level calls retain
+single-attempt semantics. No client contract change; source regressions unrun.
+
+### Authorization-code consent generation
+
+Migration 000018 stores the exact consent UUID when a consent-required
+client receives an authorization code. The UUID is immutable, including
+NULL on legacy codes, and is not cleared by consent cleanup. Exchange
+checks the current generation at preflight and again under the existing
+app/subject transaction fences. No timestamp-based backfill is attempted:
+legacy unbound codes for consent-required clients must be reissued; exempt
+clients keep NULL. Consent-required tokens inherit the exact UUID through
+their immutable original authorization-code identity; the code must be
+consumed and match tenant, client, subject and live consent. Access,
+WebSocket revalidation, locked admin admission and refresh preflight/commit
+reject missing or mismatched evidence even at equal timestamps. Legacy
+unbound token families require fresh authorization. Existing retention
+preserves codes while their families remain. Source regressions unrun.

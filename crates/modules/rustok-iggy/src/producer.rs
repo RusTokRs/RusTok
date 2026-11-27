@@ -15,6 +15,9 @@ pub fn build_publish_request(
     envelope
         .validate_registered_schema()
         .map_err(|error| rustok_core::Error::Validation(error.to_string()))?;
+    if envelope.id.is_nil() {
+        return Err(rustok_core::Error::Validation("event envelope ID must not be nil".to_string()));
+    }
     let topic = determine_topic(&envelope.event_type);
     let partition_key = partition_key(envelope.tenant_id);
     let payload = serializer.serialize(&envelope)?;
@@ -36,6 +39,9 @@ pub fn build_contract_publish_request(
     envelope
         .validate_registered_schema()
         .map_err(|error| rustok_core::Error::Validation(error.to_string()))?;
+    if envelope.id().is_nil() {
+        return Err(rustok_core::Error::Validation("contract envelope ID must not be nil".to_string()));
+    }
     let topic = determine_topic(envelope.event_type());
     let partition_key = partition_key(envelope.tenant_id());
     let payload = serializer.serialize_contract(&envelope)?;
@@ -101,6 +107,7 @@ mod tests {
         assert_eq!(request.topic, "domain");
         assert_eq!(request.partition_key, envelope.tenant_id.to_string());
         assert_eq!(request.event_id, envelope.id.to_string());
+        assert_eq!(request.broker_message_id().unwrap(), envelope.id.as_u128());
         assert!(!request.payload.is_empty());
     }
 
@@ -174,9 +181,11 @@ mod tests {
             },
         )
         .unwrap();
+        let id = envelope.id();
         let request =
             build_contract_publish_request(&IggyConfig::default(), &JsonSerializer, envelope)
                 .unwrap();
+        assert_eq!(request.broker_message_id().unwrap(), id.as_u128());
         assert_eq!(request.topic, "domain");
         assert_eq!(request.partition_key, tenant_id.to_string());
     }

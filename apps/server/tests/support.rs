@@ -1,5 +1,5 @@
 use rustok_auth::{AuthConfig, build_auth_config_from_document};
-use rustok_test_utils::JwtKeyringFixture;
+use rustok_test_utils::jwt::JwtKeyringFixture;
 
 /// Build a fresh four-purpose RSA runtime for one isolated server test store.
 /// The MAC root is fixed test-only material and is independent of all RSA keys.

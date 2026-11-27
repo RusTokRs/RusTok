@@ -10,6 +10,10 @@ const hookSource = await readFile(
   new URL('../../../src/shared/hooks/use-data-table.ts', import.meta.url),
   'utf8'
 );
+const paginationSource = await readFile(
+  new URL('../../../src/widgets/data-table/data-table-pagination.tsx', import.meta.url),
+  'utf8'
+);
 
 test('server data table forwards its resolved page size into useDataTable defaults', () => {
   assert.match(shellSource, /defaultPageSize = 20/);
@@ -18,6 +22,20 @@ test('server data table forwards its resolved page size into useDataTable defaul
     /initialState:\s*\{\s*pagination:\s*\{\s*pageIndex:\s*0,\s*pageSize\s*\}\s*\}/s
   );
   assert.match(hookSource, /initialState\?\.pagination\?\.pageSize \?\? 10/);
+});
+
+test('server pagination passes the owner total to the localized counter', () => {
+  assert.match(shellSource, /rowCount: clientPagination \? undefined : rowCount/);
+  assert.match(paginationSource, /const total = table\.getRowCount\(\)/);
+  assert.match(paginationSource, /t\('total', \{ total \}\)/);
+  assert.match(paginationSource, /t\('selection', \{ selected, total \}\)/);
+});
+
+test('server page navigation retains the owner default size when it only changes pages', () => {
+  assert.match(shellSource, /resolvedPagination\?\.pageSize \?\? pageSize/);
+  assert.match(shellSource, /serverPagination: resolvedPagination/);
+  assert.match(hookSource, /serverPagination \?\? \{ pageIndex: page - 1, pageSize: perPage \}/);
+  assert.match(hookSource, /if \(next\.pageSize !== pagination\.pageSize\) void setPerPage\(next\.pageSize\)/);
 });
 
 test('text filter values restored from the URL remain scalar strings', () => {

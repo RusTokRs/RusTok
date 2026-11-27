@@ -49,7 +49,9 @@ async fn lock_schema(
             } else {
                 "SELECT pg_advisory_xact_lock_shared(hashtextextended($1, 0))"
             },
-            vec![format!("product:catalog-schema:{tenant_id}").into()],
+            // Match Taxonomy's tenant-scoped category hierarchy lock exactly. Product writes
+            // hold it shared; Product schema writers and Taxonomy hierarchy writers hold it exclusive.
+            vec![tenant_id.to_string().into()],
         ),
         // Even an empty UPDATE acquires SQLite's database writer reservation. Do this before
         // schema reads, rather than trying to upgrade a stale read snapshot later.

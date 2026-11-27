@@ -58,11 +58,13 @@ function assertCount(text, value, expected, description) {
 
 const uiDir = 'crates/modules/rustok-product/admin/src/ui';
 const editorPath = `${uiDir}/product_editor.rs`;
+const variantMutationPath = `${uiDir}/variant_mutation.rs`;
 const gridPath = `${uiDir}/product_grid.rs`;
 const rootPath = `${uiDir}/mod.rs`;
 const libPath = 'crates/modules/rustok-product/admin/src/lib.rs';
 
 const editor = readRepo(editorPath);
+const variantMutation = readRepo(variantMutationPath);
 const grid = readRepo(gridPath);
 const root = readRepo(rootPath);
 const lib = readRepo(libPath);
@@ -124,18 +126,29 @@ const variantSave = editor.slice(
   editor.indexOf('let page_title =')
 );
 assert(
-  !documentSave.includes('catalog_transport::update_product_variant('),
+  !documentSave.includes('catalog_transport::update_product_variant') &&
+    !documentSave.includes('variant_update_request.set('),
   `${editorPath}: document Save/Publish must not silently submit a second Variant command`
 );
 assertContains(
   variantSave,
-  'catalog_transport::update_product_variant(',
-  `${editorPath}: the explicit Variant action must use the canonical gateway`
+  'variant_update_request.set(Some((target_id, draft)))',
+  `${editorPath}: the explicit Variant action must enqueue its own request`
 );
 assertContains(
-  variantSave,
-  'Err(error) => set_error_msg.set(Some(error.to_string()))',
-  `${editorPath}: an independent Variant failure must reach the operator`
+  editor,
+  'update_request=variant_update_request',
+  `${editorPath}: the editor must bind the action to the Variant mutation section`
+);
+assertContains(
+  variantMutation,
+  'catalog_transport::update_product_variant_with_key(',
+  `${variantMutationPath}: the Variant mutation section must use the canonical gateway`
+);
+assertContains(
+  variantMutation,
+  '{text("product-variantMutation-rejectedUpdate")} {text(variant_mutation::refusal_key(&code))}',
+  `${variantMutationPath}: an owner-rejected Variant update must reach the operator`
 );
 assertContains(
   editor,

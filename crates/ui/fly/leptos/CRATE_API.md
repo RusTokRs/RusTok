@@ -29,6 +29,7 @@ SSR-first Leptos 0.8 adapter foundation, editor component shells, and browser ru
 - Fail-closed geometry handling: invalid coordinates or non-finite rects fallback safely without panic.
 - Layer tree indent scaling is bounded to prevent unbounded style cascades.
 - Inline edit request validation maps to typed `InlineEditContractError`.
+- Real-DOM inline-edit request sequence exhaustion maps to `InlineEditContractError::SequenceExhausted`; a sequence is never saturated and reused.
 
 ## 4. Security & Isolation Invariants
 - Sandboxed iframe bridge communication enforces `OPAQUE_ORIGIN` checks and normalized origins (`normalize_expected_origin`).

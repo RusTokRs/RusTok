@@ -14,9 +14,10 @@ workspace = true
 [features]
 default = []
 csr = ["leptos/csr", "rustok-auth-ui/csr", "rustok-forms-leptos/csr", "rustok-grid-leptos/csr"]
-hydrate = ["leptos/hydrate", "rustok-auth-ui/hydrate", "rustok-forms-leptos/hydrate", "rustok-grid-leptos/hydrate"]
+hydrate = ["leptos/hydrate", "leptos-ui-routing/hydrate", "rustok-auth-ui/hydrate", "rustok-forms-leptos/hydrate", "rustok-grid-leptos/hydrate"]
 ssr = [
     "leptos/ssr",
+    "leptos-ui-routing/ssr",
     "dep:leptos_axum",
     "dep:__CRATE__",
     "rustok-api/server",
@@ -29,6 +30,7 @@ ssr = [
 
 [dependencies]
 leptos.workspace = true
+leptos-ui-routing.workspace = true
 leptos_axum = { workspace = true, optional = true }
 __CRATE__ = { path = "..", default-features = false, features = ["admin"], optional = true }
 rustok-api.workspace = true

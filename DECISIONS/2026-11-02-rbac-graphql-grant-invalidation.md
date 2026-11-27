@@ -66,7 +66,28 @@ running and healthy readers, not a fixed latency guarantee.
 ## Data, transaction, and concurrency boundary
 
 The role write, grant replacement, and generation reservation share the owner
-transaction. The generation row serializes reservations. Post-commit local
+transaction. The generation row serializes reservations. On the inspected
+role-edit, user-admin, committed role replacement and artifact-assignment
+paths it is a late write fence, after tenant/credential/user/role and
+grant/receipt identities; subsequent outbox or deadline checks must not
+acquire a new earlier-ranked identity. PostgreSQL reserves ROW EXCLUSIVE table
+and FOR UPDATE singleton fences with NOWAIT, consistent with the artifact grant
+trigger, so a late reservation cannot wait on either lock. Contention fails the
+owner transaction; any retry must start with fresh authorization and must not
+replay an uncertain commit. The owner reservation preserves the driver DbErr
+through the host write adapter; the standalone committed replacement uses the
+shared rollback-only retry contract. Request-bound administration still needs
+fresh credential admission before it can safely retry. Reserve by UPDATE RETURNING, reject
+invalid or exhausted integer storage without mutating it, and publish only
+the assigned committed generation. Do not use this global watermark as a
+per-role authorization fence. The seeded singleton is permanent under ordinary
+SQL DML; updates must strictly increase its integer generation. Explicit
+forward-only recovery may skip values; ordinary reservation advances by one.
+Corrupt or missing predecessor storage requires offline recovery. Privileged
+DDL and restoration remain separate boundaries. Single-role grant materialization uses the
+same ordered (resource, action) vocabulary keys in control-plane, bootstrap
+and repair writers. This is not a complete multi-role/bulk lock-order proof.
+Post-commit local
 clearing and optional fan-out occur outside it; process crashes can occur before
 those actions, leaving the durable generation for eventual reconciliation.
 
@@ -119,3 +140,19 @@ and source tests alone do not prove distributed delivery or a revocation fence.
 Grant-edit operations now depend on generation storage and can cause global cache
 clears. Recovery is durable but eventual, with no promise of immediate denial
 for already admitted operations or snapshots.
+
+## Artifact grant database coupling extension (2026-11-27)
+
+Migration 000017 makes the existing artifact grant relation itself responsible
+for advancing the same recovery watermark on actual row births, removals and
+authority-tuple changes. PostgreSQL advances through deferred constraint
+triggers at commit by default and refuses a contended watermark without
+waiting; SQLite advances inside the serialized write. Raw grant DELETE and
+changed identity require nonwaiting affected-role fences. The artifact owner
+no longer separately reserves a generation; its receipt and event share the
+transaction, including a commit-time failure. Direct SQL does not synthesize
+owner events. This is per changed row, not a new counter or universal
+once-per-transaction protocol. Exact state no-ops and replays advance nothing.
+Drain old writers and advance once at cutover to invalidate old continuity
+receipts. Direct static relation generation coupling and general safe retry
+remain open; source regressions authored, unrun.

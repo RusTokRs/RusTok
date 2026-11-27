@@ -237,6 +237,8 @@ fn service_current_user_builds_service_security_context() {
         scopes: Vec::new(),
         grant_type: "client_credentials".to_string(),
         access_token_expires_at: Utc::now() + Duration::hours(1),
+        rbac_epoch: 0, // SecurityContext-only fixture, never admitted as a request.
+        static_authority_revision: None,
         oauth_credential: None,
     };
 
@@ -251,6 +253,19 @@ async fn registered_service_token(
     config: &AuthConfig,
     app: &oauth_apps::Model,
     scopes: &[String],
+) -> String {
+    registered_service_token_with_registration(db, config, app, scopes, serde_json::json!(scopes), Utc::now()).await
+}
+
+// Insert a deliberately inconsistent legacy registration at birth rather
+// than rewriting an immutable credential after issuance.
+async fn registered_service_token_with_registration(
+    db: &DatabaseConnection,
+    config: &AuthConfig,
+    app: &oauth_apps::Model,
+    scopes: &[String],
+    stored_scopes: serde_json::Value,
+    created_at: chrono::DateTime<Utc>,
 ) -> String {
     let token_id = Uuid::new_v4();
     let token = encode_oauth_access_token(
@@ -277,11 +292,11 @@ async fn registered_service_token(
         grant_type: Set("client_credentials".to_string()),
         token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
         consent_granted_at: Set(None),
-        scopes: Set(serde_json::json!(scopes)),
+        scopes: Set(stored_scopes),
         expires_at: Set((now + Duration::minutes(15)).into()),
         revoked_at: Set(None),
         last_used_at: Set(None),
-        created_at: Set(now.into()),
+        created_at: Set(created_at.into()),
         updated_at: Set(now.into()),
     }
     .insert(db)
@@ -323,8 +338,6 @@ async fn oauth_service_token_intersects_app_permissions_with_scopes() {
 
 #[tokio::test]
 async fn oauth_service_token_rejects_future_registration() {
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-
     let db = setup_test_db_with_migrations::<Migrator>().await;
     ensure_oauth_apps_table(&db).await;
     let tenant = tenants::ActiveModel::new(
@@ -349,18 +362,11 @@ async fn oauth_service_token_rejects_future_registration() {
             .is_ok()
     );
 
-    let row = oauth_tokens::Entity::find()
-        .filter(oauth_tokens::Column::TokenHash.eq(crate::auth::hash_refresh_token(&token)))
-        .one(&db)
-        .await
-        .unwrap()
-        .unwrap();
-    let mut changed: oauth_tokens::ActiveModel = row.into();
-    changed.created_at = Set((Utc::now() + Duration::minutes(1)).into());
-    changed
-        .update(&db)
-        .await
-        .expect("set future registration creation");
+    let token = registered_service_token_with_registration(
+        &db, runtime.require_auth_config().unwrap(), &app,
+        &["forum:*".to_string()], serde_json::json!(["forum:*"]),
+        Utc::now() + Duration::minutes(1),
+    ).await;
     let error = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
         .await
         .expect_err("future registration must not authorize access");
@@ -375,8 +381,6 @@ async fn oauth_service_token_rejects_future_registration() {
 
 #[tokio::test]
 async fn oauth_service_token_rejects_corrupt_or_mismatched_registered_scopes() {
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-
     let db = setup_test_db_with_migrations::<Migrator>().await;
     ensure_oauth_apps_table(&db).await;
     let tenant = tenants::ActiveModel::new(
@@ -401,12 +405,6 @@ async fn oauth_service_token_rejects_corrupt_or_mismatched_registered_scopes() {
             .is_ok()
     );
 
-    let mut row = oauth_tokens::Entity::find()
-        .filter(oauth_tokens::Column::TokenHash.eq(crate::auth::hash_refresh_token(&token)))
-        .one(&db)
-        .await
-        .expect("load access registration")
-        .expect("access row exists");
     for (stored, message) in [
         (serde_json::json!([]), "OAuth access token scopes mismatch"),
         (
@@ -418,9 +416,10 @@ async fn oauth_service_token_rejects_corrupt_or_mismatched_registered_scopes() {
             "OAuth access token scopes mismatch",
         ),
     ] {
-        let mut changed: oauth_tokens::ActiveModel = row.into();
-        changed.scopes = Set(stored);
-        row = changed.update(&db).await.expect("change registered scopes");
+        let token = registered_service_token_with_registration(
+            &db, runtime.require_auth_config().unwrap(), &app,
+            &["forum:*".to_string()], stored, Utc::now(),
+        ).await;
         let error = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
             .await
             .expect_err("inconsistent registration must fail closed");
@@ -530,7 +529,7 @@ async fn oauth_service_token_rejects_subject_that_is_not_the_app_id() {
         tenant.id,
         Uuid::new_v4(),
         app.client_id,
-        UserRole::Customer,
+        &UserRole::Customer,
         &["forum:*".to_string()],
         "",
         None,
@@ -890,6 +889,21 @@ async fn delegated_user_admin_rejects_revoked_registration_and_consent_epoch() {
         id,
     )
     .unwrap();
+    let code = crate::models::oauth_authorization_codes::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        app_id: Set(app.id),
+        user_id: Set(actor.id),
+        tenant_id: Set(tenant.id),
+        consent_id: Set(Some(consent.id)),
+        code_hash: Set(format!("admin-generation-{id}")),
+        redirect_uri: Set("https://example.com/callback".into()),
+        scopes: Set(serde_json::json!(["*:*"])),
+        code_challenge: Set("challenge".into()),
+        code_challenge_method: Set("S256".into()),
+        expires_at: Set((now + Duration::minutes(10)).into()),
+        used_at: Set(Some(now.into())),
+        created_at: Set(now.into()),
+    }.insert(&db).await.unwrap();
     let registration = oauth_tokens::ActiveModel {
         id: Set(id),
         app_id: Set(app.id),
@@ -897,7 +911,7 @@ async fn delegated_user_admin_rejects_revoked_registration_and_consent_epoch() {
         tenant_id: Set(tenant.id),
         token_hash: Set(crate::auth::hash_refresh_token(&token)),
         family_id: Set(id),
-        authorization_code_id: Set(None),
+        authorization_code_id: Set(Some(code.id)),
         grant_type: Set("authorization_code".to_string()),
         token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
         consent_granted_at: Set(Some(consent.granted_at)),
@@ -942,16 +956,18 @@ async fn delegated_user_admin_rejects_revoked_registration_and_consent_epoch() {
     .await
     .unwrap();
 
-    // A changed consent epoch must fail even when a noncooperating writer
-    // omitted token revocation. The exact admitted epoch cannot be replaced.
+    // Retire and replace at the identical timestamp without revoking
+    // the token, modelling a noncooperating writer.
     oauth_consents::ActiveModel {
         id: Set(consent.id),
-        granted_at: Set((now + Duration::seconds(1)).into()),
+        revoked_at: Set(Some(now.into())),
         ..Default::default()
-    }
-    .update(&db)
-    .await
-    .unwrap();
+    }.update(&db).await.unwrap();
+    let mut replacement: oauth_consents::ActiveModel = consent.clone().into();
+    replacement.id = Set(Uuid::new_v4());
+    replacement.revoked_at = Set(None);
+    replacement.insert(&db).await.unwrap();
+    assert!(resolve_current_user_from_access_token(&runtime, tenant.id, &token).await.is_err());
     let denied = with_rbac_request_scope(
         Some(scope()),
         provider.create_user(&context, create("delegated-epoch@example.test")),
@@ -961,14 +977,6 @@ async fn delegated_user_admin_rejects_revoked_registration_and_consent_epoch() {
         matches!(denied, Err(AuthAdminMutationError::Unauthorized)),
         "{denied:?}"
     );
-    oauth_consents::ActiveModel {
-        id: Set(consent.id),
-        granted_at: Set(consent.granted_at),
-        ..Default::default()
-    }
-    .update(&db)
-    .await
-    .unwrap();
     oauth_tokens::ActiveModel {
         id: Set(registration.id),
         revoked_at: Set(Some(Utc::now().into())),
@@ -1427,7 +1435,7 @@ async fn websocket_lease_revalidates_live_authority_and_fails_closed() {
         .await
         .expect("resolve initial authority");
     assert_eq!(current.access_token_expires_at, deadline);
-    let lease = WebSocketAuthLease::new(token, &current);
+    let lease = WebSocketAuthLease::new(token.clone(), &current);
     assert_eq!(lease.expires_at, deadline);
     assert!(lease.revalidate(&runtime).await.is_ok());
 
@@ -1442,11 +1450,14 @@ async fn websocket_lease_revalidates_live_authority_and_fails_closed() {
         Err(WebSocketAuthLeaseError::AuthorityChanged)
     );
     session.absolute_expires_at = Set(Some(deadline.into()));
-    session
-        .update(&db)
-        .await
-        .expect("restore original deadline");
-    assert!(lease.revalidate(&runtime).await.is_ok());
+    assert!(
+        session.update(&db).await.is_err(),
+        "a shortened absolute deadline cannot be restored"
+    );
+    assert_eq!(
+        lease.revalidate(&runtime).await,
+        Err(WebSocketAuthLeaseError::AuthorityChanged)
+    );
 
     let mut monotonic = lease.clone();
     monotonic.expired = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -1475,6 +1486,10 @@ async fn websocket_lease_revalidates_live_authority_and_fails_closed() {
         Err(WebSocketAuthLeaseError::Expired)
     );
 
+    let current = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await.expect("resolve shortened authority");
+    let lease = WebSocketAuthLease::new(token, &current);
+    assert!(lease.revalidate(&runtime).await.is_ok());
     rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(
         &db,
         tenant.id,
@@ -1669,6 +1684,110 @@ async fn final_authority_check_rejects_membership_aba_and_revoked_session() {
     session.revoked_at = Set(Some(Utc::now().into()));
     session.update(&db).await.unwrap();
     assert!(revalidate!(&restored).await.is_err());
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn admitted_static_scope_rejects_membership_and_grant_aba_without_notification() {
+    use crate::models::_entities::{role_permissions, roles};
+    use crate::services::rbac_request_scope::{
+        RbacRequestScope, ensure_scope_authority, with_rbac_request_scope,
+    };
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let runtime = test_auth_runtime(db.clone());
+    let tenant = tenants::ActiveModel::new("Durable scope", &format!("tenant-{}", Uuid::new_v4()))
+        .insert(&db)
+        .await
+        .unwrap();
+    let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+    rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+        &db, tenant.id, user.id, UserRole::Manager,
+    )
+    .await
+    .unwrap();
+    let token = encode_access_token(
+        runtime.require_auth_config().unwrap(),
+        user.id,
+        tenant.id,
+        UserRole::Manager,
+        session_id,
+    )
+    .unwrap();
+    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await
+        .unwrap();
+    let original = RbacRequestScope::authenticated(&admitted, admitted.access_token_expires_at);
+    let lease = super::WebSocketAuthLease::new(token.clone(), &admitted);
+    with_rbac_request_scope(Some(original.clone()), async {
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &user.id).await.is_ok());
+        for role in [UserRole::Customer, UserRole::Manager] {
+            rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(
+                &db, tenant.id, user.id, role,
+            )
+            .await
+            .unwrap();
+        }
+        assert!(RbacService::get_user_permissions(&db, &tenant.id, &user.id).await.is_err());
+        assert!(RbacService::get_user_role(&db, &tenant.id, &user.id).await.is_err());
+    })
+    .await;
+    assert_eq!(
+        lease.revalidate(&runtime).await,
+        Err(super::WebSocketAuthLeaseError::AuthorityChanged)
+    );
+
+    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await
+        .unwrap();
+    let scope = RbacRequestScope::authenticated(&admitted, admitted.access_token_expires_at);
+    let role = roles::Entity::find()
+        .filter(roles::Column::TenantId.eq(tenant.id))
+        .filter(roles::Column::Slug.eq(UserRole::Manager.to_string()))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    let grant = role_permissions::Entity::find()
+        .filter(role_permissions::Column::RoleId.eq(role.id))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    // Bypass the host writer and notification path; restore the exact grant.
+    role_permissions::Entity::delete_by_id(grant.id).exec(&db).await.unwrap();
+    role_permissions::Entity::insert(role_permissions::ActiveModel {
+        id: Set(grant.id),
+        role_id: Set(grant.role_id),
+        permission_id: Set(grant.permission_id),
+    })
+    .exec(&db)
+    .await
+    .unwrap();
+    with_rbac_request_scope(Some(scope), async {
+        assert!(RbacService::has_permission(&db, &tenant.id, &user.id, &Permission::USERS_READ)
+            .await
+            .is_err());
+        assert!(RbacService::has_any_permission(&db, &tenant.id, &user.id, &[Permission::USERS_READ])
+            .await
+            .is_err());
+        assert!(RbacService::has_all_permissions(&db, &tenant.id, &user.id, &[Permission::USERS_READ])
+            .await
+            .is_err());
+    })
+    .await;
+    let fresh = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await
+        .unwrap();
+    assert_eq!(fresh.permissions, admitted.permissions);
+    let scope = RbacRequestScope::authenticated(&fresh, fresh.access_token_expires_at);
+    with_rbac_request_scope(Some(scope), async {
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &user.id).await.is_ok());
+        assert!(ensure_scope_authority(None, &tenant.id, &user.id).await.is_err());
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &user.id).await.is_err());
+    })
+    .await;
 }
 
 #[tokio::test]

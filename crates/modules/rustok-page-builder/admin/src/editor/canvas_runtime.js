@@ -109,11 +109,48 @@
     }
     const components = Array.from(nodes).map((element) => {
       const rect = element.getBoundingClientRect();
+      // Drop insertion follows the parent layout's main flow axis, not always the
+      // vertical axis. This keeps the SSR adapter aligned with fly-web hit testing.
+      let layoutParent = element.parentElement;
+      let parentStyle = layoutParent ? getComputedStyle(layoutParent) : null;
+      while (layoutParent && parentStyle?.display === 'contents') {
+        layoutParent = layoutParent.parentElement;
+        parentStyle = layoutParent ? getComputedStyle(layoutParent) : null;
+      }
       const parentElement = element.parentElement?.closest('[data-fly-component-id]');
+      const elementStyle = getComputedStyle(element);
+      const writingMode = parentStyle?.writingMode || elementStyle.writingMode;
+      const verticalWriting = writingMode.startsWith('vertical');
+      let dropAxis = 'vertical';
+      let dropReverse = false;
+      if (parentStyle && ['flex', 'inline-flex'].includes(parentStyle.display)) {
+        const direction = parentStyle.flexDirection;
+        const row = direction.startsWith('row');
+        const flowReverse = row
+          ? parentStyle.direction === 'rtl'
+          : verticalWriting && writingMode.endsWith('-rl');
+        dropAxis = row !== verticalWriting ? 'horizontal' : 'vertical';
+        dropReverse = direction.endsWith('reverse') !== flowReverse;
+      } else if (parentStyle && ['grid', 'inline-grid'].includes(parentStyle.display)) {
+        const flow = parentStyle.gridAutoFlow.split(' ')[0];
+        const column = flow === 'column';
+        dropAxis = column
+          ? (verticalWriting ? 'horizontal' : 'vertical')
+          : (verticalWriting ? 'vertical' : 'horizontal');
+        dropReverse = column
+          ? verticalWriting && writingMode.endsWith('-rl')
+          : parentStyle.direction === 'rtl';
+      } else if (elementStyle.display.startsWith('inline') ||
+        elementStyle.display === 'table-cell') {
+        dropAxis = verticalWriting ? 'vertical' : 'horizontal';
+        dropReverse = parentStyle?.direction === 'rtl';
+      }
       return {
         component_id: element.dataset.flyComponentId,
         parent_component_id: parentElement?.dataset.flyComponentId ?? null,
         index: Number.parseInt(element.dataset.flyIndex ?? '0', 10) || 0,
+        drop_axis: dropAxis,
+        drop_reverse: dropReverse,
         rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
       };
     });

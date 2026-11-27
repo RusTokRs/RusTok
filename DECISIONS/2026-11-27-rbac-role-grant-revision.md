@@ -17,9 +17,14 @@ advance it; presentation-only writes do not. Overflow and decrease fail
 closed. Permission identity (id, tenant, resource, action) is immutable:
 create a new permission and replace links instead of changing its meaning
 in place. PostgreSQL forbids truncating role_permissions. Trusted maintenance
-must not disable triggers, reuse role UUIDs, or use SQLite REPLACE on parent
-roles/permissions or conflict-update parent identities. Existing owner
-writers use explicit insert-do-nothing and delete/update.
+must not disable triggers or use SQLite REPLACE on parent roles/permissions
+or conflict-update parent identities. Migration 000013 enforces permanent
+user, role and permission UUID non-reuse in ordinary DML, including same-ID
+SQLite replacement. Existing owner writers retain explicit insert-do-nothing
+and delete/update. The append-only witness records only kind and UUID,
+not live authority or a global generation, and cannot reconstruct identities
+deleted before cutover. Natural-key replacement with a different UUID remains
+outside this specific identity guarantee.
 
 Auth locks the issuer user first, then all issuer membership role rows
 and the exact destination role ordered by ID, before reading grants.
@@ -30,8 +35,20 @@ RBAC bootstrap owner; a concurrent creator's grants are not reconciled by
 the loser. Failure rolls back that initialization too. A missing custom
 role is rejected. A replacement role ID or any bound grant change denies
 the old invite even if current grants again match. Existing target
-roles and issuer roles are held until commit. Low-level writers using
-opposite lock orders can deadlock; retry entire failed transactions.
+roles and issuer roles are held until commit. Migration 000006 adds a
+PostgreSQL BEFORE ROW guard for role_permissions: lock old/new role IDs
+ordered by UUID FOR NO KEY UPDATE NOWAIT, then referenced permissions for
+insert/update FOR SHARE NOWAIT. Tenant validation follows the guard;
+the AFTER revision increment cannot wait for a new surviving role parent.
+DELETE locks only the revision parent, allowing a same-transaction role
+cascade. Active parent RLS fails closed. Late contention raises 55P03 and
+requires a whole-transaction retry. The migration also protects artifact
+grant/receipt INSERT/UPDATE FK parents in actor, role, exact definition
+order using KEY SHARE NOWAIT. It does not change receipt semantics, cascade
+policy, or revision values. The normal host path already owns these parents.
+No complete multi-row or parent-cascade lock-order guarantee is claimed;
+SQLite keeps its single-writer contract. PostgreSQL contention regressions
+are authored but not executed.
 
 This covers static role grants, not artifact-defined permissions (separate
 authorization plane) or module-policy revisions. No wire change. Database
@@ -59,3 +76,26 @@ definition/runtime entitlement, policy interactions beyond static module
 authority, tenant activity and global cross-owner lock ordering still
 require verification. Source regressions authored; compile and PostgreSQL
 contention tests not run.
+
+## Standalone replacement ordering extension (2026-11-27)
+
+PostgreSQL standalone replacement takes the target user fence, then the
+existing target membership, destination and SuperAdmin continuity roles in
+canonical UUID order before per-role checks. Bootstrap assignment fences
+the user and exact system role before touching shared permission vocabulary;
+a late role conflict fails via NOWAIT. Lazy missing-role creation and bulk
+repair remain outside a complete cross-owner ordering proof. PostgreSQL
+regression evidence is authored but unrun.
+The PostgreSQL regression covers both historical opposite lock orders.
+Compilation and execution evidence are pending.
+
+## Artifact catalog lock ordering extension (2026-11-27)
+
+The separate artifact vocabulary owner orders admission by permission key and
+normalized locale; projection orders persisted keys. PostgreSQL migration 000016
+prevents late waits on the exact installation and translation FK parents and
+on relation locks for existing grant/receipt parent guards. Canonical FK
+constraints remain; metadata-only translation updates require no new parent.
+55P03 requires whole-transaction retry. SQLite retains writer serialization.
+This does not extend static role revision authority to artifact vocabulary or
+prove global deadlock freedom. Source regression authored, unrun.

@@ -5,6 +5,7 @@ use super::ScaffoldOptions;
 pub(super) const PAGE_SIZE_KEY: &str = "admin_page_size";
 pub(super) const DEFAULT_PAGE_SIZE: u16 = 25;
 pub(super) const MAX_PAGE_SIZE: u16 = 100;
+pub(super) const MAX_TITLE_CHARS: u32 = 200;
 pub(super) const PUBLIC_DISCOVERY_KEY: &str = "public_discovery_enabled";
 
 pub(super) fn record_settings_manifest() -> String {
@@ -53,6 +54,7 @@ pub(super) fn render(
             .replace("__PUBLIC_DISCOVERY_KEY__", PUBLIC_DISCOVERY_KEY)
             .replace("__DEFAULT_PAGE_SIZE__", &DEFAULT_PAGE_SIZE.to_string())
             .replace("__MAX_PAGE_SIZE__", &MAX_PAGE_SIZE.to_string())
+            .replace("__MAX_TITLE_CHARS__", &MAX_TITLE_CHARS.to_string())
     };
     let migration_path = format!("src/migrations/{migration}.rs");
     [

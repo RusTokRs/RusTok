@@ -24,6 +24,7 @@ pub(super) fn render(opts: &ScaffoldOptions, module_stem: &str) -> Vec<(PathBuf,
         ("locales/ru.ftl", include_str!("admin/locales/ru.ftl.in")),
         ("src/lib.rs", include_str!("admin/src/lib.rs.in")),
         ("src/core/mod.rs", include_str!("admin/src/core/mod.rs.in")),
+        ("src/core/list.rs", include_str!("admin/src/core/list.rs.in")),
         (
             "src/core/editor.rs",
             include_str!("admin/src/core/editor.rs.in"),
@@ -79,6 +80,10 @@ pub(super) fn render(opts: &ScaffoldOptions, module_stem: &str) -> Vec<(PathBuf,
             include_str!("admin/src/ui/leptos/editor.rs.in"),
         ),
         (
+            "src/ui/leptos/list_filters.rs",
+            include_str!("admin/src/ui/leptos/list_filters.rs.in"),
+        ),
+        (
             "src/tests/mod.rs",
             "mod contract;\n\n#[cfg(feature = \"ssr\")]\nmod native;\n",
         ),
@@ -119,6 +124,10 @@ pub(super) fn render(opts: &ScaffoldOptions, module_stem: &str) -> Vec<(PathBuf,
                 .replace(
                     "__MAX_PAGE_SIZE__",
                     &super::super::persistence::MAX_PAGE_SIZE.to_string(),
+                )
+                .replace(
+                    "__MAX_TITLE_CHARS__",
+                    &super::super::persistence::MAX_TITLE_CHARS.to_string(),
                 ),
         )
     })

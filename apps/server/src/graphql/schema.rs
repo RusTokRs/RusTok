@@ -18,6 +18,7 @@ mod schema_codegen {
     include!(concat!(env!("OUT_DIR"), "/graphql_schema_codegen.rs"));
 }
 
+use super::artifact_security::{ArtifactSecurityMutation, ArtifactSecurityQuery};
 use super::forum_principal_security::ForumPrincipalPolicy;
 use super::index_drift_diagnosis::IndexDriftDiagnosisMutation;
 use super::index_drift_source_page_diagnosis::IndexDriftSourcePageDiagnosisMutation;
@@ -81,6 +82,7 @@ pub mod module_slug {
 #[derive(MergedObject, Default)]
 pub struct Query(
     RootQuery,
+    ArtifactSecurityQuery,
     SearchQueryRoot,
     #[cfg(feature = "mod-forum")] ForumSearchProjectionReconciliationQuery,
     AuthQuery,
@@ -95,6 +97,7 @@ pub struct Query(
 #[derive(MergedObject, Default)]
 pub struct Mutation(
     RootMutation,
+    ArtifactSecurityMutation,
     IndexDriftDiagnosisMutation,
     ModuleRollbackMutation,
     ModuleSettingsCasMutation,

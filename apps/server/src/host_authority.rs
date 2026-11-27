@@ -126,13 +126,15 @@ impl HostAuthorityPolicy {
         }
 
         let presented_hash: [u8; 32] = Sha256::digest(token.as_bytes()).into();
-        self.credentials.iter().find_map(|credential| {
+        // Always compare every configured digest. Returning from find_map on the
+        // first match leaks the matching credential's position through request timing.
+        let mut matched = None;
+        for credential in &self.credentials {
             if bool::from(presented_hash.ct_eq(&credential.token_sha256)) {
-                HostAuthorityContext::for_actor(credential.authority, credential.actor_id)
-            } else {
-                None
+                matched = HostAuthorityContext::for_actor(credential.authority, credential.actor_id);
             }
-        })
+        }
+        matched
     }
 
     pub fn is_empty(&self) -> bool {

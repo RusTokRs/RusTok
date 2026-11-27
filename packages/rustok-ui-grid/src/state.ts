@@ -36,6 +36,7 @@ import {
   goToPage,
   normalizePagination,
   sliceItems,
+  setTotal,
 } from './pagination';
 import {
   type ColumnWidths,
@@ -175,14 +176,16 @@ export function clampGridWidths(state: GridState, columns: readonly GridColumnDe
  * This is the client-side path a grid takes when the owner hands over all rows instead of a
  * server-projected page. The order is part of the contract — paging before sorting would sort a
  * single page, and sorting before filtering would sort rows that are about to be dropped — and it
- * is the order `GridState::apply_rows` uses.
+ * is the order `GridState::apply_rows` uses. Persist the returned pagination for navigation and
+ * labels: its total and page describe the filtered data, not the previous full dataset.
  */
 export function applyGridRows<T>(
   state: GridState,
   items: readonly T[],
   cellOf: CellAccessor<T>,
-): T[] {
+): { rows: T[]; pagination: GridPagination } {
   const filtered = filterRows(state.filters, items, cellOf);
   const sorted = sortRows(state.sort, filtered, cellOf);
-  return sliceItems(sorted, state.pagination);
+  const pagination = setTotal(state.pagination, filtered.length);
+  return { rows: sliceItems(sorted, pagination), pagination };
 }

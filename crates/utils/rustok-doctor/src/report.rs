@@ -19,6 +19,14 @@ fn confidence(value: Confidence) -> &'static str {
     }
 }
 
+pub(crate) fn build_status(success: bool) -> &'static str {
+    if success {
+        "Cargo reported a successful build for the imported diagnostics."
+    } else {
+        "Cargo reported a failed build. The imported diagnostics are incomplete."
+    }
+}
+
 fn groups(findings: &[Finding]) -> BTreeMap<&str, Vec<&Finding>> {
     let mut result: BTreeMap<&str, Vec<&Finding>> = BTreeMap::new();
     for finding in findings {
@@ -112,10 +120,11 @@ pub(crate) fn print(
         );
         for finding in items.iter().take(10) {
             println!(
-                "  {}:{} [{}]",
+                "  {}:{} [{}] ({})",
                 finding.file,
                 finding.line,
-                confidence(finding.confidence)
+                confidence(finding.confidence),
+                finding.evidence.label(),
             );
             println!("    Line:    {}", finding.content);
             println!("    Fix:     {}", finding.message);
@@ -145,6 +154,7 @@ pub(crate) fn csv(findings: &[Finding]) -> Result<String, String> {
             "message",
             "suggested_fix",
             "confidence",
+            "evidence",
         ])
         .map_err(|error| error.to_string())?;
     for finding in findings {
@@ -159,6 +169,7 @@ pub(crate) fn csv(findings: &[Finding]) -> Result<String, String> {
                 &finding.message,
                 finding.suggested_fix.as_deref().unwrap_or(""),
                 confidence(finding.confidence),
+                finding.evidence.label(),
             ])
             .map_err(|error| error.to_string())?;
     }
@@ -166,7 +177,12 @@ pub(crate) fn csv(findings: &[Finding]) -> Result<String, String> {
         .map_err(|error| error.to_string())
 }
 
-pub(crate) fn markdown(findings: &[Finding], scanned: usize, target: &str) -> String {
+pub(crate) fn markdown(
+    findings: &[Finding],
+    scanned: usize,
+    target: &str,
+    build_succeeded: Option<bool>,
+) -> String {
     let high = findings
         .iter()
         .filter(|finding| finding.confidence == Confidence::High)
@@ -174,6 +190,11 @@ pub(crate) fn markdown(findings: &[Finding], scanned: usize, target: &str) -> St
     let mut lines = vec![
         "# RusToK Domain Hygiene & Invariant Verification Report".to_owned(),
         String::new(),
+    ];
+    if let Some(success) = build_succeeded {
+        lines.extend([build_status(success).to_owned(), String::new()]);
+    }
+    lines.extend([
         format!("- **Target:** `{target}`"),
         format!("- **Files Scanned:** {scanned}"),
         format!(
@@ -186,7 +207,7 @@ pub(crate) fn markdown(findings: &[Finding], scanned: usize, target: &str) -> St
         String::new(),
         "| Module | P0 Critical | P1 High | P2 Medium | High confidence | Heuristic |".to_owned(),
         "|---|---|---|---|---|---|".to_owned(),
-    ];
+    ]);
     for (name, values) in scorecard(findings) {
         lines.push(format!(
             "| `{name}` | {} | {} | {} | {} | {} |",
@@ -207,8 +228,8 @@ pub(crate) fn markdown(findings: &[Finding], scanned: usize, target: &str) -> St
         ));
         lines.extend([
             String::new(),
-            "| File | Line | Confidence | Snippet | Recommendation |".to_owned(),
-            "|---|---|---|---|---|".to_owned(),
+            "| File | Line | Confidence | Evidence | Snippet | Recommendation |".to_owned(),
+            "|---|---|---|---|---|---|".to_owned(),
         ]);
         for finding in &items {
             let snippet = finding.content.replace('|', "\\|").replace('`', "'");
@@ -220,11 +241,12 @@ pub(crate) fn markdown(findings: &[Finding], scanned: usize, target: &str) -> St
                 .replace('|', "\\|")
                 .replace('`', "'");
             lines.push(format!(
-                "| `{}:{}` | {} | {} | `{}` | {} |",
+                "| `{}:{}` | {} | {} | `{}` | `{}` | {} |",
                 finding.file,
                 finding.line,
                 finding.line,
                 confidence(finding.confidence),
+                finding.evidence.label(),
                 snippet.trim(),
                 fix
             ));
@@ -348,11 +370,12 @@ pub(crate) fn annotations(findings: &[Finding]) {
             .replace(':', "%3A")
             .replace(',', "%2C");
         println!(
-            "::{level} file={},line={},title={}::[{}] {message}",
+            "::{level} file={},line={},title={}::[{}] {message} ({})",
             file,
             finding.line,
             finding.pattern_id,
-            confidence(finding.confidence)
+            confidence(finding.confidence),
+            finding.evidence.label(),
         );
     }
 }

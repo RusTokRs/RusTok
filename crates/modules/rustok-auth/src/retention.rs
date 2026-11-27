@@ -12,13 +12,14 @@
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr, Statement,
-    TransactionTrait,
+    IsolationLevel, TransactionTrait,
 };
 
 use crate::application_clock::{
     admit_with_clock, application_clock, clock_unavailable, observe_with_floor,
 };
 use crate::jwt_clock::ClockGuard;
+use uuid::Uuid;
 
 pub const AUTH_ARTIFACT_RETENTION_DAYS: i64 = 30;
 pub const OAUTH_TOKEN_RETENTION_DAYS: i64 = 120;
@@ -79,14 +80,111 @@ async fn delete_before(
     let param = parameter(backend)?;
     let comparison = if inclusive { "<=" } else { "<" };
     // Table identifiers are fixed owner constants, never user input.
+    // Do not block on an earlier owner's child row while retaining other
+    // expired artifacts from this sweep. A busy candidate aborts the sweep.
+    let sql = match backend {
+        DbBackend::Postgres => format!(
+            "WITH candidates AS MATERIALIZED (
+                 SELECT id FROM {table} WHERE expires_at {comparison} {param}
+                 ORDER BY id FOR UPDATE NOWAIT
+             )
+             DELETE FROM {table} target USING candidates
+             WHERE target.id = candidates.id"
+        ),
+        _ => format!("DELETE FROM {table} WHERE expires_at {comparison} {param}"),
+    };
     Ok(tx
         .execute_raw(Statement::from_sql_and_values(
             backend,
-            format!("DELETE FROM {table} WHERE expires_at {comparison} {param}"),
+            sql,
             [now.into()],
         ))
         .await?
         .rows_affected())
+}
+
+
+/// Lock OAuth owner applications before any child deletion in the sweep.
+/// The candidate query is only a hint: all subsequent OAuth deletion is
+/// restricted to these exact application IDs. A new candidate on another
+/// application is left for the next sweep.
+async fn lock_oauth_retention_apps(
+    tx: &DatabaseTransaction,
+    token_cutoff: DateTime<Utc>,
+    code_cutoff: DateTime<Utc>,
+) -> Result<Vec<Uuid>, DbErr> {
+    let rows = tx.query_all_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT app.id FROM oauth_apps app
+         WHERE EXISTS (SELECT 1 FROM oauth_tokens t WHERE t.app_id = app.id AND t.expires_at < $1)
+            OR EXISTS (SELECT 1 FROM oauth_authorization_codes c WHERE c.app_id = app.id AND c.expires_at < $2)
+         ORDER BY app.id FOR UPDATE OF app NOWAIT",
+        [token_cutoff.into(), code_cutoff.into()],
+    )).await?;
+    rows.into_iter().map(|row| row.try_get("", "id")).collect()
+}
+
+async fn delete_postgres_oauth_artifacts(
+    tx: &DatabaseTransaction,
+    apps: Vec<Uuid>,
+    token_cutoff: DateTime<Utc>,
+    code_cutoff: DateTime<Utc>,
+    report: &mut AuthRetentionPurge,
+) -> Result<(), DbErr> {
+    for app in apps {
+        // Root first. The credential FK guard retains the app and family
+        // root on insertion; a cooperating exchange cannot append here.
+        let roots = tx.query_all_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT root.id FROM oauth_tokens root
+             WHERE root.app_id = $1 AND root.id = root.family_id AND root.expires_at < $2
+               AND NOT EXISTS (SELECT 1 FROM oauth_tokens member
+                   WHERE member.family_id = root.id AND member.expires_at >= $2)
+             ORDER BY root.id FOR UPDATE OF root NOWAIT",
+            [app.into(), token_cutoff.into()],
+        )).await?;
+        for root in roots {
+            let family: Uuid = root.try_get("", "id")?;
+            // Do not rely on the earlier MAX/NOT EXISTS snapshot. Lock every
+            // member, including a member that became ineligible meanwhile.
+            tx.query_all_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT id FROM oauth_tokens WHERE family_id = $1
+                 ORDER BY id FOR UPDATE NOWAIT",
+                [family.into()],
+            )).await?;
+            let descendants = tx.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "DELETE FROM oauth_tokens t WHERE t.family_id = $1 AND t.id <> t.family_id
+                   AND NOT EXISTS (SELECT 1 FROM oauth_tokens member
+                       WHERE member.family_id = $1 AND member.expires_at >= $2)",
+                [family.into(), token_cutoff.into()],
+            )).await?;
+            let root = tx.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "DELETE FROM oauth_tokens t WHERE t.id = $1 AND t.family_id = $1
+                   AND t.expires_at < $2
+                   AND NOT EXISTS (SELECT 1 FROM oauth_tokens member
+                       WHERE member.family_id = $1 AND member.id <> $1)",
+                [family.into(), token_cutoff.into()],
+            )).await?;
+            report.oauth_tokens += descendants.rows_affected() + root.rows_affected();
+        }
+        // Authorization-code replay evidence is kept until its last
+        // registered token disappears. The app fence spans both operations.
+        report.oauth_authorization_codes += tx.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "WITH candidates AS MATERIALIZED (
+                 SELECT c.id FROM oauth_authorization_codes c
+                 WHERE c.app_id = $1 AND c.expires_at < $2
+                   AND NOT EXISTS (SELECT 1 FROM oauth_tokens t WHERE t.authorization_code_id = c.id)
+                 ORDER BY c.id FOR UPDATE OF c NOWAIT
+             )
+             DELETE FROM oauth_authorization_codes c USING candidates WHERE c.id = candidates.id",
+            [app.into(), code_cutoff.into()],
+        )).await?.rows_affected();
+    }
+    Ok(())
 }
 
 async fn delete_artifacts(
@@ -95,6 +193,14 @@ async fn delete_artifacts(
     sessions_only: bool,
 ) -> Result<AuthRetentionPurge, DbErr> {
     let common_cutoff = cutoff(now, AUTH_ARTIFACT_RETENTION_DAYS)?;
+    let backend = tx.get_database_backend();
+    let oauth_cutoff = cutoff(now, OAUTH_TOKEN_RETENTION_DAYS)?;
+    let code_cutoff = cutoff(now, OAUTH_AUTHORIZATION_CODE_RETENTION_DAYS)?;
+    let apps = if !sessions_only && backend == DbBackend::Postgres {
+        lock_oauth_retention_apps(tx, oauth_cutoff, code_cutoff).await?
+    } else {
+        Vec::new()
+    };
     let mut report = AuthRetentionPurge {
         sessions: delete_before(tx, "sessions", common_cutoff, false).await?,
         ..Default::default()
@@ -108,11 +214,14 @@ async fn delete_artifacts(
     report.email_change_requests =
         delete_before(tx, "auth_email_change_requests", now, true).await?;
 
-    // Retain the complete lineage until its latest member is past retention.
-    // Descendants first for the SQLite immediate root guard.
-    let backend = tx.get_database_backend();
+    if backend == DbBackend::Postgres {
+        delete_postgres_oauth_artifacts(tx, apps, oauth_cutoff, code_cutoff, &mut report).await?;
+        return Ok(report);
+    }
+
+    // SQLite serializes writers. Retain the complete lineage until its
+    // latest member is past retention; descendants precede the root.
     let param = parameter(backend)?;
-    let oauth_cutoff = cutoff(now, OAUTH_TOKEN_RETENTION_DAYS)?;
     let descendants = tx.execute_raw(Statement::from_sql_and_values(
         backend,
         format!("DELETE FROM oauth_tokens WHERE id <> family_id AND family_id IN (SELECT family_id FROM oauth_tokens GROUP BY family_id HAVING MAX(expires_at) < {param})"),
@@ -124,7 +233,6 @@ async fn delete_artifacts(
         [oauth_cutoff.into()],
     )).await?;
     report.oauth_tokens = descendants.rows_affected() + roots.rows_affected();
-    let code_cutoff = cutoff(now, OAUTH_AUTHORIZATION_CODE_RETENTION_DAYS)?;
     report.oauth_authorization_codes = tx.execute_raw(Statement::from_sql_and_values(
         backend,
         format!("DELETE FROM oauth_authorization_codes WHERE expires_at < {param} AND NOT EXISTS (SELECT 1 FROM oauth_tokens token WHERE token.authorization_code_id = oauth_authorization_codes.id)"),
@@ -155,7 +263,11 @@ async fn purge(
     sessions_only: bool,
 ) -> Result<AuthRetentionPurge, DbErr> {
     admit_with_clock(db, clock).await?;
-    let tx = db.begin().await?;
+    let tx = match db.get_database_backend() {
+        DbBackend::Postgres => db.begin_with_config(Some(IsolationLevel::ReadCommitted), None).await?,
+        DbBackend::Sqlite => db.begin().await?,
+        _ => return Err(DbErr::Custom("Unsupported auth retention database".into())),
+    };
     let result = async {
         let now = verified_now(&tx, clock).await?;
         let report = delete_artifacts(&tx, now, sessions_only).await?;
@@ -252,5 +364,80 @@ mod tests {
         assert_eq!(purge_expired_sessions(&db).await.unwrap(), 1);
         assert_eq!(count().await, 2);
         assert_eq!(purge_expired_sessions(&db).await.unwrap(), 0);
+    }
+
+    async fn postgres_tx(db: &DatabaseConnection, schema: &str) -> DatabaseTransaction {
+        let tx = db.begin_with_config(Some(IsolationLevel::ReadCommitted), None).await.unwrap();
+        tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        tx
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_AUTH_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_retention_fences_apps_and_whole_families_before_deleting() {
+        let db = sea_orm::Database::connect(std::env::var("RUSTOK_AUTH_TEST_DATABASE_URL").unwrap()).await.unwrap();
+        assert_eq!(db.get_database_backend(), DbBackend::Postgres);
+        let schema = format!("auth_retention_fence_{}", Uuid::new_v4().simple());
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
+        let setup = postgres_tx(&db, &schema).await;
+        for table in ["sessions", "auth_invite_consumptions", "auth_invites", "auth_email_change_requests"] {
+            setup.execute_unprepared(&format!("CREATE TABLE {table} (id UUID PRIMARY KEY, expires_at TIMESTAMPTZ NOT NULL)")).await.unwrap();
+        }
+        setup.execute_unprepared(
+            "CREATE TABLE oauth_apps (id UUID PRIMARY KEY);
+             CREATE TABLE oauth_authorization_codes (id UUID PRIMARY KEY, app_id UUID NOT NULL REFERENCES oauth_apps(id), expires_at TIMESTAMPTZ NOT NULL);
+             CREATE TABLE oauth_tokens (id UUID PRIMARY KEY, app_id UUID NOT NULL REFERENCES oauth_apps(id),
+                 family_id UUID NOT NULL REFERENCES oauth_tokens(id) DEFERRABLE INITIALLY DEFERRED,
+                 authorization_code_id UUID, expires_at TIMESTAMPTZ NOT NULL);
+             INSERT INTO sessions VALUES ('10000000-0000-0000-0000-000000000001', '2000-01-01 UTC');
+             INSERT INTO oauth_apps VALUES ('20000000-0000-0000-0000-000000000001');
+             INSERT INTO oauth_authorization_codes VALUES
+                ('30000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '2000-01-01 UTC'),
+                ('30000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', '2000-01-01 UTC');
+             INSERT INTO oauth_tokens VALUES
+                ('40000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001','2000-01-01 UTC'),
+                ('40000000-0000-0000-0000-000000000002','20000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001','2000-01-01 UTC'),
+                ('40000000-0000-0000-0000-000000000003','20000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000003','30000000-0000-0000-0000-000000000002','2000-01-01 UTC'),
+                ('40000000-0000-0000-0000-000000000004','20000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000003','30000000-0000-0000-0000-000000000002','2099-01-01 UTC');"
+        ).await.unwrap();
+        setup.commit().await.unwrap();
+        let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+        for lock in [
+            "SELECT id FROM oauth_apps FOR UPDATE",
+            "SELECT id FROM sessions FOR UPDATE",
+            "SELECT id FROM oauth_tokens WHERE id = '40000000-0000-0000-0000-000000000002' FOR UPDATE",
+            "SELECT id FROM oauth_authorization_codes WHERE id = '30000000-0000-0000-0000-000000000001' FOR UPDATE",
+        ] {
+            let owner = postgres_tx(&db, &schema).await;
+            owner.execute_unprepared(lock).await.unwrap();
+            let writer = postgres_tx(&db, &schema).await;
+            let result = tokio::time::timeout(std::time::Duration::from_secs(3), delete_artifacts(&writer, now, false))
+                .await.expect("retention must reject a busy candidate rather than wait");
+            assert!(result.is_err(), "{lock}");
+            assert!(finish_purge(writer, result).await.is_err());
+            owner.rollback().await.unwrap();
+            let check = postgres_tx(&db, &schema).await;
+            let row = check.query_one_raw(Statement::from_string(
+                DbBackend::Postgres,
+                "SELECT (SELECT COUNT(*) FROM sessions) AS sessions, (SELECT COUNT(*) FROM oauth_tokens) AS tokens, (SELECT COUNT(*) FROM oauth_authorization_codes) AS codes",
+            )).await.unwrap().unwrap();
+            assert_eq!(row.try_get::<i64>("", "sessions").unwrap(), 1);
+            assert_eq!(row.try_get::<i64>("", "tokens").unwrap(), 4);
+            assert_eq!(row.try_get::<i64>("", "codes").unwrap(), 2);
+            check.rollback().await.unwrap();
+        }
+        let writer = postgres_tx(&db, &schema).await;
+        let report = delete_artifacts(&writer, now, false).await.unwrap();
+        assert_eq!(report.sessions, 1);
+        assert_eq!(report.oauth_tokens, 2);
+        assert_eq!(report.oauth_authorization_codes, 1);
+        writer.commit().await.unwrap();
+
+        let writer = postgres_tx(&db, &schema).await;
+        let report = delete_artifacts(&writer, now, false).await.unwrap();
+        assert_eq!(report.oauth_tokens, 0);
+        assert_eq!(report.oauth_authorization_codes, 0);
+        writer.commit().await.unwrap();
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
     }
 }

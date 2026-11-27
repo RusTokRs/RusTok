@@ -28,3 +28,28 @@ channel state by revision rather than rebuilding channel semantics.
   call `EffectivePolicyService::resolve_for_channel`.
 - Maintenance and generic node-readiness remain separate policy inputs and are
   not implied by channel binding.
+
+
+## Transaction-bound artifact HTTP authority (2026-11-27)
+
+The host retains canonical HTTP RequestFacts and the selected channel identity
+from middleware, including an unresolved result. Artifact policy admission
+re-resolves those facts directly through Channel (never the TTL cache), brackets
+the resolution with the durable channel generation, and rejects a different
+selection or a changed generation. Map the exact owner binding list into the
+existing neutral Modules input. Optional modules need explicit enabled bindings
+in a resolved channel; no-channel host policy remains separate.
+
+The serving lease retains that input and the generation, including unresolved
+HTTP context. Fresh capability checks use captured host evidence rather than
+task-local context from a sandbox worker. Structured SQL effects hold a shared
+lock on the Channel-owned generation row (SQLite write reservation) after
+selection/readiness/composition fences until commit. Existing resolution
+triggers serialize channel, target, binding, OAuth association, policy set and
+rule mutations with the effect; a disable/enable ABA cannot renew a lease.
+The global generation conservatively invalidates unrelated contextual leases.
+This is source implementation, not PostgreSQL contention evidence. Deferred
+transports that do not carry the middleware request scope, channel-specific
+durable background work, non-SQL effect fencing and operational maintenance
+authority remain open. No new generation or channel-table dependency in
+Modules is introduced.

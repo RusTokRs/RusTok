@@ -1,7 +1,6 @@
-use chrono::Utc;
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-    sea_query::Expr,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait, sea_query::Expr,
 };
 
 use rustok_core::{Error, Result};
@@ -24,7 +23,8 @@ pub struct OutboxRetentionConfig {
     /// How long a dead-lettered (`failed`) event is kept before it may be
     /// pruned, measured from `created_at`. `None` (the default) keeps the
     /// DLQ forever: pruning it is an explicit operator decision, because a
-    /// failed row is the only record that the event never landed.
+    /// failed row is the only record that the event never landed. Required
+    /// consumer acknowledgements remain mandatory even with this window.
     pub failed_retention: Option<chrono::Duration>,
     /// How long a terminal (`completed`/`failed`) owner-operation receipt
     /// is kept before it may be pruned, measured from `completed_at`.
@@ -67,10 +67,18 @@ impl OutboxRetentionConfig {
                 "outbox operation-receipt retention window must be positive".to_string(),
             ));
         }
-        if self.batch_size == 0 {
-            return Err(Error::Validation(
-                "outbox retention batch size must be greater than zero".to_string(),
-            ));
+        let maximum = chrono::Duration::days(3650);
+        if self.retention > maximum
+            || self.failed_retention.is_some_and(|window| window > maximum)
+            || self.receipt_retention.is_some_and(|window| window > maximum)
+        {
+            return Err(Error::Validation("outbox retention windows must not exceed 3650 days".to_string()));
+        }
+        if !(1..=rustok_outbox_storage::MAX_RETENTION_BATCH_SIZE).contains(&self.batch_size) {
+            return Err(Error::Validation(format!(
+                "outbox retention batch size must be between 1 and {}",
+                rustok_outbox_storage::MAX_RETENTION_BATCH_SIZE
+            )));
         }
         Ok(())
     }
@@ -94,12 +102,10 @@ pub struct OutboxPruneReport {
 /// Bounded retention for `sys_events`.
 ///
 /// The outbox is both the delivery queue and the durable record of what was
-/// delivered, so retention only ever deletes rows that reached the transport
-/// (`dispatched` with a non-null `dispatched_at` older than the window) and
-/// whose registered durable consumers have all acknowledged the event.
-/// Undelivered (`pending`) and dead-lettered (`failed`) rows are never touched:
-/// the first still owe a delivery, the second are the DLQ an operator works
-/// through. A delivered row that lost its `dispatched_at` is left alone as well,
+/// delivered. By default only aged dispatched rows are eligible; an explicit
+/// failed-event window also permits aged DLQ rows. Every event deletion
+/// requires all registered durable consumers to have acknowledged it.
+/// Pending rows are never pruned. A dispatched row without `dispatched_at` is left alone,
 /// so the pruner can never delete a row whose delivery age is unknown.
 #[derive(Clone)]
 pub struct OutboxRetention {
@@ -133,7 +139,9 @@ impl OutboxRetention {
     /// delivery state cannot be bypassed by a stale candidate scan.
     pub async fn prune_once(&self) -> Result<OutboxPruneReport> {
         self.config.validate()?;
-        let cutoff = Utc::now() - self.config.retention;
+        let cutoff = rustok_outbox_storage::observe_database_clock(&self.db).await?
+            .checked_sub_signed(self.config.retention)
+            .ok_or_else(|| Error::Validation("outbox retention cutoff is out of range".to_string()))?;
 
         let candidate_ids: Vec<uuid::Uuid> = entity::Entity::find()
             .select_only()
@@ -143,6 +151,7 @@ impl OutboxRetention {
             .filter(entity::Column::DispatchedAt.lte(cutoff))
             .filter(required_consumers_acknowledged_predicate())
             .order_by_asc(entity::Column::DispatchedAt)
+            .order_by_asc(entity::Column::Id)
             .limit(self.config.batch_size)
             .into_tuple::<uuid::Uuid>()
             .all(&self.db)
@@ -161,15 +170,20 @@ impl OutboxRetention {
         }
 
         let batch_exhausted = candidate_ids.len() as u64 >= self.config.batch_size;
+        let txn = self.begin_event_delete().await?;
+        let cutoff = cutoff.min(rustok_outbox_storage::database_now(&txn).await?
+            .checked_sub_signed(self.config.retention)
+            .ok_or_else(|| Error::Validation("outbox retention cutoff is out of range".to_string()))?);
         let deleted = entity::Entity::delete_many()
             .filter(entity::Column::Id.is_in(candidate_ids))
             .filter(entity::Column::Status.eq(SysEventStatus::Dispatched))
             .filter(entity::Column::DispatchedAt.is_not_null())
             .filter(entity::Column::DispatchedAt.lte(cutoff))
             .filter(required_consumers_acknowledged_predicate())
-            .exec(&self.db)
+            .exec(&txn)
             .await?
             .rows_affected;
+        txn.commit().await?;
 
         if deleted > 0 {
             rustok_telemetry::metrics::record_outbox_pruned(deleted);
@@ -191,6 +205,25 @@ impl OutboxRetention {
         })
     }
 
+    // PostgreSQL's statement snapshot does not see an uncommitted new
+    // subscription. A SHARE table lock conflicts with the registry writer's
+    // ROW EXCLUSIVE lock, including inserts of previously absent keys. Take
+    // it before the final DELETE, then use a fresh READ COMMITTED snapshot.
+    // SQLite reserves its writer before the final clock check and DELETE.
+    async fn begin_event_delete(&self) -> Result<DatabaseTransaction> {
+        let txn = self.db.begin().await?;
+        if self.db.get_database_backend() == DatabaseBackend::Postgres {
+            txn.execute_unprepared("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+                .await?;
+            txn.execute_unprepared("LOCK TABLE sys_event_consumers IN SHARE MODE")
+                .await?;
+        } else if self.db.get_database_backend() == DatabaseBackend::Sqlite {
+            txn.execute_unprepared("UPDATE sys_events SET claimed_at = claimed_at WHERE 1 = 0")
+                .await?;
+        }
+        Ok(txn)
+    }
+
     /// Prunes the two bounded histories that are disabled by default:
     /// dead-lettered events past their configured window and terminal
     /// owner-operation receipts past theirs.
@@ -198,13 +231,17 @@ impl OutboxRetention {
         let mut batch_exhausted = false;
         let mut pruned_failed = 0;
         if let Some(failed_retention) = self.config.failed_retention {
-            let cutoff = Utc::now() - failed_retention;
+            let cutoff = rustok_outbox_storage::database_now(&self.db).await?
+                .checked_sub_signed(failed_retention)
+                .ok_or_else(|| Error::Validation("outbox failed retention cutoff is out of range".to_string()))?;
             let candidate_ids: Vec<uuid::Uuid> = entity::Entity::find()
                 .select_only()
                 .column(entity::Column::Id)
                 .filter(entity::Column::Status.eq(SysEventStatus::Failed))
                 .filter(entity::Column::CreatedAt.lte(cutoff))
+                .filter(required_consumers_acknowledged_predicate())
                 .order_by_asc(entity::Column::CreatedAt)
+                .order_by_asc(entity::Column::Id)
                 .limit(self.config.batch_size)
                 .into_tuple::<uuid::Uuid>()
                 .all(&self.db)
@@ -213,13 +250,19 @@ impl OutboxRetention {
                 batch_exhausted = true;
             }
             if !candidate_ids.is_empty() {
+                let txn = self.begin_event_delete().await?;
+                let cutoff = cutoff.min(rustok_outbox_storage::database_now(&txn).await?
+                    .checked_sub_signed(failed_retention)
+                    .ok_or_else(|| Error::Validation("outbox failed retention cutoff is out of range".to_string()))?);
                 pruned_failed = entity::Entity::delete_many()
                     .filter(entity::Column::Id.is_in(candidate_ids))
                     .filter(entity::Column::Status.eq(SysEventStatus::Failed))
                     .filter(entity::Column::CreatedAt.lte(cutoff))
-                    .exec(&self.db)
+                    .filter(required_consumers_acknowledged_predicate())
+                    .exec(&txn)
                     .await?
                     .rows_affected;
+                txn.commit().await?;
                 if pruned_failed > 0 {
                     tracing::info!(
                         pruned_failed_events = pruned_failed,
@@ -302,11 +345,13 @@ mod tests {
         dispatched_at: Option<chrono::DateTime<Utc>>,
     ) -> uuid::Uuid {
         let id = generate_id();
+        let tenant_id = generate_id();
         crate::entity::ActiveModel {
             id: Set(id),
+            tenant_id: Set(Some(tenant_id)),
             event_type: Set("test.pruned".to_string()),
             schema_version: Set(1),
-            payload: Set(serde_json::json!({"tenant_id": generate_id().to_string()})),
+            payload: Set(serde_json::json!({"tenant_id": tenant_id.to_string()})),
             status: Set(status),
             retry_count: Set(0),
             next_attempt_at: Set(None),
@@ -445,6 +490,20 @@ mod tests {
             failed_retention: Some(chrono::Duration::days(30)),
             ..Default::default()
         });
+        let consumer = crate::OutboxConsumer::new(db.clone());
+        consumer
+            .register_required_event_types("consumer.dlq", &["test.pruned".to_string()])
+            .await
+            .expect("register durable consumer");
+        let held = retention.prune_once().await.expect("held failed prune");
+        assert_eq!(held.pruned_failed, 0);
+        assert!(!held.batch_exhausted);
+        assert!(crate::entity::Entity::find_by_id(failed)
+            .one(&db).await.expect("query").is_some());
+        consumer
+            .acknowledge_existing("consumer.dlq", failed)
+            .await
+            .expect("terminal consumer receipt");
         let report = retention.prune_once().await.expect("failed prune");
         assert_eq!(report.pruned_failed, 1);
         assert!(
@@ -500,6 +559,17 @@ mod tests {
                 .expect("query")
                 .is_some()
         );
+    }
+
+    #[test]
+    fn retention_batch_size_has_a_hard_upper_bound() {
+        let mut config = OutboxRetentionConfig::default();
+        config.batch_size = rustok_outbox_storage::MAX_RETENTION_BATCH_SIZE;
+        assert!(config.validate().is_ok());
+        config.batch_size += 1;
+        assert!(config.validate().is_err());
+        config.batch_size = 0;
+        assert!(config.validate().is_err());
     }
 
     // The table shape a pruner depends on: the migration must create the index

@@ -1,7 +1,9 @@
 mod editor;
+mod list_filters;
 mod settings;
 
 use leptos::prelude::*;
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer, RouteQueryWriter};
 use rustok_auth_ui::ui::leptos::hooks::{use_current_user, use_tenant, use_token};
 use rustok_grid::GridMessages;
 use rustok_grid_leptos::DataGrid;
@@ -9,11 +11,12 @@ use rustok_ui_core::UiRouteContext;
 use rustok_ui_leptos::{Alert, Button, Spinner};
 use uuid::Uuid;
 
-use crate::core;
+use crate::core::{self, list};
 use crate::i18n::t;
-use crate::model::{Record, RecordFilter, RecordPage};
+use crate::model::{Record, RecordFilter, RecordPage, Rejection, RequestFailure};
 use crate::transport::AdminClient;
 use editor::RecordEditor;
+use list_filters::RecordFilters;
 
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Principal {
@@ -33,11 +36,10 @@ pub fn __MODULE_STEM__Admin() -> impl IntoView {
     match route.subpath.as_deref() {
         Some("settings" | "settings/records") => {
             let show_records = route.subpath.as_deref() == Some("settings/records");
-            view! { <settings::SettingsPage locale=route.locale show_records=show_records /> }.into_any()
+            view! { <settings::SettingsPage locale=route.locale show_records=show_records /> }
+                .into_any()
         }
-        None | Some("" | "records") => {
-            view! { <RecordWorkspace locale=route.locale /> }.into_any()
-        }
+        None | Some("" | "records") => view! { <RecordWorkspace locale=route.locale /> }.into_any(),
         Some(_) => {
             let message = t(route.locale.as_deref(), "route-not-found", "Page not found");
             view! { <Alert>{message}</Alert> }.into_any()
@@ -48,7 +50,23 @@ pub fn __MODULE_STEM__Admin() -> impl IntoView {
 #[component]
 fn RecordWorkspace(locale: Option<String>) -> impl IntoView {
     let locale = StoredValue::new(locale);
-    let filter = RwSignal::new(RecordFilter::default());
+    let page_query = use_route_query_value(list::PAGE);
+    let size_query = use_route_query_value(list::PER_PAGE);
+    let search_query = use_route_query_value(list::SEARCH);
+    let publication_query = use_route_query_value(list::PUBLICATION);
+    let order_query = use_route_query_value(list::ORDER);
+    let filter = Memo::new(move |_| {
+        list::from_route(
+            page_query.get(),
+            size_query.get(),
+            search_query.get(),
+            publication_query.get(),
+            order_query.get(),
+        )
+    });
+    let query = StoredValue::new(use_route_query_writer());
+    let apply_filters =
+        Callback::new(move |write| query.with_value(|query| query.apply_query_write(write)));
     let token = use_token();
     let tenant = use_tenant();
     let user = use_current_user();
@@ -109,6 +127,7 @@ fn RecordWorkspace(locale: Option<String>) -> impl IntoView {
                 <h1 class="text-xl font-semibold">{title}</h1>
                 <Button disabled=editing on_click=Box::new(move || open.run(None))>{new_label}</Button>
             </div>
+            <RecordFilters filter=filter locale=locale.get_value() on_apply=apply_filters />
             {move || {
                 let current = principal.get();
                 selection.get().filter(|open| open.principal == current).map(|selected| {
@@ -126,7 +145,12 @@ fn RecordWorkspace(locale: Option<String>) -> impl IntoView {
                     let current = principal.get();
                     page.get().filter(|(owner, _)| *owner == current).map(|(_, page)| match page {
                         Ok(page) => view! {
-                            <RecordTable page=page filter=filter locale=locale open=open editing=editing />
+                            <RecordTable page=page filter=filter query=query.get_value() locale=locale open=open editing=editing />
+                        }.into_any(),
+                        Err(RequestFailure::Rejected(Rejection::Access)) => view! {
+                            <Alert>
+                                {t(locale.as_deref(), "record-access", "You do not have access to this record operation.")}
+                            </Alert>
                         }.into_any(),
                         Err(_) => view! {
                             <Alert>
@@ -143,7 +167,8 @@ fn RecordWorkspace(locale: Option<String>) -> impl IntoView {
 #[component]
 fn RecordTable(
     page: RecordPage,
-    filter: RwSignal<RecordFilter>,
+    filter: Memo<RecordFilter>,
+    query: RouteQueryWriter,
     locale: Option<String>,
     open: Callback<Option<Uuid>>,
     editing: Signal<bool>,
@@ -166,11 +191,16 @@ fn RecordTable(
             core::cell(&record, &column, locale.as_deref()).into_any()
         }
     });
+    let page_query = query.clone();
     let on_page_change = Callback::new(move |page| {
-        filter.update(|input| core::select_page(input, page));
+        if let Some(write) = list::page_write(filter.with_untracked(|filter| filter.page), page) {
+            page_query.apply_query_intent(write);
+        }
     });
     let on_page_size_change = Callback::new(move |size| {
-        filter.update(|input| core::select_page_size(input, size));
+        if let Some(write) = list::page_size_write(size) {
+            query.apply_query_write(write);
+        }
     });
     view! {
         <DataGrid

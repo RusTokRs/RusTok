@@ -26,6 +26,10 @@ impl MigrationSource for TenantModule {
                 "m20261103_000003_tenant_identity_index",
                 vec!["m20261102_000002_tenant_identity_keys"],
             ),
+            MigrationDependencyDescriptor::new(
+                "m20261127_000015_preserve_tenant_uuid",
+                vec!["m20261103_000003_tenant_identity_index"],
+            ),
         ]
     }
 }

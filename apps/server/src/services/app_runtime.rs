@@ -738,7 +738,9 @@ fn build_namespaced_rate_limiter(
 
 #[cfg(test)]
 mod tests {
-    use super::{AUTH_RATE_LIMIT_PREFIXES, validate_compiled_surface_contract};
+    use super::{
+        AUTH_RATE_LIMIT_PREFIXES, OAUTH_RATE_LIMIT_PREFIXES, validate_compiled_surface_contract,
+    };
     use crate::common::settings::{RuntimeHostMode, RuntimeSettings, RustokSettings};
     use crate::modules::DeploymentSurfaceContract;
     use rustok_build::DeploymentProfile;
@@ -1473,12 +1475,8 @@ mod tests {
             db,
             settings.clone(),
         );
-        let auth_config = crate::auth::auth_config_from_host_settings(
-            "test-secret-must-be-at-least-32-bytes-long".to_string(),
-            3_600,
-            None,
-        )
-        .expect("test auth configuration should be valid");
+        let auth_config =
+            crate::auth::test_auth_config("test-secret-must-be-at-least-32-bytes-long".to_string());
         let runtime = super::bootstrap_app_runtime(runtime_ctx, auth_config)
             .await
             .expect("registry-only runtime should bootstrap");

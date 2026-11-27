@@ -52,6 +52,7 @@ async fn create_test_product(catalog: &CatalogService, tenant_id: Uuid) -> (Uuid
             barcode: None,
             shipping_profile_slug: None,
             axis_values: vec![],
+            attribute_values: vec![],
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
                 channel_id: None,

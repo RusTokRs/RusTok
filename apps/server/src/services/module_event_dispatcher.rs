@@ -1011,7 +1011,7 @@ mod tests {
         let extensions = build_shared_runtime_extensions(&registry, &settings)
             .expect("runtime extensions should initialize");
 
-        let db = Database::connect("sqlite::memory:")
+        let db = sea_orm::Database::connect("sqlite::memory:")
             .await
             .expect("in-memory sqlite should connect");
         let dispatcher =
@@ -1029,7 +1029,7 @@ mod tests {
         #[cfg(feature = "mod-moderation")]
         let registry = registry.register(rustok_moderation::ModerationModule);
         let settings = RustokSettings::default();
-        let db = Database::connect("sqlite::memory:")
+        let db = sea_orm::Database::connect("sqlite::memory:")
             .await
             .expect("in-memory sqlite should connect");
         let runtime_ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
@@ -1686,7 +1686,7 @@ mod lifecycle_tests {
 
         let mut settings = RustokSettings::default();
         settings.runtime.host_mode = RuntimeHostMode::Worker;
-        let db = Database::connect("sqlite::memory:")
+        let db = sea_orm::Database::connect("sqlite::memory:")
             .await
             .expect("test database");
         let ctx = ServerRuntimeContext::new(db.clone(), settings.clone());

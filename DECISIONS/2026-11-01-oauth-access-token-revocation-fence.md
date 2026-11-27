@@ -258,3 +258,144 @@ is carried in the owner context.
 The host still depends on its request scope for provenance, permission ceiling
 and invalidation. A fully scope-independent capability and inter-owner
 lock verification are separate remaining work. Compilation and tests unrun.
+
+## Credential FK parent admission (2026-11-27)
+
+Migration 000007 adds PostgreSQL BEFORE guards for OAuth application tenant,
+credential tenant/app/user and translation app FK references. The token
+INSERT additionally retains the non-self family root with KEY SHARE NOWAIT
+before the existing lineage validation and deferred root FK. The deferred
+FK remains authoritative; its check must not be the first root lock at commit.
+Parent contention rejects with SQLSTATE 55P03 rather than waiting from a late
+child write. Missing/invisible parents reject; unchanged references and
+metadata-only revocation do not acquire new locks. These are FK locks, not
+proof of active tenant/app/user, current consent or authorization. The existing
+owner mutation and credential clock checks remain necessary. SQLite retains
+its serialized writer and existing lineage guards. Deploy the migration with
+coordinated writer rollout; PostgreSQL runtime/compile and cross-owner ordering
+remain unverified.
+
+SQLite migration 000008 implements the user-delete cascade absent from its
+original OAuth token table. The existing insert/update tenant guards cannot
+prevent a parent deletion from orphaning lineage. Delete exact tenant/user
+descendants before roots in the user deletion transaction, preserving other
+users and NULL-subject service credentials. PostgreSQL retains the composite
+user FK cascade. Reject existing orphan/cross-tenant lineage at migration;
+operator reconciliation is required instead of silently removing history.
+SQLite downgrade is denied. Source regression tests remain unrun.
+
+PostgreSQL retention obtains UUID-ordered candidate app locks before deleting
+any artifacts and restricts OAuth deletion to these apps. For a candidate
+family lock its root and every member nonblockingly, then recheck the full
+expiry horizon under Read Committed before deleting descendants and root.
+Delete old authorization codes only when no token references them and while
+retaining the app fence. Contention aborts the complete sweep rather than
+waiting for an earlier owner; retry in a fresh transaction. SQLite retains
+serialized deletion. No retention duration or clock contract changes.
+PostgreSQL regression is authored, unrun; arbitrary direct SQL, DDL, large
+sweep throughput and all cross-owner bulk revocations remain unverified.
+
+User-wide delegated credential revocation and application-wide credential
+revocation prelock exact PostgreSQL token/code candidates (and application
+consents for the latter) in UUID order, NOWAIT, before the first credential
+write. Preserve the respective existing owner fence: never discover an app
+lock after a user. Contention rejects the entire caller transaction, with
+no partial credential revocation. SQLite uses its serialized writer. The
+existing mutation predicates remain authoritative. This covers broad user/app
+writers, not every family replay and cross-owner receipt path. PostgreSQL
+contention regression is authored, unrun.
+
+## Permanent registration identity (2026-11-27)
+
+Auth migration 000014 records append-only OAuth app/client/token/code UUID
+and token/code digest claims on actual row birth. Hard deletion and family
+retention cannot release a claimed identity or digest. Token/code hash and
+client-ID updates are forbidden; SQLite prevents REPLACE of the unique live
+refresh family member even with recursive triggers disabled. Consent re-grant
+and managed app reactivation retain their existing contracts. The claim
+history is independent of the live token table; no plaintext is stored.
+Pre-cutover deletions, terminal timestamp rewrites and privileged DDL/restore
+are outside this guarantee. Regression sources unrun.
+
+## Consent revocation retry admission
+
+The authenticated consent revoke path reuses the stable bulk credential
+prelock order on the exact tenant/app/user intersection (tokens, codes,
+consents). Core classifies typed PostgreSQL statement conflicts and consumes
+the failed transaction with an explicit rollback before bounded backoff.
+Every new attempt repeats durable clock admission and live credential
+fences, preserving the original request ceiling and checking the deadline
+before commit. No retry is allowed after a failed rollback or commit request,
+for authorization errors, or for an unclassified database error. No external
+side effect is included. Other owner writes retain their current contracts;
+commit recovery and end-to-end contention evidence remain open.
+
+## Terminal credential evidence (2026-11-27)
+
+Auth migration 000014 forbids clearing or rewriting a recorded session/token/
+consent revocation or authorization-code consumption timestamp. Once an OAuth
+token is revoked its last-use timestamp cannot be changed independently to
+manufacture committed rotation evidence. Rotation sets both timestamps in the
+original conditional write. Consent subjects are immutable and revoked consent
+rows retain their grant; a new grant after revocation uses a fresh UUID with a
+permanent birth witness. Updating an active consent and reactivating an OAuth
+application remain supported. SQLite guards hidden rowid replacement of tokens,
+codes and consents and replacement through the active consent unique key.
+These are ordinary DML integrity constraints, not a proof of fresh consent
+epochs, complete nonterminal claim integrity, or privileged restore protection.
+Source regressions authored, unrun.
+
+## Fresh consent grant identity (2026-11-27)
+
+The canonical grant writer never updates a historical or active consent into a
+new grant. It invalidates live exact-tenant/app/user tokens and pending codes,
+retires the active consent if present and inserts a new UUID, in the existing
+app/subject-locked transaction. This also repairs the old unfiltered lookup
+that could select a terminal row after a revoke or several grants. No history
+is rewritten. Timestamp-based epoch comparison remains in readers; permanent
+UUID claims alone do not yet replace that comparison. Source regressions unrun.
+
+Issued OAuth token scopes and expiry, and authorization-code client, subject,
+tenant, redirect URI, scopes, PKCE and creation/expiry fields are immutable
+under ordinary PostgreSQL and SQLite DML. Revocation and consumption remain
+permitted; existing token lineage guards remain authoritative. Runtime
+admission still validates claims to reject malformed legacy records and
+never relies solely on schema constraints. Source regressions unrun.
+
+Consent scope and granted_at claims are immutable even before revocation;
+canonical re-grant publishes a fresh consent row instead. Session absolute
+deadlines cannot be cleared or extended once explicitly stored; rotation
+materializes legacy NULL once, while runtime continues to clamp against the
+original creation-time cap. SQLite rejects ambiguous date comparisons.
+The UUID-based consent credential binding is still outstanding. Source
+regressions unrun.
+
+## Authorization-code consent generation (2026-11-27)
+
+Codes for consent-required clients capture the active consent UUID under the
+app/subject fences, after any confirmed grant. Both exchange preflight and
+locked exchange require the exact current UUID and retain the timestamp
+creation bound. A replacement grant with the same timestamp does not match.
+Migration 000018 adds a nullable immutable binding; existing unbound codes
+for consent-required apps fail closed rather than being assigned an inferred
+generation. Consent-exempt codes remain NULL. Token registration generation
+and transaction-bound token evidence still use their existing timestamp
+contract; this extension covers the code lifecycle only. Source regressions
+unrun. Coordinate schema upgrade and host rollout.
+
+## Token-family consent generation (2026-11-27)
+
+The token family's immutable authorization_code_id links to the original
+consumed code, whose immutable consent_id identifies the grant. Access,
+WebSocket revalidation, locked admin and refresh preflight/commit match that
+code against the exact tenant, client, user and active consent UUID in
+addition to timestamp and scope checks. Legacy unbound families cannot adopt
+the current grant. Existing retention preserves code evidence while token
+registrations survive; missing evidence fails closed. Consent-exempt clients
+retain their prior policy. Source regressions unrun.
+
+The consumed-code resolver re-observes active consent in the same SQL
+statement as the code, so a prior scope observation cannot authorize a
+consent retired before that lookup. Locked exchange and refresh also compare
+both actual prepared registration models against the admitted original code
+and epoch before consumption or recovery. Source regressions unrun.

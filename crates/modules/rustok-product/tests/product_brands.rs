@@ -565,6 +565,7 @@ async fn catalog_service_handles_product_brands_lifecycle() -> TestResult<()> {
             barcode: None,
             shipping_profile_slug: None,
             axis_values: vec![],
+            attribute_values: vec![],
             prices: vec![],
             inventory_quantity: 0,
             inventory_policy: "deny".to_string(),

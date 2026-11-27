@@ -440,6 +440,29 @@ mod tests {
     }
 
     #[test]
+    fn accepts_well_formed_non_bmp_unicode_at_the_utf8_field_limit() {
+        let mut base = base();
+        let revision = "🧭".repeat(64);
+        let hash = "🔑".repeat(64);
+        let sender_id = "😀".repeat(64);
+        assert_eq!(revision.len(), MAX_PEER_WRITE_FIELD_BYTES);
+        assert_eq!(hash.len(), MAX_PEER_WRITE_FIELD_BYTES);
+        assert_eq!(sender_id.len(), MAX_PEER_WRITE_FIELD_BYTES);
+
+        let conflict = base
+            .observe(PeerWriteMessage {
+                kind: "confirmed-write".to_string(),
+                page_id: "page-1".to_string(),
+                revision: revision.clone(),
+                hash: hash.clone(),
+                sender_id,
+            })
+            .expect("well-formed non-BMP UTF-8 metadata is valid");
+        assert_eq!(conflict.revision, revision);
+        assert_eq!(conflict.project_hash, hash);
+    }
+
+    #[test]
     fn malformed_sender_cannot_fence_or_advance_baseline() {
         let mut base = base();
         for sender_id in [

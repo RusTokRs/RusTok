@@ -166,12 +166,9 @@ impl RbacArtifactPermissionAssignmentService {
             revoke_permission(transaction, &artifact_permission, &command).await?
         };
         if changed {
-            // The artifact continuity receipt uses the same durable RBAC
-            // generation as static grants. Never change its authority behind
-            // that receipt, and never advance it for retries or state no-ops.
-            crate::reserve_permission_invalidation_generation(transaction)
-                .await
-                .map_err(database_error)?;
+            // The owner schema advances the durable watermark on actual grant
+            // mutations (deferred to commit on PostgreSQL). Reserving it again
+            // here would double count. A failed event or commit rolls back both.
             self.event_publisher
                 .publish_assignment_changed(
                     transaction,

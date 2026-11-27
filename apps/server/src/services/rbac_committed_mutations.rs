@@ -32,7 +32,9 @@ impl RbacService {
     /// The target user and the tenant's built-in super-admin role row are
     /// locked before continuity is checked. Concurrent role changes for one
     /// user therefore serialize, and an exact single-role no-op does not
-    /// advance the global invalidation generation.
+    /// advance the global invalidation generation. This SQL-only library path
+    /// retries typed pre-commit conflicts only after a successful rollback;
+    /// request credential admission remains the responsibility of its caller.
     pub async fn replace_user_role_committed(
         db: &DatabaseConnection,
         cache_service: &CacheService,
@@ -41,16 +43,47 @@ impl RbacService {
         role: rustok_core::UserRole,
     ) -> Result<()> {
         Self::record_committed_mutation_entrypoint();
-        let tx = db.begin().await?;
-        let changed = rustok_rbac::replace_persisted_user_role_on(&tx, *tenant_id, *user_id, role)
-            .await
-            .map_err(role_persistence_error)?;
-        if !changed {
-            tx.rollback().await?;
-            return Ok(());
-        }
-        let durable_generation = reserve_rbac_invalidation_generation(&tx).await?;
-        tx.commit().await?;
+        let mut attempt = 1;
+        let durable_generation = loop {
+            let tx = db.begin().await?;
+            // Recompute the locked target and continuity facts on each attempt.
+            let result = async {
+                let changed = rustok_rbac::replace_persisted_user_role_on(
+                    &tx, *tenant_id, *user_id, role.clone(),
+                )
+                .await
+                .map_err(role_persistence_error)?;
+                if !changed {
+                    return Ok(None);
+                }
+                reserve_rbac_invalidation_generation(&tx).await.map(Some)
+            }
+            .await;
+            match result {
+                Ok(Some(generation)) => {
+                    // A failed commit may have succeeded remotely. Never retry it.
+                    tx.commit().await?;
+                    break generation;
+                }
+                Ok(None) => {
+                    tx.rollback().await?;
+                    return Ok(());
+                }
+                Err(Error::Database(error)) => {
+                    if rustok_core::resilience::retry::rollback_for_transaction_retry(
+                        tx, &error, attempt,
+                    ).await? {
+                        attempt += 1;
+                        continue;
+                    }
+                    return Err(Error::Database(error));
+                }
+                Err(error) => {
+                    tx.rollback().await?;
+                    return Err(error);
+                }
+            }
+        };
         Self::invalidate_user_rbac_caches(tenant_id, user_id).await;
         if let Err(error) =
             publish_user_rbac_invalidation(cache_service, tenant_id, user_id, durable_generation)
@@ -82,6 +115,7 @@ impl RbacService {
 
 fn role_persistence_error(error: rustok_rbac::RbacRolePersistenceError) -> Error {
     match error {
+        rustok_rbac::RbacRolePersistenceError::Database(error) => Error::Database(error),
         rustok_rbac::RbacRolePersistenceError::TargetNotFound => Error::NotFound,
         rustok_rbac::RbacRolePersistenceError::Policy(policy) => {
             Error::BadRequest(policy.to_string())

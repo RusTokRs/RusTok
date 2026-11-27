@@ -109,17 +109,37 @@ pub trait ArtifactDataSchemaValidator: Send + Sync {
     ) -> Result<(), ArtifactDataError>;
 }
 
-/// implementation or replace this check through its broker capability.
-/// Current policy reads use the owner's write transaction. The host must
-/// additionally enforce operational, recovery/retention/hold, and revocation
-/// fences; a current grant read alone is not that proof.
+/// Host-owned destructive-operation authority; never a guest capability.
+/// Acquire the operator authority on the owner transaction before installation
+/// or namespace locks and before even reading a terminal receipt. Retain its
+/// fences through commit. New effects additionally require exact owner facts.
+/// Operational drain and retention/hold requirements remain independent.
 #[async_trait]
 pub trait ArtifactDataPurgeAuthorizer: Send + Sync {
+    type LockedAuthority: Send + Sync;
+
+    async fn prepare_purge(&self) -> Result<(), ArtifactDataError>;
+
+    async fn lock_purge_authority_on(
+        &self,
+        transaction: &DatabaseTransaction,
+        request: &ArtifactDataPurgeRequest,
+    ) -> Result<Self::LockedAuthority, ArtifactDataError>;
+
     async fn authorize_purge_on(
         &self,
         transaction: &DatabaseTransaction,
         request: &ArtifactDataPurgeRequest,
         context: &ArtifactDataPurgeAuthorizationContext,
+        authority: &Self::LockedAuthority,
+    ) -> Result<(), ArtifactDataError>;
+
+    /// Required immediately before all commits, including exact receipt replay.
+    async fn ensure_purge_authority_on(
+        &self,
+        transaction: &DatabaseTransaction,
+        request: &ArtifactDataPurgeRequest,
+        authority: &Self::LockedAuthority,
     ) -> Result<(), ArtifactDataError>;
 }
 

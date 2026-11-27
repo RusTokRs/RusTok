@@ -1,0 +1,192 @@
+use rustok_ui_core::{normalize_ui_text, AdminQueryKey, UiRouteQueryIntent, UiRouteQueryWrite};
+use rustok_ui_forms::FieldError;
+
+use crate::{
+    i18n::t,
+    model::{Order, Publication, RecordFilter},
+};
+
+use super::settings::MAX_SIZE;
+
+pub(crate) const SEARCH: &str = AdminQueryKey::Query.as_str();
+pub(crate) const PAGE: &str = AdminQueryKey::Page.as_str();
+pub(crate) const PER_PAGE: &str = AdminQueryKey::PerPage.as_str();
+pub(crate) const PUBLICATION: &str = "publication";
+pub(crate) const ORDER: &str = "order";
+pub(crate) const DRAFT: &str = "DRAFT";
+pub(crate) const PUBLISHED: &str = "PUBLISHED";
+pub(crate) const NEWEST: &str = "NEWEST_FIRST";
+pub(crate) const OLDEST: &str = "OLDEST_FIRST";
+const MAX_SEARCH_CHARS: usize = __MAX_TITLE_CHARS__;
+
+pub(crate) fn from_route(
+    page: Option<String>,
+    per_page: Option<String>,
+    search: Option<String>,
+    publication: Option<String>,
+    order: Option<String>,
+) -> RecordFilter {
+    RecordFilter {
+        page: page.as_deref().and_then(positive_page).unwrap_or(1),
+        per_page: per_page
+            .as_deref()
+            .and_then(positive_page)
+            .and_then(|parsed| u16::try_from(parsed).ok())
+            .filter(|size| *size <= MAX_SIZE),
+        search: search
+            .as_deref()
+            .and_then(normalize_ui_text)
+            .filter(|value| valid_search(value)),
+        publication: match publication.as_deref() {
+            Some(DRAFT) => Some(Publication::Draft),
+            Some(PUBLISHED) => Some(Publication::Published),
+            _ => None,
+        },
+        order: match order.as_deref() {
+            Some(OLDEST) => Order::OldestFirst,
+            _ => Order::NewestFirst,
+        },
+    }
+}
+
+fn positive_page(raw: &str) -> Option<u32> {
+    if !matches!(raw.as_bytes().first(), Some(b'1'..=b'9')) {
+        return None;
+    }
+    raw.parse().ok()
+}
+
+fn valid_search(value: &str) -> bool {
+    !value.contains('\0') && value.chars().count() <= MAX_SEARCH_CHARS
+}
+
+pub(crate) fn page_size_write(size: usize) -> Option<UiRouteQueryWrite> {
+    (1..=usize::from(MAX_SIZE))
+        .contains(&size)
+        .then(|| UiRouteQueryWrite {
+            updates: vec![(PAGE, None), (PER_PAGE, Some(size.to_string()))],
+            replace: false,
+        })
+}
+
+pub(crate) fn page_write(current_page: u32, page: usize) -> Option<UiRouteQueryIntent> {
+    let page = u32::try_from(page).unwrap_or(u32::MAX).max(1);
+    (page != current_page).then(|| UiRouteQueryIntent::push(PAGE, page.to_string()))
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct FilterFields {
+    pub search: String,
+    pub publication: String,
+    pub order: String,
+}
+
+impl From<&RecordFilter> for FilterFields {
+    fn from(filter: &RecordFilter) -> Self {
+        Self {
+            search: filter.search.clone().unwrap_or_default(),
+            publication: match filter.publication {
+                Some(Publication::Draft) => DRAFT,
+                Some(Publication::Published) => PUBLISHED,
+                None => "",
+            }
+            .into(),
+            order: match filter.order {
+                Order::NewestFirst => NEWEST,
+                Order::OldestFirst => OLDEST,
+            }
+            .into(),
+        }
+    }
+}
+
+impl FilterFields {
+    pub fn write(&self, locale: Option<&str>) -> Result<UiRouteQueryWrite, FieldError> {
+        let search = normalize_ui_text(&self.search);
+        if search.as_deref().is_some_and(|value| !valid_search(value)) {
+            return Err(FieldError::new(
+                SEARCH,
+                t(
+                    locale,
+                    "records-search-invalid",
+                    "Enter a valid search term.",
+                ),
+            ));
+        }
+        Ok(UiRouteQueryWrite {
+            updates: vec![
+                (PAGE, None),
+                (SEARCH, search),
+                (
+                    PUBLICATION,
+                    match self.publication.as_str() {
+                        DRAFT | PUBLISHED => Some(self.publication.clone()),
+                        _ => None,
+                    },
+                ),
+                (ORDER, (self.order == OLDEST).then(|| self.order.clone())),
+            ],
+            replace: false,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_deep_link_reconstructs_a_typed_list_request() {
+        let filter = from_route(
+            Some("2".into()),
+            Some("7".into()),
+            Some("  Русский  ".into()),
+            Some(PUBLISHED.into()),
+            Some(OLDEST.into()),
+        );
+        assert_eq!((filter.page, filter.per_page), (2, Some(7)));
+        assert_eq!(filter.search.as_deref(), Some("Русский"));
+        assert_eq!(filter.publication, Some(Publication::Published));
+        assert_eq!(filter.order, Order::OldestFirst);
+        assert_eq!(
+            from_route(
+                Some("4294967296".into()),
+                Some("101".into()),
+                Some("\0".into()),
+                None,
+                None
+            ),
+            RecordFilter::default()
+        );
+    }
+
+    #[test]
+    fn list_changes_reset_the_page_without_overwriting_the_tenant_size() {
+        let mut fields = FilterFields::from(&RecordFilter::default());
+        fields.search = "  %  ".into();
+        fields.publication = DRAFT.into();
+        let write = fields.write(Some("en")).unwrap();
+        assert_eq!(
+            write.updates,
+            vec![
+                (PAGE, None),
+                (SEARCH, Some("%".into())),
+                (PUBLICATION, Some(DRAFT.into())),
+                (ORDER, None)
+            ]
+        );
+        assert_eq!(
+            page_write(1, 2).unwrap().into_write().updates,
+            vec![(PAGE, Some("2".into()))]
+        );
+        assert!(page_write(1, 1).is_none());
+        assert_eq!(
+            page_size_write(7).unwrap().updates,
+            vec![(PAGE, None), (PER_PAGE, Some("7".into()))]
+        );
+        assert!(page_size_write(0).is_none());
+        assert!(page_size_write(101).is_none());
+        fields.search = "я".repeat(MAX_SEARCH_CHARS + 1);
+        assert!(fields.write(Some("ru")).is_err());
+    }
+}

@@ -228,3 +228,15 @@ is still required; source inspection is not a substitute.
 - Evidence: `source files, unit regressions and the operator runbook are merged at 1ce83819b077ef6e0df009fd5675f556315ef63a. On exact PR head a95cb0a768bddde9df985a8538501f8dfea63865, Rust-host workflow run 30644588800 and rerun job 91207769592 both failed before the server build: the role-creation step reported success, while the PostgreSQL service logged Role "rustok_browser" does not exist and the migration smoke reported password authentication failed. The cold migration dependency build did compile rustok-events, rustok-tenant and rustok-iggy-connector, but it did not compile rustok-server and is not sufficient host-authority evidence. CI and Hardening remained pending and Migration Compatibility/Ecommerce Hardening remained queued; none are claimed as passed. Browser E2E retained the known unrelated Next Admin sessionStorage-before-origin failures while Next Frontend passed. Connector-only local execution remains unavailable while github.com DNS resolution fails. Historical PostgreSQL race passes on b88e41d92815f9085467bfed4e0d62f6fc29f5c6 must be rerun.`
 - Next action: `the CI owner must correct issue #2740 or provide another allowed exact-SHA execution path; then run the source/unit/compile gates, both Tenant PostgreSQL races, live Redis recovery, migration/backfill/MySQL evidence and retained host-authority parity before revisiting Tenant at the closing gate`
 - Resume command: `node scripts/verify/verify-host-global-authority-boundary.mjs && cargo test -p rustok-api host_authority -- --nocapture && cargo test -p rustok-server host_authority --lib -- --nocapture && cargo check -p rustok-events-module && cargo check -p rustok-iggy-connector-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-tenant --test tenant_ensure_concurrency_postgres -- --nocapture && cargo test -p rustok-tenant --test locale_policy_concurrency_postgres -- --nocapture`
+
+### Permanent tenant identity
+
+Migration 000015 claims each existing and newly inserted tenant UUID in
+`tenant_uuid_witnesses`. The claim survives tenant deletion and dependent
+cascades. UUID updates and witness deletion/replacement are forbidden;
+conflict-do-nothing and rolled-back births consume nothing. SQLite normalizes
+UUID text/blob forms and PostgreSQL uses a nonwaiting per-UUID advisory
+fence. Slug/domain changes and reuse with a fresh UUID retain their current
+contract; natural-key REPLACE with a fresh UUID is not guarded here.
+Pre-cutover deleted IDs and privileged DDL/restore are outside this guarantee.
+Regression sources authored; migration execution remains pending.

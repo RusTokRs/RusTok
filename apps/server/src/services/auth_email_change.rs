@@ -650,7 +650,7 @@ mod tests {
     async fn ensure_email_change_table(db: &DatabaseConnection) {
         use sea_orm::ConnectionTrait;
 
-        db.execute(sea_orm::Statement::from_string(
+        db.execute_raw(sea_orm::Statement::from_string(
             sea_orm::DatabaseBackend::Sqlite,
             "CREATE TABLE IF NOT EXISTS auth_email_change_requests (
                 id TEXT PRIMARY KEY NOT NULL,
@@ -668,7 +668,7 @@ mod tests {
         ))
         .await
         .expect("create auth email change requests table");
-        db.execute(sea_orm::Statement::from_string(
+        db.execute_raw(sea_orm::Statement::from_string(
             sea_orm::DatabaseBackend::Sqlite,
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_email_change_requests_tenant_user
                 ON auth_email_change_requests (tenant_id, user_id)"
@@ -676,7 +676,7 @@ mod tests {
         ))
         .await
         .expect("create email change user index");
-        db.execute(sea_orm::Statement::from_string(
+        db.execute_raw(sea_orm::Statement::from_string(
             sea_orm::DatabaseBackend::Sqlite,
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_email_change_requests_tenant_email
                 ON auth_email_change_requests (tenant_id, new_email)"

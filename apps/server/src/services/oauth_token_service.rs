@@ -559,9 +559,9 @@ async fn validate_authorization_code(
         OAuthTokenProtocolError::invalid_grant("Authorization code scopes are invalid")
     })?;
     validate_scope_subset(&app.scopes_list(), &scopes)?;
-    let (user, consent_granted_at) =
+    let (user, consent_granted_at, consent_id) =
         validate_active_subject_and_consent(db, app, tenant_id, code.user_id, &scopes).await?;
-    validate_code_consent_epoch(&code, consent_granted_at.as_ref())?;
+    validate_code_consent_epoch(&code, consent_granted_at.as_ref(), consent_id)?;
     if user.rejects_delegated_token_issued_at(code.created_at.with_timezone(&Utc)) {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Authorization code predates the current credential state",
@@ -570,13 +570,17 @@ async fn validate_authorization_code(
     Ok(code)
 }
 
-// Also fence pre-existing codes from before the re-grant invalidation fix.
-// Exact persisted timestamps are used; equality is allowed for coarse DB clocks.
+// Consent UUID is the generation authority; time is an additional bound,
+// never evidence that an unbound legacy code belongs to the current grant.
 fn validate_code_consent_epoch(
     code: &oauth_codes::Model,
     consent_granted_at: Option<&sea_orm::prelude::DateTimeWithTimeZone>,
+    consent_id: Option<Uuid>,
 ) -> Result<(), OAuthTokenProtocolError> {
-    if consent_granted_at.is_some_and(|granted_at| &code.created_at < granted_at) {
+    if code.consent_id != consent_id
+        || consent_granted_at.is_some() != consent_id.is_some()
+        || consent_granted_at.is_some_and(|granted_at| &code.created_at < granted_at)
+    {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Authorization code predates the current consent epoch",
         ));
@@ -628,19 +632,44 @@ async fn validate_refresh_token(
     })?;
     let scopes = token.scopes_list();
     validate_scope_subset(&app.scopes_list(), &scopes)?;
-    let (user, consent_granted_at) =
+    let (user, consent_granted_at, consent_id) =
         validate_active_subject_and_consent(db, app, tenant_id, user_id, &scopes).await?;
     if user.rejects_delegated_token_issued_at(token.created_at.with_timezone(&Utc)) {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Refresh token predates the current credential state",
         ));
     }
-    if app.requires_user_consent() && token.consent_granted_at != consent_granted_at {
+    if token.consent_granted_at != consent_granted_at {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Refresh token predates the current consent epoch",
         ));
     }
+    validate_token_consent_generation(db, &token, consent_id).await?;
     Ok(token)
+}
+
+// The family already preserves its immutable authorization_code_id.
+// Resolve that evidence instead of copying a second generation to descendants.
+async fn validate_token_consent_generation<C: ConnectionTrait>(
+    db: &C,
+    token: &oauth_tokens::Model,
+    consent_id: Option<Uuid>,
+) -> Result<(), OAuthTokenProtocolError> {
+    let Some(consent_id) = consent_id else {
+        return Ok(());
+    };
+    let user_id = token.user_id.ok_or_else(|| {
+        OAuthTokenProtocolError::invalid_grant("Refresh token has no associated user")
+    })?;
+    if !OAuthConsents::matches_consumed_code_generation(
+        db, token.authorization_code_id, consent_id, token.app_id,
+        user_id, token.tenant_id,
+    ).await.map_err(|_| OAuthTokenProtocolError::server_error("Failed to validate consent generation"))? {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Refresh token belongs to a different or unbound consent generation",
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -729,6 +758,25 @@ fn prepared_access_lifetime(
         ));
     }
     remaining_access_lifetime(prepared_token_expiry(model)?, now, maximum)
+}
+
+// Validate the actual persistence models, not merely the preparation DTO.
+// A root inserted with a different code would otherwise publish a different
+// generation even though the presented credential passed the live fence.
+fn validate_prepared_consent_lineage(
+    prepared: &PreparedOAuthTokens,
+    expected_code_id: Option<Uuid>,
+) -> Result<(), OAuthTokenProtocolError> {
+    for model in std::iter::once(&prepared.access_model).chain(prepared.refresh_model.iter()) {
+        if !matches!(&model.authorization_code_id, Set(id) if *id == expected_code_id)
+            || !matches!(&model.consent_granted_at, Set(epoch) if epoch == &prepared.consent_granted_at)
+        {
+            return Err(OAuthTokenProtocolError::invalid_grant(
+                "Prepared OAuth credential consent lineage changed",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_prepared_deadlines(
@@ -1069,6 +1117,54 @@ where
     Ok(())
 }
 
+
+/// A broad revocation may intersect another owner (app-wide versus
+/// user-wide). Its caller already holds the corresponding owner mutation
+/// fence. Never acquire a new app after a user: prelock exact credential
+/// rows in stable order without waiting, or abort the entire transaction.
+pub(crate) enum BulkOAuthRevocationScope {
+    Application(Uuid),
+    User(Uuid),
+    Consent { app_id: Uuid, user_id: Uuid },
+}
+
+pub(crate) async fn lock_bulk_oauth_credentials<C: ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+    scope: BulkOAuthRevocationScope,
+) -> Result<(), sea_orm::DbErr> {
+    match db.get_database_backend() {
+        DbBackend::Sqlite => return Ok(()),
+        DbBackend::Postgres => {}
+        _ => return Err(sea_orm::DbErr::Custom("unsupported OAuth bulk revocation database".into())),
+    }
+    let (scope_predicate, values, token_filter, include_consents): (&str, Vec<sea_orm::Value>, &str, bool) = match scope {
+        BulkOAuthRevocationScope::Application(id) => ("app_id = $2", vec![tenant_id.into(), id.into()], "", true),
+        BulkOAuthRevocationScope::User(id) => ("user_id = $2", vec![tenant_id.into(), id.into()], " AND grant_type = 'authorization_code'", false),
+        BulkOAuthRevocationScope::Consent { app_id, user_id } => (
+            "app_id = $2 AND user_id = $3",
+            vec![tenant_id.into(), app_id.into(), user_id.into()],
+            "",
+            true,
+        ),
+    };
+    // Fixed identifiers only. Retain all candidate locks before the first
+    // credential write, including code rows even if no tokens remain.
+    for (table, predicate) in [
+        ("oauth_tokens", format!("revoked_at IS NULL{token_filter}")),
+        ("oauth_authorization_codes", "used_at IS NULL".to_owned()),
+        ("oauth_consents", "revoked_at IS NULL".to_owned()),
+    ] {
+        if table == "oauth_consents" && !include_consents { continue; }
+        db.query_all_raw(sea_orm::Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            format!("SELECT id FROM {table} WHERE tenant_id = $1 AND {scope_predicate} AND {predicate} ORDER BY id FOR UPDATE NOWAIT"),
+            values.clone(),
+        )).await?;
+    }
+    Ok(())
+}
+
 /// Revoke every live delegated token row for a user inside the caller's
 /// credential-change transaction. Registered access rows are revoked here,
 /// and the user's `password_changed_at` epoch remains a second fence at
@@ -1082,6 +1178,7 @@ pub(crate) async fn revoke_user_delegated_tokens_in_tx<C>(
 where
     C: ConnectionTrait,
 {
+    lock_bulk_oauth_credentials(db, tenant_id, BulkOAuthRevocationScope::User(user_id)).await?;
     let revoked = oauth_tokens::Entity::update_many()
         .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
         .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
@@ -1107,7 +1204,7 @@ async fn validate_active_subject_and_consent(
     tenant_id: Uuid,
     user_id: Uuid,
     scopes: &[String],
-) -> Result<(users::Model, Option<sea_orm::prelude::DateTimeWithTimeZone>), OAuthTokenProtocolError>
+) -> Result<(users::Model, Option<sea_orm::prelude::DateTimeWithTimeZone>, Option<Uuid>), OAuthTokenProtocolError>
 {
     let user = Users::find_by_id(user_id)
         .filter(users::Column::TenantId.eq(tenant_id))
@@ -1120,6 +1217,7 @@ async fn validate_active_subject_and_consent(
         })?;
 
     let mut consent_granted_at = None;
+    let mut consent_id = None;
     if app.requires_user_consent() {
         let consent = OAuthConsents::find_active_consent(db, app.id, user.id, tenant_id)
             .await
@@ -1132,9 +1230,10 @@ async fn validate_active_subject_and_consent(
         })?;
         validate_scope_subset(&consent_scopes, scopes)?;
         consent_granted_at = Some(consent.granted_at);
+        consent_id = Some(consent.id);
     }
 
-    Ok((user, consent_granted_at))
+    Ok((user, consent_granted_at, consent_id))
 }
 
 async fn validate_locked_oauth_consent<C>(
@@ -1144,12 +1243,12 @@ async fn validate_locked_oauth_consent<C>(
     user_id: Uuid,
     scopes: &[String],
     expected_granted_at: Option<sea_orm::prelude::DateTimeWithTimeZone>,
-) -> Result<(), OAuthTokenProtocolError>
+) -> Result<Option<Uuid>, OAuthTokenProtocolError>
 where
     C: ConnectionTrait,
 {
     if !app.requires_user_consent() {
-        return Ok(());
+        return Ok(None);
     }
 
     let consent = OAuthConsents::find_active_consent(db, app.id, user_id, tenant_id)
@@ -1175,7 +1274,7 @@ where
         ));
     }
 
-    Ok(())
+    Ok(Some(consent.id))
 }
 
 async fn lock_active_oauth_app<C>(
@@ -1348,7 +1447,7 @@ async fn prepare_user_tokens(
     derived_refresh: Option<String>,
     clock: &OAuthClock<'_>,
 ) -> Result<PreparedOAuthTokens, OAuthTokenProtocolError> {
-    let (_user, consent_granted_at) =
+    let (_user, consent_granted_at, _) =
         validate_active_subject_and_consent(db, app, app.tenant_id, user_id, scopes).await?;
     let permissions = RbacService::get_user_permissions_authoritative(db, &app.tenant_id, &user_id)
         .await
@@ -1485,7 +1584,6 @@ async fn commit_authorization_code_exchange(
         // must not result in a persisted refresh credential.
         require_grant(&current_app, REFRESH_TOKEN_GRANT)?;
     }
-    validate_code_consent_epoch(code, prepared.consent_granted_at.as_ref())?;
     if !current_app
         .redirect_uris_list()
         .contains(&code.redirect_uri)
@@ -1506,7 +1604,7 @@ async fn commit_authorization_code_exchange(
         require_email_verification,
     )
     .await?;
-    validate_locked_oauth_consent(
+    let consent_id = validate_locked_oauth_consent(
         &tx,
         &current_app,
         code.tenant_id,
@@ -1515,6 +1613,8 @@ async fn commit_authorization_code_exchange(
         prepared.consent_granted_at.clone(),
     )
     .await?;
+    validate_code_consent_epoch(code, prepared.consent_granted_at.as_ref(), consent_id)?;
+    validate_prepared_consent_lineage(prepared, Some(code.id))?;
 
     let now = verify_application_clock(&tx, clock).await?;
     validate_prepared_deadlines(prepared, now, None)?;
@@ -1688,7 +1788,7 @@ async fn commit_refresh_rotation(
         require_email_verification,
     )
     .await?;
-    validate_locked_oauth_consent(
+    let consent_id = validate_locked_oauth_consent(
         &tx,
         &current_app,
         current.tenant_id,
@@ -1697,6 +1797,8 @@ async fn commit_refresh_rotation(
         current.consent_granted_at.clone(),
     )
     .await?;
+    validate_token_consent_generation(&tx, current, consent_id).await?;
+    validate_prepared_consent_lineage(prepared, current.authorization_code_id)?;
 
     if prepared.consent_granted_at != current.consent_granted_at {
         return Err(OAuthTokenProtocolError::invalid_grant(
@@ -2082,6 +2184,7 @@ mod tests {
                 user_id TEXT NOT NULL,
                 tenant_id TEXT NOT NULL,
                 code_hash TEXT NOT NULL,
+                consent_id TEXT NULL,
                 redirect_uri TEXT NOT NULL,
                 scopes TEXT NOT NULL,
                 code_challenge TEXT NOT NULL,
@@ -2110,6 +2213,7 @@ mod tests {
                 user_id: Set(Uuid::new_v4()),
                 tenant_id: Set(Uuid::new_v4()),
                 code_hash: Set(Uuid::new_v4().to_string()),
+                consent_id: Set(None),
                 redirect_uri: Set("https://example.com/callback".to_string()),
                 scopes: Set(serde_json::json!(["openid"])),
                 code_challenge: Set("challenge".to_string()),
@@ -2154,6 +2258,7 @@ mod tests {
             user_id: Uuid::new_v4(),
             tenant_id: Uuid::new_v4(),
             code_hash: "digest".to_string(),
+            consent_id: None,
             redirect_uri: "https://example.com/callback".to_string(),
             scopes: serde_json::json!(["profile"]),
             code_challenge: "challenge".to_string(),
@@ -2177,10 +2282,20 @@ mod tests {
         }
         let older = (now - chrono::Duration::seconds(1)).into();
         let newer = (now + chrono::Duration::seconds(1)).into();
-        assert!(super::validate_code_consent_epoch(&code, None).is_ok());
-        assert!(super::validate_code_consent_epoch(&code, Some(&older)).is_ok());
-        assert!(super::validate_code_consent_epoch(&code, Some(&code.created_at)).is_ok());
-        let error = super::validate_code_consent_epoch(&code, Some(&newer))
+        let id = Uuid::new_v4();
+        let replacement = Uuid::new_v4();
+        assert!(super::validate_code_consent_epoch(&code, None, None).is_ok());
+        assert!(super::validate_code_consent_epoch(&code, Some(&older), Some(id)).is_err(),
+            "legacy unbound code cannot adopt a consent");
+        let mut code = code;
+        code.consent_id = Some(id);
+        assert!(super::validate_code_consent_epoch(&code, Some(&older), Some(id)).is_ok());
+        assert!(super::validate_code_consent_epoch(&code, Some(&code.created_at), Some(id)).is_ok());
+        assert!(super::validate_code_consent_epoch(&code, Some(&code.created_at), Some(replacement)).is_err(),
+            "same-timestamp replacement is a different generation");
+        assert!(super::validate_code_consent_epoch(&code, None, None).is_err(),
+            "a bound code cannot silently become consent-exempt");
+        let error = super::validate_code_consent_epoch(&code, Some(&newer), Some(id))
             .expect_err("a stale code cannot adopt later consent");
         assert_eq!(error.error, "invalid_grant");
     }
@@ -2207,6 +2322,8 @@ mod tests {
         db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_tokens::Entity)))
             .await
             .expect("OAuth tokens table");
+        db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_codes::Entity)))
+            .await.expect("OAuth codes table");
 
         let tenant = tenants::ActiveModel::new("Consent lock tenant", "consent-lock")
             .insert(&db)
@@ -2243,6 +2360,21 @@ mod tests {
         .expect("active consent");
 
         let now = Utc::now();
+        let original_code = oauth_codes::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            app_id: Set(client.id),
+            user_id: Set(user.id),
+            tenant_id: Set(tenant.id),
+            code_hash: Set("consent-generation-code".into()),
+            consent_id: Set(Some(consent.id)),
+            redirect_uri: Set("https://example.com/callback".into()),
+            scopes: Set(serde_json::json!(["profile"])),
+            code_challenge: Set("challenge".into()),
+            code_challenge_method: Set("S256".into()),
+            expires_at: Set((now + chrono::Duration::minutes(10)).into()),
+            used_at: Set(Some(now.into())),
+            created_at: Set(now.into()),
+        }.insert(&db).await.expect("consumed original code");
         let current_id = Uuid::new_v4();
         let current = oauth_tokens::ActiveModel {
             id: Set(current_id),
@@ -2251,7 +2383,7 @@ mod tests {
             tenant_id: Set(tenant.id),
             token_hash: Set("consent-bound-refresh-token".to_string()),
             family_id: Set(current_id),
-            authorization_code_id: Set(None),
+            authorization_code_id: Set(Some(original_code.id)),
             grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
             consent_granted_at: Set(Some(granted_at.clone())),
@@ -2274,7 +2406,7 @@ mod tests {
                 tenant_id: Set(tenant.id),
                 token_hash: Set("access-after-consent-change".to_string()),
                 family_id: Set(current_id),
-                authorization_code_id: Set(None),
+                authorization_code_id: Set(Some(original_code.id)),
                 grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
                 token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
                 consent_granted_at: Set(Some(granted_at.clone())),
@@ -2293,7 +2425,7 @@ mod tests {
                 tenant_id: Set(tenant.id),
                 token_hash: Set("replacement-after-consent-change".to_string()),
                 family_id: Set(current_id),
-                authorization_code_id: Set(None),
+                authorization_code_id: Set(Some(original_code.id)),
                 grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
                 token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
                 consent_granted_at: Set(Some(granted_at.clone())),
@@ -2308,24 +2440,32 @@ mod tests {
             expires_in: 900,
         };
 
-        let mut changed_consent: oauth_consents::ActiveModel = consent.clone().into();
-        changed_consent.granted_at =
-            Set((granted_at.clone() + chrono::Duration::seconds(1)).into());
-        let changed_consent = changed_consent
-            .update(&db)
-            .await
-            .expect("change consent epoch without revoking");
-
-        let stale_epoch = super::validate_locked_oauth_consent(
-            &db,
-            &client,
-            tenant.id,
-            user.id,
-            &["profile".to_string()],
+        super::validate_token_consent_generation(&db, &current, Some(consent.id))
+            .await.expect("original consumed code proves generation");
+        super::validate_prepared_consent_lineage(&prepared, Some(original_code.id))
+            .expect("prepared models retain exact code");
+        assert!(super::validate_prepared_consent_lineage(&prepared, Some(Uuid::new_v4()))
+            .is_err());
+        let mut unbound = current.clone();
+        unbound.authorization_code_id = None;
+        assert!(super::validate_token_consent_generation(&db, &unbound, Some(consent.id))
+            .await.is_err());
+        let mut retired: oauth_consents::ActiveModel = consent.clone().into();
+        retired.revoked_at = Set(Some(now.into()));
+        retired.update(&db).await.expect("retire old grant");
+        assert!(super::validate_token_consent_generation(&db, &current, Some(consent.id))
+            .await.is_err(), "a stale grant observation cannot authorize a retired code");
+        let mut replacement: oauth_consents::ActiveModel = consent.clone().into();
+        replacement.id = Set(Uuid::new_v4());
+        replacement.revoked_at = Set(None);
+        let changed_consent = replacement.insert(&db).await.expect("same-timestamp replacement");
+        let live_id = super::validate_locked_oauth_consent(
+            &db, &client, tenant.id, user.id, &["profile".to_string()],
             Some(granted_at.clone()),
-        )
-        .await
-        .expect_err("a changed consent epoch must reject in-flight issuance");
+        ).await.expect("timestamp alone cannot distinguish grants");
+        assert_eq!(live_id, Some(changed_consent.id));
+        let stale_epoch = super::validate_token_consent_generation(&db, &current, live_id)
+            .await.expect_err("different UUID must reject in-flight issuance");
         assert_eq!(stale_epoch.error, "invalid_grant");
 
         let commit_error = super::commit_refresh_rotation(
@@ -2558,6 +2698,91 @@ mod tests {
         );
     }
 
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_AUTH_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_bulk_oauth_revocation_prelocks_exact_rows_without_waiting() {
+        let db = sea_orm::Database::connect(std::env::var("RUSTOK_AUTH_TEST_DATABASE_URL").unwrap()).await.unwrap();
+        let schema = format!("oauth_bulk_fence_{}", uuid::Uuid::new_v4().simple());
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
+        let tenant = uuid::Uuid::new_v4();
+        let app = uuid::Uuid::new_v4();
+        let user = uuid::Uuid::new_v4();
+        let other = uuid::Uuid::new_v4();
+        let token = uuid::Uuid::new_v4();
+        let code = uuid::Uuid::new_v4();
+        let unrelated = uuid::Uuid::new_v4();
+        let consent = uuid::Uuid::new_v4();
+        let other_app_token = uuid::Uuid::new_v4();
+        let other_app = uuid::Uuid::new_v4();
+        let setup = db.begin().await.unwrap();
+        setup.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        setup.execute_unprepared(&format!(
+            "CREATE TABLE oauth_tokens (id UUID PRIMARY KEY, tenant_id UUID, app_id UUID, user_id UUID, grant_type TEXT, revoked_at TIMESTAMPTZ, updated_at TIMESTAMPTZ);
+             CREATE TABLE oauth_authorization_codes (id UUID PRIMARY KEY, tenant_id UUID, app_id UUID, user_id UUID, used_at TIMESTAMPTZ);
+             CREATE TABLE oauth_consents (id UUID PRIMARY KEY, tenant_id UUID, app_id UUID, user_id UUID, revoked_at TIMESTAMPTZ);
+             INSERT INTO oauth_tokens VALUES ('{token}', '{tenant}', '{app}', '{user}', 'authorization_code', NULL, NULL),
+                 ('{unrelated}', '{tenant}', '{app}', '{other}', 'authorization_code', NULL, NULL),
+                 ('{other_app_token}', '{tenant}', '{other_app}', '{user}', 'authorization_code', NULL, NULL);
+             INSERT INTO oauth_authorization_codes VALUES ('{code}', '{tenant}', '{app}', '{user}', NULL);
+             INSERT INTO oauth_consents VALUES ('{consent}', '{tenant}', '{app}', '{user}', NULL);"
+        )).await.unwrap();
+        setup.commit().await.unwrap();
+
+        for (table, id) in [("oauth_tokens", token), ("oauth_authorization_codes", code), ("oauth_consents", consent)] {
+            let owner = db.begin().await.unwrap();
+            owner.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+            owner.execute_unprepared(&format!("SELECT id FROM {table} WHERE id = '{id}' FOR UPDATE")).await.unwrap();
+            let mut scopes = vec![
+                super::BulkOAuthRevocationScope::Application(app),
+                super::BulkOAuthRevocationScope::Consent { app_id: app, user_id: user },
+            ];
+            if table != "oauth_consents" {
+                scopes.push(super::BulkOAuthRevocationScope::User(user));
+            }
+            for scope in scopes {
+                let writer = db.begin().await.unwrap();
+                writer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+                let result = tokio::time::timeout(std::time::Duration::from_secs(3),
+                    super::lock_bulk_oauth_credentials(&writer, tenant, scope)).await.expect("bulk prelock must not wait");
+                let error = result.unwrap_err();
+                assert_eq!(
+                    rustok_core::resilience::retry::PostgresTransactionConflict::classify(
+                        sea_orm::DbBackend::Postgres, &error
+                    ),
+                    Some(rustok_core::resilience::retry::PostgresTransactionConflict::LockUnavailable)
+                );
+                assert!(rustok_core::resilience::retry::rollback_for_transaction_retry(writer, &error, 1).await.unwrap());
+            }
+            owner.rollback().await.unwrap();
+        }
+
+        let owner = db.begin().await.unwrap();
+        owner.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        owner.execute_unprepared(&format!("SELECT id FROM oauth_tokens WHERE id = '{unrelated}' FOR UPDATE")).await.unwrap();
+        let writer = db.begin().await.unwrap();
+        writer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        // Consent scope must not lock either another user in this app or
+        // another app for the same user. Roll back the probe before exercising
+        // the broader user-wide writer.
+        owner.execute_unprepared(&format!("SELECT id FROM oauth_tokens WHERE id = '{other_app_token}' FOR UPDATE")).await.unwrap();
+        super::lock_bulk_oauth_credentials(&writer, tenant,
+            super::BulkOAuthRevocationScope::Consent { app_id: app, user_id: user }).await.unwrap();
+        writer.rollback().await.unwrap();
+        owner.rollback().await.unwrap();
+
+        let writer = db.begin().await.unwrap();
+        writer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        let now = chrono::Utc::now();
+        assert_eq!(super::revoke_user_delegated_tokens_in_tx(&writer, tenant, user, now).await.unwrap(), 2);
+        writer.commit().await.unwrap();
+        let check = db.begin().await.unwrap();
+        check.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        assert_eq!(super::revoke_user_delegated_tokens_in_tx(&check, tenant, user, now).await.unwrap(), 0);
+        check.commit().await.unwrap();
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+    }
+
     #[tokio::test]
     async fn credential_change_revokes_live_delegated_refresh_tokens() {
         let db = Database::connect("sqlite::memory:")
@@ -2575,6 +2800,7 @@ mod tests {
                 user_id TEXT NOT NULL,
                 tenant_id TEXT NOT NULL,
                 code_hash TEXT NOT NULL,
+                consent_id TEXT NULL,
                 redirect_uri TEXT NOT NULL,
                 scopes TEXT NOT NULL,
                 code_challenge TEXT NOT NULL,
@@ -2620,6 +2846,7 @@ mod tests {
             user_id: Set(user_id),
             tenant_id: Set(tenant_id),
             code_hash: Set("pending-authorization-code".to_string()),
+                consent_id: Set(None),
             redirect_uri: Set("https://client.example/callback".to_string()),
             scopes: Set(serde_json::json!(["openid"])),
             code_challenge: Set("challenge".to_string()),
@@ -3525,6 +3752,7 @@ mod tests {
             user_id,
             tenant_id,
             code_hash: "code-hash".to_string(),
+            consent_id: None,
             redirect_uri: "https://client.example/callback".to_string(),
             scopes: serde_json::json!(["openid"]),
             code_challenge: "challenge".to_string(),

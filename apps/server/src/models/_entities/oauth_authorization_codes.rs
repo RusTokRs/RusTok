@@ -10,6 +10,9 @@ pub struct Model {
     pub user_id: Uuid,
     pub tenant_id: Uuid,
     pub code_hash: String,
+    /// Exact user-consent generation captured at issuance. NULL is allowed
+    /// for consent-exempt clients and unbound legacy evidence only.
+    pub consent_id: Option<Uuid>,
     pub redirect_uri: String,
     pub scopes: Json,
     pub code_challenge: String,

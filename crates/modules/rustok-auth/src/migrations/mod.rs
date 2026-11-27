@@ -26,6 +26,10 @@ mod m20261126_000063_bind_invite_issuer_recovery_revision;
 mod m20261127_000002_bind_invite_membership_revision;
 mod m20261127_000004_bind_invite_role_grant_revision;
 mod m20261127_000005_bind_invite_module_policy;
+mod m20261127_000007_fence_auth_credential_parents;
+mod m20261127_000008_sqlite_oauth_user_cascade;
+mod m20261127_000014_preserve_credential_identity;
+mod m20261127_000018_bind_oauth_code_consent_generation;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -74,6 +78,14 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     migrations.push(Box::new(
         m20261127_000005_bind_invite_module_policy::Migration,
     ));
+    migrations.push(Box::new(
+        m20261127_000007_fence_auth_credential_parents::Migration,
+    ));
+    migrations.push(Box::new(
+        m20261127_000008_sqlite_oauth_user_cascade::Migration,
+    ));
+    migrations.push(Box::new(m20261127_000014_preserve_credential_identity::Migration));
+    migrations.push(Box::new(m20261127_000018_bind_oauth_code_consent_generation::Migration));
     migrations
 }
 
@@ -88,6 +100,20 @@ pub(crate) fn jwt_fence_migrations() -> Vec<Box<dyn MigrationTrait>> {
 
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
     vec![
+        MigrationDependencyDescriptor::new(
+            "m20261127_000018_bind_oauth_code_consent_generation",
+            vec!["m20261127_000014_preserve_credential_identity"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20261127_000014_preserve_credential_identity",
+            vec![
+                "m20261127_000008_sqlite_oauth_user_cascade",
+                "m20261126_000060_enforce_oauth_family_identity",
+                "m20250101_000004_create_sessions",
+                "m20261127_000011_session_evidence_integrity",
+                "m20261025_000003_add_session_reuse_detection",
+            ],
+        ),
         MigrationDependencyDescriptor::new(
             "m20261127_000005_bind_invite_module_policy",
             vec![

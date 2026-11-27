@@ -351,6 +351,31 @@ async fn product_category_schema_and_service_use_canonical_same_id_taxonomy() ->
         .await?;
     assert_eq!(effective_form.category_id, child.id);
 
+    // Missing placement is corrupt owner state, not a root category. Check
+    // both connection variants, including an uncommitted deletion.
+    let port = in_process_product_taxonomy_port(db.clone());
+    let txn = db.begin().await?;
+    txn.execute_raw(Statement::from_sql_and_values(
+        db.get_database_backend(),
+        "DELETE FROM taxonomy_category_hierarchy WHERE tenant_id = $1 AND term_id = $2",
+        vec![tenant_id.into(), child.id.into()],
+    ))
+    .await?;
+    let selected = [child.id];
+    let in_tx = port
+        .load_scoped_categories((&txn).into(), tenant_id, Some(&selected), "en", None)
+        .await;
+    assert!(matches!(
+        in_tx,
+        Err(CommerceError::Core(rustok_core::error::Error::Internal(_)))
+    ));
+    txn.commit().await?;
+    let from_pool = service.list_categories(tenant_id, "en").await;
+    assert!(matches!(
+        from_pool,
+        Err(CommerceError::Core(rustok_core::error::Error::Internal(_)))
+    ));
+
     Ok(())
 }
 

@@ -39,6 +39,7 @@ fn intent(
         intent: kind.as_str().to_string(),
         payload,
         sequence: Some(1),
+        command_sequence: None,
         page_id: Some(controller.page_id().to_string()),
         revision: Some(controller.revision_id().to_string()),
         project_hash: Some(controller.editor().revision().project_hash.hex()),

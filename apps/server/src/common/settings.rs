@@ -164,7 +164,10 @@ impl std::fmt::Debug for RegistryRemoteExecutorSettings {
             .field("enabled", &self.enabled)
             .field(
                 "shared_token_configured",
-                &self.shared_token.as_ref().is_some_and(|value| !value.trim().is_empty()),
+                &self
+                    .shared_token
+                    .as_ref()
+                    .is_some_and(|value| !value.trim().is_empty()),
             )
             .field("lease_ttl_ms", &self.lease_ttl_ms)
             .field("requeue_scan_interval_ms", &self.requeue_scan_interval_ms)
@@ -177,7 +180,10 @@ impl std::fmt::Debug for CacheSettings {
         f.debug_struct("CacheSettings")
             .field(
                 "redis_url_configured",
-                &self.redis_url.as_ref().is_some_and(|value| !value.trim().is_empty()),
+                &self
+                    .redis_url
+                    .as_ref()
+                    .is_some_and(|value| !value.trim().is_empty()),
             )
             .finish()
     }
@@ -188,10 +194,16 @@ impl std::fmt::Debug for EmailSettings {
         f.debug_struct("EmailSettings")
             .field("enabled", &self.enabled)
             .field("provider", &self.provider)
-            .field("allow_disabled_in_production", &self.allow_disabled_in_production)
+            .field(
+                "allow_disabled_in_production",
+                &self.allow_disabled_in_production,
+            )
             .field("smtp", &self.smtp)
             .field("from_configured", &!self.from.trim().is_empty())
-            .field("reset_base_url_configured", &!self.reset_base_url.trim().is_empty())
+            .field(
+                "reset_base_url_configured",
+                &!self.reset_base_url.trim().is_empty(),
+            )
             .finish()
     }
 }
@@ -215,7 +227,10 @@ impl std::fmt::Debug for SearchSettings {
             .field("url_configured", &!self.url.trim().is_empty())
             .field(
                 "api_key_configured",
-                &self.api_key.as_ref().is_some_and(|value| !value.trim().is_empty()),
+                &self
+                    .api_key
+                    .as_ref()
+                    .is_some_and(|value| !value.trim().is_empty()),
             )
             .field("index_prefix", &self.index_prefix)
             .field("reindex", &self.reindex)
@@ -875,6 +890,11 @@ impl RustokSettings {
             .cloned()
             .unwrap_or_else(|| serde_json::json!({}));
         let mut parsed: Self = serde_json::from_value(rustok)?;
+        apply_email_environment_overrides(&mut parsed.email)?;
+        parsed.email.from = parsed.email.from.trim().to_string();
+        parsed.email.reset_base_url = parsed.email.reset_base_url.trim().to_string();
+        parsed.email.smtp.host = parsed.email.smtp.host.trim().to_string();
+        parsed.email.smtp.username = parsed.email.smtp.username.trim().to_string();
 
         if let Ok(raw_profile) = std::env::var("RUSTOK_EVENT_DELIVERY_PROFILE") {
             parsed.events.delivery_profile = parse_event_delivery_profile(&raw_profile)?;
@@ -1041,16 +1061,17 @@ impl RustokSettings {
             )));
         }
 
-        if is_production_environment()
+        let production_environment = is_production_environment();
+        if production_environment
             && email_delivery_is_disabled(&parsed.email)
             && !parsed.email.allow_disabled_in_production
             && !email_disabled_production_override_enabled()
         {
-            return Err(serde_json::Error::io(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
+            return Err(settings_validation_error(
                 "rustok.email is disabled in production; configure an email provider or set rustok.email.allow_disabled_in_production=true / RUSTOK_EMAIL_ALLOW_DISABLED_IN_PRODUCTION=true as an explicit emergency override",
-            )));
+            ));
         }
+        validate_email_settings(&parsed.email, production_environment)?;
 
         let backpressure = &parsed.events.backpressure;
         if backpressure.enabled {
@@ -1448,6 +1469,219 @@ fn default_smtp_port() -> u16 {
     1025
 }
 
+fn settings_validation_error(message: impl Into<String>) -> serde_json::Error {
+    serde_json::Error::io(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        message.into(),
+    ))
+}
+
+fn read_email_environment_value(
+    name: &str,
+) -> Result<Option<String>, serde_json::Error> {
+    match std::env::var(name) {
+        Ok(value) => Ok(Some(value)),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => Err(settings_validation_error(format!(
+            "{name} must be valid UTF-8"
+        ))),
+    }
+}
+
+fn parse_email_environment_bool(name: &str, value: &str) -> Result<bool, serde_json::Error> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => Ok(true),
+        "false" | "0" | "no" | "off" => Ok(false),
+        _ => Err(settings_validation_error(format!(
+            "{name} must be one of true/false, 1/0, yes/no, or on/off"
+        ))),
+    }
+}
+
+fn apply_email_environment_overrides(
+    email: &mut EmailSettings,
+) -> Result<(), serde_json::Error> {
+    if let Some(value) = read_email_environment_value("EMAIL_ENABLED")? {
+        email.enabled = parse_email_environment_bool("EMAIL_ENABLED", &value)?;
+    }
+    if let Some(value) = read_email_environment_value("EMAIL_PROVIDER")? {
+        email.provider = match value.trim().to_ascii_lowercase().as_str() {
+            "smtp" => EmailProvider::Smtp,
+            "none" => EmailProvider::None,
+            _ => {
+                return Err(settings_validation_error(
+                    "EMAIL_PROVIDER must be either smtp or none",
+                ));
+            }
+        };
+    }
+    if let Some(value) = read_email_environment_value("EMAIL_FROM")? {
+        email.from = value.trim().to_string();
+    }
+    if let Some(value) = read_email_environment_value("RESET_BASE_URL")? {
+        email.reset_base_url = value.trim().to_string();
+    }
+    if let Some(value) = read_email_environment_value("SMTP_HOST")? {
+        email.smtp.host = value.trim().to_string();
+    }
+    if let Some(value) = read_email_environment_value("SMTP_PORT")? {
+        let port = value.trim().parse::<u16>().map_err(|_| {
+            settings_validation_error("SMTP_PORT must be an integer from 1 through 65535")
+        })?;
+        if port == 0 {
+            return Err(settings_validation_error("SMTP_PORT must be greater than zero"));
+        }
+        email.smtp.port = port;
+    }
+    if let Some(value) = read_email_environment_value("SMTP_USERNAME")? {
+        email.smtp.username = value.trim().to_string();
+    }
+    if let Some(value) = read_email_environment_value("SMTP_PASSWORD")? {
+        email.smtp.password = value;
+    }
+    Ok(())
+}
+
+fn is_placeholder_email_value(value: &str) -> bool {
+    const PLACEHOLDERS: &[&str] = &[
+        "change_me",
+        "change-me",
+        "changeme",
+        "replace_me",
+        "replace-me",
+        "placeholder",
+    ];
+    let normalized = value.trim().to_ascii_lowercase();
+    PLACEHOLDERS
+        .iter()
+        .any(|placeholder| normalized.contains(placeholder))
+}
+
+fn is_local_or_placeholder_email_host(host: &str) -> bool {
+    let normalized = host
+        .trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    normalized.is_empty()
+        || normalized == "localhost"
+        || normalized == "localhost.localdomain"
+        || normalized.ends_with(".localhost")
+        || normalized.ends_with(".local")
+        || normalized == "example.com"
+        || normalized.ends_with(".example.com")
+        || normalized == "example.net"
+        || normalized.ends_with(".example.net")
+        || normalized == "example.org"
+        || normalized.ends_with(".example.org")
+        || normalized.ends_with(".example")
+        || normalized.ends_with(".invalid")
+        || normalized.ends_with(".test")
+        || is_placeholder_email_value(&normalized)
+        || normalized
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback() || address.is_unspecified())
+}
+
+fn validate_email_settings(
+    email: &EmailSettings,
+    production: bool,
+) -> Result<(), serde_json::Error> {
+    if !email.enabled || email.provider != EmailProvider::Smtp {
+        return Ok(());
+    }
+
+    let smtp_host = email.smtp.host.trim();
+    if smtp_host.is_empty() {
+        return Err(settings_validation_error(
+            "rustok.email.smtp.host must be configured when SMTP email is enabled",
+        ));
+    }
+    if email.smtp.port == 0 {
+        return Err(settings_validation_error(
+            "rustok.email.smtp.port must be greater than zero",
+        ));
+    }
+
+    let username = email.smtp.username.trim();
+    let password = email.smtp.password.trim();
+    let username_configured = !email.smtp.username.is_empty();
+    let password_configured = !email.smtp.password.is_empty();
+    if username_configured != password_configured
+        || (username_configured && (username.is_empty() || password.is_empty()))
+    {
+        return Err(settings_validation_error(
+            "rustok.email.smtp.username and password must either both be set or both be empty",
+        ));
+    }
+
+    let from = email.from.trim();
+    let Some((_, sender_domain)) = from.rsplit_once('@') else {
+        return Err(settings_validation_error(
+            "rustok.email.from must contain a sender address with a domain",
+        ));
+    };
+    let sender_domain = sender_domain.trim().trim_end_matches('>').trim_end_matches('.');
+    if sender_domain.is_empty() {
+        return Err(settings_validation_error(
+            "rustok.email.from must contain a sender address with a domain",
+        ));
+    }
+
+    let reset_url = url::Url::parse(email.reset_base_url.trim()).map_err(|_| {
+        settings_validation_error("rustok.email.reset_base_url must be a valid absolute URL")
+    })?;
+    if reset_url.host_str().is_none()
+        || !reset_url.username().is_empty()
+        || reset_url.password().is_some()
+    {
+        return Err(settings_validation_error(
+            "rustok.email.reset_base_url must have a host and must not contain credentials",
+        ));
+    }
+
+    let smtp_url = url::Url::parse(&format!("smtp://{smtp_host}")).map_err(|_| {
+        settings_validation_error("rustok.email.smtp.host must be a hostname, not a URL")
+    })?;
+    if smtp_url.host_str().is_none()
+        || smtp_url.port().is_some()
+        || smtp_url.path() != "/"
+        || !smtp_url.username().is_empty()
+        || smtp_url.password().is_some()
+        || smtp_url.query().is_some()
+        || smtp_url.fragment().is_some()
+    {
+        return Err(settings_validation_error(
+            "rustok.email.smtp.host must contain only a hostname; configure the port separately",
+        ));
+    }
+
+    if production {
+        if reset_url.scheme() != "https" {
+            return Err(settings_validation_error(
+                "production rustok.email.reset_base_url must use HTTPS",
+            ));
+        }
+        if is_placeholder_email_value(from)
+            || is_local_or_placeholder_email_host(smtp_url.host_str().unwrap_or_default())
+            || is_local_or_placeholder_email_host(sender_domain)
+            || is_local_or_placeholder_email_host(reset_url.host_str().unwrap_or_default())
+        {
+            return Err(settings_validation_error(
+                "production SMTP host, sender domain, and reset URL must not use local or reserved example hosts",
+            ));
+        }
+        if is_placeholder_email_value(username) || is_placeholder_email_value(password) {
+            return Err(settings_validation_error(
+                "production SMTP credentials must not contain placeholder values",
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 fn email_delivery_is_disabled(settings: &EmailSettings) -> bool {
     matches!(settings.provider, EmailProvider::None)
         || matches!(settings.provider, EmailProvider::Smtp) && !settings.enabled
@@ -1458,12 +1692,28 @@ fn email_delivery_is_disabled(settings: &EmailSettings) -> bool {
 /// `RUSTOK_ENV` is canonical; `RUST_ENV` and `APP_ENV` are compatibility
 /// aliases. All present aliases must agree, otherwise config-file selection
 /// and production security gates could silently disagree.
+fn normalize_environment_value(
+    key: &str,
+    value: Result<String, std::env::VarError>,
+) -> Result<Option<String>, String> {
+    match value {
+        Ok(value) => Ok(Some(value)),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            Err(format!("{key} must be valid UTF-8"))
+        }
+    }
+}
+
 pub(crate) fn resolve_environment_name() -> Result<String, String> {
-    resolve_environment_from(
-        ["RUSTOK_ENV", "RUST_ENV", "APP_ENV"]
-            .into_iter()
-            .map(|key| (key, std::env::var(key).ok())),
-    )
+    let mut values = Vec::with_capacity(3);
+    for key in ["RUSTOK_ENV", "RUST_ENV", "APP_ENV"] {
+        values.push((
+            key,
+            normalize_environment_value(key, std::env::var(key))?,
+        ));
+    }
+    resolve_environment_from(values)
 }
 
 fn resolve_environment_from(
@@ -1551,8 +1801,19 @@ mod tests {
     const RUNTIME_HOST_MODE_ENV: &str = "RUSTOK_RUNTIME_HOST_MODE";
     const RUSTOK_REDIS_URL_ENV: &str = "RUSTOK_REDIS_URL";
     const REDIS_URL_ENV: &str = "REDIS_URL";
+    const RUSTOK_ENV_ENV: &str = "RUSTOK_ENV";
     const RUST_ENV_ENV: &str = "RUST_ENV";
     const APP_ENV_ENV: &str = "APP_ENV";
+    const EMAIL_ENV_KEYS: &[&str] = &[
+        "EMAIL_ENABLED",
+        "EMAIL_PROVIDER",
+        "EMAIL_FROM",
+        "RESET_BASE_URL",
+        "SMTP_HOST",
+        "SMTP_PORT",
+        "SMTP_USERNAME",
+        "SMTP_PASSWORD",
+    ];
     const EMAIL_DISABLED_PROD_OVERRIDE_ENV: &str = "RUSTOK_EMAIL_ALLOW_DISABLED_IN_PRODUCTION";
 
     fn env_lock() -> &'static Mutex<()> {
@@ -1594,6 +1855,14 @@ mod tests {
         }
     }
 
+    fn clear_email_environment() -> Vec<EnvVarGuard> {
+        EMAIL_ENV_KEYS
+            .iter()
+            .copied()
+            .map(EnvVarGuard::clear)
+            .collect()
+    }
+
     #[test]
     fn debug_output_redacts_secret_configuration_values() {
         let mut settings = RustokSettings::default();
@@ -1606,7 +1875,12 @@ mod tests {
         settings.search.api_key = Some("search-api-secret".to_string());
         settings.events.iggy.external.username = "iggy-user-secret".to_string();
         settings.events.iggy.external.password = "iggy-password-secret".to_string();
-        settings.events.iggy.bundled.arguments.push("--token=bundled-argument-secret".to_string());
+        settings
+            .events
+            .iggy
+            .bundled
+            .arguments
+            .push("--token=bundled-argument-secret".to_string());
         settings.events.iggy.bundled.environment.insert(
             "PRIVATE_ENV".to_string(),
             "bundled-environment-secret".to_string(),
@@ -1627,7 +1901,10 @@ mod tests {
             "bundled-argument-secret",
             "bundled-environment-secret",
         ] {
-            assert!(!debug.contains(secret), "Debug output leaked {secret}: {debug}");
+            assert!(
+                !debug.contains(secret),
+                "Debug output leaked {secret}: {debug}"
+            );
         }
     }
 
@@ -1761,7 +2038,10 @@ mod tests {
     #[test]
     fn rejects_disabled_smtp_email_in_production_without_override() {
         let _guard = env_lock().lock().expect("env lock poisoned");
+        let _email_env = clear_email_environment();
+        let _rustok_env_guard = EnvVarGuard::clear(RUSTOK_ENV_ENV);
         let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _runtime_guard = EnvVarGuard::clear(RUNTIME_HOST_MODE_ENV);
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
         let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
         let _app_env_guard = EnvVarGuard::clear(APP_ENV_ENV);
@@ -1787,7 +2067,10 @@ mod tests {
     #[test]
     fn rejects_none_email_provider_in_production_without_override() {
         let _guard = env_lock().lock().expect("env lock poisoned");
+        let _email_env = clear_email_environment();
+        let _rustok_env_guard = EnvVarGuard::clear(RUSTOK_ENV_ENV);
         let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _runtime_guard = EnvVarGuard::clear(RUNTIME_HOST_MODE_ENV);
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
         let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
         let _rust_env_guard = EnvVarGuard::clear(RUST_ENV_ENV);
@@ -1812,7 +2095,10 @@ mod tests {
     #[test]
     fn accepts_enabled_smtp_email_in_production() {
         let _guard = env_lock().lock().expect("env lock poisoned");
+        let _email_env = clear_email_environment();
+        let _rustok_env_guard = EnvVarGuard::clear(RUSTOK_ENV_ENV);
         let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _runtime_guard = EnvVarGuard::clear(RUNTIME_HOST_MODE_ENV);
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
         let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
         let _rust_env_guard = EnvVarGuard::clear(RUST_ENV_ENV);
@@ -1824,8 +2110,14 @@ mod tests {
                 "email": {
                     "enabled": true,
                     "provider": "smtp",
-                    "from": "no-reply@example.com",
-                    "reset_base_url": "https://example.com/reset-password"
+                    "from": "no-reply@company.com",
+                    "reset_base_url": "https://admin.company.com/reset-password",
+                    "smtp": {
+                        "host": "smtp.company.com",
+                        "port": 587,
+                        "username": "mailer",
+                        "password": "strong-smtp-secret"
+                    }
                 }
             }
         });
@@ -1836,9 +2128,209 @@ mod tests {
     }
 
     #[test]
-    fn accepts_disabled_email_in_production_with_config_override() {
+    fn email_environment_variables_override_yaml_settings() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _rustok_env = EnvVarGuard::set(RUSTOK_ENV_ENV, "development");
+        let _rust_env = EnvVarGuard::set(RUST_ENV_ENV, "development");
+        let _app_env = EnvVarGuard::set(APP_ENV_ENV, "development");
+        let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _runtime_guard = EnvVarGuard::clear(RUNTIME_HOST_MODE_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+        let _email_env = clear_email_environment();
+        let _enabled = EnvVarGuard::set("EMAIL_ENABLED", "yes");
+        let _provider = EnvVarGuard::set("EMAIL_PROVIDER", "smtp");
+        let _from = EnvVarGuard::set("EMAIL_FROM", "no-reply@dev.internal");
+        let _reset = EnvVarGuard::set("RESET_BASE_URL", "http://localhost:3000/reset-password");
+        let _host = EnvVarGuard::set("SMTP_HOST", "smtp.dev.internal");
+        let _port = EnvVarGuard::set("SMTP_PORT", "2525");
+        let _username = EnvVarGuard::set("SMTP_USERNAME", "mailer");
+        let _password = EnvVarGuard::set("SMTP_PASSWORD", "smtp-secret");
+
+        let raw = serde_json::json!({
+            "rustok": {
+                "email": {
+                    "enabled": false,
+                    "provider": "none",
+                    "from": "old@example.invalid",
+                    "reset_base_url": "http://old.invalid/reset",
+                    "smtp": {
+                        "host": "old.invalid",
+                        "port": 25,
+                        "username": "",
+                        "password": ""
+                    }
+                }
+            }
+        });
+
+        let settings = RustokSettings::from_settings(&Some(raw)).expect("settings parsed");
+        assert!(settings.email.enabled);
+        assert_eq!(settings.email.provider, EmailProvider::Smtp);
+        assert_eq!(settings.email.from, "no-reply@dev.internal");
+        assert_eq!(settings.email.reset_base_url, "http://localhost:3000/reset-password");
+        assert_eq!(settings.email.smtp.host, "smtp.dev.internal");
+        assert_eq!(settings.email.smtp.port, 2525);
+        assert_eq!(settings.email.smtp.username, "mailer");
+        assert_eq!(settings.email.smtp.password, "smtp-secret");
+    }
+
+    #[test]
+    fn email_environment_overrides_reject_invalid_values() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _rustok_env = EnvVarGuard::set(RUSTOK_ENV_ENV, "development");
+        let _rust_env = EnvVarGuard::set(RUST_ENV_ENV, "development");
+        let _app_env = EnvVarGuard::set(APP_ENV_ENV, "development");
+        let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _runtime_guard = EnvVarGuard::clear(RUNTIME_HOST_MODE_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+        let _email_env = clear_email_environment();
+
+        {
+            let _enabled = EnvVarGuard::set("EMAIL_ENABLED", "sometimes");
+            let error = RustokSettings::from_settings(&None)
+                .expect_err("invalid boolean override must be rejected");
+            assert!(error.to_string().contains("EMAIL_ENABLED"));
+        }
+        {
+            let _provider = EnvVarGuard::set("EMAIL_PROVIDER", "sendgrid");
+            let error = RustokSettings::from_settings(&None)
+                .expect_err("unsupported email provider must be rejected");
+            assert!(error.to_string().contains("EMAIL_PROVIDER"));
+        }
+        {
+            let _port = EnvVarGuard::set("SMTP_PORT", "0");
+            let error = RustokSettings::from_settings(&None)
+                .expect_err("zero SMTP port must be rejected");
+            assert!(error.to_string().contains("SMTP_PORT"));
+        }
+    }
+
+    #[test]
+    fn enabled_smtp_rejects_whitespace_only_auth_credentials() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _rustok_env = EnvVarGuard::set(RUSTOK_ENV_ENV, "development");
+        let _rust_env = EnvVarGuard::set(RUST_ENV_ENV, "development");
+        let _app_env = EnvVarGuard::set(APP_ENV_ENV, "development");
+        let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _runtime_guard = EnvVarGuard::clear(RUNTIME_HOST_MODE_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+        let _email_env = clear_email_environment();
+
+        let raw = serde_json::json!({
+            "rustok": {
+                "email": {
+                    "enabled": true,
+                    "provider": "smtp",
+                    "smtp": {
+                        "host": "localhost",
+                        "port": 1025,
+                        "username": "   ",
+                        "password": "   "
+                    }
+                }
+            }
+        });
+        let error = RustokSettings::from_settings(&Some(raw))
+            .expect_err("whitespace-only SMTP credentials must not be treated as unauthenticated relay");
+        assert!(error.to_string().contains("must either both be set or both be empty"));
+    }
+
+    #[test]
+    fn production_email_rejects_placeholder_hosts_and_credentials() {
         let _guard = env_lock().lock().expect("env lock poisoned");
         let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _runtime_guard = EnvVarGuard::clear(RUNTIME_HOST_MODE_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+        let _rustok_env_guard = EnvVarGuard::clear(RUSTOK_ENV_ENV);
+        let _rust_env_guard = EnvVarGuard::clear(RUST_ENV_ENV);
+        let _app_env_guard = EnvVarGuard::set(APP_ENV_ENV, "production");
+        let _override_guard = EnvVarGuard::clear(EMAIL_DISABLED_PROD_OVERRIDE_ENV);
+        let _email_env = clear_email_environment();
+
+        let placeholder_hosts = serde_json::json!({
+            "rustok": {
+                "email": {
+                    "enabled": true,
+                    "provider": "smtp",
+                    "from": "no-reply@example.com",
+                    "reset_base_url": "https://admin.example.com/reset-password",
+                    "smtp": {
+                        "host": "smtp.example.com",
+                        "port": 587,
+                        "username": "mailer",
+                        "password": "strong-smtp-secret"
+                    }
+                }
+            }
+        });
+        let error = RustokSettings::from_settings(&Some(placeholder_hosts))
+            .expect_err("reserved example hosts must be rejected");
+        assert!(error.to_string().contains("reserved example hosts"));
+
+        let placeholder_credentials = serde_json::json!({
+            "rustok": {
+                "email": {
+                    "enabled": true,
+                    "provider": "smtp",
+                    "from": "no-reply@company.com",
+                    "reset_base_url": "https://admin.company.com/reset-password",
+                    "smtp": {
+                        "host": "smtp.company.com",
+                        "port": 587,
+                        "username": "CHANGE_ME",
+                        "password": "CHANGE_ME"
+                    }
+                }
+            }
+        });
+        let error = RustokSettings::from_settings(&Some(placeholder_credentials))
+            .expect_err("placeholder SMTP credentials must be rejected");
+        assert!(error.to_string().contains("placeholder values"));
+    }
+
+    #[test]
+    fn production_email_requires_https_reset_url() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _runtime_guard = EnvVarGuard::clear(RUNTIME_HOST_MODE_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+        let _rustok_env_guard = EnvVarGuard::clear(RUSTOK_ENV_ENV);
+        let _rust_env_guard = EnvVarGuard::clear(RUST_ENV_ENV);
+        let _app_env_guard = EnvVarGuard::set(APP_ENV_ENV, "production");
+        let _override_guard = EnvVarGuard::clear(EMAIL_DISABLED_PROD_OVERRIDE_ENV);
+        let _email_env = clear_email_environment();
+
+        let raw = serde_json::json!({
+            "rustok": {
+                "email": {
+                    "enabled": true,
+                    "provider": "smtp",
+                    "from": "no-reply@company.com",
+                    "reset_base_url": "http://admin.company.com/reset-password",
+                    "smtp": {
+                        "host": "smtp.company.com",
+                        "port": 587
+                    }
+                }
+            }
+        });
+        let error = RustokSettings::from_settings(&Some(raw))
+            .expect_err("production password reset URLs must use HTTPS");
+        assert!(error.to_string().contains("must use HTTPS"));
+    }
+
+    #[test]
+    fn accepts_disabled_email_in_production_with_config_override() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _email_env = clear_email_environment();
+        let _rustok_env_guard = EnvVarGuard::clear(RUSTOK_ENV_ENV);
+        let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _runtime_guard = EnvVarGuard::clear(RUNTIME_HOST_MODE_ENV);
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
         let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
         let _app_env_guard = EnvVarGuard::clear(APP_ENV_ENV);
@@ -1862,7 +2354,10 @@ mod tests {
     #[test]
     fn accepts_disabled_email_in_production_with_env_override() {
         let _guard = env_lock().lock().expect("env lock poisoned");
+        let _email_env = clear_email_environment();
+        let _rustok_env_guard = EnvVarGuard::clear(RUSTOK_ENV_ENV);
         let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _runtime_guard = EnvVarGuard::clear(RUNTIME_HOST_MODE_ENV);
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
         let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
         let _app_env_guard = EnvVarGuard::clear(APP_ENV_ENV);
@@ -2460,6 +2955,17 @@ mod tests {
             Err(TenantSettingsError::MissingSubdomainBaseDomain)
         );
     }
+    #[test]
+    fn non_unicode_environment_alias_is_rejected_instead_of_ignored() {
+        let error = super::normalize_environment_value(
+            "RUSTOK_ENV",
+            Err(std::env::VarError::NotUnicode(std::ffi::OsString::from("invalid"))),
+        )
+        .expect_err("non-Unicode environment selectors must fail closed");
+        assert!(error.contains("RUSTOK_ENV"));
+        assert!(error.contains("UTF-8"));
+    }
+
     #[test]
     fn environment_aliases_must_agree() {
         let conflict = super::resolve_environment_from([

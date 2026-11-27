@@ -20,7 +20,10 @@ use crate::{
     routes::ServerRouter,
     services::{
         app_lifecycle::shutdown_runtime_workers,
-        server_bootstrap::{bootstrap_application_router, initialize_server_context},
+        server_bootstrap::{
+            bootstrap_application_router, check_production_environment,
+            initialize_server_context, known_placeholder_fragment,
+        },
         server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext},
     },
 };
@@ -31,6 +34,7 @@ const JWT_KEYRING_FILE_ENV: &str = "RUSTOK_JWT_KEYRING_FILE";
 const JWT_RELOAD_INTERVAL: Duration = Duration::from_secs(2);
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct HostConfig {
     server: ServerConfig,
     database: DatabaseConfig,
@@ -40,12 +44,14 @@ struct HostConfig {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ServerConfig {
     binding: String,
     port: u16,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct DatabaseConfig {
     uri: String,
     #[serde(default)]
@@ -116,7 +122,8 @@ impl std::fmt::Debug for JwtConfig {
 /// This command is intentionally database-free so development migrations can
 /// fail closed before changing application schema.
 pub async fn validate_jwt_keyring_bootstrap() -> Result<()> {
-    let config = load_config().await?;
+    let mut config = load_config().await?;
+    apply_auth_environment_overrides(&mut config)?;
     let production = crate::common::is_production_security_mode();
     let rustok_settings = RustokSettings::from_settings(&Some(config.settings.clone()))
         .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
@@ -143,10 +150,15 @@ pub async fn run() -> Result<()> {
         result = load_config() => result?,
     };
 
-    let database_url = std::env::var("DATABASE_URL").ok();
+    let mut config = config;
+    apply_auth_environment_overrides(&mut config)?;
+    apply_database_environment_overrides(&mut config.database)?;
+    let database_url = read_optional_env("DATABASE_URL")?;
     let database_uri = resolve_database_uri(database_url.as_deref(), &config.database.uri);
     let production = crate::common::is_production_security_mode();
     validate_database_deployment(&database_uri, production)?;
+    validate_database_runtime_policy(&config.database, production)?;
+    check_production_environment(&config.auth.jwt.mac_root, &database_uri, production)?;
     validate_https_deployment(production, hsts_enabled())?;
 
     // Validate all settings-derived policy before connecting to the database or
@@ -546,10 +558,14 @@ fn validate_database_deployment(database_uri: &str, production: bool) -> Result<
         "user" => password.starts_with("password"),
         _ => false,
     };
+    let uses_placeholder_credentials = known_placeholder_fragment(&username).is_some()
+        || known_placeholder_fragment(&password).is_some();
 
     let host = parsed
         .host_str()
         .unwrap_or_default()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
         .trim_end_matches('.')
         .to_ascii_lowercase();
     let host_is_local = host == "localhost"
@@ -557,7 +573,16 @@ fn validate_database_deployment(database_uri: &str, production: bool) -> Result<
         || host.ends_with(".localhost")
         || host
             .parse::<std::net::IpAddr>()
-            .is_ok_and(|address| address.is_loopback());
+            .is_ok_and(|address| address.is_loopback() || address.is_unspecified());
+    let host_is_placeholder = matches!(
+        host.as_str(),
+        "example.com" | "example.net" | "example.org"
+    ) || host.ends_with(".example.com")
+        || host.ends_with(".example.net")
+        || host.ends_with(".example.org")
+        || host.ends_with(".example")
+        || host.ends_with(".invalid")
+        || host.ends_with(".test");
     let database_name = decode_percent_encoded_component(parsed.path().trim_matches('/'))
         .ok_or_else(|| {
             Error::BadRequest(
@@ -568,7 +593,9 @@ fn validate_database_deployment(database_uri: &str, production: bool) -> Result<
         host_is_local && database_name.eq_ignore_ascii_case("rustok_dev");
 
     if uses_development_credentials
+        || uses_placeholder_credentials
         || uses_local_development_database
+        || host_is_placeholder
         || parsed.scheme().eq_ignore_ascii_case("sqlite")
     {
         return Err(Error::BadRequest(
@@ -617,13 +644,155 @@ fn application_router(
 }
 
 fn resolve_database_uri(database_url: Option<&str>, configured_uri: &str) -> String {
-    database_url.unwrap_or(configured_uri).to_string()
+    database_url.unwrap_or(configured_uri).trim().to_string()
+}
+
+fn read_optional_env(name: &str) -> Result<Option<String>> {
+    match std::env::var(name) {
+        Ok(value) => Ok(Some(value)),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => Err(Error::BadRequest(format!(
+            "{name} must be valid UTF-8"
+        ))),
+    }
+}
+
+fn parse_env_value<T>(name: &str, value: &str) -> Result<T>
+where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    value.trim().parse().map_err(|error| {
+        Error::BadRequest(format!("Invalid {name} value: {error}"))
+    })
+}
+
+fn parse_server_port(name: &str, value: &str) -> Result<u16> {
+    value.trim().parse::<u16>().map_err(|error| {
+        Error::BadRequest(format!("Invalid port '{value}' in {name}: {error}"))
+    })
+}
+
+fn parse_env_bool(name: &str, value: &str) -> Result<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => Ok(true),
+        "false" | "0" | "no" | "off" => Ok(false),
+        _ => Err(Error::BadRequest(format!(
+            "Invalid boolean value for {name}; expected true or false"
+        ))),
+    }
+}
+
+fn apply_auth_environment_overrides(config: &mut HostConfig) -> Result<()> {
+    if let Some(secret) = read_optional_env("RUSTOK_JWT_SECRET")? {
+        config.auth.jwt.mac_root = secret;
+    } else if let Some(secret) = read_optional_env("JWT_SECRET")? {
+        config.auth.jwt.mac_root = secret;
+    }
+
+    if let Some(expiration) = read_optional_env("JWT_EXPIRATION")? {
+        config.auth.jwt.expiration = parse_env_value("JWT_EXPIRATION", &expiration)?;
+    }
+
+    let mut overrides = serde_json::Map::new();
+    if let Some(expiration) = read_optional_env("REFRESH_TOKEN_EXPIRATION")? {
+        overrides.insert(
+            "refresh_expiration".to_string(),
+            serde_json::Value::from(parse_env_value::<u64>(
+                "REFRESH_TOKEN_EXPIRATION",
+                &expiration,
+            )?),
+        );
+    }
+    if let Some(issuer) = read_optional_env("JWT_ISSUER")? {
+        overrides.insert("issuer".to_string(), serde_json::Value::String(issuer));
+    }
+    if let Some(audience) = read_optional_env("JWT_AUDIENCE")? {
+        overrides.insert("audience".to_string(), serde_json::Value::String(audience));
+    }
+
+    if !overrides.is_empty() {
+        if config.settings.is_null() {
+            config.settings = serde_json::Value::Object(serde_json::Map::new());
+        }
+        let settings = config.settings.as_object_mut().ok_or_else(|| {
+            Error::BadRequest("Server settings must be an object for auth environment overrides".into())
+        })?;
+        let auth = settings
+            .entry("auth".to_string())
+            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+        let auth = auth.as_object_mut().ok_or_else(|| {
+            Error::BadRequest("settings.auth must be an object for auth environment overrides".into())
+        })?;
+        auth.extend(overrides);
+    }
+
+    Ok(())
+}
+
+fn apply_database_environment_overrides(config: &mut DatabaseConfig) -> Result<()> {
+    if let Some(value) = read_optional_env("DATABASE_MIN_CONNECTIONS")? {
+        config.min_connections = parse_env_value("DATABASE_MIN_CONNECTIONS", &value)?;
+    }
+    if let Some(value) = read_optional_env("DATABASE_MAX_CONNECTIONS")? {
+        config.max_connections = parse_env_value("DATABASE_MAX_CONNECTIONS", &value)?;
+    }
+    if let Some(value) = read_optional_env("DATABASE_CONNECT_TIMEOUT")? {
+        config.connect_timeout = parse_env_value("DATABASE_CONNECT_TIMEOUT", &value)?;
+    }
+    if let Some(value) = read_optional_env("DATABASE_IDLE_TIMEOUT")? {
+        config.idle_timeout = parse_env_value("DATABASE_IDLE_TIMEOUT", &value)?;
+    }
+    if let Some(value) = read_optional_env("DATABASE_ENABLE_LOGGING")? {
+        config.enable_logging = parse_env_bool("DATABASE_ENABLE_LOGGING", &value)?;
+    }
+    if let Some(value) = read_optional_env("DATABASE_AUTO_MIGRATE")? {
+        config.auto_migrate = parse_env_bool("DATABASE_AUTO_MIGRATE", &value)?;
+    }
+    Ok(())
 }
 
 const DEFAULT_DATABASE_MAX_CONNECTIONS: u32 = 10;
 const MAX_DATABASE_CONNECTIONS: u32 = 1_024;
 const MAX_DATABASE_CONNECT_TIMEOUT_MS: u64 = 300_000;
 const MAX_DATABASE_IDLE_TIMEOUT_MS: u64 = 86_400_000;
+
+fn database_connect_timeout(config: &DatabaseConfig) -> Duration {
+    if config.connect_timeout > 0 {
+        Duration::from_millis(config.connect_timeout)
+    } else {
+        Duration::from_secs(10)
+    }
+}
+
+fn database_idle_timeout(config: &DatabaseConfig) -> Option<Duration> {
+    (config.idle_timeout > 0).then(|| Duration::from_millis(config.idle_timeout))
+}
+
+fn validate_database_runtime_policy(
+    config: &DatabaseConfig,
+    production: bool,
+) -> Result<()> {
+    validate_database_connection_settings(config)?;
+
+    if production && config.auto_migrate {
+        return Err(Error::BadRequest(
+            concat!(
+                "database.auto_migrate must be false in production; ",
+                "apply migrations as a controlled deployment step"
+            )
+            .to_string(),
+        ));
+    }
+    if production && config.enable_logging {
+        return Err(Error::BadRequest(
+            "database.enable_logging must be false in production to avoid logging sensitive SQL parameters"
+                .to_string(),
+        ));
+    }
+
+    Ok(())
+}
 
 fn validate_database_connection_settings(config: &DatabaseConfig) -> Result<()> {
     if config.max_connections > MAX_DATABASE_CONNECTIONS {
@@ -671,15 +840,11 @@ async fn connect_database(
 
     let mut options = ConnectOptions::new(uri.to_string());
     options.sqlx_logging(config.enable_logging);
-    let timeout = if config.connect_timeout > 0 {
-        Duration::from_millis(config.connect_timeout.max(5000))
-    } else {
-        Duration::from_secs(10)
-    };
+    let timeout = database_connect_timeout(config);
     options.connect_timeout(timeout);
     options.acquire_timeout(timeout);
-    if config.idle_timeout > 0 {
-        options.idle_timeout(Duration::from_millis(config.idle_timeout.max(1000)));
+    if let Some(idle_timeout) = database_idle_timeout(config) {
+        options.idle_timeout(idle_timeout);
     }
     if config.min_connections > 0 {
         options.min_connections(config.min_connections);
@@ -702,7 +867,7 @@ fn required_jwt_keyring_file_path_from(value: Option<&str>) -> Result<PathBuf> {
 }
 
 fn jwt_keyring_file_path() -> Result<PathBuf> {
-    let value = std::env::var(JWT_KEYRING_FILE_ENV).ok();
+    let value = read_optional_env(JWT_KEYRING_FILE_ENV)?;
     required_jwt_keyring_file_path_from(value.as_deref())
 }
 
@@ -874,9 +1039,11 @@ async fn load_config() -> Result<HostConfig> {
     let environment = crate::common::settings::resolve_environment_name()
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    let configured_config_dir = std::env::var("RUSTOK_CONFIG_DIR")
-        .ok()
-        .map(|value| PathBuf::from(value.trim()))
+    let configured_config_dir = std::env::var_os("RUSTOK_CONFIG_DIR")
+        .map(|value| match value.to_str() {
+            Some(value) => PathBuf::from(value.trim()),
+            None => PathBuf::from(value.as_os_str()),
+        })
         .filter(|path| !path.as_os_str().is_empty());
     let config_dir = if let Some(path) = configured_config_dir {
         path
@@ -909,24 +1076,24 @@ async fn load_config() -> Result<HostConfig> {
 }
 
 fn resolve_server_endpoint(config: &ServerConfig) -> Result<(String, u16)> {
-    let binding = std::env::var("RUSTOK_BINDING")
-        .ok()
-        .or_else(|| std::env::var("HOST").ok())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| config.binding.trim().to_string());
+    let binding = match read_optional_env("RUSTOK_BINDING")? {
+        Some(binding) => binding,
+        None => read_optional_env("HOST")?.unwrap_or_else(|| config.binding.clone()),
+    }
+    .trim()
+    .to_string();
     if binding.is_empty() {
         return Err(Error::BadRequest(
             "Server binding address must not be empty".to_string(),
         ));
     }
-    let port = if let Ok(port_str) = std::env::var("RUSTOK_PORT").or_else(|_| std::env::var("PORT"))
-    {
-        port_str.trim().parse::<u16>().map_err(|error| {
-            Error::BadRequest(format!("Invalid port '{port_str}' in environment: {error}"))
-        })?
-    } else {
-        config.port
+
+    let port = match read_optional_env("RUSTOK_PORT")? {
+        Some(port) => parse_server_port("RUSTOK_PORT", &port)?,
+        None => match read_optional_env("PORT")? {
+            Some(port) => parse_server_port("PORT", &port)?,
+            None => config.port,
+        },
     };
     Ok((binding, port))
 }
@@ -984,7 +1151,7 @@ async fn wait_for_shutdown_signal() {
 mod tests {
     use super::{
         HostConfig, application_router, required_jwt_keyring_file_path_from, resolve_database_uri,
-        validate_auth_deployment, validate_https_deployment,
+        validate_auth_deployment, validate_https_deployment, validate_oauth_metadata_issuer,
     };
     use crate::auth::test_auth_config;
     use crate::common::settings::RuntimeHostMode;
@@ -1038,8 +1205,16 @@ mod tests {
         };
 
         let debug = format!("{config:?}");
-        for secret in ["db-user", "db-password", "jwt-secret-value", "settings-secret"] {
-            assert!(!debug.contains(secret), "Debug output leaked {secret}: {debug}");
+        for secret in [
+            "db-user",
+            "db-password",
+            "jwt-secret-value",
+            "settings-secret",
+        ] {
+            assert!(
+                !debug.contains(secret),
+                "Debug output leaked {secret}: {debug}"
+            );
         }
     }
 
@@ -1252,6 +1427,17 @@ mod tests {
             resolve_database_uri(None, "postgres://u:p@localhost:5432/rustok"),
             "postgres://u:p@localhost:5432/rustok"
         );
+        assert_eq!(
+            resolve_database_uri(
+                Some("  postgres://u:p@db:5432/rustok  "),
+                "postgres://fallback/rustok"
+            ),
+            "postgres://u:p@db:5432/rustok"
+        );
+        assert_eq!(
+            resolve_database_uri(None, "  postgres://u:p@db:5432/rustok  "),
+            "postgres://u:p@db:5432/rustok"
+        );
     }
 
     #[test]
@@ -1405,6 +1591,41 @@ mod tests {
     }
 
     #[test]
+    fn production_rejects_placeholder_database_credentials_before_connecting() {
+        for uri in [
+            "postgres://app_user:CHANGE_ME@prod-db.internal:5432/rustok_prod",
+            "postgres://app_user:CHANGE%5FME@prod-db.internal:5432/rustok_prod",
+        ] {
+            let error = super::validate_database_deployment(uri, true)
+                .expect_err("placeholder credentials must fail even when percent-encoded");
+            assert!(error.to_string().contains("development credentials"));
+        }
+    }
+
+    #[test]
+    fn production_rejects_reserved_example_database_hosts() {
+        let error = super::validate_database_deployment(
+            "postgres://app_user:strong-secret@db.example.com:5432/rustok_prod",
+            true,
+        )
+        .expect_err("reserved example domains are documentation placeholders");
+        assert!(error.to_string().contains("local placeholders"));
+    }
+
+    #[test]
+    fn production_rejects_unspecified_database_addresses() {
+        for uri in [
+            "postgres://app_user:strong-secret@0.0.0.0:5432/rustok_prod",
+            "postgres://app_user:strong-secret@[::]:5432/rustok_prod",
+            "postgres://app_user:strong-secret@[::1]:5432/rustok_prod",
+        ] {
+            let error = super::validate_database_deployment(uri, true)
+                .expect_err("unspecified addresses are not production database endpoints");
+            assert!(error.to_string().contains("local placeholders"));
+        }
+    }
+
+    #[test]
     fn production_rejects_percent_encoded_default_database_credentials() {
         let error = super::validate_database_deployment(
             "postgres://r%75stok:r%75stok@prod-db.internal:5432/rustok_prod",
@@ -1463,7 +1684,7 @@ mod tests {
 
     struct EnvGuard {
         _guard: std::sync::MutexGuard<'static, ()>,
-        vars: Vec<(&'static str, Option<String>)>,
+        vars: Vec<(&'static str, Option<std::ffi::OsString>)>,
     }
 
     impl EnvGuard {
@@ -1471,7 +1692,7 @@ mod tests {
             let guard = TEST_ENV_LOCK.lock().unwrap();
             let mut vars = Vec::new();
             for &k in keys {
-                vars.push((k, std::env::var(k).ok()));
+                vars.push((k, std::env::var_os(k)));
                 unsafe {
                     std::env::remove_var(k);
                 }
@@ -1498,8 +1719,273 @@ mod tests {
     }
 
     #[test]
+    fn auth_environment_overrides_yaml_with_canonical_secret_precedence() {
+        let _env = EnvGuard::new(&[
+            "RUSTOK_JWT_SECRET",
+            "JWT_SECRET",
+            "JWT_EXPIRATION",
+            "REFRESH_TOKEN_EXPIRATION",
+            "JWT_ISSUER",
+            "JWT_AUDIENCE",
+        ]);
+        let mut config = HostConfig {
+            server: super::ServerConfig {
+                binding: "127.0.0.1".to_string(),
+                port: 5150,
+            },
+            database: database_config_for_validation(),
+            auth: super::AuthConfig {
+                jwt: super::JwtConfig {
+                    mac_root: "yaml-secret".to_string(),
+                    expiration: 900,
+                },
+            },
+            settings: serde_json::json!({
+                "auth": {
+                    "refresh_expiration": 3600,
+                    "issuer": "https://yaml.example",
+                    "audience": "yaml-audience"
+                }
+            }),
+        };
+
+        unsafe {
+            std::env::set_var("RUSTOK_JWT_SECRET", "canonical-secret");
+            std::env::set_var("JWT_SECRET", "legacy-secret");
+            std::env::set_var("JWT_EXPIRATION", "1800");
+            std::env::set_var("REFRESH_TOKEN_EXPIRATION", "7200");
+            std::env::set_var("JWT_ISSUER", "https://env.example");
+            std::env::set_var("JWT_AUDIENCE", "env-audience");
+        }
+        super::apply_auth_environment_overrides(&mut config)
+            .expect("valid auth environment overrides");
+
+        assert_eq!(config.auth.jwt.mac_root, "canonical-secret");
+        assert_eq!(config.auth.jwt.expiration, 1800);
+        assert_eq!(
+            config.settings["auth"]["refresh_expiration"],
+            serde_json::json!(7200)
+        );
+        assert_eq!(
+            config.settings["auth"]["issuer"],
+            serde_json::json!("https://env.example")
+        );
+        assert_eq!(
+            config.settings["auth"]["audience"],
+            serde_json::json!("env-audience")
+        );
+
+        unsafe {
+            std::env::remove_var("RUSTOK_JWT_SECRET");
+        }
+        let mut legacy_config = HostConfig {
+            server: super::ServerConfig {
+                binding: "127.0.0.1".to_string(),
+                port: 5150,
+            },
+            database: database_config_for_validation(),
+            auth: super::AuthConfig {
+                jwt: super::JwtConfig {
+                    mac_root: "yaml-secret".to_string(),
+                    expiration: 900,
+                },
+            },
+            settings: serde_json::Value::Null,
+        };
+        super::apply_auth_environment_overrides(&mut legacy_config)
+            .expect("legacy JWT_SECRET compatibility alias");
+        assert_eq!(legacy_config.auth.jwt.mac_root, "legacy-secret");
+    }
+
+    #[test]
+    fn auth_environment_overrides_reject_invalid_expiration() {
+        let _env = EnvGuard::new(&[
+            "RUSTOK_JWT_SECRET",
+            "JWT_SECRET",
+            "JWT_EXPIRATION",
+            "REFRESH_TOKEN_EXPIRATION",
+            "JWT_ISSUER",
+            "JWT_AUDIENCE",
+        ]);
+        let mut config = HostConfig {
+            server: super::ServerConfig {
+                binding: "127.0.0.1".to_string(),
+                port: 5150,
+            },
+            database: database_config_for_validation(),
+            auth: super::AuthConfig {
+                jwt: super::JwtConfig {
+                    mac_root: "yaml-secret".to_string(),
+                    expiration: 900,
+                },
+            },
+            settings: serde_json::Value::Null,
+        };
+        unsafe {
+            std::env::set_var("JWT_EXPIRATION", "not-a-number");
+        }
+        let error = super::apply_auth_environment_overrides(&mut config)
+            .expect_err("invalid expiration must not silently fall back to YAML");
+        assert!(error.to_string().contains("JWT_EXPIRATION"));
+    }
+
+    #[test]
+    fn database_environment_overrides_yaml_and_rejects_invalid_values() {
+        let _env = EnvGuard::new(&[
+            "DATABASE_MIN_CONNECTIONS",
+            "DATABASE_MAX_CONNECTIONS",
+            "DATABASE_CONNECT_TIMEOUT",
+            "DATABASE_IDLE_TIMEOUT",
+            "DATABASE_ENABLE_LOGGING",
+            "DATABASE_AUTO_MIGRATE",
+            "RUSTOK_JWT_SECRET",
+            "JWT_SECRET",
+            "JWT_EXPIRATION",
+            "REFRESH_TOKEN_EXPIRATION",
+            "JWT_ISSUER",
+            "JWT_AUDIENCE",
+        ]);
+        let mut config = database_config_for_validation();
+        config.min_connections = 1;
+        config.max_connections = 4;
+        config.connect_timeout = 10_000;
+        config.idle_timeout = 30_000;
+        config.enable_logging = true;
+        config.auto_migrate = true;
+
+        unsafe {
+            std::env::set_var("DATABASE_MIN_CONNECTIONS", "2");
+            std::env::set_var("DATABASE_MAX_CONNECTIONS", "8");
+            std::env::set_var("DATABASE_CONNECT_TIMEOUT", "500");
+            std::env::set_var("DATABASE_IDLE_TIMEOUT", "250");
+            std::env::set_var("DATABASE_ENABLE_LOGGING", "false");
+            std::env::set_var("DATABASE_AUTO_MIGRATE", "no");
+        }
+        super::apply_database_environment_overrides(&mut config)
+            .expect("valid environment overrides");
+        assert_eq!(config.min_connections, 2);
+        assert_eq!(config.max_connections, 8);
+        assert_eq!(config.connect_timeout, 500);
+        assert_eq!(config.idle_timeout, 250);
+        assert!(!config.enable_logging);
+        assert!(!config.auto_migrate);
+        super::validate_database_runtime_policy(&config, true)
+            .expect("explicit false environment overrides satisfy production policy");
+
+        unsafe {
+            std::env::set_var("DATABASE_AUTO_MIGRATE", "true");
+            std::env::set_var("DATABASE_ENABLE_LOGGING", "true");
+        }
+        super::apply_database_environment_overrides(&mut config)
+            .expect("valid true database overrides");
+        let production_error = super::validate_database_runtime_policy(&config, true)
+            .expect_err("environment overrides must not bypass production policy");
+        assert!(production_error.to_string().contains("auto_migrate"));
+
+        unsafe {
+            std::env::set_var("DATABASE_AUTO_MIGRATE", "sometimes");
+        }
+        let error = super::apply_database_environment_overrides(&mut config)
+            .expect_err("invalid boolean must not silently fall back to YAML");
+        assert!(error.to_string().contains("DATABASE_AUTO_MIGRATE"));
+    }
+
+    #[test]
+    fn host_config_examples_deserialize_without_ignored_fields() {
+        for (name, source) in [
+            ("development", include_str!("../config/development.yaml")),
+            ("test", include_str!("../config/test.yaml")),
+            ("browser-smoke", include_str!("../config/browser-smoke.yaml")),
+            (
+                "production.redis.example",
+                include_str!("../config/production.redis.example.yaml"),
+            ),
+        ] {
+            serde_yaml::from_str::<HostConfig>(source)
+                .unwrap_or_else(|error| panic!("{name} host config is invalid: {error}"));
+        }
+    }
+
+    #[test]
+    fn host_config_rejects_unknown_top_level_server_and_database_fields() {
+        let valid = r#"
+server:
+  binding: 127.0.0.1
+  port: 5150
+database:
+  uri: sqlite::memory:
+auth:
+  jwt:
+    secret: test-secret
+    expiration: 3600
+"#;
+        let with_logger = format!("logger:\n  level: debug\n{valid}");
+        let logger_error = serde_yaml::from_str::<HostConfig>(&with_logger)
+            .expect_err("unknown top-level logger settings must fail");
+        assert!(logger_error.to_string().contains("logger"));
+
+        let with_server_host = valid.replace(
+            "  port: 5150",
+            "  port: 5150\n  host: http://localhost",
+        );
+        let host_error = serde_yaml::from_str::<HostConfig>(&with_server_host)
+            .expect_err("unsupported server.host must fail");
+        assert!(host_error.to_string().contains("host"));
+
+        let with_database_typo = valid.replace(
+            "  uri: sqlite::memory:",
+            "  uri: sqlite::memory:\n  max_connection: 8",
+        );
+        let database_error = serde_yaml::from_str::<HostConfig>(&with_database_typo)
+            .expect_err("unknown database fields must fail");
+        assert!(database_error.to_string().contains("max_connection"));
+    }
+
+    #[test]
+    fn explicit_empty_binding_override_fails_closed() {
+        let _env = EnvGuard::new(&["HOST", "RUSTOK_BINDING"]);
+        unsafe {
+            std::env::set_var("HOST", "0.0.0.0");
+            std::env::set_var("RUSTOK_BINDING", "  ");
+        }
+        let config = super::ServerConfig {
+            binding: "127.0.0.1".to_string(),
+            port: 5150,
+        };
+        let error = super::resolve_server_endpoint(&config)
+            .expect_err("an explicitly empty canonical binding must not fall back");
+        assert!(error.to_string().contains("must not be empty"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_unicode_environment_values_fail_closed() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let _env = EnvGuard::new(&["DATABASE_URL"]);
+        unsafe {
+            std::env::set_var("DATABASE_URL", std::ffi::OsString::from_vec(vec![0xff]));
+        }
+        let error = super::read_optional_env("DATABASE_URL")
+            .expect_err("non-Unicode database URLs must not be silently ignored");
+        assert!(error.to_string().contains("DATABASE_URL"));
+        assert!(error.to_string().contains("UTF-8"));
+    }
+
+    #[test]
     fn resolve_server_endpoint_uses_config_defaults() {
-        let _env = EnvGuard::new(&["PORT", "RUSTOK_PORT", "HOST", "RUSTOK_BINDING"]);
+        let _env = EnvGuard::new(&[
+            "PORT",
+            "RUSTOK_PORT",
+            "HOST",
+            "RUSTOK_BINDING",
+            "DATABASE_MIN_CONNECTIONS",
+            "DATABASE_MAX_CONNECTIONS",
+            "DATABASE_CONNECT_TIMEOUT",
+            "DATABASE_IDLE_TIMEOUT",
+            "DATABASE_ENABLE_LOGGING",
+            "DATABASE_AUTO_MIGRATE",
+        ]);
         let config = super::ServerConfig {
             binding: "127.0.0.1".to_string(),
             port: 5150,
@@ -1600,6 +2086,55 @@ mod tests {
         let error = validate_auth_deployment(&config, true)
             .expect_err("an HTTPS issuer without a host must fail");
         assert!(error.to_string().contains("issuer"));
+    }
+
+    #[test]
+    fn production_database_runtime_policy_rejects_automatic_migrations_and_sql_logging() {
+        let mut config = database_config_for_validation();
+        config.auto_migrate = true;
+        let migration_error = super::validate_database_runtime_policy(&config, true)
+            .expect_err("production must not run automatic migrations");
+        assert!(migration_error.to_string().contains("auto_migrate"));
+        super::validate_database_runtime_policy(&config, false)
+            .expect("development may opt into automatic migrations");
+
+        config.auto_migrate = false;
+        config.enable_logging = true;
+        let logging_error = super::validate_database_runtime_policy(&config, true)
+            .expect_err("production must not log SQL");
+        assert!(logging_error.to_string().contains("enable_logging"));
+        super::validate_database_runtime_policy(&config, false)
+            .expect("development may opt into SQL logging");
+
+        config.enable_logging = false;
+        super::validate_database_runtime_policy(&config, true)
+            .expect("safe production database policy");
+        super::validate_database_runtime_policy(&config, false)
+            .expect("development may opt into automatic migrations and SQL logging");
+    }
+
+    #[test]
+    fn database_connection_timeouts_honor_positive_configured_values() {
+        let mut config = database_config_for_validation();
+        config.connect_timeout = 500;
+        config.idle_timeout = 250;
+
+        assert_eq!(
+            super::database_connect_timeout(&config),
+            std::time::Duration::from_millis(500)
+        );
+        assert_eq!(
+            super::database_idle_timeout(&config),
+            Some(std::time::Duration::from_millis(250))
+        );
+
+        config.connect_timeout = 0;
+        config.idle_timeout = 0;
+        assert_eq!(
+            super::database_connect_timeout(&config),
+            std::time::Duration::from_secs(10)
+        );
+        assert_eq!(super::database_idle_timeout(&config), None);
     }
 
     #[test]

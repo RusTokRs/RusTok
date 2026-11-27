@@ -4,7 +4,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::{
-    Confidence, Finding, Severity, discovery, parse_dev_only_crates, report, scan_crate_source,
+    Confidence, Finding, Severity, compiler::CargoDiagnostics, discovery, parse_dev_only_crates,
+    report, scan_crate_source,
 };
 
 #[derive(Default)]
@@ -30,6 +31,7 @@ struct Options {
     fail_on: Option<String>,
     ignored: BTreeSet<String>,
     threads: Option<usize>,
+    cargo_diagnostics: Option<PathBuf>,
 }
 
 fn usage() {
@@ -42,6 +44,7 @@ fn usage() {
     println!("  [--severity P0|P1|P2] [--strict | --fail-on P0|P1|P2] [--ignore-rule IDS]");
     println!("  [--json] [--summary-only] [--suggest-fixes] [--csv FILE]");
     println!("  [--markdown-report FILE] [--patch FILE] [--github-annotations] [--threads N]");
+    println!("  [--cargo-diagnostics FILE]");
 }
 
 fn parse(args: &[String]) -> Result<Option<Options>, String> {
@@ -77,6 +80,12 @@ fn parse(args: &[String]) -> Result<Option<Options>, String> {
             "--patch" => options.patch = Some(value()?.into()),
             "--github-annotations" => options.annotations = true,
             "--fail-on" => options.fail_on = Some(value()?),
+            "--cargo-diagnostics" => {
+                if options.cargo_diagnostics.is_some() {
+                    return Err("--cargo-diagnostics accepts one Cargo JSON stream".to_owned());
+                }
+                options.cargo_diagnostics = Some(value()?.into());
+            }
             "--ignore-rule" => {
                 options.ignored = value()?
                     .split(',')
@@ -141,6 +150,7 @@ fn parse(args: &[String]) -> Result<Option<Options>, String> {
             || options.markdown.is_some()
             || options.patch.is_some()
             || options.annotations
+            || options.cargo_diagnostics.is_some()
             || !options.ignored.is_empty()
             || options.threads.is_some())
     {
@@ -148,6 +158,12 @@ fn parse(args: &[String]) -> Result<Option<Options>, String> {
     }
     if options.json && options.annotations {
         return Err("--json and --github-annotations cannot be combined".to_owned());
+    }
+    if options.staged && options.cargo_diagnostics.is_some() {
+        return Err(
+            "--cargo-diagnostics uses working-tree evidence and cannot be combined with --staged"
+                .to_owned(),
+        );
     }
     Ok(Some(options))
 }
@@ -272,6 +288,7 @@ fn scan(
     targets: &[discovery::Target],
     threads: usize,
     capture_sources: bool,
+    cargo_diagnostics: Option<&CargoDiagnostics>,
 ) -> Result<Vec<(Vec<Finding>, Option<String>)>, String> {
     let manifests = load_dev_only_crates_by_manifest(root, targets);
     let empty_crates = BTreeSet::new();
@@ -294,7 +311,10 @@ fn scan(
                             let source = discovery::read(root, target)?;
                             let dev_only = dev_only_crates_for_target(&target.path, manifests_ref)
                                 .unwrap_or(empty_ref);
-                            let findings = scan_crate_source(&target.path, &source, dev_only);
+                            let mut findings = scan_crate_source(&target.path, &source, dev_only);
+                            if let Some(diagnostics) = cargo_diagnostics {
+                                findings.extend(diagnostics.findings(&target.path, &source)?);
+                            }
                             let source =
                                 (capture_sources && !findings.is_empty()).then_some(source);
                             Ok((findings, source))
@@ -354,6 +374,9 @@ fn validate_outputs(
             sources.insert(output_identity(&path)?);
         }
     }
+    if let Some(path) = &options.cargo_diagnostics {
+        sources.insert(output_identity(&root.join(path))?);
+    }
     let mut outputs = BTreeSet::new();
     for path in [&options.csv, &options.markdown, &options.patch]
         .into_iter()
@@ -362,7 +385,7 @@ fn validate_outputs(
         let identity = output_identity(&root.join(path))?;
         if sources.contains(&identity) || !outputs.insert(identity) {
             return Err(format!(
-                "output path conflicts with another output or scanned source: {}",
+                "output path conflicts with another output, scanned source, or Cargo diagnostics input: {}",
                 path.display()
             ));
         }
@@ -383,15 +406,29 @@ fn execute(options: Options) -> Result<i32, String> {
         );
     }
     validate_outputs(&root, &targets, &options)?;
+    let cargo_diagnostics = options
+        .cargo_diagnostics
+        .as_ref()
+        .map(|path| CargoDiagnostics::read(&root, &root.join(path), &targets))
+        .transpose()?;
+    let build_succeeded = cargo_diagnostics
+        .as_ref()
+        .map(|capture| capture.build_succeeded);
     let count = targets.len();
     let threads = options
         .threads
         .unwrap_or_else(|| std::thread::available_parallelism().map_or(4, |value| value.get()));
     let mut findings = Vec::new();
     let mut sources = BTreeMap::new();
-    for (index, (items, content)) in scan(&root, &targets, threads, options.patch.is_some())?
-        .into_iter()
-        .enumerate()
+    for (index, (items, content)) in scan(
+        &root,
+        &targets,
+        threads,
+        options.patch.is_some(),
+        cargo_diagnostics.as_ref(),
+    )?
+    .into_iter()
+    .enumerate()
     {
         if let Some(content) = content {
             sources.insert(targets[index].path.clone(), content);
@@ -410,11 +447,15 @@ fn execute(options: Options) -> Result<i32, String> {
     } else {
         options.fail_on.as_deref()
     };
-    let exit = i32::from(fail_on.is_some_and(|limit| {
-        findings.iter().any(|finding| {
-            finding.confidence == Confidence::High && threshold(finding.severity, limit)
-        })
-    }));
+    let exit = if build_succeeded == Some(false) {
+        2
+    } else {
+        i32::from(fail_on.is_some_and(|limit| {
+            findings.iter().any(|finding| {
+                finding.confidence == Confidence::High && threshold(finding.severity, limit)
+            })
+        }))
+    };
     if let Some(path) = &options.csv {
         report::write(&root, path, &report::csv(&findings)?)?;
     }
@@ -422,17 +463,27 @@ fn execute(options: Options) -> Result<i32, String> {
         report::write(
             &root,
             path,
-            &report::markdown(&findings, count, &description),
+            &report::markdown(&findings, count, &description, build_succeeded),
         )?;
     }
     if let Some(path) = &options.patch {
         report::write(&root, path, &report::patch(&findings, &sources)?)?;
     }
     if options.json {
-        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-            "target": description, "scanned_files": count, "total_findings": findings.len(), "findings": findings
-        })).map_err(|error| error.to_string())?);
+        let mut payload = serde_json::json!({
+            "target": description, "scanned_files": count, "total_findings": findings.len(), "findings": findings,
+        });
+        if let Some(success) = build_succeeded {
+            payload["cargo_diagnostics"] = serde_json::json!({ "build_succeeded": success });
+        }
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&payload).map_err(|error| error.to_string())?
+        );
         return Ok(exit);
+    }
+    if let Some(success) = build_succeeded {
+        println!("{}", report::build_status(success));
     }
     report::print(
         &findings,

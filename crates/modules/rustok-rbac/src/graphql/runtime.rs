@@ -98,6 +98,28 @@ pub struct RbacLockedMutationAuthority {
     pub deadline: chrono::DateTime<chrono::Utc>,
 }
 
+impl RbacLockedMutationAuthority {
+    /// Restrict live authority to the original admitted effective grants.
+    /// A manage grant covers concrete actions on its resource, not the reverse.
+    pub fn restrict_to(&mut self, admitted: &[rustok_api::Permission]) {
+        let live = &self.permissions;
+        let mut common: Vec<_> = live
+            .iter()
+            .chain(admitted)
+            .copied()
+            .filter(|permission| {
+                rustok_api::has_effective_permission(live, permission)
+                    && rustok_api::has_effective_permission(admitted, permission)
+            })
+            .collect();
+        common.sort_by_cached_key(ToString::to_string);
+        common.dedup();
+        self.permissions = common;
+    }
+}
+
+/// The returned authority must be bounded by both the admitted request
+/// and current effective grants, not merely satisfy each gate independently.
 #[async_trait]
 pub trait RbacMutationAuthority: Send + Sync {
     async fn prepare(&self) -> Result<(), RbacGraphqlRoleWriteError>;
@@ -118,3 +140,35 @@ pub trait RbacMutationAuthority: Send + Sync {
 
 #[derive(Clone)]
 pub struct RbacMutationAuthorityHandle(pub Arc<dyn RbacMutationAuthority>);
+
+#[cfg(test)]
+mod tests {
+    use super::RbacLockedMutationAuthority;
+    use rustok_api::Permission;
+
+    #[test]
+    fn locked_authority_intersects_effective_grants_without_expanding_manage() {
+        for (live, admitted) in [
+            (
+                vec![Permission::USERS_MANAGE, Permission::SETTINGS_MANAGE],
+                vec![Permission::USERS_READ, Permission::POSTS_MANAGE],
+            ),
+            (
+                vec![Permission::USERS_READ, Permission::POSTS_MANAGE],
+                vec![Permission::USERS_MANAGE, Permission::SETTINGS_MANAGE],
+            ),
+        ] {
+            let mut authority = RbacLockedMutationAuthority {
+                permissions: live,
+                availability: None,
+                deadline: chrono::Utc::now(),
+            };
+            authority.restrict_to(&admitted);
+            assert_eq!(authority.permissions, vec![Permission::USERS_READ]);
+            authority.restrict_to(&admitted);
+            assert_eq!(authority.permissions, vec![Permission::USERS_READ]);
+            authority.restrict_to(&[]);
+            assert!(authority.permissions.is_empty());
+        }
+    }
+}

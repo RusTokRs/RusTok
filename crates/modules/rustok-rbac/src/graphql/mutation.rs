@@ -70,11 +70,13 @@ async fn lock_role_authority(
     tenant_id: Uuid,
     target_role_id: Option<Uuid>,
 ) -> Result<RbacLockedMutationAuthority> {
-    let authority = handle
+    let mut authority = handle
         .0
         .lock(tx, tenant_id, auth.user_id, target_role_id, ROLE_MANAGEMENT)
         .await
         .map_err(map_role_write_error)?;
+    // Enforce the owner contract even if an adapter returns raw live grants.
+    authority.restrict_to(&auth.permissions);
     if !ROLE_MANAGEMENT
         .iter()
         .any(|p| has_effective_permission(&authority.permissions, p))
@@ -244,7 +246,10 @@ async fn grant_role_permissions_in_tx(
     permissions: &[Permission],
 ) -> Result<Vec<String>> {
     let mut granted = Vec::with_capacity(permissions.len());
-    for permission in permissions {
+    // All role writers materialize shared vocabulary keys in the same order.
+    let mut ordered = permissions.iter().collect::<Vec<_>>();
+    ordered.sort_by_cached_key(|permission| permission_parts(permission));
+    for permission in ordered {
         let (resource, action) = permission_parts(permission);
         let (resource, action) = (resource.as_str(), action.as_str());
 
@@ -599,7 +604,8 @@ impl RbacMutation {
         let availability = &authority.availability;
 
         // Lock and read current metadata inside the transaction so concurrent
-        // renames/edits or deletes are serialized cleanly with zero TOCTOU.
+        // renames/edits or deletes are serialized. Revalidate the requested slug
+        // as well as the ID: a concurrent SQL rename can change break-glass status.
         let requested_desc_patch: Option<Option<String>> = match input.description {
             MaybeUndefined::Undefined => None,
             MaybeUndefined::Null => Some(None),
@@ -617,17 +623,17 @@ impl RbacMutation {
         )> = async {
             let lock_role_sql = match backend {
                 sea_orm::DbBackend::Sqlite => {
-                    "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? RETURNING name, description, is_system"
+                    "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? AND slug = ? RETURNING name, description, is_system"
                 }
                 sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql | _ => {
-                    "SELECT name, description, is_system FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE"
+                    "SELECT name, description, is_system FROM roles WHERE tenant_id = ? AND id = ? AND slug = ? LIMIT 1 FOR UPDATE"
                 }
             };
             let tx_role = tx
                 .query_one_raw(prepare_statement(
                     backend,
                     lock_role_sql,
-                    vec![tenant.id.into(), role_id.into()],
+                    vec![tenant.id.into(), role_id.into(), slug.clone().into()],
                 ))
                 .await
                 .map_err(|e| internal_db_error("rbac role mutation", e))?
@@ -956,22 +962,22 @@ impl RbacMutation {
             };
 
         // Re-verify the role inside the deleting transaction: the lookup
-        // above ran outside it, so a concurrent delete must surface as
-        // not-found here instead of a phantom success below.
+        // above ran outside it, so a concurrent delete or slug change must
+        // surface as not-found. The old slug is not proof of break-glass status.
         let tx_outcome: Result<()> = async {
             let lock_role_sql = match backend {
                 sea_orm::DbBackend::Sqlite => {
-                    "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? RETURNING id"
+                    "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? AND slug = ? RETURNING id"
                 }
                 sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql | _ => {
-                    "SELECT id FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE"
+                    "SELECT id FROM roles WHERE tenant_id = ? AND id = ? AND slug = ? LIMIT 1 FOR UPDATE"
                 }
             };
             let tx_role = tx
                 .query_one_raw(prepare_statement(
                     backend,
                     lock_role_sql,
-                    vec![tenant.id.into(), role_id.into()],
+                    vec![tenant.id.into(), role_id.into(), slug.clone().into()],
                 ))
                 .await
                 .map_err(|e| internal_db_error("rbac role mutation", e))?;

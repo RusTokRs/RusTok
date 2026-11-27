@@ -18,10 +18,44 @@ documentation for this module must live inside the crate, not spread across
 - permission-aware runtime contracts and typed RBAC primitives in conjunction with `rustok-core`;
 - absence of rollout-mode and shadow-runtime logic in the live surface.
 
+## Transaction-bound management alternatives
+
+GraphQL role update and deletion revalidate the requested tenant, role UUID
+and slug in the locked row query. A rename between the initial locator read
+and transaction admission returns not-found instead of applying stale slug
+policy (including break-glass protection) to the renamed role. The regression
+exercises both mutations; runtime verification is pending.
+
+The host RBAC control-plane authority returns only the effective intersection
+of the admitted request and current module-filtered grants. The GraphQL owner
+also applies its request ceiling before testing management alternatives.
+A disjoint old/new management permission pair never authorizes a mutation;
+a concrete grant can survive a manage wildcard in either direction, but
+cannot be widened to manage. Credential deadline and database fences remain
+mandatory; source regressions are unrun.
+
+Structured artifact namespace purge also consumes this host mutation authority:
+credential/module/role fences are acquired on the Modules owner transaction
+before receipt lookup and activation locks. Exact terminal replay requires
+current admitted authority, and each commit checks the credential deadline.
+Operational drain, legal holds and global lock-order execution evidence are
+separate gates.
+
+## Standalone role lock ordering
+
+PostgreSQL standalone replacement takes the target user fence, then the
+existing target membership, destination and SuperAdmin continuity roles in
+canonical UUID order before per-role checks. Bootstrap assignment fences
+the user and exact system role before touching shared permission vocabulary;
+a late role conflict fails via NOWAIT. Lazy missing-role creation and bulk
+repair remain outside a complete cross-owner ordering proof. PostgreSQL
+regression evidence is authored but unrun.
+
 ## Integration
 
 - `SeaOrmRelationPermissionStore` owns persisted relation reads for both cached
-  runtime and uncached decisions. `authorize_current_permission` evaluates
+  runtime and uncached decisions in a single SQL statement joining the exact
+  tenant/user, memberships, roles, and grants. `authorize_current_permission` evaluates
   those current grants on a host-supplied connection or transaction through the
   canonical tenant policy engine; it never
   consumes request snapshots and does not establish a revocation fence;
@@ -35,6 +69,15 @@ documentation for this module must live inside the crate, not spread across
   the requested role in stable identity order and returns their canonical
   revision binding. Static grants and role identity changes advance the role
   epoch transactionally; see the [role epoch ADR](../../../../DECISIONS/2026-11-27-rbac-role-grant-revision.md).
+  Migration 000006 adds PostgreSQL nonblocking BEFORE relation guards for
+  surviving membership/grant revision parents, followed by referenced
+  role/permission FK parents. The existing AFTER revision triggers remain
+  the sole revision writers. Late contention returns SQLSTATE 55P03;
+  roll back the entire transaction. Direct artifact grants and receipts
+  also pre-lock actor, role and definition FK parents with KEY SHARE NOWAIT.
+  This does not cover arbitrary bulk child-row acquisition or cascade waits
+  before the trigger runs. No SQLite behavior or stored revision changes.
+  PostgreSQL regression evidence remains unrun.
   `lock_actor_role_grants_on` uses the same ordered static-role fence as
   invitation grant binding, without requiring a destination role. The caller
   holds the actor user fence and owns the subsequent permission decision.
@@ -44,7 +87,9 @@ documentation for this module must live inside the crate, not spread across
   contract. Single, any, and all permission decisions use the same tenant policy
   engine; the server never decides permission membership independently. Snapshot
   use preserves the request permission ceiling and does not prove current grants
-  or an atomic revocation fence;
+  or an atomic revocation fence. Credential-bearing snapshots fail closed at
+  their exclusive deadline or a fault of the shared Auth local clock; matching
+  invalid scopes never fall back to persisted grants;
 - `RbacRoleAssignmentDbWriter::remove_tenant_role_assignments_on` validates
   persisted subject tenancy and owns membership deletion inside the host transaction;
 - `plan_persisted_user_role_mutation_on` reads and locks current target authority,
@@ -218,11 +263,24 @@ thresholds and tune only after retaining workload evidence:
 1. Produce the read-only repair plan first and review the affected system roles.
 2. Execute the approved `rbac repair-system-roles --apply` command against the
    authoritative database.
-3. Confirm the repair transaction commits one new durable generation.
+3. If the committed repair affects existing authorization snapshots, confirm
+   the repair transaction commits one new durable generation. A no-op or a
+   lost insert race must not claim another writer's change.
 4. Confirm local invalidation occurs immediately and remote replicas recover to the
    committed generation without a restart.
 5. Verify representative allow and deny decisions. Do not infer success only from
    the CLI exit code or Redis publication.
+
+Single-role seed and grant paths order shared permission vocabulary keys by
+(resource, action). Repair seeds only its own successful role insertion;
+a concurrent winning persisted system role is left unchanged. The RBAC
+generation reservation rejects non-integer SQLite storage and exhausted
+counters, and returns the exact assigned successor. PostgreSQL reservation
+uses nonwaiting table and singleton fences, matching the artifact grant trigger;
+contention requires rollback and fresh admission, not a partial retry. SQLite regressions and
+an opt-in PostgreSQL reservation contention test
+(`RUSTOK_RBAC_TEST_DATABASE_URL`) are authored, not run. Full bulk
+role/permission ordering and FK/trigger auditing remain open.
 
 The current metrics and runbook make generation recovery observable, but a complete
 single-incident chain from evaluator decision through relation state, cache snapshot,
@@ -257,3 +315,123 @@ durable generation and recovery action is still an open P1 in the implementation
 - [PostgreSQL concurrency evidence harness](./postgres-concurrency-evidence.md)
 - [Two-process durable recovery evidence](./two-process-durable-recovery-evidence.md)
 - [Two-process Redis restart recovery evidence](./two-process-redis-restart-evidence.md)
+
+### Durable generation DML integrity and transaction tail
+
+Migration 000012 preserves the seeded permissions singleton and requires
+strictly increasing integer updates; direct deletion, insertion, PostgreSQL
+TRUNCATE and SQLite replacement fail closed. Forward-only recovery jumps
+are permitted; normal owner reservation remains UPDATE RETURNING +1. Upgrade
+validates existing storage under a writer fence. Privileged DDL and restore
+are outside ordinary DML enforcement. User-admin update resolves response role
+and tenant before reservation. The generation-bearing outbox insert and final
+live credential deadline check remain after reservation and must not acquire
+new domain identities. SQLite and opt-in PostgreSQL regressions are unrun.
+
+### Raw relation writes and cached decisions
+
+Unscoped persisted permission resolution validates each cache hit by exact
+tenant/user grant-set equivalence in a database statement, then rechecks the
+local token. A mismatch is a cache miss; read failure is an authority failure
+even with a warm entry. A raw relation change no longer depends on the global
+watermark or a pub/sub notification to be observed by the next such decision.
+The extra database read is intentional; this does not revoke already admitted
+request snapshots or make direct DML advance the recovery watermark. No new
+global write locks or duplicate generation reservation are introduced.
+
+### Permanent static authority identities
+
+Migration 000013 backfills and retains an append-only UUID witness for each
+existing user, role and permission and for every subsequent successful insert.
+A deleted UUID cannot be reused, including SQLite same-ID REPLACE and alternate
+text/blob UUID encodings; UUID updates are forbidden. Conflict-do-nothing and
+rolled-back births consume nothing. Witnesses contain only kind and UUID, no
+email, role slug or permission payload, and have no cascading foreign keys.
+The SQLite witness table uses WITHOUT ROWID, preventing replacement through
+an unrelated hidden row identity. PostgreSQL uses a nonwaiting per-identity
+advisory fence for witness inserts.
+The migration cannot reconstruct identities deleted before cutover, and does
+not protect privileged DDL/restore, other authority kinds, or SQLite
+natural-key REPLACE with a different UUID. Source regressions are unrun.
+
+## Artifact catalog parent and batch lock order
+
+Release admission visits permission keys and canonical localization keys in
+sorted order, independent of caller ordering. Scoped projection orders its
+release definition and translation reads by the same logical keys within a
+backend. Migration 000016 guards installation-to-definition and both
+translation FK edges with relation and exact parent KEY SHARE NOWAIT; metadata
+updates with unchanged translation parent need no new lock. Existing artifact
+grant/receipt guards also take parent relation locks NOWAIT. Contention rejects
+the transaction with 55P03; retry only the complete owner transaction. SQLite
+retains serialized writers and existing FKs. This is not a proof of arbitrary
+bulk SQL or global deadlock freedom; PostgreSQL regression unrun.
+
+The 000016 contention regression also installs the predecessor 000006
+triggers and exercises the grant and operation receipt guards against each
+actor, role and definition FK parent, with row/table contention and reentrant
+owner admission. Cross-tenant FK substitution is rejected; source only.
+
+## Artifact grant generation coupling
+
+Migration 000017 advances the existing recovery watermark once per actual
+artifact grant row birth, removal or authority-tuple update, independent of
+entrypoint. Exact retries and unchanged authority tuples do not advance it.
+PostgreSQL uses deferred constraint triggers and nonwaiting generation locks;
+raw grant deletion and changed identity also take the affected roles in UUID
+order with NOWAIT. SQLite uses immediate row triggers under its single writer.
+The owner assignment no longer performs a second explicit reservation; event,
+receipt, state and watermark roll back together on transaction failure. The
+migration invalidates pre-cutover continuity receipts by advancing once and
+requires a valid existing watermark. Drain old writers and deploy the matching
+owner together. Direct static relation writes still do not advance the global
+watermark; exact static reads/revisions remain separate. Arbitrary bulk SQL and
+whole-transaction retry policy remain open. Regression sources are unrun.
+
+## Process-local request snapshot revocation
+
+Authenticated host scopes carry the cache epoch sampled before durable grant
+resolution. A later targeted stripe or global advance, including delivery by
+the existing invalidation listener/watchdog, prevents stale scope reuse or
+unscoped fallback. Collisions are conservative denials; no per-actor map or new
+persistent generation. Direct SQL without notification, remote commit latency
+and in-flight transaction authority remain separate boundaries. Source tests unrun.
+
+## Durable static request revision checks
+
+The host retains the owner membership and role grant revision from admission.
+Scope-aware service checks and GraphQL root admission compare it through the
+single-statement owner reader. Raw relation changes and ABA cannot pass a
+subsequent matching check merely because no notification arrived. WebSocket
+revalidation also binds the revision. This adds a read, not a transaction
+fence. Service OAuth and synchronous consumers retain their separate contracts.
+Source regressions are unrun.
+
+Matching scope reads used for fallback now distinguish absent scope from
+invalid authority in one fallible accessor, including a recheck after
+cloning. The host's synchronous REST permission gates also verify the
+original CurrentUser deadline and local epoch, and intersect effective
+checks with any matching scope ceiling. This does not add a durable read
+to synchronous gates or fence subsequent effects. Source regressions unrun.
+
+GraphQL HTTP/WS executor data carries the original admitted scope. The
+security extension requires that marker to match live task-local authority
+and immutable AuthContext, including effective ceiling and credential facts.
+Missing or substituted scope denies rather than falling back. Nested query
+fields recheck local validity; selected mutations retain receipt serialization.
+Root durable revision reads are unchanged; no per-scalar SQL read is added.
+Nested mutation reads and durable revocation between root and nested read
+remain separate boundaries. Source regressions unrun.
+
+## Revision-bound permission cache publication
+
+The Moka adapter binds grants to the original coherent static actor revision.
+Cache fills recheck the revision after publication and retry on drift even
+without local invalidation. Bound hits compare exact vocabulary and revision
+in one database statement; ABA is a miss. Missing subjects and legacy entries
+retain exact checks. A revision-aware miss with absent subject evidence may
+publish only empty grants: a nonempty read without a revision retries before
+publication, even if the subject would again be absent afterward. Revision
+storage counts toward the cache weight. Exact
+validation is retained because database restore can reproduce counters; no
+warm-hit speedup or commit-time fence is claimed. Source regressions unrun.

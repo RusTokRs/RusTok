@@ -685,3 +685,101 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   artifact-runtime authority and prove cross-module lock ordering (including
   tenant active state and all bulk credential revocation paths). Compile
   and PostgreSQL contention/revocation tests remain unrun.
+
+- PostgreSQL credential FK parent admission (migration 000007): app tenant,
+  token/code/consent tenant/app/user, translation app, deferred refresh-family
+  root, invite issuer/consumption and email-change user references use
+  nonblocking parent guards. Existing FK/lineage constraints and nullable
+  cascades remain in place. Metadata-only mutations do not add earlier locks.
+  PostgreSQL contention, successful retry and user cascade regression authored,
+  unrun. Session refresh history, bulk parent deletes, all owner receipt/outbox
+  and global cross-owner lock order remain separate open boundaries.
+
+- SQLite physical user deletion parity: migration 000008 adds the missing
+  token user cascade, deleting descendants before roots and preserving
+  unrelated credentials. Existing orphan/cross-tenant rows block cutover;
+  no automatic cleanup. Source tests authored, unrun. PostgreSQL existing
+  composite FK is unchanged.
+
+- Session/retention lock closure: exact session identity under the user fence
+  for refresh/logout; platform migration 000010 for nonblocking session/history
+  parent admission; PostgreSQL retention locks candidate apps before children,
+  then exact roots/members and eligible code rows. Busy candidates abort the
+  whole transaction; fixed conservative cutoff and SQLite behavior preserved.
+  Source regressions unrun. Full session history immutability, tenant/user
+  identity parity, bulk revocation and cross-owner/outbox ordering remain open.
+
+- Session evidence integrity (platform migration 000011): immutable session
+  identity/creation time, tenant/user composite FK or SQLite equivalent,
+  append-only history and parent-only cascade, PostgreSQL TRUNCATE rejection
+  and SQLite replacement guards. Dirty identity blocks migration. Source
+  regressions and aging fixture adjustments authored; no runtime verification.
+  Absolute deadline monotonicity, parent-delete authorization, bulk revocation
+  and cross-owner/outbox ordering remain open.
+
+- Broad OAuth user/app revocation: stable exact credential prelocks, NOWAIT
+  before mutations, with existing owner fences and all-or-nothing rollback.
+  App-wide scope includes consents; user scope preserves delegated-only tokens.
+  PostgreSQL source contention test unrun. Family replay and consent paths,
+  cross-owner receipts and outbox still require closure.
+
+- Credential identity continuation: Auth migration 000014 adds append-only
+  session, OAuth app/client/token/code UUID claims and session refresh/OAuth
+  token/code digest claims. Current and retained historical session digests
+  are backfilled; new session digest claims are atomic with birth/rotation. The SQLite witness table has no hidden rowid conflict key, and
+  SQLite rejects alternate refresh-family REPLACE; normal rotation and
+  rollback remain supported. Source regressions authored, unrun; incremental
+  migration, lock contention and storage growth require verification. Tenant
+  identity and terminal state transitions remain open only at other
+  boundaries: sessions, OAuth tokens, codes and consents now reject changes
+  to a recorded terminal timestamp. Revoked token rotation evidence and
+  revoked consent grant/subject are immutable; consent UUIDs are permanent.
+  Fresh consent epoch continuity and other nonterminal claim mutations
+  remain open. Source regressions unrun.
+
+- Transaction retry authority first consumer: consent revocation prelocks
+  exact credential scope and preserves typed statement failures. Confirmed
+  rollback and bounded Core retry re-enter clock and locked credential
+  admission; commit errors never retry. Other admin and owner adapters,
+  rollback/commit fault injection, full auth reauthorization contention
+  and external-effect receipts remain open. Source regressions unrun.
+
+- Consent writer correction: every grant now retires the existing active row
+  and inserts a fresh UUID, invalidating exact-subject tokens and codes even
+  when no active consent is present. The terminal guard must never be bypassed
+  to revive a revoked row. Timestamp-based epoch binding remains a separate
+  open cross-reader contract. Source regressions unrun.
+
+- Issued OAuth claims: token scopes/expiry and code subject, redirect URI,
+  scopes, PKCE and timestamps are immutable after issuance on both backends.
+  Extractor negative fixtures now insert malformed legacy claims at birth
+  instead of modifying an issued registration. Database regressions cover
+  attempted live-claim mutation and no-op updates. Session deadline and
+  durable consent epoch binding remain open. Source regressions unrun.
+
+- Consent grant claims are immutable after birth, including active grants.
+  Explicit session absolute deadlines only narrow; refresh materializes a
+  legacy NULL once and otherwise preserves the stored cap. SQLite rejects
+  ambiguous timestamp changes rather than allowing a possible extension.
+  Timestamp-independent consent binding and sliding expiry remain open.
+  Source regressions unrun.
+
+- Authorization-code UUID generation: migration 000018 adds a write-once
+  consent_id and the issuance/exchange path checks the exact live generation
+  before preparation and under the app/subject lock. Legacy unbound codes
+  for consent-required clients fail closed, without guessed backfill.
+  Token registrations, refresh lineage and admin evidence UUID binding
+  remain outstanding. Source regressions unrun.
+
+- Consent-required token generation: resolve the immutable original
+  authorization_code_id to the consumed code's consent UUID. Check exact
+  tenant/client/subject and live generation in access, WebSocket, locked
+  admin and refresh preflight/commit. Same-timestamp replacement regressions
+  cover refresh and admin; unbound legacy families fail closed. Source
+  regressions unrun.
+
+- Consent generation admission checks active consent and consumed code in one
+  SQL snapshot, and checks both prepared token models against the admitted
+  original code and epoch before any exchange/rotation/recovery effect.
+  Regression assertions cover a stale grant observation and mismatched
+  prepared lineage. Source regressions unrun.

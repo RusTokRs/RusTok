@@ -29,6 +29,23 @@ use rustok_channel::{
     TargetSurface,
 };
 
+/// Host-only facts from the canonical HTTP channel resolution boundary.
+/// Keep the selected identity too: a stale cache may not silently move an
+/// artifact request to a different channel.
+#[derive(Clone)]
+pub(crate) struct ArtifactChannelRequest {
+    pub facts: RequestFacts,
+    pub selected_channel_id: Option<Uuid>,
+}
+
+tokio::task_local! {
+    static ARTIFACT_CHANNEL_REQUEST: ArtifactChannelRequest;
+}
+
+pub(crate) fn artifact_channel_request() -> Option<ArtifactChannelRequest> {
+    ARTIFACT_CHANNEL_REQUEST.try_with(Clone::clone).ok()
+}
+
 const CHANNEL_ID_HEADER: &str = "X-Channel-ID";
 const CHANNEL_SLUG_HEADER: &str = "X-Channel-Slug";
 const CHANNEL_CACHE_TTL: Duration = Duration::from_secs(60);
@@ -336,7 +353,9 @@ pub async fn resolve(
         settings,
         req.extensions(),
     )?;
-    if let Some(context) = resolve_channel_context_for_facts(&ctx, facts).await? {
+    let context = resolve_channel_context_for_facts(&ctx, facts.clone()).await?;
+    let selected_channel_id = context.as_ref().map(|context| context.id);
+    if let Some(context) = context {
         req.extensions_mut()
             .insert(ChannelContextExtension(context));
     }
@@ -345,7 +364,10 @@ pub async fn resolve(
         path_group = crate::middleware::http_stack::trace_path_family(req.uri().path()),
         "channel::resolve calling next"
     );
-    Ok(next.run(req).await)
+    Ok(ARTIFACT_CHANNEL_REQUEST.scope(
+        ArtifactChannelRequest { facts, selected_channel_id },
+        next.run(req),
+    ).await)
 }
 
 fn build_request_facts(

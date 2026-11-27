@@ -1,9 +1,9 @@
 use crate::browser_problem::BROWSER_SAVE_OUTCOME_UNKNOWN_CODE;
 use crate::model::{PageDetail, PageMutationResult};
 use crate::transport;
-use leptos::prelude::*;
 #[cfg(feature = "ssr")]
-use rustok_graphql::GraphqlHttpError;
+use crate::transport::TransportError;
+use leptos::prelude::*;
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PreviewPageBuilderInput,
     PublishPageBuilderInput,
@@ -924,17 +924,17 @@ mod save_receipt_revision_tests {
 }
 
 #[cfg(feature = "ssr")]
-fn document_save_might_have_committed(error: &GraphqlHttpError) -> bool {
+fn document_save_might_have_committed(error: &TransportError) -> bool {
     match error {
-        GraphqlHttpError::Network => true,
-        GraphqlHttpError::Http(status) => {
+        TransportError::Network => true,
+        TransportError::Http(status) => {
             let code = status.split_whitespace().next().unwrap_or("");
             matches!(code, "408" | "429")
                 || code
                     .parse::<u16>()
                     .is_ok_and(|code| (500..=599).contains(&code))
         }
-        GraphqlHttpError::Graphql(_) | GraphqlHttpError::Unauthorized => false,
+        TransportError::Graphql(_) | TransportError::Unauthorized => false,
     }
 }
 
@@ -956,7 +956,7 @@ fn document_save_attempt_key(
         digest.update([0]);
     }
     digest.update(project.to_string().as_bytes());
-    format!("fly-save-v1:{:x}", digest.finalize())
+    format!("fly-save-v1:{}", hex::encode(digest.finalize()))
 }
 
 #[cfg(feature = "ssr")]
@@ -1131,13 +1131,17 @@ mod document_gate_tests {
 #[cfg(all(test, feature = "ssr"))]
 mod document_save_attempt_key_tests {
     use super::{document_save_attempt_key, document_save_might_have_committed};
-    use rustok_graphql::GraphqlHttpError;
+    use crate::transport::TransportError;
     use serde_json::json;
 
     #[test]
     fn write_identity_separates_actor_revision_and_payload() {
         let document = json!({"pages": [{"id": "home"}]});
         let key = document_save_attempt_key("tenant", "actor", "page", "r1", "en", &document);
+        assert_eq!(
+            key,
+            "fly-save-v1:b88a4db353d8e5fa23ed194bab8f77ac988fe4667b37620b0d06091bf751e401"
+        );
         assert_eq!(
             key,
             document_save_attempt_key("tenant", "actor", "page", "r1", "en", &document),
@@ -1163,26 +1167,24 @@ mod document_save_attempt_key_tests {
 
     #[test]
     fn ambiguous_transport_errors_are_probed_but_deterministic_rejections_are_not() {
-        assert!(document_save_might_have_committed(
-            &GraphqlHttpError::Network
-        ));
-        assert!(document_save_might_have_committed(&GraphqlHttpError::Http(
+        assert!(document_save_might_have_committed(&TransportError::Network));
+        assert!(document_save_might_have_committed(&TransportError::Http(
             "503 Service Unavailable".to_string(),
         )));
-        assert!(document_save_might_have_committed(&GraphqlHttpError::Http(
+        assert!(document_save_might_have_committed(&TransportError::Http(
             "408 Request Timeout".to_string(),
         )));
-        assert!(document_save_might_have_committed(&GraphqlHttpError::Http(
+        assert!(document_save_might_have_committed(&TransportError::Http(
             "429 Too Many Requests".to_string(),
         )));
+        assert!(!document_save_might_have_committed(&TransportError::Http(
+            "400 Bad Request".to_string(),
+        )));
         assert!(!document_save_might_have_committed(
-            &GraphqlHttpError::Http("400 Bad Request".to_string(),)
+            &TransportError::Unauthorized
         ));
         assert!(!document_save_might_have_committed(
-            &GraphqlHttpError::Unauthorized
-        ));
-        assert!(!document_save_might_have_committed(
-            &GraphqlHttpError::Graphql("PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT".to_string(),)
+            &TransportError::Graphql("PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT".to_string(),)
         ));
     }
 }

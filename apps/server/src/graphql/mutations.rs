@@ -1631,7 +1631,25 @@ impl RootMutation {
         reason: String,
         idempotency_key: Uuid,
     ) -> Result<ArtifactDataPurgeReceipt> {
-        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        let auth = ctx.data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let principal = ctx.data::<AuthPrincipalContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        require_direct_control_plane_user(
+            RbacControlPlanePrincipal {
+                tenant_id: auth.tenant_id,
+                principal_kind: principal.kind,
+            },
+            tenant.id,
+        ).map_err(|_| <FieldError as GraphQLError>::permission_denied(
+            "Artifact data purge requires a direct tenant session",
+        ))?;
+        if !rustok_api::has_effective_permission(&auth.permissions, &Permission::MODULES_MANAGE) {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: modules:manage required",
+            ));
+        }
         if installation_id.is_nil() || idempotency_key.is_nil() || expected_namespace_revision <= 0
         {
             return Err(<FieldError as GraphQLError>::bad_user_input(
@@ -1640,7 +1658,13 @@ impl RootMutation {
         }
         let db = ctx.data::<DatabaseConnection>()?;
         let control_plane = ModuleControlPlane::new(db.clone());
-        let service = control_plane.artifact_data_purge(ServerArtifactDataPurgeAuthorizer);
+        let authority = ctx
+            .data_opt::<rustok_rbac::graphql::RbacMutationAuthorityHandle>()
+            .cloned()
+            .ok_or_else(|| <FieldError as GraphQLError>::internal_error(
+                "Artifact data purge authority is unavailable",
+            ))?;
+        let service = control_plane.artifact_data_purge(ServerArtifactDataPurgeAuthorizer(authority));
 
         let result = service
             .purge(ArtifactDataPurgeRequest {

@@ -1012,6 +1012,141 @@ fn stable_ids_fast_path_leaves_valid_documents_untouched() {
 }
 
 #[test]
+fn repairing_invalid_component_ids_remaps_action_and_aria_references() {
+    let document = GrapesJsCodec::decode_value(json!({
+        "styles": [{
+            "flyComponentId": "bad target",
+            "selectors": ["#bad target"],
+            "style": { "color": "red" }
+        }],
+        "pages": [{
+            "id": "home",
+            "component": {
+                "id": "root",
+                "type": "wrapper",
+                "components": [
+                    {
+                        "id": "trigger",
+                        "type": "button",
+                        "attributes": { "aria-controls": "bad target" },
+                        "flyAction": {
+                            "kind": "scroll_to",
+                            "target_id": "bad target"
+                        }
+                    },
+                    { "id": "bad target", "type": "section" },
+                    { "id": "bad target", "type": "section", "attributes": { "title": "second" } }
+                ]
+            }
+        }]
+    }))
+    .expect("document");
+
+    let editor = FlyEditor::new(document, RegistrySet::with_builtins());
+    let trigger = editor.document().component("trigger").expect("trigger");
+    let action = trigger
+        .extensions
+        .get("flyAction")
+        .and_then(Value::as_object)
+        .expect("action");
+    let repaired_id = action
+        .get("target_id")
+        .and_then(Value::as_str)
+        .expect("repaired target id");
+
+    assert_ne!(repaired_id, "bad target");
+    assert!(editor.document().component(repaired_id).is_some());
+    let root = editor.document().component("root").expect("root");
+    let first_target_id = root.children()[1].id().expect("first repaired target");
+    let second_target_id = root.children()[2].id().expect("second repaired target");
+    assert_ne!(first_target_id, second_target_id);
+    assert_eq!(repaired_id, first_target_id);
+    assert_eq!(
+        editor.document().project().styles[0]["flyComponentId"],
+        repaired_id
+    );
+    assert_eq!(
+        trigger
+            .attributes
+            .get("aria-controls")
+            .and_then(Value::as_str),
+        Some(repaired_id)
+    );
+}
+
+#[test]
+fn opaque_component_ids_are_repaired_without_discarding_unknown_fields() {
+    let document = GrapesJsCodec::decode_value(json!({
+        "pages": [{
+            "id": "home",
+            "component": {
+                "id": "root",
+                "type": "wrapper",
+                "components": [{
+                    "id": "bad target",
+                    "type": 42,
+                    "futureConfig": { "keep": true }
+                }]
+            }
+        }]
+    }))
+    .expect("document");
+
+    let editor = FlyEditor::new(document, RegistrySet::with_builtins());
+    let root = editor.document().component("root").expect("root");
+    let child = root.children().first().expect("opaque child");
+    let ComponentNode::Opaque(raw) = child else {
+        panic!("unknown component should remain opaque");
+    };
+
+    let repaired_id = raw.get("id").and_then(Value::as_str).expect("repaired id");
+    assert_ne!(repaired_id, "bad target");
+    assert!(crate::validate_identifier(repaired_id).is_ok());
+    assert_eq!(raw["futureConfig"]["keep"], true);
+}
+
+#[test]
+fn inserting_invalid_component_ids_remaps_internal_action_references() {
+    let mut editor = editor();
+    let component: ComponentNode = serde_json::from_value(json!({
+        "id": "inserted-root",
+        "type": "section",
+        "components": [
+            {
+                "id": "trigger",
+                "type": "button",
+                "flyAction": {
+                    "kind": "scroll_to",
+                    "target_id": "bad target"
+                }
+            },
+            { "id": "bad target", "type": "section" }
+        ]
+    }))
+    .expect("component");
+
+    editor
+        .apply(EditorCommand::Insert {
+            parent_id: Some("root".to_string()),
+            index: 1,
+            component,
+        })
+        .expect("insert");
+
+    let trigger = editor.document().component("trigger").expect("trigger");
+    let repaired_id = trigger
+        .extensions
+        .get("flyAction")
+        .and_then(Value::as_object)
+        .and_then(|action| action.get("target_id"))
+        .and_then(Value::as_str)
+        .expect("repaired target id");
+
+    assert_ne!(repaired_id, "bad target");
+    assert!(editor.document().component(repaired_id).is_some());
+}
+
+#[test]
 fn history_entry_records_exact_inverse_command() {
     let mut editor = editor();
     editor

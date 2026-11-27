@@ -1,3 +1,32 @@
+data-table-empty = Ничего не найдено.
+data-table-total =
+    { $total ->
+        [one] Всего { $total } строка
+        [few] Всего { $total } строки
+       *[other] Всего { $total } строк
+    }
+data-table-selection =
+    { $total ->
+        [one] Выбрано { $selected } из { $total } строки
+       *[other] Выбрано { $selected } из { $total } строк
+    }
+data-table-rows-per-page = Строк на странице
+data-table-page-of = Страница { $page } из { $pages }
+data-table-first-page = На первую страницу
+data-table-previous-page = На предыдущую страницу
+data-table-next-page = На следующую страницу
+data-table-last-page = На последнюю страницу
+data-table-reset = Сбросить
+data-table-reset-filters = Сбросить фильтры
+data-table-toggle-columns = Выбрать столбцы
+data-table-view = Вид
+data-table-search-columns = Найти столбец…
+data-table-no-columns = Столбцы не найдены.
+data-table-clear-named-filter = Очистить фильтр «{ $title }»
+data-table-facet-selection = Выбрано { $selected }
+data-table-no-filter-options = Варианты не найдены.
+data-table-clear-filters = Очистить фильтры
+
 richText-bold = Bold
 richText-italic = Italic
 richText-strike = Strike

@@ -34,8 +34,10 @@ are derived state. `apps/server` owns its cache adapter and transport mapping.
 
 ### Allowed states
 
-A cache hit, or a relation read accepted by the adapter's conditional publication,
-can be returned. Store failure or exhausted generation checks produce an error.
+A cache hit validated against a coherent persisted relation observation and
+a still-current local token, or a relation read accepted by the adapter's
+conditional publication, can be returned. Store failure or exhausted generation
+checks produce an error.
 The nil-identity fast path retains its existing empty-denial behavior.
 
 ### Forbidden states
@@ -47,15 +49,54 @@ adapter may silently turn that error into an allowed decision.
 ## Non-goals
 
 This decision does not establish an atomic revocation fence at a later write or
-response boundary, coherent snapshots across multiple relation queries, immediate
+response boundary, immediate
 cross-replica invalidation, or guarantees for adapters that use the default
 non-generation-aware cache methods. It does not replace request-scope ceilings.
+
+The 2026-11-27 persisted relation reader now loads the static membership/grant
+graph in one statement snapshot for cache misses and uncached decisions.
+The split-load store interface is removed; adapters must supply one coherent
+tenant/user read. This addresses mixed database snapshots independently of
+the cache generation check. The cache-hit validation refinement compares the
+exact persisted grant set in one read snapshot and rechecks the local token.
+Direct SQL or missed notifications cannot justify a stale hit. It does not add
+a trigger-held global generation lock, advance the recovery watermark for raw
+DML, or make a previously admitted request snapshot current.
+
+## Durable revision-bound cache publication (2026-11-27)
+
+The production Moka adapter retains an immutable pair of normalized grants
+and the owner static actor revision, in addition to its local epoch token.
+On a miss, sample the revision before the grant read and check it again after
+conditional publication, then recheck the local epoch. A change retries the
+entire bounded attempt; a failed DB observation propagates as a store error.
+An entry from an unconfirmed attempt remains only a candidate: subsequent
+hits must validate both its exact persisted vocabulary and revision.
+
+Bound hits compare both using one SQL statement and the shared owner revision
+decoder. Equal grants after membership/grant ABA are a miss. Unknown subjects
+and legacy cache entries have no reusable revision and retain exact validation.
+In a revision-aware fill, a missing subject revision cannot witness nonempty
+grants: subject creation/deletion or tenant movement may occur between two
+absent observations. Retry before publishing any such contradictory read;
+exhaustion remains an unavailable error. Stable absence can publish empty
+grants. Legacy adapters that do not opt in retain the existing contract. Include
+revision heap allocation in the bounded Moka entry weight.
+
+Do not replace exact-set validation with revision equality alone: privileged
+restore/replacement of the underlying database can reproduce counters with
+different contents, and the current recovery watchdog is not an atomic
+database-incarnation fence. The refinement does not claim a warm-hit speedup;
+misses incur two revision observations. Source regressions are unrun.
 
 ## Data, transaction, and concurrency boundary
 
 No schema or persistence migration is required. The generation comparison is a
-local cache-fill check, not a database transaction or a fleet-wide fence. Existing
-bounded retries remain; a failed attempt's relation read is discarded.
+local cache check, not a database transaction or a fleet-wide fence. The
+SeaORM hit check compares raw vocabulary pairs by symmetric set difference;
+different spellings fall back to the typed reader. Each hit requires one
+database statement, and a mismatch incurs a fresh typed read. Existing bounded
+retries remain; a failed attempt's relation read is discarded.
 
 ## Context dimensions
 

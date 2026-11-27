@@ -108,14 +108,9 @@ impl ModuleEffectivePolicyCache {
         })
     }
 
-    /// Revalidate an earlier hit after awaiting other owner reads. Check the
-    /// exact cached value and TTL as well as the generation, since the entry
-    /// may expire or be replaced while the caller is suspended.
-    pub fn is_current_hit(
+    fn check_stamp_generation(
         &self,
         stamp: &PolicyCacheReadStamp,
-        tenant_id: Uuid,
-        policy: &ModuleEffectivePolicy,
     ) -> Result<bool, ModuleEffectivePolicyError> {
         if !Arc::ptr_eq(&stamp.generation, &self.generation) {
             return Ok(false);
@@ -127,7 +122,28 @@ impl ModuleEffectivePolicyCache {
         if *generation == u64::MAX {
             return Err(ModuleEffectivePolicyError::CacheGenerationExhausted);
         }
-        if *generation != stamp.value {
+        Ok(*generation == stamp.value)
+    }
+
+    /// Returns `true` if no invalidation or clear has rotated the cache
+    /// generation since `stamp` was captured with [`Self::begin_read`].
+    pub fn is_stamp_current(
+        &self,
+        stamp: &PolicyCacheReadStamp,
+    ) -> Result<bool, ModuleEffectivePolicyError> {
+        self.check_stamp_generation(stamp)
+    }
+
+    /// Revalidate an earlier hit after awaiting other owner reads. Check the
+    /// exact cached value and TTL as well as the generation, since the entry
+    /// may expire or be replaced while the caller is suspended.
+    pub fn is_current_hit(
+        &self,
+        stamp: &PolicyCacheReadStamp,
+        tenant_id: Uuid,
+        policy: &ModuleEffectivePolicy,
+    ) -> Result<bool, ModuleEffectivePolicyError> {
+        if !self.check_stamp_generation(stamp)? {
             return Ok(false);
         }
         let entries = self
@@ -149,17 +165,7 @@ impl ModuleEffectivePolicyCache {
         policy: ModuleEffectivePolicy,
     ) -> Result<bool, ModuleEffectivePolicyError> {
         let identity = policy.cache_identity(tenant_id)?;
-        if !Arc::ptr_eq(&stamp.generation, &self.generation) {
-            return Ok(false);
-        }
-        let generation = self
-            .generation
-            .read()
-            .map_err(|_| ModuleEffectivePolicyError::CacheLockPoisoned)?;
-        if *generation == u64::MAX {
-            return Err(ModuleEffectivePolicyError::CacheGenerationExhausted);
-        }
-        if *generation != stamp.value {
+        if !self.check_stamp_generation(stamp)? {
             return Ok(false);
         }
         if self.max_entries == 0 || self.max_age <= Duration::zero() {

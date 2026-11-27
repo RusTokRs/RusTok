@@ -2,8 +2,9 @@
 
 Leptos operator package for __SLUG__ records. The workspace displays actual
 tenant records through the shared data grid with server pagination and
-localized titles. The editor creates drafts, opens and saves an explicit
-translation, and controls publication.
+localized titles. The list URL retains title search, publication filter,
+ordering and pagination through the shared router. The editor creates
+drafts, opens and saves an explicit translation, and controls publication.
 
 With `--ui admin` the manifest registers this package at `/modules/__ROUTE__`.
 With `--ui dual`, the package remains a preview while the storefront is in
@@ -32,7 +33,9 @@ operator's input and requires a fresh owner read before another edit.
 
 ## Structure
 
-- src/core/mod.rs owns grid presentation and page selection.
+- src/core/mod.rs owns grid presentation.
+- src/core/list.rs validates list filters and defines URL changes for
+  filters, ordering and pagination.
 - src/core/editor.rs owns translation selection, checked command construction
   and application of owner responses.
 - src/core/settings.rs validates the page size and builds an edit of the

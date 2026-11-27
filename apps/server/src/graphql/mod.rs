@@ -75,6 +75,7 @@ fn visit_selection_fields<'a, S: Copy + Ord>(
 }
 
 mod artifact_lifecycle;
+pub mod artifact_security;
 pub mod auth_rate_limit;
 #[cfg(feature = "mod-blog")]
 pub mod blog_rate_limit;

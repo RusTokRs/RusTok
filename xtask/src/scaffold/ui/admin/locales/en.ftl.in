@@ -1,7 +1,11 @@
 records-heading = Records
 route-not-found = Page not found
 records-title = Title
+records-search = Search titles
+records-search-invalid = Enter a valid search term.
 records-status = Status
+records-all-statuses = All statuses
+records-apply-filters = Apply filters
 records-locale = Content language
 records-published = Published
 records-draft = Draft

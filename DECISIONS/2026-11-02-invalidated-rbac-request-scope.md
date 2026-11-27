@@ -60,23 +60,101 @@ The server must not reinterpret an invalid matching snapshot as absence of a
 scope and use unscoped persisted grants, return its stale role, or turn the
 unavailable condition into a successful authorization decision.
 
+## Authenticated credential deadline extension (2026-11-27)
+
+A credential-bearing scope also becomes terminally invalid when its original
+exclusive deadline is reached or the shared Auth application clock cannot
+produce a healthy local observation. Permission, role and credential accessors,
+matching-scope fallback guards, GraphQL root admission and captured artifact
+scopes share that check. The grant-only trusted internal constructor retains
+its existing contract. This is a process-local time check, not durable clock
+corroboration or a new session/grant revocation fence. Source regressions are
+unrun.
+
+## Process-local epoch binding (2026-11-27)
+
+Authentication samples the existing bounded cache epoch for the exact tenant
+and actor before resolving database authority and checks it again before
+returning the admitted user. The original token is carried into HTTP and WS
+request scopes, including captured artifact scopes. A matching scope rejects
+epoch drift or exhaustion, even when invalidation occurred before entering
+the task-local scope. No refresh of the original token is allowed. WebSocket
+lease admission and local output checks also reject drift.
+
+Targeted cache invalidation advances one of the existing 64 bounded stripes;
+a collision conservatively expires unrelated authenticated scopes on that
+stripe. A full clear advances the global epoch. Trusted grant-only scopes
+retain their task-local contract. Cross-task observation requires no new
+cache, subscription, allocation per actor or persistent generation. This
+also observes remote invalidations after local delivery, not at remote
+commit. Source regressions are unrun.
+
+## Durable static authority at asynchronous admission (2026-11-27)
+
+Retain the exact single-statement owner membership/role-grant revision
+observed during JWT admission in CurrentUser and the authenticated scope.
+Scope-aware service decisions, permission/role listing, the request policy
+resolver and GraphQL root admission re-read that revision before consuming the
+original ceiling. A mismatch, missing evidence or failed read invalidates the
+shared scope; the local deadline and epoch are checked again after the read.
+WebSocket revalidation compares the original revision even if the effective
+permissions and role return to their original values. No new grants are loaded
+into the request ceiling, no locks or migrations are introduced.
+
+This closes direct static relation ABA at those asynchronous boundaries without
+depending on Redis delivery. It costs one owner read per successful static
+scope check. Service OAuth has no static membership revision; credential,
+module availability, sync-only snapshot consumers, nested GraphQL fields and
+already admitted effects require their respective authority contracts. An
+ordinary read is not a commit-time fence. Source regressions are unrun.
+
+## Fallible snapshot lookup and REST permission admission (2026-11-27)
+
+Service and request-policy fallback consumers use a fallible snapshot lookup:
+only actual absence or a different tenant/actor permits persisted fallback.
+Matching invalidation remains an unavailable error even if it occurs while
+cloning the original snapshot. The synchronous REST permission helper and
+its extractor macro verify the CurrentUser's original exclusive deadline
+and process-local epoch; a matching scope must also authorize each effective
+permission. This preserves wildcard semantics without widening either
+ceiling. Unavailable evidence is distinct from normal permission denial.
+These synchronous checks perform no durable read or later effect fence.
+Source regressions are unrun.
+
+## GraphQL executor context binding (2026-11-27)
+
+HTTP and WS controllers attach the original RbacRequestScope to executor
+data. The security extension treats that marker as mandatory evidence:
+task-local scope must equal the original scope, and AuthContext must not
+exceed its effective permission ceiling. Credential-bearing markers also
+bind the session, principal kind, OAuth client and token scopes. Missing or
+substituted scope is unavailable; trusted unmarked schema calls retain their
+existing contract. Root admission checks the binding before and after its
+durable revision observation. Nested query fields check local validity,
+including binding, without a database observation per scalar. Only the
+selected mutation retains the nested receipt serialization exception.
+Fresh protected reads within a mutation payload and durable revocation
+during nested queries still require owner-specific checks. Source regressions
+are unrun.
+
 ## Non-goals
 
 This change does not create an atomic revocation fence, ensure immediate
 cross-replica invalidation, propagate task-locals to spawned tasks, or make all
 consumers of immutable `AuthContext` snapshots react to local invalidation. The
-GraphQL root hook cannot revoke a field already admitted, or its nested fields;
-it does not make an absent task-local scope invalid. Those other paths need
+GraphQL hook cannot revoke a field already admitted; nested mutation payloads
+retain the receipt exception. Absent task-local scope is invalid for a marked
+HTTP/WS admission, not for trusted unmarked schema calls. Those other paths need
 separate review and changes before claiming request-wide revocation or universal
 ceiling enforcement. Authentication and explicit
 transaction-bound authoritative reads retain their existing distinct contracts.
 
 ## Data, transaction, and concurrency boundary
 
-No persistence or migration changes. Targeted invalidation is local to the current
-task and exact tenant/actor; a full-cache invalidation expires the current task's
-snapshot regardless of identity. This follows existing invalidation calls and is
-not an atomic guard over future commits or responses.
+No persistence or migration changes. The direct task-local invalidation helpers
+retain exact tenant/actor or full-scope semantics; runtime cache invalidation
+also advances the shared epoch as described above. This is not an atomic guard
+over future commits or responses.
 
 ## Context dimensions
 
@@ -86,8 +164,8 @@ permissions. Channel, locale and trace fields do not change this lookup.
 ## Events and projections
 
 No events are added. Existing invalidation events and durable generation retain
-their contracts. Other tasks and replicas are not synchronously invalidated by
-this task-local state.
+their contracts. Other authenticated tasks observe the process-local epoch at subsequent
+scope checks. Replicas depend on existing event delivery and durable recovery.
 
 ## Failure semantics
 
@@ -115,7 +193,7 @@ permission-list and role lookups, the owner-policy adapter, self-invalidation,
 GraphQL root-field sequencing and post-commit membership-lookup failure, and
 safe error mapping. Run server tests with the workspace toolchain and real
 transport/database integration; local task-scope tests are not evidence of
-cross-task, cross-replica or transaction-spanning revocation.
+cross-replica or transaction-spanning revocation.
 
 ## Consequences
 

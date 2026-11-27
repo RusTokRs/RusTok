@@ -19,7 +19,6 @@ import {
   type Parser,
   type UseQueryStateOptions,
   parseAsArrayOf,
-  parseAsInteger,
   parseAsString,
   useQueryState,
   useQueryStates
@@ -27,7 +26,10 @@ import {
 import * as React from 'react';
 
 import { useDebouncedCallback } from '@/shared/hooks/use-debounced-callback';
-import { getSortingStateParser } from '@/shared/lib/parsers';
+import {
+  getSortingStateParser,
+  parseAsPositiveSafeInteger
+} from '@/shared/lib/parsers';
 import type { ExtendedColumnSort } from '@/types/data-table';
 
 const PAGE_KEY = 'page';
@@ -112,6 +114,8 @@ interface UseDataTableProps<TData extends RowData = any>
   columns: ColumnDef<StockFeatures, TData, any>[];
   /** The supplied collection is complete and the canonical grid owns its page slice. */
   clientPagination?: boolean;
+  /** Pagination metadata for the current server result. */
+  serverPagination?: PaginationState;
   initialState?: Omit<Partial<TableState<StockFeatures>>, 'sorting'> & {
     sorting?: ExtendedColumnSort<TData>[];
   };
@@ -134,6 +138,7 @@ export function useDataTable<TData extends RowData = any>(
     columns,
     clientPagination = false,
     pageCount = -1,
+    serverPagination,
     initialState,
     history = 'replace',
     debounceMs = DEBOUNCE_MS,
@@ -178,32 +183,29 @@ export function useDataTable<TData extends RowData = any>(
 
   const [page, setPage] = useQueryState(
     PAGE_KEY,
-    parseAsInteger.withOptions(queryStateOptions).withDefault(1)
+    parseAsPositiveSafeInteger.withOptions(queryStateOptions).withDefault(1)
   );
   const [perPage, setPerPage] = useQueryState(
     PER_PAGE_KEY,
-    parseAsInteger
+    parseAsPositiveSafeInteger
       .withOptions(queryStateOptions)
       .withDefault(initialState?.pagination?.pageSize ?? 10)
   );
 
-  const pagination: PaginationState = React.useMemo(() => {
-    return {
-      pageIndex: page - 1, // zero-based index -> one-based index
-      pageSize: perPage
-    };
-  }, [page, perPage]);
+  const pagination: PaginationState = React.useMemo(
+    () => serverPagination ?? { pageIndex: page - 1, pageSize: perPage },
+    [serverPagination, page, perPage]
+  );
 
   const onPaginationChange = React.useCallback(
     (updaterOrValue: Updater<PaginationState>) => {
-      if (typeof updaterOrValue === 'function') {
-        const newPagination = updaterOrValue(pagination);
-        void setPage(newPagination.pageIndex + 1);
-        void setPerPage(newPagination.pageSize);
-      } else {
-        void setPage(updaterOrValue.pageIndex + 1);
-        void setPerPage(updaterOrValue.pageSize);
-      }
+      const next =
+        typeof updaterOrValue === 'function'
+          ? updaterOrValue(pagination)
+          : updaterOrValue;
+      if (next.pageIndex !== pagination.pageIndex)
+        void setPage(next.pageIndex + 1);
+      if (next.pageSize !== pagination.pageSize) void setPerPage(next.pageSize);
     },
     [pagination, setPage, setPerPage]
   );

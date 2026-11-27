@@ -262,9 +262,7 @@ impl SeaOrmModuleGovernanceService {
         command: ModuleValidationJobClaimCommand,
     ) -> Result<Option<ModuleValidationJobClaimResult>, ModuleGovernanceError> {
         command.validate()?;
-        let tx = self
-            .db
-            .begin()
+        let tx = crate::backend::begin_fenced_transaction(&self.db)
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         crate::backend::set_platform_scope(&tx)
@@ -273,10 +271,15 @@ impl SeaOrmModuleGovernanceService {
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| backend.placeholder(n);
         let now = backend.now_sql();
+        let Some(fenced_request) = lock_validation_request(&tx, backend, ValidationRequestLocator::JobId, &command.validation_job_id).await? else {
+            tx.rollback().await.map_err(store_error)?;
+            return Ok(None);
+        };
+        let job_lock = validation_child_lock(backend, ValidationRequestLocator::JobId);
         let Some(job) = tx.query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
-            format!("SELECT j.status, j.request_id, j.attempt_number, j.queue_reason, r.slug, r.version, r.revision AS request_revision, r.crate_name, r.ownership, r.trust_level, r.license, r.entry_type, r.artifact_origin, r.marketplace, r.ui_packages, r.validation_warnings, r.status AS request_status, r.artifact_storage_key, r.artifact_checksum_sha256, r.artifact_size, r.artifact_content_type, t.name AS module_name, t.description AS module_description FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id LEFT JOIN registry_publish_request_translations t ON t.request_id = r.id AND t.locale = r.default_locale WHERE j.id = {}", mark(1)),
-            vec![command.validation_job_id.clone().into()],
+            format!("SELECT j.status, j.request_id, j.attempt_number, j.queue_reason, r.slug, r.version, r.revision AS request_revision, r.crate_name, r.ownership, r.trust_level, r.license, r.entry_type, r.artifact_origin, r.marketplace, r.ui_packages, r.validation_warnings, r.status AS request_status, r.artifact_storage_key, r.artifact_checksum_sha256, r.artifact_size, r.artifact_content_type, t.name AS module_name, t.description AS module_description FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id LEFT JOIN registry_publish_request_translations t ON t.request_id = r.id AND t.locale = r.default_locale WHERE j.id = {} AND r.id = {}{job_lock}", mark(1), mark(2)),
+            vec![command.validation_job_id.clone().into(), fenced_request.into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))? else {
             return Ok(None);
         };

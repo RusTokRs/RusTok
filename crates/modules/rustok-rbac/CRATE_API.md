@@ -11,6 +11,12 @@
   - `RbacPermissionDecisionProvider` wrapping authoritative `PermissionResolver`.
 - **Permission Resolution & Evaluation**:
   - `PermissionResolver`, `RuntimePermissionResolver`, `RelationPermissionStore`
+  - `RelationPermissionStore::load_permissions_for_user` requires a coherent
+    tenant/user graph read; the SeaORM adapter uses one SQL statement.
+  - `RelationPermissionStore::cached_permissions_are_current` validates a
+    candidate against current authority; the default compares a fresh typed read,
+    and SeaORM checks exact persisted vocabulary pairs. `PermissionCache::is_lookup_current`
+    rechecks the local generation after this asynchronous observation.
   - `PermissionCacheResolutionError<E>` distinguishes store failure from exhausted
     cache-generation validation. Cached resolution returns this typed error;
     runtime adapters must map it without creating an authorization decision.
@@ -18,7 +24,13 @@
   - `authorize_all_permissions`, `authorize_any_permission`, `authorize_permission`
   - `check_all_permissions`, `check_any_permission`, `check_permission`
   - `has_effective_permission_in_set`, `missing_permissions`
+- **Transaction-bound control-plane authority** (GraphQL feature):
+  - `RbacLockedMutationAuthority::restrict_to` narrows live grants to admitted
+    effective grants; a management alternative must remain in both sets.
 - **Role & Invalidation Management**:
+  - Standalone PostgreSQL replacements acquire the existing role union in UUID
+    order after the user fence. Bootstrap fences the exact system role before
+    vocabulary writes; late contention fails without waiting.
   - `RbacRoleAssignmentDbWriter`, `RbacRoleMutationPlan`, `replace_persisted_user_role_on`
   - `read_permission_invalidation_generation`, `reserve_permission_invalidation_generation`
   - `plan_system_role_repair`, `apply_system_role_repair_in_transaction`

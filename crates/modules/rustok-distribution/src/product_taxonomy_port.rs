@@ -173,7 +173,7 @@ impl ProductTaxonomyPort for TaxonomyProductTaxonomyPortAdapter {
     ) -> Result<Vec<ProductTaxonomyCategorySnapshot>, CommerceError> {
         let categories = match conn {
             TaxonomyConnection::Connection(c) => {
-                TaxonomyOwnerCategoryReader::load_scoped_categories_in(
+                TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
                     c,
                     tenant_id,
                     TaxonomyScopeType::Module,
@@ -185,7 +185,7 @@ impl ProductTaxonomyPort for TaxonomyProductTaxonomyPortAdapter {
                 .await
             }
             TaxonomyConnection::Transaction(tx) => {
-                TaxonomyOwnerCategoryReader::load_scoped_categories_in(
+                TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
                     tx,
                     tenant_id,
                     TaxonomyScopeType::Module,

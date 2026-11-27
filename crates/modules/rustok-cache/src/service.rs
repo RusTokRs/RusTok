@@ -1960,7 +1960,13 @@ mod tests {
         .await
         .unwrap_err();
 
-        assert!(error.contains("timed out"));
+        assert!(matches!(
+            error,
+            CacheBackendOperationError::Timeout {
+                operation,
+                ..
+            } if operation == "test Redis operation"
+        ));
     }
 
     #[cfg(feature = "redis-cache")]
@@ -1974,7 +1980,10 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert!(error.contains("invalid cache invalidation subscription channel"));
+        assert!(matches!(
+            error,
+            CacheInvalidationTransportError::InvalidChannel(_)
+        ));
         assert_eq!(service.invalidations().stats().rejected_total, 1);
     }
 

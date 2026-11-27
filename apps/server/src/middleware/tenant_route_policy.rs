@@ -80,6 +80,10 @@ mod tests {
             TenantRouteScope::TenantBound
         );
         assert_eq!(
+            tenant_route_scope("/api/modules/artifact-security"),
+            TenantRouteScope::TenantBound
+        );
+        assert_eq!(
             tenant_route_scope("/catalog/modules"),
             TenantRouteScope::GlobalOperator
         );

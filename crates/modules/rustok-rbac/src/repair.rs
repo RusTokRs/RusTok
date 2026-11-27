@@ -169,9 +169,8 @@ where
             return Err(RbacSystemRoleRepairError::BuiltInRoleSlugCollision { tenant_id, slug });
         }
         None => {
-            report.roles_created = report.roles_created.saturating_add(1);
             if apply {
-                create_system_role(db, tenant_id, &slug).await?;
+                let created = create_system_role(db, tenant_id, &slug).await?;
                 let (role_id, is_system) =
                     find_role(db, tenant_id, &slug).await?.ok_or_else(|| {
                         RbacSystemRoleRepairError::Database(
@@ -184,8 +183,16 @@ where
                         slug,
                     });
                 }
+                // A concurrent initializer may have inserted a legitimate
+                // tenant-owned role after discovery. Only our successful
+                // insertion permits seeding, never reconciling the winner.
+                if !created {
+                    return Ok(());
+                }
+                report.roles_created = report.roles_created.saturating_add(1);
                 Some(role_id)
             } else {
+                report.roles_created = report.roles_created.saturating_add(1);
                 None
             }
         }
@@ -199,7 +206,7 @@ where
                 permission.action.to_string(),
             )
         })
-        .collect::<HashSet<_>>();
+        .collect::<BTreeSet<_>>();
 
     let existing_links = match role_id {
         Some(role_id) => load_role_permission_links(db, role_id).await?,
@@ -351,7 +358,7 @@ async fn create_system_role<C>(
     db: &C,
     tenant_id: Uuid,
     slug: &str,
-) -> Result<(), RbacSystemRoleRepairError>
+) -> Result<bool, RbacSystemRoleRepairError>
 where
     C: ConnectionTrait,
 {
@@ -364,8 +371,8 @@ where
             "INSERT INTO roles (id, tenant_id, name, slug, description, is_system) VALUES ($1, $2, $3, $4, NULL, TRUE) ON CONFLICT (tenant_id, slug) DO NOTHING"
         }
     };
-    execute(
-        db,
+    let result = db.execute_raw(Statement::from_sql_and_values(
+        backend,
         sql,
         vec![
             rustok_core::generate_id().into(),
@@ -373,8 +380,12 @@ where
             slug.into(),
             slug.into(),
         ],
-    )
-    .await
+    )).await.map_err(database_error)?;
+    match result.rows_affected() {
+        0 => Ok(false),
+        1 => Ok(true),
+        _ => Err(database_error("unexpected system role insert row count")),
+    }
 }
 
 async fn load_tenant_permissions<C>(
@@ -617,6 +628,40 @@ fn database_error(error: impl std::fmt::Display) -> RbacSystemRoleRepairError {
 #[cfg(test)]
 mod tests {
     use super::{RbacSystemRoleRepairReport, built_in_roles};
+
+    #[tokio::test]
+    async fn losing_role_insert_does_not_reconcile_the_winner() {
+        use super::{find_role, repair_role};
+        use rustok_core::UserRole;
+        use sea_orm::{ConnectionTrait, Database, TransactionTrait};
+        use std::collections::{BTreeSet, HashSet};
+        use uuid::Uuid;
+
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let tenant = Uuid::new_v4();
+        let winner = Uuid::new_v4();
+        // Inject a winning row after the initial missing-role lookup.
+        // No grant tables exist: the losing seed must never touch them.
+        db.execute_unprepared(&format!(
+            "CREATE TABLE roles (id BLOB PRIMARY KEY, tenant_id BLOB NOT NULL,
+                 name TEXT, slug TEXT, description TEXT, is_system BOOLEAN,
+                 UNIQUE (tenant_id, slug));
+             CREATE TRIGGER competing_role BEFORE INSERT ON roles
+             WHEN NEW.slug = 'manager' AND NEW.id <> X'{winner}'
+             BEGIN
+               INSERT INTO roles VALUES (X'{winner}', NEW.tenant_id, 'Tenant-owned manager', NEW.slug, NULL, TRUE);
+               SELECT RAISE(IGNORE);
+             END",
+            winner = winner.simple(),
+        )).await.unwrap();
+        let tx = db.begin().await.unwrap();
+        let mut report = RbacSystemRoleRepairReport::default();
+        repair_role(&tx, tenant, UserRole::Manager, true, &mut report,
+            &mut BTreeSet::new(), &mut HashSet::new()).await.unwrap();
+        assert_eq!(report.changes_total(), 0);
+        assert_eq!(find_role(&tx, tenant, "manager").await.unwrap(), Some((winner, true)));
+        tx.commit().await.unwrap();
+    }
 
     #[test]
     fn built_in_role_inventory_is_stable() {

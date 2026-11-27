@@ -149,3 +149,227 @@ or alternate queue. Server targets await explicit local sealed handlers; Iggy-fi
 retry preserves the original identity and is at-least-once. Compilation, actual SQL rollback,
 configured relay/Iggy receive/cursor ACK, crash/restart and DLQ evidence remain open. See the
 [API](../CRATE_API.md#fresh-sealed-facts-and-local-acknowledgement-2026-11-01-source-only).
+
+## Dispatch admission and envelope identity (2026-11-27, source only)
+
+Refresh the exact pending claim at dispatch admission and check the remaining
+lease budget before publication. Root and sealed-contract relay and storage
+replay reject conflicting durable identity and populated tenant projections.
+Historical null projections remain readable. Source regressions cover queued
+renewal, stale claims and both envelope families. Compilation, database
+contention, real target cancellation and broker idempotency remain unverified.
+
+## Retention consumer fencing (2026-11-27, source only)
+
+Both delivered and opt-in DLQ event deletion use the same consumer hold in
+candidate selection and final DELETE. PostgreSQL serializes registry writes
+with the deletion transaction using a SHARE table lock before the fresh
+READ COMMITTED snapshot; SQLite serializes writers. The SQLite DLQ hold
+regression was extended. PostgreSQL registration/delete contention and
+runtime verification remain pending.
+
+## Durable consumer lifecycle and acknowledgement authority (2026-11-27, source only)
+
+Consumer registration and retirement serialize registry mutations before drain
+reads. PostgreSQL retirement takes a non-blocking event-table writer fence;
+SQLite reserves the writer before scanning. Drain requires matching event-type
+receipts. ACK holds registry and source event authority through the owner
+transaction; contention must roll back owner effects and be retried.
+Unfenced transport ACK cannot complete a relay claim.
+Source regressions cover retirement, wrong-type receipts and claim stealing.
+PostgreSQL contention, owner rollback/retry, compilation and broker delivery
+remain unverified.
+
+## Database-authoritative lease clock (2026-11-27, source only)
+
+Durable relay claims, retry deadlines, storage timestamps and retention cutoffs
+use SQL database time. PostgreSQL uses clock_timestamp(), not transaction-start
+time; SQLite uses its SQL clock. Receipt renewals and reclaims use a PostgreSQL
+write-side clock expression; reclaim compares the previous token and timestamp.
+Relay renewal rotates its token even within the same clock tick and counts
+database wait time in its monotonic dispatch budget. Clock errors fail closed.
+Relay and retention intervals are bounded to 3650 days. This does not fence
+primary clock discontinuities or guarantee exactly-once broker effects.
+Source regressions cover clock progress, token rotation and capped backoff.
+PostgreSQL contention, primary clock discontinuity handling, retry jitter and
+per-pass metrics remain pending. No compilation or tests were run.
+
+## Relay execution and retry hardening (2026-11-27, source only)
+
+Relay passes reserve at most max_concurrency rows across their sliding window and
+advance a stable (created_at, id) cursor within the invocation. Due/reclaim
+eligibility uses one initial SQL-clock horizon. A shared pass guard serializes
+clones of a relay instance, including aborted tasks until they actually exit.
+Independent updated relay instances/processes share a durable schema-local
+execution quota via SQL claims. Reports count the joined
+durable outcomes of the specific pass, not differences of lifetime counters.
+A failed or cancelled pass can have committed earlier outcomes.
+Retry uses equal jitter between half the capped exponential delay and the cap
+(with a one millisecond floor). Startup validates relay configuration before
+connecting broker transports. The sliding window replenishes available slots without waiting for a full wave.
+Regression source covers gated slot admission, concurrent clone calls,
+per-pass accounting and jitter endpoints. Compilation, cancellation contention,
+PostgreSQL multi-process dispatch and broker behavior remain unverified.
+
+## Strict owner-operation lease expiry
+
+Owner-operation receipts now enforce a strict five-minute half-open live
+interval. A matching token cannot renew, lock, finalize or release an expired
+receipt. Sample SQL time after acquiring the receipt write lock, recheck
+expiry on reclaim and restamp fresh admission after unique-index contention.
+Completion and failure use a transaction or an owner-transaction savepoint;
+owner errors require rollback of the entire owner transaction. Expired release
+preserves the request fingerprint for exact-request reclamation. Owners must
+renew before expiry and keep owner transactions bounded; a row lock alone
+does not extend the lease. External effects need owner-specific idempotency.
+
+Source regressions cover expiry, future timestamps, stale operations and reclaimed completion. Generic finalization/release now requires TransactionTrait; cross-owner compilation and PostgreSQL lock-wait verification remain open.
+
+## Durable temporal clock authority
+
+The outbox_temporal_clock singleton stores the maximum committed SQL-clock
+observation across process restarts. Independent relay-pass, receipt admission,
+renewal/reclaim and retention boundaries advance it in a short transaction.
+Owner transactions read the floor and SQL time without taking the global writer
+lock. Missing schema, backward observations below the committed floor, slow
+observations (>2s), host-clock steps (>100ms during observation) or SQL/host
+skew outside a 2s sanity bound fail closed; host time is not a timestamp
+fallback. Relay claim refresh checks its live interval after acquiring row
+ownership. Event retention checks time again after the registry fence.
+
+This is bounded discontinuity detection, not a trusted independent distributed
+time service: simultaneous host/DB forward jumps, smaller jumps within the
+sanity bound and a stale repeatable-read snapshot are not fully fenced.
+A floor ahead of actual time blocks affected operations until time catches up
+or an explicitly reviewed operator recovery is performed. Do not reset it on
+startup. The floor begins at zero on migration; pre-upgrade history is not
+retroactively verified. Upgrade the schema before new workers and drain old
+workers that bypass the guard. A committed owner transaction may still be
+subject to cancellation and ambiguous broker effects.
+
+Migration composition and source regressions are unverified at runtime. Deployment-wide clock latching and broker ACK remain open.
+
+## Distributed execution admission (2026-11-27)
+
+The outbox_execution_policy singleton owns a per-database-schema budget
+(max_in_flight, default 8, range 1..1024) and the shared claim_ttl_ms.
+The first updated relay binds the TTL; subsequent embedded and standalone
+relays must match it before starting their brokers or claiming work.
+The local max_concurrency remains an upper bound, independent of the cluster
+budget. Existing sys_events claimed_by/claimed_at pairs are the only durable
+execution permits. Claim and refresh lock the policy before event rows;
+PostgreSQL uses READ COMMITTED, SKIP LOCKED for candidates and NOWAIT for
+refresh. The policy lock is released before any broker effect. Completed
+claims release capacity through existing conditional state transitions.
+Cancelled or crashed publications may retain reservations until expiry;
+transport effects remain at-least-once and may outlive cancellation.
+A sliding window replenishes a slot after a joined outcome rather than waiting
+for a whole wave. Claim failures stop new admission and drain active tasks.
+The pass cursor and initial eligibility horizon are preserved.
+
+Deployment: stop and drain all old relay processes before applying
+m20261127_000201_create_outbox_execution_policy. Old binaries bypass the
+budget. Ensure no old in-flight publications remain before starting new
+relays. Apply the migration before starting new workers; the schema helper
+does not reset an existing policy. For a deliberate policy change, stop and
+drain every relay, verify there are no live or ambiguous claims, then change
+the singleton max_in_flight and claim_ttl_ms through controlled database
+maintenance and align all runtime TTL settings before restart. No live
+policy editing API is provided; online cap reduction or TTL change is not
+supported. Multiple databases/schemas have independent budgets. Direct SQL
+claim mutations outside the protocol, primary clock anomalies, uncooperative
+transport cancellation and broker-side fencing remain outside this guarantee.
+
+Source regression: independent relay instances sharing a two-slot budget, incompatible TTL rejection and sliding-window replenishment. PostgreSQL multi-connection contention, cancellation and migration verification remain open. No build or tests run.
+
+## Publication identity and acknowledgement boundary (2026-11-27)
+
+Canonical root and sealed event UUIDs now populate the Iggy message header
+ID without translation. Non-UUID publication keys, including the existing
+DLQ replay attempt keys, map to a fixed namespaced UUIDv5; nil UUIDs and
+empty keys are rejected. The namespace and the existing partition routing
+must remain stable across retries. Explicit direct-mode publication awaits
+the broker reply rather than accepting background enqueue as delivery.
+No-SDK external connections and publications fail closed. The dedicated
+poison-DLQ path retains its existing identity and partition mapping.
+The strength of the broker response still depends on topic/server durability
+and the reviewed broker deduplication policy. Successful direct send is not
+a physical persistence proof or consumer cursor acknowledgement. An empty
+confirmation list can be legitimate (including a duplicate response); no
+broker offsets or persistence guarantees are inferred. Older publications
+without the header identity cannot be retroactively deduplicated. Changing
+topology, partition count or broker destination requires coordinated drain
+and recovery. Do not treat SDK producer idempotence as cross-process Outbox
+exactly-once delivery.
+
+The relay sends invalid stored envelopes directly to its DLQ before invoking
+the target. Every target error, including validation/serialization after a
+remote send or a local projection, consumes the bounded ordinary retry
+budget instead of assuming there was no side effect. Timeout outcomes remain
+unconfirmed and may redeliver the same identity. A successful transport
+reply followed by SQL failure or process death may also redeliver; the
+existing fenced SQL acknowledgement and consumer idempotency still apply.
+No transaction spans the database and the broker.
+
+Source regressions cover stable UUID/replay IDs, SDK message header, fail-closed no-SDK mode, and a post-acceptance validation failure followed by successful retry. Compilation, actual broker response and restart/deduplication-window calibration remain unverified. Existing retained runtime evidence was not regenerated.
+
+## Consumer ACK admission and retention bounds (source only)
+
+PostgreSQL consumer ACK reserves the source event row exclusively with NOWAIT
+and reads its subscription with NOWAIT under the registry SHARE fence. This
+serializes canonical ACK writers for one event without waiting while holding
+owner locks. Contention requires rollback and retry of the owner transaction.
+Trusted backfill may skip a missing event only for a currently registered
+consumer. Live ACK still requires an existing event and exact event type.
+Event and terminal-receipt pruning accept batches of 1..=10000; direct receipt
+pruning also enforces the positive, at-most-3650-day window before SQL.
+Source regressions are unrun; PostgreSQL multi-connection contention,
+compilation and runtime verification remain open.
+
+## Durable execution policy integrity (source only)
+
+The append-only migration `m20261127_000202_fence_outbox_execution_policy`
+and standalone owner schema install the same database guards. The singleton
+cannot be inserted, deleted, replaced, truncated (PostgreSQL), change identity
+or reset a bound TTL to NULL through ordinary SQL. Exact no-op reservation
+updates remain valid. First TTL binding and later cap/TTL changes require
+**all** claims to be absent, including expired or ambiguous claims.
+PostgreSQL event claim writes take the existing policy row NOWAIT and write
+it before checking live capacity; canonical relay admissions already hold
+that row. The write fences stale repeatable-read admissions. SQLite serializes
+writers and validates integer policy values and claim timestamp shape. Both
+backends reject unbound policies, malformed claim pairs and acquisitions that
+would exceed the live claim cap. Expired claims may exist for normal reclaim.
+There is no second reservation table.
+
+Stop and drain all relays, reconcile ambiguous external publications and
+clear any remaining claims through reviewed recovery before this migration or
+a policy change. The migration rejects missing/corrupt singleton state and
+any outstanding claims; it never silently resets a policy. Apply it before
+restarting workers. Offline downgrade also requires drained workers.
+The guards enforce ordinary DML quota and policy integrity, not database
+superuser/DDL authority, the identity of an arbitrary SQL writer that can
+clear or replace a token, clock discontinuities, or fencing at a remote broker.
+The PostgreSQL per-claim policy write and SQLite timestamp conversion in the
+quota guard need workload measurement. Compilation, SQL migration lifecycle,
+multi-connection contention and broker behavior remain unverified.
+
+## Durable temporal authority integrity (source only)
+
+Append-only migration `m20261127_000203_fence_outbox_temporal_clock`
+and standalone schema guard the permanent clock singleton. Ordinary INSERT,
+DELETE, replacement, PostgreSQL TRUNCATE, identity changes, fractional
+SQLite values, decreasing floors and advances past SQL time are rejected.
+Exact no-op reservations remain valid. Existing missing singletons are
+not reseeded; migration validates the baseline under a writer fence.
+A preexisting future floor is preserved and observations fail closed.
+
+The guards protect the durable floor, not independent distributed time,
+privileged DDL/restore or simultaneous primary/host clock jumps. Owner
+transactions still do not take a shared clock writer lock. Drain old
+binaries and use reviewed offline recovery; never reset at startup.
+Both integrity installers now open a transaction/savepoint even for
+direct standalone setup. PostgreSQL duplicate DDL errors are handled
+within SQL, not by continuing an aborted transaction. SQLite and
+PostgreSQL regression sources are authored; compilation, migration
+lifecycle and contention evidence remain pending.

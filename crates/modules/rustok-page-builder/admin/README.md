@@ -295,6 +295,8 @@ Both framework adapters use the same Page Builder resize policy for pointer and 
 input: a 4px grid, 24px/20px minimum width/height and a 100,000px maximum on either axis.
 The Leptos Rust runtime and JS adapter share a document nonce plus editor-root scope so their
 own confirmed writes advance one baseline; other tabs or editor roots fence stale editors.
+The Leptos workspace retains its browser-owned channel in local reactive storage
+for the lifetime of the mounted editor.
 These BroadcastChannel notices are advisory and do not replace server revision CAS or receipts.
 Mounted browser/CSP verification remains outstanding.
 

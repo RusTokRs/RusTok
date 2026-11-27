@@ -86,6 +86,11 @@ async fn setup_database() -> DatabaseConnection {
             .await
             .expect("create RBAC fixture table");
     }
+    use rustok_core::module::MigrationSource;
+    let migration = rustok_rbac::RbacModule.migrations().into_iter()
+        .find(|migration| migration.name() == "m20261127_000017_couple_artifact_grant_generation")
+        .expect("artifact grant generation migration registered");
+    migration.up(&sea_orm_migration::SchemaManager::new(&db)).await.unwrap();
     db
 }
 
@@ -261,14 +266,14 @@ async fn only_state_changes_publish_artifact_permission_events() {
         rustok_rbac::read_permission_invalidation_generation(&db)
             .await
             .unwrap(),
-        1
+        2
     );
     assert!(!service.assign(grant).await.expect("exact retry").applied);
     assert_eq!(
         rustok_rbac::read_permission_invalidation_generation(&db)
             .await
             .unwrap(),
-        1
+        2
     );
     assert!(
         service
@@ -291,7 +296,7 @@ async fn only_state_changes_publish_artifact_permission_events() {
         rustok_rbac::read_permission_invalidation_generation(&db)
             .await
             .unwrap(),
-        1
+        2
     );
     let persisted_scope: String = db
         .query_one_raw(Statement::from_string(
@@ -355,7 +360,7 @@ async fn only_state_changes_publish_artifact_permission_events() {
         rustok_rbac::read_permission_invalidation_generation(&db)
             .await
             .unwrap(),
-        2
+        3
     );
 }
 
@@ -498,7 +503,7 @@ async fn publication_failure_rolls_back_grant_and_idempotency_receipt() {
         rustok_rbac::read_permission_invalidation_generation(&db)
             .await
             .unwrap(),
-        0
+        1
     );
 }
 
@@ -651,4 +656,38 @@ async fn fenced_artifact_keys_require_exact_scope_release_and_membership() {
         .is_empty()
     );
     tx.commit().await.unwrap();
+}
+
+#[tokio::test]
+async fn direct_artifact_grant_sql_advances_generation_and_rollback_does_not() {
+    use sea_orm::TransactionTrait;
+    let db = setup_database().await;
+    let tenant = Uuid::new_v4();
+    let role = Uuid::new_v4();
+    let actor = Uuid::new_v4();
+    let installation = Uuid::new_v4();
+    let key = "sample.events.handle";
+    insert_role_and_actor(&db, tenant, role, actor).await;
+    let permission = insert_definition(&db, "platform", installation, key).await;
+    let grant = Uuid::new_v4();
+    let sql = format!(
+        "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, artifact_permission_id, permission_scope_key, granted_by_actor_id)
+         VALUES ('{grant}', '{tenant}', '{role}', '{permission}', 'platform', '{actor}')"
+    );
+    db.execute_unprepared(&sql).await.unwrap();
+    assert_eq!(rustok_rbac::read_permission_invalidation_generation(&db).await.unwrap(), 2);
+    db.execute_unprepared("UPDATE rbac_artifact_role_permissions SET role_id = role_id").await.unwrap();
+    assert_eq!(rustok_rbac::read_permission_invalidation_generation(&db).await.unwrap(), 2);
+    let tx = db.begin().await.unwrap();
+    tx.execute_unprepared("DELETE FROM rbac_artifact_role_permissions").await.unwrap();
+    assert_eq!(rustok_rbac::read_permission_invalidation_generation(&tx).await.unwrap(), 3);
+    tx.rollback().await.unwrap();
+    assert_eq!(rustok_rbac::read_permission_invalidation_generation(&db).await.unwrap(), 2);
+    db.execute_unprepared("DELETE FROM rbac_artifact_role_permissions").await.unwrap();
+    assert_eq!(rustok_rbac::read_permission_invalidation_generation(&db).await.unwrap(), 3);
+    db.execute_unprepared(&sql).await.unwrap();
+    assert_eq!(rustok_rbac::read_permission_invalidation_generation(&db).await.unwrap(), 4);
+    db.execute_unprepared("UPDATE rbac_invalidation_state SET generation = 9223372036854775807").await.unwrap();
+    assert!(db.execute_unprepared("DELETE FROM rbac_artifact_role_permissions").await.is_err());
+    assert_eq!(table_count(&db, "rbac_artifact_role_permissions").await, 1);
 }

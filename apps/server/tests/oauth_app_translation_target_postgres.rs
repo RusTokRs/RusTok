@@ -803,6 +803,7 @@ fn owner_context(
         request_id: Some(format!("oauth-owner-postgres-{suffix}")),
         locale: Some(locale.to_string()),
         principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
+        credential_authority: rustok_auth::CredentialAuthority::TrustedInternal,
     }
 }
 

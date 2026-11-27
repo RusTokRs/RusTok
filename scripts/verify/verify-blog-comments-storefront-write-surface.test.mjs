@@ -91,6 +91,19 @@ test('accepts the canonical active storefront Comments write surface', () => {
   }
 });
 
+test('rejects native comment creation without the tenant check even when storefront reads still check it', () => {
+  const result = rejects((root) => mutate(
+    root,
+    'crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs',
+    (source) => source.replace(
+      'rustok_api::is_tenant_module_enabled(runtime_ctx.db(), tenant.id, MODULE_SLUG).await',
+      'Ok::<bool, ServerFnError>(true)',
+    ),
+  ));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /native comment creation must check the Blog tenant and channel/);
+});
+
 test('rejects removal of the active storefront comment composer', () => {
   const result = rejects((root) => {
     mutate(

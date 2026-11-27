@@ -348,3 +348,86 @@ remain held through commit, and the locked credential deadline is checked
 again immediately before committing. Lease membership and expiry remain
 mandatory; no actor is inferred for owner work. Installation and module
 policy concurrency fencing remains separate work.
+
+PostgreSQL migration 000007 introduces nonblocking FK parent admission for
+OAuth apps, token/code/consent rows, application translations, refresh-family
+roots and invite/recovery children. Existing FK and immutable lineage guards
+remain authoritative. Direct late writes reject busy parents (55P03) instead
+of waiting; retry only from a new transaction. PostgreSQL runtime and broader
+session/identity and cross-owner lock ordering remain unverified.
+
+Migration 000008 closes the SQLite token/user deletion parity gap: physical
+user deletion removes delegated descendants before roots, preserving service
+and other-user credentials. Existing orphan/cross-tenant lineage blocks
+migration for explicit reconciliation. Source tests unrun.
+
+PostgreSQL retention uses ordered nonblocking candidate locks and app-first
+OAuth family deletion with fresh whole-family expiry checks. Contention rolls
+back the complete sweep; the next attempt starts a new transaction. SQLite
+retains serialized writes. Source regressions are unrun.
+
+The RBAC-owned migration 000013 retains permanent user/role/permission UUID
+birth witnesses. A post-cutover hard-deleted user cannot be recreated under
+the same UUID to revive old recovery or membership evidence. The witness
+has no user FK or account PII and survives deletion. Pre-cutover deletions,
+other credential IDs, privileged DDL and database restore are not covered.
+See the RBAC owner documentation. Source regressions unrun.
+
+### Permanent credential identity evidence
+
+Auth migration 000014 preserves UUID birth claims for sessions, OAuth apps,
+client IDs, token registrations (including family roots), authorization
+codes and consent rows. Session refresh and OAuth token/code digests are consumed permanently:
+hard deletion
+and a fresh UUID cannot revive a previously registered digest. These claims
+have no foreign keys, survive cleanup and cascade, and roll back with failed
+births. PostgreSQL claims use nonwaiting per-key advisory fences; SQLite
+rejects implicit replacement of a live refresh-family member and preserves
+ordinary rotation after predecessor revocation. Token/code digest and client
+identity updates are forbidden. Current and historical session digests are
+backfilled without conflict suppression; every successful session birth or
+changed digest claims a fresh identity in the same transaction. No-op updates
+and rolled-back rotations consume nothing. The independent replay history
+retains its existing grace-window and cleanup semantics.
+The SQLite witness table uses WITHOUT ROWID so a hidden row identity cannot
+be used to replace an unrelated consumed credential claim.
+Witness storage grows with credential births; no plaintext is retained.
+Terminal revocation timestamps on sessions, tokens and consents, and used_at
+on authorization codes, are immutable once set. Revoked OAuth token last-use
+evidence cannot be rewritten to forge a rotation; a revoked consent retains
+its original grant and subject. The canonical grant writer always invalidates exact-subject tokens and codes,
+retires the active consent if present, and inserts a fresh UUID in the same
+transaction. It never selects or revives a historical row, even after repeated
+grants. Consent scopes and granted_at are immutable even while active. OAuth application reactivation is
+unchanged. SQLite prevents hidden-rowid replacement on tokens, codes and
+consents and implicit replacement of an active consent by another UUID.
+Issued OAuth token scopes/expiry and authorization-code subject, redirect,
+scopes, PKCE and creation/expiry claims cannot be modified after issuance.
+An explicit session absolute deadline may be shortened but not cleared or
+extended; NULL legacy deadlines can be materialized, and the runtime still
+applies the original creation-time cap. SQLite rejects ambiguous changes
+within its date comparison precision. Pre-cutover removed identities, reuse
+of a consent timestamp under a fresh UUID, sliding expiry manipulation, and
+privileged DDL/restore remain outside this protection. Source regressions unrun.
+
+Authenticated OAuth consent revocation prelocks exact token/code/consent
+rows in the existing stable order. On a typed PostgreSQL statement conflict,
+confirmed rollback permits a bounded fresh attempt with new clock admission
+and locked credential authority. Commit failure is never auto-replayed.
+Source regressions are unrun; other admin paths are not covered by this retry.
+
+### Authorization-code consent generation
+
+Migration 000018 stores the exact consent UUID when a consent-required
+client receives an authorization code. The UUID is immutable, including
+NULL on legacy codes, and is not cleared by consent cleanup. Exchange
+checks the current generation at preflight and again under the existing
+app/subject transaction fences. No timestamp-based backfill is attempted:
+legacy unbound codes for consent-required clients must be reissued; exempt
+clients keep NULL. Consent-required tokens inherit the exact UUID through
+their immutable original authorization-code identity; the code must be
+consumed and match tenant, client, subject and live consent. Access,
+WebSocket revalidation, locked admin admission and refresh preflight/commit
+reject missing or mismatched evidence even at equal timestamps. Legacy
+unbound token families require fresh authorization. Existing retention
+preserves codes while their families remain. Source regressions unrun.

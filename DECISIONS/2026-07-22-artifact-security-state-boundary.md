@@ -32,8 +32,9 @@ return to clear. These transitions never update tenant module enablement rows.
 
 Registry status is read separately. `active` and unlisted external releases
 remain eligible for this security check, `yanked` is retained as a discovery /
-install fact but does not stop an already admitted execution, and unknown
-registry status fails closed. Quarantine and revocation block new execution
+install fact rather than an emergency stop. Registry mutations invalidate prior
+execution leases without denying fresh admission solely because of a yank;
+unknown registry status fails closed. Quarantine and revocation block new execution
 through `ModuleEffectivePolicy`; the policy revision includes the security
 snapshot but no grant contents or resolver error text.
 
@@ -46,11 +47,22 @@ lease's exact clear security revision after the lock wait. This protects the
 implicit clear revision zero even before a security-state row exists. Clearing
 quarantine advances the revision, never restoring prior execution authority.
 The emergency writer does not consult the lifecycle journal mutation guard.
-The lock covers short SQL transactions, not guest execution or external calls;
-a security action waits for an already-admitted SQL transaction to finish.
-Registry status is still independently observed and dependency security is
-not yet transactionally fenced. All security writers and SQL effect consumers
-must be upgraded together; no schema migration is required.
+The server host authorizer runs on that same owner transaction before the
+platform slug lock. It acquires the tenant, direct-user, session, policy, and
+current RBAC role fences first and retains them through the security-state,
+receipt, and outbox commit. Exact idempotency replay also requires current
+authorization; a cached request snapshot alone is not sufficient. Because a direct
+credential can expire while waiting for the platform slug lock, the owner
+rechecks the earliest credential deadline immediately before both new-state
+and exact-replay commits, after all durable writes; expiry rolls the entire
+transaction back. The lock covers short SQL transactions, not guest execution
+or external calls; a security action waits for an already-admitted SQL
+transaction to finish.
+Registry status has a separate monotonic release authority witness (migration
+000096), and registry publication/yank/unyank share the same platform slug fence.
+Serving SQL effects check both security and registry authority for every artifact
+in the selected closure. See the execution capability lease ADR for rollout and
+lock ordering. Old writers and leases must be drained before rollout.
 
 ## Consequences
 

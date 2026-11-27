@@ -10,9 +10,19 @@ Generation-aware cached permission resolution discards relation reads rejected b
 every bounded publication attempt and returns the typed
 `PermissionCacheResolutionError::Invalidated`. It does not grant those permissions
 or fabricate an empty successful grant set. Store errors remain distinct. This
-local check is not a commit-time revocation fence, a multi-query database snapshot,
-or a guarantee for cache adapters using default non-generation-aware methods.
+local check is not a commit-time revocation fence or a guarantee for cache adapters using default non-generation-aware methods.
 See [the cache-consistency decision](../../../DECISIONS/2026-11-02-rbac-cache-resolution-consistency.md).
+
+The persisted SeaORM reader resolves the entire tenant/user membership and
+static-grant graph in one SQL statement, for both cache misses and uncached
+authorization. A statement snapshot prevents mixed membership/grant reads; it
+does not fence subsequent revocation. A cached candidate is validated against
+the exact persisted permission pairs in a fresh statement before returning a
+hit, followed by a local token recheck. This handles direct SQL and missed
+notifications without adding a global write lock. Cache hits still incur a DB
+query; a mismatch triggers the typed relation read and conditional publication.
+The durable invalidation generation remains the owner mutation/recovery
+watermark, not a complete raw-DML change feed.
 
 ## Responsibilities
 
@@ -72,7 +82,10 @@ See [the cache-consistency decision](../../../DECISIONS/2026-11-02-rbac-cache-re
   only; after seeding, tenant grant changes are legitimate persisted state.
   System-role repair (an explicit operator action) restores missing default
   roles with their bootstrap grants and never rewrites an existing role's
-  grants; it is not part of the normal request flow, so roles deleted through
+  grants, including when a concurrent initializer wins the missing-role
+  insert. Only a successfully inserted role is seeded; single-role vocabulary
+  materialization uses the same ordered (resource, action) keys as control-plane
+  grant writes. Repair is not part of the normal request flow, so roles deleted through
   the control plane stay deleted.
 - The decision engine is the platform's own set-based evaluator over the
   resolved permission set (see
@@ -96,6 +109,15 @@ a generation-aware host callback supports cache clearing and best-effort fan-out
 its compatibility default calls the legacy membership callback. Recovery is
 eventual and depends on healthy generation watchers; this is not a transactional
 outbox or a revocation fence. Metadata-only edits do not advance the generation.
+The reservation is a late transaction-held row write returning its exact
+successor and rejecting invalid or exhausted integer storage. PostgreSQL
+reserves its table and singleton with NOWAIT: contention aborts the owner
+transaction instead of waiting below earlier domain locks. Driver errors remain
+typed for transaction owners. The standalone committed replacement retries
+only classified pre-commit failures after explicit rollback; it is not a
+request credential re-admission protocol. Never acquire
+new earlier-ranked tenant/credential/user/role/grant/receipt identities after
+reserving it. Bulk lock-order verification remains open.
 [ADR](../../../DECISIONS/2026-11-02-rbac-graphql-grant-invalidation.md).
 
 ## Module availability (dormant grants)
@@ -134,7 +156,11 @@ routes now require the host transaction authority port on the RBAC owner
 transaction. Lock the direct session, current static module policy and
 the actor/target role union before evaluating live grants; require the
 admitted permission ceiling and a final credential deadline before commit.
-Missing host authority denies writes. Artifact operations retain their
+The returned locked permission set is the effective intersection of admitted
+and live grants (including manage wildcard narrowing). At least one identical
+management alternative must survive both checks; a newly acquired alternative
+cannot replace a revoked one. The GraphQL owner also applies its admitted
+ceiling to the adapter result. Missing host authority denies writes. Artifact operations retain their
 exact registered scope, idempotency receipt and transactional event. Every
 actual artifact grant or revoke advances the existing durable RBAC generation
 in the same transaction; exact retries and state no-ops do not. Missing,
@@ -172,6 +198,16 @@ authorization decision. Missing/invalid epochs fail closed; membership and
 role-grant ABA remain visible. Artifact grants and module policy are separate
 authority domains.
 
+### Standalone role writer ordering
+
+PostgreSQL standalone replacement takes the target user fence, then the
+existing target membership, destination and SuperAdmin continuity roles in
+canonical UUID order before per-role checks. Bootstrap assignment fences
+the user and exact system role before touching shared permission vocabulary;
+a late role conflict fails via NOWAIT. Lazy missing-role creation and bulk
+repair remain outside a complete cross-owner ordering proof. PostgreSQL
+regression evidence is authored but unrun.
+
 ### User administration role lock set
 
 The host user-admin transaction can lock actor and target membership roles,
@@ -180,3 +216,38 @@ UUID-ordered owner query. Existing users must be locked first; SQLite callers
 must hold the write fence. The result indicates whether the requested role
 exists in the locked set. This is not itself authorization and does not
 establish a universal lock order for all RBAC or artifact writers.
+
+Migration 000012 protects the permanent RBAC cache watermark from direct SQL
+insertion, deletion, replacement and non-increasing or non-integer updates.
+Normal reservations advance by one; deliberate forward-only recovery may skip
+values. Missing/corrupt predecessor storage requires offline recovery.
+Privileged DDL and database restoration remain separate. Tests unrun.
+
+### Permanent static authority identities
+
+Migration 000013 backfills and retains an append-only UUID witness for each
+existing user, role and permission and for every subsequent successful insert.
+A deleted UUID cannot be reused, including SQLite same-ID REPLACE and alternate
+text/blob UUID encodings; UUID updates are forbidden. Conflict-do-nothing and
+rolled-back births consume nothing. Witnesses contain only kind and UUID, no
+email, role slug or permission payload, and have no cascading foreign keys.
+The SQLite witness table uses WITHOUT ROWID, preventing replacement through
+an unrelated hidden row identity. PostgreSQL uses a nonwaiting per-identity
+advisory fence for witness inserts.
+The migration cannot reconstruct identities deleted before cutover, and does
+not protect privileged DDL/restore, other authority kinds, or SQLite
+natural-key REPLACE with a different UUID. Source regressions are unrun.
+
+Artifact catalog admission orders permission keys and normalized localization
+keys; projection reads the corresponding persisted keys in order. Migration
+000016 rejects late PostgreSQL catalog FK parent waits and adds nonwaiting
+relation admission to artifact grant/receipt guards. SQLite retains its
+serialized writer and existing FKs. PostgreSQL regression authored, unrun.
+
+Migration 000017 couples actual artifact grant SQL changes to the existing
+RBAC watermark, including direct INSERT/DELETE and changed grant identity.
+PostgreSQL defers advancement to commit and rejects late role or watermark
+contention without waiting; SQLite advances under its writer reservation.
+The owner no longer explicitly reserves a second generation for artifact
+assignment. Cutover advances once to invalidate older continuity receipts.
+Static direct relation generation coupling and runtime verification remain open.

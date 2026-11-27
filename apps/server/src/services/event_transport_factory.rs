@@ -143,6 +143,28 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
             // a broker process or connector alive after bootstrap fails.
             let outbox_retention =
                 resolve_outbox_retention(ctx, &settings.events.outbox_retention)?;
+            let relay_policy = &settings.events.relay_retry_policy;
+            let max_attempts = if settings.events.dlq.enabled {
+                settings.events.dlq.max_attempts
+            } else {
+                relay_policy.max_attempts
+            };
+            let relay_policy_config = RelayConfig {
+                    batch_size: settings.events.relay_batch_size,
+                    max_attempts,
+                    backoff_base: Duration::from_millis(relay_policy.base_backoff_ms),
+                    backoff_max: Duration::from_millis(relay_policy.max_backoff_ms),
+                    max_concurrency: settings.events.relay_max_concurrency,
+                    claim_ttl: Duration::from_millis(settings.events.relay_claim_ttl_ms),
+                    // A dispatch must finish well inside its claim lease:
+                    // half the lease, capped at the relay default of 30s.
+                    publish_timeout: Duration::from_millis(
+                        (settings.events.relay_claim_ttl_ms / 2).clamp(1, 30_000),
+                    ),
+                    ..RelayConfig::default()
+                };
+            relay_policy_config.verify_execution_admission(&ctx.db_clone()).await
+                .map_err(|error| Error::BadRequest(error.to_string()))?;
             let artifact_projector = ModuleControlPlane::new(ctx.db_clone())
                 .artifact_event_projector(ArtifactEventDeliveryConfig::default())
                 .map_err(|error| {
@@ -202,28 +224,9 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
             // cannot mark a tenant mutation dispatched until cache invalidation has been published
             // and the canonical tenant generation listener is ready for the configured transport.
             let relay_target = tenant_generation_transport(ctx, &cache, relay_target);
-            let relay_policy = &settings.events.relay_retry_policy;
-            let max_attempts = if settings.events.dlq.enabled {
-                settings.events.dlq.max_attempts
-            } else {
-                relay_policy.max_attempts
-            };
             let relay_config = RelayRuntimeConfig {
                 interval: Duration::from_millis(settings.events.relay_interval_ms),
-                relay: OutboxRelay::new(ctx.db_clone(), relay_target).with_config(RelayConfig {
-                    batch_size: settings.events.relay_batch_size,
-                    max_attempts,
-                    backoff_base: Duration::from_millis(relay_policy.base_backoff_ms),
-                    backoff_max: Duration::from_millis(relay_policy.max_backoff_ms),
-                    max_concurrency: settings.events.relay_max_concurrency,
-                    claim_ttl: Duration::from_millis(settings.events.relay_claim_ttl_ms),
-                    // A dispatch must finish well inside its claim lease:
-                    // half the lease, capped at the relay default of 30s.
-                    publish_timeout: Duration::from_millis(
-                        (settings.events.relay_claim_ttl_ms / 2).clamp(1, 30_000),
-                    ),
-                    ..RelayConfig::default()
-                }),
+                relay: OutboxRelay::new(ctx.db_clone(), relay_target).with_config(relay_policy_config),
             };
 
             EventRuntime {
@@ -538,6 +541,7 @@ mod outbox_relay_shutdown_tests {
         );
         entity::Entity::insert(entity::ActiveModel {
             id: Set(event.id),
+            tenant_id: Set(Some(tenant_id)),
             event_type: Set(event.event_type.clone()),
             schema_version: Set(i16::try_from(event.schema_version).expect("schema version fits")),
             payload: Set(serde_json::to_value(&event).expect("serialize event")),

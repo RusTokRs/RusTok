@@ -38,11 +38,11 @@ impl ModuleGraphqlField {
                 | "marketplace"
                 | "marketplaceModule"
                 | "moduleOperationRecoveryPlan"
-                | "failedModuleOperationRecoveryPlans"
-                | "activeBuild"
-                | "buildHistory",
+                | "failedModuleOperationRecoveryPlans",
             ) => ModuleAuthority::Read,
-            (OperationType::Query, "marketplaceRegistryFreshness") => ModuleAuthority::Manage,
+            (OperationType::Query, "marketplaceRegistryFreshness" | "moduleArtifactSecurity") => {
+                ModuleAuthority::Manage
+            }
             (OperationType::Mutation, "executeArtifactUiAction") => ModuleAuthority::Read,
             (
                 OperationType::Mutation,
@@ -57,9 +57,11 @@ impl ModuleGraphqlField {
                 | "rollbackTenantArtifact"
                 | "retryFailedModuleOperationPostHook"
                 | "compensateFailedModuleOperation"
-                | "updateModuleSettings",
+                | "updateModuleSettings"
+                | "quarantineModuleArtifact"
+                | "clearModuleArtifactQuarantine"
+                | "revokeModuleArtifact",
             ) => ModuleAuthority::Manage,
-            (OperationType::Subscription, "buildProgress") => ModuleAuthority::Read,
             _ => return None,
         };
 
@@ -76,10 +78,9 @@ impl ModuleGraphqlField {
                 "marketplace" => "marketplace",
                 "marketplaceModule" => "marketplaceModule",
                 "marketplaceRegistryFreshness" => "marketplaceRegistryFreshness",
+                "moduleArtifactSecurity" => "moduleArtifactSecurity",
                 "moduleOperationRecoveryPlan" => "moduleOperationRecoveryPlan",
                 "failedModuleOperationRecoveryPlans" => "failedModuleOperationRecoveryPlans",
-                "activeBuild" => "activeBuild",
-                "buildHistory" => "buildHistory",
                 "executeArtifactUiAction" => "executeArtifactUiAction",
                 "installModule" => "installModule",
                 "uninstallModule" => "uninstallModule",
@@ -93,7 +94,9 @@ impl ModuleGraphqlField {
                 "retryFailedModuleOperationPostHook" => "retryFailedModuleOperationPostHook",
                 "compensateFailedModuleOperation" => "compensateFailedModuleOperation",
                 "updateModuleSettings" => "updateModuleSettings",
-                "buildProgress" => "buildProgress",
+                "quarantineModuleArtifact" => "quarantineModuleArtifact",
+                "clearModuleArtifactQuarantine" => "clearModuleArtifactQuarantine",
+                "revokeModuleArtifact" => "revokeModuleArtifact",
                 _ => return None,
             },
             authority,
@@ -248,6 +251,8 @@ mod tests {
                         contributionId: "apply"
                     ) { executionId }
                     moduleCompositionSnapshot { revision }
+                    activeBuild { buildId }
+                    buildHistory { buildId }
                 }
             "#,
         );
@@ -298,21 +303,19 @@ mod tests {
                 .any(|field| field.name == "moduleCompositionSnapshot"
                     && field.authority == ModuleAuthority::Read)
         );
+        assert!(!policy.0.iter().any(|field| {
+            matches!(field.name, "activeBuild" | "buildHistory")
+        }));
 
         let mut sub_request =
             Request::new(r#"subscription BuildState { buildProgress { buildId } }"#);
         classify_document(&mut sub_request).expect("subscription document should parse");
-        let sub_policy = sub_request
-            .data
-            .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
-            .and_then(|value| value.downcast_ref::<ModuleGraphqlDocumentPolicy>())
-            .expect("subscription module policy should be attached");
         assert!(
-            sub_policy
-                .0
-                .iter()
-                .any(|field| field.name == "buildProgress"
-                    && field.authority == ModuleAuthority::Read)
+            sub_request
+                .data
+                .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
+                .is_none(),
+            "buildProgress is guarded by host authority in its resolver, not tenant module permissions"
         );
     }
 
@@ -492,6 +495,88 @@ mod tests {
                         | "rollbackTenantArtifact"
                 )
         }));
+    }
+
+    #[test]
+    fn classifies_global_artifact_security_query_and_mutations_as_manage() {
+        let mut query_request = Request::new(
+            r#"
+                query ReadReleaseSecurity {
+                    moduleArtifactSecurity(
+                        moduleSlug: "example"
+                        version: "1.2.3"
+                        payloadDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    ) { revision status }
+                }
+            "#,
+        );
+        classify_document(&mut query_request).expect("query should parse");
+        let query_policy = query_request
+            .data
+            .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
+            .and_then(|value| value.downcast_ref::<ModuleGraphqlDocumentPolicy>())
+            .expect("artifact security query policy should be attached");
+        assert_eq!(query_policy.0.len(), 1);
+        assert_eq!(query_policy.0[0].name, "moduleArtifactSecurity");
+        assert_eq!(query_policy.0[0].authority, ModuleAuthority::Manage);
+
+        let mut mutation_request = Request::new(
+            r#"
+                mutation ChangeReleaseSecurity {
+                    quarantineModuleArtifact(
+                        moduleSlug: "example"
+                        version: "1.2.3"
+                        payloadDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                        expectedRevision: "0"
+                        policyRevision: "policy-r1"
+                        reasonCode: "security-review"
+                        reasonDetail: "reviewed"
+                        idempotencyKey: "00000000-0000-0000-0000-000000000001"
+                    ) { created }
+                    clearModuleArtifactQuarantine(
+                        moduleSlug: "example"
+                        version: "1.2.3"
+                        payloadDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                        expectedRevision: "1"
+                        policyRevision: "policy-r2"
+                        reasonCode: "security-review"
+                        reasonDetail: "cleared"
+                        idempotencyKey: "00000000-0000-0000-0000-000000000002"
+                    ) { created }
+                    revokeModuleArtifact(
+                        moduleSlug: "example"
+                        version: "1.2.3"
+                        payloadDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                        expectedRevision: "2"
+                        policyRevision: "policy-r3"
+                        reasonCode: "security-review"
+                        reasonDetail: "revoked"
+                        idempotencyKey: "00000000-0000-0000-0000-000000000003"
+                    ) { created }
+                }
+            "#,
+        );
+        classify_document(&mut mutation_request).expect("mutations should parse");
+        let mutation_policy = mutation_request
+            .data
+            .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
+            .and_then(|value| value.downcast_ref::<ModuleGraphqlDocumentPolicy>())
+            .expect("artifact security mutation policy should be attached");
+
+        assert_eq!(mutation_policy.0.len(), 3);
+        assert!(
+            mutation_policy
+                .0
+                .iter()
+                .all(|field| field.authority == ModuleAuthority::Manage)
+        );
+        for name in [
+            "quarantineModuleArtifact",
+            "clearModuleArtifactQuarantine",
+            "revokeModuleArtifact",
+        ] {
+            assert!(mutation_policy.0.iter().any(|field| field.name == name));
+        }
     }
 
     #[test]

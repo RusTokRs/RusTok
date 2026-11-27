@@ -10,12 +10,15 @@ use rustok_core::events::{EventTransport, ReliabilityLevel};
 use rustok_core::{Error, Result};
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_outbox::entity::{self, SysEventStatus};
-use rustok_outbox::{OutboxRelay, RelayConfig, SysEventsMigration};
+use rustok_outbox::{
+    OutboxRelay, OutboxRelayPort, OutboxRelayRunOnceRequest, RelayConfig, SysEventsMigration,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend,
-    DatabaseConnection, EntityTrait, QueryFilter, Set, Statement,
+    DatabaseConnection, EntityTrait, QueryFilter, Set, Statement, TransactionTrait,
 };
 use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
+use tokio::sync::Semaphore;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -91,6 +94,104 @@ impl EventTransport for TrackingTransport {
 }
 
 type TestResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+struct AcceptedThenLocalFailure {
+    accepted: Mutex<Vec<Uuid>>,
+}
+
+#[async_trait]
+impl EventTransport for AcceptedThenLocalFailure {
+    async fn publish(&self, envelope: EventEnvelope) -> Result<()> {
+        let mut accepted = self.accepted.lock().await;
+        accepted.push(envelope.id);
+        if accepted.len() == 1 {
+            return Err(Error::Validation("local projection failed after primary acceptance".to_string()));
+        }
+        Ok(())
+    }
+    fn reliability_level(&self) -> ReliabilityLevel { ReliabilityLevel::Streaming }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+#[tokio::test]
+async fn post_acceptance_validation_failure_retries_original_identity() -> TestResult<()> {
+    let db = setup_sqlite_db().await?;
+    let event = seed_event(&db).await?;
+    let transport = Arc::new(AcceptedThenLocalFailure { accepted: Mutex::new(Vec::new()) });
+    let relay = OutboxRelay::new(db.clone(), transport.clone()).with_config(RelayConfig {
+        max_attempts: 3, ..Default::default()
+    });
+    assert_eq!(relay.process_pending_once(None).await?, 1);
+    let row = entity::Entity::find_by_id(event.id).one(&db).await?.expect("event");
+    assert_eq!(row.status, SysEventStatus::Pending);
+    assert_eq!(row.retry_count, 1);
+    assert_eq!(relay.metrics().dlq_total, 0);
+    let mut row: entity::ActiveModel = row.into();
+    row.next_attempt_at = Set(None);
+    row.update(&db).await?;
+    assert_eq!(relay.process_pending_once(None).await?, 1);
+    let row = entity::Entity::find_by_id(event.id).one(&db).await?.expect("event");
+    assert_eq!(row.status, SysEventStatus::Dispatched);
+    assert_eq!(*transport.accepted.lock().await, vec![event.id, event.id]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn concurrent_consumer_ack_retries_without_waiting_for_the_source_row() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+    let Some(db) = setup_db().await? else {
+        return Ok(());
+    };
+    if db.get_database_backend() != DatabaseBackend::Postgres {
+        return Ok(());
+    }
+
+    let schema = db.query_one_raw(Statement::from_string(
+        DatabaseBackend::Postgres,
+        "SELECT current_schema() AS schema_name",
+    )).await?.expect("schema").try_get::<String>("", "schema_name")?;
+    assert!(schema.starts_with("rustok_outbox_test_"));
+    assert!(schema.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_'));
+    let database_url = std::env::var("RUSTOK_OUTBOX_TEST_DATABASE_URL")
+        .or_else(|_| std::env::var("DATABASE_URL"))?;
+    let mut options = ConnectOptions::new(database_url);
+    options.max_connections(1).min_connections(1).sqlx_logging(false);
+    let second = Database::connect(options).await?;
+    second.execute_unprepared(&format!(r#"SET search_path TO "{schema}""#)).await?;
+
+    let envelope = seed_event(&db).await?;
+    let consumer = rustok_outbox::OutboxConsumer::new(db.clone());
+    let types = [envelope.event_type.clone()];
+    consumer.register_required_event_types("consumer.first", &types).await?;
+    consumer.register_required_event_types("consumer.second", &types).await?;
+    let first_txn = db.begin().await?;
+    rustok_outbox::OutboxConsumer::acknowledge_in_transaction(
+        &first_txn, "consumer.first", envelope.id, &envelope.event_type,
+    ).await?;
+
+    let second_txn = second.begin().await?;
+    let blocked = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        rustok_outbox::OutboxConsumer::acknowledge_in_transaction(
+            &second_txn, "consumer.second", envelope.id, &envelope.event_type,
+        ),
+    ).await.expect("late ACK must return without waiting on the source row");
+    assert!(blocked.is_err());
+    second_txn.rollback().await?;
+    first_txn.commit().await?;
+
+    let retry_txn = second.begin().await?;
+    rustok_outbox::OutboxConsumer::acknowledge_in_transaction(
+        &retry_txn, "consumer.second", envelope.id, &envelope.event_type,
+    ).await?;
+    retry_txn.commit().await?;
+    let receipts = db.query_one_raw(Statement::from_string(
+        DatabaseBackend::Postgres,
+        "SELECT COUNT(*) AS count FROM sys_event_consumer_receipts",
+    )).await?.expect("receipt count").try_get::<i64>("", "count")?;
+    assert_eq!(receipts, 2);
+    Ok(())
+}
 
 #[tokio::test]
 async fn relay_delivers_successfully() -> TestResult<()> {
@@ -215,9 +316,116 @@ async fn relay_moves_to_dlq_on_max_retry() -> TestResult<()> {
     Ok(())
 }
 
+async fn assert_execution_policy_integrity(db: &DatabaseConnection) -> TestResult<()> {
+    // Bind through the same admission path as a real relay.
+    db.execute_unprepared("UPDATE outbox_execution_policy SET max_in_flight = 1 WHERE id = 1").await?;
+    let first = seed_event(db).await?;
+    let second = seed_event(db).await?;
+    async fn claim(db: &DatabaseConnection, id: Uuid, age_seconds: i64) -> TestResult<()> {
+        let mut row: entity::ActiveModel = entity::Entity::find_by_id(id)
+            .one(db).await?.expect("event").into();
+        row.claimed_by = Set(Some("test-worker".into()));
+        row.claimed_at = Set(Some(Utc::now() - chrono::Duration::seconds(age_seconds)));
+        row.update(db).await?;
+        Ok(())
+    }
+    assert!(claim(db, first.id, 0).await.is_err(), "unbound policy");
+    RelayConfig::default().verify_execution_admission(db).await?;
+    for sql in [
+        "DELETE FROM outbox_execution_policy",
+        "INSERT INTO outbox_execution_policy VALUES (1, 2, 60000) ON CONFLICT (id) DO NOTHING",
+        "UPDATE outbox_execution_policy SET claim_ttl_ms = NULL",
+        "UPDATE outbox_execution_policy SET id = 2",
+    ] {
+        assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+    }
+    if db.get_database_backend() == DatabaseBackend::Sqlite {
+        for sql in [
+            "INSERT OR REPLACE INTO outbox_execution_policy VALUES (1, 2, 60000)",
+            "UPDATE outbox_execution_policy SET max_in_flight = 1.5",
+        ] {
+            assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+        }
+    } else {
+        assert!(db.execute_unprepared("TRUNCATE outbox_execution_policy").await.is_err());
+    }
+
+    claim(db, first.id, 0).await?;
+    assert!(claim(db, second.id, 0).await.is_err(), "live capacity");
+    assert!(db.execute_unprepared("UPDATE outbox_execution_policy SET max_in_flight = 2").await.is_err());
+    assert!(db.execute_unprepared("UPDATE outbox_execution_policy SET claim_ttl_ms = 120000").await.is_err());
+    // A stale claim does not occupy a live permit, but still blocks policy changes.
+    claim(db, first.id, 120).await?;
+    claim(db, second.id, 0).await?;
+    assert!(claim(db, first.id, 0).await.is_err());
+    db.execute_unprepared("UPDATE sys_events SET claimed_by = NULL, claimed_at = NULL").await?;
+    db.execute_unprepared("UPDATE outbox_execution_policy SET max_in_flight = 2, claim_ttl_ms = 120000").await?;
+    assert!(RelayConfig::default().verify_execution_admission(db).await.is_err());
+    RelayConfig { claim_ttl: std::time::Duration::from_secs(120), ..Default::default() }.verify_execution_admission(db).await?;
+    claim(db, first.id, 0).await?;
+    claim(db, second.id, 0).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn postgres_temporal_clock_integrity_preserves_floor() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+    let Some(db) = setup_db().await? else { return Ok(()) };
+    if db.get_database_backend() != DatabaseBackend::Postgres { return Ok(()) }
+    async fn floor(db: &impl ConnectionTrait) -> TestResult<i64> {
+        Ok(db.query_one_raw(Statement::from_string(
+            db.get_database_backend(),
+            "SELECT high_water_ms FROM outbox_temporal_clock WHERE id = 1",
+        )).await?.expect("clock floor").try_get("", "high_water_ms")?)
+    }
+    let relay = OutboxRelay::new(db.clone(), Arc::new(MockTransport::default()));
+    relay.process_pending_once(None).await?;
+    let before = floor(&db).await?;
+    assert!(before > 0);
+    for sql in [
+        "DELETE FROM outbox_temporal_clock",
+        "TRUNCATE outbox_temporal_clock",
+        "INSERT INTO outbox_temporal_clock VALUES (1, 0) ON CONFLICT (id) DO NOTHING",
+        "UPDATE outbox_temporal_clock SET id = 2",
+        "UPDATE outbox_temporal_clock SET high_water_ms = 0",
+        "UPDATE outbox_temporal_clock SET high_water_ms = high_water_ms + 60000",
+    ] {
+        assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+        assert_eq!(floor(&db).await?, before);
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    let txn = db.begin().await?;
+    txn.execute_unprepared("UPDATE outbox_temporal_clock SET high_water_ms = CAST(FLOOR(EXTRACT(EPOCH FROM clock_timestamp()) * 1000) AS BIGINT)").await?;
+    assert!(floor(&txn).await? > before);
+    txn.rollback().await?;
+    assert_eq!(floor(&db).await?, before);
+    SysEventsMigration.up(&SchemaManager::new(&db)).await?;
+    assert_eq!(floor(&db).await?, before);
+    relay.process_pending_once(None).await?;
+    assert!(floor(&db).await? >= before);
+    Ok(())
+}
+
+#[tokio::test]
+async fn sqlite_execution_policy_integrity_rejects_reset_and_overbooking() -> TestResult<()> {
+    let db = setup_sqlite_db().await?;
+    assert_execution_policy_integrity(&db).await
+}
+
+#[tokio::test]
+async fn postgres_execution_policy_integrity_rejects_reset_and_overbooking() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+    let Some(db) = setup_db().await? else { return Ok(()) };
+    if db.get_database_backend() != DatabaseBackend::Postgres {
+        return Ok(());
+    }
+    assert_execution_policy_integrity(&db).await
+}
+
 #[tokio::test]
 async fn relay_reclaims_stale_claims() -> TestResult<()> {
     let db = setup_sqlite_db().await?;
+    RelayConfig { claim_ttl: std::time::Duration::from_secs(5), publish_timeout: std::time::Duration::from_secs(2), ..Default::default() }.verify_execution_admission(&db).await?;
     let envelope = seed_event(&db).await?;
     let mut claimed: entity::ActiveModel = entity::Entity::find_by_id(envelope.id)
         .one(&db)
@@ -230,8 +438,8 @@ async fn relay_reclaims_stale_claims() -> TestResult<()> {
 
     let relay =
         OutboxRelay::new(db.clone(), Arc::new(MockTransport::default())).with_config(RelayConfig {
-            claim_ttl: std::time::Duration::from_millis(1),
-            publish_timeout: std::time::Duration::from_micros(500),
+            claim_ttl: std::time::Duration::from_secs(5),
+            publish_timeout: std::time::Duration::from_secs(2),
             ..Default::default()
         });
 
@@ -261,6 +469,94 @@ async fn relay_bounds_parallel_dispatch() -> TestResult<()> {
 
     assert_eq!(relay.process_pending_once(None).await?, 4);
     assert_eq!(transport.max_active(), 2);
+    Ok(())
+}
+
+struct GatedTransport {
+    entered: Semaphore,
+    release: Semaphore,
+}
+
+#[async_trait]
+impl EventTransport for GatedTransport {
+    async fn publish(&self, _envelope: EventEnvelope) -> Result<()> {
+        self.entered.add_permits(1);
+        self.release.acquire().await.expect("gate open").forget();
+        Ok(())
+    }
+
+    fn reliability_level(&self) -> ReliabilityLevel { ReliabilityLevel::Outbox }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+fn relay_context() -> rustok_api::PortContext {
+    rustok_api::PortContext::new(
+        "tenant-1", rustok_api::PortActor::service("outbox-test"), "en", "outbox-test",
+    ).with_idempotency_key("relay-pass").with_deadline(std::time::Duration::from_secs(10))
+}
+
+#[tokio::test]
+async fn relay_claims_only_available_slots_and_reports_each_clone_pass() -> TestResult<()> {
+    let db = setup_sqlite_db().await?;
+    for _ in 0..6 {
+        seed_event(&db).await?;
+    }
+    let target = Arc::new(GatedTransport {
+        entered: Semaphore::new(0),
+        release: Semaphore::new(0),
+    });
+    let relay = OutboxRelay::new(db.clone(), target.clone()).with_config(RelayConfig {
+        batch_size: 4, max_concurrency: 2, ..Default::default()
+    });
+    let clone = relay.clone();
+    let first = tokio::spawn(async move {
+        OutboxRelayPort::process_pending_once(&relay, relay_context(),
+            OutboxRelayRunOnceRequest { max_batch_hint: Some(4) }).await
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(5), target.entered.acquire_many(2))
+        .await?.expect("gate open").forget();
+    let second = tokio::spawn(async move {
+        OutboxRelayPort::process_pending_once(&clone, relay_context(),
+            OutboxRelayRunOnceRequest { max_batch_hint: Some(4) }).await
+    });
+    let claimed = entity::Entity::find()
+        .filter(entity::Column::ClaimedBy.is_not_null()).all(&db).await?;
+    assert_eq!(claimed.len(), 2);
+    target.release.add_permits(6);
+    let first = first.await??;
+    let second = second.await??;
+    assert_eq!((first.claimed_count, first.success_total, first.processed_total), (4, 4, 4));
+    assert_eq!((second.claimed_count, second.success_total, second.processed_total), (2, 2, 2));
+    assert_eq!(first.failure_total + second.failure_total, 0);
+    Ok(())
+}
+
+#[tokio::test]
+async fn independent_relays_share_durable_capacity_and_ttl() -> TestResult<()> {
+    let db = setup_sqlite_db().await?;
+    db.execute_unprepared("UPDATE outbox_execution_policy SET max_in_flight = 2 WHERE id = 1").await?;
+    for _ in 0..4 { seed_event(&db).await?; }
+    let target = Arc::new(GatedTransport { entered: Semaphore::new(0), release: Semaphore::new(0) });
+    let config = RelayConfig { batch_size: 4, max_concurrency: 2, ..Default::default() };
+    let first = OutboxRelay::new(db.clone(), target.clone()).with_config(config.clone());
+    let other = OutboxRelay::new(db.clone(), Arc::new(MockTransport::default())).with_config(config.clone());
+    let mismatched = OutboxRelay::new(db.clone(), Arc::new(MockTransport::default())).with_config(RelayConfig {
+        claim_ttl: std::time::Duration::from_secs(120), ..config
+    });
+    let pass = tokio::spawn(async move { first.process_pending_once(None).await });
+    tokio::time::timeout(std::time::Duration::from_secs(5), target.entered.acquire_many(2))
+        .await?.expect("gate open").forget();
+    assert_eq!(other.process_pending_once(None).await?, 0);
+    assert!(mismatched.process_pending_once(None).await.is_err());
+    target.release.add_permits(1);
+    tokio::time::timeout(std::time::Duration::from_secs(5), target.entered.acquire())
+        .await?.expect("sliding-window refill").forget();
+    let claimed = entity::Entity::find()
+        .filter(entity::Column::ClaimedBy.is_not_null()).all(&db).await?;
+    assert_eq!(claimed.len(), 2);
+    target.release.add_permits(3);
+    assert_eq!(pass.await??, 4);
+    assert_eq!(other.process_pending_once(None).await?, 0);
     Ok(())
 }
 
@@ -354,6 +650,7 @@ async fn seed_event(db: &DatabaseConnection) -> TestResult<EventEnvelope> {
     let payload = serde_json::to_value(&envelope)?;
     let model = entity::ActiveModel {
         id: Set(envelope.id),
+        tenant_id: Set(Some(envelope.tenant_id)),
         event_type: Set(envelope.event_type.clone()),
         schema_version: Set(envelope.schema_version as i16),
         payload: Set(payload),

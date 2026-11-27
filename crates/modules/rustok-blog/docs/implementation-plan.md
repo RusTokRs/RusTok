@@ -40,6 +40,16 @@ certification wording below where it implies executed or complete readiness.
 - The Comments GraphQL source guard now accepts rustfmt import ordering and
   multiline import groups while still rejecting either missing required type.
   This removes a formatting false failure without changing the owner contract.
+- The storefront Comments write guard now checks the current tenant and channel
+  checks inside the native create endpoint before its owner call. Its negative
+  case keeps the read-side tenant checks while removing the create-side check.
+
+On 2026-11-27 the corrected guard and all 15 fixtures passed. The Blog Next.js
+model and utility suites passed 33 tests across admin and storefront. These
+covered locale-aware presentation, fallback editing, mutation recovery,
+thread ordering, reactions and actual Fluent plural rules. The scoped checks
+for the admin and storefront boundaries and the Next.js GraphQL documents
+also passed. Mounted client evidence remains part of the gates below.
 
 ### Remaining acceptance gates
 

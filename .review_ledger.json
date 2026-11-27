@@ -1919,7 +1919,7 @@
       "loc": 235863,
       "completed": false,
       "completed_at": null,
-      "notes": ""
+      "notes": "Round 2 progress: FS-01.01 completed in 2daddde1b7de; user reported tests passed. FS-01.02 changes committed in 09538cec5c30 with regression tests; awaiting user test run. The apps/server component remains incomplete."
     },
     "apps/storefront": {
       "name": "storefront",

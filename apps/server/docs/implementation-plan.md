@@ -1,5 +1,23 @@
 # Server App — Implementation Plan
 
+## GraphQL system diagnostic authority parity (2026-11-27)
+
+`sessionStats` now uses verified Auth application time and the same tenant,
+revocation, creation-time, sliding-expiry and 90-day absolute-deadline fences
+as Auth session listing. `eventsStatus.iggyMode` reports the active runtime
+mode, `inactive` for an initialized Outbox-only runtime, and the deployment
+setting only before runtime initialization. Query-shape and mode-selection
+regressions were added. Maintainer verification remains pending; compilation,
+formatting and tests were not run in this session.
+
+## CORS allow-list parsing fails closed (2026-11-27)
+
+A non-Unicode `RUSTOK_CORS_ALLOWED_ORIGINS` value is treated as an explicitly
+empty allow-list rather than as an absent variable, so malformed explicit
+configuration cannot silently inherit development loopback origins. Host-only
+origins ending in `/` preserve HTTPS normalization when using port 443.
+Source regressions were added; compilation, formatting and tests remain pending.
+
 ## Bounded post-abort worker joins (2026-11-25)
 
 Runtime and module worker shutdown helpers now use a separate one-second
@@ -3541,3 +3559,45 @@ claim cancellation safety inside the connector's own constructor.
 Focused source regressions cover reuse without desired-policy reads, stopped
 initialization, and active-profile reporting. Compilation, formatting and tests
 were not run at the maintainer's request.
+
+## Server audit continuation — global artifact release security API (2026-11-27)
+
+Implemented the missing server boundary for the rustok-modules global artifact
+security aggregate. REST now exposes a non-cacheable snapshot read and the
+revisioned quarantine, clear-quarantine, and terminal revoke commands; revision
+values are decimal strings at both transport boundaries to preserve full u64
+precision. GraphQL
+exposes the matching snapshot and mutation fields. Both transports require a
+direct authenticated user and modules:manage, and the owner adapter binds the
+authenticated actor to a tenant-independent command envelope.
+
+The host authorizer revalidates the direct credential and current RBAC grants
+inside the owner transaction, taking tenant/user/session/policy/role fences
+before the platform release-slug lock and retaining them through commit. The
+owner also calls a final host authority check immediately before both new-state
+and exact-replay commits; the host rechecks the earliest credential deadline
+after slug-lock waits and all writes, rolling back state, receipt and outbox if
+the credential has expired. Exact idempotency replay also requires current
+authorization. All mutations
+retain the owner-issued idempotency receipt and outbox evidence, and successful
+changes evict every tenant entry from the process-local effective policy cache.
+Marketplace yanking and external-provenance quarantine remain separate controls.
+
+Regression source was added for authorization, command identity, response
+cache policy, error mapping, GraphQL field classification and OpenAPI bearer
+requirements. Tests, compilation and formatting were not run at the maintainer's
+request.
+
+
+## Follow-up audit — host-global build visibility (2026-11-27)
+
+The build history, active-build, and buildProgress resolvers require
+HostAuthority::Read, and GET /ws/builds checks host authority at upgrade. The
+GraphQL module-permission classifier nevertheless classified those fields as
+tenant modules:read. That redundant gate could block a legitimate host
+operator without tenant modules:read. The classifier is now aligned with the
+resolver-level host boundary; regressions assert these host-global fields do
+not receive a tenant module policy. The process-local BuildEventHub remains
+non-durable/non-distributed, and existing WebSocket connections retain the
+host-authority context captured at upgrade. Host-token rotation therefore
+requires reconnecting sockets.

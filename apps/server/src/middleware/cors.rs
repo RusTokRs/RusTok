@@ -31,13 +31,14 @@ pub fn normalize_host_origin(host: &str) -> String {
     if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
         return trimmed.to_string();
     }
+    let scheme_host = trimmed.strip_suffix('/').unwrap_or(trimmed);
     if let Some(rest) = trimmed.strip_prefix("0.0.0.0:") {
         return format!("http://127.0.0.1:{rest}");
     }
     if trimmed == "0.0.0.0" {
         return "http://127.0.0.1:5150".to_string();
     }
-    if trimmed.ends_with(":443") {
+    if scheme_host.ends_with(":443") {
         format!("https://{trimmed}")
     } else {
         format!("http://{trimmed}")
@@ -107,10 +108,23 @@ pub fn resolve_cors_allowed_origins_from_env() -> Option<Vec<String>> {
     resolve_cors_allowed_origins(None)
 }
 
+fn explicit_cors_origins_from_env(
+    value: Result<String, std::env::VarError>,
+) -> Option<String> {
+    match value {
+        Ok(value) => Some(value),
+        Err(std::env::VarError::NotPresent) => None,
+        // A malformed explicit allow-list must not silently fall back to the
+        // broad development defaults.
+        Err(std::env::VarError::NotUnicode(_)) => Some(String::new()),
+    }
+}
+
 pub(crate) fn resolve_cors_allowed_origins(
     settings_origins: Option<Vec<String>>,
 ) -> Option<Vec<String>> {
-    let explicit = std::env::var("RUSTOK_CORS_ALLOWED_ORIGINS").ok();
+    let explicit =
+        explicit_cors_origins_from_env(std::env::var("RUSTOK_CORS_ALLOWED_ORIGINS"));
     let host = std::env::var("RUSTOK_HOST")
         .or_else(|_| std::env::var("APP_HOST"))
         .ok();
@@ -593,6 +607,41 @@ mod tests {
         assert!(
             !debug.contains("evil.example.com"),
             "the unparseable origin must never enter the allow-list: {debug}"
+        );
+    }
+
+    #[test]
+    fn non_unicode_explicit_cors_policy_fails_closed_instead_of_using_dev_defaults() {
+        let explicit = explicit_cors_origins_from_env(Err(
+            std::env::VarError::NotUnicode(std::ffi::OsString::from("invalid")),
+        ));
+        assert_eq!(explicit.as_deref(), Some(""));
+        assert_eq!(
+            cors_origins_from_configuration(
+                explicit.as_deref(),
+                None,
+                Some("localhost:3000"),
+                false,
+            ),
+            Some(Vec::new()),
+        );
+        assert_eq!(
+            explicit_cors_origins_from_env(Err(std::env::VarError::NotPresent)),
+            None,
+        );
+    }
+
+    #[test]
+    fn normalize_host_origin_keeps_https_default_port_with_trailing_slash() {
+        assert_eq!(
+            normalize_host_origin("example.com:443/"),
+            "https://example.com:443/"
+        );
+        assert_eq!(
+            validated_cors_origin("example.com:443/")
+                .as_ref()
+                .and_then(|value| value.to_str().ok()),
+            Some("https://example.com")
         );
     }
 

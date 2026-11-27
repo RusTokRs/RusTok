@@ -2,7 +2,7 @@ use rustok_api::TenantLocale;
 
 use crate::RecordError;
 
-pub(crate) const MAX_TITLE_CHARS: u32 = 200;
+pub(crate) const MAX_TITLE_CHARS: u32 = __MAX_TITLE_CHARS__;
 
 pub(crate) fn next_revision(current: i64) -> Result<i64, RecordError> {
     current

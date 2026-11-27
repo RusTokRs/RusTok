@@ -23,8 +23,20 @@ working-tree files have since changed. Git selectors require Git.
 ## Hygiene findings
 
 The hygiene catalog owns the meaning and confidence of rules. The scanner
-examines lexical source and reports candidates for owner review. It does not
-resolve Rust types or execute database and application behavior.
+combines lexical checks with a best-effort syn AST pass and reports candidates
+for owner review. It does not resolve Rust types, expand macros, run rustc, or
+follow interprocedural data flow. If a file cannot be parsed as a complete Rust
+source file, AST-only checks are skipped and lexical checks continue.
+
+The AST pass currently emits heuristic findings for cancellation-unsafe method
+calls in select! branch futures (excluding generic read/write names because
+those also identify cancellation-safe I/O methods), manual unsafe Send/Sync
+impls, panic-capable operations in non-unwinding extern functions, and reversed
+self-field lock acquisition order across methods in one impl. The lock-order
+check only models direct top-level local guard bindings and explicit
+drop(guard); it does not prove lock types or overlapping lifetimes. Test-only
+files, build scripts, vendored files, and inline test scopes are excluded from
+these production findings.
 
 The column-filtered update-trigger heuristic inspects migration SQL literals.
 It cannot establish which migrations are active, whether a BEFORE trigger
@@ -66,10 +78,15 @@ High-confidence findings meeting the requested threshold exit with code 1.
 Text, JSON, CSV, Markdown, GitHub annotations, and advisory patches report the
 same selected findings. The console summary lists up to ten examples per rule;
 JSON, CSV, Markdown, annotations, and patches include every selected finding.
+JSON includes an `evidence` object on each finding. Its `kind` is `lexical`, `ast`,
+`rustc`, or `clippy`. Compiler findings also include the lint `code` and the
+one-based, character-counted primary `column`. Text, CSV, Markdown, and GitHub
+annotations display the source-check kind or lint code.
 Git selections examine full files. Patches preserve
 the scanned content and append comments with the original line numbers.
 Requested report files are written even for an empty result and alongside JSON
-output. Report paths must be distinct from each other and scanned files.
+output. Report paths must be distinct from each other, scanned files, and the
+imported diagnostics file.
 GitHub annotations and JSON use separate invocations. Unknown or ambiguous
 crate selectors return an operational error.
 
@@ -85,6 +102,41 @@ cargo xtask doctor hygiene --changed --markdown-report hygiene.md
 cargo xtask doctor hygiene --staged --patch hygiene.patch
 git apply --cached --check hygiene.patch
 ```
+
+## Importing Cargo diagnostics
+
+Run a scoped Cargo command in a trusted checkout and capture its JSON stdout
+as UTF-8. Import that capture with the same checkout and desired Doctor
+selection. For example, from the repository root with `target/` present:
+
+```sh
+cargo clippy --locked -p rustok-doctor --message-format=json -- -W let_underscore_lock -W static_mut_refs -W 'clippy::let_underscore_future' -W 'clippy::unused_io_amount' -W 'clippy::await_holding_refcell_ref' -W 'clippy::arc_with_non_send_sync' > target/doctor-cargo.jsonl
+cargo run --quiet --locked -p rustok-doctor -- hygiene --crate rustok-doctor --cargo-diagnostics target/doctor-cargo.jsonl --json --fail-on P1
+```
+
+The option accepts one complete Cargo JSON stream. Use a fresh capture of
+the working tree before running a gate. `--changed` and `--diff REF` select
+working-tree files. `--staged` selects index blobs and cannot accept a
+working-tree capture.
+
+Doctor imports the [cataloged lint codes](../../../../docs/standards/logic-hygiene-patterns.md#rustc-and-clippy-diagnostics)
+from warning or error diagnostics at primary spans. It matches source paths
+against the current selection, checks reported lines against current source, and
+deduplicates the same lint at the same file, line, and column across build targets.
+Normal profile selection determines whether tests, examples, build scripts, or
+feature-gated code were compiled. Keep Cargo's stderr for its full error messages.
+
+A stream ending in `build-finished` with `success: false` produces findings from
+the available diagnostics, marks the build as failed in text, Markdown, and
+`cargo_diagnostics.build_succeeded` in JSON, and exits with code 2. Invalid or
+truncated captures and stale spans in selected files exit with code 2 before
+writing a report. When Cargo reports success, ordinary severity, confidence,
+and exit-code behavior apply. A successful build covers only its selected
+configuration. The span match checks location and text, so the caller remains
+responsible for capture provenance and freshness.
+
+See the [Cargo JSON message contract](https://doc.rust-lang.org/cargo/reference/external-tools.html)
+and [rustc span format](https://doc.rust-lang.org/rustc/json.html#diagnostics).
 
 ## Large files
 

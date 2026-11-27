@@ -69,18 +69,152 @@ struct ServerArtifactEffectivePolicyResolver {
     execution_authority: ExecutionAuthority,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ArtifactServingAuthority {
+    closure: rustok_modules::ArtifactServingClosure,
+    composition: rustok_modules::ModuleCompositionIdentity,
+    channel: Option<ArtifactChannelAuthority>,
+    maintenance: rustok_modules::OperationalMaintenanceAuthority,
+}
+
+/// Exact request resolution input, retained only by the host. The owner
+/// generation covers binding, active state, target and resolution-rule ABA.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ArtifactChannelAuthority {
+    tenant_id: uuid::Uuid,
+    generation: u64,
+    input: Option<rustok_modules::ModuleEffectivePolicyChannelInput>,
+}
+
+impl ArtifactChannelAuthority {
+    async fn capture(
+        db: &DatabaseConnection,
+        tenant_id: uuid::Uuid,
+    ) -> std::result::Result<Option<Self>, ArtifactEffectivePolicyResolveError> {
+        use rustok_channel::{ChannelResolver, read_resolution_invalidation_generation};
+        use sha2::{Digest, Sha256};
+        let Some(request) = crate::middleware::channel::artifact_channel_request() else {
+            // Non-HTTP callers have their own owner admission, without an
+            // implicit channel or an actor-derived channel selector.
+            return Ok(None);
+        };
+        let denied = || {
+            ArtifactEffectivePolicyResolveError::Store(
+                "artifact channel authority changed or is unavailable".into(),
+            )
+        };
+        if request.facts.tenant_id != tenant_id {
+            return Err(denied());
+        }
+        let generation = read_resolution_invalidation_generation(db)
+            .await
+            .map_err(|_| denied())?;
+        let decision = ChannelResolver::new(db.clone())
+            .resolve(&request.facts)
+            .await
+            .map_err(|_| denied())?;
+        let selected = decision.detail.as_ref().map(|detail| detail.channel.id);
+        if selected != request.selected_channel_id
+            || read_resolution_invalidation_generation(db)
+                .await
+                .map_err(|_| denied())?
+                != generation
+        {
+            return Err(denied());
+        }
+        let input = if let Some(detail) = decision.detail {
+            if detail.channel.tenant_id != tenant_id || !detail.channel.is_active {
+                return Err(denied());
+            }
+            let mut hash = Sha256::new();
+            hash.update(b"rustok:artifact-channel-authority:v1");
+            hash.update(tenant_id.as_bytes());
+            hash.update(detail.channel.id.as_bytes());
+            hash.update(generation.to_be_bytes());
+            Some(rustok_modules::ModuleEffectivePolicyChannelInput {
+                tenant_id,
+                channel_id: detail.channel.id,
+                surface: "http".into(),
+                channel_revision: format!("sha256:{}", hex::encode(hash.finalize())),
+                active: detail.channel.is_active,
+                bindings: detail
+                    .module_bindings
+                    .into_iter()
+                    .map(
+                        |binding| rustok_modules::ModuleEffectivePolicyChannelBinding {
+                            module_slug: binding.module_slug,
+                            enabled: binding.is_enabled,
+                        },
+                    )
+                    .collect(),
+            })
+        } else {
+            None
+        };
+        Ok(Some(Self {
+            tenant_id,
+            generation,
+            input,
+        }))
+    }
+
+    async fn is_current(&self, db: &DatabaseConnection) -> bool {
+        rustok_channel::read_resolution_invalidation_generation(db)
+            .await
+            .is_ok_and(|current| current == self.generation)
+    }
+
+    async fn require_current_on(
+        &self,
+        tx: &sea_orm::DatabaseTransaction,
+    ) -> rustok_channel::ChannelResult<()> {
+        rustok_channel::require_resolution_invalidation_generation_on(tx, self.generation).await
+    }
+}
+
 impl ServerArtifactEffectivePolicyResolver {
     async fn resolve_with_closure(
         &self,
         tenant_id: uuid::Uuid,
         artifact: &InstalledModuleArtifact,
-    ) -> Result<(ModuleEffectivePolicy, Option<rustok_modules::ArtifactServingClosure>), ArtifactEffectivePolicyResolveError> {
-        let policy =
+    ) -> Result<
+        (ModuleEffectivePolicy, Option<ArtifactServingAuthority>),
+        ArtifactEffectivePolicyResolveError,
+    > {
+        let channel = ArtifactChannelAuthority::capture(&self.db, tenant_id).await?;
+        self.resolve_with_channel(tenant_id, artifact, channel)
+            .await
+    }
+
+    async fn resolve_with_channel(
+        &self,
+        tenant_id: uuid::Uuid,
+        artifact: &InstalledModuleArtifact,
+        channel: Option<ArtifactChannelAuthority>,
+    ) -> std::result::Result<
+        (ModuleEffectivePolicy, Option<ArtifactServingAuthority>),
+        ArtifactEffectivePolicyResolveError,
+    > {
+        if channel
+            .as_ref()
+            .is_some_and(|authority| authority.tenant_id != tenant_id)
+        {
+            return Err(ArtifactEffectivePolicyResolveError::Store(
+                "artifact channel tenant mismatch".into(),
+            ));
+        }
+        let maintenance =
+            rustok_modules::OperationalMaintenanceAuthority::capture(&self.db, tenant_id)
+                .await
+                .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?;
+        let (policy, composition) =
             crate::services::effective_module_policy::EffectiveModulePolicyService::resolve_artifact_serving(
                 &self.db,
                 &self.registry,
                 tenant_id,
                 &self.supported_payload_kinds,
+                channel.as_ref().and_then(|authority| authority.input.clone()),
+                maintenance.input().clone(),
             )
             .await
             .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?;
@@ -98,7 +232,8 @@ impl ServerArtifactEffectivePolicyResolver {
         {
             return Ok((policy, None));
         }
-        let closure = self.node_readiness
+        let closure = self
+            .node_readiness
             .capture_active_policy_closure(tenant_id, artifact, &policy)
             .await
             .map_err(|error| match error {
@@ -107,7 +242,43 @@ impl ServerArtifactEffectivePolicyResolver {
                 }
                 _ => ArtifactEffectivePolicyResolveError::NodeNotReady(error.to_string()),
             })?;
-        Ok((policy, Some(closure)))
+        // The policy was built from one verified owner manifest. A change
+        // during policy/closure/readiness derivation must not authorize a
+        // mixed snapshot, even if the manifest hash returned to its old value.
+        if !composition
+            .is_current_on(&self.db)
+            .await
+            .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?
+        {
+            return Err(ArtifactEffectivePolicyResolveError::Store(
+                "active composition changed during artifact serving admission".into(),
+            ));
+        }
+        if let Some(authority) = &channel {
+            if !authority.is_current(&self.db).await {
+                return Err(ArtifactEffectivePolicyResolveError::Store(
+                    "artifact channel authority changed during serving admission".into(),
+                ));
+            }
+        }
+        if !maintenance
+            .is_current(&self.db)
+            .await
+            .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?
+        {
+            return Err(ArtifactEffectivePolicyResolveError::Store(
+                "operational maintenance authority changed during serving admission".into(),
+            ));
+        }
+        Ok((
+            policy,
+            Some(ArtifactServingAuthority {
+                closure,
+                composition,
+                channel,
+                maintenance,
+            }),
+        ))
     }
 }
 
@@ -118,7 +289,9 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
         tenant_id: uuid::Uuid,
         artifact: &InstalledModuleArtifact,
     ) -> Result<ModuleEffectivePolicy, ArtifactEffectivePolicyResolveError> {
-        self.resolve_with_closure(tenant_id, artifact).await.map(|(policy, _)| policy)
+        self.resolve_with_closure(tenant_id, artifact)
+            .await
+            .map(|(policy, _)| policy)
     }
 
     async fn begin_execution(
@@ -128,9 +301,14 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
         context: &rustok_sandbox::SandboxContext,
         policy: &rustok_sandbox::SandboxPolicy,
         effective_revision: Option<&str>,
-    ) -> std::result::Result<Option<Box<dyn rustok_modules::ArtifactExecutionLeaseGuard>>, rustok_modules::ArtifactBindingDispatchError> {
-        self.execution_authority.begin(self, artifact, binding, context, policy, effective_revision)
-            .await.map(Some)
+    ) -> std::result::Result<
+        Option<Box<dyn rustok_modules::ArtifactExecutionLeaseGuard>>,
+        rustok_modules::ArtifactBindingDispatchError,
+    > {
+        self.execution_authority
+            .begin(self, artifact, binding, context, policy, effective_revision)
+            .await
+            .map(Some)
     }
 }
 
@@ -243,15 +421,25 @@ pub async fn compose_artifact_binding_executor(
 
     let execution_authority = ExecutionAuthority::new(
         ctx.shared_get::<Arc<rustok_core::ModuleRuntimeExtensions>>()
-            .and_then(|extensions| extensions.get::<Arc<super::auth_admin_mutation_provider::ServerAuthAdminMutationProvider>>()),
+            .and_then(|extensions| extensions.get::<Arc<super::auth_admin_mutation_provider::ServerAuthAdminMutationProvider>>().cloned()),
     );
-    let resolver = build_capability_resolver(ctx, &control_plane, &storage, &registry, Some(Arc::new(execution_authority.clone())))?;
+    let resolver = build_capability_resolver(
+        ctx,
+        &control_plane,
+        &storage,
+        &registry,
+        Some(Arc::new(execution_authority.clone())),
+    )?;
     let supported_payload_kinds = [
         ArtifactPayloadKind::Rhai,
         ArtifactPayloadKind::WasmComponent,
-    ].into_iter()
-        .filter(|kind| kind.sandbox_executor().is_some_and(|executor| executors.contains(executor)))
-        .collect();
+    ]
+    .into_iter()
+    .filter(|kind| {
+        kind.sandbox_executor()
+            .is_some_and(|executor| executors.contains(executor))
+    })
+    .collect();
     let policy_resolver = ServerArtifactEffectivePolicyResolver {
         db: ctx.db_clone(),
         registry,
@@ -319,21 +507,17 @@ fn build_capability_resolver(
     );
     let secret_policy = control_plane.artifact_secret_handle_policy();
     let mut data = control_plane.artifact_data_capability();
+    let mut object_data = control_plane.artifact_data_object_capability(storage.clone());
     let mut events = control_plane.artifact_events_capability();
     if let Some(authorizer) = effect_authorizer {
         data = data.with_sql_effect_authorizer(Arc::clone(&authorizer));
+        object_data = object_data.with_sql_effect_authorizer(Arc::clone(&authorizer));
         events = events.with_sql_effect_authorizer(authorizer);
     }
     ArtifactCapabilityBrokerResolverRouter::new()
-        .route(
-            data_capability,
-            Arc::new(data),
-        )
+        .route(data_capability, Arc::new(data))
         .and_then(|router| {
-            router.route(
-                object_data_capability,
-                Arc::new(control_plane.artifact_data_object_capability(storage.clone())),
-            )
+            router.route(object_data_capability, Arc::new(object_data))
         })
         .and_then(|router| {
             router.route(
@@ -353,12 +537,7 @@ fn build_capability_resolver(
                 Arc::new(control_plane.artifact_http_capability()?),
             )
         })
-        .and_then(|router| {
-            router.route(
-                events_capability,
-                Arc::new(events),
-            )
-        })
+        .and_then(|router| router.route(events_capability, Arc::new(events)))
         .map_err(|error| Error::Message(format!("artifact capability route failed: {error}")))
 }
 

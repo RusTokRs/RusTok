@@ -432,9 +432,12 @@ fn walk_opaque_value(
                 "page_content_slot is only allowed inside layout templates",
             ));
         }
-        if let Some(children) = object.get("components").and_then(Value::as_array)
-            && !children.is_empty()
-        {
+        let has_children = object.get("components").is_some_and(|children| match children {
+            Value::Array(children) => !children.is_empty(),
+            Value::Null => false,
+            _ => true,
+        });
+        if has_children {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
                 "page_content_slot_cannot_have_children",
@@ -462,12 +465,25 @@ fn walk_opaque_value(
         }
     }
 
-    if let Some(children) = object.get("components").and_then(Value::as_array) {
-        for (index, child) in children.iter().enumerate() {
+    if let Some(children) = object.get("components") {
+        if let Some(children) = children.as_array() {
+            for (index, child) in children.iter().enumerate() {
+                walk_opaque_value(
+                    child,
+                    depth + 1,
+                    &format!("{path}.components[{index}]"),
+                    limits,
+                    document_kind,
+                    ids,
+                    slot_count,
+                    report,
+                );
+            }
+        } else if !children.is_null() {
             walk_opaque_value(
-                child,
+                children,
                 depth + 1,
-                &format!("{path}.components[{index}]"),
+                &format!("{path}.components"),
                 limits,
                 document_kind,
                 ids,
@@ -587,7 +603,7 @@ fn walk_component(
                 "page_content_slot is only allowed inside layout templates",
             ));
         }
-        if !component.children().is_empty() {
+        if !component.components.is_empty() {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
                 "page_content_slot_cannot_have_children",
@@ -691,7 +707,9 @@ fn walk_component(
 
     // A *child list* can be opaque too (`ComponentChildren::Opaque`), and `children()` reports it
     // as empty — a second blind spot of the same kind as an opaque node.
-    if let ComponentChildren::Opaque(value) = &component.components {
+    if let ComponentChildren::Opaque(value) = &component.components
+        && !value.is_null()
+    {
         report.opaque_component_count += 1;
         report.diagnostics.push(diagnostic(
             ValidationSeverity::Warning,
@@ -856,6 +874,25 @@ fn validate_assets(document: &ProjectDocument, report: &mut ValidationReport) {
             "assets",
             format!("asset id `{duplicate}` is duplicated"),
         ));
+    }
+    for asset in &catalog.assets {
+        let invalid_reason = if asset.id.trim().is_empty() {
+            Some("must not be empty")
+        } else if asset.id.len() > 256 {
+            Some("must be 256 bytes or fewer")
+        } else if asset.id.chars().any(char::is_control) {
+            Some("must not contain control characters")
+        } else {
+            None
+        };
+        if let Some(reason) = invalid_reason {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "invalid_asset_id",
+                "assets",
+                format!("asset id {reason}"),
+            ));
+        }
     }
     if !catalog.unknown_entries.is_empty() {
         report.diagnostics.push(diagnostic(
@@ -1045,6 +1082,18 @@ fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
         ));
     }
     for (path, entry) in entries {
+        if crate::symbol::symbol_definition_size_exceeds_limit(&entry) {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "symbol_definition_limit_exceeded",
+                &path,
+                format!(
+                    "symbol definition exceeds {} bytes",
+                    crate::MAX_SYMBOL_DEFINITION_BYTES
+                ),
+            ));
+            continue;
+        }
         let Some(descriptor) = crate::SymbolDescriptor::from_value(&entry) else {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
@@ -1054,12 +1103,30 @@ fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
             ));
             continue;
         };
-        if let Err(reason) = crate::validate_identifier(&descriptor.id) {
+        if let Err(error) = crate::symbol::validate_definition(&descriptor) {
+            let message = error.to_string();
+            let code = if message.contains("exceeds") {
+                "symbol_definition_limit_exceeded"
+            } else if message.contains("duplicate component id") {
+                "duplicate_symbol_component_id"
+            } else if message.contains("component id") {
+                "invalid_symbol_component_id"
+            } else if message.contains("duplicate HTML id") {
+                "duplicate_symbol_html_id"
+            } else if message.contains("duplicate form id") {
+                "duplicate_symbol_form_id"
+            } else if message.contains("form id") {
+                "symbol_form_dom_id_conflict"
+            } else if message.contains("symbol id") {
+                "invalid_symbol_id"
+            } else {
+                "invalid_symbol_definition"
+            };
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
-                "invalid_symbol_id",
+                code,
                 &path,
-                format!("symbol id `{}` is invalid: {reason}", descriptor.id),
+                message,
             ));
         }
         if catalog.insert(descriptor.id.clone(), descriptor).is_some() {
@@ -1072,28 +1139,6 @@ fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
         }
     }
     for (symbol_id, descriptor) in &catalog {
-        let mut ids = BTreeSet::new();
-        for component in &descriptor.components {
-            let mut collected = Vec::new();
-            component.collect_ids(&mut collected);
-            for id in collected {
-                if crate::validate_identifier(&id).is_err() {
-                    report.diagnostics.push(diagnostic(
-                        ValidationSeverity::Error,
-                        "invalid_symbol_component_id",
-                        format!("{FLY_SYMBOLS_FIELD}({symbol_id})"),
-                        format!("symbol component id `{id}` is not a valid identifier"),
-                    ));
-                } else if !ids.insert(id.clone()) {
-                    report.diagnostics.push(diagnostic(
-                        ValidationSeverity::Error,
-                        "duplicate_symbol_component_id",
-                        format!("{FLY_SYMBOLS_FIELD}({symbol_id})"),
-                        format!("symbol contains duplicate component id `{id}`"),
-                    ));
-                }
-            }
-        }
         for reference in crate::symbol_references(&descriptor.components) {
             if !catalog.contains_key(&reference) {
                 report.diagnostics.push(diagnostic(
@@ -1140,7 +1185,7 @@ fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
                 "symbol instance must carry a component id",
             ));
         }
-        if !component.children().is_empty() {
+        if !component.components.is_empty() {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
                 "symbol_instance_with_children",
@@ -1216,6 +1261,188 @@ mod tests {
         assert_eq!(report.page_count, 1);
         assert_eq!(report.asset_count, 2);
         assert_eq!(report.style_rule_count, 1);
+    }
+
+    #[test]
+    fn rejects_blank_oversized_and_control_character_asset_ids() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "assets": [
+                { "id": "", "src": "/blank.png" },
+                { "id": format!("bad{}id", '\u{0001}'), "src": "/control.png" },
+                { "id": "x".repeat(257), "src": "/large.png" }
+            ],
+            "pages": [{
+                "id": "home",
+                "component": { "id": "root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert_eq!(
+            report
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == "invalid_asset_id")
+                .count(),
+            3
+        );
+    }
+
+    #[test]
+    fn project_validation_rejects_symbol_definitions_over_the_raw_byte_limit() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [{
+                "id": "large-symbol",
+                "components": [{ "id": "symbol-root", "type": "wrapper" }],
+                "unknownExtension": "x".repeat(crate::MAX_SYMBOL_DEFINITION_BYTES + 1)
+            }],
+            "pages": [{
+                "component": { "id": "page-root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "symbol_definition_limit_exceeded"
+        }));
+    }
+
+    #[test]
+    fn project_validation_enforces_symbol_component_limits() {
+        let children = (0..crate::MAX_SYMBOL_COMPONENTS)
+            .map(|index| json!({ "id": format!("symbol-child-{index}"), "type": "text" }))
+            .collect::<Vec<_>>();
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [{
+                "id": "large-symbol",
+                "components": [{
+                    "id": "symbol-root",
+                    "type": "wrapper",
+                    "components": children
+                }]
+            }],
+            "pages": [{
+                "component": { "id": "page-root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "symbol_definition_limit_exceeded"
+        }));
+    }
+
+    #[test]
+    fn page_content_slot_rejects_opaque_children() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flyDocumentKind": "layout_template",
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "slot",
+                        "type": "page_content_slot",
+                        "components": { "id": "opaque-child" }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "page_content_slot_cannot_have_children"
+        }));
+    }
+
+    #[test]
+    fn symbol_instance_rejects_opaque_children() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [{
+                "id": "cta",
+                "components": [{ "id": "cta-1", "type": "text" }]
+            }],
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "slot",
+                        "type": "symbol",
+                        "symbolId": "cta",
+                        "components": { "id": "opaque-child" }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "symbol_instance_with_children"
+        }));
+    }
+
+    #[test]
+    fn validates_nested_object_opaque_children_for_identity_and_depth() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": {
+                        "id": "opaque-parent",
+                        "components": {
+                            "id": "opaque-parent"
+                        }
+                    }
+                }
+            }]
+        }))
+        .expect("document");
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits {
+                maximum_depth: 1,
+                ..ValidationLimits::default()
+            },
+        );
+
+        assert_eq!(report.node_count, 3);
+        assert_eq!(report.maximum_depth, 2);
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "maximum_depth_exceeded"
+                && diagnostic.path.ends_with("components.components")
+        }));
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "duplicate_component_id"
+                && diagnostic.path.ends_with("components.components")
+        }));
     }
 
     #[test]

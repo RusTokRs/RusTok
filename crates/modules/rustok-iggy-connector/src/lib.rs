@@ -150,7 +150,10 @@ impl std::fmt::Debug for BundledConnectorConfig {
         f.debug_struct("BundledConnectorConfig")
             .field("executable", &self.executable)
             .field("arguments_count", &self.arguments.len())
-            .field("environment_keys", &self.environment.keys().collect::<Vec<_>>())
+            .field(
+                "environment_keys",
+                &self.environment.keys().collect::<Vec<_>>(),
+            )
             .field("data_dir", &self.data_dir)
             .field("tcp_port", &self.tcp_port)
             .field("http_port", &self.http_port)
@@ -301,7 +304,9 @@ pub struct PublishRequest {
     pub partition_key: String,
     /// Message payload
     pub payload: Vec<u8>,
-    /// Unique event identifier
+    /// Stable publication identity. Reuse only for the same logical message.
+    /// Canonical event UUIDs become the exact broker header ID; legacy opaque
+    /// identities (including deliberate replay keys) are namespaced UUIDv5.
     pub event_id: String,
 }
 
@@ -321,6 +326,25 @@ impl PublishRequest {
             payload,
             event_id: event_id.into(),
         }
+    }
+
+    /// Derives the same nonzero broker ID across retries and processes.
+    /// The namespace is part of the wire contract and must never be changed.
+    pub fn broker_message_id(&self) -> Result<u128, ConnectorError> {
+        use uuid::Uuid;
+        const LEGACY_PUBLICATION_NAMESPACE: Uuid =
+            Uuid::from_u128(0xa6864831_77a3_5d8b_9c41_e6c355ec71f2);
+        if self.event_id.trim().is_empty() {
+            return Err(ConnectorError::Config("publication identity must not be empty".to_string()));
+        }
+        let id = match Uuid::parse_str(&self.event_id) {
+            Ok(id) => id,
+            Err(_) => Uuid::new_v5(&LEGACY_PUBLICATION_NAMESPACE, self.event_id.as_bytes()),
+        };
+        if id.is_nil() {
+            return Err(ConnectorError::Config("publication identity must not be nil".to_string()));
+        }
+        Ok(id.as_u128())
     }
 
     /// Creates a simple request with default stream/topic
@@ -895,41 +919,46 @@ impl ExternalConnector {
 #[async_trait]
 impl IggyConnector for ExternalConnector {
     async fn connect(&self, config: &ConnectorConfig) -> Result<(), ConnectorError> {
-        if config.partitions == 0 {
-            return Err(ConnectorError::Config(
-                "Iggy topic partitions must be greater than zero".to_string(),
-            ));
+        #[cfg(not(feature = "iggy"))]
+        {
+            let _ = config;
+            Err(ConnectorError::Config("external Iggy connection requires the `iggy` feature".to_string()))
         }
-        if config.replication_factor == 0 {
-            return Err(ConnectorError::Config(
-                "Iggy topic replication_factor must be greater than zero".to_string(),
-            ));
-        }
-        let remote_config = config.external.clone();
-
-        *self.config.write().await = Some(remote_config.clone());
-        *self.stream_name.write().await = config.stream_name.clone();
-        *self.topic_name.write().await = config.topic_name.clone();
-        *self.partitions.write().await = config.partitions;
-        *self.replication_factor.write().await = config.replication_factor;
-
         #[cfg(feature = "iggy")]
         {
+            if config.partitions == 0 {
+                return Err(ConnectorError::Config(
+                    "Iggy topic partitions must be greater than zero".to_string(),
+                ));
+            }
+            if config.replication_factor == 0 {
+                return Err(ConnectorError::Config(
+                    "Iggy topic replication_factor must be greater than zero".to_string(),
+                ));
+            }
+            let remote_config = config.external.clone();
+
+            *self.config.write().await = Some(remote_config.clone());
+            *self.stream_name.write().await = config.stream_name.clone();
+            *self.topic_name.write().await = config.topic_name.clone();
+            *self.partitions.write().await = config.partitions;
+            *self.replication_factor.write().await = config.replication_factor;
+
             let client = Self::create_and_connect(&remote_config).await?;
             *self.client.write().await = Some(client);
+
+            *self.connected.write().await = true;
+
+            tracing::info!(
+                mode = "external",
+                address = ?remote_config.addresses,
+                stream = %config.stream_name,
+                topic = %config.topic_name,
+                "Iggy external connector initialized"
+            );
+
+            Ok(())
         }
-
-        *self.connected.write().await = true;
-
-        tracing::info!(
-            mode = "external",
-            address = ?remote_config.addresses,
-            stream = %config.stream_name,
-            topic = %config.topic_name,
-            "Iggy external connector initialized"
-        );
-
-        Ok(())
     }
 
     fn is_connected(&self) -> bool {
@@ -943,22 +972,31 @@ impl IggyConnector for ExternalConnector {
         if !*self.connected.read().await {
             return Err(ConnectorError::NotConnected);
         }
-
-        let partitions = *self.partitions.read().await;
-        #[cfg(feature = "iggy")]
-        let _replication_factor = *self.replication_factor.read().await;
-        let partition = calculate_partition(&request.partition_key, partitions);
-
+        #[cfg(not(feature = "iggy"))]
+        {
+            let _ = request;
+            Err(ConnectorError::Config("real Iggy publication requires the `iggy` feature".to_string()))
+        }
         #[cfg(feature = "iggy")]
         {
-            use iggy::prelude::{IggyMessage, Partitioning};
+            use iggy::prelude::{DirectConfig, IggyMessage, Partitioning};
 
+            let partitions = *self.partitions.read().await;
+            if partitions == 0 {
+                return Err(ConnectorError::Config("Iggy partition count must be positive".to_string()));
+            }
+            let partition = calculate_partition(&request.partition_key, partitions);
+            let message_id = request.broker_message_id()?;
             let client_guard = self.client.read().await;
             let client: &IggyClient = client_guard.as_ref().ok_or(ConnectorError::NotConnected)?;
 
+            // Explicit direct sending: successful admission to a background
+            // queue is not a successful broker publication. The broker's
+            // configured topic durability determines the server ACK strength.
             let producer = client
                 .producer(&request.stream, &request.topic)
                 .map_err(|e: IggyError| ConnectorError::Publish(e.to_string()))?
+                .direct(DirectConfig::builder().batch_length(1).build())
                 .partitioning(Partitioning::partition_id(
                     broker_partition_id(partition).ok_or_else(|| {
                         ConnectorError::Publish("invalid connector partition number".to_owned())
@@ -968,46 +1006,29 @@ impl IggyConnector for ExternalConnector {
                 .create_topic_if_not_exists(partitions, Default::default(), Default::default())
                 .build();
 
-            producer
-                .init()
-                .await
+            producer.init().await
                 .map_err(|e: IggyError| ConnectorError::Publish(e.to_string()))?;
-
             let message = IggyMessage::builder()
-                .payload(request.payload.clone().into())
+                .id(message_id)
+                .payload(request.payload.into())
                 .build()
                 .map_err(|e: IggyError| ConnectorError::Publish(e.to_string()))?;
 
-            producer
-                .send(vec![message])
-                .await
+            // An empty confirmation list can be a valid duplicate reply.
+            // Never fabricate a broker offset or physical durability proof.
+            producer.send(vec![message]).await
                 .map_err(|e: IggyError| ConnectorError::Publish(e.to_string()))?;
-        }
 
-        #[cfg(not(feature = "iggy"))]
-        {
             tracing::debug!(
                 mode = "external",
                 stream = %request.stream,
                 topic = %request.topic,
                 partition = partition,
                 event_id = %request.event_id,
-                payload_size = request.payload.len(),
-                "Publishing event via external connector (simulated)"
+                "Direct Iggy publication acknowledged by configured broker"
             );
+            Ok(())
         }
-
-        tracing::debug!(
-            mode = "external",
-            stream = %request.stream,
-            topic = %request.topic,
-            partition = partition,
-            event_id = %request.event_id,
-            payload_size = request.payload.len(),
-            "Published event via external connector"
-        );
-
-        Ok(())
     }
 
     async fn subscribe(
@@ -1683,7 +1704,10 @@ mod tests {
             vec!["broker-user:broker-password@broker.example:8090".to_string()];
         config.external.username = "external-user-secret".to_string();
         config.external.password = "external-password-secret".to_string();
-        config.bundled.arguments.push("--token=bundled-argument-secret".to_string());
+        config
+            .bundled
+            .arguments
+            .push("--token=bundled-argument-secret".to_string());
         config.bundled.environment.insert(
             "PRIVATE_ENV".to_string(),
             "bundled-environment-secret".to_string(),
@@ -1698,7 +1722,10 @@ mod tests {
             "bundled-argument-secret",
             "bundled-environment-secret",
         ] {
-            assert!(!debug.contains(secret), "Debug output leaked {secret}: {debug}");
+            assert!(
+                !debug.contains(secret),
+                "Debug output leaked {secret}: {debug}"
+            );
         }
     }
 
@@ -1780,6 +1807,43 @@ mod tests {
         assert_eq!(request.partition_key, "key1");
         assert_eq!(request.payload, vec![1, 2, 3]);
         assert_eq!(request.event_id, "event1");
+    }
+
+    #[test]
+    fn publication_identity_is_stable_nonzero_and_preserves_canonical_uuid() {
+        let id = uuid::Uuid::from_u128(42);
+        let request = PublishRequest::simple("tenant", vec![1], id.to_string());
+        assert_eq!(request.broker_message_id().unwrap(), 42);
+        assert_eq!(request.clone().broker_message_id().unwrap(), 42);
+        let retry = PublishRequest::simple("tenant", vec![1], format!("retry-1-{id}"));
+        let next = PublishRequest::simple("tenant", vec![1], format!("retry-2-{id}"));
+        assert_eq!(retry.broker_message_id().unwrap(), retry.clone().broker_message_id().unwrap());
+        assert_ne!(retry.broker_message_id().unwrap(), 42);
+        assert_ne!(retry.broker_message_id().unwrap(), next.broker_message_id().unwrap());
+        assert!(PublishRequest::simple("tenant", vec![1], uuid::Uuid::nil().to_string()).broker_message_id().is_err());
+        assert!(PublishRequest::simple("tenant", vec![1], " ").broker_message_id().is_err());
+    }
+
+    #[cfg(feature = "iggy")]
+    #[test]
+    fn sdk_message_carries_canonical_header_identity() {
+        let request = PublishRequest::simple("tenant", vec![1, 2, 3], uuid::Uuid::from_u128(42).to_string());
+        let message = iggy::prelude::IggyMessage::builder()
+            .id(request.broker_message_id().unwrap())
+            .payload(request.payload.into())
+            .build().unwrap();
+        assert_eq!(message.header.id, 42);
+    }
+
+    #[cfg(not(feature = "iggy"))]
+    #[tokio::test]
+    async fn no_sdk_connection_and_publication_fail_closed() {
+        let connector = ExternalConnector::new();
+        assert!(connector.connect(&ConnectorConfig::default()).await.is_err());
+        assert!(!connector.is_connected());
+        // Even a falsely marked connection cannot simulate publication.
+        *connector.connected.write().await = true;
+        assert!(connector.publish(PublishRequest::simple("tenant", vec![1], "legacy")).await.is_err());
     }
 
     #[test]

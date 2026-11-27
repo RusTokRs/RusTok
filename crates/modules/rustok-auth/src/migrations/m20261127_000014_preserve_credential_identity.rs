@@ -1,0 +1,738 @@
+//! Permanent credential identity and session/OAuth digest claims. Auth owns the
+//! semantics; no credential plaintext or live authorization is stored here.
+use sea_orm_migration::prelude::*;
+use sea_orm_migration::sea_orm::{ConnectionTrait, DatabaseBackend};
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+// The session row is owned by Auth semantically, although the platform
+// identity schema creates it. Its digest is claimed on birth and rotation,
+// but unlike OAuth digests it is not immutable on the live row.
+const CLAIMS: &[(&str, &str, &str, bool)] = &[
+    ("sessions", "id", "session", true),
+    ("sessions", "token_hash", "session_digest", false),
+    ("oauth_apps", "id", "oauth_app", true),
+    ("oauth_apps", "client_id", "oauth_client", true),
+    ("oauth_tokens", "id", "oauth_token", true),
+    ("oauth_tokens", "token_hash", "oauth_token_digest", false),
+    ("oauth_authorization_codes", "id", "oauth_code", true),
+    ("oauth_authorization_codes", "code_hash", "oauth_code_digest", false),
+    ("oauth_consents", "id", "oauth_consent", true),
+];
+
+const KINDS: &str = "'session', 'session_digest', 'oauth_app', 'oauth_client', 'oauth_token', 'oauth_token_digest', 'oauth_code', 'oauth_code_digest', 'oauth_consent'";
+
+const POSTGRES_GUARDS: &str = r#"
+CREATE FUNCTION auth_guard_credential_witness() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP <> 'INSERT' THEN
+        RAISE EXCEPTION 'Auth credential witness is permanent' USING ERRCODE = '23514';
+    END IF;
+    IF NOT pg_try_advisory_xact_lock(hashtextextended(
+        'rustok:auth-credential:' || NEW.kind || ':' || NEW.identity_key, 0)) THEN
+        RAISE EXCEPTION 'Auth credential witness busy' USING ERRCODE = '55P03';
+    END IF;
+    RETURN NEW;
+END; $$;
+CREATE TRIGGER auth_credential_witness_guard
+BEFORE INSERT OR UPDATE OR DELETE ON auth_credential_witnesses
+FOR EACH ROW EXECUTE FUNCTION auth_guard_credential_witness();
+CREATE TRIGGER auth_credential_witness_no_truncate
+BEFORE TRUNCATE ON auth_credential_witnesses
+FOR EACH STATEMENT EXECUTE FUNCTION auth_guard_credential_witness();
+
+CREATE FUNCTION auth_claim_credential_witness() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    identity_value text;
+BEGIN
+    LOCK TABLE auth_credential_witnesses IN ROW EXCLUSIVE MODE NOWAIT;
+    IF row_security_active('auth_credential_witnesses'::regclass) THEN
+        RAISE EXCEPTION 'Auth credential witness visibility incomplete' USING ERRCODE = '42501';
+    END IF;
+    identity_value := to_jsonb(NEW) ->> TG_ARGV[1];
+    IF TG_ARGV[2] = 'uuid' THEN
+        identity_value := replace(identity_value, '-', '');
+    END IF;
+    INSERT INTO auth_credential_witnesses (kind, identity_key)
+    VALUES (TG_ARGV[0], identity_value);
+    RETURN NULL;
+END; $$;
+
+CREATE FUNCTION auth_guard_credential_identity() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF (to_jsonb(NEW) -> TG_ARGV[0]) IS DISTINCT FROM (to_jsonb(OLD) -> TG_ARGV[0]) THEN
+        RAISE EXCEPTION 'Auth credential identity is immutable' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END; $$;
+"#;
+
+const SQLITE_GUARDS: &str = r#"
+CREATE TRIGGER auth_credential_witness_insert_guard BEFORE INSERT ON auth_credential_witnesses
+WHEN NEW.kind IS NULL OR NEW.identity_key IS NULL OR typeof(NEW.identity_key) <> 'text'
+ OR length(NEW.identity_key) = 0
+ OR (NEW.kind NOT IN ('session_digest', 'oauth_token_digest', 'oauth_code_digest') AND
+     (length(NEW.identity_key) <> 32 OR NEW.identity_key GLOB '*[^0-9a-f]*'))
+ OR EXISTS (SELECT 1 FROM auth_credential_witnesses
+            WHERE kind = NEW.kind AND identity_key = NEW.identity_key)
+BEGIN SELECT RAISE(ABORT, 'Auth credential identity invalid or already consumed'); END;
+CREATE TRIGGER auth_credential_witness_no_update BEFORE UPDATE ON auth_credential_witnesses
+BEGIN SELECT RAISE(ABORT, 'Auth credential witness is permanent'); END;
+CREATE TRIGGER auth_credential_witness_no_delete BEFORE DELETE ON auth_credential_witnesses
+BEGIN SELECT RAISE(ABORT, 'Auth credential witness is permanent'); END;
+"#;
+
+// The first revocation/consumption is a terminal fact, not a mutable
+// timestamp. OAuth applications intentionally have a separate lifecycle.
+const TERMINAL_FIELDS: &[(&str, &str)] = &[
+    ("sessions", "revoked_at"),
+    ("oauth_tokens", "revoked_at"),
+    ("oauth_authorization_codes", "used_at"),
+    ("oauth_consents", "revoked_at"),
+];
+
+// OAuth token family identity already guards lineage and subject; these
+// additional claims are fixed at issuance. A code is a one-shot grant,
+// not a mutable request that can acquire new scopes or PKCE parameters.
+const ISSUED_CLAIMS: &[(&str, &[&str])] = &[
+    ("oauth_tokens", &["scopes", "expires_at"]),
+    ("oauth_consents", &["scopes", "granted_at"]),
+    ("oauth_authorization_codes", &[
+        "app_id", "user_id", "tenant_id", "redirect_uri", "scopes",
+        "code_challenge", "code_challenge_method", "expires_at", "created_at",
+    ]),
+];
+
+const POSTGRES_TERMINAL: &str = r#"
+CREATE FUNCTION auth_guard_terminal_credential() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE old_value jsonb := to_jsonb(OLD); new_value jsonb := to_jsonb(NEW);
+BEGIN
+    IF old_value ->> TG_ARGV[0] IS NOT NULL AND
+       (new_value -> TG_ARGV[0]) IS DISTINCT FROM (old_value -> TG_ARGV[0]) THEN
+        RAISE EXCEPTION 'Auth terminal credential timestamp is immutable' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END; $$;
+
+CREATE FUNCTION auth_guard_issued_oauth_claims() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE field_name text;
+BEGIN
+    FOREACH field_name IN ARRAY TG_ARGV LOOP
+        IF (to_jsonb(NEW) -> field_name) IS DISTINCT FROM (to_jsonb(OLD) -> field_name) THEN
+            RAISE EXCEPTION 'Issued OAuth credential claims are immutable' USING ERRCODE = '23514';
+        END IF;
+    END LOOP;
+    RETURN NEW;
+END; $$;
+
+CREATE FUNCTION auth_guard_session_absolute_deadline() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.absolute_expires_at IS NOT NULL AND
+       (NEW.absolute_expires_at IS NULL OR NEW.absolute_expires_at > OLD.absolute_expires_at) THEN
+        RAISE EXCEPTION 'Session absolute deadline cannot be extended' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END; $$;
+CREATE TRIGGER auth_session_absolute_deadline_guard BEFORE UPDATE ON sessions
+FOR EACH ROW EXECUTE FUNCTION auth_guard_session_absolute_deadline();
+
+CREATE FUNCTION auth_guard_revoked_oauth_rotation() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.revoked_at IS NOT NULL AND NEW.last_used_at IS DISTINCT FROM OLD.last_used_at THEN
+        RAISE EXCEPTION 'OAuth terminal rotation evidence is immutable' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END; $$;
+CREATE TRIGGER auth_oauth_rotation_evidence_guard BEFORE UPDATE ON oauth_tokens
+FOR EACH ROW EXECUTE FUNCTION auth_guard_revoked_oauth_rotation();
+
+CREATE FUNCTION auth_guard_consent_identity() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF ROW(NEW.app_id, NEW.user_id, NEW.tenant_id) IS DISTINCT FROM
+       ROW(OLD.app_id, OLD.user_id, OLD.tenant_id)
+       OR (OLD.revoked_at IS NOT NULL AND
+           ROW(NEW.scopes, NEW.granted_at) IS DISTINCT FROM ROW(OLD.scopes, OLD.granted_at)) THEN
+        RAISE EXCEPTION 'OAuth consent identity or terminal grant is immutable' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END; $$;
+CREATE TRIGGER auth_consent_identity_guard BEFORE UPDATE ON oauth_consents
+FOR EACH ROW EXECUTE FUNCTION auth_guard_consent_identity();
+"#;
+
+const SQLITE_TERMINAL: &str = r#"
+-- SQLite timestamp storage can include offsets and different text formats.
+-- A changed deadline must be strictly earlier at SQLite's available date
+-- precision; indistinguishable sub-millisecond changes fail closed.
+CREATE TRIGGER auth_session_absolute_deadline_guard BEFORE UPDATE ON sessions
+WHEN NEW.absolute_expires_at IS NOT OLD.absolute_expires_at AND (
+    NEW.absolute_expires_at IS NULL OR
+    julianday(NEW.absolute_expires_at) IS NULL OR
+    (OLD.absolute_expires_at IS NOT NULL AND
+        (julianday(OLD.absolute_expires_at) IS NULL OR
+         julianday(NEW.absolute_expires_at) >= julianday(OLD.absolute_expires_at))))
+BEGIN SELECT RAISE(ABORT, 'Session absolute deadline cannot be extended'); END;
+
+CREATE TRIGGER auth_oauth_rotation_evidence_guard BEFORE UPDATE ON oauth_tokens
+WHEN OLD.revoked_at IS NOT NULL AND NEW.last_used_at IS NOT OLD.last_used_at
+BEGIN SELECT RAISE(ABORT, 'OAuth terminal rotation evidence is immutable'); END;
+
+CREATE TRIGGER auth_consent_identity_guard BEFORE UPDATE ON oauth_consents
+WHEN NEW.app_id IS NOT OLD.app_id OR NEW.user_id IS NOT OLD.user_id
+ OR NEW.tenant_id IS NOT OLD.tenant_id OR (OLD.revoked_at IS NOT NULL AND
+    (NEW.scopes IS NOT OLD.scopes OR NEW.granted_at IS NOT OLD.granted_at))
+BEGIN SELECT RAISE(ABORT, 'OAuth consent identity or terminal grant is immutable'); END;
+
+-- The active consent partial unique index must not silently replace a
+-- different consent UUID. The owner updates an active grant in place and
+-- inserts a fresh identity after revocation.
+CREATE TRIGGER auth_consent_no_replace BEFORE INSERT ON oauth_consents
+WHEN EXISTS (SELECT 1 FROM oauth_consents WHERE id = NEW.id OR
+    (NEW.revoked_at IS NULL AND revoked_at IS NULL AND app_id = NEW.app_id
+     AND user_id = NEW.user_id AND tenant_id = NEW.tenant_id))
+BEGIN SELECT RAISE(ABORT, 'OAuth consent replacement is forbidden'); END;
+"#;
+
+fn key_expression(backend: DatabaseBackend, column: &str, uuid: bool) -> String {
+    if !uuid {
+        return column.to_owned();
+    }
+    match backend {
+        DatabaseBackend::Postgres => format!("replace({column}::text, '-', '')"),
+        DatabaseBackend::Sqlite => format!(
+            "CASE typeof({column}) WHEN 'blob' THEN lower(hex({column})) \
+             WHEN 'text' THEN lower(replace({column}, '-', '')) END"
+        ),
+        _ => unreachable!("backend checked"),
+    }
+}
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    fn use_transaction(&self) -> Option<bool> {
+        Some(true)
+    }
+
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        let db = manager.get_connection();
+        let backend = manager.get_database_backend();
+        match backend {
+            DatabaseBackend::Postgres => {
+                db.execute_unprepared(
+                    "LOCK TABLE sessions, session_refresh_history, oauth_apps, oauth_authorization_codes, oauth_tokens, oauth_consents IN SHARE ROW EXCLUSIVE MODE;
+                     DO $$ BEGIN
+                       IF row_security_active('sessions'::regclass) OR row_security_active('session_refresh_history'::regclass)
+                          OR row_security_active('oauth_apps'::regclass)
+                          OR row_security_active('oauth_authorization_codes'::regclass) OR row_security_active('oauth_tokens'::regclass)
+                          OR row_security_active('oauth_consents'::regclass)
+                       THEN RAISE EXCEPTION 'Auth identity backfill requires complete visibility' USING ERRCODE = '42501'; END IF;
+                     END $$;"
+                ).await?;
+            }
+            DatabaseBackend::Sqlite => {
+                db.execute_unprepared("UPDATE sessions SET id = id WHERE 0").await?;
+            }
+            _ => return Err(DbErr::Migration("unsupported Auth identity backend".into())),
+        }
+        let shape = match backend {
+            DatabaseBackend::Postgres => "identity_key ~ '^[0-9a-f]{32}$'",
+            _ => "typeof(identity_key) = 'text' AND length(identity_key) = 32 AND identity_key NOT GLOB '*[^0-9a-f]*'",
+        };
+        // SQLite's hidden rowid would be a second conflict key: REPLACE
+        // could delete an unrelated consumed identity without a DELETE trigger.
+        let table_suffix = if backend == DatabaseBackend::Sqlite { " WITHOUT ROWID" } else { "" };
+        db.execute_unprepared(&format!(
+            "CREATE TABLE auth_credential_witnesses (
+                kind TEXT NOT NULL CHECK (kind IN ({KINDS})),
+                identity_key TEXT NOT NULL CHECK (length(identity_key) > 0 AND
+                    (kind IN ('session_digest', 'oauth_token_digest', 'oauth_code_digest') OR ({shape}))),
+                PRIMARY KEY (kind, identity_key)
+             ){table_suffix}"
+        )).await?;
+        for &(table, column, kind, uuid) in CLAIMS {
+            // No conflict suppression: existing alias or duplicate evidence
+            // must stop migration rather than be silently merged.
+            db.execute_unprepared(&format!(
+                "INSERT INTO auth_credential_witnesses (kind, identity_key)
+                 SELECT '{kind}', {} FROM {table}",
+                key_expression(backend, column, uuid)
+            )).await?;
+        }
+        // History and the current session digest must be disjoint. Do not
+        // hide duplicate or inconsistent retained evidence with ON CONFLICT.
+        db.execute_unprepared(
+            "INSERT INTO auth_credential_witnesses (kind, identity_key)
+             SELECT 'session_digest', token_hash FROM session_refresh_history"
+        ).await?;
+        db.execute_unprepared(match backend {
+            DatabaseBackend::Postgres => POSTGRES_GUARDS,
+            _ => SQLITE_GUARDS,
+        }).await?;
+        for &(table, column, kind, uuid) in CLAIMS {
+            let trigger = format!("auth_{kind}_identity");
+            if kind == "session_digest" {
+                // AFTER UPDATE only claims a real rotation. A no-op or
+                // idempotent response recovery must consume nothing.
+                let sql = match backend {
+                    DatabaseBackend::Postgres =>
+                        "CREATE TRIGGER auth_session_digest_claim AFTER INSERT ON sessions
+                         FOR EACH ROW EXECUTE FUNCTION auth_claim_credential_witness('session_digest', 'token_hash', 'digest');
+                         CREATE TRIGGER auth_session_digest_rotate AFTER UPDATE ON sessions
+                         FOR EACH ROW WHEN (NEW.token_hash IS DISTINCT FROM OLD.token_hash)
+                         EXECUTE FUNCTION auth_claim_credential_witness('session_digest', 'token_hash', 'digest');",
+                    DatabaseBackend::Sqlite =>
+                        "CREATE TRIGGER auth_session_digest_claim AFTER INSERT ON sessions
+                         BEGIN INSERT INTO auth_credential_witnesses (kind, identity_key)
+                            VALUES ('session_digest', NEW.token_hash); END;
+                         CREATE TRIGGER auth_session_digest_rotate AFTER UPDATE ON sessions
+                         WHEN NEW.token_hash IS NOT OLD.token_hash
+                         BEGIN INSERT INTO auth_credential_witnesses (kind, identity_key)
+                            VALUES ('session_digest', NEW.token_hash); END;",
+                    _ => unreachable!("backend checked"),
+                };
+                db.execute_unprepared(sql).await?;
+                continue;
+            }
+            match backend {
+                DatabaseBackend::Postgres => {
+                    let key_kind = if uuid { "uuid" } else { "digest" };
+                    db.execute_unprepared(&format!(
+                        "CREATE TRIGGER {trigger}_claim AFTER INSERT ON {table}
+                         FOR EACH ROW EXECUTE FUNCTION auth_claim_credential_witness('{kind}', '{column}', '{key_kind}');
+                         CREATE TRIGGER {trigger}_guard BEFORE UPDATE ON {table}
+                         FOR EACH ROW EXECUTE FUNCTION auth_guard_credential_identity('{column}');"
+                    )).await?;
+                }
+                DatabaseBackend::Sqlite => {
+                    db.execute_unprepared(&format!(
+                        "CREATE TRIGGER {trigger}_claim AFTER INSERT ON {table}
+                         BEGIN INSERT INTO auth_credential_witnesses (kind, identity_key)
+                            VALUES ('{kind}', {}); END;
+                         CREATE TRIGGER {trigger}_guard BEFORE UPDATE ON {table}
+                         WHEN NEW.{column} IS NOT OLD.{column}
+                         BEGIN SELECT RAISE(ABORT, 'Auth credential identity is immutable'); END;",
+                        key_expression(backend, &format!("NEW.{column}"), uuid)
+                    )).await?;
+                }
+                _ => unreachable!("backend checked"),
+            }
+        }
+        db.execute_unprepared(match backend {
+            DatabaseBackend::Postgres => POSTGRES_TERMINAL,
+            _ => SQLITE_TERMINAL,
+        }).await?;
+        for &(table, field) in TERMINAL_FIELDS {
+            let sql = match backend {
+                DatabaseBackend::Postgres => format!(
+                    "CREATE TRIGGER auth_terminal_credential_guard BEFORE UPDATE ON {table}
+                     FOR EACH ROW EXECUTE FUNCTION auth_guard_terminal_credential('{field}')"
+                ),
+                DatabaseBackend::Sqlite => format!(
+                    "CREATE TRIGGER auth_terminal_credential_guard_{table} BEFORE UPDATE ON {table}
+                     WHEN OLD.{field} IS NOT NULL AND NEW.{field} IS NOT OLD.{field}
+                     BEGIN SELECT RAISE(ABORT, 'Auth terminal credential timestamp is immutable'); END"
+                ),
+                _ => unreachable!("backend checked"),
+            };
+            db.execute_unprepared(&sql).await?;
+        }
+        for &(table, fields) in ISSUED_CLAIMS {
+            let sql = match backend {
+                DatabaseBackend::Postgres => {
+                    let arguments = fields.iter().map(|field| format!("'{field}'")).collect::<Vec<_>>().join(", ");
+                    format!("CREATE TRIGGER auth_issued_claims_guard BEFORE UPDATE ON {table}
+                        FOR EACH ROW EXECUTE FUNCTION auth_guard_issued_oauth_claims({arguments})")
+                }
+                DatabaseBackend::Sqlite => {
+                    let predicate = fields.iter().map(|field| format!("NEW.{field} IS NOT OLD.{field}"))
+                        .collect::<Vec<_>>().join(" OR ");
+                    format!("CREATE TRIGGER auth_issued_claims_guard_{table} BEFORE UPDATE ON {table}
+                        WHEN {predicate}
+                        BEGIN SELECT RAISE(ABORT, 'Issued OAuth credential claims are immutable'); END")
+                }
+                _ => unreachable!("backend checked"),
+            };
+            db.execute_unprepared(&sql).await?;
+        }
+        if backend == DatabaseBackend::Sqlite {
+            // A fresh UUID must not displace an unrelated credential via
+            // a hidden rowid conflict with recursive triggers disabled.
+            for table in ["oauth_tokens", "oauth_authorization_codes", "oauth_consents"] {
+                db.execute_unprepared(&format!(
+                    "CREATE TRIGGER auth_{table}_rowid_insert_guard BEFORE INSERT ON {table}
+                     WHEN EXISTS (SELECT 1 FROM {table} WHERE rowid = NEW.rowid)
+                     BEGIN SELECT RAISE(ABORT, 'Auth credential replacement is forbidden'); END;
+                     CREATE TRIGGER auth_{table}_rowid_update_guard BEFORE UPDATE ON {table}
+                     WHEN NEW.rowid IS NOT OLD.rowid
+                     BEGIN SELECT RAISE(ABORT, 'Auth credential row identity is immutable'); END;"
+                )).await?;
+            }
+        }
+        // SQLite REPLACE on an unrevoked refresh family's unique index can
+        // delete an unrelated predecessor without invoking DELETE triggers.
+        // Canonical token/code issuance uses plain INSERT, not upsert.
+        if backend == DatabaseBackend::Sqlite {
+            db.execute_unprepared(
+                "CREATE TRIGGER auth_oauth_refresh_replace_guard BEFORE INSERT ON oauth_tokens
+                 WHEN NEW.token_kind = 'refresh' AND NEW.revoked_at IS NULL AND EXISTS (
+                     SELECT 1 FROM oauth_tokens WHERE family_id = NEW.family_id
+                       AND token_kind = 'refresh' AND revoked_at IS NULL)
+                 BEGIN SELECT RAISE(ABORT, 'OAuth refresh family already has a live member'); END;
+                 CREATE TRIGGER auth_oauth_refresh_update_replace_guard BEFORE UPDATE OF revoked_at ON oauth_tokens
+                 WHEN NEW.token_kind = 'refresh' AND NEW.revoked_at IS NULL AND EXISTS (
+                     SELECT 1 FROM oauth_tokens WHERE family_id = NEW.family_id AND id <> OLD.id
+                       AND token_kind = 'refresh' AND revoked_at IS NULL)
+                 BEGIN SELECT RAISE(ABORT, 'OAuth refresh family already has a live member'); END;"
+            ).await?;
+        }
+        Ok(())
+    }
+
+    async fn down(&self, _: &SchemaManager) -> Result<(), DbErr> {
+        Err(DbErr::Migration("Auth credential witnesses cannot be discarded safely".into()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sea_orm_migration::sea_orm::{Database, Statement, TransactionTrait};
+
+    const A: &str = "10000000-0000-0000-0000-000000000001";
+    const B: &str = "10000000-0000-0000-0000-000000000002";
+    const C: &str = "10000000-0000-0000-0000-000000000003";
+    const D: &str = "10000000-0000-0000-0000-000000000004";
+
+    async fn fixture(db: &impl ConnectionTrait) {
+        db.execute_unprepared(&format!(
+            "CREATE TABLE sessions (id UUID PRIMARY KEY NOT NULL, token_hash TEXT NOT NULL);
+             CREATE TABLE session_refresh_history (token_hash TEXT PRIMARY KEY, session_id UUID NOT NULL);
+             INSERT INTO session_refresh_history VALUES ('historical-session', '{A}');
+             CREATE TABLE oauth_apps (id UUID PRIMARY KEY NOT NULL, client_id UUID NOT NULL UNIQUE);
+             CREATE TABLE oauth_tokens (id UUID PRIMARY KEY NOT NULL, token_hash TEXT NOT NULL UNIQUE,
+               family_id UUID NOT NULL, token_kind TEXT NOT NULL, revoked_at TIMESTAMP);
+             CREATE UNIQUE INDEX one_refresh ON oauth_tokens(family_id) WHERE token_kind = 'refresh' AND revoked_at IS NULL;
+             CREATE TABLE oauth_authorization_codes (id UUID PRIMARY KEY NOT NULL, code_hash TEXT NOT NULL UNIQUE);
+             CREATE TABLE oauth_consents (
+                id UUID PRIMARY KEY NOT NULL, app_id UUID NOT NULL, user_id UUID NOT NULL,
+                tenant_id UUID NOT NULL, scopes TEXT NOT NULL, granted_at TIMESTAMP NOT NULL,
+                revoked_at TIMESTAMP);
+             CREATE UNIQUE INDEX one_active_consent ON oauth_consents(app_id, user_id, tenant_id)
+                WHERE revoked_at IS NULL;
+             INSERT INTO sessions (id, token_hash) VALUES ('{A}', 'old-session');
+             INSERT INTO oauth_apps VALUES ('{A}', '{B}');
+             INSERT INTO oauth_tokens (id, token_hash, family_id, token_kind, revoked_at) VALUES ('{A}', 'old-token', '{A}', 'refresh', NULL);
+             INSERT INTO oauth_authorization_codes (id, code_hash) VALUES ('{A}', 'old-code');
+             ALTER TABLE sessions ADD COLUMN revoked_at TIMESTAMP;
+             ALTER TABLE sessions ADD COLUMN absolute_expires_at TIMESTAMP WITH TIME ZONE;
+             ALTER TABLE oauth_tokens ADD COLUMN last_used_at TIMESTAMP;
+             ALTER TABLE oauth_authorization_codes ADD COLUMN used_at TIMESTAMP;
+             ALTER TABLE oauth_tokens ADD COLUMN scopes TEXT NOT NULL DEFAULT 'profile';
+             ALTER TABLE oauth_tokens ADD COLUMN expires_at TIMESTAMP NOT NULL DEFAULT '2026-02-01';
+             ALTER TABLE oauth_authorization_codes ADD COLUMN app_id UUID;
+             ALTER TABLE oauth_authorization_codes ADD COLUMN user_id UUID;
+             ALTER TABLE oauth_authorization_codes ADD COLUMN tenant_id UUID;
+             ALTER TABLE oauth_authorization_codes ADD COLUMN redirect_uri TEXT NOT NULL DEFAULT 'https://example.com/callback';
+             ALTER TABLE oauth_authorization_codes ADD COLUMN scopes TEXT NOT NULL DEFAULT 'profile';
+             ALTER TABLE oauth_authorization_codes ADD COLUMN code_challenge TEXT NOT NULL DEFAULT 'challenge';
+             ALTER TABLE oauth_authorization_codes ADD COLUMN code_challenge_method TEXT NOT NULL DEFAULT 'S256';
+             ALTER TABLE oauth_authorization_codes ADD COLUMN expires_at TIMESTAMP NOT NULL DEFAULT '2026-02-01';
+             ALTER TABLE oauth_authorization_codes ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT '2026-01-01';"
+        )).await.unwrap();
+    }
+
+    async fn count(db: &impl ConnectionTrait) -> i64 {
+        db.query_one_raw(Statement::from_string(db.get_database_backend(),
+            "SELECT COUNT(*) AS count FROM auth_credential_witnesses"))
+            .await.unwrap().unwrap().try_get("", "count").unwrap()
+    }
+
+    #[tokio::test]
+    async fn sqlite_identity_and_digest_claims_survive_cleanup_and_replacement() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared("PRAGMA recursive_triggers = OFF").await.unwrap();
+        fixture(&db).await;
+        let tx = db.begin().await.unwrap();
+        Migration.up(&SchemaManager::new(&tx)).await.unwrap();
+        tx.commit().await.unwrap();
+        assert_eq!(count(&db).await, 9);
+
+        // Session refresh rotation remains legal; it is not a new session.
+        db.execute_unprepared("UPDATE sessions SET token_hash = 'rotated-session'").await.unwrap();
+        db.execute_unprepared("UPDATE sessions SET token_hash = token_hash").await.unwrap();
+        assert_eq!(count(&db).await, 10);
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared("UPDATE sessions SET token_hash = 'rolled-back-session'").await.unwrap();
+        tx.rollback().await.unwrap();
+        assert_eq!(count(&db).await, 10);
+        for digest in ["old-session", "historical-session"] {
+            assert!(db.execute_unprepared(&format!("UPDATE OR IGNORE sessions SET token_hash = '{digest}'")).await.is_err());
+        }
+        for sql in [
+            format!("INSERT OR REPLACE INTO oauth_tokens (id, token_hash, family_id, token_kind, revoked_at) VALUES ('{C}', 'new-token', '{A}', 'refresh', NULL)"),
+            format!("INSERT OR REPLACE INTO oauth_tokens (id, token_hash, family_id, token_kind, revoked_at) VALUES ('{C}', 'old-token', '{C}', 'refresh', NULL)"),
+            format!("INSERT OR REPLACE INTO oauth_apps VALUES ('{C}', '{B}')"),
+            format!("INSERT OR REPLACE INTO oauth_authorization_codes (id, code_hash) VALUES ('{C}', 'old-code')"),
+            format!("UPDATE oauth_apps SET client_id = '{D}'"),
+            "UPDATE oauth_tokens SET token_hash = 'changed'".to_owned(),
+            "UPDATE oauth_authorization_codes SET code_hash = 'changed'".to_owned(),
+        ] {
+            assert!(db.execute_unprepared(&sql).await.is_err(), "{sql}");
+        }
+        for table in ["session_refresh_history", "sessions", "oauth_apps", "oauth_tokens", "oauth_authorization_codes"] {
+            db.execute_unprepared(&format!("DELETE FROM {table}")).await.unwrap();
+        }
+        for sql in [
+            format!("INSERT INTO sessions (id, token_hash) VALUES ('{A}', 'new-session')"),
+            format!("INSERT OR REPLACE INTO sessions (id, token_hash) VALUES ('{C}', 'old-session')"),
+            format!("INSERT OR IGNORE INTO sessions (id, token_hash) VALUES ('{C}', 'historical-session')"),
+            format!("INSERT INTO sessions (id, token_hash) VALUES ('{C}', 'rotated-session')"),
+            format!("INSERT INTO oauth_apps VALUES ('{A}', '{D}')"),
+            format!("INSERT INTO oauth_apps VALUES ('{C}', '{B}')"),
+            format!("INSERT INTO oauth_tokens (id, token_hash, family_id, token_kind, revoked_at) VALUES ('{A}', 'new-token', '{A}', 'refresh', NULL)"),
+            format!("INSERT OR IGNORE INTO oauth_tokens (id, token_hash, family_id, token_kind, revoked_at) VALUES ('{C}', 'old-token', '{C}', 'refresh', NULL)"),
+            format!("INSERT INTO oauth_authorization_codes (id, code_hash) VALUES ('{A}', 'new-code')"),
+            format!("INSERT OR IGNORE INTO oauth_authorization_codes (id, code_hash) VALUES ('{C}', 'old-code')"),
+            format!("INSERT INTO sessions (id, token_hash) VALUES (X'{}', 'alias')", A.replace('-', "")),
+            "DELETE FROM auth_credential_witnesses".to_owned(),
+            "UPDATE auth_credential_witnesses SET identity_key = identity_key".to_owned(),
+            "INSERT OR REPLACE INTO auth_credential_witnesses VALUES ('oauth_code_digest', 'old-code')".to_owned(),
+            "INSERT OR REPLACE INTO auth_credential_witnesses (rowid, kind, identity_key)
+             VALUES (1, 'oauth_code_digest', 'different-code')".to_owned(),
+            "INSERT OR REPLACE INTO auth_credential_witnesses (_rowid_, kind, identity_key)
+             VALUES (1, 'oauth_token_digest', 'different-token')".to_owned(),
+            "INSERT OR REPLACE INTO auth_credential_witnesses (oid, kind, identity_key)
+             VALUES (1, 'oauth_code_digest', 'different-code')".to_owned(),
+        ] {
+            assert!(db.execute_unprepared(&sql).await.is_err(), "{sql}");
+        }
+        assert_eq!(count(&db).await, 10);
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared(&format!("INSERT INTO oauth_tokens (id, token_hash, family_id, token_kind, revoked_at) VALUES ('{C}', 'new-token', '{C}', 'refresh', NULL)")).await.unwrap();
+        tx.rollback().await.unwrap();
+        db.execute_unprepared(&format!("INSERT INTO oauth_tokens (id, token_hash, family_id, token_kind, revoked_at) VALUES ('{C}', 'new-token', '{C}', 'refresh', NULL)")).await.unwrap();
+        assert_eq!(count(&db).await, 12);
+        // Rotation after revoking the old live row still works.
+        db.execute_unprepared(&format!(
+            "UPDATE oauth_tokens SET revoked_at = '2026-01-01' WHERE id = '{C}';
+             INSERT INTO oauth_tokens (id, token_hash, family_id, token_kind, revoked_at) VALUES ('{D}', 'successor', '{C}', 'refresh', NULL)"
+        )).await.unwrap();
+        assert_eq!(count(&db).await, 14);
+        db.execute_unprepared(&format!("INSERT INTO sessions (id, token_hash) VALUES ('{C}', 'rolled-back-session')")).await.unwrap();
+        assert_eq!(count(&db).await, 16);
+    }
+
+    async fn seed_consent(db: &impl ConnectionTrait) {
+        db.execute_unprepared(&format!(
+            "INSERT INTO oauth_consents VALUES ('{A}', '{A}', '{B}', '{C}', 'profile', '2026-01-01', NULL)"
+        )).await.unwrap();
+    }
+
+    fn terminal_writes() -> Vec<String> {
+        let mut writes = Vec::new();
+        for &(table, field) in TERMINAL_FIELDS {
+            for value in ["NULL", "'2026-01-03'", "'2025-12-31'"] {
+                writes.push(format!("UPDATE {table} SET {field} = {value} WHERE id = '{A}'"));
+            }
+        }
+        writes.extend([
+            "UPDATE oauth_tokens SET last_used_at = revoked_at".to_owned(),
+            "UPDATE oauth_consents SET granted_at = '2026-01-03'".to_owned(),
+            "UPDATE oauth_consents SET scopes = 'other'".to_owned(),
+            format!("UPDATE oauth_consents SET user_id = '{D}'"),
+        ]);
+        writes
+    }
+
+    fn issued_claim_writes() -> Vec<String> {
+        vec![
+            "UPDATE oauth_tokens SET scopes = 'other'".into(),
+            "UPDATE oauth_consents SET scopes = 'other'".into(),
+            "UPDATE oauth_consents SET granted_at = '2026-01-02'".into(),
+            "UPDATE oauth_tokens SET expires_at = '2026-03-01'".into(),
+            format!("UPDATE oauth_authorization_codes SET app_id = '{D}'"),
+            format!("UPDATE oauth_authorization_codes SET user_id = '{D}'"),
+            format!("UPDATE oauth_authorization_codes SET tenant_id = '{D}'"),
+            "UPDATE oauth_authorization_codes SET redirect_uri = 'https://other.example/callback'".into(),
+            "UPDATE oauth_authorization_codes SET scopes = 'other'".into(),
+            "UPDATE oauth_authorization_codes SET code_challenge = 'other'".into(),
+            "UPDATE oauth_authorization_codes SET code_challenge_method = 'plain'".into(),
+            "UPDATE oauth_authorization_codes SET expires_at = '2026-03-01'".into(),
+            "UPDATE oauth_authorization_codes SET created_at = '2026-01-02'".into(),
+        ]
+    }
+
+    fn deadline_extensions() -> Vec<&'static str> {
+        vec![
+            "UPDATE sessions SET absolute_expires_at = NULL",
+            "UPDATE sessions SET absolute_expires_at = '2026-02-01 00:00:00+00:00'",
+            // Text looks earlier but the offset makes the instant later.
+            "UPDATE sessions SET absolute_expires_at = '2026-01-14 23:59:59-02:00'",
+            "UPDATE sessions SET absolute_expires_at = '2026-01-15 00:00:00.0001+00:00'",
+            "UPDATE sessions SET absolute_expires_at = 'not-a-timestamp'",
+        ]
+    }
+
+    async fn revoke_fixture(db: &impl ConnectionTrait) {
+        for &(table, field) in TERMINAL_FIELDS {
+            db.execute_unprepared(&format!(
+                "UPDATE {table} SET {field} = '2026-01-02' WHERE id = '{A}'"
+            )).await.unwrap();
+            // Repeating the exact stored value is not a new transition.
+            db.execute_unprepared(&format!("UPDATE {table} SET {field} = {field}"))
+                .await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn sqlite_terminal_credentials_are_one_way_and_consent_regrant_is_fresh() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared("PRAGMA recursive_triggers = OFF").await.unwrap();
+        fixture(&db).await;
+        seed_consent(&db).await;
+        let tx = db.begin().await.unwrap();
+        Migration.up(&SchemaManager::new(&tx)).await.unwrap();
+        tx.commit().await.unwrap();
+
+        for sql in issued_claim_writes() {
+            assert!(db.execute_unprepared(&sql).await.is_err(), "{sql}");
+        }
+        db.execute_unprepared("UPDATE oauth_tokens SET scopes = scopes;
+            UPDATE oauth_authorization_codes SET expires_at = expires_at").await.unwrap();
+        db.execute_unprepared("UPDATE oauth_consents SET scopes = scopes").await.unwrap();
+        db.execute_unprepared("UPDATE sessions SET absolute_expires_at = '2026-02-01 00:00:00+00:00';
+            UPDATE sessions SET absolute_expires_at = '2026-01-15 00:00:00+00:00';
+            UPDATE sessions SET absolute_expires_at = absolute_expires_at").await.unwrap();
+        for sql in deadline_extensions() {
+            assert!(db.execute_unprepared(&sql).await.is_err(), "{sql}");
+        }
+        assert!(db.execute_unprepared(&format!(
+            "INSERT OR REPLACE INTO oauth_consents VALUES ('{D}', '{A}', '{B}', '{C}', 'other', '2026-01-02', NULL)"
+        )).await.is_err());
+        let tx = db.begin().await.unwrap();
+        revoke_fixture(&tx).await;
+        tx.rollback().await.unwrap();
+        db.execute_unprepared("UPDATE oauth_consents SET scopes = scopes").await.unwrap();
+        revoke_fixture(&db).await;
+        for sql in terminal_writes().into_iter().chain([
+            format!("INSERT OR REPLACE INTO oauth_tokens (rowid, id, token_hash, family_id, token_kind)
+                     SELECT rowid, '{D}', 'new-token', '{D}', 'refresh' FROM oauth_tokens"),
+            format!("INSERT OR REPLACE INTO oauth_authorization_codes (rowid, id, code_hash)
+                     SELECT rowid, '{D}', 'new-code' FROM oauth_authorization_codes"),
+            format!("INSERT OR REPLACE INTO oauth_consents (rowid, id, app_id, user_id, tenant_id, scopes, granted_at)
+                     SELECT rowid, '{D}', app_id, user_id, tenant_id, scopes, granted_at FROM oauth_consents"),
+        ]) {
+            assert!(db.execute_unprepared(&sql).await.is_err(), "{sql}");
+        }
+        db.execute_unprepared(&format!(
+            "INSERT INTO oauth_consents VALUES ('{D}', '{A}', '{B}', '{C}', 'profile', '2026-01-03', NULL);
+             DELETE FROM oauth_consents WHERE id = '{A}'"
+        )).await.unwrap();
+        assert!(db.execute_unprepared(&format!(
+            "INSERT INTO oauth_consents VALUES ('{A}', '{A}', '{B}', '{C}', 'profile', '2026-01-04', '2026-01-05')"
+        )).await.is_err());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_AUTH_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_terminal_credentials_are_one_way_and_consent_regrant_is_fresh() {
+        let db = Database::connect(std::env::var("RUSTOK_AUTH_TEST_DATABASE_URL").unwrap()).await.unwrap();
+        assert_eq!(db.get_database_backend(), DatabaseBackend::Postgres);
+        let schema = format!("auth_terminal_{}", uuid::Uuid::new_v4().simple());
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared(&format!("CREATE SCHEMA {schema}; SET LOCAL search_path TO {schema}")).await.unwrap();
+        fixture(&tx).await;
+        seed_consent(&tx).await;
+        Migration.up(&SchemaManager::new(&tx)).await.unwrap();
+        tx.execute_unprepared("UPDATE sessions SET absolute_expires_at = '2026-02-01 00:00:00+00:00';
+            UPDATE sessions SET absolute_expires_at = '2026-01-15 00:00:00+00:00';
+            UPDATE sessions SET absolute_expires_at = absolute_expires_at").await.unwrap();
+        tx.commit().await.unwrap();
+        for sql in deadline_extensions() {
+            let tx = db.begin().await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+            assert!(tx.execute_unprepared(sql).await.is_err(), "{sql}");
+            tx.rollback().await.unwrap();
+        }
+        // Verify the claims guard before revocation: a live credential
+        // cannot acquire a different grant or a longer lifetime.
+        for sql in issued_claim_writes() {
+            let tx = db.begin().await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+            assert!(tx.execute_unprepared(&sql).await.is_err(), "{sql}");
+            tx.rollback().await.unwrap();
+        }
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        tx.execute_unprepared("UPDATE oauth_tokens SET scopes = scopes;
+            UPDATE oauth_authorization_codes SET expires_at = expires_at").await.unwrap();
+        revoke_fixture(&tx).await;
+        tx.commit().await.unwrap();
+        for sql in terminal_writes().into_iter().chain(issued_claim_writes()) {
+            let tx = db.begin().await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+            assert!(tx.execute_unprepared(&sql).await.is_err(), "{sql}");
+            tx.rollback().await.unwrap();
+        }
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared(&format!(
+            "SET LOCAL search_path TO {schema};
+             INSERT INTO oauth_consents VALUES ('{D}', '{A}', '{B}', '{C}', 'profile', '2026-01-03', NULL);
+             DELETE FROM oauth_consents WHERE id = '{A}'"
+        )).await.unwrap();
+        tx.commit().await.unwrap();
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        assert!(tx.execute_unprepared(&format!(
+            "INSERT INTO oauth_consents VALUES ('{A}', '{A}', '{B}', '{C}', 'profile', '2026-01-04', '2026-01-05')"
+        )).await.is_err());
+        tx.rollback().await.unwrap();
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_AUTH_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_credential_witnesses_reject_reuse_and_late_contention() {
+        use std::time::Duration;
+        let db = Database::connect(std::env::var("RUSTOK_AUTH_TEST_DATABASE_URL").unwrap()).await.unwrap();
+        assert_eq!(db.get_database_backend(), DatabaseBackend::Postgres);
+        let schema = format!("auth_identity_{}", uuid::Uuid::new_v4().simple());
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared(&format!("CREATE SCHEMA {schema}; SET LOCAL search_path TO {schema}")).await.unwrap();
+        fixture(&tx).await;
+        Migration.up(&SchemaManager::new(&tx)).await.unwrap();
+        assert_eq!(count(&tx).await, 9);
+        tx.execute_unprepared("UPDATE sessions SET token_hash = 'rotated-session'").await.unwrap();
+        assert_eq!(count(&tx).await, 10);
+        tx.execute_unprepared("DELETE FROM session_refresh_history; DELETE FROM sessions").await.unwrap();
+        tx.execute_unprepared("DELETE FROM oauth_tokens").await.unwrap();
+        tx.commit().await.unwrap();
+
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        assert!(tx.execute_unprepared(&format!("INSERT INTO oauth_tokens (id, token_hash, family_id, token_kind, revoked_at) VALUES ('{C}', 'old-token', '{C}', 'refresh', NULL)")).await.is_err());
+        tx.rollback().await.unwrap();
+        for digest in ["old-session", "historical-session", "rotated-session"] {
+            let tx = db.begin().await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+            assert!(tx.execute_unprepared(&format!("INSERT INTO sessions (id, token_hash) VALUES ('{C}', '{digest}')")).await.is_err());
+            tx.rollback().await.unwrap();
+        }
+        let holder = db.begin().await.unwrap();
+        holder.execute_unprepared(&format!("SET LOCAL search_path TO {schema}; INSERT INTO auth_credential_witnesses VALUES ('oauth_token_digest', 'fresh')")).await.unwrap();
+        let contender = db.begin().await.unwrap();
+        contender.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        let error = tokio::time::timeout(Duration::from_secs(3), contender.execute_unprepared(
+            &format!("INSERT INTO oauth_tokens (id, token_hash, family_id, token_kind, revoked_at) VALUES ('{C}', 'fresh', '{C}', 'refresh', NULL)")
+        )).await.expect("witness must not wait").expect_err("competing digest must fail");
+        assert!(error.to_string().contains("Auth credential witness busy"), "{error}");
+        contender.rollback().await.unwrap();
+        holder.rollback().await.unwrap();
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}; INSERT INTO oauth_tokens (id, token_hash, family_id, token_kind, revoked_at) VALUES ('{C}', 'fresh', '{C}', 'refresh', NULL)")).await.unwrap();
+        assert_eq!(count(&tx).await, 12);
+        tx.commit().await.unwrap();
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+    }
+}

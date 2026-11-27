@@ -49,6 +49,75 @@ pub(crate) async fn configure_tenant_scope<C: ConnectionTrait>(
         .map_err(storage_error)
 }
 
+/// Rechecks that an object namespace is still serving and is not held by
+/// an in-progress record/object migration. The active namespace read acquires
+/// the namespace row lock first, so a migration hold cannot appear between the
+/// check and the caller's owner transaction commit.
+pub(crate) async fn ensure_active_object_namespace<C: ConnectionTrait>(
+    connection: &C,
+    scope: &ArtifactDataScope,
+    backend: SupportedBackend,
+) -> Result<(), ArtifactDataError> {
+    ensure_active_namespace(connection, scope, backend).await?;
+    ensure_namespace_not_migration_held_on(
+        connection,
+        scope.tenant_id,
+        scope.data_owner_id,
+        scope.namespace_instance_id,
+        None,
+    )
+    .await
+}
+
+/// Begins one owner transaction with the optional execution-authority fence.
+/// The fence is locked on the same transaction that will read or mutate the
+/// artifact-data namespace; no second pool checkout is used for its commit
+/// authority.
+pub(crate) async fn begin_artifact_data_effect(
+    db: &DatabaseConnection,
+    scope: &ArtifactDataScope,
+    fence: Option<&Arc<dyn crate::ArtifactSqlEffectFence>>,
+) -> Result<
+    (
+        DatabaseTransaction,
+        Option<Box<dyn crate::ArtifactSqlEffectCommitGuard>>,
+    ),
+    ArtifactDataError,
+> {
+    let transaction = crate::backend::begin_fenced_transaction(db)
+        .await
+        .map_err(storage_error)?;
+    configure_tenant_scope(&transaction, scope.tenant_id).await?;
+    let guard = match fence {
+        Some(fence) => Some(
+            fence
+                .lock_on(&transaction)
+                .await
+                .map_err(|_| ArtifactDataError::PolicyDenied)?,
+        ),
+        None => None,
+    };
+    Ok((transaction, guard))
+}
+
+/// Commits an owner effect only while its execution-authority guard remains
+/// valid. A denied guard explicitly rolls back the owner transaction.
+pub(crate) async fn commit_artifact_data_effect(
+    transaction: DatabaseTransaction,
+    guard: Option<Box<dyn crate::ArtifactSqlEffectCommitGuard>>,
+) -> Result<(), ArtifactDataError> {
+    if let Some(guard) = guard.as_ref() {
+        if guard.check_before_commit(&transaction).await.is_err() {
+            return Err(rollback_artifact_data_error(
+                transaction,
+                ArtifactDataError::PolicyDenied,
+            )
+            .await);
+        }
+    }
+    transaction.commit().await.map_err(storage_error)
+}
+
 /// Best-effort compensation for object bytes uploaded before their owning
 /// database work failed. The database is the source of truth — the object
 /// never became reachable — so the primary error the caller is already

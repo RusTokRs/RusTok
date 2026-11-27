@@ -101,19 +101,38 @@ pub struct StaticActorAuthorityRevision {
     grants: Vec<(Uuid, i64)>,
 }
 
+impl StaticActorAuthorityRevision {
+    /// Include owned role revision storage when weighting bounded cache entries.
+    pub fn estimated_heap_bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.grants.capacity().saturating_mul(std::mem::size_of::<(Uuid, i64)>()))
+    }
+}
+
+pub(crate) const STATIC_ACTOR_REVISION_SELECT: &str =
+    "SELECT u.rbac_membership_revision, r.id AS role_id, r.grant_revision FROM users u LEFT JOIN (user_roles ur JOIN roles r ON r.id = ur.role_id) ON ur.user_id = u.id AND r.tenant_id = u.tenant_id";
+
 pub async fn read_static_actor_authority_revision_on(
     db: &impl ConnectionTrait,
     tenant_id: Uuid,
     actor_id: Uuid,
 ) -> Result<StaticActorAuthorityRevision, DbErr> {
+    read_optional_static_actor_authority_revision_on(db, tenant_id, actor_id)
+        .await?
+        .ok_or_else(|| DbErr::Custom("invalid or missing RBAC authority revision".into()))
+}
+
+/// A missing subject is an empty relation graph for unscoped cache lookups,
+/// not a reusable revision. Malformed revisions and storage errors still fail.
+pub(crate) async fn read_optional_static_actor_authority_revision_on(
+    db: &impl ConnectionTrait,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+) -> Result<Option<StaticActorAuthorityRevision>, DbErr> {
     let backend = db.get_database_backend();
-    let sql = match backend {
-        DatabaseBackend::Postgres => {
-            "SELECT u.rbac_membership_revision, r.id AS role_id, r.grant_revision FROM users u LEFT JOIN (user_roles ur JOIN roles r ON r.id = ur.role_id) ON ur.user_id = u.id AND r.tenant_id = u.tenant_id WHERE u.tenant_id = $1 AND u.id = $2 ORDER BY r.id"
-        }
-        DatabaseBackend::Sqlite => {
-            "SELECT u.rbac_membership_revision, r.id AS role_id, r.grant_revision FROM users u LEFT JOIN (user_roles ur JOIN roles r ON r.id = ur.role_id) ON ur.user_id = u.id AND r.tenant_id = u.tenant_id WHERE u.tenant_id = ?1 AND u.id = ?2 ORDER BY r.id"
-        }
+    let predicate = match backend {
+        DatabaseBackend::Postgres => "u.tenant_id = $1 AND u.id = $2",
+        DatabaseBackend::Sqlite => "u.tenant_id = ?1 AND u.id = ?2",
         _ => {
             return Err(DbErr::Custom(
                 "unsupported RBAC authority revision backend".into(),
@@ -123,15 +142,21 @@ pub async fn read_static_actor_authority_revision_on(
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             backend,
-            sql,
+            format!("{STATIC_ACTOR_REVISION_SELECT} WHERE {predicate} ORDER BY r.id"),
             [tenant_id.into(), actor_id.into()],
         ))
         .await?;
+    decode_static_actor_authority_revision(&rows)
+}
+
+pub(crate) fn decode_static_actor_authority_revision(
+    rows: &[sea_orm::QueryResult],
+) -> Result<Option<StaticActorAuthorityRevision>, DbErr> {
     let missing = || DbErr::Custom("invalid or missing RBAC authority revision".into());
-    let membership: i64 = rows
-        .first()
-        .ok_or_else(missing)?
-        .try_get("", "rbac_membership_revision")?;
+    let Some(first) = rows.first() else {
+        return Ok(None);
+    };
+    let membership: i64 = first.try_get("", "rbac_membership_revision")?;
     if membership < 0 {
         return Err(missing());
     }
@@ -151,7 +176,7 @@ pub async fn read_static_actor_authority_revision_on(
     }
     grants.sort_unstable();
     grants.dedup();
-    Ok(StaticActorAuthorityRevision { membership, grants })
+    Ok(Some(StaticActorAuthorityRevision { membership, grants }))
 }
 
 /// Lock the union of actor and managed-user memberships, requested role and

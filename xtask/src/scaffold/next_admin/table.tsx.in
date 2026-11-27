@@ -5,10 +5,11 @@ import type { MessageKey, MessageArgs } from '../messages';
 import type { ColumnDef, StockFeatures } from '@tanstack/react-table';
 import { useTranslations } from '@rustok/next-fluent/client';
 import Link from 'next/link';
-import { parseAsInteger, parseAsStringLiteral, useQueryStates } from 'nuqs';
+import { parseAsStringLiteral, useQueryStates } from 'nuqs';
 import { useMemo } from 'react';
 
 import { buttonVariants } from '@/shared/ui/shadcn/button';
+import { parseAsPositiveSafeInteger } from '@/shared/lib/parsers';
 import {
   Select,
   SelectContent,
@@ -32,7 +33,7 @@ export function RecordTable({
       order: parseAsStringLiteral(['NEWEST_FIRST', 'OLDEST_FIRST']).withDefault(
         'NEWEST_FIRST'
       ),
-      page: parseAsInteger.withDefault(1)
+      page: parseAsPositiveSafeInteger.withDefault(1)
     },
     { shallow: false }
   );
@@ -90,7 +91,7 @@ export function RecordTable({
       data={page.items}
       columns={columns}
       totalItems={page.total}
-      defaultPageSize={page.perPage}
+      serverPagination={{ pageIndex: page.page - 1, pageSize: page.perPage }}
       getRowId={(row) => row.id}
       routeQuery={search}
     >

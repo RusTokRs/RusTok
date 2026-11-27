@@ -4,6 +4,109 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
+fn identity_id_mapping(ids: impl IntoIterator<Item = String>) -> BTreeMap<String, String> {
+    ids.into_iter().map(|id| (id.clone(), id)).collect()
+}
+
+fn ensure_component_object_id(
+    object: &mut ComponentObject,
+    generator: &mut impl IdGenerator,
+    reserved: &mut BTreeSet<String>,
+    seen: &mut BTreeSet<String>,
+    remapped_component_ids: &mut BTreeMap<String, String>,
+) {
+    let original_id = object.id.clone();
+    let current_id = original_id
+        .as_deref()
+        .filter(|id| validate_identifier(id).is_ok());
+    let needs_new_id = current_id.is_none_or(|id| !seen.insert(id.to_string()));
+    if needs_new_id {
+        let hint = object.component_type.as_deref().unwrap_or("node");
+        let id = crate::id_reference::allocate_generated_id(generator, hint, reserved);
+        seen.insert(id.clone());
+        if let Some(original_id) = original_id
+            .as_deref()
+            .filter(|id| validate_identifier(id).is_err())
+        {
+            remapped_component_ids
+                .entry(original_id.to_string())
+                .or_insert_with(|| id.clone());
+        }
+        object.id = Some(id);
+    }
+}
+
+fn ensure_opaque_children_stable_ids(
+    value: &mut Value,
+    generator: &mut impl IdGenerator,
+    reserved: &mut BTreeSet<String>,
+    seen: &mut BTreeSet<String>,
+    remapped_component_ids: &mut BTreeMap<String, String>,
+) {
+    if let Some(children) = value.as_array_mut() {
+        for child in children {
+            ensure_opaque_node_stable_ids(
+                child,
+                generator,
+                reserved,
+                seen,
+                remapped_component_ids,
+            );
+        }
+    } else if value.is_object() {
+        ensure_opaque_node_stable_ids(
+            value,
+            generator,
+            reserved,
+            seen,
+            remapped_component_ids,
+        );
+    }
+}
+
+fn ensure_opaque_node_stable_ids(
+    value: &mut Value,
+    generator: &mut impl IdGenerator,
+    reserved: &mut BTreeSet<String>,
+    seen: &mut BTreeSet<String>,
+    remapped_component_ids: &mut BTreeMap<String, String>,
+) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    if let Some(original_id) = object.get("id").and_then(Value::as_str).map(str::to_string) {
+        let current_id = original_id
+            .as_str()
+            .filter(|id| validate_identifier(id).is_ok());
+        let needs_new_id = current_id.is_none_or(|id| !seen.insert(id.to_string()));
+        if needs_new_id {
+            let hint = object
+                .get("type")
+                .and_then(Value::as_str)
+                .or_else(|| object.get("tagName").and_then(Value::as_str))
+                .unwrap_or("node")
+                .to_string();
+            let id = crate::id_reference::allocate_generated_id(generator, &hint, reserved);
+            seen.insert(id.clone());
+            if validate_identifier(&original_id).is_err() {
+                remapped_component_ids
+                    .entry(original_id)
+                    .or_insert_with(|| id.clone());
+            }
+            object.insert("id".to_string(), Value::String(id));
+        }
+    }
+    if let Some(children) = object.get_mut("components") {
+        ensure_opaque_children_stable_ids(
+            children,
+            generator,
+            reserved,
+            seen,
+            remapped_component_ids,
+        );
+    }
+}
+
 /// A canonical GrapesJS document with private storage and cache-safe accessors.
 ///
 /// The project is intentionally not a public field. Read it through
@@ -192,7 +295,8 @@ impl ProjectDocument {
         Ok(cloned)
     }
 
-    /// Give every component a unique, syntactically valid id, minting new ones where needed.
+    /// Ensure typed components have unique, syntactically valid ids and repair ids carried by
+    /// opaque component nodes when those ids are invalid or duplicated.
     ///
     /// Ids that fail [`validate_identifier`] are replaced rather than preserved. An id is
     /// interpolated into HTML attributes and into CSS selectors inside a raw `<style>` element, so
@@ -200,10 +304,10 @@ impl ProjectDocument {
     /// validation rejects it and every command runs validation. Self-healing here mirrors how
     /// duplicate ids have always been handled.
     pub fn ensure_stable_ids(&mut self, generator: &mut impl IdGenerator) {
-        // Fast path: a document whose ids are all present, valid, and unique needs no
-        // repair. This runs on every editor command, so it borrows ids instead of
-        // cloning them into sets, and skips the mutating walk entirely — the common
-        // case for patch/style commands on an already-stable document.
+        // Fast path: typed components must have valid ids, while opaque nodes may omit
+        // ids but any ids they do carry must be valid and unique. This runs on every editor
+        // command, so it borrows ids instead of cloning them into sets and skips the mutating
+        // walk entirely for an already-stable document.
         if self.all_component_ids_stable() {
             return;
         }
@@ -212,8 +316,33 @@ impl ProjectDocument {
         // collide with them (or with authored/provider DOM identities).
         let mut reserved = crate::id_reference::project_identity_ids(self);
         let mut seen = BTreeSet::new();
-        self.project
-            .ensure_stable_ids(generator, &mut reserved, &mut seen);
+        let mut dom_ids = Vec::new();
+        let mut form_ids = Vec::new();
+        for page in &self.project.pages {
+            if let Some(root) = page.component.as_ref() {
+                root.collect_dom_ids(&mut dom_ids);
+                root.collect_form_ids(&mut form_ids);
+            }
+        }
+        let mut remapped_component_ids = BTreeMap::new();
+        self.project.ensure_stable_ids(
+            generator,
+            &mut reserved,
+            &mut seen,
+            &mut remapped_component_ids,
+        );
+        if !remapped_component_ids.is_empty() {
+            let dom_mapping = identity_id_mapping(dom_ids.into_iter().chain(form_ids));
+            for page in &mut self.project.pages {
+                if let Some(root) = page.component.as_mut() {
+                    root.remap_ids_with_dom(&remapped_component_ids, &dom_mapping);
+                }
+            }
+            for style in &mut self.project.styles {
+                crate::style_rule::remap_component_style_rule(style, &remapped_component_ids);
+            }
+            remap_runtime_catalogs(&mut self.project.extensions, &remapped_component_ids);
+        }
     }
 }
 
@@ -222,7 +351,7 @@ impl ProjectDocument {
         let mut seen = std::collections::HashSet::new();
         for page in &self.project.pages {
             let Some(root) = page.component.as_ref() else {
-                return false;
+                continue;
             };
             if !check_component_ids_stable(root, &mut seen) {
                 return false;
@@ -236,21 +365,55 @@ fn check_component_ids_stable<'a>(
     node: &'a ComponentNode,
     seen: &mut std::collections::HashSet<&'a str>,
 ) -> bool {
-    let Some(object) = node.as_object() else {
-        return false;
-    };
-    let Some(id) = object.id() else {
-        return false;
-    };
-    if validate_identifier(id).is_err() || !seen.insert(id) {
-        return false;
-    }
-    for child in object.children() {
-        if !check_component_ids_stable(child, seen) {
-            return false;
+    match node {
+        ComponentNode::Object(object) => {
+            let Some(id) = object.id() else {
+                return false;
+            };
+            if validate_identifier(id).is_err() || !seen.insert(id) {
+                return false;
+            }
+            match &object.components {
+                ComponentChildren::Nodes(children) => children
+                    .iter()
+                    .all(|child| check_component_ids_stable(child, seen)),
+                ComponentChildren::Opaque(value) => {
+                    check_opaque_children_ids_stable(value, seen)
+                }
+            }
         }
+        ComponentNode::Opaque(value) => check_opaque_node_ids_stable(value, seen),
     }
-    true
+}
+
+fn check_opaque_children_ids_stable<'a>(
+    value: &'a Value,
+    seen: &mut std::collections::HashSet<&'a str>,
+) -> bool {
+    match value {
+        Value::Array(children) => children
+            .iter()
+            .all(|child| check_opaque_node_ids_stable(child, seen)),
+        Value::Object(_) => check_opaque_node_ids_stable(value, seen),
+        _ => true,
+    }
+}
+
+fn check_opaque_node_ids_stable<'a>(
+    value: &'a Value,
+    seen: &mut std::collections::HashSet<&'a str>,
+) -> bool {
+    let Some(object) = value.as_object() else {
+        return true;
+    };
+    if let Some(id) = object.get("id").and_then(Value::as_str)
+        && (validate_identifier(id).is_err() || !seen.insert(id))
+    {
+        return false;
+    }
+    object
+        .get("components")
+        .is_none_or(|children| check_opaque_children_ids_stable(children, seen))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -294,10 +457,30 @@ impl GrapesProject {
         generator: &mut impl IdGenerator,
         reserved: &mut BTreeSet<String>,
         seen: &mut BTreeSet<String>,
+        remapped_component_ids: &mut BTreeMap<String, String>,
     ) {
+        // Typed components are addressable through ComponentIndex, so they keep priority over
+        // opaque nodes if an imported document contains a duplicate id.
         for page in &mut self.pages {
             if let Some(root) = page.component.as_mut() {
-                root.ensure_stable_ids(generator, reserved, seen);
+                root.ensure_typed_stable_ids_inner(
+                    generator,
+                    reserved,
+                    seen,
+                    remapped_component_ids,
+                );
+            }
+        }
+        // Opaque nodes still have a structural id slot and participate in validation. Repair them
+        // only after typed components have claimed their ids.
+        for page in &mut self.pages {
+            if let Some(root) = page.component.as_mut() {
+                root.ensure_opaque_stable_ids_inner(
+                    generator,
+                    reserved,
+                    seen,
+                    remapped_component_ids,
+                );
             }
         }
     }
@@ -382,10 +565,8 @@ fn visit_opaque_node(value: &Value, visitor: &mut impl FnMut(&Map<String, Value>
         return;
     };
     visitor(object);
-    if let Some(children) = object.get("components").and_then(Value::as_array) {
-        for child in children {
-            visit_opaque_node(child, visitor);
-        }
+    if let Some(children) = object.get("components") {
+        visit_opaque_children(children, visitor);
     }
 }
 
@@ -432,11 +613,7 @@ fn remap_opaque_node(
                 }
             }
             "components" => {
-                if let Value::Array(children) = value {
-                    for child in children {
-                        remap_opaque_node(child, components, dom, attribute_ids, action_ids);
-                    }
-                }
+                remap_opaque_children(value, components, dom, attribute_ids, action_ids);
             }
             crate::FLY_ACTION_FIELD => remap_action_ids(value, action_ids),
             _ => {}
@@ -526,24 +703,86 @@ impl ComponentNode {
         reserved: &mut BTreeSet<String>,
         seen: &mut BTreeSet<String>,
     ) {
-        let Some(object) = self.as_object_mut() else {
+        let mut remapped_component_ids = BTreeMap::new();
+        self.ensure_typed_stable_ids_inner(
+            generator,
+            reserved,
+            seen,
+            &mut remapped_component_ids,
+        );
+        self.ensure_opaque_stable_ids_inner(
+            generator,
+            reserved,
+            seen,
+            &mut remapped_component_ids,
+        );
+        if !remapped_component_ids.is_empty() {
+            let mut dom_ids = Vec::new();
+            let mut form_ids = Vec::new();
+            self.collect_dom_ids(&mut dom_ids);
+            self.collect_form_ids(&mut form_ids);
+            let dom_mapping = identity_id_mapping(dom_ids.into_iter().chain(form_ids));
+            self.remap_ids_with_dom(&remapped_component_ids, &dom_mapping);
+        }
+    }
+
+    fn ensure_typed_stable_ids_inner(
+        &mut self,
+        generator: &mut impl IdGenerator,
+        reserved: &mut BTreeSet<String>,
+        seen: &mut BTreeSet<String>,
+        remapped_component_ids: &mut BTreeMap<String, String>,
+    ) {
+        let ComponentNode::Object(object) = self else {
             return;
         };
-        let current_id = object
-            .id
-            .as_deref()
-            .filter(|id| validate_identifier(id).is_ok());
-        let needs_new_id = current_id.is_none_or(|id| !seen.insert(id.to_string()));
-        if needs_new_id {
-            let hint = object.component_type.as_deref().unwrap_or("node");
-            let id = crate::id_reference::allocate_generated_id(generator, hint, reserved);
-            seen.insert(id.clone());
-            object.id = Some(id);
-        }
-        if let Some(children) = object.children_mut() {
+        ensure_component_object_id(object, generator, reserved, seen, remapped_component_ids);
+        if let ComponentChildren::Nodes(children) = &mut object.components {
             for child in children {
-                child.ensure_stable_ids(generator, reserved, seen);
+                child.ensure_typed_stable_ids_inner(
+                    generator,
+                    reserved,
+                    seen,
+                    remapped_component_ids,
+                );
             }
+        }
+    }
+
+    fn ensure_opaque_stable_ids_inner(
+        &mut self,
+        generator: &mut impl IdGenerator,
+        reserved: &mut BTreeSet<String>,
+        seen: &mut BTreeSet<String>,
+        remapped_component_ids: &mut BTreeMap<String, String>,
+    ) {
+        match self {
+            ComponentNode::Object(object) => match &mut object.components {
+                ComponentChildren::Nodes(children) => {
+                    for child in children {
+                        child.ensure_opaque_stable_ids_inner(
+                            generator,
+                            reserved,
+                            seen,
+                            remapped_component_ids,
+                        );
+                    }
+                }
+                ComponentChildren::Opaque(value) => ensure_opaque_children_stable_ids(
+                    value,
+                    generator,
+                    reserved,
+                    seen,
+                    remapped_component_ids,
+                ),
+            },
+            ComponentNode::Opaque(value) => ensure_opaque_node_stable_ids(
+                value,
+                generator,
+                reserved,
+                seen,
+                remapped_component_ids,
+            ),
         }
     }
 
@@ -1206,6 +1445,45 @@ mod tests {
             ids.push(target.to_string());
         }
         assert_ne!(ids[0], ids[1]);
+    }
+
+    #[test]
+    fn nested_object_opaque_children_are_repaired_and_references_are_remapped() {
+        let mut document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": {
+                        "id": "opaque-parent",
+                        "components": {
+                            "id": "invalid nested id",
+                            "flyAction": {
+                                "kind": "scroll_to",
+                                "target_id": "invalid nested id"
+                            }
+                        }
+                    }
+                }
+            }]
+        }))
+        .expect("document");
+
+        document.ensure_stable_ids(&mut crate::SequentialIdGenerator::new("repair"));
+
+        let root = document.project.pages[0]
+            .component
+            .as_ref()
+            .and_then(ComponentNode::as_object)
+            .expect("root");
+        let ComponentChildren::Opaque(parent) = &root.components else {
+            panic!("fixture must preserve opaque children")
+        };
+        let nested = &parent["components"];
+        let repaired_id = nested["id"].as_str().expect("repaired nested id");
+        assert_ne!(repaired_id, "invalid nested id");
+        assert_eq!(parent["flyAction"]["target_id"], repaired_id);
+        assert!(validate_identifier(repaired_id).is_ok());
     }
 
     #[test]

@@ -1,4 +1,4 @@
-//! Monotonic global security epochs for non-blocking quarantine and instant revocation.
+//! Monotonic global security epochs for transaction-bound transition preemption.
 //!
 //! Provides platform-wide preemption: when an artifact is quarantined or revoked,
 //! the global security epoch is monotonically advanced. All in-flight execution leases,
@@ -147,7 +147,7 @@ pub enum SecurityEpochStoreError {
     InvalidStoredEpoch(i64),
     #[error("security epoch row is missing (run the module security epoch migration)")]
     MissingRow,
-    #[error("security epoch advancement matched no row")]
+    #[error("security epoch advancement matched no valid, non-exhausted row")]
     AdvanceMatchedNoRow,
 }
 
@@ -235,6 +235,58 @@ impl SeaOrmSecurityEpochStore {
         ))
     }
 
+    /// Acquire the singleton after all required slug fences and before
+    /// transition/security domain writes. PostgreSQL SHARE conflicts with
+    /// the non-key UPDATE that advances the epoch; KEY SHARE would not.
+    /// SQLite explicitly reserves the writer before reading the snapshot.
+    async fn lock_on(
+        tx: &sea_orm::DatabaseTransaction,
+        exclusive: bool,
+    ) -> Result<(), SecurityEpochStoreError> {
+        use sea_orm::{ConnectionTrait, Statement};
+        let backend = SupportedBackend::new(tx.get_database_backend())
+            .map_err(|e| SecurityEpochStoreError::Persistence(e.to_string()))?;
+        if backend == SupportedBackend::Sqlite {
+            let result = tx.execute_raw(Statement::from_string(
+                backend.db_backend(),
+                "UPDATE module_security_epoch SET epoch = epoch WHERE singleton_id = 1",
+            )).await?;
+            if result.rows_affected() != 1 {
+                return Err(SecurityEpochStoreError::MissingRow);
+            }
+        }
+        let lock = match (backend, exclusive) {
+            (SupportedBackend::Postgres, true) => " FOR UPDATE",
+            (SupportedBackend::Postgres, false) => " FOR SHARE",
+            (SupportedBackend::Sqlite, _) => "",
+        };
+        let row = tx.query_one_raw(Statement::from_string(
+            backend.db_backend(),
+            format!("SELECT epoch FROM module_security_epoch WHERE singleton_id = 1{lock}"),
+        )).await?.ok_or(SecurityEpochStoreError::MissingRow)?;
+        let epoch: i64 = row.try_get("", "epoch")?;
+        if epoch < 1 {
+            return Err(SecurityEpochStoreError::InvalidStoredEpoch(epoch));
+        }
+        Ok(())
+    }
+
+    /// A snapshot whose epoch cannot change before the caller commits.
+    pub(crate) async fn load_registry_for_commit(
+        tx: &sea_orm::DatabaseTransaction,
+    ) -> Result<SecurityEpochRegistry, SecurityEpochStoreError> {
+        Self::lock_on(tx, false).await?;
+        Self::load_registry(tx).await
+    }
+
+    /// Security writers take the exclusive epoch lock before security state
+    /// writes, never upgrade a shared lock or acquire a new slug below it.
+    pub(crate) async fn lock_for_advance(
+        tx: &sea_orm::DatabaseTransaction,
+    ) -> Result<(), SecurityEpochStoreError> {
+        Self::lock_on(tx, true).await
+    }
+
     /// Durably advances the epoch by one and records `reason`. Callers run
     /// this in the same transaction as the quarantine/revocation write so
     /// preemption is atomic with the security decision.
@@ -253,27 +305,122 @@ impl SeaOrmSecurityEpochStore {
         let updated_at: sea_orm::Value = backend.datetime_value(now);
         let p1 = backend.placeholder(1);
         let p2 = backend.placeholder(2);
-        let result = db
-            .execute_raw(Statement::from_sql_and_values(
+        // Return the epoch assigned by this statement, not a later read.
+        // SQLite must not promote an exhausted INTEGER to REAL.
+        let type_guard = if backend == SupportedBackend::Sqlite {
+            " AND typeof(epoch) = 'integer'"
+        } else {
+            ""
+        };
+        let row = db
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "UPDATE module_security_epoch \
                      SET epoch = epoch + 1, last_reason = {p1}, updated_at = {p2} \
-                     WHERE singleton_id = 1"
+                     WHERE singleton_id = 1 AND epoch >= 1 AND epoch < 9223372036854775807{type_guard} \
+                     RETURNING epoch"
                 ),
                 [reason.to_string().into(), updated_at],
             ))
-            .await?;
-        if result.rows_affected() != 1 {
-            return Err(SecurityEpochStoreError::AdvanceMatchedNoRow);
-        }
-        Self::current(db).await
+            .await?
+            .ok_or(SecurityEpochStoreError::AdvanceMatchedNoRow)?;
+        let epoch: i64 = row.try_get("", "epoch")?;
+        u64::try_from(epoch)
+            .ok()
+            .filter(|value| *value >= 1)
+            .map(GlobalSecurityEpoch)
+            .ok_or(SecurityEpochStoreError::InvalidStoredEpoch(epoch))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn sqlite_epoch_exhaustion_does_not_mutate_the_witness() {
+        use sea_orm::{ConnectionTrait, Database};
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE module_security_epoch (singleton_id INTEGER PRIMARY KEY,
+                epoch INTEGER NOT NULL, last_reason TEXT NOT NULL, updated_at TEXT NOT NULL);
+             INSERT INTO module_security_epoch VALUES
+                (1, 9223372036854775807, 'last', '1970-01-01T00:00:00+00:00')"
+        ).await.unwrap();
+        assert!(matches!(
+            SeaOrmSecurityEpochStore::advance(&db, "overflow", Utc::now()).await,
+            Err(SecurityEpochStoreError::AdvanceMatchedNoRow)
+        ));
+        let record = SeaOrmSecurityEpochStore::load_record(&db).await.unwrap();
+        assert_eq!(record.epoch, GlobalSecurityEpoch(i64::MAX as u64));
+        assert_eq!(record.reason, "last");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_MODULES_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_epoch_commit_fence_serializes_advancement_in_both_orders() {
+        use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DatabaseTransaction, DbBackend};
+        use std::time::Duration;
+
+        async fn transaction(db: &DatabaseConnection, schema: &str) -> DatabaseTransaction {
+            let tx = crate::backend::begin_fenced_transaction(db).await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+            tx
+        }
+
+        let db = Database::connect(std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").unwrap()).await.unwrap();
+        assert_eq!(db.get_database_backend(), DbBackend::Postgres);
+        let schema = format!("security_epoch_test_{}", uuid::Uuid::new_v4().simple());
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
+        let setup = transaction(&db, &schema).await;
+        setup.execute_unprepared(
+            "CREATE TABLE module_security_epoch (singleton_id INTEGER PRIMARY KEY,
+                epoch BIGINT NOT NULL, last_reason TEXT NOT NULL, updated_at TIMESTAMPTZ NOT NULL);
+             INSERT INTO module_security_epoch VALUES (1, 1, 'initial', now())"
+        ).await.unwrap();
+        setup.commit().await.unwrap();
+
+        let reader = transaction(&db, &schema).await;
+        let snapshot = SeaOrmSecurityEpochStore::load_registry_for_commit(&reader).await.unwrap();
+        assert_eq!(snapshot.current_epoch(), GlobalSecurityEpoch(1));
+        let writer_db = db.clone();
+        let writer_schema = schema.clone();
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let mut writer = tokio::spawn(async move {
+            let tx = transaction(&writer_db, &writer_schema).await;
+            ready_tx.send(()).unwrap();
+            SeaOrmSecurityEpochStore::lock_for_advance(&tx).await.unwrap();
+            let next = SeaOrmSecurityEpochStore::advance(&tx, "quarantine", Utc::now()).await.unwrap();
+            tx.commit().await.unwrap();
+            next
+        });
+        ready_rx.await.unwrap();
+        assert!(tokio::time::timeout(Duration::from_millis(150), &mut writer).await.is_err());
+        reader.commit().await.unwrap();
+        assert_eq!(tokio::time::timeout(Duration::from_secs(5), writer).await.unwrap().unwrap(), GlobalSecurityEpoch(2));
+
+        let writer = transaction(&db, &schema).await;
+        SeaOrmSecurityEpochStore::lock_for_advance(&writer).await.unwrap();
+        SeaOrmSecurityEpochStore::advance(&writer, "revoke", Utc::now()).await.unwrap();
+        let reader_db = db.clone();
+        let reader_schema = schema.clone();
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let mut reader = tokio::spawn(async move {
+            let tx = transaction(&reader_db, &reader_schema).await;
+            ready_tx.send(()).unwrap();
+            let snapshot = SeaOrmSecurityEpochStore::load_registry_for_commit(&tx).await.unwrap();
+            tx.rollback().await.unwrap();
+            snapshot
+        });
+        ready_rx.await.unwrap();
+        assert!(tokio::time::timeout(Duration::from_millis(150), &mut reader).await.is_err());
+        writer.commit().await.unwrap();
+        let snapshot = tokio::time::timeout(Duration::from_secs(5), reader).await.unwrap().unwrap();
+        assert_eq!(snapshot.current_epoch(), GlobalSecurityEpoch(3));
+        assert!(snapshot.validate_epoch(GlobalSecurityEpoch(2)).is_err());
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+    }
 
     #[test]
     fn test_security_epoch_lifecycle() {

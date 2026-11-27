@@ -90,6 +90,13 @@ mod m20261117_000092_delivery_claim_tokens;
 pub(crate) mod m20261117_000093_settings_claim_fences;
 pub(crate) mod m20261127_000094_artifact_deployment_readiness;
 mod m20261127_000095_artifact_selection_generation;
+pub(crate) mod m20261127_000096_registry_release_authority;
+pub(crate) mod m20261127_000097_operational_maintenance_authority;
+mod m20261127_000098_registry_platform_lock_order;
+mod m20261127_000099_registry_release_fk_fences;
+mod m20261127_000100_registry_request_fk_fences;
+mod m20261127_000101_registry_authority_witness_integrity;
+mod m20261127_000102_security_epoch_integrity;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -187,6 +194,13 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261117_000093_settings_claim_fences::Migration),
         Box::new(m20261127_000094_artifact_deployment_readiness::Migration),
         Box::new(m20261127_000095_artifact_selection_generation::Migration),
+        Box::new(m20261127_000096_registry_release_authority::Migration),
+        Box::new(m20261127_000097_operational_maintenance_authority::Migration),
+        Box::new(m20261127_000098_registry_platform_lock_order::Migration),
+        Box::new(m20261127_000099_registry_release_fk_fences::Migration),
+        Box::new(m20261127_000100_registry_request_fk_fences::Migration),
+        Box::new(m20261127_000101_registry_authority_witness_integrity::Migration),
+        Box::new(m20261127_000102_security_epoch_integrity::Migration),
     ]
 }
 

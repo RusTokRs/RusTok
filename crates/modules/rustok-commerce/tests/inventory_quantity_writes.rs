@@ -648,7 +648,7 @@ async fn quantity_bootstrap_hook_never_commits_independently_of_caller_rollback(
     let f = fixture(&db, &catalog).await;
     let before = snapshot(&db).await;
     let txn = db.begin().await.unwrap();
-    BootstrapService::update_initial_quantity_in_tx(&txn, f.tenant, f.actor, f.variant, 3)
+    BootstrapService::update_initial_quantity_in_tx(&txn, f.tenant, f.actor, f.variant, 3, 0)
         .await
         .unwrap();
     assert_eq!(

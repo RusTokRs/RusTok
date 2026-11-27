@@ -156,7 +156,17 @@ pub(crate) fn ensure_rbac_invalidation_generation_state(
 pub(crate) async fn reserve_rbac_invalidation_generation(db: &DatabaseTransaction) -> Result<u64> {
     rustok_rbac::reserve_permission_invalidation_generation(db)
         .await
-        .map_err(|error| Error::Cache(error.to_string()))
+        .map_err(reservation_error)
+}
+
+// Preserve the driver error until the transaction owner decides whether a
+// complete rollback and fresh attempt are safe. Recovery reads retain their
+// existing cache diagnostic contract and never enter the write retry path.
+fn reservation_error(error: rustok_rbac::RbacInvalidationGenerationError) -> Error {
+    match error {
+        rustok_rbac::RbacInvalidationGenerationError::Database(error) => Error::Database(error),
+        other => Error::Cache(other.to_string()),
+    }
 }
 
 pub(crate) async fn read_rbac_invalidation_generation<C>(db: &C) -> Result<u64>
@@ -417,6 +427,28 @@ mod tests {
         assert_eq!(state.observe_applied(4), 4);
         assert_eq!(state.observe_applied(5), 5);
         assert_eq!(state.current(), Some(5));
+    }
+
+    #[test]
+    fn reservation_preserves_database_error_without_classifying_text() {
+        let error = super::reservation_error(
+            rustok_rbac::RbacInvalidationGenerationError::Database(
+                sea_orm::DbErr::Custom("55P03".into()),
+            ),
+        );
+        let Error::Database(error) = error else {
+            panic!("reservation must preserve the database error");
+        };
+        assert_eq!(
+            rustok_core::resilience::retry::PostgresTransactionConflict::classify(
+                sea_orm::DbBackend::Postgres, &error,
+            ),
+            None
+        );
+        assert!(matches!(
+            super::reservation_error(rustok_rbac::RbacInvalidationGenerationError::MissingOrExhausted),
+            Error::Cache(_)
+        ));
     }
 
     #[test]

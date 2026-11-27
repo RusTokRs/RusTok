@@ -13,6 +13,16 @@ use crate::error::FieldError;
 use crate::field::{FieldDescriptor, FieldKind};
 use crate::validation::rules;
 
+/// Values submitted by schema-driven forms. Scalar and multiple-selection values are distinct;
+/// native file handles remain adapter-specific and are not yet supported by this payload.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DynamicFormPayload {
+    /// Text, numeric and boolean values, keyed by field name.
+    pub values: HashMap<String, String>,
+    /// Ordered selected option values, keyed by multiple-select field name.
+    pub selections: HashMap<String, Vec<String>>,
+}
+
 /// Declarative schema holding the collection of all fields in a form.
 ///
 /// # Example
@@ -119,9 +129,20 @@ impl FormSchema {
             // 1. Check required
             if field.constraints.required {
                 let val_str = value.unwrap_or("");
-                if let Err(e) =
-                    rules::required(&field.name, val_str, format!("{} is required", field.name))
-                {
+                let required_result =
+                    if matches!(field.kind, FieldKind::Checkbox | FieldKind::Switch) {
+                        if matches!(val_str.trim(), "true" | "1") {
+                            Ok(())
+                        } else {
+                            Err(FieldError::new(
+                                &field.name,
+                                format!("{} is required", field.name),
+                            ))
+                        }
+                    } else {
+                        rules::required(&field.name, val_str, format!("{} is required", field.name))
+                    };
+                if let Err(e) = required_result {
                     errors.push(e);
                     // Skip further checks if missing and required
                     continue;
@@ -182,7 +203,14 @@ impl FormSchema {
                     }
                 }
                 FieldKind::Number | FieldKind::Range => {
-                    if let Ok(num) = val_str.parse::<f64>() {
+                    if let Ok(num) = val_str.trim().parse::<f64>() {
+                        if !num.is_finite() {
+                            errors.push(FieldError::new(
+                                &field.name,
+                                "Must be a valid numeric value",
+                            ));
+                            continue;
+                        }
                         if let Some(min) = field.constraints.min {
                             if let Err(e) = rules::min(
                                 &field.name,
@@ -231,21 +259,81 @@ impl FormSchema {
         errors
     }
 
+    /// Validate a dynamic-form payload, including every multiple-selection value.
+    /// File fields are rejected until adapters can transport native file handles.
+    pub fn validate_dynamic_form(&self, data: &DynamicFormPayload) -> Vec<FieldError> {
+        let mut errors = self.validate_map(&data.values);
+        for field in &self.fields {
+            if field.is_multiple_select() {
+                errors.retain(|error| error.field != field.name);
+                if data.values.contains_key(&field.name) {
+                    errors.push(FieldError::new(
+                        &field.name,
+                        "Multiple selections must use the selections payload",
+                    ));
+                    continue;
+                }
+                let selected = data
+                    .selections
+                    .get(&field.name)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                if field.constraints.required && selected.is_empty() {
+                    errors.push(FieldError::new(
+                        &field.name,
+                        format!("{} is required", field.name),
+                    ));
+                    continue;
+                }
+                let mut seen = std::collections::HashSet::new();
+                if selected.iter().any(|value| {
+                    !seen.insert(value)
+                        || !field
+                            .options
+                            .iter()
+                            .any(|option| !option.disabled && option.value == *value)
+                }) {
+                    errors.push(FieldError::new(
+                        &field.name,
+                        "Invalid multiple-selection value",
+                    ));
+                }
+            } else if !field.supports_dynamic_form() {
+                errors.retain(|error| error.field != field.name);
+                errors.push(FieldError::new(
+                    &field.name,
+                    "This dynamic form does not support file fields",
+                ));
+            }
+        }
+        for name in data.selections.keys() {
+            if !self
+                .get_field(name)
+                .is_some_and(FieldDescriptor::is_multiple_select)
+            {
+                errors.push(FieldError::new(name, "Unexpected multiple-selection field"));
+            }
+        }
+        errors
+    }
+
     /// Validate a JSON object (`serde_json::Value`) against this schema.
+    /// Non-object inputs produce a form-level error.
     pub fn validate_json(&self, json: &serde_json::Value) -> Vec<FieldError> {
         let mut map = HashMap::new();
 
-        if let Some(obj) = json.as_object() {
-            for (k, v) in obj {
-                let str_val = match v {
-                    serde_json::Value::String(s) => s.clone(),
-                    serde_json::Value::Number(n) => n.to_string(),
-                    serde_json::Value::Bool(b) => b.to_string(),
-                    serde_json::Value::Null => String::new(),
-                    other => other.to_string(),
-                };
-                map.insert(k.clone(), str_val);
-            }
+        let Some(obj) = json.as_object() else {
+            return vec![FieldError::form("Expected a JSON object")];
+        };
+        for (k, v) in obj {
+            let str_val = match v {
+                serde_json::Value::String(s) => s.clone(),
+                serde_json::Value::Number(n) => n.to_string(),
+                serde_json::Value::Bool(b) => b.to_string(),
+                serde_json::Value::Null => String::new(),
+                other => other.to_string(),
+            };
+            map.insert(k.clone(), str_val);
         }
 
         self.validate_map(&map)
@@ -256,6 +344,87 @@ impl FormSchema {
 mod tests {
     use super::*;
     use crate::field::FieldOption;
+
+    #[test]
+    fn dynamic_schema_rejects_unrepresentable_payloads_and_invalid_values() {
+        let schema = FormSchema::new("example")
+            .with_field(FieldDescriptor::new("consent", FieldKind::Checkbox).required())
+            .with_field(FieldDescriptor::new("enabled", FieldKind::Switch).required())
+            .with_field(FieldDescriptor::new("number", FieldKind::Number));
+        let mut data = HashMap::from([
+            ("consent".to_string(), "false".to_string()),
+            ("enabled".to_string(), "0".to_string()),
+            ("number".to_string(), "NaN".to_string()),
+        ]);
+        assert_eq!(schema.validate_map(&data).len(), 3);
+        data.insert("consent".into(), "true".into());
+        data.insert("enabled".into(), "1".into());
+        for number in ["inf", "-inf", "1e9999"] {
+            data.insert("number".into(), number.into());
+            assert_eq!(schema.validate_map(&data).len(), 1);
+        }
+        data.insert("number".into(), "42".into());
+        assert!(schema.validate_map(&data).is_empty());
+
+        let unsupported = FormSchema::new("unsupported")
+            .with_field(FieldDescriptor::new("attachment", FieldKind::File))
+            .with_field(
+                FieldDescriptor::new("tags", FieldKind::Select)
+                    .constraints(crate::field::FieldConstraints::new().multiple(true)),
+            );
+        let errors = unsupported.validate_dynamic_form(&DynamicFormPayload::default());
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].field, "attachment");
+    }
+
+    #[test]
+    fn dynamic_multiple_select_validates_required_options_and_payload_shape() {
+        let schema = FormSchema::new("test").with_field(
+            FieldDescriptor::new("tags", FieldKind::Select)
+                .multiple(true)
+                .required()
+                .options(vec![
+                    FieldOption::new("a", "A"),
+                    FieldOption::new("b", "B"),
+                    FieldOption::new("disabled", "Disabled").disabled(),
+                ]),
+        );
+        let mut payload = DynamicFormPayload::default();
+        assert_eq!(schema.validate_dynamic_form(&payload).len(), 1);
+        payload
+            .selections
+            .insert("tags".into(), vec!["a".into(), "b".into()]);
+        assert!(schema.validate_dynamic_form(&payload).is_empty());
+        for values in [vec!["a", "a"], vec!["missing"], vec!["disabled"]] {
+            payload.selections.insert(
+                "tags".into(),
+                values.into_iter().map(str::to_string).collect(),
+            );
+            assert_eq!(schema.validate_dynamic_form(&payload).len(), 1);
+        }
+        payload.selections.insert("tags".into(), vec!["a".into()]);
+        payload.values.insert("tags".into(), "b".into());
+        assert_eq!(schema.validate_dynamic_form(&payload).len(), 1);
+        payload.values.clear();
+        payload.selections.insert("other".into(), vec!["a".into()]);
+        assert_eq!(schema.validate_dynamic_form(&payload).len(), 1);
+    }
+
+    #[test]
+    fn json_validation_rejects_non_objects_even_for_optional_fields() {
+        let schema =
+            FormSchema::new("example").with_field(FieldDescriptor::new("name", FieldKind::Text));
+        for input in [
+            serde_json::json!(null),
+            serde_json::json!([]),
+            serde_json::json!(42),
+        ] {
+            let errors = schema.validate_json(&input);
+            assert_eq!(errors.len(), 1);
+            assert!(errors[0].is_form_level());
+        }
+        assert!(schema.validate_json(&serde_json::json!({})).is_empty());
+    }
 
     #[test]
     fn test_schema_builder_and_validation() {

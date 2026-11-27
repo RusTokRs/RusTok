@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use reqwest::{Client, Method};
@@ -45,13 +46,15 @@ impl ArtifactHttpCapabilityBroker {
         timeout: Duration,
         max_response_bytes: usize,
     ) -> SandboxResult<Self> {
-        // The restricted client is this capability's SSRF boundary (no
-        // redirects, caller-set timeout): a construction failure must
-        // surface, never silently substitute the default client.
+        if timeout.is_zero() || max_response_bytes == 0 {
+            return Err(SandboxError::InvalidRequest(
+                "HTTP capability timeout and response limit must be positive".to_string(),
+            ));
+        }
+        // Process/system proxies must not redirect a DNS-pinned request through
+        // a proxy that performs its own destination lookup.
         let capability = CapabilityName::new("platform.http")?;
-        let client = Client::builder()
-            .timeout(timeout)
-            .redirect(reqwest::redirect::Policy::none())
+        let client = restricted_http_client_builder(timeout)
             .build()
             .map_err(|error| SandboxError::HostCapability {
                 capability: capability.clone(),
@@ -135,17 +138,83 @@ fn is_disallowed_hostname(host: &str) -> bool {
         || lower.ends_with(".lan")
 }
 
+/// Builds the one restricted client policy used for both shared and
+/// DNS-pinned destinations. Disabling process/system proxies is essential:
+/// otherwise reqwest may send the URL to a proxy which performs its own DNS
+/// lookup, bypassing the validated and pinned destination address.
+fn restricted_http_client_builder(timeout: Duration) -> reqwest::ClientBuilder {
+    Client::builder()
+        .timeout(timeout)
+        .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
+}
+
+/// Resolves one hostname within the remaining capability deadline. The generic
+/// future keeps timeout behavior deterministic in tests without mutating global
+/// resolver configuration.
+async fn resolve_dns_with_timeout<F, I>(
+    host: &str,
+    capability: &CapabilityName,
+    timeout: Duration,
+    lookup: F,
+) -> SandboxResult<Vec<SocketAddr>>
+where
+    F: Future<Output = std::io::Result<I>>,
+    I: IntoIterator<Item = SocketAddr>,
+{
+    let addrs = tokio::time::timeout(timeout, lookup)
+        .await
+        .map_err(|_| SandboxError::HostCapability {
+            capability: capability.clone(),
+            message: format!("HTTP destination host `{host}` DNS lookup timed out"),
+        })?
+        .map_err(|error| SandboxError::HostCapability {
+            capability: capability.clone(),
+            message: format!("HTTP destination host `{host}` could not be resolved: {error}"),
+        })?
+        .into_iter()
+        .collect::<Vec<_>>();
+    if addrs.is_empty() {
+        return Err(SandboxError::HostCapability {
+            capability: capability.clone(),
+            message: format!("HTTP destination host `{host}` resolved to no addresses"),
+        });
+    }
+    Ok(addrs)
+}
+
+fn remaining_request_timeout(
+    started_at: Instant,
+    timeout: Duration,
+    capability: &CapabilityName,
+) -> SandboxResult<Duration> {
+    timeout
+        .checked_sub(started_at.elapsed())
+        .filter(|remaining| !remaining.is_zero())
+        .ok_or_else(|| SandboxError::HostCapability {
+            capability: capability.clone(),
+            message: "HTTP capability deadline elapsed before request dispatch".to_string(),
+        })
+}
+
+fn response_body_len_within_limit(current: usize, chunk: usize, limit: usize) -> bool {
+    current
+        .checked_add(chunk)
+        .is_some_and(|next| next <= limit)
+}
+
 /// Validates the destination and, for hostnames, resolves it exactly once so
 /// the caller can pin the request to the validated address.
 ///
-/// Resolution is fail-closed: a lookup error or an empty answer rejects the
-/// call instead of skipping the SSRF check, and any disallowed address in
+/// Resolution is fail-closed: a lookup error, timeout or empty answer rejects
+/// the call instead of skipping the SSRF check, and any disallowed address in
 /// the answer rejects the whole call. Pinning the returned address closes
 /// the DNS-rebinding gap between a check-time lookup and reqwest's own
 /// resolution. Returns `None` for IP-literal destinations (no DNS involved).
 async fn resolve_public_target(
     url: &Url,
     capability: &CapabilityName,
+    timeout: Duration,
 ) -> SandboxResult<Option<(String, SocketAddr)>> {
     let host = url
         .host_str()
@@ -173,13 +242,13 @@ async fn resolve_public_target(
     }
 
     let port = url.port_or_known_default().unwrap_or(443);
-    let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host, port))
-        .await
-        .map_err(|error| SandboxError::HostCapability {
-            capability: capability.clone(),
-            message: format!("HTTP destination host `{host}` could not be resolved: {error}"),
-        })?
-        .collect();
+    let addrs = resolve_dns_with_timeout(
+        host,
+        capability,
+        timeout,
+        tokio::net::lookup_host((host, port)),
+    )
+    .await?;
     let first = addrs.first().ok_or_else(|| SandboxError::HostCapability {
         capability: capability.clone(),
         message: format!("HTTP destination host `{host}` resolved to no addresses"),
@@ -243,14 +312,19 @@ impl CapabilityBroker for ArtifactHttpCapabilityBroker {
             }
         };
 
+        // DNS resolution and the HTTP exchange share one deadline. The
+        // request receives only the time left after the bounded DNS lookup.
+        let started_at = Instant::now();
+        let target =
+            resolve_public_target(&parsed_url, &call.capability, self.timeout).await?;
+        let remaining_timeout =
+            remaining_request_timeout(started_at, self.timeout, &call.capability)?;
+
         // Pin hostname destinations to the address validated above so the
         // connection cannot be rebound to a different (private) address by
-        // a second DNS answer. IP-literal destinations use the shared
-        // client; their address was validated directly.
-        let client = match resolve_public_target(&parsed_url, &call.capability).await? {
-            Some((host, addr)) => Client::builder()
-                .timeout(self.timeout)
-                .redirect(reqwest::redirect::Policy::none())
+        // a second DNS answer. Both clients use the same no-proxy policy.
+        let client = match target {
+            Some((host, addr)) => restricted_http_client_builder(remaining_timeout)
                 .resolve(&host, addr)
                 .build()
                 .map_err(|error| SandboxError::HostCapability {
@@ -260,7 +334,7 @@ impl CapabilityBroker for ArtifactHttpCapabilityBroker {
             None => self.client.clone(),
         };
 
-        let mut request_builder = client.request(method, url_str).timeout(self.timeout);
+        let mut request_builder = client.request(method, url_str).timeout(remaining_timeout);
 
         if let Some(headers_obj) = input.get("headers").and_then(Value::as_object) {
             for (key, val) in headers_obj {
@@ -341,7 +415,11 @@ impl CapabilityBroker for ArtifactHttpCapabilityBroker {
                     message: format!("reading HTTP response body failed: {err}"),
                 })?
         {
-            if bytes.len() + chunk.len() > self.max_response_bytes {
+            if !response_body_len_within_limit(
+                bytes.len(),
+                chunk.len(),
+                self.max_response_bytes,
+            ) {
                 return Err(SandboxError::HostCapability {
                     capability: call.capability.clone(),
                     message: format!(
@@ -406,6 +484,58 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactHttpCapabilityBrokerReso
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn http_capability_rejects_zero_timeout_and_response_limit() {
+        assert!(matches!(
+            ArtifactHttpCapabilityBroker::with_timeout_and_limit(Duration::ZERO, 1),
+            Err(SandboxError::InvalidRequest(_))
+        ));
+        assert!(matches!(
+            ArtifactHttpCapabilityBroker::with_timeout_and_limit(Duration::from_secs(1), 0),
+            Err(SandboxError::InvalidRequest(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn dns_lookup_is_bounded_by_the_capability_timeout() {
+        let capability = CapabilityName::new("platform.http").expect("capability");
+        let result = resolve_dns_with_timeout(
+            "example.com",
+            &capability,
+            Duration::from_millis(1),
+            std::future::pending::<std::io::Result<Vec<SocketAddr>>>(),
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(SandboxError::HostCapability { message, .. })
+                if message.contains("DNS lookup timed out")
+        ));
+    }
+
+    #[test]
+    fn dns_and_request_share_one_nonzero_deadline() {
+        let capability = CapabilityName::new("platform.http").expect("capability");
+        assert!(
+            remaining_request_timeout(Instant::now(), Duration::from_secs(1), &capability)
+                .is_ok()
+        );
+        let expired = Instant::now() - Duration::from_secs(2);
+        assert!(matches!(
+            remaining_request_timeout(expired, Duration::from_secs(1), &capability),
+            Err(SandboxError::HostCapability { message, .. })
+                if message.contains("deadline elapsed")
+        ));
+    }
+
+    #[test]
+    fn response_body_limit_check_cannot_overflow() {
+        assert!(response_body_len_within_limit(8, 2, 10));
+        assert!(!response_body_len_within_limit(8, 3, 10));
+        assert!(!response_body_len_within_limit(usize::MAX, 1, usize::MAX));
+    }
 
     #[test]
     fn transition_prefixes_cannot_smuggle_private_ipv4() {

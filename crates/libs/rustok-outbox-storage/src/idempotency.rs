@@ -1,11 +1,13 @@
 //! Durable, owner-scoped idempotency receipts for write-like port operations.
 
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, FixedOffset};
+#[cfg(test)]
+use chrono::Utc;
 use rustok_api::PortError;
 use rustok_core::generate_id;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbErr,
-    EntityTrait, QueryFilter, QuerySelect, Set,
+    EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -50,6 +52,7 @@ mod entity {
 /// Checks that the database role can read the receipt schema without reading any stored receipts.
 pub async fn verify_readable_schema(connection: &impl ConnectionTrait) -> Result<(), DbErr> {
     entity::Entity::find().limit(0).all(connection).await?;
+    crate::database_now(connection).await?;
     Ok(())
 }
 
@@ -163,7 +166,9 @@ pub async fn admit<T: Serialize>(
         return inspect_or_reclaim(database, existing, &operation, &request_hash).await;
     }
 
-    let now = Utc::now().fixed_offset();
+    crate::observe_database_clock(database).await.map_err(database_error)?;
+    let txn = database.begin().await.map_err(database_error)?;
+    let now = crate::database_now(&txn).await.map_err(database_error)?.fixed_offset();
     let id = generate_id();
     let lease_token = generate_id();
     let insert = entity::ActiveModel {
@@ -182,30 +187,90 @@ pub async fn admit<T: Serialize>(
         updated_at: Set(now),
         completed_at: Set(None),
     }
-    .insert(database)
+    .insert(&txn)
     .await;
 
     match insert {
-        Ok(_) => Ok(Admission::Run(Lease {
-            operation_id: id,
-            token: lease_token,
-        })),
+        Ok(_) => {
+            // Stamp after a possible unique-index wait.
+            let now = crate::database_now(&txn).await.map_err(database_error)?.fixed_offset();
+            let updated = entity::Entity::update_many()
+                .col_expr(entity::Column::CreatedAt, sea_orm::sea_query::Expr::value(now))
+                .col_expr(entity::Column::UpdatedAt, sea_orm::sea_query::Expr::value(now))
+                .filter(entity::Column::Id.eq(id))
+                .filter(entity::Column::LeaseToken.eq(lease_token))
+                .exec(&txn).await.map_err(database_error)?;
+            if updated.rows_affected != 1 {
+                txn.rollback().await.map_err(database_error)?;
+                return Err(lease_lost());
+            }
+            txn.commit().await.map_err(database_error)?;
+            Ok(Admission::Run(Lease { operation_id: id, token: lease_token }))
+        }
         Err(error) if is_unique_constraint(&error) => {
+            txn.rollback().await.map_err(database_error)?;
             let existing = find(database, &scope_key, &owner_slug, &idempotency_key)
                 .await?
                 .ok_or_else(|| database_error(error))?;
             inspect_or_reclaim(database, existing, &operation, &request_hash).await
         }
-        Err(error) => Err(database_error(error)),
+        Err(error) => {
+            txn.rollback().await.map_err(database_error)?;
+            Err(database_error(error))
+        }
     }
+}
+
+fn lease_lost() -> PortError {
+    PortError::unavailable(
+        "outbox.operation_receipt_lease_lost",
+        "receipt is no longer live and owned by this worker",
+    )
+}
+
+fn lease_is_live(updated_at: DateTime<FixedOffset>, now: DateTime<FixedOffset>) -> bool {
+    updated_at <= now
+        && now.signed_duration_since(updated_at) < Duration::minutes(PROCESSING_LEASE_MINUTES)
+}
+
+// First acquire write ownership; only then sample time. This also works
+// for SQLite, whose writer serialization replaces PostgreSQL row locking.
+async fn lock_processing(
+    txn: &DatabaseTransaction,
+    lease: Lease,
+) -> Result<Option<(entity::Model, DateTime<FixedOffset>)>, PortError> {
+    let update = entity::Entity::update_many()
+        .col_expr(entity::Column::LeaseToken, sea_orm::sea_query::Expr::value(lease.token))
+        .filter(entity::Column::Id.eq(lease.operation_id))
+        .filter(entity::Column::LeaseToken.eq(lease.token))
+        .filter(entity::Column::Status.eq(STATUS_PROCESSING))
+        .exec(txn).await.map_err(database_error)?;
+    if update.rows_affected != 1 {
+        return Ok(None);
+    }
+    let row = entity::Entity::find_by_id(lease.operation_id)
+        .one(txn).await.map_err(database_error)?
+        .ok_or_else(lease_lost)?;
+    let now = crate::database_now(txn).await.map_err(database_error)?.fixed_offset();
+    Ok(Some((row, now)))
+}
+
+async fn live_processing_time(
+    txn: &DatabaseTransaction,
+    lease: Lease,
+) -> Result<Option<DateTime<FixedOffset>>, PortError> {
+    Ok(lock_processing(txn, lease).await?
+        .filter(|(row, now)| lease_is_live(row.updated_at, *now))
+        .map(|(_, now)| now))
 }
 
 /// Locks and verifies a processing receipt inside an owner transaction.
 ///
 /// This must precede the owner's aggregate lock whenever receipt reclamation
 /// and aggregate ownership are coordinated. The row lock remains held until
-/// transaction end; a reclaimed or terminal receipt cannot acquire it. This
-/// does not itself extend the receipt lease or fence external side effects.
+/// transaction end. Expired, reclaimed or terminal receipts cannot acquire
+/// live authority. This does not renew the lease; the owner must roll back
+/// on error and finish before expiry. External effects require idempotency.
 pub async fn lock_current(
     transaction: &DatabaseTransaction,
     lease: Lease,
@@ -216,22 +281,8 @@ pub async fn lock_current(
             "lease operation_id and token must not be nil",
         ));
     }
-    let update = entity::Entity::update_many()
-        .col_expr(
-            entity::Column::LeaseToken,
-            sea_orm::sea_query::Expr::value(lease.token),
-        )
-        .filter(entity::Column::Id.eq(lease.operation_id))
-        .filter(entity::Column::LeaseToken.eq(lease.token))
-        .filter(entity::Column::Status.eq(STATUS_PROCESSING))
-        .exec(transaction)
-        .await
-        .map_err(database_error)?;
-    if update.rows_affected != 1 {
-        return Err(PortError::unavailable(
-            "outbox.operation_receipt_lease_lost",
-            "receipt is no longer owned by this worker",
-        ));
+    if live_processing_time(transaction, lease).await?.is_none() {
+        return Err(lease_lost());
     }
     Ok(())
 }
@@ -251,31 +302,32 @@ pub async fn renew_lease(database: &DatabaseConnection, lease: Lease) -> Result<
             "lease operation_id and token must not be nil",
         ));
     }
-    let now = Utc::now().fixed_offset();
+    crate::observe_database_clock(database).await.map_err(database_error)?;
+    let txn = database.begin().await.map_err(database_error)?;
+    let Some(now) = live_processing_time(&txn, lease).await? else {
+        txn.rollback().await.map_err(database_error)?;
+        return Err(lease_lost());
+    };
     let update = entity::Entity::update_many()
-        .col_expr(
-            entity::Column::UpdatedAt,
-            sea_orm::sea_query::Expr::value(now),
-        )
+        .col_expr(entity::Column::UpdatedAt, sea_orm::sea_query::Expr::value(now))
         .filter(entity::Column::Id.eq(lease.operation_id))
         .filter(entity::Column::LeaseToken.eq(lease.token))
         .filter(entity::Column::Status.eq(STATUS_PROCESSING))
-        .exec(database)
+        .exec(&txn)
         .await
         .map_err(database_error)?;
     if update.rows_affected != 1 {
-        return Err(PortError::unavailable(
-            "outbox.operation_receipt_lease_lost",
-            "receipt is no longer owned by this worker",
-        ));
+        txn.rollback().await.map_err(database_error)?;
+        return Err(lease_lost());
     }
+    txn.commit().await.map_err(database_error)?;
     Ok(())
 }
 
 /// Stores a successful response inside the caller's owner transaction.
 pub async fn complete<C, T>(connection: &C, lease: Lease, response: &T) -> Result<(), PortError>
 where
-    C: ConnectionTrait,
+    C: ConnectionTrait + TransactionTrait,
     T: Serialize,
 {
     if lease.operation_id.is_nil() || lease.token.is_nil() {
@@ -287,7 +339,13 @@ where
     let response = serde_json::to_value(response).map_err(|error| {
         PortError::invariant_violation("outbox.operation_receipt_encode", error.to_string())
     })?;
-    let now = Utc::now().fixed_offset();
+    let txn = connection.begin().await.map_err(database_error)?;
+    let Some(now) = live_processing_time(&txn, lease).await? else {
+        txn.rollback().await.map_err(database_error)?;
+        return Err(PortError::unavailable(
+            "outbox.operation_receipt_state_invalid", "receipt is no longer live and owned by this worker",
+        ));
+    };
     let update = entity::Entity::update_many()
         .col_expr(
             entity::Column::Status,
@@ -312,11 +370,12 @@ where
         .filter(entity::Column::Id.eq(lease.operation_id))
         .filter(entity::Column::LeaseToken.eq(lease.token))
         .filter(entity::Column::Status.eq(STATUS_PROCESSING))
-        .exec(connection)
+        .exec(&txn)
         .await
         .map_err(database_error)?;
 
     if update.rows_affected != 1 {
+        txn.rollback().await.map_err(database_error)?;
         // A stale worker cannot know whether a newer lease holder already completed, failed, or
         // reclaimed this receipt. Its caller must retry and let a later admission replay the
         // durable outcome or reclaim processing ownership; reporting a terminal invariant here
@@ -326,6 +385,7 @@ where
             "owner operation receipt was not processing during completion",
         ));
     }
+    txn.commit().await.map_err(database_error)?;
     Ok(())
 }
 
@@ -333,7 +393,7 @@ where
 /// back. A replay returns the same typed failure instead of rerunning work.
 pub async fn fail<C>(connection: &C, lease: Lease, error: &PortError) -> Result<(), PortError>
 where
-    C: ConnectionTrait,
+    C: ConnectionTrait + TransactionTrait,
 {
     if lease.operation_id.is_nil() || lease.token.is_nil() {
         return Err(PortError::validation(
@@ -347,7 +407,13 @@ where
             encoding_error.to_string(),
         )
     })?;
-    let now = Utc::now().fixed_offset();
+    let txn = connection.begin().await.map_err(database_error)?;
+    let Some(now) = live_processing_time(&txn, lease).await? else {
+        txn.rollback().await.map_err(database_error)?;
+        return Err(PortError::unavailable(
+            "outbox.operation_receipt_state_invalid", "receipt is no longer live and owned by this worker",
+        ));
+    };
     let update = entity::Entity::update_many()
         .col_expr(
             entity::Column::Status,
@@ -368,11 +434,12 @@ where
         .filter(entity::Column::Id.eq(lease.operation_id))
         .filter(entity::Column::LeaseToken.eq(lease.token))
         .filter(entity::Column::Status.eq(STATUS_PROCESSING))
-        .exec(connection)
+        .exec(&txn)
         .await
         .map_err(database_error)?;
 
     if update.rows_affected != 1 {
+        txn.rollback().await.map_err(database_error)?;
         // A stale worker must not report a terminal domain error after another worker reclaimed
         // the lease or finalized the receipt. The outcome is unknown to this caller, so preserve
         // retryability and let a later admission replay or reclaim the durable receipt.
@@ -381,6 +448,7 @@ where
             "owner operation receipt was not processing during failure finalization",
         ));
     }
+    txn.commit().await.map_err(database_error)?;
     Ok(())
 }
 
@@ -400,7 +468,7 @@ pub async fn release_retryable<C>(
     error: &PortError,
 ) -> Result<(), PortError>
 where
-    C: ConnectionTrait,
+    C: ConnectionTrait + TransactionTrait,
 {
     if lease.operation_id.is_nil() || lease.token.is_nil() {
         return Err(PortError::validation(
@@ -414,19 +482,28 @@ where
             "only retryable owner-operation failures may release a receipt",
         ));
     }
+    let txn = connection.begin().await.map_err(database_error)?;
+    let Some(_now) = live_processing_time(&txn, lease).await? else {
+        txn.rollback().await.map_err(database_error)?;
+        return Err(PortError::unavailable(
+            "outbox.operation_receipt_release_uncertain", "receipt is no longer live and owned by this worker",
+        ));
+    };
     let removed = entity::Entity::delete_many()
         .filter(entity::Column::Id.eq(lease.operation_id))
         .filter(entity::Column::LeaseToken.eq(lease.token))
         .filter(entity::Column::Status.eq(STATUS_PROCESSING))
-        .exec(connection)
+        .exec(&txn)
         .await
         .map_err(database_error)?;
     if removed.rows_affected != 1 {
+        txn.rollback().await.map_err(database_error)?;
         return Err(PortError::unavailable(
             "outbox.operation_receipt_release_uncertain",
             "receipt was completed or reclaimed before retryable release",
         ));
     }
+    txn.commit().await.map_err(database_error)?;
     Ok(())
 }
 
@@ -444,25 +521,33 @@ pub async fn prune_terminal_receipts(
     older_than: Duration,
     batch_size: u64,
 ) -> Result<u64, PortError> {
-    if older_than <= Duration::zero() {
+    if older_than <= Duration::zero() || older_than > Duration::days(3650) {
         return Err(PortError::validation(
             "outbox.operation_receipt_retention_invalid",
-            "operation receipt retention window must be positive",
+            "operation receipt retention window must be positive and at most 3650 days",
         ));
     }
-    if batch_size == 0 {
+    if !(1..=crate::MAX_RETENTION_BATCH_SIZE).contains(&batch_size) {
         return Err(PortError::validation(
             "outbox.operation_receipt_retention_invalid",
-            "operation receipt prune batch size must be greater than zero",
+            format!("operation receipt prune batch size must be between 1 and {}", crate::MAX_RETENTION_BATCH_SIZE),
         ));
     }
-    let cutoff = (Utc::now() - older_than).fixed_offset();
+    let cutoff = crate::observe_database_clock(database)
+        .await.map_err(database_error)?
+        .checked_sub_signed(older_than)
+        .ok_or_else(|| PortError::validation(
+            "outbox.operation_receipt_retention_invalid",
+            "operation receipt retention cutoff is out of range",
+        ))?.fixed_offset();
     let candidate_ids: Vec<Uuid> = entity::Entity::find()
         .select_only()
         .column(entity::Column::Id)
         .filter(entity::Column::Status.is_in([STATUS_COMPLETED, STATUS_FAILED]))
         .filter(entity::Column::CompletedAt.is_not_null())
         .filter(entity::Column::CompletedAt.lte(cutoff))
+        .order_by_asc(entity::Column::CompletedAt)
+        .order_by_asc(entity::Column::Id)
         .limit(batch_size)
         .into_tuple::<Uuid>()
         .all(database)
@@ -521,8 +606,10 @@ async fn inspect_or_reclaim(
                 })
         }
         STATUS_PROCESSING => {
-            let stale_before =
-                Utc::now().fixed_offset() - Duration::minutes(PROCESSING_LEASE_MINUTES);
+            let stale_before = crate::observe_database_clock(database)
+                .await.map_err(database_error)?.fixed_offset()
+                .checked_sub_signed(Duration::minutes(PROCESSING_LEASE_MINUTES))
+                .ok_or_else(|| database_error(DbErr::Custom("receipt lease cutoff is out of range".to_string())))?;
             if existing.updated_at > stale_before {
                 return Err(PortError::unavailable(
                     "outbox.operation_receipt_in_progress",
@@ -530,7 +617,22 @@ async fn inspect_or_reclaim(
                 ));
             }
 
-            let now = Utc::now().fixed_offset();
+            let txn = database.begin().await.map_err(database_error)?;
+            let previous = Lease { operation_id: existing.id, token: existing.lease_token };
+            let Some((locked, now)) = lock_processing(&txn, previous).await? else {
+                txn.rollback().await.map_err(database_error)?;
+                return Err(lease_lost());
+            };
+            if locked.updated_at != existing.updated_at
+                || locked.updated_at > now
+                || lease_is_live(locked.updated_at, now)
+            {
+                txn.rollback().await.map_err(database_error)?;
+                return Err(PortError::unavailable(
+                    "outbox.operation_receipt_in_progress",
+                    "receipt expiry changed before reclaim",
+                ));
+            }
             let lease_token = generate_id();
             let claim = entity::Entity::update_many()
                 .col_expr(
@@ -544,15 +646,18 @@ async fn inspect_or_reclaim(
                 .filter(entity::Column::Id.eq(existing.id))
                 .filter(entity::Column::Status.eq(STATUS_PROCESSING))
                 .filter(entity::Column::UpdatedAt.eq(existing.updated_at))
-                .exec(database)
+                .filter(entity::Column::LeaseToken.eq(existing.lease_token))
+                .exec(&txn)
                 .await
                 .map_err(database_error)?;
             if claim.rows_affected == 1 {
+                txn.commit().await.map_err(database_error)?;
                 Ok(Admission::Run(Lease {
                     operation_id: existing.id,
                     token: lease_token,
                 }))
             } else {
+                txn.rollback().await.map_err(database_error)?;
                 Err(PortError::unavailable(
                     "outbox.operation_receipt_in_progress",
                     "the owner operation was reclaimed by another worker",
@@ -811,6 +916,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn terminal_receipt_pruning_rejects_unbounded_direct_requests() {
+        let database = Database::connect("sqlite::memory:").await.expect("database");
+        for (window, batch) in [
+            (Duration::days(3651), 1),
+            (Duration::zero(), 1),
+            (Duration::days(1), 0),
+            (Duration::days(1), crate::MAX_RETENTION_BATCH_SIZE + 1),
+        ] {
+            let error = prune_terminal_receipts(&database, window, batch)
+                .await.expect_err("invalid retention");
+            assert_eq!(error.code, "outbox.operation_receipt_retention_invalid");
+        }
+    }
+
+    #[tokio::test]
     async fn terminal_receipt_pruning_removes_only_aged_terminal_rows() {
         let database = Database::connect("sqlite::memory:")
             .await
@@ -921,6 +1041,51 @@ mod tests {
         .expect_err("a stale token cannot renew");
         assert_eq!(lost.code, "outbox.operation_receipt_lease_lost");
         assert!(lost.retryable);
+    }
+
+    #[test]
+    fn receipt_live_interval_is_half_open_and_rejects_future_stamp() {
+        let now = Utc::now().fixed_offset();
+        assert!(lease_is_live(now, now));
+        assert!(lease_is_live(now - Duration::minutes(5) + Duration::milliseconds(1), now));
+        assert!(!lease_is_live(now - Duration::minutes(5), now));
+        assert!(!lease_is_live(now + Duration::milliseconds(1), now));
+    }
+
+    #[tokio::test]
+    async fn expired_receipt_cannot_renew_lock_finish_or_erase_fingerprint() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        SysEventsMigration.up(&SchemaManager::new(&db)).await.unwrap();
+        let scope = OwnerOperationScope::Tenant(Uuid::new_v4());
+        let request = serde_json::json!({"request": true});
+        let lease = match admit(&db, scope, "owner", "expired", "write", &request).await.unwrap() {
+            Admission::Run(lease) => lease,
+            _ => panic!("fresh receipt must run"),
+        };
+        entity::Entity::update_many()
+            .col_expr(entity::Column::UpdatedAt, sea_orm::sea_query::Expr::value(
+                (Utc::now() - Duration::minutes(6)).fixed_offset()))
+            .filter(entity::Column::Id.eq(lease.operation_id))
+            .exec(&db).await.unwrap();
+        assert!(renew_lease(&db, lease).await.unwrap_err().retryable);
+        let txn = db.begin().await.unwrap();
+        assert!(lock_current(&txn, lease).await.unwrap_err().retryable);
+        txn.rollback().await.unwrap();
+        assert!(complete(&db, lease, &()).await.unwrap_err().retryable);
+        assert!(fail(&db, lease, &PortError::validation("test.terminal", "terminal")).await.unwrap_err().retryable);
+        assert!(release_retryable(&db, lease, &PortError::unavailable("test.retry", "retry")).await.unwrap_err().retryable);
+        assert!(matches!(admit(&db, scope, "owner", "expired", "write", &serde_json::json!({"changed": true})).await, Err(error) if !error.retryable));
+        let reclaimed = match admit(&db, scope, "owner", "expired", "write", &request).await.unwrap() {
+            Admission::Run(lease) => lease,
+            _ => panic!("expired receipt must be reclaimed"),
+        };
+        assert_eq!(reclaimed.operation_id, lease.operation_id);
+        assert_ne!(reclaimed.token, lease.token);
+        let txn = db.begin().await.unwrap();
+        lock_current(&txn, reclaimed).await.unwrap();
+        complete(&txn, reclaimed, &()).await.unwrap();
+        txn.commit().await.unwrap();
+        assert!(matches!(admit(&db, scope, "owner", "expired", "write", &request).await.unwrap(), Admission::Replay(_)));
     }
 
     #[tokio::test]

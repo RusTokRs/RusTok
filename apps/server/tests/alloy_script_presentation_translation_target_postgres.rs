@@ -621,7 +621,7 @@ async fn verify_legacy_und_and_change_state_backfill(
         .into());
     }
 
-    let provider = registered_provider(database.clone(), auth_config.clone())?;
+    let provider = registered_provider(database.clone(), support::test_auth_config())?;
     let listed = provider
         .list_resources(read_context(tenant_id, "legacy-list"), list_request()?)
         .await?;

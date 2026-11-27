@@ -20,7 +20,10 @@ async fn main() -> Result<()> {
         otel: None,
     })?;
 
+    let relay_config = relay_config_from_env()?;
     let database = open_database(&env::var(DATABASE_ENV).context(DATABASE_ENV)?).await?;
+    relay_config.verify_execution_admission(&database).await
+        .map_err(|error| anyhow!("Outbox execution policy preflight failed: {error}"))?;
     let config_path = env::var_os(IGGY_CONFIG_ENV).context(IGGY_CONFIG_ENV)?;
     let config = read_broker_config(Path::new(&config_path)).await?;
     let broker = Arc::new(
@@ -34,7 +37,7 @@ async fn main() -> Result<()> {
                 anyhow!("Outbox could not initialize the configured Iggy transport")
             })?,
     );
-    let relay = OutboxRelay::new(database, broker.clone()).with_config(relay_config_from_env()?);
+    let relay = OutboxRelay::new(database, broker.clone()).with_config(relay_config);
     tracing::info!("Outbox relay started");
     let result = run_until_shutdown(&relay).await;
     let shutdown = tokio::time::timeout(CONNECT_TIMEOUT, broker.shutdown())
@@ -106,6 +109,7 @@ fn relay_config_from_env() -> Result<RelayConfig> {
             .filter(|value| !value.trim().is_empty())
             .unwrap_or(defaults.worker_id),
     };
+    config.validate().map_err(|error| anyhow!("Invalid Outbox relay configuration: {error}"))?;
     Ok(config)
 }
 

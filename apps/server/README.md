@@ -219,10 +219,7 @@ matching BFFs and revoke pre-cutover sessions; bare cookies are rejected.
 - The Forum/Taxonomy host adapter's Rust/real-owner regressions and mounted
   GraphQL/REST/native/SEO/Search acceptance remain unexecuted in this environment;
   source registration does not prove production runtime readiness.
-- Platform build history and the process-local build-event hub are exposed to
-  tenant module-read permissions. The host-global versus tenant visibility
-  contract is unresolved and must be decided before changing all transports and
-  clients. Build progress is not a durable cross-process stream.
+- Platform build history, active-build reads, GraphQL buildProgress and GET /ws/builds are host-global and require explicit HostAuthority::Read; tenant module-read/list/manage permissions alone do not grant access. The GraphQL module-permission classifier does not add a second tenant gate to these host-authorized fields. The process-local BuildEventHub is not a durable or distributed stream, so progress can be missed across restarts or replicas. The WebSocket captures host authority at upgrade; rotating the host token requires reconnecting existing sockets.
 - Installer HTTP jobs heartbeat every 30 seconds. A five-minute heartbeat gap
   atomically moves a stale `running` job to `recovery_required`; both states
   share one database-enforced admission slot, so a stale attempt is never
@@ -265,14 +262,39 @@ matching BFFs and revoke pre-cutover sessions; bare cookies are rejected.
 - OAuth refresh-token reuse now propagates failed revocation persistence as
   `server_error`, allowing the caller to retry after a storage outage instead of
   falsely reporting only an invalid grant. Its 30-second grace window suppresses
-  family revocation for a likely concurrent duplicate, but still returns
-  `invalid_grant` and does not replay the replacement token; a lost successful
-  response cannot be recovered from the old token. Durable incident/retry
-  evidence and two-replica failure-injection verification remain pending.
+  family revocation for a likely concurrent duplicate. A retry carrying the same
+  `x-rustok-refresh-retry-key` proof can recover only the exact still-current
+  successor for that refresh-token generation; requests without a matching proof,
+  outside the grace window, or after the successor is no longer current return
+  `invalid_grant`. Recovery never extends the successor or family deadline.
+  Durable incident/retry evidence and two-replica failure-injection verification
+  remain pending.
 
-- Artifact execution leases now bind each host execution to its exact installation, sandbox grant constraints and direct request scope. Structured-data and event-outbox SQL effects recheck the current exact installation/grant and lock direct Auth/RBAC authority through transaction commit. This is not yet a single transaction fence for the full effective-policy revision, dependency closure/security, registry mutation state or deployment readiness; non-SQL effects (HTTP, MCP, secrets and object storage) still rely on per-call host admission and owner-specific checks rather than the same commit fence. PostgreSQL cross-owner lock ordering/contention and deployed worker/runtime/cancellation evidence remain unverified. Do not treat the in-memory lease as durable replay authority or automatically retry ambiguous effects. **Owners:** server host, `rustok-modules`, Auth/RBAC and individual capability owners. **Removal condition:** add owner-side fences for the remaining policy/readiness and non-SQL effect boundaries, then pass PostgreSQL contention and both in-process/worker runtime regressions. See the [execution capability lease ADR](../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md); source regressions remain unrun at the user's request.
+- Artifact execution leases bind each host execution to its exact installation,
+  sandbox grant constraints, direct request scope, dependency/co-requisite
+  closure, security revisions, selection generations, tenant lifecycle/override
+  intent, active composition revision/hash, deployment readiness and exact
+  node-assignment observations. For server-composed structured-data and
+  event-outbox SQL effects, admission locks direct Auth/RBAC authority, all
+  artifact activation fences in the closure, active composition, reconciliation
+  state, registry release authority and captured HTTP channel generation. The
+  current installation/grant and capability constraints are rechecked, and the
+  fences remain held through commit. Composition replacement/restore does not
+  renew older leases. Remaining gaps are full effective-policy revision,
+  operational maintenance authority, deferred/background channel context and
+  continuous worker/node liveness. Non-SQL effects (HTTP, MCP, secrets and
+  object storage) still rely on per-call host admission and owner-specific
+  checks rather than the same commit fence. PostgreSQL cross-owner lock
+  ordering/contention and deployed worker/runtime/cancellation evidence remain
+  unverified. Do not treat the in-memory lease as durable replay authority or
+  automatically retry ambiguous effects. **Owners:** server host,
+  `rustok-modules`, Auth/RBAC and individual capability owners. **Removal
+  condition:** add owner-side fences for the remaining effective-policy/
+  maintenance and non-SQL effect boundaries, then pass PostgreSQL contention
+  and both in-process/worker runtime regressions. See the [execution capability
+  lease ADR](../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md);
+  source regressions remain unrun at the user's request.
 
-- The `rustok-modules` owner now stores and enforces global release security state (`quarantine`, `clear_quarantine`, terminal `revoke`), but this pass found no `apps/server` host authorizer or REST/GraphQL command wiring for that aggregate. Marketplace external-provenance quarantine, registry yanking and artifact-permission revocation are different controls and must not be treated as substitutes. Until a server-owned transport is added, operators cannot invoke the global emergency release controls through the server API. **Owners:** server host, `rustok-modules` and Auth/RBAC. **Removal condition:** add a direct-credential/module-permission authorizer, revisioned idempotent REST/GraphQL commands with audit/outbox evidence, and transport-level authorization/replay regressions. See the [artifact security state ADR](../../DECISIONS/2026-07-22-artifact-security-state-boundary.md).
 
 ## Acknowledged sealed delivery (source only)
 

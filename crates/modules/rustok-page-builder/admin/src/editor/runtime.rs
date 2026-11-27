@@ -37,7 +37,7 @@ fn make_peer_write_channel(
             controller.editor().revision().project_hash.hex(),
         )
     });
-    let on_conflict = move |conflict| {
+    let on_conflict = move |conflict: BrowserPeerWriteConflict| {
         let expected = controller.with_untracked(|controller| controller.revision_id().to_string());
         let actual = conflict.revision.clone();
         if let Some(Err(error)) = controller
@@ -129,7 +129,7 @@ pub struct AdminEditorRuntime {
     /// The Rust Leptos workspace dispatches saves outside the classic fly-browser JS adapter.
     /// Share its confirmed writes through the same advisory channel so sibling tabs are fenced.
     #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
-    peer_write_channel: RwSignal<Option<BrowserPeerWriteChannel>>,
+    peer_write_channel: StoredValue<Option<BrowserPeerWriteChannel>, LocalStorage>,
     #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
     peer_write_conflict: RwSignal<Option<BrowserPeerWriteConflict>>,
 }
@@ -150,7 +150,7 @@ impl AdminEditorRuntime {
         #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
         let peer_write_conflict = RwSignal::new(None);
         #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
-        let peer_write_channel = RwSignal::new(make_peer_write_channel(
+        let peer_write_channel = StoredValue::new_local(make_peer_write_channel(
             controller.clone(),
             peer_write_conflict.clone(),
             last_error.clone(),
@@ -225,7 +225,7 @@ impl AdminEditorRuntime {
                 return;
             }
             let hash = project_hash.hex();
-            if let Some(Err(error)) = self.peer_write_channel.with_untracked(|channel| {
+            if let Some(Err(error)) = self.peer_write_channel.with_value(|channel| {
                 channel
                     .as_ref()
                     .map(|channel| channel.post_confirmed_write(revision_id, &hash))
@@ -384,20 +384,24 @@ impl AdminEditorRuntime {
     }
 
     pub fn dispatch(&self, intent: UiIntent) {
-        if intent.mutates_document() || matches!(&intent, UiIntent::ActivatePage { .. }) {
-            self.runtime_publish_gate_evaluation.set(None);
-            self.server_preview_html.set(None);
-            self.preview_request.set(None);
-            self.preview_in_progress.set(false);
-        }
-        if self.peer_write_conflicted() && intent.mutates_document() {
+        let activates_page = matches!(&intent, UiIntent::ActivatePage { .. });
+        if self.peer_write_conflicted() && intent.requires_write_fence() {
             self.reject_peer_write_conflict();
             return;
         }
 
-        let result = self
-            .controller
-            .try_update(|controller| controller.dispatch(intent));
+        let result = self.controller.try_update(|controller| {
+            let before_revision = {
+                let revision = controller.editor().revision();
+                (revision.project_hash, revision.command_sequence)
+            };
+            let effects = controller.dispatch(intent)?;
+            let after_revision = {
+                let revision = controller.editor().revision();
+                (revision.project_hash, revision.command_sequence)
+            };
+            Ok((effects, before_revision != after_revision))
+        });
         let Some(result) = result else {
             self.last_error.set(Some(
                 "Page Builder controller is no longer available".to_string(),
@@ -405,7 +409,16 @@ impl AdminEditorRuntime {
             return;
         };
         match result {
-            Ok(effects) => {
+            Ok((effects, document_changed)) => {
+                // A successful no-op (for example undo with empty history) does not stale the
+                // last preview. Compare the controller's authoritative revision around dispatch
+                // instead of guessing from the intent kind.
+                if document_changed || activates_page {
+                    self.runtime_publish_gate_evaluation.set(None);
+                    self.server_preview_html.set(None);
+                    self.preview_request.set(None);
+                    self.preview_in_progress.set(false);
+                }
                 self.last_error.set(None);
                 for effect in effects {
                     self.apply_effect(effect);
@@ -927,6 +940,123 @@ mod tests {
         )
         .expect("controller");
         AdminEditorRuntime::new(controller, None, None, None, "facade missing", "Saved")
+    }
+
+    #[test]
+    fn no_op_undo_preserves_the_last_valid_preview() {
+        let runtime = runtime();
+        let hash = runtime
+            .controller
+            .get_untracked()
+            .editor()
+            .revision()
+            .project_hash;
+        let preview_attempt = PreviewAttempt::new(hash, 0, serde_json::json!({}), None);
+        runtime
+            .server_preview_html
+            .set(Some("<main>last good preview</main>".to_string()));
+        runtime.preview_request.set(Some(preview_attempt.clone()));
+        runtime.preview_in_progress.set(true);
+
+        runtime.dispatch(UiIntent::Undo);
+
+        assert_eq!(
+            runtime.server_preview_html.get_untracked().as_deref(),
+            Some("<main>last good preview</main>")
+        );
+        assert!(runtime.preview_in_progress.get_untracked());
+        assert_eq!(
+            runtime
+                .preview_request
+                .get_untracked()
+                .as_ref()
+                .map(|attempt| attempt.id),
+            Some(preview_attempt.id)
+        );
+    }
+
+    #[test]
+    fn save_request_preserves_preview_but_remains_write_fenced() {
+        let runtime = runtime();
+        let hash = runtime
+            .controller
+            .get_untracked()
+            .editor()
+            .revision()
+            .project_hash;
+        let preview_attempt = PreviewAttempt::new(hash, 0, serde_json::json!({}), None);
+        runtime
+            .server_preview_html
+            .set(Some("<main>last good preview</main>".to_string()));
+        runtime.preview_request.set(Some(preview_attempt.clone()));
+        runtime.preview_in_progress.set(true);
+
+        runtime.dispatch(UiIntent::RequestSave);
+
+        assert_eq!(
+            runtime.server_preview_html.get_untracked().as_deref(),
+            Some("<main>last good preview</main>")
+        );
+        assert!(runtime.preview_in_progress.get_untracked());
+        assert_eq!(
+            runtime
+                .preview_request
+                .get_untracked()
+                .as_ref()
+                .map(|attempt| attempt.id),
+            Some(preview_attempt.id)
+        );
+    }
+
+    #[test]
+    fn rejected_document_intent_preserves_the_last_valid_preview() {
+        let runtime = runtime();
+        let hash = runtime
+            .controller
+            .get_untracked()
+            .editor()
+            .revision()
+            .project_hash;
+        let preview_attempt = PreviewAttempt::new(hash, 0, serde_json::json!({}), None);
+        runtime
+            .server_preview_html
+            .set(Some("<main>last good preview</main>".to_string()));
+        runtime.preview_request.set(Some(preview_attempt.clone()));
+        runtime.preview_in_progress.set(true);
+
+        runtime.dispatch(UiIntent::execute(fly::EditorCommand::Remove {
+            component_id: "missing".to_string(),
+        }));
+
+        assert!(runtime.last_error.get_untracked().is_some());
+        assert_eq!(
+            runtime.server_preview_html.get_untracked().as_deref(),
+            Some("<main>last good preview</main>")
+        );
+        assert!(runtime.preview_in_progress.get_untracked());
+        assert_eq!(
+            runtime
+                .preview_request
+                .get_untracked()
+                .as_ref()
+                .map(|attempt| attempt.id),
+            Some(preview_attempt.id)
+        );
+
+        runtime.dispatch(UiIntent::execute(fly::EditorCommand::Patch {
+            component_id: "root".to_string(),
+            patch: fly::ComponentPatch {
+                attributes: serde_json::Map::from_iter([(
+                    "aria-label".to_string(),
+                    serde_json::json!("Updated root"),
+                )]),
+                ..fly::ComponentPatch::default()
+            },
+        }));
+
+        assert!(runtime.server_preview_html.get_untracked().is_none());
+        assert!(runtime.preview_request.get_untracked().is_none());
+        assert!(!runtime.preview_in_progress.get_untracked());
     }
 
     #[test]

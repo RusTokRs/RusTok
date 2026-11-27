@@ -1,5 +1,32 @@
 # Implementation Plan for `rustok-modules`
 
+## Artifact HTTP SSRF and deadline hardening (2026-11-27)
+
+The `platform.http` broker now disables process/system proxies for shared and
+DNS-pinned clients, bounds DNS resolution, and shares one remaining deadline
+across DNS and the complete HTTP exchange. It rejects zero timeout/response
+limits and uses checked response-size arithmetic. Focused source regressions
+were added; compilation, formatting and tests remain pending.
+
+## Artifact object capability effect fencing (2026-11-27)
+
+The server-composed `platform.data.objects` resolver now receives the same
+SQL effect authorizer as structured data and events. Object metadata reads and
+writes, idempotency receipts, upload-session/chunk transitions, completion
+claims and replay paths lock the exact execution authority in their owner
+transactions and reject active namespace migration holds. Chunk bytes are
+staged before opening the owner transaction; session, quota and migration
+state are revalidated before the chunk row is committed. The server also revalidates installation, policy, direct
+authority, security and lease state after object-store reads before releasing
+bytes. Upload completion replay resolves the object receipt by the session's
+stored idempotency key, and begin replay returns the completed object result.
+
+Physical object-store bytes remain outside SQL transactions. Known denied
+commits compensate private staged bytes; ambiguous outcomes retain them for
+safe reconciliation. Orphan collection and production fleet/write/retention
+cutover remain open. Source regressions were added; compilation, formatting
+and tests remain pending.
+
 ## Scope
 
 Own the mandatory Core module control plane: identity, releases, marketplace,
@@ -828,16 +855,17 @@ the scope from an exact inactive, uninstalled installation, repeats lifecycle
 checks under its write lock, and rejects exact serving-instance collisions. GraphQL
 previews use owner projections; apply and preview errors are sanitized, and
 receipt integers use checked conversions. The server data-purge authorizer
-binds the owner context and resolves current persisted `modules:manage` grants
-inside the owner write transaction through `authorize_purge_on` and
-`rustok-rbac::authorize_current_permission` and its canonical tenant
-policy engine without request/cache snapshots. The persisted reader belongs to
-the RBAC owner and is also used by the cached host runtime. This policy read does not establish an atomic
-revocation fence or production traffic/job/write drain. Terminal replay remains
-bound to the original full command before mutable lifecycle preconditions,
-including a recheck after waiting for the installation lock. Recovery prepare,
-finalization, and cutover use the same serialization/replay ordering. The
-purge integration passes 1/1 after the policy transaction cutover. The owner
+binds the owner context and requires the shared RBAC mutation authority on the
+owner transaction, before receipt lookup and installation/namespace locks.
+Direct-session credentials, active actor, live module policy, ordered role
+fences and the admitted/current `modules:manage` intersection precede destructive
+work. All three commit paths require a final deadline and request-scope check.
+Exact terminal replay remains independent of mutable lifecycle preconditions,
+including the recheck after waiting for the installation lock, but never bypasses
+authorization. Tests now exercise denied replay and rollback on final authority
+failure; these changes are uncompiled and unrun. Recovery prepare, finalization
+and cutover are separate paths. Prior purge integration passed 1/1 before this
+authority change; it does not verify the new contract. The owner
 library passes 308/308, object-migration fixtures 3/3, and canonical structured-
 copy fixtures 11/11. Scoped owner check/clippy and server check exit 0.
 These results do not prove production maintenance/revocation/fleet fences or the
@@ -1818,7 +1846,10 @@ enforcement, and uses exact idempotency receipts plus revision CAS. Quarantine
 can be cleared only through an authorized command; revocation is terminal. A
 tenant's enablement row is never rewritten by these transitions. The read-only
 security resolver contributes registry status and redacted security evidence to
-`ModuleEffectivePolicy`. Focused policy evidence now asserts the complete
+`ModuleEffectivePolicy`. The host authorizer's time-bounded credential is
+rechecked immediately before both transition and exact-replay commits, after
+the platform slug lock and durable writes, so an expired credential rolls back
+the complete transaction. Focused policy evidence now asserts the complete
 execution distinction: quarantine and emergency revocation deny a still
 tenant-enabled module, while ordinary registry yanking does not stop an
 already-installed clear release.
@@ -2653,8 +2684,10 @@ stores actor/reason/idempotency audit data, and emits an outbox fact. The curren
 post-purge coordinator retains the marker permanently and requires a fresh
 verified instance plus separate authorized reference CAS. Production composition
 and operational fence evidence remain incomplete. The service
-requires a host-provided ArtifactDataPurgeAuthorizer. The current host binds
-owner context and checks current RBAC grants; legal-hold, retention, traffic,
+requires a host-provided ArtifactDataPurgeAuthorizer with pre-transaction
+preparation, locked operator authority, exact owner admission and final commit
+validation, including receipt replay. The current host reuses RBAC's live
+credential and effective grant fences; legal-hold, retention, traffic,
 job, and write fences remain open. No guest capability can authorize itself.
 
 `SeaOrmArtifactDataExportService` provides the first owner-only export slice.
@@ -3609,3 +3642,92 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   pending. Drain executions, stop old writers and coordinate migration and
   deployment. Static dependency lifecycle/overrides and composition remain
   separate outstanding authority.
+
+- Source-wired tenant lifecycle/override continuity for every visited module
+  in the serving closure, including native dependencies reached transitively.
+  Capture the canonical aggregate revision and compare optional override
+  intent against policy facts on the selection snapshot. Acquire all visited
+  platform slug locks in sorted order before SQL checks; artifact tenant
+  locks remain ordered per slug. Both override commit paths share the same
+  platform fence; existing settings commit fence is reused. Preserve Core
+  override semantics, inherited intent and separate lifecycle hook admission.
+  Source regression extends mixed closure with first native override, stale
+  policy denial and override-clear ABA. No new migration. Tests, compilation,
+  concurrent PostgreSQL and cross-owner lock-order evidence remain pending;
+  active composition, registry mutations and readiness are not fenced.
+
+- Source-wired active composition identity through the host serving policy
+  resolver from the same verified owner manifest (defaults/co-requisites).
+  Recheck the revision/hash after closure and readiness derivation and on
+  fresh capability preflight; SQL effects take the canonical shared active
+  composition row lock after mixed-closure fences. SQLite already has its
+  write reservation. Owner CAS replacement and effect admission serialize;
+  composition ABA and missing/corrupt state fail closed. Existing lifecycle
+  hook admission remains root-only. No additional migration. SQLite owner
+  ABA and opt-in PostgreSQL lock-wait tests in both directions added, unrun.
+  Cross-owner lock ordering, independent registry/readiness mutation fences,
+  contextual channel/maintenance authority, compiled registry consistency
+  and end-to-end runtime evidence remain open.
+
+- Source-wired converged deployment head, state revision, owner readiness
+  digest and exact node assignment observation revisions into the serving
+  closure. One readiness read snapshot and final head comparison; fresh
+  preflight compares full evidence. SQL effects take the shared reconciliation
+  state row lock after selection fences and before composition, recompute
+  digest and verify all required live/observed assignment identities and
+  observations. Selection-only fixtures cannot authorize serving effects.
+  Existing ledger writers take the exclusive state row lock. SQLite source
+  regressions exercise missing dependency/node, changed observation and
+  head restoration; opt-in PostgreSQL state-lock tests cover both directions.
+  No new migration. Tests/compilation unrun; end-to-end contention, live node
+  health, registry and contextual policy authority remain open.
+
+- Registry release FK ordering: migration 000099 adds nonblocking PostgreSQL
+  request-parent admission for release INSERT/repoint and request/release
+  parent admission for publication, yank and unyank receipts. Existing
+  canonical writers retain their parent locks; metadata-only SET NULL
+  cascades do not advance release continuity. Missing/invisible parent or
+  contention rejects the write. PostgreSQL regression covers both parent
+  classes, direct receipt updates, canonical lock reuse, retry and cascade;
+  compilation and runtime/migration checks remain pending. Other registry
+  review/evidence/validation receipts and cross-owner FK edges remain open.
+
+- Registry validation ordering: job claim (including invalid work-item
+  terminalization), remote claim, completion and expired claim requeue now
+  lock the request before the child, re-read the exact linked identity and
+  use live SQL clock predicates for remote leases. Migration 000100 extends
+  nonblocking parent guards to remaining inspected registry request children
+  and owner transfer receipts. Metadata-only heartbeat does not add a parent
+  lock. Source regressions are authored, unrun. Auth/OAuth/RBAC and other
+  cross-owner FK edges, full service contention, runtime and rollout evidence
+  remain open.
+
+- Security operation receipt ordering: new quarantine/revoke commands acquire
+  the platform slug and exclusive security epoch before receipt reservation,
+  matching governed finalization. Completed exact receipts are read after the
+  slug fence without taking the epoch; authorization is still checked at
+  commit. Missing receipts after unique-key conflict deny admission. An opt-in
+  PostgreSQL regression observes actual waits on both earlier fences and
+  probes the same receipt key from a separate transaction. No migration;
+  compilation and runtime verification are pending, as is the remaining
+  cross-owner receipt/FK and global generation lock audit.
+
+- Registry authority witness integrity: migration 000101 rejects direct witness
+  removal, identity changes and non-successor revisions; SQLite additionally
+  rejects non-integer storage and replacement of an existing witness even
+  without recursive delete triggers. PostgreSQL release mutation checks
+  nonblocking relation and witness row locks, and raw witness DML takes the
+  same nonblocking slug gate. No destructive repair of existing corrupt
+  SQLite state; drain writers for coordinated upgrade. SQLite and opt-in
+  PostgreSQL regressions authored; compilation, migration execution and
+  contention evidence remain pending. Privileged DDL/restore and remaining
+  cross-owner lock ordering are not covered by this change.
+
+- Durable security epoch integrity: migration 000102 validates the existing
+  singleton under writer admission, rejects ordinary SQL reset/removal/reinsert,
+  non-successor updates and metadata-only changes. Exact unchanged updates
+  preserve SQLite writer reservation. No reseed or destructive downgrade.
+  SQLite and opt-in PostgreSQL regressions cover rollback, stale epoch rejection,
+  invalid baselines and concurrent commit admission; compilation and runtime
+  checks remain unrun. Privileged restore and remaining global lock edges are
+  not covered.

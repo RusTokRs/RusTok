@@ -41,6 +41,9 @@ pub struct SymbolDescriptor {
 impl SymbolDescriptor {
     pub fn from_value(raw: &Value) -> Option<Self> {
         crate::codec::ensure_depth_within_limit(raw, crate::MAXIMUM_DECODE_DEPTH).ok()?;
+        if symbol_definition_size_exceeds_limit(raw) {
+            return None;
+        }
         serde_json::from_value(raw.clone())
             .ok()
             .and_then(|descriptor: Self| (!descriptor.id.is_empty()).then_some(descriptor))
@@ -217,7 +220,56 @@ fn apply_symbol_command_inner(
     }
 }
 
-fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()> {
+pub(crate) fn symbol_definition_size_exceeds_limit(value: &Value) -> bool {
+    struct Counter(usize);
+    impl std::io::Write for Counter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 = self.0.saturating_add(bytes.len());
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let mut counter = Counter(0);
+    serde_json::to_writer(&mut counter, value)
+        .map(|()| counter.0 > MAX_SYMBOL_DEFINITION_BYTES)
+        .unwrap_or(true)
+}
+
+enum SymbolComponentRef<'a> {
+    Typed(&'a ComponentNode),
+    Opaque(&'a Value),
+}
+
+fn push_opaque_symbol_children<'a>(
+    value: &'a Value,
+    pending: &mut Vec<SymbolComponentRef<'a>>,
+) {
+    match value {
+        Value::Array(children) => {
+            pending.extend(children.iter().map(SymbolComponentRef::Opaque));
+        }
+        Value::Null => {}
+        _ => pending.push(SymbolComponentRef::Opaque(value)),
+    }
+}
+
+fn push_opaque_symbol_node_children<'a>(
+    value: &'a Value,
+    pending: &mut Vec<SymbolComponentRef<'a>>,
+) {
+    if let Some(children) = value
+        .as_object()
+        .and_then(|object| object.get("components"))
+    {
+        push_opaque_symbol_children(children, pending);
+    }
+}
+
+pub(crate) fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()> {
     let encoded = serde_json::to_vec(descriptor)
         .map_err(|error| FlyError::InvalidSymbolReference(error.to_string()))?;
     if encoded.len() > MAX_SYMBOL_DEFINITION_BYTES {
@@ -226,7 +278,11 @@ fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()> {
             descriptor.id
         )));
     }
-    let mut pending: Vec<&ComponentNode> = descriptor.components.iter().collect();
+    let mut pending = descriptor
+        .components
+        .iter()
+        .map(SymbolComponentRef::Typed)
+        .collect::<Vec<_>>();
     let mut count = 0;
     while let Some(component) = pending.pop() {
         count += 1;
@@ -236,8 +292,21 @@ fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()> {
                 descriptor.id
             )));
         }
-        if let ComponentNode::Object(object) = component {
-            pending.extend(object.children());
+        match component {
+            SymbolComponentRef::Typed(ComponentNode::Object(object)) => {
+                match &object.components {
+                    crate::ComponentChildren::Nodes(children) => {
+                        pending.extend(children.iter().map(SymbolComponentRef::Typed));
+                    }
+                    crate::ComponentChildren::Opaque(children) => {
+                        push_opaque_symbol_children(children, &mut pending);
+                    }
+                }
+            }
+            SymbolComponentRef::Typed(ComponentNode::Opaque(raw))
+            | SymbolComponentRef::Opaque(raw) => {
+                push_opaque_symbol_node_children(raw, &mut pending);
+            }
         }
     }
     if let Err(reason) = validate_identifier(&descriptor.id) {
@@ -315,6 +384,12 @@ pub fn convert_component_to_symbol(
         FlyError::InvalidSymbolReference("the page root cannot become a symbol".to_string())
     })?;
     let fragment = ProjectFragment::from_component(document, component_id)?;
+    if !fragment.extensions.is_empty() {
+        return Err(FlyError::InvalidSymbolReference(
+            "symbol definitions cannot yet preserve component runtime bindings, conditions, or repeaters"
+                .to_string(),
+        ));
+    }
     let definition = SymbolDescriptor {
         id: symbol_id.to_string(),
         name,
@@ -527,7 +602,7 @@ fn expand_instance(
             "symbol instance of `{symbol_id}` must carry a component id"
         )));
     };
-    if !object.children().is_empty() {
+    if !object.components.is_empty() {
         return Err(FlyError::InvalidSymbolReference(format!(
             "symbol instance `{instance_id}` must be child-free at rest"
         )));
@@ -1312,6 +1387,104 @@ mod tests {
             .collect();
         assert!(codes.contains(&"symbol_reference_missing"));
         assert!(codes.contains(&"symbol_instance_with_children"));
+    }
+
+    #[test]
+    fn symbol_conversion_rejects_runtime_catalogs_it_cannot_preserve() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flyRuntimeBindings": [{
+                "id": "binding-1",
+                "component_id": "hero",
+                "path": "user.name",
+                "target": "attribute",
+                "name": "aria-label"
+            }],
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{ "id": "hero", "type": "section" }]
+                }
+            }]
+        }))
+        .expect("document");
+        let before = document.clone();
+
+        let error = convert_component_to_symbol(&document, "hero", "cta", None)
+            .expect_err("conversion must not silently discard runtime bindings");
+
+        assert!(matches!(
+            error,
+            FlyError::InvalidSymbolReference(message) if message.contains("runtime bindings")
+        ));
+        assert_eq!(document, before);
+    }
+
+    #[test]
+    fn symbol_expansion_rejects_opaque_instance_children() {
+        let instance = ComponentNode::Object(Box::new(ComponentObject {
+            id: Some("slot".to_string()),
+            component_type: Some("symbol".to_string()),
+            symbol_id: Some("cta".to_string()),
+            components: crate::ComponentChildren::Opaque(json!({
+                "id": "opaque-child"
+            })),
+            ..ComponentObject::default()
+        }));
+        let document = document_with(
+            object("root", "wrapper", vec![instance]),
+            vec![symbol_json("cta", vec![plain_component_json("cta-1")])],
+        );
+
+        let error = resolve_symbol_instances(&document).expect_err(
+            "opaque children must not be silently overwritten by symbol expansion",
+        );
+        assert!(matches!(
+            error,
+            FlyError::InvalidSymbolReference(message) if message.contains("child-free")
+        ));
+    }
+
+    #[test]
+    fn symbol_definition_byte_limit_includes_unknown_extensions() {
+        let raw = json!({
+            "id": "large-symbol",
+            "components": [{ "id": "root", "type": "wrapper" }],
+            "unknownExtension": "x".repeat(MAX_SYMBOL_DEFINITION_BYTES + 1)
+        });
+
+        assert!(SymbolDescriptor::from_value(&raw).is_none());
+        assert!(symbol_definition_size_exceeds_limit(&raw));
+    }
+
+    #[test]
+    fn symbol_component_limit_counts_opaque_children() {
+        let opaque_children = (0..MAX_SYMBOL_COMPONENTS)
+            .map(|index| json!({ "id": format!("opaque-{index}") }))
+            .collect::<Vec<_>>();
+        let descriptor = SymbolDescriptor {
+            id: "large-symbol".to_string(),
+            name: None,
+            components: vec![ComponentNode::Object(Box::new(ComponentObject {
+                id: Some("root".to_string()),
+                component_type: Some("wrapper".to_string()),
+                components: crate::ComponentChildren::Opaque(Value::Object(
+                    serde_json::Map::from_iter([
+                        ("id".to_string(), json!("opaque-parent")),
+                        ("components".to_string(), json!(opaque_children)),
+                    ]),
+                )),
+                ..ComponentObject::default()
+            }))],
+            styles: Vec::new(),
+            assets: Vec::new(),
+        };
+
+        assert!(matches!(
+            validate_definition(&descriptor),
+            Err(FlyError::InvalidSymbolReference(message))
+                if message.contains("exceeds 512 components")
+        ));
     }
 
     #[test]

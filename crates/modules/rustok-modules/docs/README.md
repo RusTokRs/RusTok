@@ -477,7 +477,15 @@ ordinary discovery/install state and does not silently disable an already
 admitted tenant intent. `ModuleControlPlane::artifact_security` owns explicit
 quarantine, quarantine-clear, and terminal emergency-revoke commands with
 revision CAS, platform authorization, exact idempotency replay, and outbox
-events. The read-only security resolver feeds effective policy with redacted
+events. The owner calls the host authorizer inside the transition transaction,
+before replay and before taking the platform slug activation lock; the host
+must retain direct credential and current RBAC row fences through commit.
+The owner then calls the host's final authority check immediately before both
+new-state and exact-replay commits, after lock waits and all writes, so a
+time-bounded direct credential cannot expire while the transaction is pending.
+Therefore an exact idempotency replay still requires current authorization
+and a still-live credential at its commit boundary.
+The read-only security resolver feeds effective policy with redacted
 status/revision/release facts; quarantine and revoke block new execution, while
 a revoked state cannot be cleared.
 Successful build results must carry the complete component, SBOM, provenance,
@@ -813,14 +821,16 @@ only an exact installation; the owner derives the current namespace scope from
 that installation's admitted descriptor and capability grant, binds the
 durable receipt to `(tenant_id, installation_id, idempotency_key)`, and repeats
 the inactive-plus-uninstalled lifecycle fence inside its write transaction.
-The server authorizer binds tenant and installation to owner-derived facts and
-resolves persisted `modules:manage` grants through the supplied owner write
-transaction without request/cache snapshots. The policy no longer opens a
-separate connection. Purge replays terminal receipts after lifecycle
-serialization before deriving mutable target facts.
-The relation reader and current tenant-policy decision belong to `rustok-rbac`;
-the server only binds module-owner context and consumes that decision.
-This is a policy read, not an atomic revocation or traffic/job/write fence.
+The server authorizer binds tenant and installation to owner-derived facts.
+Before receipt lookup or installation/namespace locks, the host's RBAC mutation
+authority acquires the exact direct-session credential, module policy and role
+fences on the supplied owner write transaction and requires admitted and current
+`modules:manage`. Every commit, including either receipt replay path, checks the
+credential deadline and request scope again. Exact terminal replay remains
+independent of mutable target eligibility. The owner retains authority through
+commit and never opens an independent authorization transaction. This is not a
+proof of global lock ordering, operational traffic/job/write drain or retention
+and legal-hold admission; current source regressions remain unrun.
 Transport errors hide storage details and receipt integers are checked.
 The matching preview is an owner read projection, not a GraphQL-side database
 join. The in-progress physical cutover binds serving collisions to the exact
@@ -1151,7 +1161,50 @@ before the platform lock and hold both through commit; on a domain conflict
 they roll back, release the aggregate claim, and record a replayable failure.
 PostgreSQL transactions use READ COMMITTED so post-lock checks see commits made
 while waiting. The platform lock serializes all tenants of a slug, a deliberate
-concurrency cost.
+concurrency cost. On PostgreSQL, migration 000098 requires the transaction
+advisory gate before the permanent platform activation row. The registry
+BEFORE ROW guard tries the same gate and uses NOWAIT on an existing row;
+a competing late writer fails with SQLSTATE 55P03 and must roll back.
+The AFTER trigger advances only the exact registry witness. Migration 000101
+also makes witness identities permanent and their integer revisions strictly
+successive; deletion, truncation, regression, and SQLite REPLACE of existing
+witnesses fail closed. SQLite release INSERT must not conflict with an existing
+primary key, slug/version or rowid; releases and witnesses cannot change their
+rowid. This prevents REPLACE from silently deleting another release or witness
+and cascading receipt deletion without a continuity update, even with recursive
+triggers disabled. Canonical publication uses plain INSERT and later changes use
+UPDATE. Direct monotonic witness advancement can only invalidate
+old evidence; it is not a supported release writer. PostgreSQL raw witness
+writes share the nonblocking slug advisory gate. The release guards also
+acquire their required table locks and existing witness row without waiting.
+Privileged DDL, disabled triggers and restoration are outside this DML guard.
+Multi-slug SQL
+maintenance must pre-acquire gates and rows in sorted slug order, and TRUNCATE
+of releases is rejected. No witness changes on metadata-only updates,
+failed writes or rollback. Drain old writers/leases before the coordinated
+migration and application rollout. PostgreSQL regressions are unrun.
+
+Governed checkpoint staging, activation and finalization retain the durable
+security epoch through commit: platform/tenant slug fences precede the epoch
+(FOR SHARE on PostgreSQL, SQLite writer reservation), followed by domain
+writes. Security operations take the platform slug before inspecting a receipt;
+a completed exact replay does not reserve the epoch. New quarantine/revoke
+operations acquire the exclusive epoch before reserving their receipt or
+writing security state. Clear-quarantine does not advance the epoch. A
+conflicting receipt key without a visible exact receipt fails closed. All
+replays still require the transaction-bound host authority at commit.
+Finalization rechecks exact receipt replay after waiting on the platform
+fence, then acquires the epoch before the FK-bearing receipt. Epoch advancement
+returns the exact assigned successor and fails closed on exhaustion.
+Migration 000102 preserves the singleton and accepts only an exact successor
+or an unchanged row (including SQLite writer reservation). Direct insertion,
+deletion, PostgreSQL truncation, epoch reset, skipped values and metadata-only
+changes are rejected. Existing invalid or absent baselines block migration;
+no automatic reseed. Ordinary DML integrity does not cover privileged DDL or
+restoration of an older database. Drain writers before migration.
+This is not a guarantee of global deadlock freedom or of immediate interruption
+of an admitted transaction. PostgreSQL and SQLite regressions are authored,
+not executed.
 
 Lifecycle toggle and post-hook recovery admission now take that same platform
 lock while checking checkpoints and acquiring the durable journal aggregate
@@ -1468,20 +1521,37 @@ failure or cancellation; the broker checks membership again after async reads.
 This is process-local admission, not an atomic external-effect fence or a
 continuous interrupt for capability-free computation. In-flight calls may
 complete, and a post-launch denial preserves ambiguous-outcome semantics.
-Contextual channel/maintenance policy, external owner transactional authority,
+Operational maintenance operator authorization/transport and native serving, deferred/background channel context, external owner transactional authority,
 performance and actual worker callback verification remain open. See
 [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).
+
+### Outbound HTTP capability SSRF boundary
+
+The `platform.http` broker disables process/system proxies on both its shared
+and DNS-pinned clients. Hostname resolution is bounded by the capability
+deadline, every returned address is screened before the first validated address
+is pinned, and the remaining deadline is shared by connection, request and
+response-body consumption. Redirects remain disabled and response bytes are
+streamed under an overflow-safe configured ceiling. Zero timeouts and zero
+response limits are rejected during construction.
+
+This is an outbound transport and resource boundary only. It does not make a
+remote HTTP effect transactional, prove that a timed-out remote operation did
+not complete, or close the separate non-SQL execution-lease race described
+above.
 
 ### SQL capability effect authority
 
 The server composition injects an explicit SQL effect authorizer into the
-structured-data and event-outbox brokers. It captures the live execution lease
+structured-data, private-object, and event-outbox brokers. It captures the live execution lease
 before opening the owner transaction, reuses Auth/RBAC tenant/user/session/role
 fences on that transaction for direct user execution, and checks the locked
 credential deadline and lease membership before commit. All structured CRUD,
-list/index reads and the delete-receipt replay path use the same commit gate.
-An error rolls back the effect and its receipt; no new database connection or
-guest invocation is permitted under the fences. The events resolver also
+list/index reads and the delete-receipt replay path use the same commit gate. Object metadata
+reads/lists, object put/delete receipts, upload-session creation/claim, chunk
+append, completion transitions and their replay paths use the same guard.
+An error rolls back the owner transaction and its receipt; no new database
+connection or guest invocation is permitted under the fences. The events resolver also
 binds the complete installation subject and tenant, rejecting mismatched
 capability identity. Owner-only/background work preserves its separate
 admission contract and checks lease lifetime, without inventing user evidence.
@@ -1497,17 +1567,71 @@ for implicit clear). Every host capability rechecks it, including lifecycle
 calls. SQL effects verify it inside the transaction under the platform slug
 activation fence, shared by quarantine, clear and revoke writers. This fences
 first quarantine even without a security row, and quarantine followed by
-clear cannot revive an older lease. The registry status is sampled but its
-independent writers are not fenced by this increment. For ordinary serving, the same owner closure used by node readiness is
+clear cannot revive an older lease. Registry release status has an independent
+per-(slug, version) monotonic authority witness (migration 000096). The permanent
+witness advances on row insert/delete or status/checksum changes, including
+unlisted-to-listed-to-unlisted ABA; no-op metadata changes and rolled-back
+transactions do not advance it. Publication, yank and unyank acquire the platform
+slug fence before registry row locks; mutation triggers share that fence. Yank
+remains a discovery/install fact: it invalidates old leases but does not prevent
+a fresh lease solely because the release is yanked. Unavailable status denies
+admission. For ordinary serving, the same owner closure used by node readiness is
 captured in the lease, including exact artifact members reached through
-dependencies and co-requisites and their security revisions. Before any root
+dependencies and co-requisites and their security and registry authority revisions. Before any root
 selection lock, SQL admission takes all artifact slug locks in ascending
 order (platform then tenant per slug), reselects the complete artifact set,
-validates each durable sandbox policy and security revision, and keeps the
+validates each durable sandbox policy, security revision and registry witness, and keeps the
 locks through commit. Non-SQL calls compare fresh closure evidence but remain
-preflight-only. Lifecycle retains root-only owner authority; static members
-are traversed but static overrides/composition, registry writers and deployment
-readiness are not transactionally fenced. Each artifact lease also captures
+preflight-only. The private-object owner separately fences its SQL
+metadata/session/chunk transitions and revalidates the execution lease after
+object bytes have been read. Lifecycle retains root-only owner authority. For serving,
+every visited module (native and artifact) also captures its canonical
+StaticTenantLifecycleStore revision and exact optional tenant override,
+including absent intent. Core overrides remain irrelevant to policy.
+The SQL effect takes platform slug locks for the entire mixed closure in
+ascending order (and the tenant selection lock for each artifact), then
+compares lifecycle revision and override on the same transaction. Both
+override commit paths take the same platform lock before writing intent,
+journal and aggregate revision; static settings commits already use it.
+A concurrent first override cannot bypass the absent-row fence, and
+disable/clear or disable/enable cannot revive the prior lifecycle revision.
+Settings changes conservatively invalidate leases because they advance the
+same owner revision. Active claims alone are not treated as committed
+intent changes; no lock spans guest hooks. The serving policy is now derived
+from one verified owner composition snapshot and carries that snapshot's
+revision/hash into the lease; a final nonlocking check rejects composition
+changes during derivation. Each fresh capability preflight compares the
+composition identity as well as closure evidence. SQL effects acquire the
+existing shared active-composition row lock after the mixed closure fences
+(SQLite already holds a write reservation) and compare both revision and
+hash without bootstrapping missing state. Owner CAS replacement serializes
+with this lock; returning to an identical manifest does not restore the
+old revision. The global composition fence conservatively invalidates a
+serving lease even for unrelated manifest edits. No extra migration is
+needed. This covers composition-derived defaults and co-requisites, not
+changes to an in-process native registry or independent deployment inputs.
+The serving closure also binds the converged reconciliation state revision,
+head IDs, owner-derived readiness digest, node ID and exact observations for
+every selected artifact. Capture all readiness evidence in a single owner
+read snapshot, then reject a changed head. SQL effects take the shared
+reconciliation state row lock after mixed-selection fences (SQLite already
+holds its write reservation) and before the composition row lock. All
+reconciliation requests, claims, heartbeats and reports acquire the exclusive
+state row lock before changing ledger evidence. Recompute the persisted
+deployment digest and recheck every required live/observed assignment identity
+and observation revision under that lock. An incomplete, legacy, changed
+or missing set denies the effect; even a restored head cannot renew a lease
+whose state revision changed. Fresh non-SQL preflight compares the same
+readiness evidence without an effect lock. Lifecycle hooks retain their
+separate root-only admission. This protects the durable ledger, not live
+executor availability or independent worker liveness. Contextual
+deferred/background channel context is not transactionally fenced. Operational serving maintenance now has a Modules-owned singleton revision and history (migration 000097), with global, tenant, module and tenant/module scopes combined by union. The owner replacement service requires an injected transaction-bound platform authorizer and predecessor CAS. Its normalized scope changes and command history commit together. The artifact resolver captures active or inactive maintenance evidence, includes it in the mixed policy and checks the exact revision through every serving lease and structured SQL effect. The shared row lock follows composition and Channel fences. Native/static serving, concrete operator authority and transport remain open; recovery/lifecycle remain separate owner paths. Drain old serving processes and leases before relying on the migration; downgrade is denied. HTTP channel resolution is now re-read from the owner without the TTL cache, bracketed by the durable generation and matched to the middleware-selected channel. The mixed serving policy evaluates its exact bindings for every closure member; unresolved HTTP context retains the generation as well. Capability preflight reuses the captured input and compares the generation. Structured SQL effects hold the Channel-owned generation row after readiness/composition fences until commit. No new migration is needed. Registry authority
+is checked under the sorted platform/tenant slug fences, before readiness and
+composition locks. Non-SQL effects remain preflight-only; lifecycle checks only
+the root. Drain old writers and leases before applying migration 000096; witness
+downgrade is denied. Direct SQL maintenance must follow the canonical lock order;
+DDL/TRUNCATE, witness tampering and complete cross-owner ordering are outside
+this guarantee. Each artifact lease also captures
 both platform and tenant selection generations on the permanent slug fences.
 Successful activation, deactivation, rollback, uninstall and explicit artifact
 tenant enable/disable advance the affected scope in the same transaction as
@@ -1523,6 +1647,77 @@ executions, stop old selection/security writers, migrate and deploy all
 writers and effect consumers together; mixed-version writers can bypass the
 fence. No transport change is required. Cross-owner lock-order verification
 remains outstanding. Independent non-server broker
-compositions still need an explicitly supplied authority. External effects and
-objects/secrets/MCP/HTTP are not covered by this SQL commit guard.
+compositions still need an explicitly supplied authority. Physical object-store
+bytes, secrets, MCP and HTTP remain outside this SQL commit guard.
 See [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).
+
+### Private object capability effect boundary
+
+The server-composed `platform.data.objects` resolver receives the same
+execution SQL effect authorizer as structured data and events. The owner locks
+the exact execution authority on every metadata transaction, including reads,
+lists, put/delete receipts, upload-session creation and completion claims,
+chunk append, completed-upload replay, and the final session transition. The
+guard rechecks installation selection, capability grant constraints, security
+revision, direct credential/RBAC fences, and lease liveness before commit. Every
+object operation also locks the serving namespace and rejects an active object
+or record-copy migration hold before reading or publishing namespace state.
+
+Object-store bytes are not part of the SQL transaction. A normal object put
+writes to a private generated key before publishing metadata; chunk append
+writes a private staging key before opening the owner transaction. The owner
+transaction then revalidates session state and quota before publishing the
+chunk row, so no SQL authority lock spans object-store I/O. A known denied
+commit rolls back SQL and compensates the just-written bytes. An ambiguous
+storage/database failure does not delete bytes whose metadata commit may have
+succeeded. Object reads commit a fenced metadata snapshot, fetch bytes outside
+the transaction, and revalidate the exact execution authority before returning
+the response. Upload completion is resumable through the durable object
+idempotency receipt and the session's original idempotency key.
+
+This is not a distributed transaction or a complete orphan-recovery guarantee.
+Production fleet/write/retention cutover, ambiguous-outcome reconciliation and
+safe orphan collection remain open.
+
+### Cross-owner transaction ordering
+
+For the inspected Auth/RBAC and artifact serving/security/lifecycle boundaries,
+acquire credentials before composition, lifecycle policy cursor (when needed),
+roles, sorted module slugs (platform then tenant), readiness, Channel and
+maintenance. Lifecycle state commit validates the cursor predecessor before
+acquiring its slug fence; no-transition commits do not acquire a cursor.
+Direct serving SQL checks composition before roles; background serving checks
+composition before closure locks. SQLite composition reserves its writer
+itself. See the [execution authority ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md) for the scoped ordering and remaining audit gaps.
+
+Reconciliation request/claim/heartbeat/report now acquire sorted distinct
+platform slug fences before the readiness state row and read installation
+and admission identity under PostgreSQL FOR SHARE (compatible with FK KEY
+SHARE). Agent paths recheck the exact desired state and target installation
+set after waiting; either convergence branch revalidates all target identities.
+Migration checkpoint writes now acquire platform/tenant slug fences before
+receipt and identity writes. No new migration; coordinate owner writer rollout.
+Migration 000098 removes the blocking registry AFTER-trigger platform edge.
+Migration 000099 adds PostgreSQL BEFORE guards for new release request references
+and publication/yank/unyank receipt parents. The guard takes KEY SHARE NOWAIT
+in request-before-release order where both are referenced, rejects missing or
+invisible parents, and retains existing FK constraints. SET NULL cascades and
+unchanged release request references need no new request parent lock. Retry
+55P03 from a new transaction. Source regressions are authored, unrun. Other
+implicit FK/receipt/generation ordering remains open.
+
+Validation claim, remote completion and expired-claim requeue acquire the
+publish request before locking its job/stage, matching manual stage reports
+and enqueue. Locate without locking a child, then re-read it under the exact
+request fence and child row lock; use PostgreSQL read committed and a live
+clock for remote lease predicates. The lock-order regression is authored,
+unrun; broader owner/worker contention evidence remains open.
+
+Migration 000100 adds request-child and owner-receipt FK guards, including
+review/create/upload/validation receipts, evidence and its receipt, job/stage,
+build/external/Alloy staging, platform admission and release artifact identity.
+The guards run on INSERT or explicit FK-column UPDATE, taking request before
+evidence/release with KEY SHARE NOWAIT. Metadata-only heartbeat updates do not
+acquire a parent fence. Existing FK actions are retained. Retry SQLSTATE 55P03
+from a new transaction; missing/invisible parents fail closed. Source-only
+regressions cover all listed parent classes; no runtime proof yet.
