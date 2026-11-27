@@ -140,10 +140,38 @@ impl SiteSymbolService {
         let tx = self.db.begin().await?;
         crate::services::page::lock_site_symbol_catalog_in_tx(&tx, tenant_id, &locale).await?;
 
-        let existing =
-            site_symbol::Entity::find_by_id((tenant_id, locale.clone(), symbol_id.clone()))
-                .one(&tx)
-                .await?;
+        let existing_rows = site_symbol::Entity::find()
+            .filter(site_symbol::Column::TenantId.eq(tenant_id))
+            .filter(site_symbol::Column::Locale.eq(&locale))
+            .order_by_asc(site_symbol::Column::SymbolId)
+            .all(&tx)
+            .await?;
+        let mut candidate_catalog = Vec::with_capacity(existing_rows.len() + 1);
+        let mut replacing_existing = false;
+        for row in &existing_rows {
+            let existing_descriptor = fly::SymbolDescriptor::from_value(&row.content)
+                .ok_or_else(|| PagesError::validation("Stored site symbol is malformed"))?;
+            if existing_descriptor.id != row.symbol_id {
+                return Err(PagesError::validation(format!(
+                    "Stored site symbol identity mismatch for `{}`",
+                    row.symbol_id
+                )));
+            }
+            if row.symbol_id == symbol_id {
+                candidate_catalog.push(content.clone());
+                replacing_existing = true;
+            } else {
+                candidate_catalog.push(row.content.clone());
+            }
+        }
+        if !replacing_existing {
+            candidate_catalog.push(content.clone());
+        }
+        validate_symbol_catalog(candidate_catalog)?;
+
+        let existing = existing_rows
+            .into_iter()
+            .find(|row| row.symbol_id == symbol_id);
 
         let record = match existing {
             Some(row) => {
@@ -198,6 +226,35 @@ impl SiteSymbolService {
             return Err(PagesError::validation("Site symbol not found"));
         }
 
+        let catalog_rows = site_symbol::Entity::find()
+            .filter(site_symbol::Column::TenantId.eq(tenant_id))
+            .filter(site_symbol::Column::Locale.eq(&locale))
+            .order_by_asc(site_symbol::Column::SymbolId)
+            .all(&tx)
+            .await?;
+        let catalog = catalog_rows
+            .iter()
+            .map(|row| row.content.clone())
+            .collect::<Vec<_>>();
+        validate_symbol_catalog(catalog)?;
+        for row in &catalog_rows {
+            if row.symbol_id == symbol_id {
+                continue;
+            }
+            let descriptor = fly::SymbolDescriptor::from_value(&row.content)
+                .ok_or_else(|| PagesError::validation("Stored site symbol is malformed"))?;
+            if fly::symbol_references(&descriptor.components)
+                .iter()
+                .any(|reference| reference == &symbol_id)
+            {
+                tx.rollback().await?;
+                return Err(PagesError::validation(format!(
+                    "Cannot delete site symbol `{symbol_id}` because it is referenced by symbol `{}`",
+                    row.symbol_id
+                )));
+            }
+        }
+
         let template_refs =
             crate::services::page::template_symbol_ids(&tx, tenant_id, &locale).await?;
         if template_refs.contains(&symbol_id) {
@@ -233,6 +290,20 @@ impl SiteSymbolService {
         tx.commit().await?;
         Ok(())
     }
+}
+
+fn validate_symbol_catalog(symbols: Vec<serde_json::Value>) -> PagesResult<()> {
+    let value = serde_json::json!({
+        fly::FLY_SYMBOLS_FIELD: symbols,
+        "pages": []
+    });
+    let document = fly::GrapesJsCodec::decode_value(value).map_err(|error| {
+        PagesError::validation(format!("Site symbol catalog cannot be decoded: {error}"))
+    })?;
+    fly::resolve_symbol_instances(&document).map_err(|error| {
+        PagesError::validation(format!("Site symbol catalog is invalid: {error}"))
+    })?;
+    Ok(())
 }
 
 fn require_all(security: &SecurityContext, action: Action) -> PagesResult<()> {
