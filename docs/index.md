@@ -35,6 +35,7 @@ Component-local documents live in `apps/*/docs/`, `crates/{libs,modules,ui,utils
 - [ADR Registry](../DECISIONS/README.md)
 - [Proposed ADR: Workflow cron durable scheduling and recovery](../DECISIONS/2026-11-23-workflow-cron-durable-scheduling-and-recovery.md) — workflow-owned schedule cursors, per-firing claims, conservative recovery and operator evidence.
 - [ADR: Proof-bound direct session refresh recovery](../DECISIONS/2026-11-26-session-refresh-retry-proof.md) — retain rotated digests and recover only the current successor with the original secret operation proof during grace.
+- [ADR: Tenant admission fence for session credential issuance](../DECISIONS/2026-11-28-auth-session-tenant-admission.md) — linearize register/login/refresh issuance with tenant deactivation and preserve replay-only revocation after admission is lost.
 - [ADR: Canonical Auth MAC proofs](../DECISIONS/2026-11-25-canonical-auth-mac-proofs.md) — unversioned reset and consent proofs with strict encoding.
 - [ADR: OAuth browser authorization CSRF boundary](../DECISIONS/2026-11-25-oauth-browser-authorization-csrf.md) — cookie-authenticated authorization GETs are side-effect-free and require a CSRF-bound POST before code issuance.
 - [ADR: Installer HTTP job crash quarantine](../DECISIONS/2026-11-24-installer-http-job-crash-quarantine.md) — heartbeat-based interruption detection, fail-closed recovery status, and no automatic lease takeover or target replay.
