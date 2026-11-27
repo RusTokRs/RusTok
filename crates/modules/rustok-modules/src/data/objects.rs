@@ -199,7 +199,8 @@ where
         )
         .map_err(|error| ArtifactDataError::Storage(error.to_string()))?
         .to_string();
-        self.storage
+        if let Err(error) = self
+            .storage
             .objects
             .put_opts(
                 &Path::from(generated_key.as_str()),
@@ -207,7 +208,14 @@ where
                 self.storage.put_options(&requested.content_type),
             )
             .await
-            .map_err(storage_error)?;
+        {
+            delete_uploaded_object_best_effort(
+                &self.storage,
+                &Path::from(generated_key.as_str()),
+            )
+            .await;
+            return Err(storage_error(error));
+        }
         let uploaded_path = generated_key;
         if upload.data.len() as u64 != requested.size_bytes {
             delete_uploaded_object_best_effort(&self.storage, &Path::from(uploaded_path.as_str()))
