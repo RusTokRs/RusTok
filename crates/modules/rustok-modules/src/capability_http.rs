@@ -680,6 +680,15 @@ mod tests {
             "4000::1".parse().expect("non-global-unicast ipv6")
         ));
         assert!(is_disallowed_ip(
+            "fc00::1".parse().expect("unique-local ipv6")
+        ));
+        assert!(is_disallowed_ip(
+            "fe80::1".parse().expect("link-local ipv6")
+        ));
+        assert!(is_disallowed_ip(
+            "2001:db8::1".parse().expect("documentation ipv6")
+        ));
+        assert!(is_disallowed_ip(
             "100::1".parse().expect("discard-only ipv6")
         ));
         assert!(is_disallowed_ip(
@@ -698,6 +707,7 @@ mod tests {
             "2001:4:112::1",   // AS112-v6
             "2001:20::1",      // ORCHIDv2
             "2001:30::1",      // DETs
+            "2620:4f:8000::1",  // Direct Delegation AS112
         ] {
             assert!(!is_disallowed_ip(
                 address.parse().expect("globally reachable IANA allocation")
