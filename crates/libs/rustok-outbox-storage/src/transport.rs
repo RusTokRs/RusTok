@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
     QueryFilter, Set, sea_query::OnConflict,
@@ -42,7 +42,7 @@ impl OutboxTransport {
     where
         C: ConnectionTrait,
     {
-        let affected = entity::Entity::insert(Self::model_from_envelope(envelope)?)
+        let affected = entity::Entity::insert(Self::model_from_envelope(envelope, crate::database_now(txn).await?)?)
             .exec_without_returning(txn)
             .await?;
         require_inserted_event(affected)
@@ -56,7 +56,7 @@ impl OutboxTransport {
     where
         C: ConnectionTrait,
     {
-        let affected = entity::Entity::insert(Self::model_from_contract_envelope(envelope)?)
+        let affected = entity::Entity::insert(Self::model_from_contract_envelope(envelope, crate::database_now(txn).await?)?)
             .exec_without_returning(txn)
             .await?;
         require_inserted_event(affected)
@@ -84,7 +84,9 @@ impl OutboxTransport {
             ));
         }
         let event_type = envelope.event_type().to_string();
-        let active_model = Self::model_from_contract_envelope(envelope.clone())
+        let now = crate::database_now(txn).await
+            .map_err(|error| write_once_unavailable(envelope_id, event_type.as_str(), error))?;
+        let active_model = Self::model_from_contract_envelope(envelope.clone(), now)
             .map_err(|error| write_once_unavailable(envelope_id, event_type.as_str(), error))?;
 
         entity::Entity::insert(active_model)
@@ -162,7 +164,7 @@ impl OutboxTransport {
         Self::write_contract_envelope_in_tx(txn, envelope).await
     }
 
-    fn model_from_envelope(envelope: EventEnvelope) -> Result<entity::ActiveModel> {
+    fn model_from_envelope(envelope: EventEnvelope, now: DateTime<Utc>) -> Result<entity::ActiveModel> {
         envelope
             .validate_registered_schema()
             .map_err(|error| Error::Validation(error.to_string()))?;
@@ -174,11 +176,13 @@ impl OutboxTransport {
             envelope.event_type,
             envelope.schema_version,
             payload,
+            now,
         )
     }
 
     fn model_from_contract_envelope(
         envelope: ContractEventEnvelope,
+        now: DateTime<Utc>,
     ) -> Result<entity::ActiveModel> {
         envelope
             .validate_registered_schema()
@@ -188,7 +192,7 @@ impl OutboxTransport {
         let event_type = envelope.event_type().to_string();
         let schema_version = envelope.schema_version();
         let payload = serde_json::to_value(&envelope)?;
-        Self::model(id, Some(tenant_id), event_type, schema_version, payload)
+        Self::model(id, Some(tenant_id), event_type, schema_version, payload, now)
     }
 
     fn model(
@@ -197,6 +201,7 @@ impl OutboxTransport {
         event_type: String,
         schema_version: u16,
         payload: serde_json::Value,
+        now: DateTime<Utc>,
     ) -> Result<entity::ActiveModel> {
         if id.is_nil() {
             return Err(Error::Validation(
@@ -228,7 +233,7 @@ impl OutboxTransport {
             last_error: Set(None),
             claimed_by: Set(None),
             claimed_at: Set(None),
-            created_at: Set(Utc::now()),
+            created_at: Set(now),
             dispatched_at: Set(None),
         })
     }
@@ -309,7 +314,7 @@ impl EventTransport for OutboxTransport {
             ))
         })?;
         let payload_envelope = envelope.clone();
-        let active_model = Self::model_from_envelope(envelope)?;
+        let active_model = Self::model_from_envelope(envelope, crate::database_now(&self.db).await?)?;
 
         let affected = entity::Entity::insert(active_model)
             .on_conflict(
@@ -369,7 +374,7 @@ impl EventTransport for OutboxTransport {
             .filter(entity::Column::ClaimedAt.is_null())
             .set(entity::ActiveModel {
                 status: Set(SysEventStatus::Dispatched),
-                dispatched_at: Set(Some(Utc::now())),
+                dispatched_at: Set(Some(crate::database_now(&self.db).await?)),
                 claimed_by: Set(None),
                 claimed_at: Set(None),
                 last_error: Set(None),
@@ -489,7 +494,7 @@ mod tests {
         let mut envelope = envelope();
         envelope.event_type = "wrong.event".to_string();
 
-        let error = OutboxTransport::model_from_envelope(envelope)
+        let error = OutboxTransport::model_from_envelope(envelope, chrono::Utc::now())
             .expect_err("unregistered event type must be rejected");
         assert!(error.to_string().contains("is not registered"));
     }
@@ -499,7 +504,7 @@ mod tests {
         let mut envelope = envelope();
         envelope.schema_version = envelope.schema_version.saturating_add(1);
 
-        let error = OutboxTransport::model_from_envelope(envelope)
+        let error = OutboxTransport::model_from_envelope(envelope, chrono::Utc::now())
             .expect_err("schema version mismatch must be rejected");
         assert!(error.to_string().contains("schema version mismatch"));
     }
@@ -510,7 +515,7 @@ mod tests {
             ContractEventEnvelope::new(Uuid::new_v4(), Some(Uuid::new_v4()), contract_event(1))
                 .expect("valid marketplace listing contract envelope");
 
-        let model = OutboxTransport::model_from_contract_envelope(envelope)
+        let model = OutboxTransport::model_from_contract_envelope(envelope, chrono::Utc::now())
             .expect("contract envelope should map to outbox row");
         assert_eq!(model.event_type.unwrap(), "marketplace.listing.created");
         assert_eq!(model.schema_version.unwrap(), 1);

@@ -144,3 +144,14 @@ not responsible for a recipient's domain side effects.
 - [Implementation plan](./implementation-plan.md)
 - [Contract write-once and causation boundary](./contract-write-once-causation.md)
 - [Manifest layer contract](../../../../docs/modules/manifest.md)
+
+## Database clock authority
+
+Durable relay claims, retry deadlines, storage timestamps and retention cutoffs
+use SQL database time. PostgreSQL uses clock_timestamp(), not transaction-start
+time; SQLite uses its SQL clock. Receipt renewals and reclaims use a PostgreSQL
+write-side clock expression; reclaim compares the previous token and timestamp.
+Relay renewal rotates its token even within the same clock tick and counts
+database wait time in its monotonic dispatch budget. Clock errors fail closed.
+Relay and retention intervals are bounded to 3650 days. This does not fence
+primary clock discontinuities or guarantee exactly-once broker effects.

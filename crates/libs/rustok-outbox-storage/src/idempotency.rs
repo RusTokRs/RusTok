@@ -1,11 +1,13 @@
 //! Durable, owner-scoped idempotency receipts for write-like port operations.
 
-use chrono::{Duration, Utc};
+use chrono::Duration;
+#[cfg(test)]
+use chrono::Utc;
 use rustok_api::PortError;
 use rustok_core::generate_id;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbErr,
-    EntityTrait, QueryFilter, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr,
+    EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -163,7 +165,8 @@ pub async fn admit<T: Serialize>(
         return inspect_or_reclaim(database, existing, &operation, &request_hash).await;
     }
 
-    let now = Utc::now().fixed_offset();
+    let now = crate::database_now(database)
+        .await.map_err(database_error)?.fixed_offset();
     let id = generate_id();
     let lease_token = generate_id();
     let insert = entity::ActiveModel {
@@ -251,12 +254,9 @@ pub async fn renew_lease(database: &DatabaseConnection, lease: Lease) -> Result<
             "lease operation_id and token must not be nil",
         ));
     }
-    let now = Utc::now().fixed_offset();
+    let now = receipt_renewal_time(database).await?;
     let update = entity::Entity::update_many()
-        .col_expr(
-            entity::Column::UpdatedAt,
-            sea_orm::sea_query::Expr::value(now),
-        )
+        .col_expr(entity::Column::UpdatedAt, now)
         .filter(entity::Column::Id.eq(lease.operation_id))
         .filter(entity::Column::LeaseToken.eq(lease.token))
         .filter(entity::Column::Status.eq(STATUS_PROCESSING))
@@ -287,7 +287,8 @@ where
     let response = serde_json::to_value(response).map_err(|error| {
         PortError::invariant_violation("outbox.operation_receipt_encode", error.to_string())
     })?;
-    let now = Utc::now().fixed_offset();
+    let now = crate::database_now(connection)
+        .await.map_err(database_error)?.fixed_offset();
     let update = entity::Entity::update_many()
         .col_expr(
             entity::Column::Status,
@@ -347,7 +348,8 @@ where
             encoding_error.to_string(),
         )
     })?;
-    let now = Utc::now().fixed_offset();
+    let now = crate::database_now(connection)
+        .await.map_err(database_error)?.fixed_offset();
     let update = entity::Entity::update_many()
         .col_expr(
             entity::Column::Status,
@@ -456,13 +458,21 @@ pub async fn prune_terminal_receipts(
             "operation receipt prune batch size must be greater than zero",
         ));
     }
-    let cutoff = (Utc::now() - older_than).fixed_offset();
+    let cutoff = crate::database_now(database)
+        .await.map_err(database_error)?
+        .checked_sub_signed(older_than)
+        .ok_or_else(|| PortError::validation(
+            "outbox.operation_receipt_retention_invalid",
+            "operation receipt retention cutoff is out of range",
+        ))?.fixed_offset();
     let candidate_ids: Vec<Uuid> = entity::Entity::find()
         .select_only()
         .column(entity::Column::Id)
         .filter(entity::Column::Status.is_in([STATUS_COMPLETED, STATUS_FAILED]))
         .filter(entity::Column::CompletedAt.is_not_null())
         .filter(entity::Column::CompletedAt.lte(cutoff))
+        .order_by_asc(entity::Column::CompletedAt)
+        .order_by_asc(entity::Column::Id)
         .limit(batch_size)
         .into_tuple::<Uuid>()
         .all(database)
@@ -521,8 +531,10 @@ async fn inspect_or_reclaim(
                 })
         }
         STATUS_PROCESSING => {
-            let stale_before =
-                Utc::now().fixed_offset() - Duration::minutes(PROCESSING_LEASE_MINUTES);
+            let stale_before = crate::database_now(database)
+                .await.map_err(database_error)?.fixed_offset()
+                .checked_sub_signed(Duration::minutes(PROCESSING_LEASE_MINUTES))
+                .ok_or_else(|| database_error(DbErr::Custom("receipt lease cutoff is out of range".to_string())))?;
             if existing.updated_at > stale_before {
                 return Err(PortError::unavailable(
                     "outbox.operation_receipt_in_progress",
@@ -530,7 +542,7 @@ async fn inspect_or_reclaim(
                 ));
             }
 
-            let now = Utc::now().fixed_offset();
+            let now = receipt_renewal_time(database).await?;
             let lease_token = generate_id();
             let claim = entity::Entity::update_many()
                 .col_expr(
@@ -539,11 +551,12 @@ async fn inspect_or_reclaim(
                 )
                 .col_expr(
                     entity::Column::UpdatedAt,
-                    sea_orm::sea_query::Expr::value(now),
+                    now,
                 )
                 .filter(entity::Column::Id.eq(existing.id))
                 .filter(entity::Column::Status.eq(STATUS_PROCESSING))
                 .filter(entity::Column::UpdatedAt.eq(existing.updated_at))
+                .filter(entity::Column::LeaseToken.eq(existing.lease_token))
                 .exec(database)
                 .await
                 .map_err(database_error)?;
@@ -563,6 +576,18 @@ async fn inspect_or_reclaim(
             "outbox.operation_receipt_corrupt",
             "owner operation receipt has an unknown state",
         )),
+    }
+}
+
+// PostgreSQL evaluates renewal at the write rather than a preceding clock read.
+async fn receipt_renewal_time(
+    connection: &impl ConnectionTrait,
+) -> Result<sea_orm::sea_query::Expr, PortError> {
+    if connection.get_database_backend() == DbBackend::Postgres {
+        Ok(sea_orm::sea_query::Expr::cust("clock_timestamp()"))
+    } else {
+        let now = crate::database_now(connection).await.map_err(database_error)?;
+        Ok(sea_orm::sea_query::Expr::value(now.fixed_offset()))
     }
 }
 

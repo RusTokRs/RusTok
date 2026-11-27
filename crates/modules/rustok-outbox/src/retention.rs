@@ -1,4 +1,3 @@
-use chrono::Utc;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
     EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait, sea_query::Expr,
@@ -68,6 +67,13 @@ impl OutboxRetentionConfig {
                 "outbox operation-receipt retention window must be positive".to_string(),
             ));
         }
+        let maximum = chrono::Duration::days(3650);
+        if self.retention > maximum
+            || self.failed_retention.is_some_and(|window| window > maximum)
+            || self.receipt_retention.is_some_and(|window| window > maximum)
+        {
+            return Err(Error::Validation("outbox retention windows must not exceed 3650 days".to_string()));
+        }
         if self.batch_size == 0 {
             return Err(Error::Validation(
                 "outbox retention batch size must be greater than zero".to_string(),
@@ -132,7 +138,9 @@ impl OutboxRetention {
     /// delivery state cannot be bypassed by a stale candidate scan.
     pub async fn prune_once(&self) -> Result<OutboxPruneReport> {
         self.config.validate()?;
-        let cutoff = Utc::now() - self.config.retention;
+        let cutoff = rustok_outbox_storage::database_now(&self.db).await?
+            .checked_sub_signed(self.config.retention)
+            .ok_or_else(|| Error::Validation("outbox retention cutoff is out of range".to_string()))?;
 
         let candidate_ids: Vec<uuid::Uuid> = entity::Entity::find()
             .select_only()
@@ -142,6 +150,7 @@ impl OutboxRetention {
             .filter(entity::Column::DispatchedAt.lte(cutoff))
             .filter(required_consumers_acknowledged_predicate())
             .order_by_asc(entity::Column::DispatchedAt)
+            .order_by_asc(entity::Column::Id)
             .limit(self.config.batch_size)
             .into_tuple::<uuid::Uuid>()
             .all(&self.db)
@@ -215,7 +224,9 @@ impl OutboxRetention {
         let mut batch_exhausted = false;
         let mut pruned_failed = 0;
         if let Some(failed_retention) = self.config.failed_retention {
-            let cutoff = Utc::now() - failed_retention;
+            let cutoff = rustok_outbox_storage::database_now(&self.db).await?
+                .checked_sub_signed(failed_retention)
+                .ok_or_else(|| Error::Validation("outbox failed retention cutoff is out of range".to_string()))?;
             let candidate_ids: Vec<uuid::Uuid> = entity::Entity::find()
                 .select_only()
                 .column(entity::Column::Id)
@@ -223,6 +234,7 @@ impl OutboxRetention {
                 .filter(entity::Column::CreatedAt.lte(cutoff))
                 .filter(required_consumers_acknowledged_predicate())
                 .order_by_asc(entity::Column::CreatedAt)
+                .order_by_asc(entity::Column::Id)
                 .limit(self.config.batch_size)
                 .into_tuple::<uuid::Uuid>()
                 .all(&self.db)

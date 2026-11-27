@@ -1,6 +1,5 @@
 use std::collections::BTreeSet;
 
-use chrono::Utc;
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
     DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, QueryTrait, TransactionTrait,
@@ -95,7 +94,7 @@ impl OutboxConsumer {
             subscription::Entity::insert(subscription::ActiveModel {
                 event_type: Set(event_type),
                 consumer_key: Set(consumer_key.to_string()),
-                created_at: Set(Utc::now()),
+                created_at: Set(crate::database_now(&txn).await?),
             })
             .on_conflict(
                 OnConflict::columns([
@@ -290,7 +289,7 @@ impl OutboxConsumer {
             outbox_event_id: Set(outbox_event_id),
             consumer_key: Set(consumer_key.to_string()),
             event_type: Set(event_type.to_string()),
-            acknowledged_at: Set(Utc::now()),
+            acknowledged_at: Set(crate::database_now(txn).await?),
         })
         .on_conflict(
             OnConflict::columns([receipt::Column::OutboxEventId, receipt::Column::ConsumerKey])

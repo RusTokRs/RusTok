@@ -26,3 +26,14 @@ SQLite reserves the writer before scanning. Drain requires matching event-type
 receipts. ACK holds registry and source event authority through the owner
 transaction; contention must roll back owner effects and be retried.
 Unfenced transport ACK cannot complete a relay claim.
+
+## Database clock authority
+
+Durable relay claims, retry deadlines, storage timestamps and retention cutoffs
+use SQL database time. PostgreSQL uses clock_timestamp(), not transaction-start
+time; SQLite uses its SQL clock. Receipt renewals and reclaims use a PostgreSQL
+write-side clock expression; reclaim compares the previous token and timestamp.
+Relay renewal rotates its token even within the same clock tick and counts
+database wait time in its monotonic dispatch budget. Clock errors fail closed.
+Relay and retention intervals are bounded to 3650 days. This does not fence
+primary clock discontinuities or guarantee exactly-once broker effects.

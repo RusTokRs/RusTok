@@ -202,3 +202,14 @@ the same identity remotely; publication is not persistent remote consumption/ACK
 Rust/backend/real relay/Iggy/restart/DLQ evidence remains open. See the
 [API](CRATE_API.md#fresh-sealed-facts-and-local-acknowledgement-2026-11-01-source-only) and
 [Inventory source packet](../rustok-inventory/contracts/evidence/reservation-events-source.json).
+
+## Database clock authority
+
+Durable relay claims, retry deadlines, storage timestamps and retention cutoffs
+use SQL database time. PostgreSQL uses clock_timestamp(), not transaction-start
+time; SQLite uses its SQL clock. Receipt renewals and reclaims use a PostgreSQL
+write-side clock expression; reclaim compares the previous token and timestamp.
+Relay renewal rotates its token even within the same clock tick and counts
+database wait time in its monotonic dispatch budget. Clock errors fail closed.
+Relay and retention intervals are bounded to 3650 days. This does not fence
+primary clock discontinuities or guarantee exactly-once broker effects.

@@ -1,8 +1,8 @@
-use std::cmp;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+#[cfg(test)]
 use chrono::Utc;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
@@ -24,6 +24,7 @@ use crate::entity::SysEventStatus;
 pub const MAX_RELAY_BATCH_SIZE: u64 = 10_000;
 /// Upper bound on simultaneous dispatches in one relay pass.
 pub const MAX_RELAY_CONCURRENCY: usize = 1_024;
+const MAX_RELAY_INTERVAL: Duration = Duration::from_secs(3650 * 86_400);
 
 #[derive(Clone, Debug)]
 pub struct RelayConfig {
@@ -268,21 +269,25 @@ impl OutboxRelay {
                     .to_string(),
             ));
         }
+        if self.config.claim_ttl > MAX_RELAY_INTERVAL || self.config.backoff_max > MAX_RELAY_INTERVAL {
+            return Err(Error::Validation("outbox relay intervals must not exceed 3650 days".to_string()));
+        }
         Ok(())
     }
 
     async fn claim_batch(&self, batch_size: u64) -> Result<Vec<entity::Model>> {
-        let now = Utc::now();
+        let txn = self.db.begin().await?;
+        let now = rustok_outbox_storage::database_now(&txn).await?;
         let claim_ttl = chrono::Duration::from_std(self.config.claim_ttl)
             .map_err(|_| Error::Validation("outbox relay claim_ttl is out of range".to_string()))?;
-        let stale_before = now - claim_ttl;
+        let stale_before = now.checked_sub_signed(claim_ttl)
+            .ok_or_else(|| Error::Validation("outbox relay lease cutoff is out of range".to_string()))?;
         // Fencing owner for this claim pass: unique per pass, so two relay
         // processes configured with the same worker_id (and two passes of
         // the same process) can never complete each other's claims. The
         // completion updates match on this exact value.
         let worker_id = format!("{}:{}", self.config.worker_id, Uuid::new_v4());
 
-        let txn = self.db.begin().await?;
         let candidates_query = entity::Entity::find()
             .filter(entity::Column::Status.eq(SysEventStatus::Pending))
             .filter(
@@ -296,6 +301,7 @@ impl OutboxRelay {
                     .add(entity::Column::ClaimedAt.lte(stale_before)),
             )
             .order_by_asc(entity::Column::CreatedAt)
+            .order_by_asc(entity::Column::Id)
             .limit(batch_size);
         let candidates = if self.db.get_database_backend() == DatabaseBackend::Postgres {
             candidates_query
@@ -376,13 +382,16 @@ impl OutboxRelay {
                 model.id
             )));
         }
-        let now = Utc::now();
+        let now = rustok_outbox_storage::database_now(&self.db).await?;
+        // Rotate the token even when renewal occurs in the same clock tick.
+        let token = format!("{}:{}", self.config.worker_id, Uuid::new_v4());
         let result = entity::Entity::update_many()
             .filter(entity::Column::Id.eq(model.id))
             .filter(entity::Column::Status.eq(SysEventStatus::Pending))
             .filter(entity::Column::ClaimedBy.eq(model.claimed_by.clone()))
             .filter(entity::Column::ClaimedAt.eq(model.claimed_at))
             .set(entity::ActiveModel {
+                claimed_by: Set(Some(token.clone())),
                 claimed_at: Set(Some(now)),
                 ..Default::default()
             })
@@ -390,6 +399,7 @@ impl OutboxRelay {
             .await?;
         self.ensure_claim_owned(model.id, result.rows_affected)?;
         let mut refreshed = model.clone();
+        refreshed.claimed_by = Some(token);
         refreshed.claimed_at = Some(now);
         Ok(refreshed)
     }
@@ -545,7 +555,7 @@ impl OutboxRelay {
             .filter(entity::Column::ClaimedAt.eq(model.claimed_at))
             .set(entity::ActiveModel {
                 status: Set(SysEventStatus::Dispatched),
-                dispatched_at: Set(Some(Utc::now())),
+                dispatched_at: Set(Some(rustok_outbox_storage::database_now(&self.db).await?)),
                 claimed_by: Set(None),
                 claimed_at: Set(None),
                 last_error: Set(None),
@@ -570,7 +580,9 @@ impl OutboxRelay {
             } else {
                 (
                     SysEventStatus::Pending,
-                    Some(Utc::now() + self.backoff_duration(retry_count)),
+                    Some(rustok_outbox_storage::database_now(&self.db).await?
+                        .checked_add_signed(self.backoff_duration(retry_count)?)
+                        .ok_or_else(|| Error::Validation("outbox retry deadline is out of range".to_string()))?),
                     false,
                 )
             };
@@ -625,13 +637,16 @@ impl OutboxRelay {
         }
     }
 
-    fn backoff_duration(&self, retry_count: i32) -> chrono::Duration {
-        let attempt = retry_count.saturating_sub(1) as u32;
-        let factor = 2u128.pow(cmp::min(attempt, 16));
-        let millis = self.config.backoff_base.as_millis().saturating_mul(factor);
-        let max_ms = self.config.backoff_max.as_millis();
-        let bounded = cmp::min(millis, max_ms) as i64;
-        chrono::Duration::milliseconds(bounded)
+    fn backoff_duration(&self, retry_count: i32) -> Result<chrono::Duration> {
+        let mut delay = self.config.backoff_base.min(self.config.backoff_max);
+        for _ in 1..retry_count {
+            if delay.is_zero() || delay >= self.config.backoff_max {
+                break;
+            }
+            delay = delay.saturating_mul(2).min(self.config.backoff_max);
+        }
+        chrono::Duration::from_std(delay)
+            .map_err(|_| Error::Validation("outbox retry backoff is out of range".to_string()))
     }
 }
 
@@ -725,6 +740,24 @@ mod tests {
             ..RelayConfig::default()
         });
         assert!(relay.validate_config().is_ok());
+    }
+
+    #[tokio::test]
+    async fn backoff_reaches_cap_without_overflow_or_fixed_exponent_ceiling() {
+        let relay = OutboxRelay::new(database().await, Arc::new(RejectUnexpectedPublish))
+            .with_config(RelayConfig {
+                backoff_base: Duration::from_millis(1),
+                backoff_max: Duration::from_secs(1000),
+                ..RelayConfig::default()
+            });
+        assert_eq!(relay.backoff_duration(1).unwrap(), chrono::Duration::milliseconds(1));
+        assert_eq!(relay.backoff_duration(18).unwrap(), chrono::Duration::milliseconds(131_072));
+        assert_eq!(relay.backoff_duration(i32::MAX).unwrap(), chrono::Duration::seconds(1000));
+        let invalid = relay.with_config(RelayConfig {
+            backoff_max: Duration::MAX,
+            ..RelayConfig::default()
+        });
+        assert!(invalid.validate_config().is_err());
     }
 
     #[test]
@@ -900,7 +933,7 @@ mod tests {
         assert!(OutboxRelay::decode_envelope(&wrong_tenant).is_err());
 
         let renewed = relay.refresh_claim(&queued).await.expect("renew claim");
-        assert_eq!(renewed.claimed_by, queued.claimed_by);
+        assert_ne!(renewed.claimed_by, queued.claimed_by);
         assert!(renewed.claimed_at > queued.claimed_at);
         assert!(relay.mark_dispatched(&queued).await.is_err());
         relay.mark_dispatched(&renewed).await.expect("current claim");
