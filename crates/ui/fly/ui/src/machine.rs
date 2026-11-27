@@ -58,16 +58,18 @@ impl UiIntent {
     /// True when dispatching the intent can change the authored document or submit it.
     /// View-state intents remain available when a peer tab has fenced this editor.
     pub fn mutates_document(&self) -> bool {
-        matches!(
-            self,
+        match self {
+            Self::Execute(command) => {
+                !CommandCapabilityRequirement::for_command(command).is_empty()
+            }
             Self::Drop
-                | Self::CutSelection
-                | Self::PasteClipboard
-                | Self::Execute(_)
-                | Self::Undo
-                | Self::Redo
-                | Self::RequestSave
-        )
+            | Self::CutSelection
+            | Self::PasteClipboard
+            | Self::Undo
+            | Self::Redo
+            | Self::RequestSave => true,
+            _ => false,
+        }
     }
 }
 
@@ -289,8 +291,10 @@ impl FlyUiStateMachine {
                             capability.as_str().to_string(),
                         ));
                     }
-                    if !matches!(command.as_ref(), EditorCommand::Batch { commands } if commands.is_empty())
-                    {
+                    if !matches!(
+                        command.as_ref(),
+                        EditorCommand::Batch { commands } if commands.is_empty()
+                    ) {
                         self.mark_dirty()?;
                     }
                 }
