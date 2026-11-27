@@ -1102,6 +1102,68 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn serving_closure_requires_exact_locked_dependency_and_current_policy() {
+        use std::collections::BTreeMap;
+        use crate::artifact_node_reconciliation::serving_artifact_closure;
+
+        let mut root = installed(&package());
+        let mut dependency = installed(&package());
+        dependency.release.slug = "dependency".into();
+        dependency.descriptor.slug = dependency.release.slug.clone();
+        root.descriptor.dependencies.push(crate::ModuleDependencyConstraint {
+            slug: dependency.release.slug.clone(),
+            version_requirement: "*".into(),
+        });
+        root.dependency_lock = crate::ModuleDependencyLockGraph::create(1, vec![
+            crate::ModuleDependencyLockNode {
+                slug: dependency.release.slug.clone(),
+                version: dependency.release.version.clone(),
+                payload_digest: dependency.release.digest.clone(),
+                manifest_digest: dependency.reference.digest.clone(),
+                dependencies: vec![],
+            },
+        ]).unwrap();
+        let tenant_id = Uuid::new_v4();
+        let revision = format!("sha256:{}", "b".repeat(64));
+        let mut decisions = serde_json::Map::new();
+        for item in [&root, &dependency] {
+            let mut facts = vec![
+                json!({"kind": "definition", "version": item.release.version.clone(),
+                    "module_kind": "optional", "source": {"kind": "artifact", "release": item.release.clone()}}),
+                json!({"kind": "artifact_installation", "installation_id": item.installation_id,
+                    "scope": item.scope.clone(), "release_digest": item.release.digest.clone(),
+                    "dependency_graph_revision": item.dependency_lock.graph_revision,
+                    "dependency_graph_digest": item.dependency_lock.graph_digest.clone(),
+                    "capability_grant_revision": item.capability_grant_revision}),
+            ];
+            if item.installation_id == root.installation_id {
+                facts.push(json!({"kind":"dependency", "module_slug":dependency.release.slug.clone(),"enabled":true}));
+            }
+            decisions.insert(item.release.slug.clone(), json!({
+                "module_slug":item.release.slug.clone(), "enabled":true,
+                "policy_revision":revision.clone(), "facts":facts, "denial_reasons":[]
+            }));
+        }
+        let policy: ModuleEffectivePolicy = serde_json::from_value(json!({
+            "policy_revision": revision,
+            "enabled_modules": [root.release.slug.clone(), dependency.release.slug.clone()],
+            "decisions": decisions
+        })).unwrap();
+        let mut selected = BTreeMap::from([
+            (root.release.slug.clone(), root.clone()),
+            (dependency.release.slug.clone(), dependency.clone()),
+        ]);
+        assert_eq!(serving_artifact_closure(tenant_id, &root, &policy, &selected).unwrap().len(), 2);
+        selected.get_mut(&dependency.release.slug).unwrap().reference.digest = format!("sha256:{}", "f".repeat(64));
+        assert!(serving_artifact_closure(tenant_id, &root, &policy, &selected).is_err());
+        selected.insert(dependency.release.slug.clone(), dependency.clone());
+        selected.get_mut(&dependency.release.slug).unwrap().capability_grant_revision += 1;
+        assert!(serving_artifact_closure(tenant_id, &root, &policy, &selected).is_err());
+        selected.remove(&dependency.release.slug);
+        assert!(serving_artifact_closure(tenant_id, &root, &policy, &selected).is_err());
+    }
+
     #[tokio::test]
     async fn runtime_rejects_stale_admission_even_if_current_policy_allows_target() {
         let installed = installed(&package());

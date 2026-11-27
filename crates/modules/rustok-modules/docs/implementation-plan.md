@@ -3513,3 +3513,19 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   Reconciliation producer revision parity, request-specific channel/maintenance
   inputs, dependency/node liveness coverage and post-admission races remain
   open. No readiness promotion or atomic sandbox guarantee is claimed.
+
+### Dependency-closure node readiness
+
+- Source-wired the exact active assignment check for the entire effective
+  dependency/co-requisite closure, with immutable artifact lock identity and
+  policy installation/graph/capability evidence comparisons. Compare the
+  durable observed state revision before and after all assignment reads.
+- Deny stale/unavailable readiness at both host admission and runtime
+  dispatch; distinguish storage errors from policy denials.
+- Added pure closure regression for exact match, replaced manifest digest,
+  changed capability revision and absent selection; tests unrun.
+- The existing singleton platform observed head cannot represent differing
+  tenant-specific serving policy revisions simultaneously. Producer parity
+  needs an explicit contract change and migration (not a fallback comparison).
+  Contextual channel/maintenance inputs, independent liveness/expiry and
+  atomic post-admission enforcement remain open.

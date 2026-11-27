@@ -382,7 +382,10 @@ fn map_dispatch_error(error: ModuleDispatchError) -> Error {
         }
         ModuleDispatchError::ArtifactHook(ArtifactBindingDispatchError::DeniedByPolicy {
             ..
-        }) => http_error(rustok_web::HttpError::forbidden(
+        })
+        | ModuleDispatchError::ArtifactHook(ArtifactBindingDispatchError::EffectivePolicy(
+            rustok_modules::ArtifactEffectivePolicyResolveError::NodeNotReady(_),
+        )) => http_error(rustok_web::HttpError::forbidden(
             "module_policy_denied",
             "The module is not enabled by the effective module policy",
         )),

@@ -12,6 +12,7 @@ use sea_orm::{
     TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -478,6 +479,40 @@ impl SeaOrmArtifactNodeReadiness {
         Ok(Self { db, node_id })
     }
 
+    /// Require the root and every artifact in its effective dependency and
+    /// co-requisite closure on this node. A single observed-head revision must
+    /// span all checks; a concurrent reconciliation forces a fresh admission.
+    /// Neither a compatible version nor a ready root substitutes for an exact
+    /// dependency lock identity. Static dependencies have no artifact digest
+    /// proof and cannot satisfy an artifact lock node.
+    pub async fn require_active_policy_closure(
+        &self,
+        tenant_id: Uuid,
+        artifact: &InstalledModuleArtifact,
+        policy: &crate::ModuleEffectivePolicy,
+    ) -> Result<(), ModuleArtifactNodeReconciliationError> {
+        let before = load_state(&self.db, false).await?;
+        if before.observed_id.is_none() {
+            return Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable);
+        }
+        let selected = crate::SeaOrmArtifactInstallationStore::new(self.db.clone())
+            .list_active_for_tenant(tenant_id)
+            .await
+            .map_err(store_error)?;
+        let selected = selected.into_iter()
+            .map(|item| (item.release.slug.clone(), item))
+            .collect::<BTreeMap<_, _>>();
+        let required = serving_artifact_closure(tenant_id, artifact, policy, &selected)?;
+        for item in required {
+            self.require_active(item, policy.policy_revision()).await?;
+        }
+        let after = load_state(&self.db, false).await?;
+        if before.revision != after.revision || before.observed_id != after.observed_id {
+            return Err(ModuleArtifactNodeReconciliationError::StaleReconciliation);
+        }
+        Ok(())
+    }
+
     /// Requires the complete durable assignment identity and current canonical
     /// effective-policy revision for the admitted installation selected by the
     /// runtime. The method deliberately does not accept a slug, release tag,
@@ -623,6 +658,98 @@ impl SeaOrmArtifactNodeReadiness {
             Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)
         }
     }
+}
+
+/// Pure closure validation. Every selected artifact must still match the
+/// policy's exact installation and durable runtime evidence, not just its slug.
+pub(crate) fn serving_artifact_closure<'a>(
+    tenant_id: Uuid,
+    root: &InstalledModuleArtifact,
+    policy: &crate::ModuleEffectivePolicy,
+    selected: &'a BTreeMap<String, InstalledModuleArtifact>,
+) -> Result<Vec<&'a InstalledModuleArtifact>, ModuleArtifactNodeReconciliationError> {
+    use crate::{ArtifactInstallationTarget, ModuleDefinitionSource, ModuleEffectivePolicyFact};
+    let denied = || ModuleArtifactNodeReconciliationError::AssignmentUnavailable;
+    if selected.get(&root.release.slug) != Some(root) {
+        return Err(denied());
+    }
+    let mut pending = vec![root.release.slug.clone()];
+    let mut visited = BTreeSet::new();
+    let mut required = Vec::new();
+    while let Some(slug) = pending.pop() {
+        if !visited.insert(slug.clone()) {
+            continue;
+        }
+        let decision = policy.get_decision(&slug).ok_or_else(denied)?;
+        if !decision.enabled || !decision.denial_reasons.is_empty() {
+            return Err(denied());
+        }
+        let mut definitions = decision.facts.iter().filter_map(|fact| match fact {
+            ModuleEffectivePolicyFact::Definition { source, .. } => Some(source),
+            _ => None,
+        });
+        let source = definitions.next().ok_or_else(denied)?;
+        if definitions.next().is_some() {
+            return Err(denied());
+        }
+        if let ModuleDefinitionSource::Artifact { release } = source {
+            let item = selected.get(&slug).ok_or_else(denied)?;
+            if &item.release != release
+                || policy.admit_artifact_execution(
+                    tenant_id, release, ArtifactInstallationTarget::ExactInstallation {
+                        installation_id: item.installation_id,
+                    },
+                ).is_none()
+            {
+                return Err(denied());
+            }
+            let exact_fact = decision.facts.iter().any(|fact| matches!(fact,
+                ModuleEffectivePolicyFact::ArtifactInstallation {
+                    installation_id, scope, release_digest, dependency_graph_revision,
+                    dependency_graph_digest, capability_grant_revision,
+                } if *installation_id == item.installation_id && scope == &item.scope
+                    && release_digest == &item.release.digest
+                    && *dependency_graph_revision == item.dependency_lock.graph_revision
+                    && dependency_graph_digest == &item.dependency_lock.graph_digest
+                    && *capability_grant_revision == item.capability_grant_revision
+            ));
+            if !exact_fact {
+                return Err(denied());
+            }
+            item.validate_dependency_lock().map_err(|_| denied())?;
+            for lock in &item.dependency_lock.nodes {
+                let dependency = selected.get(&lock.slug).ok_or_else(denied)?;
+                if dependency.release.version != lock.version
+                    || dependency.release.digest != lock.payload_digest
+                    || dependency.reference.digest != lock.manifest_digest
+                {
+                    return Err(denied());
+                }
+                let actual_edges = dependency.descriptor.dependencies.iter()
+                    .map(|edge| edge.slug.as_str()).collect::<BTreeSet<_>>();
+                let locked_edges = lock.dependencies.iter().map(String::as_str).collect::<BTreeSet<_>>();
+                if actual_edges != locked_edges {
+                    return Err(denied());
+                }
+                pending.push(lock.slug.clone());
+            }
+            required.push(item);
+        }
+        for fact in &decision.facts {
+            match fact {
+                ModuleEffectivePolicyFact::Dependency { module_slug, enabled } if *enabled =>
+                    pending.push(module_slug.clone()),
+                ModuleEffectivePolicyFact::CoRequisite { module_slug, enabled, compatible, .. }
+                    if *enabled && *compatible => pending.push(module_slug.clone()),
+                ModuleEffectivePolicyFact::Dependency { .. }
+                | ModuleEffectivePolicyFact::CoRequisite { .. } => return Err(denied()),
+                _ => {}
+            }
+        }
+    }
+    // Stable order is useful for diagnostics and deterministic read behavior.
+    required.sort_by_key(|item| item.installation_id);
+    Ok(required)
 }
 
 impl<A, T> SeaOrmModuleArtifactNodeReconciliationService<A, T>

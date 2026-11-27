@@ -247,7 +247,21 @@ while honoring explicit tenant override denials. The actual composed executor's
 payload-kind support supplies the availability input; it is not a worker
 health probe. Exact durable node readiness is still required for the resulting
 policy revision. The reconciliation producer must observe that revision before
-serving; mismatches fail closed. Contextual channel/maintenance owner inputs,
+serving; mismatches fail closed. Readiness now covers the root and every selected artifact in its dependency
+and co-requisite closure. Each dependency lock node must match the selected
+artifact version, payload and manifest digest, and dependency edges; a native
+definition without immutable artifact evidence cannot satisfy a lock node.
+Every required artifact must match the policy's installation/graph/capability
+facts and active observed assignment on the same node and reconciliation
+revision. The owner checks the observed-head revision before and after the
+closure read, not an atomic execution lease. Storage failures remain
+infrastructure errors; unavailable or stale readiness is a policy denial.
+The existing ledger has a single platform-wide observed head with one policy
+revision, whereas serving policy is tenant-specific. It cannot represent
+distinct simultaneous tenant policy revisions. Do not substitute an arbitrary
+or revision-free readiness check; a separately reviewed scoped ledger or
+base-policy contract and producer wiring are required.
+Contextual channel/maintenance owner inputs,
 the reconciliation producer's full revision parity and atomic runtime fences
 remain outstanding.
 The active installation resolver chooses the effective tenant/platform scope by

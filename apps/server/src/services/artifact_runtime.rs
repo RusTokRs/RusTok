@@ -92,10 +92,12 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
             return Ok(policy);
         }
         self.node_readiness
-            .require_active(artifact, policy.policy_revision())
+            .require_active_policy_closure(tenant_id, artifact, &policy)
             .await
-            .map_err(|error| {
-                ArtifactEffectivePolicyResolveError::NodeNotReady(error.to_string())
+            .map_err(|error| match error {
+                rustok_modules::ModuleArtifactNodeReconciliationError::Store(_) =>
+                    ArtifactEffectivePolicyResolveError::Store(error.to_string()),
+                _ => ArtifactEffectivePolicyResolveError::NodeNotReady(error.to_string()),
             })?;
         Ok(policy)
     }
