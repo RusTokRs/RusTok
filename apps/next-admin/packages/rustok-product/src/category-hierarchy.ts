@@ -46,7 +46,7 @@ export function buildCategoryHierarchyOptions(
     const path = segments.reverse();
     return {
       id: category.id,
-      label: path.join(' / ') || category.code,
+      label: path.join('/') || category.code,
       depth: Math.max(0, path.length - 1)
     };
   });

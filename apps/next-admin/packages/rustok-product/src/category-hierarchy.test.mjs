@@ -24,7 +24,7 @@ test('category labels and depth follow current parent IDs, not stale paths', () 
 
   assert.deepEqual(buildCategoryHierarchyOptions(categories), [
     { id: 'parent', label: 'new-parent', depth: 0 },
-    { id: 'child', label: 'new-parent / child', depth: 1 }
+    { id: 'child', label: 'new-parent/child', depth: 1 }
   ]);
 });
 
@@ -36,8 +36,8 @@ test('category hierarchy tolerates missing parents and cycles without looping', 
   ]);
 
   assert.deepEqual(options, [
-    { id: 'a', label: 'B / A', depth: 1 },
-    { id: 'b', label: 'A / B', depth: 1 },
+    { id: 'a', label: 'b/a', depth: 1 },
+    { id: 'b', label: 'a/b', depth: 1 },
     { id: 'orphan', label: 'Orphan', depth: 0 }
   ]);
 });
