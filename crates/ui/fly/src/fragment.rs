@@ -224,7 +224,7 @@ fn remap_fragment_asset_ids(
         reserved.insert(asset.id.clone());
         let conflicts_with_existing_record = existing_by_id
             .get(&asset.id)
-            .is_some_and(|existing| existing != raw);
+            .is_some_and(|existing| existing != &*raw);
         let conflicts_with_dangling_reference = !existing_by_id.contains_key(&asset.id)
             && existing_asset_references.contains(&asset.id);
         if conflicts_with_existing_record || conflicts_with_dangling_reference {
