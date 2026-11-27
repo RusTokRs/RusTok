@@ -208,13 +208,13 @@ impl ProjectFragment {
     }
 }
 
-fn remap_fragment_asset_ids(
+pub(crate) fn remap_fragment_asset_ids(
     assets: &mut [Value],
     components: &mut [ComponentNode],
     existing_assets: &[Value],
     existing_asset_references: &BTreeSet<String>,
     generator: &mut impl IdGenerator,
-) -> FlyResult<()> {
+) -> FlyResult<BTreeMap<String, String>> {
     let mut existing_by_id = BTreeMap::new();
     for raw in existing_assets {
         if let Some(asset) = AssetDescriptor::from_value(raw.clone()) {
@@ -255,10 +255,30 @@ fn remap_fragment_asset_ids(
             remap_component_asset_references(component, &mapping);
         }
     }
+    Ok(mapping)
+}
+
+pub(crate) fn apply_fragment_asset_id_mapping(
+    assets: &mut [Value],
+    components: &mut [ComponentNode],
+    mapping: &BTreeMap<String, String>,
+) -> FlyResult<()> {
+    for raw in assets {
+        if let Some(asset) = AssetDescriptor::from_value(raw.clone())
+            && let Some(replacement) = mapping.get(&asset.id)
+        {
+            set_asset_identity(raw, replacement)?;
+        }
+    }
+    if !mapping.is_empty() {
+        for component in components {
+            remap_component_asset_references(component, mapping);
+        }
+    }
     Ok(())
 }
 
-fn collect_component_asset_ids(
+pub(crate) fn collect_component_asset_ids(
     component: &ComponentNode,
     asset_ids: &mut BTreeSet<String>,
 ) {
