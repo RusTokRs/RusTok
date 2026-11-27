@@ -762,17 +762,30 @@ pub struct SeaOrmArtifactHttpCapabilityBrokerResolver {
 
 impl SeaOrmArtifactHttpCapabilityBrokerResolver {
     pub fn new(db: DatabaseConnection) -> SandboxResult<Self> {
+        let broker =
+            ArtifactHttpCapabilityBroker::with_database(db.clone(), Duration::from_secs(10))?;
         Ok(Self {
             db,
-            broker: Arc::new(ArtifactHttpCapabilityBroker::new()?),
+            broker: Arc::new(broker),
         })
     }
 
     pub fn with_timeout(db: DatabaseConnection, timeout: Duration) -> SandboxResult<Self> {
+        let broker = ArtifactHttpCapabilityBroker::with_database(db.clone(), timeout)?;
         Ok(Self {
             db,
-            broker: Arc::new(ArtifactHttpCapabilityBroker::with_timeout(timeout)?),
+            broker: Arc::new(broker),
         })
+    }
+
+    pub fn with_sql_effect_authorizer(
+        mut self,
+        authorizer: Arc<dyn crate::ArtifactSqlEffectAuthorizer>,
+    ) -> Self {
+        let mut broker = (*self.broker).clone();
+        broker.effect_authorizer = Some(authorizer);
+        self.broker = Arc::new(broker);
+        self
     }
 }
 
