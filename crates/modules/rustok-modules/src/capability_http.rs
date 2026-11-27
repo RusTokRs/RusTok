@@ -89,9 +89,9 @@ fn is_disallowed_ipv4(ipv4: Ipv4Addr) -> bool {
 
 /// Extracts the IPv4 address embedded in transition/compatibility prefixes
 /// whose traffic can be delivered to that IPv4 destination: the NAT64
-/// well-known prefix `64:ff9b::/96`, the RFC 8215 local-use prefix
-/// `64:ff9b:1::/48`, deprecated IPv4-compatible `::/96`, and 6to4
-/// `2002::/16`.
+/// well-known prefix `64:ff9b::/96`, deprecated IPv4-compatible `::/96`,
+/// and 6to4 `2002::/16`. The non-globally-routable RFC 8215 local-use
+/// prefix `64:ff9b:1::/48` is rejected separately.
 fn embedded_ipv4(ipv6: std::net::Ipv6Addr) -> Option<Ipv4Addr> {
     let segments = ipv6.segments();
     if segments[..6] == [0x0064, 0xff9b, 0, 0, 0, 0]
@@ -114,17 +114,23 @@ fn is_disallowed_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(ipv4) => is_disallowed_ipv4(ipv4),
         IpAddr::V6(ipv6) => {
+            let segments = ipv6.segments();
+            // RFC 8215 reserves this prefix for local-use translation and
+            // explicitly does not make it globally reachable. Reject it
+            // outright rather than treating it as an ordinary public target.
+            if segments[..3] == [0x0064, 0xff9b, 0x0001] {
+                return true;
+            }
             // IPv4-mapped IPv6 literals connect to the embedded IPv4
             // address on dual-stack hosts, so they must pass the IPv4 rules.
             if let Some(ipv4) = ipv6.to_ipv4_mapped() {
                 return is_disallowed_ipv4(ipv4);
             }
-            // NAT64/6to4 traffic is delivered to the embedded IPv4
-            // destination, so it must pass the same rules.
+            // Well-known NAT64, IPv4-compatible and 6to4 traffic can be
+            // delivered to an embedded IPv4 destination, so apply IPv4 rules.
             if let Some(ipv4) = embedded_ipv4(ipv6) {
                 return is_disallowed_ipv4(ipv4);
             }
-            let segments = ipv6.segments();
             ipv6.is_loopback()
                 || ipv6.is_unspecified()
                 || ipv6.is_multicast()
@@ -583,11 +589,12 @@ mod tests {
         assert!(!is_disallowed_ip(
             "2002:0808:0808::".parse().expect("6to4 public address")
         ));
-        // RFC 8215 local-use NAT64 must screen its embedded IPv4 too.
+        // RFC 8215 local-use NAT64 is not globally reachable, so reject
+        // the whole prefix even when its embedded IPv4 address is public.
         assert!(is_disallowed_ip(
             "64:ff9b:1::a9fe:a9fe".parse().expect("local-use nat64 private address")
         ));
-        assert!(!is_disallowed_ip(
+        assert!(is_disallowed_ip(
             "64:ff9b:1::808:808".parse().expect("local-use nat64 public address")
         ));
         // Deprecated IPv4-compatible addresses cannot bypass IPv4 screening.
