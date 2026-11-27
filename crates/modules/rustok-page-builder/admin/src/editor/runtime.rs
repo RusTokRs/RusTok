@@ -384,12 +384,8 @@ impl AdminEditorRuntime {
     }
 
     pub fn dispatch(&self, intent: UiIntent) {
-        if intent.mutates_document() || matches!(&intent, UiIntent::ActivatePage { .. }) {
-            self.runtime_publish_gate_evaluation.set(None);
-            self.server_preview_html.set(None);
-            self.preview_request.set(None);
-            self.preview_in_progress.set(false);
-        }
+        let invalidates_preview =
+            intent.mutates_document() || matches!(&intent, UiIntent::ActivatePage { .. });
         if self.peer_write_conflicted() && intent.mutates_document() {
             self.reject_peer_write_conflict();
             return;
@@ -406,6 +402,15 @@ impl AdminEditorRuntime {
         };
         match result {
             Ok(effects) => {
+                // Keep the last valid preview when the controller rejects an intent. The
+                // controller rolls rejected commands back, so derived preview state is stale
+                // only after a successful document/navigation transition.
+                if invalidates_preview {
+                    self.runtime_publish_gate_evaluation.set(None);
+                    self.server_preview_html.set(None);
+                    self.preview_request.set(None);
+                    self.preview_in_progress.set(false);
+                }
                 self.last_error.set(None);
                 for effect in effects {
                     self.apply_effect(effect);
@@ -927,6 +932,57 @@ mod tests {
         )
         .expect("controller");
         AdminEditorRuntime::new(controller, None, None, None, "facade missing", "Saved")
+    }
+
+    #[test]
+    fn rejected_document_intent_preserves_the_last_valid_preview() {
+        let runtime = runtime();
+        let hash = runtime
+            .controller
+            .get_untracked()
+            .editor()
+            .revision()
+            .project_hash;
+        let preview_attempt = PreviewAttempt::new(hash, 0, serde_json::json!({}), None);
+        runtime
+            .server_preview_html
+            .set(Some("<main>last good preview</main>".to_string()));
+        runtime.preview_request.set(Some(preview_attempt.clone()));
+        runtime.preview_in_progress.set(true);
+
+        runtime.dispatch(UiIntent::execute(fly::EditorCommand::Remove {
+            component_id: "missing".to_string(),
+        }));
+
+        assert!(runtime.last_error.get_untracked().is_some());
+        assert_eq!(
+            runtime.server_preview_html.get_untracked().as_deref(),
+            Some("<main>last good preview</main>")
+        );
+        assert!(runtime.preview_in_progress.get_untracked());
+        assert_eq!(
+            runtime
+                .preview_request
+                .get_untracked()
+                .as_ref()
+                .map(|attempt| attempt.id),
+            Some(preview_attempt.id)
+        );
+
+        runtime.dispatch(UiIntent::execute(fly::EditorCommand::Patch {
+            component_id: "root".to_string(),
+            patch: fly::ComponentPatch {
+                attributes: serde_json::Map::from_iter([(
+                    "aria-label".to_string(),
+                    serde_json::json!("Updated root"),
+                )]),
+                ..fly::ComponentPatch::default()
+            },
+        }));
+
+        assert!(runtime.server_preview_html.get_untracked().is_none());
+        assert!(runtime.preview_request.get_untracked().is_none());
+        assert!(!runtime.preview_in_progress.get_untracked());
     }
 
     #[test]
