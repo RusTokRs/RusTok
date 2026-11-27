@@ -1844,17 +1844,20 @@ pub struct WorkspaceIntentContext {
     pub page_id: String,
     pub revision: String,
     pub project_hash: String,
+    pub command_sequence: u64,
 }
 
 fn bind_workspace_intent_context(
     envelope: BrowserIntentEnvelope,
     context: WorkspaceIntentContext,
 ) -> BrowserIntentEnvelope {
-    envelope.with_page_context(
-        Some(context.page_id),
-        Some(context.revision),
-        Some(context.project_hash),
-    )
+    envelope
+        .with_page_context(
+            Some(context.page_id),
+            Some(context.revision),
+            Some(context.project_hash),
+        )
+        .with_command_sequence(context.command_sequence)
 }
 
 /// Full editor workspace: palette, page tabs (switch, create, remove), page properties (rename, SEO, move), layer tree, canvas preview, design-token editor, and undo/redo, wired to a
@@ -3207,12 +3210,14 @@ mod tests {
                 page_id: "page-a".to_string(),
                 revision: "revision-2".to_string(),
                 project_hash: "hash-2".to_string(),
+                command_sequence: 42,
             },
         );
 
         assert_eq!(bound.page_id.as_deref(), Some("page-a"));
         assert_eq!(bound.revision.as_deref(), Some("revision-2"));
         assert_eq!(bound.project_hash.as_deref(), Some("hash-2"));
+        assert_eq!(bound.command_sequence, Some(42));
     }
 
     #[test]

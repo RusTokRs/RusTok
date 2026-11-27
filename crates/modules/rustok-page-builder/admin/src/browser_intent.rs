@@ -553,11 +553,28 @@ fn validate_revision(
     controller: &AdminCanvasController,
     envelope: &BrowserIntentEnvelope,
 ) -> Result<(), BrowserIntentDispatchError> {
+    let current_sequence = controller.editor().revision().command_sequence;
+    match envelope.command_sequence {
+        Some(sequence) if sequence != current_sequence => {
+            return Err(BrowserIntentDispatchError::CommandSequenceConflict {
+                expected: current_sequence,
+                actual: sequence,
+            });
+        }
+        None if envelope.operation_id.is_some() => {
+            return Err(BrowserIntentDispatchError::MissingField(
+                "command_sequence".to_string(),
+            ));
+        }
+        _ => {}
+    }
     if !is_mutating_intent(envelope) {
         return Ok(());
     }
-    // Every mutation is bound to the exact workspace document snapshot. Missing page scope,
-    // revision or project hash must never turn an old event into a write against the live state.
+    // A supplied command sequence must match the live document. Strict receipt-backed
+    // requests must carry it; a stale sequence must never be upgraded into a write against
+    // the current document, even when undo/redo restored the same project hash.
+    // Mutations are also bound to the exact page, revision and project hash.
     let page_id = envelope
         .page_id
         .as_deref()
@@ -774,6 +791,8 @@ pub enum BrowserIntentDispatchError {
     RevisionConflict { expected: String, actual: String },
     #[error("browser project hash conflict: expected `{expected}`, received `{actual}`")]
     ProjectHashConflict { expected: String, actual: String },
+    #[error("browser command sequence conflict: expected {expected}, received {actual}")]
+    CommandSequenceConflict { expected: u64, actual: u64 },
     #[error("browser page scope conflict: expected `{expected}`, received `{actual}`")]
     PageScopeConflict { expected: String, actual: String },
 }
@@ -878,6 +897,7 @@ mod tests {
             intent: intent.to_string(),
             payload,
             sequence: Some(1),
+            command_sequence: None,
             page_id: Some(controller.page_id().to_string()),
             revision: Some(controller.revision_id().to_string()),
             project_hash: Some(controller.editor().revision().project_hash.hex()),
@@ -1016,6 +1036,36 @@ mod tests {
             assert_eq!(preview.runtime.context, json!({}));
             assert_eq!(preview.runtime.scenario_id, None);
         }
+    }
+
+    #[test]
+    fn mutating_browser_requests_reject_stale_command_sequences_even_when_hash_matches() {
+        let mut controller = controller();
+        let before = controller.clone();
+        let current_sequence = controller.editor().revision().command_sequence;
+        let mut request = intent("insert_block", json!({ "block_id": "text" }));
+        request.page_id = Some(controller.page_id().to_string());
+        request.revision = Some(controller.revision_id().to_string());
+        request.project_hash = Some(controller.editor().revision().project_hash.hex());
+        request.command_sequence = Some(current_sequence + 1);
+
+        assert!(matches!(
+            dispatch_browser_intent(&mut controller, request.clone()),
+            Err(BrowserIntentDispatchError::CommandSequenceConflict {
+                expected,
+                actual
+            }) if expected == current_sequence && actual == current_sequence + 1
+        ));
+
+        let mut missing_sequence = request;
+        missing_sequence.command_sequence = None;
+        missing_sequence.operation_id = Some("strict-operation".to_string());
+        assert!(matches!(
+            dispatch_browser_intent(&mut controller, missing_sequence),
+            Err(BrowserIntentDispatchError::MissingField(field))
+                if field == "command_sequence"
+        ));
+        assert_eq!(controller, before);
     }
 
     #[test]

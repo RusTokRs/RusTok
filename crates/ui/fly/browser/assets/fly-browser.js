@@ -864,6 +864,7 @@ function normalizedIntent(adapter, input) {
       ? { ...message }
       : {};
   delete payload.type;
+  const commandSequence = Number(adapter.root.dataset.flyCommandSequence);
   if (
     intent !== "select" &&
     intent !== "focus_requested" &&
@@ -878,6 +879,8 @@ function normalizedIntent(adapter, input) {
     intent,
     payload,
     sequence: Number.isSafeInteger(input.sequence) ? input.sequence : null,
+    command_sequence:
+      Number.isSafeInteger(commandSequence) && commandSequence >= 0 ? commandSequence : null,
     page_id: adapter.pageId,
     revision: adapter.root.dataset.flyRevision || null,
     project_hash: adapter.root.dataset.flyProjectHash || null,
@@ -2304,6 +2307,9 @@ export class FlyBrowserAdapter {
         }
         if (typeof state.project_hash === "string") {
           this.root.dataset.flyProjectHash = state.project_hash;
+        }
+        if (Number.isSafeInteger(state.command_sequence) && state.command_sequence >= 0) {
+          this.root.dataset.flyCommandSequence = String(state.command_sequence);
         }
         // A confirmed write makes other same-origin editors of this page stale.
         // The server remains the source of truth; this is a UX safety fence.

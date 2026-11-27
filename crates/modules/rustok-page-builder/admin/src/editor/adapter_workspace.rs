@@ -109,6 +109,7 @@ pub fn AdapterWorkspacePanel(
                     page_id: controller.page_id().to_string(),
                     revision: controller.revision_id().to_string(),
                     project_hash: controller.editor().revision().project_hash.hex(),
+                    command_sequence: controller.editor().revision().command_sequence,
                 })
         })
     };

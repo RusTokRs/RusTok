@@ -378,6 +378,9 @@ pub struct BrowserIntentEnvelope {
     pub payload: Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence: Option<u64>,
+    /// Command sequence of the document snapshot that produced this intent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_sequence: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -441,6 +444,7 @@ impl BrowserIntentEnvelope {
             intent: kind.as_str().to_string(),
             payload,
             sequence: None,
+            command_sequence: None,
             page_id: None,
             revision: None,
             project_hash: None,
@@ -770,6 +774,12 @@ impl BrowserIntentEnvelope {
         self.project_hash = project_hash;
         self
     }
+
+    /// Binds the intent to the command sequence that produced its document snapshot.
+    pub fn with_command_sequence(mut self, command_sequence: u64) -> Self {
+        self.command_sequence = Some(command_sequence);
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1086,6 +1096,7 @@ mod tests {
             intent: "select".to_string(),
             payload: json!({}),
             sequence: Some(1),
+            command_sequence: None,
             page_id: None,
             revision: None,
             project_hash: None,
@@ -1106,6 +1117,7 @@ mod tests {
             intent: "copy".to_string(),
             payload: json!({}),
             sequence: None,
+            command_sequence: None,
             page_id: Some("home".to_string()),
             revision: Some("rev-1".to_string()),
             project_hash: Some("abc".to_string()),
@@ -1128,6 +1140,7 @@ mod tests {
             intent: "save".to_string(),
             payload: json!({}),
             sequence: None,
+            command_sequence: None,
             page_id: Some("home".to_string()),
             revision: Some("rev-1".to_string()),
             project_hash: Some("hash".to_string()),
@@ -1384,6 +1397,7 @@ mod tests {
             intent: "  RENAME_PAGE ".to_string(),
             payload: json!({}),
             sequence: None,
+            command_sequence: None,
             page_id: None,
             revision: None,
             project_hash: None,
@@ -1402,6 +1416,21 @@ mod tests {
         };
         assert_eq!(extension.kind(), None);
         assert!(!extension.is_mutating());
+    }
+
+    #[test]
+    fn command_sequence_round_trips_as_part_of_the_document_snapshot() {
+        let envelope = BrowserIntentEnvelope::new(
+            "canvas-a",
+            BrowserIntentKind::RenamePage,
+            json!({ "page_id": "home", "name": "Home" }),
+        )
+        .with_command_sequence(42);
+        let encoded = serde_json::to_string(&envelope).expect("serialize envelope");
+        let decoded: BrowserIntentEnvelope =
+            serde_json::from_str(&encoded).expect("deserialize envelope");
+
+        assert_eq!(decoded.command_sequence, Some(42));
     }
 
     #[test]

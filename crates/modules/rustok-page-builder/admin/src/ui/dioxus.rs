@@ -478,10 +478,12 @@ fn bind_workspace_intent_snapshot(
     page_id: &str,
     revision_id: &str,
     project_hash: &str,
+    command_sequence: u64,
 ) -> BrowserIntentEnvelope {
     envelope.page_id = Some(page_id.to_string());
     envelope.revision = Some(revision_id.to_string());
     envelope.project_hash = Some(project_hash.to_string());
+    envelope.command_sequence = Some(command_sequence);
     envelope
 }
 
@@ -1102,6 +1104,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     let intent_page_id = workspace_page_id.clone();
     let intent_revision_id = workspace_revision_id.clone();
     let intent_project_hash = workspace_project_hash.clone();
+    let intent_command_sequence = workspace_command_sequence;
     let on_workspace_intent = EventHandler::new(move |envelope: BrowserIntentEnvelope| {
         let write_conflict = *peer_write_conflict.peek()
             || save_outcome_unknown.peek().is_some()
@@ -1130,6 +1133,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                 &intent_page_id,
                 &intent_revision_id,
                 &intent_project_hash,
+                intent_command_sequence,
             );
             match crate::dispatch_browser_intent(&mut state.controller, envelope) {
                 Ok(result) => {
@@ -1918,6 +1922,7 @@ mod props_regression_tests {
             "home",
             "rev-1",
             &rendered_hash,
+            rendered.editor().revision().command_sequence,
         );
 
         let mut newer_revision =
@@ -1925,6 +1930,7 @@ mod props_regression_tests {
         assert!(matches!(
             crate::dispatch_browser_intent(&mut newer_revision, envelope.clone()),
             Err(crate::BrowserIntentDispatchError::RevisionConflict { .. })
+                | Err(crate::BrowserIntentDispatchError::CommandSequenceConflict { .. })
         ));
 
         let changed_document = json!({

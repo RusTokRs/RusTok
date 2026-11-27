@@ -177,6 +177,9 @@ pub fn AdminCanvas(
     let browser_project_hash = runtime
         .controller
         .with(|controller| controller.editor().revision().project_hash.hex());
+    let browser_command_sequence = runtime
+        .controller
+        .with(|controller| controller.editor().revision().command_sequence);
     let root_intent_endpoint = browser_intent_endpoint.clone();
     // The host policy admits an inline script only with the nonce of this response.
     let browser_script_nonce = use_context::<UiCspNonce>().map(|nonce| nonce.as_str().to_string());
@@ -244,6 +247,7 @@ pub fn AdminCanvas(
             data-fly-page-id=browser_page_id
             data-fly-revision=browser_revision
             data-fly-project-hash=browser_project_hash
+            data-fly-command-sequence=browser_command_sequence.to_string()
             data-fly-draft-binding=draft_binding
             data-fly-draft-contract=draft_contract
             data-fly-rendered-draft-token=rendered_draft_token
