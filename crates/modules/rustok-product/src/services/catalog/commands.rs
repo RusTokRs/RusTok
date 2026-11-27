@@ -567,6 +567,15 @@ impl CatalogService {
                 )
                 .await?;
             }
+            if !var_input.attribute_values.is_empty() {
+                ProductCatalogSchemaService::apply_variant_attribute_value_batches_in_tx(
+                    &txn,
+                    tenant_id,
+                    variant_id,
+                    &var_input.attribute_values,
+                )
+                .await?;
+            }
 
             initial_inventories.push(crate::ports::ProductInitialInventory {
                 variant_id,
@@ -1619,6 +1628,15 @@ impl CatalogService {
             assign_variant_axis_values_in_tx(&txn, tenant_id, variant_id, &input.axis_values)
                 .await?;
         }
+        if !input.attribute_values.is_empty() {
+            ProductCatalogSchemaService::apply_variant_attribute_value_batches_in_tx(
+                &txn,
+                tenant_id,
+                variant_id,
+                &input.attribute_values,
+            )
+            .await?;
+        }
 
         if product.status == entities::product::ProductStatus::Active {
             // A newly-created SKU is part of the live Product immediately. Do not commit it
@@ -1783,7 +1801,7 @@ impl CatalogService {
             .await?
             .ok_or(CommerceError::VariantNotFound(variant_id))?;
         let product_id = observed_variant.product_id;
-        let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+        let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
         ensure_variant_parent_matches(product_id, variant.product_id)?;
         if has_catalog_changes {
@@ -1936,7 +1954,23 @@ impl CatalogService {
                     .replace_catalog_base_prices_in_tx(&txn, tenant_id, actor_id, variant_id, initial_prices)
                     .await?;
             }
-
+            if !input.attribute_values.is_empty() {
+                ProductCatalogSchemaService::apply_variant_attribute_value_batches_in_tx(
+                    &txn,
+                    tenant_id,
+                    variant_id,
+                    &input.attribute_values,
+                )
+                .await?;
+                if product.status == entities::product::ProductStatus::Active {
+                    ProductCatalogSchemaService::validate_product_publish_requirements_in(
+                        &txn,
+                        tenant_id,
+                        product_id,
+                    )
+                    .await?;
+                }
+            }
         }
 
         if let Some(quantity) = input.inventory_quantity {

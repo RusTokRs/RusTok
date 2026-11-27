@@ -1,5 +1,6 @@
 use rust_decimal::Decimal;
 use rustok_api::Patch;
+use super::product::ProductAttributeValueBatch;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -23,6 +24,9 @@ pub struct CreateVariantInput {
     #[validate(length(max = 32, message = "A variant can have at most 32 axis assignments"))]
     #[validate(nested)]
     pub axis_values: Vec<VariantAxisValueInput>,
+    /// Typed EAV values applied atomically with the new Variant.
+    #[serde(default)]
+    pub attribute_values: Vec<ProductAttributeValueBatch>,
     // Keep this literal aligned with MAX_VARIANT_PRICE_ROWS in dto/mod.rs.
     #[validate(length(max = 64, message = "A variant can have at most 64 price rows"))]
     #[validate(nested)]
@@ -102,6 +106,9 @@ pub struct UpdateVariantInput {
     #[validate(length(max = 32, message = "A variant can have at most 32 axis assignments"))]
     #[validate(nested)]
     pub axis_values: Option<Vec<VariantAxisValueInput>>,
+    /// Typed EAV values applied atomically with the Variant update.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attribute_values: Vec<ProductAttributeValueBatch>,
 }
 
 impl UpdateVariantInput {
@@ -118,6 +125,7 @@ impl UpdateVariantInput {
             || self.weight.is_changed()
             || self.weight_unit.is_changed()
             || self.axis_values.is_some()
+            || self.attribute_values.iter().any(|batch| !batch.patches.is_empty())
     }
 
     /// Whether the caller supplied any owner mutation rather than an empty keep-all patch.
