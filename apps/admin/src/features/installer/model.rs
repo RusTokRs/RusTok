@@ -21,7 +21,14 @@ pub struct InstallStatusResponse {
 
 impl InstallStatusResponse {
     pub fn blocks_apply(&self) -> bool {
-        self.completed || self.job_status.is_some_and(InstallJobState::blocks_apply)
+        self.completed
+            || match (self.job_id, self.job_status) {
+                (None, None) => false,
+                (Some(_), Some(state)) => state.blocks_apply(),
+                // A partial job projection is inconsistent; do not let the UI
+                // admit another destructive installation on incomplete evidence.
+                _ => true,
+            }
     }
 }
 
@@ -156,6 +163,21 @@ mod tests {
         assert_eq!(response.job_id, Some(job_id));
         assert_eq!(response.job_status, Some(InstallJobState::RecoveryRequired));
         assert!(response.blocks_apply());
+
+        let incomplete: InstallStatusResponse = serde_json::from_value(serde_json::json!({
+            "status": "running",
+            "initialized": true,
+            "completed": false,
+            "session_id": null,
+            "tenant_id": null,
+            "lock_owner": null,
+            "lock_expires_at": null,
+            "completed_at": null,
+            "job_id": job_id,
+            "job_status": null
+        }))
+        .expect("partial projection should deserialize");
+        assert!(incomplete.blocks_apply());
     }
 
     #[test]

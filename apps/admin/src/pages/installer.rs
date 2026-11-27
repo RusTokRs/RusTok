@@ -117,9 +117,13 @@ pub fn InstallerPage() -> impl IntoView {
             return;
         }
         set_job_id.set(Some(restored_job_id));
-        spawn_local(async move {
-            set_job_status.set(Some(transport::fetch_job(restored_job_id, token).await));
-        });
+        spawn_refresh_job(
+            restored_job_id,
+            token,
+            set_job_status,
+            set_receipts,
+            set_status_refresh,
+        );
     });
 
     let build_plan = move || {
