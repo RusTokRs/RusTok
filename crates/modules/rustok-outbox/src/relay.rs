@@ -1567,6 +1567,15 @@ mod tests {
         DELIVERY_SCOPE.scope(scope, async {
             publish_primary_with_checkpoint(event_id, true, true, async { Ok(()) }).await.unwrap();
         }).await;
+        for sql in [
+            "UPDATE outbox_delivery_checkpoints SET primary_confirmed_at = NULL",
+            "UPDATE outbox_delivery_checkpoints SET local_required = FALSE",
+            "DELETE FROM outbox_delivery_checkpoints",
+            "DELETE FROM outbox_dispatch_attempts",
+            "DELETE FROM sys_events",
+        ] {
+            assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+        }
         relay.mark_failed_attempt(&renewed, Error::External("local failure".into()), false, Some(attempt_id)).await.unwrap();
         entity::Entity::update_many().filter(entity::Column::Id.eq(event_id))
             .set(entity::ActiveModel { next_attempt_at: Set(None), ..Default::default() })

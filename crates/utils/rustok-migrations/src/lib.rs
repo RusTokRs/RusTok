@@ -81,6 +81,7 @@ mod composition {
     mod m20261127_000203_fence_outbox_temporal_clock;
     mod m20261127_000204_create_outbox_dispatch_attempts;
     mod m20261127_000205_create_outbox_delivery_checkpoints;
+    mod m20261128_000206_fence_outbox_delivery_history;
 
     #[cfg(test)]
     mod contract_tests;
@@ -548,6 +549,7 @@ mod composition {
         ));
         all.push(Box::new(
             m20261127_000205_create_outbox_delivery_checkpoints::Migration,
+            m20261128_000206_fence_outbox_delivery_history::Migration,
         ));
         all
     }

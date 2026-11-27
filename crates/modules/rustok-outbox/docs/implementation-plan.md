@@ -500,3 +500,24 @@ No retry is charged for this storage-admission error. SQLite source regressions
 cover suppressed claim, checkpoint and attempt writes and fresh retry metadata.
 This does not make arbitrary later SQL mutation safe or guarantee exactly-once.
 Compilation and regression execution remain pending.
+
+## Database-enforced delivery history (2026-11-28; source only)
+
+Migration `m20261128_000206_fence_outbox_delivery_history` and standalone schema setup use the same
+transactional installer. Attempt identity is immutable; inserts require a pending
+matching claim and route, and an open attempt may close only once with an event
+state consistent with its outcome. The event transition and closure still commit
+in one owner transaction. A route starts unconfirmed, binds topology once and
+confirms primary once under a matching open claim. PostgreSQL child writers
+reserve the parent NOWAIT rather than wait in reverse lock order. Direct child
+deletion while its event exists, closed-attempt reopening, checkpoint reset,
+SQLite child REPLACE (including rowid collisions), and PostgreSQL TRUNCATE are
+rejected. Open attempts also prevent direct parent deletion; ordinary terminal
+event retention still cascades closed history. Existing history is preserved
+without inventing checkpoint evidence for pre-checkpoint attempts.
+These guards enforce structural transitions, not the truth of a broker ACK:
+SQL with sufficient privileges can still manufacture a valid-looking transition.
+Parent identity/SQLite parent REPLACE, arbitrary privileged DDL, restored backups,
+and proof of retention eligibility against direct parent DELETE are separate
+boundaries. Stop/drain older relay binaries before deployment. SQLite and
+PostgreSQL regression sources are authored, not executed.

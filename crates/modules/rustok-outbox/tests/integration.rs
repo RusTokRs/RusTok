@@ -161,11 +161,31 @@ async fn assert_dispatch_attempt_history(db: &DatabaseConnection) -> TestResult<
     let mut old: entity::ActiveModel = row.into();
     old.dispatched_at = Set(Some(Utc::now() - chrono::Duration::days(31)));
     old.update(db).await?;
-    // Model an anomalous external state mutation, not a canonical relay path.
-    // Unresolved intent must prevent retention from erasing evidence.
-    db.execute_unprepared("UPDATE outbox_dispatch_attempts SET state = 'open', finished_at = NULL WHERE state = 'uncertain'").await?;
-    assert_eq!(rustok_outbox::OutboxRetention::new(db.clone()).prune_once().await?.pruned, 0);
-    db.execute_unprepared("UPDATE outbox_dispatch_attempts SET state = 'uncertain', finished_at = started_at WHERE state = 'open'").await?;
+    // Closed evidence cannot be reopened or erased while its parent exists.
+    for sql in [
+        "UPDATE outbox_dispatch_attempts SET state = 'open', finished_at = NULL WHERE state = 'uncertain'",
+        "UPDATE outbox_dispatch_attempts SET claim_token = 'forged'",
+        "DELETE FROM outbox_dispatch_attempts",
+        "UPDATE outbox_delivery_checkpoints SET route_key = 'other-route'",
+        "DELETE FROM outbox_delivery_checkpoints",
+    ] {
+        assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+    }
+    if db.get_database_backend() == DatabaseBackend::Postgres {
+        for sql in ["TRUNCATE outbox_dispatch_attempts", "TRUNCATE outbox_delivery_checkpoints", "TRUNCATE sys_events CASCADE"] {
+            assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+        }
+    } else {
+        db.execute_unprepared("PRAGMA recursive_triggers = OFF").await?;
+        for sql in [
+            "INSERT OR REPLACE INTO outbox_dispatch_attempts SELECT * FROM outbox_dispatch_attempts",
+            "INSERT OR REPLACE INTO outbox_delivery_checkpoints SELECT * FROM outbox_delivery_checkpoints",
+        ] {
+            assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+        }
+    }
+    assert_eq!(count_state(db, "confirmed").await?, 1);
+    assert_eq!(count_state(db, "uncertain").await?, 1);
     assert_eq!(rustok_outbox::OutboxRetention::new(db.clone()).prune_once().await?.pruned, 1);
     assert_eq!(count_state(db, "confirmed").await?, 0);
     assert_eq!(count_state(db, "uncertain").await?, 0);

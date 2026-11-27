@@ -28,10 +28,12 @@ impl MigrationTrait for SysEventsMigration {
         create_outbox_temporal_clock_integrity(manager).await?;
         create_outbox_dispatch_attempts(manager).await?;
         create_outbox_delivery_checkpoints(manager).await?;
+        create_outbox_delivery_history_integrity(manager).await?;
         txn.commit().await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        drop_outbox_delivery_history_integrity(manager).await?;
         drop_outbox_delivery_checkpoints(manager).await?;
         drop_outbox_dispatch_attempts(manager).await?;
         drop_outbox_execution_policy(manager).await?;
@@ -1203,4 +1205,217 @@ impl MigrationTrait for OutboxDeliveryCheckpointsMigration {
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         drop_outbox_delivery_checkpoints(manager).await
     }
+}
+
+const POSTGRES_DELIVERY_HISTORY_GUARDS: &str = r#"
+CREATE OR REPLACE FUNCTION outbox_guard_dispatch_attempt() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'TRUNCATE' THEN
+        RAISE EXCEPTION 'outbox attempt history cannot be truncated' USING ERRCODE = '23514';
+    ELSIF TG_OP = 'DELETE' THEN
+        IF OLD.state = 'open' OR EXISTS (SELECT 1 FROM sys_events WHERE id = OLD.event_id) THEN
+            RAISE EXCEPTION 'outbox attempt history follows terminal event retention' USING ERRCODE = '23514';
+        END IF;
+        RETURN OLD;
+    ELSIF TG_OP = 'INSERT' THEN
+        IF NEW.state <> 'open' OR NEW.finished_at IS NOT NULL OR length(trim(NEW.claim_token)) = 0 THEN
+            RAISE EXCEPTION 'outbox attempt must start open' USING ERRCODE = '23514';
+        END IF;
+        -- Canonical writers already own this row. Direct child writers must
+        -- never wait for the parent while holding a child/unique-index lock.
+        PERFORM 1 FROM sys_events WHERE id = NEW.event_id AND status = 'pending'
+            AND claimed_by = NEW.claim_token AND claimed_at IS NOT NULL
+            AND claimed_at <= NEW.started_at FOR UPDATE NOWAIT;
+        IF NOT FOUND OR NOT EXISTS (SELECT 1 FROM outbox_delivery_checkpoints WHERE event_id = NEW.event_id) THEN
+            RAISE EXCEPTION 'outbox attempt requires its current claim and route' USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF ROW(NEW.id, NEW.event_id, NEW.claim_token, NEW.started_at)
+       IS DISTINCT FROM ROW(OLD.id, OLD.event_id, OLD.claim_token, OLD.started_at)
+       OR OLD.state <> 'open' OR NEW.state NOT IN ('confirmed', 'uncertain', 'not_started')
+       OR NEW.finished_at IS NULL OR NEW.finished_at < OLD.started_at THEN
+        RAISE EXCEPTION 'outbox attempt identity and closed outcome are immutable' USING ERRCODE = '23514';
+    END IF;
+    PERFORM 1 FROM sys_events WHERE id = OLD.event_id AND claimed_by IS NULL AND claimed_at IS NULL
+        AND ((NEW.state = 'confirmed' AND status = 'dispatched')
+          OR (NEW.state = 'uncertain' AND status IN ('pending', 'failed'))
+          OR (NEW.state = 'not_started' AND status = 'pending')) FOR UPDATE NOWAIT;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'outbox attempt outcome requires matching event transition' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION outbox_guard_delivery_checkpoint() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'TRUNCATE' THEN
+        RAISE EXCEPTION 'outbox checkpoint history cannot be truncated' USING ERRCODE = '23514';
+    ELSIF TG_OP = 'DELETE' THEN
+        IF EXISTS (SELECT 1 FROM sys_events WHERE id = OLD.event_id) THEN
+            RAISE EXCEPTION 'outbox checkpoint follows event retention' USING ERRCODE = '23514';
+        END IF;
+        RETURN OLD;
+    ELSIF TG_OP = 'INSERT' THEN
+        IF NEW.local_required IS NOT NULL OR NEW.primary_confirmed_at IS NOT NULL
+           OR length(NEW.route_key) NOT BETWEEN 1 AND 128 OR trim(NEW.route_key) <> NEW.route_key THEN
+            RAISE EXCEPTION 'outbox route must start unconfirmed' USING ERRCODE = '23514';
+        END IF;
+        PERFORM 1 FROM sys_events WHERE id = NEW.event_id AND status = 'pending'
+            AND claimed_by IS NOT NULL AND claimed_at IS NOT NULL FOR UPDATE NOWAIT;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'outbox route requires a pending claim' USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF NEW.event_id IS DISTINCT FROM OLD.event_id OR NEW.route_key IS DISTINCT FROM OLD.route_key
+       OR NOT ((OLD.local_required IS NULL AND NEW.local_required IS NOT NULL AND NEW.primary_confirmed_at IS NULL)
+            OR (OLD.local_required IS NOT NULL AND NEW.local_required IS NOT DISTINCT FROM OLD.local_required
+                AND OLD.primary_confirmed_at IS NULL AND NEW.primary_confirmed_at IS NOT NULL)) THEN
+        RAISE EXCEPTION 'outbox route, topology and confirmed checkpoint are immutable' USING ERRCODE = '23514';
+    END IF;
+    PERFORM 1 FROM sys_events e WHERE e.id = OLD.event_id AND e.status = 'pending'
+        AND e.claimed_at IS NOT NULL AND EXISTS (
+            SELECT 1 FROM outbox_dispatch_attempts a WHERE a.event_id = e.id AND a.state = 'open'
+                AND a.claim_token = e.claimed_by
+                AND (NEW.primary_confirmed_at IS NULL OR NEW.primary_confirmed_at >= a.started_at)
+        ) FOR UPDATE NOWAIT;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'outbox checkpoint requires an open current attempt' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION outbox_guard_history_parent() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'TRUNCATE' THEN
+        RAISE EXCEPTION 'outbox history cannot be truncated with its parent' USING ERRCODE = '23514';
+    END IF;
+    IF EXISTS (SELECT 1 FROM outbox_dispatch_attempts WHERE event_id = OLD.id AND state = 'open') THEN
+        RAISE EXCEPTION 'outbox event has unresolved dispatch evidence' USING ERRCODE = '23514';
+    END IF;
+    RETURN OLD;
+END $$;
+"#;
+
+const SQLITE_DELIVERY_HISTORY_GUARDS: &str = r#"
+CREATE TRIGGER outbox_attempt_insert_guard BEFORE INSERT ON outbox_dispatch_attempts
+WHEN NEW.state <> 'open' OR NEW.finished_at IS NOT NULL OR length(trim(NEW.claim_token)) = 0
+ OR EXISTS (SELECT 1 FROM outbox_dispatch_attempts a WHERE a.id = NEW.id OR a.rowid = NEW.rowid
+      OR (a.event_id = NEW.event_id AND (a.claim_token = NEW.claim_token OR a.state = 'open')))
+ OR NOT EXISTS (SELECT 1 FROM sys_events e WHERE e.id = NEW.event_id AND e.status = 'pending'
+      AND e.claimed_by = NEW.claim_token AND e.claimed_at IS NOT NULL AND e.claimed_at <= NEW.started_at)
+ OR NOT EXISTS (SELECT 1 FROM outbox_delivery_checkpoints WHERE event_id = NEW.event_id)
+BEGIN SELECT RAISE(ABORT, 'invalid or replacement outbox attempt admission'); END;
+
+CREATE TRIGGER outbox_attempt_update_guard BEFORE UPDATE ON outbox_dispatch_attempts
+WHEN NEW.id IS NOT OLD.id OR NEW.rowid IS NOT OLD.rowid OR NEW.event_id IS NOT OLD.event_id
+ OR NEW.claim_token IS NOT OLD.claim_token OR NEW.started_at IS NOT OLD.started_at
+ OR OLD.state <> 'open' OR NEW.state NOT IN ('confirmed', 'uncertain', 'not_started')
+ OR NEW.finished_at IS NULL OR NEW.finished_at < OLD.started_at
+ OR NOT EXISTS (SELECT 1 FROM sys_events e WHERE e.id = OLD.event_id
+      AND e.claimed_by IS NULL AND e.claimed_at IS NULL
+      AND ((NEW.state = 'confirmed' AND e.status = 'dispatched')
+        OR (NEW.state = 'uncertain' AND e.status IN ('pending', 'failed'))
+        OR (NEW.state = 'not_started' AND e.status = 'pending')))
+BEGIN SELECT RAISE(ABORT, 'invalid outbox attempt transition'); END;
+
+CREATE TRIGGER outbox_attempt_delete_guard BEFORE DELETE ON outbox_dispatch_attempts
+WHEN OLD.state = 'open' OR EXISTS (SELECT 1 FROM sys_events WHERE id = OLD.event_id)
+BEGIN SELECT RAISE(ABORT, 'outbox attempt history follows terminal event retention'); END;
+
+CREATE TRIGGER outbox_checkpoint_insert_guard BEFORE INSERT ON outbox_delivery_checkpoints
+WHEN NEW.local_required IS NOT NULL OR NEW.primary_confirmed_at IS NOT NULL
+ OR typeof(NEW.route_key) <> 'text' OR length(NEW.route_key) NOT BETWEEN 1 AND 128
+ OR trim(NEW.route_key) <> NEW.route_key
+ OR EXISTS (SELECT 1 FROM outbox_delivery_checkpoints c WHERE c.event_id = NEW.event_id OR c.rowid = NEW.rowid)
+ OR NOT EXISTS (SELECT 1 FROM sys_events e WHERE e.id = NEW.event_id AND e.status = 'pending'
+      AND e.claimed_by IS NOT NULL AND e.claimed_at IS NOT NULL)
+BEGIN SELECT RAISE(ABORT, 'invalid or replacement outbox route admission'); END;
+
+CREATE TRIGGER outbox_checkpoint_update_guard BEFORE UPDATE ON outbox_delivery_checkpoints
+WHEN NEW.event_id IS NOT OLD.event_id OR NEW.rowid IS NOT OLD.rowid OR NEW.route_key IS NOT OLD.route_key
+ OR NOT ((OLD.local_required IS NULL AND typeof(NEW.local_required) = 'integer'
+          AND NEW.local_required IN (0, 1) AND NEW.primary_confirmed_at IS NULL)
+      OR (OLD.local_required IS NOT NULL AND NEW.local_required IS OLD.local_required
+          AND OLD.primary_confirmed_at IS NULL AND NEW.primary_confirmed_at IS NOT NULL))
+ OR NOT EXISTS (SELECT 1 FROM sys_events e JOIN outbox_dispatch_attempts a ON a.event_id = e.id
+      WHERE e.id = OLD.event_id AND e.status = 'pending' AND e.claimed_at IS NOT NULL
+        AND a.state = 'open' AND a.claim_token = e.claimed_by
+        AND (NEW.primary_confirmed_at IS NULL OR NEW.primary_confirmed_at >= a.started_at))
+BEGIN SELECT RAISE(ABORT, 'invalid outbox checkpoint transition'); END;
+
+CREATE TRIGGER outbox_checkpoint_delete_guard BEFORE DELETE ON outbox_delivery_checkpoints
+WHEN EXISTS (SELECT 1 FROM sys_events WHERE id = OLD.event_id)
+BEGIN SELECT RAISE(ABORT, 'outbox checkpoint follows event retention'); END;
+
+CREATE TRIGGER outbox_history_parent_delete_guard BEFORE DELETE ON sys_events
+WHEN EXISTS (SELECT 1 FROM outbox_dispatch_attempts WHERE event_id = OLD.id AND state = 'open')
+BEGIN SELECT RAISE(ABORT, 'outbox event has unresolved dispatch evidence'); END;
+"#;
+
+/// One installer for the standalone and platform migration paths. Existing
+/// history is preserved; old attempts predating checkpoints are not fabricated.
+pub async fn create_outbox_delivery_history_integrity(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let txn = manager.get_connection().begin().await?;
+    let nested = SchemaManager::new(&txn);
+    let manager = &nested;
+    let db = manager.get_connection();
+    let backend = manager.get_database_backend();
+    match backend {
+        DbBackend::Postgres => {
+            db.execute_unprepared("LOCK TABLE sys_events, outbox_delivery_checkpoints, outbox_dispatch_attempts IN SHARE ROW EXCLUSIVE MODE NOWAIT").await?;
+        }
+        DbBackend::Sqlite => {
+            db.execute_unprepared("UPDATE sys_events SET retry_count = retry_count WHERE 1 = 0").await?;
+        }
+        _ => return Err(DbErr::Migration("unsupported outbox delivery history backend".into())),
+    }
+    drop_outbox_delivery_history_integrity(manager).await?;
+    match backend {
+        DbBackend::Postgres => {
+            db.execute_unprepared(POSTGRES_DELIVERY_HISTORY_GUARDS).await?;
+            for sql in [
+                "CREATE TRIGGER outbox_attempt_guard BEFORE INSERT OR UPDATE OR DELETE ON outbox_dispatch_attempts FOR EACH ROW EXECUTE FUNCTION outbox_guard_dispatch_attempt()",
+                "CREATE TRIGGER outbox_attempt_no_truncate BEFORE TRUNCATE ON outbox_dispatch_attempts FOR EACH STATEMENT EXECUTE FUNCTION outbox_guard_dispatch_attempt()",
+                "CREATE TRIGGER outbox_checkpoint_guard BEFORE INSERT OR UPDATE OR DELETE ON outbox_delivery_checkpoints FOR EACH ROW EXECUTE FUNCTION outbox_guard_delivery_checkpoint()",
+                "CREATE TRIGGER outbox_checkpoint_no_truncate BEFORE TRUNCATE ON outbox_delivery_checkpoints FOR EACH STATEMENT EXECUTE FUNCTION outbox_guard_delivery_checkpoint()",
+                "CREATE TRIGGER outbox_history_parent_delete_guard BEFORE DELETE ON sys_events FOR EACH ROW EXECUTE FUNCTION outbox_guard_history_parent()",
+                "CREATE TRIGGER outbox_history_parent_no_truncate BEFORE TRUNCATE ON sys_events FOR EACH STATEMENT EXECUTE FUNCTION outbox_guard_history_parent()",
+            ] { db.execute_unprepared(sql).await?; }
+        }
+        DbBackend::Sqlite => { db.execute_unprepared(SQLITE_DELIVERY_HISTORY_GUARDS).await?; }
+        _ => return Err(DbErr::Migration("unsupported outbox delivery history backend".into())),
+    }
+    txn.commit().await
+}
+
+/// Used only by explicit schema teardown, not a production downgrade.
+async fn drop_outbox_delivery_history_integrity(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let db = manager.get_connection();
+    let statements: &[&str] = match manager.get_database_backend() {
+        DbBackend::Postgres => &[
+            "DROP TRIGGER IF EXISTS outbox_attempt_guard ON outbox_dispatch_attempts",
+            "DROP TRIGGER IF EXISTS outbox_attempt_no_truncate ON outbox_dispatch_attempts",
+            "DROP TRIGGER IF EXISTS outbox_checkpoint_guard ON outbox_delivery_checkpoints",
+            "DROP TRIGGER IF EXISTS outbox_checkpoint_no_truncate ON outbox_delivery_checkpoints",
+            "DROP TRIGGER IF EXISTS outbox_history_parent_delete_guard ON sys_events",
+            "DROP TRIGGER IF EXISTS outbox_history_parent_no_truncate ON sys_events",
+            "DROP FUNCTION IF EXISTS outbox_guard_dispatch_attempt()",
+            "DROP FUNCTION IF EXISTS outbox_guard_delivery_checkpoint()",
+            "DROP FUNCTION IF EXISTS outbox_guard_history_parent()",
+        ],
+        DbBackend::Sqlite => &[
+            "DROP TRIGGER IF EXISTS outbox_attempt_insert_guard",
+            "DROP TRIGGER IF EXISTS outbox_attempt_update_guard",
+            "DROP TRIGGER IF EXISTS outbox_attempt_delete_guard",
+            "DROP TRIGGER IF EXISTS outbox_checkpoint_insert_guard",
+            "DROP TRIGGER IF EXISTS outbox_checkpoint_update_guard",
+            "DROP TRIGGER IF EXISTS outbox_checkpoint_delete_guard",
+            "DROP TRIGGER IF EXISTS outbox_history_parent_delete_guard",
+        ],
+        _ => return Err(DbErr::Migration("unsupported outbox delivery history backend".into())),
+    };
+    for sql in statements { db.execute_unprepared(sql).await?; }
+    Ok(())
 }
