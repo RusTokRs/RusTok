@@ -29,8 +29,8 @@ This violated canonical architectural principles in `AGENTS.md` §5:
 2. **Decoupled Transactional Port (`ProductPricingPort`)**:
    - `rustok-product` defines a consumer-owned port `ProductPricingPort` in `rustok-product::ports::pricing` (alongside `InitialPrice` and `StorefrontProductListPrice`).
    - The port specifies operations required during product lifecycle:
-     - `create_initial_prices_in_tx`: author initial variant prices inside product creation transactions.
-     - `replace_catalog_base_prices_in_tx`: replace variant base prices inside product update transactions.
+     - `create_initial_prices_in_tx`: author initial variant prices inside product creation transactions and preserve the initiating actor for PriceUpdated outbox events.
+     - `replace_catalog_base_prices_in_tx`: replace variant base prices inside product update transactions and preserve the initiating actor for PriceUpdated outbox events.
      - `delete_prices_for_variants_in_tx`: clean up prices inside variant/product deletion transactions.
      - `load_catalog_base_prices_for_variants`: load unscoped variant base prices for catalog projections.
      - `load_storefront_list_prices`: calculate and derive channel-scoped storefront minimum "price from" without exposing internal pricing models.
@@ -38,7 +38,7 @@ This violated canonical architectural principles in `AGENTS.md` §5:
    - When no port is attached (e.g. isolated Product tests), price authoring with empty prices is a safe no-op, catalog projections omit prices gracefully, and price operations fail safely if prices are provided without a pricing provider.
 
 3. **Provider Implementation in `rustok-pricing`**:
-   - `rustok-pricing` implements `ProductPricingPort` via `PricingProductPricingPortAdapter` in `src/integrations/product_pricing_port.rs` and provides the factory `in_process_product_pricing_port(db)`.
+   - `rustok-pricing` implements `ProductPricingPort` via `PricingProductPricingPortAdapter` in `src/integrations/product_pricing_port.rs` and provides the factory `in_process_product_pricing_port(db, event_bus)`.
    - Because `rustok-pricing` already depends on `rustok-product`, this dependency direction is strictly acyclic: `product` (foundation) <- `pricing` (application).
 
 4. **Zero Cross-Module SQL or Entity Leaks**:
@@ -76,7 +76,7 @@ In native composition sharing a database connection, `ProductPricingPort` execut
 
 ## Events and projections
 
-Pricing mutations emit `PriceCreated`, `PriceUpdated`, `PriceDeleted` domain events through the transactional outbox. Storefront search projection drivers subscribe to price events to update cached price facets.
+Pricing emits `PriceUpdated` through the transactional outbox for inserts (`old_amount = None`) and updates with exact persisted predecessor/successor minor-unit amounts. Product/Variant aggregate lifecycle events signal complete base-price clears and price-row deletion during variant/product removal; the current event schema has no separate PriceCreated/PriceDeleted payload family. Storefront search projection drivers subscribe to PriceUpdated to refresh cached price facets.
 
 ## Failure semantics
 
@@ -88,7 +88,7 @@ If a product operation supplies variant prices but no `ProductPricingPort` is at
 2. Introduce `ProductPricingPort` in `rustok-product`.
 3. Implement `PricingProductPricingPortAdapter` in `rustok-pricing`.
 4. Delete `crates/libs/rustok-pricing-persistence` and remove all Cargo dependencies on it.
-5. Update server composition root to wire `in_process_product_pricing_port(db)`.
+5. Update server composition root to wire `in_process_product_pricing_port(db, event_bus)`.
 
 ## Alternatives considered
 

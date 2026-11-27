@@ -193,7 +193,11 @@ Catalog `update_variant(prices: Some(...))` replaces only unscoped base rows for
 `price_list_id`, `channel_id`, `channel_slug`, `region_id`, `min_quantity` and `max_quantity` must all
 be null. `Some([])` clears just those base rows; `None` leaves prices untouched. Contextual input
 is refused with a validation error and must use Pricing commands. Contextual stored rows survive
-base edits and clears unchanged. Product and Variant deletion still delete all owned prices.
+base edits and clears unchanged. Product and Variant deletion still delete all owned prices. ProductPricingPort
+write calls carry the initiating actor and shared transactional outbox: initial rows publish
+PriceUpdated with no predecessor, and replacement rows publish exact persisted predecessor and
+successor minor-unit amounts. Product/Variant aggregate events cover full base-price clears and
+price-row deletion because PriceUpdated has no deletion payload.
 Initial creation retains the existing bootstrap contract, including explicitly supplied channels;
 subsequent contextual edits are Pricing-owned.
 
