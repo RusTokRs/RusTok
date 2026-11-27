@@ -796,10 +796,10 @@ mod tests {
                         "components": {
                             "id": "opaque-container",
                             "attributes": { "data-fly-asset-id": "shared" },
-                            "components": [{
+                            "components": {
                                 "id": "opaque-leaf",
                                 "attributes": { "data-fly-asset-id": "shared" }
-                            }]
+                            }
                         }
                     }]
                 }
@@ -846,7 +846,7 @@ mod tests {
             .expect("pasted asset id");
         assert_ne!(pasted_asset_id, "shared");
         assert_eq!(
-            pasted_raw["components"][0]["attributes"]["data-fly-asset-id"],
+            pasted_raw["components"]["attributes"]["data-fly-asset-id"],
             pasted_asset_id
         );
         assert!(
@@ -859,7 +859,7 @@ mod tests {
                 .any(|asset| asset.id == pasted_asset_id && asset.source == "/source.webp")
         );
 
-        let pasted_leaf_id = pasted_raw["components"][0]["id"]
+        let pasted_leaf_id = pasted_raw["components"]["id"]
             .as_str()
             .expect("opaque leaf id");
         let copied_rule = editor
