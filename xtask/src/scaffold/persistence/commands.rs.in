@@ -77,7 +77,7 @@ impl __ENTITY__Service {
             return Err(RecordError::TooManyLocales);
         }
         if result.published {
-            self.request_reindex(&tx, tenant_id, security.user_id, id)
+            self.request_reindex(&tx, tenant_id, security.user_id, id, result.revision)
                 .await?;
         }
         tx.commit().await?;

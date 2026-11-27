@@ -594,8 +594,9 @@ pub(crate) use operation_store::{
 };
 pub use policy::{
     EffectivePolicyCacheIdentity, ModuleEffectivePolicy, ModuleEffectivePolicyChannelBinding,
-    ModuleEffectivePolicyChannelInput, ModuleEffectivePolicyDecision,
-    ModuleEffectivePolicyDenialReason, ModuleEffectivePolicyError, ModuleEffectivePolicyFact,
+    ModuleEffectivePolicyChannelInput, ModuleEffectivePolicyCoRequisite,
+    ModuleEffectivePolicyDecision, ModuleEffectivePolicyDenialReason, ModuleEffectivePolicyError,
+    ModuleEffectivePolicyFact,
     ModuleEffectivePolicyMaintenanceInput, ModuleEffectivePolicyReader,
     ModuleEffectivePolicyReaderError, ModulePolicyRevisionApplyOutcome, ModulePolicyRevisionGate,
     ModulePolicyRevisionGateError, ModulePolicyRevisionTransition, ModuleToggleValidationError,

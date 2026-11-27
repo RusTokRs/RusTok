@@ -482,6 +482,13 @@ and PostgreSQL mutation persistence, including missing locales, tenant
 isolation, and replay of an older update after withdrawal. Incremental Index
 delivery and public query admission remain open.
 
+The selected Distribution fixture passed its registration test and the
+PostgreSQL Index scenario. It exercised separate English and Russian rows,
+locale-scoped scans, cross-locale cursor rejection, missing locales and
+foreign-tenant keys. After withdrawal, Index persisted the owner tombstone and
+reported `StaleIgnored` for a delayed upsert. The current Distribution library
+also passed `cargo check -p rustok-distribution --no-default-features --lib`.
+
 - [ ] Close Blog reference-verifier drift and retain actual reference execution
   evidence before certifying it for propagation. Do not preserve obsolete source
   markers or copy confirmed FFA/localization defects into generated modules.

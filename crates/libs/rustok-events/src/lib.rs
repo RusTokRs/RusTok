@@ -25,6 +25,7 @@ mod forum_mention;
 mod forum_search_projection;
 mod inventory_reservation;
 mod inventory_source;
+mod localized_index;
 mod marketplace_listing;
 mod marketplace_seller;
 mod product_index_refresh;
@@ -75,6 +76,9 @@ pub use inventory_source::{
     INVENTORY_SOURCE_BASELINE_ACTIVATED_EVENT_TYPE, INVENTORY_SOURCE_CHANGED_EVENT_TYPE,
     INVENTORY_SOURCE_EVENT_SCHEMA_VERSION, INVENTORY_SOURCE_EVENT_SCHEMAS, InventorySourceEvent,
     inventory_source_event_schema,
+};
+pub use localized_index::{
+    LOCALIZED_INDEX_EVENT_SCHEMAS, LOCALIZED_INDEX_REFRESH_EVENT_TYPE, LocalizedIndexRefreshEvent,
 };
 pub use marketplace_listing::{
     MARKETPLACE_LISTING_EVENT_SCHEMAS, MarketplaceListingEvent, marketplace_listing_event_schema,
@@ -128,6 +132,11 @@ pub fn event_schema(event_type: &str) -> Option<&'static EventSchema> {
         .or_else(|| forms_submission_event_schema(event_type))
         .or_else(|| inventory_reservation_event_schema(event_type))
         .or_else(|| inventory_source_event_schema(event_type))
+        .or_else(|| {
+            LOCALIZED_INDEX_EVENT_SCHEMAS
+                .iter()
+                .find(|schema| schema.event_type == event_type)
+        })
         .or_else(|| marketplace_listing_event_schema(event_type))
         .or_else(|| marketplace_seller_event_schema(event_type))
         .or_else(|| product_index_refresh_event_schema(event_type))
@@ -148,6 +157,7 @@ pub fn event_schemas() -> impl Iterator<Item = &'static EventSchema> {
         .chain(FORMS_SUBMISSION_EVENT_SCHEMAS.iter())
         .chain(INVENTORY_RESERVATION_EVENT_SCHEMAS.iter())
         .chain(INVENTORY_SOURCE_EVENT_SCHEMAS.iter())
+        .chain(LOCALIZED_INDEX_EVENT_SCHEMAS.iter())
         .chain(MARKETPLACE_LISTING_EVENT_SCHEMAS.iter())
         .chain(MARKETPLACE_SELLER_EVENT_SCHEMAS.iter())
         .chain(PRODUCT_INDEX_REFRESH_EVENT_SCHEMAS.iter())

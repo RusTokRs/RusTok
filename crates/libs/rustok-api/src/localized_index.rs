@@ -36,6 +36,14 @@ pub struct LocalizedIndexPage {
 /// Rows retain exact locale identities and never synthesize missing copies.
 #[async_trait]
 pub trait LocalizedIndexReader: Send + Sync {
+    /// Load every exact copy of a single record from one owner snapshot.
+    /// Refresh requires at least one copy, all at the same revision.
+    async fn load_record(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> Result<Vec<LocalizedIndexRow>, PortError>;
+
     async fn scan(
         &self,
         tenant_id: Uuid,

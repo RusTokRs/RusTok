@@ -41,8 +41,11 @@ Native localized-record owners may register the bounded `rustok-api::localized_i
 replay port. Distribution maps explicitly registered records into the existing
 PostgreSQL Index source and schema catalogs. The owner returns exact locale keys,
 owner revisions and tombstones for unpublished copies. Distribution and Index
-read through the port. Storefront admission and incremental event delivery remain
-independent contracts.
+read through the port. Localized record owners also publish a sealed
+`index.localized_record.refresh_requested` fact with module, entity, record
+and minimum committed revision. The selected Index listener acknowledges only
+after fetching all exact locales in one owner statement and persisting the
+corresponding revisioned mutations. Storefront admission remains independent.
 
 ## Sources of truth and ownership
 
@@ -101,6 +104,10 @@ are internal worker capabilities and preserve the existing authorization boundar
 ## Events and projections
 
 Replay retains the existing source identity, revision, and tombstone semantics.
+Replay and incremental refresh derive the same delivery identity from the source
+schema, tenant, record, exact locale and owner revision. A retry after a partial
+batch skips completed locale writes. A later revision wins over an older
+snapshot, and a missing or behind owner snapshot blocks acknowledgement.
 The HTTP host maps the published Product event envelope into Index delivery
 and uses the registered route schema. Index persists the refresh before the
 worker acknowledges the delivery.

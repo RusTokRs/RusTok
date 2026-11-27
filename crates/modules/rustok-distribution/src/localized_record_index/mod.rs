@@ -1,3 +1,4 @@
+mod consumer;
 mod source;
 
 use rustok_api::{is_valid_module_slug, localized_index::LocalizedIndexSources};

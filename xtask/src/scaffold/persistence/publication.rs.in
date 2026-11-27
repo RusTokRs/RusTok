@@ -46,7 +46,7 @@ impl __ENTITY__Service {
                 return Err(RecordError::Conflict);
             }
         } else {
-            self.request_reindex(&tx, tenant_id, security.user_id, id)
+            self.request_reindex(&tx, tenant_id, security.user_id, id, view.revision)
                 .await?;
         }
         tx.commit().await?;
@@ -59,8 +59,16 @@ impl __ENTITY__Service {
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
         id: Uuid,
+        revision: i64,
     ) -> Result<(), RecordError> {
-        // Only the durable Outbox belongs inside the owner transaction.
+        let source_version = u64::try_from(revision).map_err(|_| RecordError::Conflict)?;
+        // Both derived reads advance from the committed owner transaction.
+        TransactionalEventBus::publish_contract_direct_in_tx(
+            tx, tenant_id, actor_id, rustok_events::LocalizedIndexRefreshEvent {
+                module_slug: "__SLUG__".into(), entity_type: "__ENTITY_SLUG__".into(),
+                record_id: id, source_version,
+            },
+        ).await.map_err(RecordError::Outbox)?;
         TransactionalEventBus::publish_root_in_tx(
             tx,
             tenant_id,

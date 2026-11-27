@@ -67,6 +67,14 @@ It checks replay pagination, tenant scoping, credential grants, mutation identit
 parity with the embedded port, the minimum revision fence, and the persisted Index
 record through creation, update, and deletion.
 
+## Localized record Index bridge
+
+The `localized_record_index` adapter composes localized record replay for native
+owners that register `rustok-api::localized_index::LocalizedIndexSource`. It
+derives a tenant-scoped, locale-required schema and maps the owner's revisioned
+results to Index mutations. The source factory uses the existing PostgreSQL
+replay runtime and does not read owner tables in Distribution.
+
 ## Selected Inventory Index bridge
 
 When the actual Inventory module is selected, Distribution contributes its native
