@@ -7,6 +7,7 @@
  */
 
 import { graphqlRequest } from '@/shared/api/graphql';
+import { requireSchemaWriteConfirmation } from './write-confirmation';
 import type {
   GqlOpts,
   CatalogCategorySummary,
@@ -188,7 +189,7 @@ export async function createCatalogCategory(
     opts.tenantSlug
   );
 
-  return Boolean(data.createCatalogCategory);
+  return requireSchemaWriteConfirmation(data.createCatalogCategory);
 }
 
 export async function createCategoryAttributeGroup(
@@ -224,7 +225,7 @@ export async function createCategoryAttributeGroup(
     opts.tenantSlug
   );
 
-  return Boolean(data.createCatalogCategoryAttributeGroup);
+  return requireSchemaWriteConfirmation(data.createCatalogCategoryAttributeGroup);
 }
 
 export async function setCatalogCategorySchemaMode(
@@ -258,7 +259,7 @@ export async function setCatalogCategorySchemaMode(
     opts.tenantSlug
   );
 
-  return Boolean(data.setCatalogCategorySchemaMode);
+  return requireSchemaWriteConfirmation(data.setCatalogCategorySchemaMode);
 }
 
 export async function bindCategoryAttribute(
@@ -301,7 +302,7 @@ export async function bindCategoryAttribute(
     opts.tenantSlug
   );
 
-  return Boolean(data.bindCatalogCategoryAttribute);
+  return requireSchemaWriteConfirmation(data.bindCatalogCategoryAttribute);
 }
 
 export async function getCategoryEffectiveForm(

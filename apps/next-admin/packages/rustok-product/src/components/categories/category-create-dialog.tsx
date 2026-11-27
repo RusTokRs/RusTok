@@ -29,6 +29,11 @@ import type {
   CreateCatalogCategoryPayload
 } from '../../api/types';
 import { SearchableCategorySelect } from './searchable-category-select';
+import { buildCategoryHierarchyOptions } from '../../category-hierarchy';
+import {
+  categoryCodeFromName,
+  slugifyCategoryName
+} from '../../category-identifiers';
 
 const STRUCTURAL_CATEGORY_KIND = 'structural';
 
@@ -51,39 +56,21 @@ export function CategoryCreateDialog({
   const [kind, setKind] = React.useState<string>(STRUCTURAL_CATEGORY_KIND);
   const [ruleJson, setRuleJson] = React.useState('');
   const [description, setDescription] = React.useState('');
+  const slugWasEdited = React.useRef(false);
+  const codeWasEdited = React.useRef(false);
+  const categoryOptions = React.useMemo(
+    () =>
+      buildCategoryHierarchyOptions(categories).map(({ id, label }) => ({
+        id,
+        label
+      })),
+    [categories]
+  );
 
   const handleNameChange = (val: string) => {
     setName(val);
-    const generatedSlug = val
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '');
-    const generatedCode = val
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '');
-    if (
-      !slug ||
-      slug ===
-        val
-          .slice(0, -1)
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-    ) {
-      setSlug(generatedSlug);
-    }
-    if (
-      !code ||
-      code ===
-        val
-          .slice(0, -1)
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '_')
-    ) {
-      setCode(generatedCode);
-    }
+    if (!slugWasEdited.current) setSlug(slugifyCategoryName(val));
+    if (!codeWasEdited.current) setCode(categoryCodeFromName(val));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -121,6 +108,8 @@ export function CategoryCreateDialog({
       setKind(STRUCTURAL_CATEGORY_KIND);
       setRuleJson('');
       setDescription('');
+      slugWasEdited.current = false;
+      codeWasEdited.current = false;
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : 'Failed to create category'
@@ -166,7 +155,11 @@ export function CategoryCreateDialog({
                 <Input
                   id='cat-code'
                   value={code}
-                  onChange={(e) => setCode(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    codeWasEdited.current = value.trim().length > 0;
+                    setCode(value);
+                  }}
                   placeholder='e.g. keyboards_mechanical'
                   required
                   disabled={isSubmitting}
@@ -178,7 +171,11 @@ export function CategoryCreateDialog({
                 <Input
                   id='cat-slug'
                   value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    slugWasEdited.current = value.trim().length > 0;
+                    setSlug(value);
+                  }}
                   placeholder='e.g. mechanical-keyboards'
                   required
                   disabled={isSubmitting}
@@ -191,10 +188,7 @@ export function CategoryCreateDialog({
                 <Label htmlFor='cat-parent'>Parent Category</Label>
                 <SearchableCategorySelect
                   id='cat-parent'
-                  options={categories.map((c) => ({
-                    id: c.id,
-                    label: c.path || c.name || c.code
-                  }))}
+                  options={categoryOptions}
                   value={parentId}
                   emptyValue='none'
                   emptyLabel='None (Root category)'

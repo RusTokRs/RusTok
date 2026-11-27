@@ -7,6 +7,7 @@
  */
 
 import { graphqlRequest } from '@/shared/api/graphql';
+import { requireSchemaWriteConfirmation } from './write-confirmation';
 import type {
   GqlOpts,
   ProductAttributeSummary,
@@ -187,7 +188,7 @@ export async function createProductAttribute(
     opts.tenantSlug
   );
 
-  return Boolean(data.createProductAttribute);
+  return requireSchemaWriteConfirmation(data.createProductAttribute);
 }
 
 export async function createProductAttributeOption(
@@ -223,7 +224,7 @@ export async function createProductAttributeOption(
     opts.tenantSlug
   );
 
-  return Boolean(data.createProductAttributeOption);
+  return requireSchemaWriteConfirmation(data.createProductAttributeOption);
 }
 
 export async function listProductAttributeSchemas(
@@ -280,7 +281,7 @@ export async function createProductAttributeSchema(
     opts.tenantSlug
   );
 
-  return Boolean(data.createProductAttributeSchema);
+  return requireSchemaWriteConfirmation(data.createProductAttributeSchema);
 }
 
 export async function bindSchemaAttribute(
@@ -322,7 +323,7 @@ export async function bindSchemaAttribute(
     opts.tenantSlug
   );
 
-  return Boolean(data.bindProductAttributeSchemaAttribute);
+  return requireSchemaWriteConfirmation(data.bindProductAttributeSchemaAttribute);
 }
 
 export async function createProductAttributeSchemaGroup(
@@ -358,5 +359,5 @@ export async function createProductAttributeSchemaGroup(
     opts.tenantSlug
   );
 
-  return Boolean(data.createProductAttributeSchemaGroup);
+  return requireSchemaWriteConfirmation(data.createProductAttributeSchemaGroup);
 }

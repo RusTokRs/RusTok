@@ -7,6 +7,7 @@ import { Badge } from '@/shared/ui/shadcn/badge';
 import { Input } from '@/shared/ui/shadcn/input';
 import { FolderTree, Search, CornerDownRight } from 'lucide-react';
 import type { CatalogCategorySummary } from '../../api/types';
+import { buildCategoryHierarchyOptions } from '../../category-hierarchy';
 
 interface CategoriesTableProps {
   categories: CatalogCategorySummary[];
@@ -29,41 +30,30 @@ function categoryIndentClass(d: number): string {
 export function CategoriesTable({ categories }: CategoriesTableProps) {
   const [search, setSearch] = React.useState('');
 
+  const hierarchy = React.useMemo(
+    () => buildCategoryHierarchyOptions(categories),
+    [categories]
+  );
+  const hierarchyById = React.useMemo(
+    () => new Map(hierarchy.map((item) => [item.id, item])),
+    [hierarchy]
+  );
+
   const filteredCategories = React.useMemo(() => {
     if (!search.trim()) return categories;
     const q = search.toLowerCase().trim();
-    return categories.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.code.toLowerCase().includes(q) ||
-        c.slug.toLowerCase().includes(q) ||
-        c.path.toLowerCase().includes(q)
-    );
-  }, [categories, search]);
-
-  // Build parent map to resolve parent names
-  const categoryMap = React.useMemo(() => {
-    const map = new Map<string, CatalogCategorySummary>();
-    for (const c of categories) {
-      map.set(c.id, c);
-    }
-    return map;
-  }, [categories]);
-
-  // Determine hierarchy depth from path or parentId chain
-  const getDepth = (cat: CatalogCategorySummary): number => {
-    if (cat.path) {
-      const parts = cat.path.split('/').filter(Boolean);
-      return Math.max(0, parts.length - 1);
-    }
-    let depth = 0;
-    let curr = cat.parentId ? categoryMap.get(cat.parentId) : undefined;
-    while (curr) {
-      depth++;
-      curr = curr.parentId ? categoryMap.get(curr.parentId) : undefined;
-    }
-    return depth;
-  };
+    return categories.filter((category) => {
+      const path =
+        hierarchyById.get(category.id)?.label ??
+        (category.name || category.code);
+      return (
+        category.name.toLowerCase().includes(q) ||
+        category.code.toLowerCase().includes(q) ||
+        category.slug.toLowerCase().includes(q) ||
+        path.toLowerCase().includes(q)
+      );
+    });
+  }, [categories, hierarchyById, search]);
 
   const columns: DataTableStaticColumn<CatalogCategorySummary>[] = [
     {
@@ -71,7 +61,7 @@ export function CategoriesTable({ categories }: CategoriesTableProps) {
       header: 'Category',
       headerClassName: 'w-[350px]',
       cell: (cat) => {
-        const depth = getDepth(cat);
+        const depth = hierarchyById.get(cat.id)?.depth ?? 0;
         return (
           <div
             className={`flex items-center gap-2 ${categoryIndentClass(depth)}`}
@@ -118,11 +108,8 @@ export function CategoriesTable({ categories }: CategoriesTableProps) {
       header: 'Path / Parent',
       cellClassName: 'text-muted-foreground text-xs',
       cell: (cat) => {
-        const parentCat = cat.parentId
-          ? categoryMap.get(cat.parentId)
-          : undefined;
         return (
-          cat.path || (parentCat ? parentCat.name || parentCat.code : 'Root')
+          hierarchyById.get(cat.id)?.label || cat.name || cat.code || 'Root'
         );
       }
     }

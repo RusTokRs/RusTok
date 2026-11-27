@@ -32,6 +32,7 @@ import {
 } from '@/shared/ui/shadcn/select';
 import { Loader2, FolderTree, AlertCircle, Layers } from 'lucide-react';
 import { SearchableCategorySelect } from '../categories/searchable-category-select';
+import { buildCategoryHierarchyOptions } from '../../category-hierarchy';
 import type {
   CatalogCategorySummary,
   ProductEffectiveForm,
@@ -72,18 +73,30 @@ export function ProductCategoryCard({
   // be selectable. A legacy non-structural selection stays visible, flagged,
   // so operators can see why the document no longer satisfies the contract.
   const categoryOptions = React.useMemo(() => {
+    const hierarchy = buildCategoryHierarchyOptions(categories);
+    const labelById = new Map(
+      hierarchy.map((category) => [category.id, category.label])
+    );
     const structural = categories
-      .filter((cat) => cat.kind === 'structural')
-      .map((cat) => ({
-        id: cat.id,
-        label: cat.path || cat.name || cat.code
+      .filter((category) => category.kind === 'structural')
+      .map((category) => ({
+        id: category.id,
+        label:
+          labelById.get(category.id) ?? (category.name || category.code)
       }));
-    if (selectedCategoryId && !structural.some((opt) => opt.id === selectedCategoryId)) {
-      const legacy = categories.find((cat) => cat.id === selectedCategoryId);
+    if (
+      selectedCategoryId &&
+      !structural.some((option) => option.id === selectedCategoryId)
+    ) {
+      const legacy = categories.find(
+        (category) => category.id === selectedCategoryId
+      );
       if (legacy) {
+        const label =
+          labelById.get(legacy.id) ?? (legacy.name || legacy.code);
         structural.push({
           id: legacy.id,
-          label: `${legacy.path || legacy.name || legacy.code} (${legacy.kind} — not selectable as primary)`
+          label: `${label} (${legacy.kind} — not selectable as primary)`
         });
       }
     }
