@@ -268,12 +268,21 @@ mod tests {
         }))
         .expect("document");
 
+        let diagnostics = validate_runtime_extensions(&document);
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "internal_page_link_target_missing"
+                && diagnostic.severity == crate::ValidationSeverity::Error
+        }));
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "action_definition_invalid"
+                && diagnostic.severity == crate::ValidationSeverity::Error
+        }));
+
         let report = validate_project(
             &document,
             &RegistrySet::with_builtins(),
             ValidationLimits::default(),
         );
-
         assert!(report.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "internal_page_link_target_missing"
                 && diagnostic.severity == crate::ValidationSeverity::Error
