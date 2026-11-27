@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeSet, HashMap};
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
@@ -1492,12 +1492,17 @@ impl FileSsrDraftSessionStore {
             let Some(file_path) = self.locate(token, owner)? else {
                 return Ok(None);
             };
-            let content = match fs::read_to_string(&file_path) {
-                Ok(content) => content,
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-                Err(err) => return Err(SsrDraftSessionError::Io(err.to_string())),
+            let file = match fs::File::open(&file_path) {
+                Ok(file) => file,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
             };
-            let record = match PersistentDraftSessionRecord::decode_str(&content) {
+            let record_result = match read_bounded_record(file) {
+                Ok(content) => PersistentDraftSessionRecord::decode_str(&content),
+                Err(error @ SsrDraftSessionError::RecordTooLarge { .. }) => Err(error),
+                Err(error) => return Err(error),
+            };
+            let record = match record_result {
                 Ok(record) => record,
                 // A record of a newer format parses: a live deployment wrote it, so the file is
                 // not damage and must not be aged out or deleted. The caller gets a typed error.
@@ -1545,10 +1550,15 @@ impl FileSsrDraftSessionStore {
         owner: Option<&DraftSessionOwner>,
     ) -> Result<bool, SsrDraftSessionError> {
         self.with_lock(token, || {
-            let content = match fs::read_to_string(path) {
-                Ok(content) => content,
+            let file = match fs::File::open(path) {
+                Ok(file) => file,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
                 Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
+            };
+            let content = match read_bounded_record(file) {
+                Ok(content) => content,
+                Err(SsrDraftSessionError::RecordTooLarge { .. }) => return Ok(false),
+                Err(error) => return Err(error),
             };
             let current = match PersistentDraftSessionRecord::decode_str(&content) {
                 Ok(record) => record,
@@ -1609,17 +1619,21 @@ impl FileSsrDraftSessionStore {
             return Ok(DeadRecord::Left);
         }
         self.with_lock(token, || {
-            let dead = match fs::read_to_string(path) {
-                Ok(content) => match PersistentDraftSessionRecord::decode_str(&content) {
+            let content = match fs::File::open(path) {
+                Ok(file) => read_bounded_record(file).ok(),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    return Ok(DeadRecord::Left);
+                }
+                Err(_) => None,
+            };
+            let dead = match content {
+                Some(content) => match PersistentDraftSessionRecord::decode_str(&content) {
                     Ok(record) => record.expires_at_unix_secs <= current_unix_secs(),
                     // Another build owns this record; only its own expiry can retire it.
                     Err(SsrDraftSessionError::UnsupportedFormat { .. }) => false,
                     Err(_) => file_is_older_than(path, self.ttl),
                 },
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                    return Ok(DeadRecord::Left);
-                }
-                Err(_) => file_is_older_than(path, self.ttl),
+                None => file_is_older_than(path, self.ttl),
             };
             Ok(if !dead {
                 DeadRecord::Replaced
@@ -1712,15 +1726,20 @@ impl FileSsrDraftSessionStore {
             let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
-            if !file_name.ends_with(".json") {
-                continue;
-            }
-            let Some(record) = fs::read_to_string(&path)
-                .ok()
-                .and_then(|content| PersistentDraftSessionRecord::decode_str(&content).ok())
-            else {
+            let Some(token) = file_name.strip_suffix(".json") else {
                 continue;
             };
+            if !Self::is_safe_token(token) {
+                continue;
+            }
+            let file = match fs::File::open(&path) {
+                Ok(file) => file,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
+            };
+            let content = read_bounded_record(file)?;
+            let record = PersistentDraftSessionRecord::decode_str(&content)?;
+            record.validate_storage_key(token)?;
             if record.owner.as_ref() == Some(owner) && record.token != keep_token {
                 let Some(age) = record_age(&path, record.expires_at_unix_secs)? else {
                     continue;
@@ -1966,9 +1985,35 @@ impl FileSsrDraftSessionStore {
             let Some(token) = file_name.strip_suffix(".json") else {
                 continue;
             };
-            let record = fs::read_to_string(&path)
-                .ok()
-                .and_then(|content| PersistentDraftSessionRecord::decode_str(&content).ok());
+            let record = match fs::File::open(&path) {
+                Ok(file) => match read_bounded_record(file) {
+                    Ok(content) => match PersistentDraftSessionRecord::decode_str(&content) {
+                        Ok(record) => Some(record),
+                        Err(error) => {
+                            tracing::warn!(
+                                error = %error,
+                                "draft session record could not be decoded during prune"
+                            );
+                            None
+                        }
+                    },
+                    Err(error) => {
+                        tracing::warn!(
+                            error = %error,
+                            "draft session record could not be read during prune"
+                        );
+                        None
+                    }
+                },
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        "draft session record could not be opened during prune"
+                    );
+                    None
+                }
+            };
             match record {
                 Some(record) if record.expires_at_unix_secs > now => {
                     let Some(age) = record_age(&path, record.expires_at_unix_secs)? else {
@@ -3459,6 +3504,35 @@ fn ensure_record_size(bytes: usize) -> Result<(), SsrDraftSessionError> {
         });
     }
     Ok(())
+}
+
+/// Reads one record from an already-open file without allocating beyond the
+/// persisted record limit. The file handle pins the inode across atomic rename.
+fn read_bounded_record(file: fs::File) -> Result<String, SsrDraftSessionError> {
+    let file_size = file
+        .metadata()
+        .map_err(|error| SsrDraftSessionError::Io(error.to_string()))?
+        .len();
+    ensure_record_size(usize::try_from(file_size).unwrap_or(usize::MAX))?;
+    read_bounded_record_from(file, MAX_DRAFT_SESSION_RECORD_BYTES)
+}
+
+fn read_bounded_record_from(
+    reader: impl Read,
+    maximum: usize,
+) -> Result<String, SsrDraftSessionError> {
+    let mut content = String::new();
+    reader
+        .take(maximum.saturating_add(1) as u64)
+        .read_to_string(&mut content)
+        .map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
+    if content.len() > maximum {
+        return Err(SsrDraftSessionError::RecordTooLarge {
+            bytes: content.len(),
+            maximum,
+        });
+    }
+    Ok(content)
 }
 
 /// How long an abandoned atomic-write temporary file must remain untouched
@@ -5509,6 +5583,23 @@ mod tests {
                     .is_some()
             );
         }
+    }
+
+    #[test]
+    fn bounded_record_reader_stops_at_the_configured_limit() {
+        let content = b"12345";
+        assert!(matches!(
+            read_bounded_record_from(std::io::Cursor::new(content), 4),
+            Err(SsrDraftSessionError::RecordTooLarge {
+                bytes: 5,
+                maximum: 4
+            })
+        ));
+        assert_eq!(
+            read_bounded_record_from(std::io::Cursor::new(b"1234"), 4)
+                .expect("record at limit"),
+            "1234"
+        );
     }
 
     #[test]
