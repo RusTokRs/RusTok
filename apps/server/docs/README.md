@@ -2238,24 +2238,24 @@ existing process-local clock guard and adds no new clock source or lease.
 
 ## Artifact SQL effect fencing (2026-11-27)
 
-For server-composed `platform.data` and `platform.events` calls, the host now
+For server-composed `platform.data` and `platform.events` calls, the host
 prepares the Auth clock authority before opening the effect transaction. The
-transaction then locks the direct tenant/user/session/role authority where
-applicable, acquires the platform-then-tenant artifact activation locks,
-re-resolves the exact active installation and current sandbox grant, and
-compares its constraints with the execution lease. Those locks remain held
-through commit, and the direct credential deadline plus execution lease are
-checked again immediately before commit. Structured-data reads/writes and
-event-outbox publication use this fence; delete-receipt replay is fenced too.
+transaction locks the direct tenant/user/session/role authority where
+applicable, all artifact activation fences in the exact dependency/co-requisite
+closure, active composition and reconciliation state, then re-resolves the
+exact active installation and current sandbox grant and compares its
+constraints with the execution lease. Security revisions, registry release
+authority, selection generations, tenant lifecycle/override intent, deployment
+readiness and captured HTTP channel generation are also revalidated under
+their owner fences. Those locks remain held through commit; the direct
+credential deadline and execution lease are checked again immediately before
+commit. Structured-data reads/writes and event-outbox publication use this
+fence; delete-receipt replay is fenced too.
 
-This is not yet a universal effect transaction. The server-composed
-structured-data and event-outbox SQL paths now hold dependency/co-requisite
-closure, security revisions, registry release authority, selection generations,
-tenant lifecycle/override intent, active composition, deployment readiness and
-captured HTTP channel generation through commit. Full effective-policy
-revision, operational maintenance authority, deferred/background channel
-context and continuous worker/node liveness remain unfenced. HTTP, MCP, secrets
-and object-storage effects do not share the SQL commit fence and still rely on
+This is not yet a universal effect transaction. Full effective-policy revision,
+operational maintenance authority, deferred/background channel context and
+continuous worker/node liveness remain unfenced. HTTP, MCP, secrets and
+object-storage effects do not share the SQL commit fence and still rely on
 per-call admission plus owner-specific checks. PostgreSQL cross-owner lock
 ordering/contention and deployed worker/runtime evidence remain pending. See
 the [execution capability lease ADR](../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md)
