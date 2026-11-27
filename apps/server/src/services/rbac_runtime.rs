@@ -54,13 +54,14 @@ impl PermissionResolver for RequestPermissionResolver {
     ) -> Result<PermissionResolution> {
         super::rbac_request_scope::ensure_scope_authority(Some(&self.db), tenant_id, user_id)
             .await?;
-        if let Some(permissions) = super::rbac_request_scope::permissions_for(tenant_id, user_id) {
+        if let Some(permissions) =
+            super::rbac_request_scope::checked_permissions_for(tenant_id, user_id)?
+        {
             return Ok(PermissionResolution {
                 permissions,
                 cache_hit: false,
             });
         }
-        super::rbac_request_scope::ensure_scope_not_invalidated(tenant_id, user_id)?;
         self.runtime.resolve_permissions(tenant_id, user_id).await
     }
 }

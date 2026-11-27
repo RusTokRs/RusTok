@@ -240,16 +240,45 @@ impl CapturedArtifactRequestScope {
     }
 }
 
-pub fn permissions_for(tenant_id: &Uuid, actor_id: &Uuid) -> Option<Vec<Permission>> {
+/// A missing scope permits the caller's explicit unscoped path; an invalid
+/// matching scope is an error, never an equivalent absence.
+fn checked_scope_value<T>(
+    tenant_id: &Uuid,
+    actor_id: &Uuid,
+    read: impl FnOnce(&RbacRequestScope) -> T,
+) -> crate::error::Result<Option<T>> {
     CURRENT_RBAC_SCOPE
         .try_with(|state| {
-            let state = state.as_ref()?;
-            state
-                .matches_valid(tenant_id, actor_id)
-                .then(|| state.scope.permissions.clone())
+            let Some(state) = state.as_ref().filter(|state| {
+                state.scope.matches(tenant_id, actor_id)
+            }) else {
+                return Ok(None);
+            };
+            if !state.is_valid() {
+                return Err(invalidated_scope_error());
+            }
+            let value = read(&state.scope);
+            if !state.is_valid() {
+                return Err(invalidated_scope_error());
+            }
+            Ok(Some(value))
         })
-        .ok()
-        .flatten()
+        .unwrap_or(Ok(None))
+}
+
+fn invalidated_scope_error() -> crate::error::Error {
+    crate::error::Error::Cache("request RBAC snapshot was invalidated".to_string())
+}
+
+pub(crate) fn checked_permissions_for(
+    tenant_id: &Uuid,
+    actor_id: &Uuid,
+) -> crate::error::Result<Option<Vec<Permission>>> {
+    checked_scope_value(tenant_id, actor_id, |scope| scope.permissions.clone())
+}
+
+pub fn permissions_for(tenant_id: &Uuid, actor_id: &Uuid) -> Option<Vec<Permission>> {
+    checked_permissions_for(tenant_id, actor_id).ok().flatten()
 }
 
 /// Distinguish an explicitly grant-only internal scope from a missing,
@@ -312,16 +341,15 @@ pub(crate) fn bind_admin_context(
     })
 }
 
+pub(crate) fn checked_role_for(
+    tenant_id: &Uuid,
+    actor_id: &Uuid,
+) -> crate::error::Result<Option<UserRole>> {
+    checked_scope_value(tenant_id, actor_id, |scope| scope.role.clone())
+}
+
 pub fn role_for(tenant_id: &Uuid, actor_id: &Uuid) -> Option<UserRole> {
-    CURRENT_RBAC_SCOPE
-        .try_with(|state| {
-            let state = state.as_ref()?;
-            state
-                .matches_valid(tenant_id, actor_id)
-                .then(|| state.scope.role.clone())
-        })
-        .ok()
-        .flatten()
+    checked_role_for(tenant_id, actor_id).ok().flatten()
 }
 
 /// Reject unscoped fallback for an invalidated or expired matching request snapshot.
@@ -342,9 +370,7 @@ pub(crate) fn ensure_scope_not_invalidated(
         })
         .unwrap_or(false);
     if invalidated {
-        return Err(crate::error::Error::Cache(
-            "request RBAC snapshot was invalidated".to_string(),
-        ));
+        return Err(invalidated_scope_error());
     }
     Ok(())
 }
@@ -522,6 +548,37 @@ mod tests {
             assert!(permissions_for(&Uuid::new_v4(), &actor_id).is_none());
         })
         .await;
+    }
+
+    #[tokio::test]
+    async fn checked_scope_read_distinguishes_absence_from_invalidation() {
+        let tenant = Uuid::new_v4();
+        let actor = Uuid::new_v4();
+        let scope = RbacRequestScope::new(
+            tenant,
+            actor,
+            vec![Permission::USERS_READ],
+            UserRole::Admin,
+        );
+        assert!(checked_permissions_for(&tenant, &actor).unwrap().is_none());
+        with_rbac_request_scope(Some(scope), async {
+            assert_eq!(
+                checked_permissions_for(&tenant, &actor).unwrap(),
+                Some(vec![Permission::USERS_READ])
+            );
+            assert_eq!(checked_role_for(&tenant, &actor).unwrap(), Some(UserRole::Admin));
+            // Model invalidation while the snapshot value is being obtained.
+            let result = checked_scope_value(&tenant, &actor, |scope| {
+                invalidate_current_rbac_request_scope(&tenant, &actor);
+                scope.permissions.clone()
+            });
+            assert!(matches!(result, Err(crate::error::Error::Cache(_))));
+            assert!(checked_permissions_for(&tenant, &actor).is_err());
+            assert!(checked_role_for(&tenant, &actor).is_err());
+            assert!(checked_permissions_for(&tenant, &Uuid::new_v4()).unwrap().is_none());
+        })
+        .await;
+        assert!(checked_role_for(&tenant, &actor).unwrap().is_none());
     }
 
     #[tokio::test]

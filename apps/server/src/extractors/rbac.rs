@@ -3,8 +3,39 @@ use rustok_api::Permission;
 
 use crate::extractors::auth::CurrentUser;
 
-fn has_effective_permission(user: &CurrentUser, permission: &Permission) -> bool {
+/// A CurrentUser is admitted evidence, not a perpetual permission grant.
+fn checked_scope_permissions(
+    user: &CurrentUser,
+) -> Result<Option<Vec<Permission>>, (StatusCode, String)> {
+    let unavailable = || (
+        StatusCode::SERVICE_UNAVAILABLE,
+        "Request authority is temporarily unavailable".to_string(),
+    );
+    if !rustok_auth::application_clock::local_now()
+        .is_ok_and(|now| now < user.access_token_expires_at)
+        || crate::services::rbac_runtime::request_authority_epoch(
+            user.user.tenant_id,
+            user.user.id,
+        ) != Some(user.rbac_epoch)
+    {
+        return Err(unavailable());
+    }
+    crate::services::rbac_request_scope::checked_permissions_for(
+        &user.user.tenant_id,
+        &user.user.id,
+    )
+    .map_err(|_| unavailable())
+}
+
+fn has_effective_permission(
+    user: &CurrentUser,
+    scope: Option<&[Permission]>,
+    permission: &Permission,
+) -> bool {
     rustok_rbac::has_effective_permission_in_set(&user.permissions, permission)
+        && scope.is_none_or(|permissions| {
+            rustok_rbac::has_effective_permission_in_set(permissions, permission)
+        })
 }
 
 /// Extractor that enforces a specific permission
@@ -61,12 +92,7 @@ macro_rules! define_permission_extractor {
                     .await
                     .map_err(|(code, msg)| (code, msg.to_string()))?;
 
-                if !has_effective_permission(&user, &$permission) {
-                    return Err((
-                        axum::http::StatusCode::FORBIDDEN,
-                        format!("Insufficient permissions. Required: {}", $permission),
-                    ));
-                }
+                $crate::extractors::rbac::check_permission(&user, $permission)?;
 
                 Ok($name(user))
             }
@@ -417,7 +443,8 @@ pub fn check_permission(
     user: &CurrentUser,
     permission: Permission,
 ) -> Result<(), (StatusCode, String)> {
-    if !has_effective_permission(user, &permission) {
+    let scope = checked_scope_permissions(user)?;
+    if !has_effective_permission(user, scope.as_deref(), &permission) {
         return Err((
             StatusCode::FORBIDDEN,
             format!("Insufficient permissions. Required: {}", permission),
@@ -431,9 +458,10 @@ pub fn check_any_permission(
     user: &CurrentUser,
     permissions: &[Permission],
 ) -> Result<(), (StatusCode, String)> {
+    let scope = checked_scope_permissions(user)?;
     if !permissions
         .iter()
-        .any(|permission| has_effective_permission(user, permission))
+        .any(|permission| has_effective_permission(user, scope.as_deref(), permission))
     {
         let perms_str = permissions
             .iter()
@@ -461,9 +489,10 @@ pub fn check_all_permissions(
             "Insufficient permissions. Required all of: ".to_string(),
         ));
     }
+    let scope = checked_scope_permissions(user)?;
     if !permissions
         .iter()
-        .all(|permission| has_effective_permission(user, permission))
+        .all(|permission| has_effective_permission(user, scope.as_deref(), permission))
     {
         let perms_str = permissions
             .iter()
@@ -510,6 +539,11 @@ mod tests {
             .cloned()
             .collect();
 
+        let rbac_epoch = crate::services::rbac_runtime::request_authority_epoch(
+            user.tenant_id,
+            user.id,
+        )
+        .expect("fixture authority epoch");
         CurrentUser {
             user,
             session_id: rustok_core::generate_id(),
@@ -521,7 +555,7 @@ mod tests {
             scopes: vec![],
             grant_type: "direct".to_string(),
             access_token_expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
-            rbac_epoch: 0, // Permission-extractor fixture, not an admitted request.
+            rbac_epoch,
             static_authority_revision: None,
             oauth_credential: None,
         }
@@ -599,6 +633,63 @@ mod tests {
         if let Err((code, _msg)) = result {
             assert_eq!(code, StatusCode::FORBIDDEN);
         }
+    }
+
+    #[test]
+    fn expired_or_superseded_current_user_cannot_authorize() {
+        let mut admin = create_test_user(UserRole::SuperAdmin);
+        admin.access_token_expires_at = chrono::Utc::now() - chrono::Duration::seconds(1);
+        assert_eq!(
+            check_permission(&admin, Permission::USERS_DELETE).unwrap_err().0,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        admin.access_token_expires_at = chrono::Utc::now() + chrono::Duration::hours(1);
+        admin.rbac_epoch = 0; // Zero is never an admitted epoch.
+        assert_eq!(
+            check_any_permission(&admin, &[Permission::USERS_DELETE]).unwrap_err().0,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        assert_eq!(
+            check_all_permissions(&admin, &[Permission::USERS_DELETE]).unwrap_err().0,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+
+    #[tokio::test]
+    async fn current_user_permission_gate_respects_matching_scope_ceiling() {
+        use crate::services::rbac_request_scope::{
+            RbacRequestScope, invalidate_current_rbac_request_scope, with_rbac_request_scope,
+        };
+
+        let admin = create_test_user(UserRole::SuperAdmin);
+        let tenant = admin.user.tenant_id;
+        let actor = admin.user.id;
+        let scope = RbacRequestScope::new(
+            tenant,
+            actor,
+            vec![Permission::USERS_READ],
+            UserRole::SuperAdmin,
+        );
+        with_rbac_request_scope(Some(scope), async {
+            assert!(check_permission(&admin, Permission::USERS_READ).is_ok());
+            assert_eq!(
+                check_permission(&admin, Permission::USERS_DELETE).unwrap_err().0,
+                StatusCode::FORBIDDEN
+            );
+            assert!(check_any_permission(
+                &admin,
+                &[Permission::USERS_DELETE, Permission::USERS_READ],
+            ).is_ok());
+            assert!(check_all_permissions(
+                &admin,
+                &[Permission::USERS_DELETE, Permission::USERS_READ],
+            ).is_err());
+            invalidate_current_rbac_request_scope(&tenant, &actor);
+            assert_eq!(
+                check_permission(&admin, Permission::USERS_READ).unwrap_err().0,
+                StatusCode::SERVICE_UNAVAILABLE
+            );
+        }).await;
     }
 
     #[test]

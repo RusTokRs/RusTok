@@ -108,6 +108,19 @@ module availability, sync-only snapshot consumers, nested GraphQL fields and
 already admitted effects require their respective authority contracts. An
 ordinary read is not a commit-time fence. Source regressions are unrun.
 
+## Fallible snapshot lookup and REST permission admission (2026-11-27)
+
+Service and request-policy fallback consumers use a fallible snapshot lookup:
+only actual absence or a different tenant/actor permits persisted fallback.
+Matching invalidation remains an unavailable error even if it occurs while
+cloning the original snapshot. The synchronous REST permission helper and
+its extractor macro verify the CurrentUser's original exclusive deadline
+and process-local epoch; a matching scope must also authorize each effective
+permission. This preserves wildcard semantics without widening either
+ceiling. Unavailable evidence is distinct from normal permission denial.
+These synchronous checks perform no durable read or later effect fence.
+Source regressions are unrun.
+
 ## Non-goals
 
 This change does not create an atomic revocation fence, ensure immediate

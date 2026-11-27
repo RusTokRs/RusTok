@@ -13,8 +13,7 @@ use rustok_telemetry::metrics;
 
 use super::rbac_persistence::replace_user_role_via_store;
 use super::rbac_request_scope::{
-    ensure_scope_authority, ensure_scope_not_invalidated, permissions_for as scoped_permissions_for,
-    role_for as scoped_role_for,
+    checked_permissions_for, checked_role_for, ensure_scope_authority,
 };
 pub use super::rbac_runtime::RbacResolverMetricsSnapshot;
 use super::rbac_runtime::{
@@ -73,7 +72,7 @@ impl RbacService {
         // Retain the original request ceiling, but corroborate its durable
         // static authority before evaluating the snapshot.
         ensure_scope_authority(Some(db), tenant_id, user_id).await?;
-        if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
+        if let Some(permissions) = checked_permissions_for(tenant_id, user_id)? {
             let allowed = evaluate_single_permission(&permissions, required_permission).allowed;
             debug!(
                 tenant_id = %tenant_id,
@@ -137,7 +136,7 @@ impl RbacService {
         Self::record_authz_entrypoint_call("has_any_permission", "library");
 
         ensure_scope_authority(Some(db), tenant_id, user_id).await?;
-        if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
+        if let Some(permissions) = checked_permissions_for(tenant_id, user_id)? {
             // Matches policy-engine semantics: empty "any" set fails closed.
             let allowed = evaluate_any_permission(&permissions, required_permissions).allowed;
             debug!(
@@ -202,7 +201,7 @@ impl RbacService {
         Self::record_authz_entrypoint_call("has_all_permissions", "library");
 
         ensure_scope_authority(Some(db), tenant_id, user_id).await?;
-        if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
+        if let Some(permissions) = checked_permissions_for(tenant_id, user_id)? {
             // Matches policy-engine semantics: empty "all" set fails closed.
             let allowed = evaluate_all_permissions(&permissions, required_permissions).allowed;
             debug!(
@@ -269,7 +268,7 @@ impl RbacService {
         Self::record_authz_entrypoint_call("get_user_permissions", "library");
 
         ensure_scope_authority(Some(db), tenant_id, user_id).await?;
-        if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
+        if let Some(permissions) = checked_permissions_for(tenant_id, user_id)? {
             debug!(
                 tenant_id = %tenant_id,
                 user_id = %user_id,
@@ -279,7 +278,6 @@ impl RbacService {
             return Ok(permissions);
         }
 
-        ensure_scope_not_invalidated(tenant_id, user_id)?;
         let resolver = Self::resolver(db);
         let started_at = std::time::Instant::now();
         let resolved = resolver.resolve_permissions(tenant_id, user_id).await?;
@@ -314,11 +312,10 @@ impl RbacService {
         );
 
         ensure_scope_authority(Some(db), tenant_id, user_id).await?;
-        if let Some(role) = scoped_role_for(tenant_id, user_id) {
+        if let Some(role) = checked_role_for(tenant_id, user_id)? {
             return Ok(role);
         }
 
-        ensure_scope_not_invalidated(tenant_id, user_id)?;
         Self::get_user_role_authoritative(db, tenant_id, user_id).await
     }
 

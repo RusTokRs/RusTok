@@ -405,6 +405,13 @@ revalidation also binds the revision. This adds a read, not a transaction
 fence. Service OAuth and synchronous consumers retain their separate contracts.
 Source regressions are unrun.
 
+Matching scope reads used for fallback now distinguish absent scope from
+invalid authority in one fallible accessor, including a recheck after
+cloning. The host's synchronous REST permission gates also verify the
+original CurrentUser deadline and local epoch, and intersect effective
+checks with any matching scope ceiling. This does not add a durable read
+to synchronous gates or fence subsequent effects. Source regressions unrun.
+
 ## Revision-bound permission cache publication
 
 The Moka adapter binds grants to the original coherent static actor revision.

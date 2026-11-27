@@ -564,6 +564,13 @@ exists.
   unrun. Synchronous consumers, service OAuth, module/credential revocation,
   commit-time fencing and cross-replica runtime evidence remain open.
 
+- Fallible scope lookup and synchronous REST admission: invalid matching
+  scopes cannot be interpreted as absent by service/resolver fallback;
+  CurrentUser single/any/all gates check their deadline and local epoch
+  and any matching scope ceiling. Source regressions authored, unrun.
+  Other immutable AuthContext/SecurityContext consumers and durable
+  credential, module-policy and nested field checks remain open.
+
 - Revision-bound permission cache: bracket production fills with durable
   revision reads and recheck the local epoch after publication. Bound hits
   compare exact grants and original revision in one statement. Legacy entries
