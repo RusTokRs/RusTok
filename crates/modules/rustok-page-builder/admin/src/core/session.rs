@@ -500,13 +500,20 @@ impl EditorSessionState {
     }
 
     pub fn dispatch_intent(&mut self, intent: UiIntent) -> Result<Vec<AdminCanvasEffect>, String> {
-        let invalidates_preview =
-            intent.mutates_document() || matches!(&intent, UiIntent::ActivatePage { .. });
+        let activates_page = matches!(&intent, UiIntent::ActivatePage { .. });
+        let before_revision = {
+            let revision = self.controller.editor().revision();
+            (revision.project_hash, revision.command_sequence)
+        };
         match self.controller.dispatch(intent) {
             Ok(effects) => {
-                // The controller rolls back rejected intents. Keep its matching preview
-                // and release evaluation until an intent actually succeeds.
-                if invalidates_preview {
+                let after_revision = {
+                    let revision = self.controller.editor().revision();
+                    (revision.project_hash, revision.command_sequence)
+                };
+                // Keep the last valid preview after accepted no-op and persistence intents.
+                // Only a changed document revision or page activation makes it stale.
+                if before_revision != after_revision || activates_page {
                     self.runtime_publish_gate_evaluation = None;
                     self.server_preview_html = None;
                     self.preview_request = None;
@@ -1011,16 +1018,56 @@ mod tests {
     }
 
     #[test]
-    fn mutating_intent_retires_an_in_flight_preview() {
+    fn document_mutation_retires_an_in_flight_preview() {
         let mut state = EditorSessionState::new(sample_controller(), "Missing", "Saved");
         state.prepare_server_preview_request().expect("preview");
+
+        state
+            .dispatch_intent(UiIntent::execute(fly::EditorCommand::Remove {
+                component_id: "hero".to_string(),
+            }))
+            .expect("document mutation");
+
+        assert!(!state.preview_in_progress);
+        assert!(state.preview_request.is_none());
+    }
+
+    #[test]
+    fn save_request_preserves_an_in_flight_preview() {
+        let mut state = EditorSessionState::new(sample_controller(), "Missing", "Saved");
+        state.server_preview_html = Some("<main>last good preview</main>".to_string());
+        state.prepare_server_preview_request().expect("preview");
+        let attempt = state.preview_request.as_ref().expect("attempt").id;
 
         state
             .dispatch_intent(UiIntent::RequestSave)
             .expect("save intent");
 
-        assert!(!state.preview_in_progress);
-        assert!(state.preview_request.is_none());
+        assert!(state.preview_attempt_active(attempt));
+        assert!(state.preview_in_progress);
+        assert_eq!(
+            state.server_preview_html.as_deref(),
+            Some("<main>last good preview</main>")
+        );
+    }
+
+    #[test]
+    fn no_op_undo_preserves_an_in_flight_preview() {
+        let mut state = EditorSessionState::new(sample_controller(), "Missing", "Saved");
+        state.server_preview_html = Some("<main>last good preview</main>".to_string());
+        state.prepare_server_preview_request().expect("preview");
+        let attempt = state.preview_request.as_ref().expect("attempt").id;
+
+        state
+            .dispatch_intent(UiIntent::Undo)
+            .expect("undo with no history is a no-op");
+
+        assert!(state.preview_attempt_active(attempt));
+        assert!(state.preview_in_progress);
+        assert_eq!(
+            state.server_preview_html.as_deref(),
+            Some("<main>last good preview</main>")
+        );
     }
 
     #[test]
