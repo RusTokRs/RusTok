@@ -98,10 +98,24 @@ for (const marker of [
 
 for (const marker of [
   "pub async fn replace_user_role_committed",
-  "reserve_rbac_invalidation_generation(&tx)",
+  "flush_rbac_static_relation_generation(&tx)",
   "tx.commit().await?",
-  "publish_user_rbac_invalidation(tenant_id, user_id, durable_generation)",
-]) requireText(sources.mutation, marker, `${files.mutation}: committed mutation path`);
+  "publish_user_rbac_invalidation(cache_service, tenant_id, user_id, durable_generation)",
+]) requireNormalizedText(sources.mutation, marker, `${files.mutation}: committed mutation path`);
+
+const committedMutation = normalizeWhitespace(sources.mutation);
+const generationFlush = committedMutation.indexOf(
+  normalizeWhitespace("flush_rbac_static_relation_generation(&tx)"),
+);
+const commitBoundary = committedMutation.indexOf(normalizeWhitespace("tx.commit().await?"));
+const publication = committedMutation.indexOf(
+  normalizeWhitespace("publish_user_rbac_invalidation(cache_service, tenant_id, user_id, durable_generation)"),
+);
+if (!(generationFlush >= 0 && generationFlush < commitBoundary && commitBoundary < publication)) {
+  failures.push(
+    `${files.mutation}: generation flush must be transactional and publication must follow commit`,
+  );
+}
 
 const evidence = JSON.parse(sources.evidence);
 const evidenceChecks = [
