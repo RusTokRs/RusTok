@@ -440,6 +440,69 @@ async fn lifecycle_cursor_observation_is_read_only_and_detects_committed_aba() {
     .unwrap_or_else(|error| panic!("RBAC lifecycle cursor observation evidence failed: {error}"));
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires PostgreSQL admin access"]
+async fn static_intent_generation_observes_committed_sql_aba_and_rejects_history_reset() {
+    use rustok_modules::SeaOrmModulePolicyRevisionConsumer;
+    use std::time::Duration;
+
+    with_rbac_postgres_database("rustok_rbac_static_intent", |db_a, db_b| async move {
+        let tenant = insert_tenant(&db_a, "intent-authority").await?;
+        let other = insert_tenant(&db_a, "intent-authority-other").await?;
+        let id = Uuid::new_v4();
+        let reader = SeaOrmModulePolicyRevisionConsumer::new(db_b.clone());
+        assert_eq!(reader.observe_static_intent_generation(tenant).await?, 0);
+        db_a.execute_unprepared(&format!(
+            "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled) VALUES ('{id}', '{tenant}', 'blog', TRUE)"
+        )).await?;
+        let initial = reader.observe_static_intent_generation(tenant).await?;
+        assert!(initial > 0);
+        db_a.execute_unprepared(&format!(
+            "UPDATE tenant_modules SET settings = '{{\"test\":true}}'::jsonb WHERE id = '{id}'"
+        )).await?;
+        assert_eq!(reader.observe_static_intent_generation(tenant).await?, initial);
+
+        let transaction = db_a.begin().await?;
+        transaction.execute_unprepared(&format!(
+            "UPDATE tenant_modules SET enabled = FALSE WHERE id = '{id}'"
+        )).await?;
+        let observation = tokio::time::timeout(
+            Duration::from_secs(4),
+            reader.observe_static_intent_generation(tenant),
+        ).await;
+        transaction.rollback().await?;
+        assert_eq!(observation.map_err(|_| "intent reader waited for uncommitted witness")??, initial);
+        assert_eq!(reader.observe_static_intent_generation(tenant).await?, initial);
+
+        let transaction = db_a.begin().await?;
+        transaction.execute_unprepared(&format!(
+            "UPDATE tenant_modules SET enabled = FALSE WHERE id = '{id}'; UPDATE tenant_modules SET enabled = TRUE WHERE id = '{id}'"
+        )).await?;
+        transaction.commit().await?;
+        let restored = reader.observe_static_intent_generation(tenant).await?;
+        assert_eq!(restored, initial + 2);
+        assert_eq!(reader.observe_static_intent_generation(other).await?, 0);
+
+        for sql in [
+            format!("DELETE FROM module_static_intent_generations WHERE tenant_id = '{tenant}'"),
+            format!("UPDATE module_static_intent_generations SET generation = 0 WHERE tenant_id = '{tenant}'"),
+            format!("UPDATE module_static_intent_generations SET generation = generation + 2 WHERE tenant_id = '{tenant}'"),
+            format!("UPDATE tenant_modules SET tenant_id = '{other}' WHERE id = '{id}'"),
+            "TRUNCATE module_static_intent_generations".to_string(),
+            "TRUNCATE tenant_modules".to_string(),
+        ] {
+            assert!(db_a.execute_unprepared(&sql).await.is_err(), "{sql}");
+            assert_eq!(reader.observe_static_intent_generation(tenant).await?, restored);
+        }
+        db_a.execute_unprepared(&format!("DELETE FROM tenant_modules WHERE id = '{id}'")).await?;
+        assert_eq!(reader.observe_static_intent_generation(tenant).await?, restored + 1);
+        assert_eq!(reader.observe_static_intent_generation(other).await?, 0);
+        Ok(())
+    })
+    .await
+    .unwrap_or_else(|error| panic!("RBAC static intent generation evidence failed: {error}"));
+}
+
 async fn with_rbac_postgres_database<T, F, Fut>(prefix: &str, test: F) -> TestResult<T>
 where
     F: FnOnce(DatabaseConnection, DatabaseConnection) -> Fut,
