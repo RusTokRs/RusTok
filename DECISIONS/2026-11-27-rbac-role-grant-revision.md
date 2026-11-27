@@ -76,3 +76,15 @@ definition/runtime entitlement, policy interactions beyond static module
 authority, tenant activity and global cross-owner lock ordering still
 require verification. Source regressions authored; compile and PostgreSQL
 contention tests not run.
+
+## Standalone replacement ordering extension (2026-11-27)
+
+PostgreSQL standalone replacement takes the target user fence, then the
+existing target membership, destination and SuperAdmin continuity roles in
+canonical UUID order before per-role checks. Bootstrap assignment fences
+the user and exact system role before touching shared permission vocabulary;
+a late role conflict fails via NOWAIT. Lazy missing-role creation and bulk
+repair remain outside a complete cross-owner ordering proof. PostgreSQL
+regression evidence is authored but unrun.
+The PostgreSQL regression covers both historical opposite lock orders.
+Compilation and execution evidence are pending.

@@ -49,6 +49,18 @@ disjoint management alternatives on create/update/delete, and unchanged state
 on denial. Compile and execution evidence remain pending. Artifact purge
 authorization and global inter-module fences remain separate work.
 
+## Standalone role lock hierarchy (2026-11-27)
+
+PostgreSQL standalone replacement takes the target user fence, then the
+existing target membership, destination and SuperAdmin continuity roles in
+canonical UUID order before per-role checks. Bootstrap assignment fences
+the user and exact system role before touching shared permission vocabulary;
+a late role conflict fails via NOWAIT. Lazy missing-role creation and bulk
+repair remain outside a complete cross-owner ordering proof. PostgreSQL
+regression evidence is authored but unrun.
+The regression holds the lower UUID and checks that a blocked replacement
+has not taken the higher UUID, in both former orders. Compilation is pending.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`

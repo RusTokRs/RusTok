@@ -28,6 +28,9 @@
   - `RbacLockedMutationAuthority::restrict_to` narrows live grants to admitted
     effective grants; a management alternative must remain in both sets.
 - **Role & Invalidation Management**:
+  - Standalone PostgreSQL replacements acquire the existing role union in UUID
+    order after the user fence. Bootstrap fences the exact system role before
+    vocabulary writes; late contention fails without waiting.
   - `RbacRoleAssignmentDbWriter`, `RbacRoleMutationPlan`, `replace_persisted_user_role_on`
   - `read_permission_invalidation_generation`, `reserve_permission_invalidation_generation`
   - `plan_system_role_repair`, `apply_system_role_repair_in_transaction`

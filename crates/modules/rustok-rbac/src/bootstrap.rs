@@ -271,6 +271,9 @@ where
     ) -> Result<(), RbacRoleAssignmentError> {
         self.ensure_user_tenant(tenant_id, user_id).await?;
         let ensured_role = self.ensure_role(tenant_id, &role).await?;
+        // The role must precede shared permission keys. A caller may already
+        // own a wider ordered role set, so never wait on a late role fence.
+        self.lock_assignment_role(tenant_id, &role, ensured_role.id).await?;
 
         if reconcile_existing_role || ensured_role.created {
             self.reconcile_role_permissions(ensured_role.id, tenant_id, &role)
@@ -310,7 +313,7 @@ where
         let backend = self.db.get_database_backend();
         let sql = match backend {
             DbBackend::Sqlite => "SELECT tenant_id FROM users WHERE id = ?1 LIMIT 1",
-            _ => "SELECT tenant_id FROM users WHERE id = $1 LIMIT 1",
+            _ => "SELECT tenant_id FROM users WHERE id = $1 LIMIT 1 FOR UPDATE",
         };
         let actual_tenant_id = self
             .query_uuid(sql, "tenant_id", vec![user_id.into()])
@@ -325,6 +328,25 @@ where
             });
         }
 
+        Ok(())
+    }
+
+    async fn lock_assignment_role(
+        &self,
+        tenant_id: Uuid,
+        role: &UserRole,
+        role_id: Uuid,
+    ) -> Result<(), RbacRoleAssignmentError> {
+        if self.db.get_database_backend() == DbBackend::Postgres {
+            let slug = role.to_string();
+            let locked = self.query_id(
+                "SELECT id FROM roles WHERE tenant_id = $1 AND slug = $2 AND id = $3 AND is_system = TRUE FOR UPDATE NOWAIT",
+                vec![tenant_id.into(), slug.into(), role_id.into()],
+            ).await?;
+            if locked != Some(role_id) {
+                return Err(RbacRoleAssignmentError::MissingPersistedRecord("role"));
+            }
+        }
         Ok(())
     }
 

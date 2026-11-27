@@ -35,6 +35,16 @@ current admitted authority, and each commit checks the credential deadline.
 Operational drain, legal holds and global lock-order execution evidence are
 separate gates.
 
+## Standalone role lock ordering
+
+PostgreSQL standalone replacement takes the target user fence, then the
+existing target membership, destination and SuperAdmin continuity roles in
+canonical UUID order before per-role checks. Bootstrap assignment fences
+the user and exact system role before touching shared permission vocabulary;
+a late role conflict fails via NOWAIT. Lazy missing-role creation and bulk
+repair remain outside a complete cross-owner ordering proof. PostgreSQL
+regression evidence is authored but unrun.
+
 ## Integration
 
 - `SeaOrmRelationPermissionStore` owns persisted relation reads for both cached

@@ -14,7 +14,10 @@ use rustok_test_utils::{
     assert_postgres_url, connect_postgres, create_postgres_database,
     drop_postgres_database_if_exists, postgres_database_url, unique_postgres_database_name,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
+    Set, Statement, TransactionTrait,
+};
 use sea_orm_migration::MigratorTrait;
 use tokio::sync::Barrier;
 use uuid::Uuid;
@@ -263,6 +266,81 @@ async fn concurrent_generation_reservations_are_unique_contiguous_and_committed(
     })
     .await
     .unwrap_or_else(|error| panic!("RBAC generation allocation evidence failed: {error}"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires PostgreSQL admin access"]
+async fn standalone_replacement_locks_continuity_and_destination_in_uuid_order() {
+    use std::time::Duration;
+
+    with_rbac_postgres_database("rustok_rbac_role_order", |db_a, db_b| async move {
+        for slug_writer in [false, true] {
+            let tenant = insert_tenant(&db_a, "ordered-role-set").await?;
+            let target = insert_user(&db_a, tenant, &format!("ordered-target-{slug_writer}@example.com")).await?;
+            let survivor = insert_user(&db_a, tenant, &format!("ordered-survivor-{slug_writer}@example.com")).await?;
+            let mut ids = [Uuid::new_v4(), Uuid::new_v4()];
+            ids.sort_unstable();
+            let [low, high] = ids;
+            let (super_role, admin_role) = if slug_writer { (low, high) } else { (high, low) };
+            db_a.execute_unprepared(&format!(
+                "INSERT INTO roles (id, tenant_id, name, slug, is_system) VALUES
+                 ('{super_role}', '{tenant}', 'super_admin', 'super_admin', TRUE),
+                 ('{admin_role}', '{tenant}', 'admin', 'admin', TRUE);
+                 INSERT INTO user_roles (id,user_id,role_id) VALUES
+                 ('{}','{target}','{super_role}'), ('{}','{survivor}','{super_role}')",
+                Uuid::new_v4(), Uuid::new_v4(),
+            )).await?;
+            let holder = db_a.begin().await?;
+            holder.execute_unprepared(&format!(
+                "SELECT id FROM roles WHERE id = '{low}' FOR UPDATE"
+            )).await?;
+            let writer = db_b.begin().await?;
+            writer.execute_unprepared("SET LOCAL lock_timeout = '8s'").await?;
+            let pid: i32 = writer.query_one_raw(Statement::from_string(
+                DbBackend::Postgres, "SELECT pg_backend_pid() AS pid".to_string(),
+            )).await?.ok_or("writer backend missing")?.try_get("", "pid")?;
+            let task = tokio::spawn(async move {
+                let changed = if slug_writer {
+                    rustok_rbac::replace_persisted_user_role_by_slug_on(
+                        &writer, tenant, target, "admin",
+                    ).await?
+                } else {
+                    rustok_rbac::replace_persisted_user_role_on(
+                        &writer, tenant, target, UserRole::Admin,
+                    ).await?
+                };
+                writer.commit().await?;
+                Ok::<bool, Box<dyn std::error::Error + Send + Sync>>(changed)
+            });
+            let observation = tokio::time::timeout(Duration::from_secs(4), async {
+                loop {
+                    let blocked: bool = holder.query_one_raw(Statement::from_string(
+                        DbBackend::Postgres,
+                        format!("SELECT cardinality(pg_blocking_pids({pid})) > 0 AS blocked"),
+                    )).await?.ok_or("writer wait observation missing")?.try_get("", "blocked")?;
+                    if blocked {
+                        break;
+                    }
+                    if task.is_finished() {
+                        return Err("writer completed without waiting for the lower role".into());
+                    }
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+                // Waiting for the lower UUID must not retain the higher UUID.
+                holder.execute_unprepared(&format!(
+                    "SELECT id FROM roles WHERE id = '{high}' FOR UPDATE NOWAIT"
+                )).await?;
+                Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+            }).await;
+            holder.rollback().await?;
+            let changed = task.await?;
+            observation.map_err(|_| "writer did not reach the lower role fence")??;
+            if !changed? {
+                return Err("expected a non-noop demotion".into());
+            }
+        }
+        Ok(())
+    }).await.unwrap_or_else(|error| panic!("RBAC ordered role union evidence failed: {error}"));
 }
 
 async fn with_rbac_postgres_database<T, F, Fut>(prefix: &str, test: F) -> TestResult<T>

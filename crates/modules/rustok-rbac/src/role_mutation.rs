@@ -461,6 +461,23 @@ async fn lock_target_authority_on(
     }
 }
 
+/// Standalone writers reuse the host's existing UUID-ordered role union.
+/// SQLite already owns the write fence from lock_target_authority_on.
+async fn lock_existing_target_role_set_on(
+    db: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    requested_slug: &str,
+) -> Result<bool, RbacRolePersistenceError> {
+    use sea_orm::ConnectionTrait;
+    if db.get_database_backend() == sea_orm::DbBackend::Postgres {
+        return Ok(crate::lock_user_admin_role_grants_on(
+            db, tenant_id, user_id, Some(user_id), Some(requested_slug),
+        ).await?);
+    }
+    Ok(true)
+}
+
 /// Validate removal, role demotion, and status changes against current persisted
 /// authority inside the same transaction that applies the host-owned user change.
 pub async fn ensure_user_authority_continuity_on(
@@ -506,6 +523,8 @@ pub async fn replace_persisted_user_role_on(
     role: UserRole,
 ) -> Result<bool, RbacRolePersistenceError> {
     lock_target_authority_on(db, tenant_id, user_id).await?;
+    // All existing role parents precede lazy built-in materialization.
+    lock_existing_target_role_set_on(db, tenant_id, user_id, &role.to_string()).await?;
     if has_exact_tenant_role_assignment_on(db, tenant_id, user_id, &role).await? {
         return Ok(false);
     }
@@ -958,6 +977,9 @@ pub async fn replace_persisted_user_role_by_slug_on(
     validate_identity("target_user_id", user_id)?;
     let slug = normalize_role_slug(role_slug);
     let target_status = lock_target_authority_on(db, tenant_id, user_id).await?;
+    if !lock_existing_target_role_set_on(db, tenant_id, user_id, &slug).await? {
+        return Err(RbacRolePersistenceError::RoleNotFound(slug));
+    }
     let role_id = lock_role_row_on(db, tenant_id, &slug)
         .await?
         .ok_or_else(|| RbacRolePersistenceError::RoleNotFound(slug.clone()))?;
