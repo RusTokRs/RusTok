@@ -59,9 +59,20 @@ fences in ascending slug order (platform then tenant per slug) before
 reselecting and verifying the complete artifact set, its durable policies
 and clear security revisions. Non-SQL preflight compares fresh closure
 evidence without holding effect locks. Owner lifecycle remains root-only.
+Artifact selection identity is not continuity evidence: a tenant shadow or
+replacement may disappear and restore the same installation. Each artifact
+lease binds both scope selection generations on the existing permanent
+activation fence rows. The Modules owner advances only the affected scope on
+successful activation, deactivation, rollback, uninstall and tenant
+enable/disable, atomically with the mutation and receipt. Pure locks,
+idempotent replays and aborted transactions do not advance the generation.
+Capture generations with exact selected identities in one database snapshot;
+compare under the already-held sorted slug locks before SQL effects. Lifecycle
+captures its root generation. This conservative generation may invalidate
+leases even when a scope mutation does not change the effective winner.
 Static dependency lifecycle/composition, registry mutation fencing, full
-effective-policy revision, installation ABA and deployment readiness remain
-open; PostgreSQL cross-owner lock-order and runtime evidence remain required.
+effective-policy revision and deployment readiness remain open; PostgreSQL
+cross-owner lock-order and runtime evidence remain required.
 
 ## Context, events and migration
 
@@ -69,8 +80,13 @@ Tenant, actor, phase, binding, release/installation, capability, execution ID,
 trace and idempotency identity remain bound. Channel and maintenance policy
 inputs still require owner wiring. Locale, currency and timezone do not
 participate. The lease is not an event or durable record; existing audit and
-idempotency/reconciliation semantics remain unchanged. No migration or RPC
-schema change is needed. Non-server compositions retain their explicit owner
+idempotency/reconciliation semantics remain unchanged. Migration 000095 adds
+a nonnegative selection generation to the permanent activation lock row.
+Existing rows and absent rows start at zero; this is a cutover baseline, not
+historical continuity evidence. Drain old leases, stop old lifecycle writers,
+apply the migration and deploy writers/consumers together; old writers do
+not advance the counter. Downgrade is denied. No RPC schema change is needed.
+Non-server compositions retain their explicit owner
 contracts and are not claimed covered by this lease.
 
 ## Failure semantics and non-goals

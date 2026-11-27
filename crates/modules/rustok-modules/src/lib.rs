@@ -534,7 +534,7 @@ pub use installation::{
     ArtifactBlobStore, ArtifactDeactivationRequest, ArtifactDeactivationResult,
     ArtifactMigrationCheckpointRequest, ArtifactMigrationRollbackMode, ArtifactPayloadSource,
     ArtifactPermissionRegistrationStatus, ArtifactRegistry, ArtifactRollbackRequest,
-    ArtifactRollbackResult, ArtifactTenantDisableRequest, ArtifactTenantDisableResult,
+    ArtifactRollbackResult, ArtifactSelectionGeneration, ArtifactTenantDisableRequest, ArtifactTenantDisableResult,
     ArtifactTenantEnableRequest, ArtifactTenantEnableResult, ArtifactTenantLifecycleSnapshot,
     ArtifactUninstallRequest, ArtifactUninstallResult, ArtifactVerificationEvidence,
     DurableArtifactBlobStore, InstalledModuleArtifact, ModuleArtifactPackage,

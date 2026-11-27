@@ -47,6 +47,7 @@ struct ExecutionLease {
     effective_revision: Option<String>,
     security_revision: u64,
     serving_closure: Option<rustok_modules::ArtifactServingClosure>,
+    lifecycle_generation: Option<rustok_modules::ArtifactSelectionGeneration>,
     policy: SandboxPolicy,
     deadline: Instant,
     direct_scope: Option<CapturedArtifactRequestScope>,
@@ -176,6 +177,13 @@ impl ExecutionAuthority {
             // security and exact installation remain mandatory.
             None
         };
+        let lifecycle_generation = if serving_closure.is_none() {
+            Some(rustok_modules::ArtifactSelectionGeneration::capture(
+                &resolver.db, tenant_id, &artifact.release.slug,
+            ).await.map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?)
+        } else {
+            None
+        };
         let mut lease = ExecutionLease {
             execution_id: context.execution_id,
             subject: SandboxSubject::ModuleArtifact {
@@ -190,6 +198,7 @@ impl ExecutionAuthority {
             effective_revision: effective_revision.map(str::to_owned),
             security_revision,
             serving_closure,
+            lifecycle_generation,
             policy: policy.clone(),
             // The lease has not yet been registered. Set its non-renewable
             // monotonic deadline only after the last durable preflight.
@@ -251,7 +260,12 @@ async fn check_policy(
     lease: &ExecutionLease,
 ) -> Result<bool, rustok_modules::ArtifactEffectivePolicyResolveError> {
     let Some(revision) = lease.effective_revision.as_deref() else {
-        return Ok(lease.context.phase == ExecutionPhase::Lifecycle);
+        return Ok(lease.context.phase == ExecutionPhase::Lifecycle
+            && match &lease.lifecycle_generation {
+                Some(generation) => generation.is_current(&resolver.db).await
+                    .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?,
+                None => false,
+            });
     };
     let (policy, closure) = resolver.resolve_with_closure(lease.tenant_id(), &lease.artifact).await?;
     Ok(policy.policy_revision() == revision
@@ -330,6 +344,9 @@ impl ArtifactSqlEffectFence for SqlEffectFence {
         // root lock. Overlapping serving closures use the same slug order.
         if let Some(closure) = &self.lease.serving_closure {
             closure.require_current_on(tx).await.map_err(|_| self.deny())?;
+        } else {
+            self.lease.lifecycle_generation.as_ref().ok_or_else(|| self.deny())?
+                .require_current_on(tx).await.map_err(|_| self.deny())?;
         }
         // Keep exact selection and the owner grant in the effect transaction
         // after the direct credential/RBAC fences, including background work.

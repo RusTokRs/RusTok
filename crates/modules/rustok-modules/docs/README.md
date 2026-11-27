@@ -1506,11 +1506,23 @@ order (platform then tenant per slug), reselects the complete artifact set,
 validates each durable sandbox policy and security revision, and keeps the
 locks through commit. Non-SQL calls compare fresh closure evidence but remain
 preflight-only. Lifecycle retains root-only owner authority; static members
-are traversed but static overrides/composition, registry writers, deployment
-readiness and installation disable/re-enable ABA are not transactionally
-fenced. Cross-owner lock-order verification remains outstanding. Upgrade all
-security writers and effect consumers together; old writers bypass the slug
-fence. No schema or transport change is required. Independent non-server broker
+are traversed but static overrides/composition, registry writers and deployment
+readiness are not transactionally fenced. Each artifact lease also captures
+both platform and tenant selection generations on the permanent slug fences.
+Successful activation, deactivation, rollback, uninstall and explicit artifact
+tenant enable/disable advance the affected scope in the same transaction as
+the selection change and receipt. Lock acquisition and receipt replay do not
+advance generations. This rejects disable/enable, replacement/rollback and
+temporary tenant shadow ABA even if the exact installation returns unchanged.
+Capture exact selections and generations in one read snapshot; SQL effects
+compare generations after all closure locks. Lifecycle captures its root
+generation separately. This deliberately invalidates leases conservatively
+on scope mutations even when the effective winner does not change.
+Migration 000095 adds the generation column with baseline zero. Drain old
+executions, stop old selection/security writers, migrate and deploy all
+writers and effect consumers together; mixed-version writers can bypass the
+fence. No transport change is required. Cross-owner lock-order verification
+remains outstanding. Independent non-server broker
 compositions still need an explicitly supplied authority. External effects and
 objects/secrets/MCP/HTTP are not covered by this SQL commit guard.
 See [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).

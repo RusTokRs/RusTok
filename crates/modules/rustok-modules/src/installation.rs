@@ -2722,6 +2722,7 @@ impl SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
 
+        advance_artifact_selection_generation(&transaction, &request.scope, &slug).await?;
         // A plain activation remains an immediate serving-selection
         // change whose durable activation operation is the receipt. A
         // governed activation has already advanced its checkpoint to
@@ -2953,6 +2954,7 @@ impl SeaOrmArtifactInstallationStore {
                 "installation became stale during deactivation".into(),
             ));
         }
+        advance_artifact_selection_generation(&transaction, &request.scope, &target_slug).await?;
         self.infrastructure
             .write_event(
                 &transaction,
@@ -3359,6 +3361,7 @@ impl SeaOrmArtifactInstallationStore {
             }
             1
         };
+        advance_artifact_selection_generation(&transaction, &scope, &descriptor.slug).await?;
         record_artifact_tenant_lifecycle_operation(
             &transaction,
             self.infrastructure.new_id(),
@@ -3567,6 +3570,7 @@ impl SeaOrmArtifactInstallationStore {
                 "installation became stale during uninstall".into(),
             ));
         }
+        advance_artifact_selection_generation(&transaction, &request.scope, &target_slug).await?;
         // Advance and retire the work generation and clear tenant intent in
         // the same transaction as the uninstall record: after this commit,
         // delivery admission must never admit work for the uninstalled
@@ -4016,6 +4020,7 @@ impl SeaOrmArtifactInstallationStore {
         RetentionHoldStore::release_holds_for_operation(&transaction, transition_operation_id)
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        advance_artifact_selection_generation(&transaction, &request.scope, &source_slug).await?;
         self.infrastructure
             .write_event(
                 &transaction,
@@ -7322,6 +7327,133 @@ pub(crate) async fn acquire_artifact_activation_lock<C: ConnectionTrait>(
         ))
         .await
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    Ok(())
+}
+
+/// A host-only continuity fence for effective selection. Installation and
+/// tenant lifecycle revisions still own their individual aggregates; this
+/// generation also detects a temporary shadow selection of another identity.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArtifactSelectionGeneration {
+    tenant_id: Uuid,
+    slug: String,
+    platform: u64,
+    tenant: u64,
+}
+
+impl ArtifactSelectionGeneration {
+    pub async fn capture(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        slug: &str,
+    ) -> Result<Self, ModuleInstallationError> {
+        Self::load_on(db, tenant_id, slug).await
+    }
+
+    pub(crate) async fn load_on(
+        db: &impl ConnectionTrait,
+        tenant_id: Uuid,
+        slug: &str,
+    ) -> Result<Self, ModuleInstallationError> {
+        if tenant_id.is_nil() || slug.is_empty() {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "selection generation requires a tenant and slug".into(),
+            ));
+        }
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let p1 = backend.placeholder(1);
+        let p2 = backend.placeholder(2);
+        let row = db.query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            format!(
+                "SELECT COALESCE(MAX(CASE WHEN scope_kind = 'platform' THEN selection_generation END), 0) AS platform_generation, \
+                 COALESCE(MAX(CASE WHEN scope_kind = 'tenant' THEN selection_generation END), 0) AS tenant_generation \
+                 FROM module_artifact_activation_locks WHERE slug = {p1} AND \
+                 ((scope_kind = 'platform' AND scope_tenant_key = 'platform') OR \
+                  (scope_kind = 'tenant' AND scope_tenant_key = {p2}))"
+            ),
+            vec![slug.to_string().into(), tenant_id.to_string().into()],
+        )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+            .ok_or_else(|| ModuleInstallationError::Store("selection generation query returned no row".into()))?;
+        let revision = |column: &str| -> Result<u64, ModuleInstallationError> {
+            let value: i64 = row.try_get("", column)
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            u64::try_from(value).map_err(|_| ModuleInstallationError::Store(
+                "negative artifact selection generation".into(),
+            ))
+        };
+        Ok(Self {
+            tenant_id, slug: slug.to_string(),
+            platform: revision("platform_generation")?,
+            tenant: revision("tenant_generation")?,
+        })
+    }
+
+    pub async fn is_current(
+        &self,
+        db: &DatabaseConnection,
+    ) -> Result<bool, ModuleInstallationError> {
+        Ok(Self::load_on(db, self.tenant_id, &self.slug).await? == *self)
+    }
+
+    pub(crate) async fn require_locked_on(
+        &self,
+        tx: &DatabaseTransaction,
+    ) -> Result<(), ModuleInstallationError> {
+        if Self::load_on(tx, self.tenant_id, &self.slug).await? != *self {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "artifact selection generation is stale".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Single-root owner lifecycle path. Serving closures lock all slugs
+    /// first in canonical order and call require_locked_on instead.
+    pub async fn require_current_on(
+        &self,
+        tx: &DatabaseTransaction,
+    ) -> Result<(), ModuleInstallationError> {
+        crate::backend::set_tenant_scope(tx, self.tenant_id).await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        acquire_artifact_activation_lock(tx, &ModuleInstallationScope::Platform, &self.slug).await?;
+        acquire_artifact_activation_lock(
+            tx, &ModuleInstallationScope::Tenant { tenant_id: self.tenant_id }, &self.slug,
+        ).await?;
+        self.require_locked_on(tx).await
+    }
+}
+
+/// Advance exactly the affected scope under its already-held activation lock.
+/// The caller commits it with the successful serving mutation and receipt.
+/// A lock-only read, idempotent replay, or rollback must never advance it.
+async fn advance_artifact_selection_generation(
+    tx: &DatabaseTransaction,
+    scope: &ModuleInstallationScope,
+    slug: &str,
+) -> Result<(), ModuleInstallationError> {
+    let backend = SupportedBackend::new(tx.get_database_backend())
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    let (scope_kind, scope_tenant_key) = match scope {
+        ModuleInstallationScope::Platform => ("platform", "platform".to_string()),
+        ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
+    };
+    let updated = tx.execute_raw(Statement::from_sql_and_values(
+        backend.db_backend(),
+        format!(
+            "UPDATE module_artifact_activation_locks SET selection_generation = selection_generation + 1 \
+             WHERE scope_kind = {} AND scope_tenant_key = {} AND slug = {} \
+             AND selection_generation < 9223372036854775807",
+            backend.placeholder(1), backend.placeholder(2), backend.placeholder(3),
+        ),
+        vec![scope_kind.into(), scope_tenant_key.into(), slug.to_string().into()],
+    )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    if updated.rows_affected() != 1 {
+        return Err(ModuleInstallationError::AdmissionRevisionConflict(
+            "artifact selection generation is missing or exhausted".into(),
+        ));
+    }
     Ok(())
 }
 
@@ -12103,6 +12235,82 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn selection_generation_is_scope_bound_and_transactional() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared("CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, selection_generation INTEGER NOT NULL DEFAULT 0 CHECK (selection_generation >= 0), PRIMARY KEY (scope_kind, scope_tenant_key, slug))").await.unwrap();
+        let tenant_id = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let slug = "sample_module";
+        let initial = ArtifactSelectionGeneration::capture(&db, tenant_id, slug).await.unwrap();
+        let other_initial = ArtifactSelectionGeneration::capture(&db, other, slug).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        initial.require_current_on(&tx).await.unwrap();
+        tx.commit().await.unwrap();
+        assert!(initial.is_current(&db).await.unwrap(), "lock-only must not advance generation");
+
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        let scope = ModuleInstallationScope::Tenant { tenant_id };
+        acquire_artifact_activation_lock(&tx, &scope, slug).await.unwrap();
+        advance_artifact_selection_generation(&tx, &scope, slug).await.unwrap();
+        tx.rollback().await.unwrap();
+        assert!(initial.is_current(&db).await.unwrap(), "rollback must not advance generation");
+
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        acquire_artifact_activation_lock(&tx, &scope, slug).await.unwrap();
+        advance_artifact_selection_generation(&tx, &scope, slug).await.unwrap();
+        tx.commit().await.unwrap();
+        assert!(!initial.is_current(&db).await.unwrap());
+        assert!(other_initial.is_current(&db).await.unwrap());
+
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        acquire_artifact_activation_lock(&tx, &ModuleInstallationScope::Platform, slug).await.unwrap();
+        advance_artifact_selection_generation(&tx, &ModuleInstallationScope::Platform, slug).await.unwrap();
+        tx.commit().await.unwrap();
+        assert!(!other_initial.is_current(&db).await.unwrap());
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        assert!(initial.require_current_on(&tx).await.is_err());
+        tx.rollback().await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_MODULES_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_selection_generation_is_rechecked_after_lock_wait() {
+        use std::time::Duration;
+        let db = Database::connect(std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").unwrap())
+            .await.unwrap();
+        assert_eq!(db.get_database_backend(), DbBackend::Postgres);
+        let schema = format!("selection_generation_{}", Uuid::new_v4().simple());
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
+        let setup = db.begin().await.unwrap();
+        setup.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        setup.execute_unprepared("CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, selection_generation BIGINT NOT NULL DEFAULT 0 CHECK (selection_generation >= 0), PRIMARY KEY (scope_kind, scope_tenant_key, slug))").await.unwrap();
+        setup.commit().await.unwrap();
+        let tenant = Uuid::new_v4();
+        let slug = "sample_module";
+        let writer = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        writer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        let generation = ArtifactSelectionGeneration::load_on(&writer, tenant, slug).await.unwrap();
+        acquire_artifact_activation_lock(&writer, &ModuleInstallationScope::Platform, slug).await.unwrap();
+        advance_artifact_selection_generation(&writer, &ModuleInstallationScope::Platform, slug).await.unwrap();
+        let worker_db = db.clone();
+        let worker_schema = schema.clone();
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let mut worker = tokio::spawn(async move {
+            let tx = crate::backend::begin_fenced_transaction(&worker_db).await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}")).await.unwrap();
+            ready_tx.send(()).unwrap();
+            let result = generation.require_current_on(&tx).await;
+            tx.rollback().await.unwrap();
+            result
+        });
+        ready_rx.await.unwrap();
+        assert!(tokio::time::timeout(Duration::from_millis(150), &mut worker).await.is_err());
+        writer.commit().await.unwrap();
+        assert!(matches!(worker.await.unwrap(), Err(ModuleInstallationError::AdmissionRevisionConflict(_))));
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+    }
+
+    #[tokio::test]
     async fn serving_closure_fences_corequisite_security_and_selection() {
         use crate::policy::{
             ModuleEffectivePolicyInstallationFact, ModuleEffectivePolicyQuery,
@@ -12182,14 +12390,14 @@ mod tests {
         let root = &selected["z_root"];
         let provider = &selected["a_provider"];
         let closure = crate::ArtifactServingClosure::from_policy_selection(
-            tenant_id, root, &policy, &selected,
-        ).unwrap();
+            &db, tenant_id, root, &policy, &selected,
+        ).await.unwrap();
         assert_eq!(closure.root_security_revision(root), Some(0));
         let mut missing = selected.clone();
         missing.remove("a_provider");
         assert!(crate::ArtifactServingClosure::from_policy_selection(
-            tenant_id, root, &policy, &missing,
-        ).is_err());
+            &db, tenant_id, root, &policy, &missing,
+        ).await.is_err());
 
         let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
         closure.require_current_on(&tx).await.unwrap();
@@ -12245,18 +12453,64 @@ mod tests {
             version_requirement: "^1.0".to_string(),
         }]).execute().unwrap();
         let refreshed = crate::ArtifactServingClosure::from_policy_selection(
-            tenant_id, root, &policy, &selected,
-        ).unwrap();
+            &db, tenant_id, root, &policy, &selected,
+        ).await.unwrap();
         let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
         refreshed.require_current_on(&tx).await.unwrap();
         tx.rollback().await.unwrap();
+        // Real lifecycle owner writes: the exact installation and clear
+        // security revision return to the original values after re-enable.
+        let before_generation = ArtifactSelectionGeneration::capture(
+            &db, tenant_id, &provider.release.slug,
+        ).await.unwrap();
+        let other_tenant = Uuid::new_v4();
+        let other_generation = ArtifactSelectionGeneration::capture(
+            &db, other_tenant, &provider.release.slug,
+        ).await.unwrap();
+        let disable = ArtifactTenantDisableRequest {
+            installation_id: provider.installation_id,
+            tenant_id,
+            expected_revision: 1,
+            context: lifecycle_context(Some(tenant_id)),
+            reason: "generation regression".into(),
+        };
+        let disabled = store.disable_artifact_for_tenant(disable.clone()).await.unwrap();
+        let after_disable = ArtifactSelectionGeneration::capture(
+            &db, tenant_id, &provider.release.slug,
+        ).await.unwrap();
+        assert_ne!(before_generation, after_disable);
+        assert_eq!(store.disable_artifact_for_tenant(disable).await.unwrap(), disabled);
+        assert!(after_disable.is_current(&db).await.unwrap(), "receipt replay must not advance generation");
+        store.enable_artifact_for_tenant(ArtifactTenantEnableRequest {
+            installation_id: provider.installation_id,
+            tenant_id,
+            expected_revision: disabled.revision,
+            context: lifecycle_context(Some(tenant_id)),
+            reason: "generation regression".into(),
+        }).await.unwrap();
+        assert!(other_generation.is_current(&db).await.unwrap(), "tenant mutation must not invalidate another tenant");
+        let restored = crate::ArtifactInstallationResolver::resolve(
+            &store, &provider.release, tenant_id,
+        ).await.unwrap();
+        assert_eq!(&restored, provider);
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        assert!(refreshed.require_current_on(&tx).await.is_err(), "disable/enable ABA must not revive a lease");
+        tx.rollback().await.unwrap();
+
+        let renewed = crate::ArtifactServingClosure::from_policy_selection(
+            &db, tenant_id, root, &policy, &selected,
+        ).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        renewed.require_current_on(&tx).await.unwrap();
+        tx.rollback().await.unwrap();
+
         db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE module_artifact_admissions SET status = 'inactive' WHERE installation_id = ?1",
             vec![provider.installation_id.to_string().into()],
         )).await.unwrap();
         let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        assert!(refreshed.require_current_on(&tx).await.is_err());
+        assert!(renewed.require_current_on(&tx).await.is_err());
         tx.rollback().await.unwrap();
     }
 

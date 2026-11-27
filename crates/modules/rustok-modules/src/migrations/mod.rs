@@ -89,6 +89,7 @@ mod m20261103_000091_tenant_identity_indexes;
 mod m20261117_000092_delivery_claim_tokens;
 pub(crate) mod m20261117_000093_settings_claim_fences;
 pub(crate) mod m20261127_000094_artifact_deployment_readiness;
+mod m20261127_000095_artifact_selection_generation;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -185,6 +186,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261117_000092_delivery_claim_tokens::Migration),
         Box::new(m20261117_000093_settings_claim_fences::Migration),
         Box::new(m20261127_000094_artifact_deployment_readiness::Migration),
+        Box::new(m20261127_000095_artifact_selection_generation::Migration),
     ]
 }
 

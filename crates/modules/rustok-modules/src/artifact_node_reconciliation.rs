@@ -521,8 +521,8 @@ impl SeaOrmArtifactNodeReadiness {
             .map(|item| (item.release.slug.clone(), item))
             .collect::<BTreeMap<_, _>>();
         let closure = ArtifactServingClosure::from_policy_selection(
-            tenant_id, artifact, policy, &selected,
-        )?;
+            &self.db, tenant_id, artifact, policy, &selected,
+        ).await?;
         for (item, _) in closure.artifacts.values() {
             self.require_active(item, &readiness_revision).await?;
         }
@@ -690,10 +690,12 @@ impl SeaOrmArtifactNodeReadiness {
 pub struct ArtifactServingClosure {
     tenant_id: Uuid,
     artifacts: BTreeMap<String, (InstalledModuleArtifact, u64)>,
+    generations: BTreeMap<String, crate::ArtifactSelectionGeneration>,
 }
 
 impl ArtifactServingClosure {
-    pub(crate) fn from_policy_selection(
+    pub(crate) async fn from_policy_selection(
+        db: &DatabaseConnection,
         tenant_id: Uuid,
         root: &InstalledModuleArtifact,
         policy: &crate::ModuleEffectivePolicy,
@@ -707,7 +709,28 @@ impl ArtifactServingClosure {
             let revision = clear_security_revision(&decision.facts)?;
             artifacts.insert(item.release.slug.clone(), (item.clone(), revision));
         }
-        Ok(Self { tenant_id, artifacts })
+        // Read selection and its generations in one owner snapshot. If
+        // selection changed since policy/readiness projection, fail closed.
+        let tx = crate::backend::begin_snapshot_transaction(db).await.map_err(store_error)?;
+        crate::backend::set_tenant_scope(&tx, tenant_id).await.map_err(store_error)?;
+        let releases = artifacts.values().map(|(item, _)| item.release.clone()).collect::<Vec<_>>();
+        let current = crate::installation::resolve_active_many_in_transaction(
+            &tx, &releases, tenant_id,
+        ).await.map_err(store_error)?;
+        if current.len() != artifacts.len() {
+            return Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable);
+        }
+        let mut generations = BTreeMap::new();
+        for ((slug, (expected, _)), actual) in artifacts.iter().zip(current) {
+            if actual.map_err(store_error)? != *expected {
+                return Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable);
+            }
+            let generation = crate::ArtifactSelectionGeneration::load_on(&tx, tenant_id, slug)
+                .await.map_err(store_error)?;
+            generations.insert(slug.clone(), generation);
+        }
+        tx.commit().await.map_err(store_error)?;
+        Ok(Self { tenant_id, artifacts, generations })
     }
 
     pub fn root_security_revision(&self, root: &InstalledModuleArtifact) -> Option<u64> {
@@ -738,6 +761,13 @@ impl ArtifactServingClosure {
             acquire_artifact_activation_lock(
                 tx, &ModuleInstallationScope::Tenant { tenant_id: self.tenant_id }, slug,
             ).await.map_err(store_error)?;
+        }
+        if self.generations.len() != self.artifacts.len() {
+            return Err(denied());
+        }
+        for slug in self.artifacts.keys() {
+            self.generations.get(slug).ok_or_else(denied)?
+                .require_locked_on(tx).await.map_err(store_error)?;
         }
         let releases = self.artifacts.values()
             .map(|(item, _)| item.release.clone()).collect::<Vec<_>>();

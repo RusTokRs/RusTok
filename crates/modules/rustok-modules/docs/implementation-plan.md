@@ -3594,3 +3594,18 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   owner admission. Static lifecycle/composition, registry mutation, readiness,
   installation ABA and cross-owner ordering remain open. Source regressions
   authored; compilation and concurrent database verification remain pending.
+
+- Source-wired selection continuity generation on permanent platform/tenant
+  slug activation fences (migration 000095). Advance only successful serving
+  lifecycle writes and their receipts; no generation renewal on lock-only
+  checks, receipt replay or rollback of an uncommitted transaction. Capture
+  exact selections and generations in one owner snapshot, compare under
+  closure locks for SQL effects and compare fresh closure evidence for
+  preflight. Lifecycle retains root-only generation. Tenant mutation does
+  not invalidate unrelated tenants; platform mutation conservatively
+  invalidates every affected slug lease. Source regressions include actual
+  tenant disable/re-enable, receipt replay, rollback and an opt-in PostgreSQL
+  lock-wait scenario. Tests, compilation and migration execution remain
+  pending. Drain executions, stop old writers and coordinate migration and
+  deployment. Static dependency lifecycle/overrides and composition remain
+  separate outstanding authority.
