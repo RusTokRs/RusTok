@@ -573,6 +573,14 @@ exists.
   Other immutable AuthContext/SecurityContext consumers and durable
   credential, module-policy and nested field checks remain open.
 
+- GraphQL immutable context binding: require the original HTTP/WS admission
+  marker to match live task-local scope, AuthContext ceiling and credential
+  facts. Nested query fields check local validity; selected mutation
+  payloads retain committed receipt serialization. Source regressions cover
+  absent/substituted authority, widened context, aliases and operation
+  selection. Unrun. Fresh protected reads nested inside mutation payloads
+  and durable nested read authority remain open.
+
 - Revision-bound permission cache: bracket production fills with durable
   revision reads and recheck the local epoch after publication. Bound hits
   compare exact grants and original revision in one statement. Legacy entries

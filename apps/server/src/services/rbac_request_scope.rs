@@ -352,6 +352,54 @@ pub fn role_for(tenant_id: &Uuid, actor_id: &Uuid) -> Option<UserRole> {
     checked_role_for(tenant_id, actor_id).ok().flatten()
 }
 
+/// The HTTP/WS GraphQL admission marker is mandatory authority evidence.
+/// Never interpret a lost or substituted task-local scope as a trusted call.
+pub(crate) fn ensure_graphql_scope_binding(
+    expected: &RbacRequestScope,
+    auth: Option<&rustok_api::AuthContext>,
+    principal: Option<AuthPrincipalKind>,
+) -> crate::error::Result<()> {
+    let auth = auth.ok_or_else(invalidated_scope_error)?;
+    if !expected.matches(&auth.tenant_id, &auth.user_id)
+        || !auth.permissions.iter().all(|permission| {
+            rustok_rbac::has_effective_permission_in_set(&expected.permissions, permission)
+        })
+    {
+        return Err(invalidated_scope_error());
+    }
+    if let Some(credential) = &expected.credential {
+        let facts = AuthPrincipalKind::from_authenticated_facts(
+            &auth.grant_type,
+            auth.client_id,
+            auth.session_id,
+        );
+        let oauth_matches = match &credential.oauth {
+            Some(oauth) => auth.client_id == Some(oauth.client_id) && auth.scopes == oauth.scopes,
+            None => auth.client_id.is_none() && auth.scopes.is_empty(),
+        };
+        if facts != Some(credential.principal_kind)
+            || principal != facts
+            || auth.session_id != credential.session_id
+            || credential.typed().is_none()
+            || !oauth_matches
+        {
+            return Err(invalidated_scope_error());
+        }
+    }
+
+    let bound = CURRENT_RBAC_SCOPE
+        .try_with(|state| {
+            state.as_ref().is_some_and(|state| {
+                &state.scope == expected && state.is_valid()
+            })
+        })
+        .unwrap_or(false);
+    if !bound {
+        return Err(invalidated_scope_error());
+    }
+    Ok(())
+}
+
 /// Reject unscoped fallback for an invalidated or expired matching request snapshot.
 ///
 /// Absence of a scope, or a scope for a different tenant/actor, retains the

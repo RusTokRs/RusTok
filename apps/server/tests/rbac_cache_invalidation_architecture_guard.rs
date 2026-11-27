@@ -372,7 +372,11 @@ fn graphql_root_authority_gate_precedes_followup_resolvers_and_membership_lookup
         resolve.find("ensure_scope_authority").unwrap()
             < resolve.find("next.run(ctx, info).await").unwrap()
     );
-    assert!(resolve.contains("info.path_node.field_name()"));
+    assert!(resolve.contains("ensure_graphql_scope_binding"));
+    assert!(resolve.contains("SelectedMutationOperation"));
+    assert!(resolve.contains("info.path_node.to_string_vec()"));
+    assert!(security.contains("attached_scope_requires_matching_live_task_authority"));
+    assert!(security.contains("invalidated_query_blocks_nested_read_even_with_immutable_auth_context"));
     assert!(security.contains("invalidated_scope_blocks_later_root_but_keeps_committed_receipt"));
     assert!(security.contains("unrelated_invalidation_does_not_block_later_root"));
     let invalidation = host

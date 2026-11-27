@@ -414,6 +414,15 @@ original CurrentUser deadline and local epoch, and intersect effective
 checks with any matching scope ceiling. This does not add a durable read
 to synchronous gates or fence subsequent effects. Source regressions unrun.
 
+GraphQL HTTP/WS executor data carries the original admitted scope. The
+security extension requires that marker to match live task-local authority
+and immutable AuthContext, including effective ceiling and credential facts.
+Missing or substituted scope denies rather than falling back. Nested query
+fields recheck local validity; selected mutations retain receipt serialization.
+Root durable revision reads are unchanged; no per-scalar SQL read is added.
+Nested mutation reads and durable revocation between root and nested read
+remain separate boundaries. Source regressions unrun.
+
 ## Revision-bound permission cache publication
 
 The Moka adapter binds grants to the original coherent static actor revision.

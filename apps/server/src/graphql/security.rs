@@ -82,6 +82,9 @@ impl SensitiveGraphqlField {
 #[derive(Clone, Debug)]
 struct SensitiveGraphqlDocumentPolicy(Vec<SensitiveGraphqlField>);
 
+/// Only the selected mutation retains the admitted receipt exception.
+struct SelectedMutationOperation;
+
 fn collect_sensitive_fields_from_selection_set(
     operation_type: OperationType,
     selection_set: &SelectionSet,
@@ -119,7 +122,15 @@ fn sensitive_graphql_fields(
 fn classify_sensitive_graphql_document(request: &mut Request) -> ServerResult<()> {
     let operation_name = request.operation_name.clone();
     let document = request.parsed_query()?;
+    let selected = super::selected_operations(document, operation_name.as_deref());
+    let is_mutation = matches!(
+        selected.as_slice(),
+        [operation] if operation.node.ty == OperationType::Mutation
+    );
     let sensitive_fields = sensitive_graphql_fields(document, operation_name.as_deref());
+    if is_mutation {
+        request.data.insert(SelectedMutationOperation);
+    }
     if !sensitive_fields.is_empty() {
         request
             .data
@@ -177,30 +188,60 @@ impl Extension for GraphqlSecurityPolicyExtension {
         info: ResolveInfo<'_>,
         next: NextResolve<'_>,
     ) -> ServerResult<Option<Value>> {
-        // Mutation roots execute serially. Do not begin another root resolver
-        // with an invalidated task-local snapshot, even if it reads AuthContext
-        // directly. Nested payload fields of an already admitted root continue
-        // so a committed mutation's receipt is not suppressed by this hook.
-        if info.path_node.parent.is_none()
-            && let Some(auth) = ctx.data_opt::<AuthContext>()
-            && crate::services::rbac_request_scope::ensure_scope_authority(
-                ctx.data_opt::<sea_orm::DatabaseConnection>(),
-                &auth.tenant_id,
-                &auth.user_id,
-            )
-            .await
-            .is_err()
-        {
-            let mut error = <FieldError as GraphQLError>::internal_error(
-                "Request authority is temporarily unavailable",
-            )
-            .into_server_error(Pos::default());
-            // ResolveInfo exposes the response path, but not its source position.
-            error.locations.clear();
-            error
-                .path
-                .push(PathSegment::Field(info.path_node.field_name().to_owned()));
-            return Err(error);
+        use crate::services::rbac_request_scope::{
+            RbacRequestScope, ensure_graphql_scope_binding, ensure_scope_authority,
+            ensure_scope_not_invalidated,
+        };
+
+        let root = info.path_node.parent.is_none();
+        // Preserve the receipt of an already admitted mutation. Nested query
+        // fields can start new reads, so recheck local authority without a
+        // database query per scalar field.
+        if root || ctx.data_opt::<SelectedMutationOperation>().is_none() {
+            let auth = ctx.data_opt::<AuthContext>();
+            let expected = ctx.data_opt::<RbacRequestScope>();
+            let principal = ctx
+                .data_opt::<rustok_api::AuthPrincipalContext>()
+                .map(|context| context.kind);
+            let binding_invalid = expected.is_some_and(|scope| {
+                ensure_graphql_scope_binding(scope, auth, principal).is_err()
+            });
+            let authority_invalid = if binding_invalid {
+                true
+            } else if let Some(auth) = auth {
+                if root {
+                    ensure_scope_authority(
+                        ctx.data_opt::<sea_orm::DatabaseConnection>(),
+                        &auth.tenant_id,
+                        &auth.user_id,
+                    )
+                    .await
+                    .is_err()
+                        || expected.is_some_and(|scope| {
+                            ensure_graphql_scope_binding(scope, Some(auth), principal).is_err()
+                        })
+                } else {
+                    ensure_scope_not_invalidated(&auth.tenant_id, &auth.user_id).is_err()
+                }
+            } else {
+                false
+            };
+            if authority_invalid {
+                let mut error = <FieldError as GraphQLError>::internal_error(
+                    "Request authority is temporarily unavailable",
+                )
+                .into_server_error(Pos::default());
+                error.locations.clear();
+                // A GraphQL name/alias cannot be numeric. Preserve list
+                // indices and every enclosing response field in the path.
+                error.path = info.path_node.to_string_vec().into_iter().map(|segment| {
+                    match segment.parse::<usize>() {
+                        Ok(index) => PathSegment::Index(index),
+                        Err(_) => PathSegment::Field(segment),
+                    }
+                }).collect();
+                return Err(error);
+            }
         }
         next.run(ctx, info).await
     }
@@ -291,6 +332,23 @@ mod tests {
         async fn recent_activity(&self) -> Vec<i32> {
             vec![1, 2]
         }
+
+        async fn invalidate_then_read(&self, ctx: &Context<'_>) -> NestedRead {
+            let auth = ctx.data_unchecked::<AuthContext>();
+            invalidate_current_rbac_request_scope(&auth.tenant_id, &auth.user_id);
+            NestedRead
+        }
+    }
+
+    struct NestedRead;
+
+    #[Object]
+    impl NestedRead {
+        async fn protected(&self, ctx: &Context<'_>) -> Option<bool> {
+            ctx.data_unchecked::<Arc<AtomicUsize>>()
+                .fetch_add(1, Ordering::SeqCst);
+            Some(true)
+        }
     }
 
     struct MutationRoot;
@@ -358,7 +416,7 @@ mod tests {
         let calls = Arc::new(AtomicUsize::new(0));
         let request = Request::new(
             "mutation { first: changeOwnAuthority { committed } ...Next } fragment Next on MutationRoot { second: useOriginalAuthority }",
-        ).data(auth).data(calls.clone());
+        ).data(auth).data(scope.clone()).data(calls.clone());
         let response = with_rbac_request_scope(Some(scope), schema.execute(request)).await;
 
         assert_eq!(calls.load(Ordering::SeqCst), 0);
@@ -421,6 +479,71 @@ mod tests {
         );
         let unscoped = schema.execute(Request::new("{ ping }").data(auth)).await;
         assert!(unscoped.errors.is_empty());
+    }
+
+    #[tokio::test]
+    async fn attached_scope_requires_matching_live_task_authority() {
+        let schema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
+            .extension(GraphqlSecurityPolicy)
+            .finish();
+        let auth = auth_context(vec![Permission::USERS_READ]);
+        let scope = RbacRequestScope::new(
+            auth.tenant_id,
+            auth.user_id,
+            auth.permissions.clone(),
+            UserRole::Admin,
+        );
+        let request = || Request::new("{ ping }").data(auth.clone()).data(scope.clone());
+        assert_eq!(schema.execute(request()).await.errors.len(), 1);
+        let wrong = RbacRequestScope::new(
+            auth.tenant_id,
+            auth.user_id,
+            vec![Permission::USERS_MANAGE],
+            UserRole::Admin,
+        );
+        let substituted = with_rbac_request_scope(Some(wrong), schema.execute(request())).await;
+        assert_eq!(substituted.errors.len(), 1);
+
+        let mut widened = auth.clone();
+        widened.permissions.push(Permission::USERS_MANAGE);
+        let widened = Request::new("{ ping }").data(widened).data(scope.clone());
+        let response = with_rbac_request_scope(Some(scope.clone()), schema.execute(widened)).await;
+        assert_eq!(response.errors.len(), 1);
+
+        let missing_auth = Request::new("{ ping }").data(scope.clone());
+        let response = with_rbac_request_scope(Some(scope.clone()), schema.execute(missing_auth)).await;
+        assert_eq!(response.errors.len(), 1);
+
+        let response = with_rbac_request_scope(Some(scope.clone()), schema.execute(request())).await;
+        assert!(response.errors.is_empty(), "{:?}", response.errors);
+    }
+
+    #[tokio::test]
+    async fn invalidated_query_blocks_nested_read_even_with_immutable_auth_context() {
+        let schema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
+            .extension(GraphqlSecurityPolicy)
+            .finish();
+        let auth = auth_context(vec![Permission::USERS_MANAGE]);
+        let scope = RbacRequestScope::new(
+            auth.tenant_id,
+            auth.user_id,
+            auth.permissions.clone(),
+            UserRole::Admin,
+        );
+        let calls = Arc::new(AtomicUsize::new(0));
+        let request = Request::new(
+            "query Read { item: invalidateThenRead { ...Fields } } fragment Fields on NestedRead { secret: protected } mutation Unselected { createUser }",
+        ).operation_name("Read").data(auth).data(scope.clone()).data(calls.clone());
+        let response = with_rbac_request_scope(Some(scope), schema.execute(request)).await;
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert_eq!(response.errors.len(), 1);
+        assert_eq!(
+            response.errors[0].path,
+            vec![
+                PathSegment::Field("item".to_string()),
+                PathSegment::Field("secret".to_string()),
+            ]
+        );
     }
 
     #[test]

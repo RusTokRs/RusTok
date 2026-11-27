@@ -121,13 +121,30 @@ ceiling. Unavailable evidence is distinct from normal permission denial.
 These synchronous checks perform no durable read or later effect fence.
 Source regressions are unrun.
 
+## GraphQL executor context binding (2026-11-27)
+
+HTTP and WS controllers attach the original RbacRequestScope to executor
+data. The security extension treats that marker as mandatory evidence:
+task-local scope must equal the original scope, and AuthContext must not
+exceed its effective permission ceiling. Credential-bearing markers also
+bind the session, principal kind, OAuth client and token scopes. Missing or
+substituted scope is unavailable; trusted unmarked schema calls retain their
+existing contract. Root admission checks the binding before and after its
+durable revision observation. Nested query fields check local validity,
+including binding, without a database observation per scalar. Only the
+selected mutation retains the nested receipt serialization exception.
+Fresh protected reads within a mutation payload and durable revocation
+during nested queries still require owner-specific checks. Source regressions
+are unrun.
+
 ## Non-goals
 
 This change does not create an atomic revocation fence, ensure immediate
 cross-replica invalidation, propagate task-locals to spawned tasks, or make all
 consumers of immutable `AuthContext` snapshots react to local invalidation. The
-GraphQL root hook cannot revoke a field already admitted, or its nested fields;
-it does not make an absent task-local scope invalid. Those other paths need
+GraphQL hook cannot revoke a field already admitted; nested mutation payloads
+retain the receipt exception. Absent task-local scope is invalid for a marked
+HTTP/WS admission, not for trusted unmarked schema calls. Those other paths need
 separate review and changes before claiming request-wide revocation or universal
 ceiling enforcement. Authentication and explicit
 transaction-bound authoritative reads retain their existing distinct contracts.
