@@ -723,7 +723,11 @@ recovery and pre-commit/response checks use that clock; access extraction sample
 before signature validation and after asynchronous policy reads. The gate also
 rechecks the managed lease and emergency/shutdown fences. Fixed embedders retain
 their existing behavior. Explicit revocation is not disabled by this gate.
-Browser confirmation issuance and verification use the same clock; the
+OAuth code issuance, standalone consent grants and token issuance/rotation/recovery
+also reserve the active tenant before app and subject locks, retaining that fence
+through commit. Both standalone consent entrypoints use the same strict grant
+path. Protective replay revocation can still invalidate an inactive tenant's
+credentials. Browser confirmation issuance and verification use the same clock; the
 verified MAC expiry is retained as an exclusive deadline through locked
 session/consent checks and code persistence. New consent uses the sampled
 admission time. The code's own expiry is checked before commit and after its

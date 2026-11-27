@@ -817,5 +817,7 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   validation and application-clock admission. Security-only replay revocations
   retain their independent app fence so inactive tenants cannot block cleanup.
   SQLite source regressions cover inactive/missing tenant rejection and absence
-  of extra consent/code effects; PostgreSQL multi-connection evidence and scoped
-  compilation remain unrun. Global lock hierarchy is not closed.
+  of extra consent/code effects. A PostgreSQL multi-connection regression is
+  authored for re-observation after an in-flight tenant deactivation commits;
+  scoped compilation and all runtime evidence remain unrun. Global lock
+  hierarchy is not closed.

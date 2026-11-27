@@ -2021,6 +2021,52 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires RUSTOK_AUTH_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_issuance_rechecks_tenant_after_concurrent_deactivation() {
+        use sea_orm::{DbBackend, IsolationLevel};
+        use std::time::Duration;
+
+        let db = Database::connect(std::env::var("RUSTOK_AUTH_TEST_DATABASE_URL").unwrap())
+            .await.unwrap();
+        assert_eq!(db.get_database_backend(), DbBackend::Postgres);
+        let schema = format!("oauth_tenant_admission_{}", Uuid::new_v4().simple());
+        let tenant_id = Uuid::new_v4();
+        db.execute_unprepared(&format!(
+            "CREATE SCHEMA {schema};
+             CREATE TABLE {schema}.tenants (id UUID PRIMARY KEY, is_active BOOLEAN NOT NULL);
+             INSERT INTO {schema}.tenants VALUES ('{tenant_id}', TRUE)"
+        )).await.unwrap();
+
+        let deactivation = db.begin().await.unwrap();
+        deactivation.execute_unprepared(&format!(
+            "UPDATE {schema}.tenants SET is_active = FALSE WHERE id = '{tenant_id}'"
+        )).await.unwrap();
+
+        let worker_db = db.clone();
+        let worker_schema = schema.clone();
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let mut worker = tokio::spawn(async move {
+            let tx = worker_db.begin_with_config(Some(IsolationLevel::ReadCommitted), None)
+                .await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}"))
+                .await.unwrap();
+            ready_tx.send(()).unwrap();
+            // No app table in this isolated schema: touching it before the
+            // tenant fence would produce a database error, not invalid_client.
+            let result = super::lock_issuance_oauth_app(&tx, Uuid::new_v4(), tenant_id).await;
+            tx.rollback().await.unwrap();
+            result
+        });
+        ready_rx.await.unwrap();
+        assert!(tokio::time::timeout(Duration::from_millis(150), &mut worker).await.is_err());
+        deactivation.commit().await.unwrap();
+        let error = tokio::time::timeout(Duration::from_secs(5), worker)
+            .await.unwrap().unwrap().unwrap_err();
+        assert_eq!(error.error, "invalid_client");
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+    }
+
+    #[tokio::test]
     async fn oauth_subject_lock_requires_verified_email_when_enabled() {
         let db = Database::connect("sqlite::memory:")
             .await

@@ -134,7 +134,11 @@ All five user-admin writes, OAuth admin writes and RBAC control-plane writes
 now share pre-transaction application-clock admission. The active tenant is
 fenced before app/user/credential locks, including direct user administration:
 PostgreSQL uses FOR SHARE (not FK-only KEY SHARE), SQLite a conditional
-write-before-read fence. The inactive-tenant regression is authored, unrun.
+write-before-read fence. The same tenant-first fence covers OAuth authorization
+code issuance (including browser consent), standalone consent grants, all
+three token grant types and refresh recovery. Protective replay revocation
+remains possible for inactive tenants. SQLite and PostgreSQL source regressions
+are authored, unrun.
 Artifact runtime HTTP/GraphQL dispatch, UI projection and audit now require
 the admitted direct session, rechecking tenant, actor, session, current role
 grants and credential deadline in a short host transaction. OAuth delegated
