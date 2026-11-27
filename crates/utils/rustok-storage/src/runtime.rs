@@ -274,19 +274,50 @@ impl std::fmt::Debug for S3StorageConfig {
             .debug_struct("S3StorageConfig")
             .field("bucket", &self.bucket)
             .field("region", &self.region)
-            .field("endpoint_url", &self.endpoint_url)
+            .field("endpoint_url_configured", &self.endpoint_url.is_some())
             .field("access_key_id_configured", &self.access_key_id.is_some())
             .field(
                 "secret_access_key_configured",
                 &self.secret_access_key.is_some(),
             )
             .field("session_token_configured", &self.session_token.is_some())
-            .field("public_base_url", &self.public_base_url)
+            .field("public_base_url_configured", &self.public_base_url.is_some())
             .field("allow_http", &self.allow_http)
             .field(
                 "virtual_hosted_style_request",
                 &self.virtual_hosted_style_request,
             )
             .finish()
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::S3StorageConfig;
+
+    #[test]
+    fn s3_debug_redacts_credential_bearing_urls_and_keys() {
+        let config = S3StorageConfig {
+            bucket: "assets".to_string(),
+            endpoint_url: Some("https://endpoint-user:endpoint-password@s3.example".to_string()),
+            access_key_id: Some("access-key-secret".to_string()),
+            secret_access_key: Some("secret-access-key-secret".to_string()),
+            session_token: Some("session-token-secret".to_string()),
+            public_base_url: Some("https://cdn.example/path?token=public-url-secret".to_string()),
+            ..Default::default()
+        };
+
+        let debug = format!("{config:?}");
+        for secret in [
+            "endpoint-user",
+            "endpoint-password",
+            "access-key-secret",
+            "secret-access-key-secret",
+            "session-token-secret",
+            "public-url-secret",
+        ] {
+            assert!(!debug.contains(secret), "Debug output leaked {secret}: {debug}");
+        }
     }
 }
