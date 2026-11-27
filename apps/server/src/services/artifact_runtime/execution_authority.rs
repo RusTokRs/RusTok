@@ -12,7 +12,8 @@ use async_trait::async_trait;
 use rustok_modules::{
     ArtifactBindingDispatchError, ArtifactCapabilityExecution, ArtifactEffectivePolicyResolver,
     ArtifactExecutionLeaseGuard, ArtifactInstallationTarget, InstalledModuleArtifact,
-    ModuleRuntimeBinding, resolve_granted_artifact_capability,
+    ModuleRuntimeBinding, ArtifactSqlEffectAuthorizer, ArtifactSqlEffectFence,
+    ArtifactSqlEffectCommitGuard, resolve_granted_artifact_capability,
 };
 use rustok_sandbox::{
     CapabilityBroker, CapabilityCall, CapabilityCallContext, CapabilityGrant, CapabilityResponse,
@@ -220,6 +221,99 @@ async fn check_policy(
             lease.tenant_id(), &lease.artifact.release,
             ArtifactInstallationTarget::ExactInstallation { installation_id: lease.artifact.installation_id },
         ).is_some())
+}
+
+/// A bound call is produced from the live host registry, not the guest.
+struct SqlEffectFence {
+    authority: ExecutionAuthority,
+    lease: Arc<ExecutionLease>,
+    call: CapabilityCall,
+}
+
+struct SqlEffectCommitGuard {
+    fence: SqlEffectFence,
+    credential_deadline: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl SqlEffectFence {
+    fn ensure_live(&self) -> SandboxResult<()> {
+        let current = self.authority.lookup(&self.call)?;
+        if !Arc::ptr_eq(&current, &self.lease) {
+            return Err(SandboxError::CapabilityDenied(self.call.capability.clone()));
+        }
+        Ok(())
+    }
+
+    fn deny(&self) -> SandboxError {
+        SandboxError::CapabilityDenied(self.call.capability.clone())
+    }
+}
+
+#[async_trait]
+impl ArtifactSqlEffectAuthorizer for ExecutionAuthority {
+    async fn prepare(&self, call: &CapabilityCall) -> SandboxResult<Box<dyn ArtifactSqlEffectFence>> {
+        if !matches!(call.capability.as_str(), "platform.data" | "platform.events") {
+            return Err(SandboxError::CapabilityDenied(call.capability.clone()));
+        }
+        let lease = self.lookup(call)?;
+        if lease.direct_scope.is_some() {
+            let provider = self.provider.as_ref()
+                .ok_or_else(|| SandboxError::CapabilityDenied(call.capability.clone()))?;
+            provider.prepare_artifact_effect_authority().await
+                .map_err(|_| SandboxError::CapabilityDenied(call.capability.clone()))?;
+        }
+        let fence = SqlEffectFence { authority: self.clone(), lease, call: call.clone() };
+        fence.ensure_live()?;
+        Ok(Box::new(fence))
+    }
+}
+
+#[async_trait]
+impl ArtifactSqlEffectFence for SqlEffectFence {
+    async fn lock_on(&self, tx: &sea_orm::DatabaseTransaction) -> SandboxResult<Box<dyn ArtifactSqlEffectCommitGuard>> {
+        self.ensure_live()?;
+        let credential_deadline = if let Some(scope) = self.lease.direct_scope.as_ref() {
+            let provider = self.authority.provider.as_ref().ok_or_else(|| self.deny())?;
+            let actor_id = self.lease.context.actor_id.as_deref()
+                .and_then(|actor| Uuid::parse_str(actor).ok()).ok_or_else(|| self.deny())?;
+            // Same transaction as the effect. No independently committed
+            // credential or membership check and no second pool checkout.
+            let (keys, deadline) = scope.run(provider.lock_artifact_runtime_permission_keys_on(
+                tx, self.lease.tenant_id(), actor_id, &self.lease.artifact,
+            )).await.map_err(|_| self.deny())?;
+            if !keys.contains(&self.lease.binding.permission) {
+                return Err(self.deny());
+            }
+            Some(deadline)
+        } else {
+            // Durable work and lifecycle have distinct owner authority. This
+            // port does not manufacture a credential for an attributed actor.
+            None
+        };
+        self.ensure_live()?;
+        Ok(Box::new(SqlEffectCommitGuard {
+            fence: SqlEffectFence {
+                authority: self.authority.clone(),
+                lease: Arc::clone(&self.lease),
+                call: self.call.clone(),
+            },
+            credential_deadline,
+        }))
+    }
+}
+
+#[async_trait]
+impl ArtifactSqlEffectCommitGuard for SqlEffectCommitGuard {
+    async fn check_before_commit(&self, tx: &sea_orm::DatabaseTransaction) -> SandboxResult<()> {
+        self.fence.ensure_live()?;
+        if let Some(deadline) = self.credential_deadline {
+            let provider = self.fence.authority.provider.as_ref()
+                .ok_or_else(|| self.fence.deny())?;
+            provider.check_artifact_effect_deadline_on(tx, deadline).await
+                .map_err(|_| self.fence.deny())?;
+        }
+        self.fence.ensure_live()
+    }
 }
 
 pub(super) struct FencedCapabilityBroker<B> {

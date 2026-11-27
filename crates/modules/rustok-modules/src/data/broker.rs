@@ -20,14 +20,28 @@ use super::*;
 
 /// SeaORM adapter for the host-owned structured-value namespace. It never
 /// accepts a guest-selected database object, SQL fragment, or storage path.
-#[derive(Clone)]
 pub struct SeaOrmArtifactDataBroker<A, V> {
     db: DatabaseConnection,
-    authorizer: A,
-    schema_validator: V,
+    authorizer: Arc<A>,
+    schema_validator: Arc<V>,
+    effect_fence: Option<Arc<dyn crate::ArtifactSqlEffectFence>>,
     indexes: Vec<ArtifactDataIndexField>,
     index_contract_digest: Option<String>,
     quota: ArtifactDataQuota,
+}
+
+impl<A, V> Clone for SeaOrmArtifactDataBroker<A, V> {
+    fn clone(&self) -> Self {
+        Self {
+            db: self.db.clone(),
+            authorizer: Arc::clone(&self.authorizer),
+            schema_validator: Arc::clone(&self.schema_validator),
+            effect_fence: self.effect_fence.clone(),
+            indexes: self.indexes.clone(),
+            index_contract_digest: self.index_contract_digest.clone(),
+            quota: self.quota,
+        }
+    }
 }
 
 impl<A, V> SeaOrmArtifactDataBroker<A, V>
@@ -70,12 +84,43 @@ where
         let index_contract_digest = index_contract_digest(&indexes);
         Self {
             db,
-            authorizer,
-            schema_validator,
+            authorizer: Arc::new(authorizer),
+            schema_validator: Arc::new(schema_validator),
+            effect_fence: None,
             indexes,
             index_contract_digest,
             quota,
         }
+    }
+    pub(crate) fn with_effect_fence(mut self, fence: Box<dyn crate::ArtifactSqlEffectFence>) -> Self {
+        self.effect_fence = Some(Arc::from(fence));
+        self
+    }
+
+    async fn begin_effect(&self, scope: &ArtifactDataScope) -> Result<
+        (DatabaseTransaction, Option<Box<dyn crate::ArtifactSqlEffectCommitGuard>>),
+        ArtifactDataError,
+    > {
+        let transaction = crate::backend::begin_fenced_transaction(&self.db)
+            .await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let guard = match self.effect_fence.as_ref() {
+            Some(fence) => Some(fence.lock_on(&transaction).await
+                .map_err(|_| ArtifactDataError::PolicyDenied)?),
+            None => None,
+        };
+        Ok((transaction, guard))
+    }
+
+    async fn commit_effect(
+        transaction: DatabaseTransaction,
+        guard: Option<Box<dyn crate::ArtifactSqlEffectCommitGuard>>,
+    ) -> Result<(), ArtifactDataError> {
+        if let Some(guard) = guard.as_ref() {
+            guard.check_before_commit(&transaction).await
+                .map_err(|_| ArtifactDataError::PolicyDenied)?;
+        }
+        transaction.commit().await.map_err(storage_error)
     }
 }
 
@@ -100,8 +145,7 @@ where
                 },
             )
             .await?;
-        let transaction = self.db.begin().await.map_err(storage_error)?;
-        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let (transaction, guard) = self.begin_effect(scope).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let row = transaction
@@ -121,7 +165,7 @@ where
             .map_err(storage_error)?;
         // A commit error can represent an unknown outcome, so retain the
         // owner-generated object for retention/GC reconciliation.
-        transaction.commit().await.map_err(storage_error)?;
+        Self::commit_effect(transaction, guard).await?;
         row.map(record_from_row).transpose()
     }
 
@@ -147,8 +191,7 @@ where
                 },
             )
             .await?;
-        let transaction = self.db.begin().await.map_err(storage_error)?;
-        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let (transaction, guard) = self.begin_effect(scope).await?;
         let record = persist_artifact_data_write(
             &transaction,
             scope,
@@ -158,7 +201,7 @@ where
             self.quota,
         )
         .await?;
-        transaction.commit().await.map_err(storage_error)?;
+        Self::commit_effect(transaction, guard).await?;
         Ok(record)
     }
 
@@ -182,8 +225,7 @@ where
                 )
                 .await?;
         }
-        let transaction = self.db.begin().await.map_err(storage_error)?;
-        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let (transaction, guard) = self.begin_effect(scope).await?;
         let mut records = Vec::with_capacity(batch.writes.len());
         for write in batch.writes {
             records.push(
@@ -198,7 +240,7 @@ where
                 .await?,
             );
         }
-        transaction.commit().await.map_err(storage_error)?;
+        Self::commit_effect(transaction, guard).await?;
         Ok(records)
     }
 
@@ -227,15 +269,14 @@ where
             )
             .await?;
 
-        let transaction = self.db.begin().await.map_err(storage_error)?;
-        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let (transaction, guard) = self.begin_effect(scope).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         ensure_active_namespace(&transaction, scope, backend).await?;
         if let Some(result) =
             find_artifact_data_delete_operation(&transaction, scope, &request).await?
         {
-            transaction.commit().await.map_err(storage_error)?;
+            Self::commit_effect(transaction, guard).await?;
             return Ok(result);
         }
 
@@ -288,7 +329,7 @@ where
         }
         delete_artifact_data_indexes(&transaction, scope, &request.key).await?;
         persist_artifact_data_delete_operation(&transaction, scope, &request).await?;
-        transaction.commit().await.map_err(storage_error)?;
+        Self::commit_effect(transaction, guard).await?;
         Ok(ArtifactDataDeleteResult {
             key: request.key,
             deleted_revision: request.expected_revision,
@@ -305,8 +346,7 @@ where
         self.authorizer
             .authorize_data(scope, ArtifactDataAccess::List)
             .await?;
-        let transaction = self.db.begin().await.map_err(storage_error)?;
-        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let (transaction, guard) = self.begin_effect(scope).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let query_limit = i64::from(page.limit) + 1;
@@ -366,7 +406,7 @@ where
             .into_iter()
             .map(record_from_row)
             .collect::<Result<Vec<_>, _>>()?;
-        transaction.commit().await.map_err(storage_error)?;
+        Self::commit_effect(transaction, guard).await?;
         let next_after_key = if records.len() > page.limit as usize {
             records.truncate(page.limit as usize);
             records.last().map(|record| record.key.clone())
@@ -402,8 +442,7 @@ where
                 },
             )
             .await?;
-        let transaction = self.db.begin().await.map_err(storage_error)?;
-        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let (transaction, guard) = self.begin_effect(scope).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         validate_artifact_data_index_contract(
@@ -495,7 +534,7 @@ where
             .into_iter()
             .map(record_from_row)
             .collect::<Result<Vec<_>, _>>()?;
-        transaction.commit().await.map_err(storage_error)?;
+        Self::commit_effect(transaction, guard).await?;
         let next_after_key = if records.len() > query.page.limit as usize {
             records.truncate(query.page.limit as usize);
             records.last().map(|record| record.key.clone())

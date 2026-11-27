@@ -1471,3 +1471,23 @@ complete, and a post-launch denial preserves ambiguous-outcome semantics.
 Contextual channel/maintenance policy, external owner transactional authority,
 performance and actual worker callback verification remain open. See
 [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).
+
+### SQL capability effect authority
+
+The server composition injects an explicit SQL effect authorizer into the
+structured-data and event-outbox brokers. It captures the live execution lease
+before opening the owner transaction, reuses Auth/RBAC tenant/user/session/role
+fences on that transaction for direct user execution, and checks the locked
+credential deadline and lease membership before commit. All structured CRUD,
+list/index reads and the delete-receipt replay path use the same commit gate.
+An error rolls back the effect and its receipt; no new database connection or
+guest invocation is permitted under the fences. The events resolver also
+binds the complete installation subject and tenant, rejecting mismatched
+capability identity. Owner-only/background work preserves its separate
+admission contract and checks lease lifetime, without inventing user evidence.
+The ordinary preflight checks for installation selection, grants, effective
+policy, and deployment readiness remain required; their full transactional
+fencing is **not** implemented by this change. Independent non-server broker
+compositions still need an explicitly supplied authority. External effects and
+objects/secrets/MCP/HTTP are not covered by this SQL commit guard.
+See [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).

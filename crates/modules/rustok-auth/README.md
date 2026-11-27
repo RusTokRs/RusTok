@@ -340,3 +340,11 @@ original credential expiry and sandbox budget; it is removed on cancellation,
 failure or completion. No bearer evidence crosses worker transport. This does
 not revoke already-started external effects or provide an atomic fence for
 every domain owner commit. Compilation and worker integration remain pending.
+
+The server structured-data and event capability brokers now reuse the
+transaction-bound direct credential and artifact permission read on their own
+SQL effect transaction. Active tenant, actor, session and role grant locks
+remain held through commit, and the locked credential deadline is checked
+again immediately before committing. Lease membership and expiry remain
+mandatory; no actor is inferred for owner work. Installation and module
+policy concurrency fencing remains separate work.

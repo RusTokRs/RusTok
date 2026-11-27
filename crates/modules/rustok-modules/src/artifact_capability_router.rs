@@ -168,6 +168,31 @@ pub async fn resolve_granted_artifact_capability(
     Ok(installation)
 }
 
+/// Host-owned SQL effect authority. Prepare outside the owner transaction
+/// (e.g. verified credential clock); lock authority inside it, before effects.
+/// The guard rechecks the deadline immediately before commit. No guest code
+/// or independent pool checkout is allowed while the effect transaction lives.
+#[async_trait]
+pub trait ArtifactSqlEffectAuthorizer: Send + Sync {
+    async fn prepare(
+        &self, call: &CapabilityCall,
+    ) -> SandboxResult<Box<dyn ArtifactSqlEffectFence>>;
+}
+
+#[async_trait]
+pub trait ArtifactSqlEffectFence: Send + Sync {
+    async fn lock_on(
+        &self, tx: &sea_orm::DatabaseTransaction,
+    ) -> SandboxResult<Box<dyn ArtifactSqlEffectCommitGuard>>;
+}
+
+#[async_trait]
+pub trait ArtifactSqlEffectCommitGuard: Send + Sync {
+    async fn check_before_commit(
+        &self, tx: &sea_orm::DatabaseTransaction,
+    ) -> SandboxResult<()>;
+}
+
 /// Capability-name router for independently owned artifact capability
 /// resolvers. A deployment explicitly registers each owner; no resolver is
 /// selected by module slug, release, or a global fallback.

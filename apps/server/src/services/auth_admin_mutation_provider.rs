@@ -567,6 +567,28 @@ impl ServerAuthAdminMutationProvider {
         actor_id: Uuid,
         installation: &rustok_modules::InstalledModuleArtifact,
     ) -> Result<Vec<String>, AuthAdminMutationError> {
+        self.prepare_artifact_effect_authority().await?;
+        let tx = self.db.begin().await.map_err(internal_admin_error)?;
+        let (keys, _) = self.lock_artifact_runtime_permission_keys_on(
+            &tx, tenant_id, actor_id, installation,
+        ).await?;
+        tx.commit().await.map_err(internal_admin_error)?;
+        Ok(keys)
+    }
+
+    pub(crate) async fn prepare_artifact_effect_authority(&self) -> Result<(), AuthAdminMutationError> {
+        self.prepare_admin_authority(false).await
+    }
+
+    /// Reuse the owner effect transaction. The caller must retain these
+    /// tenant/user/session/role fences through commit, never across guest code.
+    pub(crate) async fn lock_artifact_runtime_permission_keys_on(
+        &self,
+        tx: &sea_orm::DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        installation: &rustok_modules::InstalledModuleArtifact,
+    ) -> Result<(Vec<String>, chrono::DateTime<chrono::Utc>), AuthAdminMutationError> {
         let context = bind_admin_context(tenant_id, actor_id, AuthPrincipalKind::DirectUser, None)?;
         let scope = match &installation.scope {
             rustok_modules::ModuleInstallationScope::Platform => {
@@ -579,22 +601,21 @@ impl ServerAuthAdminMutationProvider {
             }
             _ => return Err(AuthAdminMutationError::Unauthorized),
         };
-        let tx = self.prepare_admin_transaction(false).await?;
-        self.lock_admin_oauth_apps(&tx, &context, None).await?;
-        let actor = AuthLifecycleService::lock_user_for_mutation(&tx, tenant_id, actor_id)
+        self.lock_admin_oauth_apps(tx, &context, None).await?;
+        let actor = AuthLifecycleService::lock_user_for_mutation(tx, tenant_id, actor_id)
             .await
             .map_err(internal_admin_error)?
             .filter(|user| user.is_active())
             .ok_or(AuthAdminMutationError::Unauthorized)?;
         let deadline = self
-            .lock_user_admin_credential(&tx, &context, &actor, None)
+            .lock_user_admin_credential(tx, &context, &actor, None)
             .await?
             .ok_or(AuthAdminMutationError::Unauthorized)?;
-        rustok_rbac::lock_actor_role_grants_on(&tx, tenant_id, actor_id)
+        rustok_rbac::lock_actor_role_grants_on(tx, tenant_id, actor_id)
             .await
             .map_err(internal_admin_error)?;
         let keys = rustok_rbac::SeaOrmArtifactPermissionAuthorizer::authorized_keys_on(
-            &tx,
+            tx,
             tenant_id,
             actor_id,
             installation.installation_id,
@@ -604,10 +625,17 @@ impl ServerAuthAdminMutationProvider {
         )
         .await
         .map_err(internal_admin_error)?;
-        self.ensure_user_admin_credential_deadline(&tx, Some(deadline))
+        self.ensure_user_admin_credential_deadline(tx, Some(deadline))
             .await?;
-        tx.commit().await.map_err(internal_admin_error)?;
-        Ok(keys)
+        Ok((keys, deadline))
+    }
+
+    pub(crate) async fn check_artifact_effect_deadline_on(
+        &self,
+        tx: &sea_orm::DatabaseTransaction,
+        deadline: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), AuthAdminMutationError> {
+        self.ensure_user_admin_credential_deadline(tx, Some(deadline)).await
     }
 
     async fn lock_rbac_control_plane(

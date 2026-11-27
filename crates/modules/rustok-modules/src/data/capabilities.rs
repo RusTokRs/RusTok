@@ -25,6 +25,7 @@ use super::*;
 pub struct SeaOrmArtifactDataCapabilityBroker<A, V> {
     data: SeaOrmArtifactDataBroker<A, V>,
     scope: ArtifactDataScope,
+    effect_authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>,
 }
 
 impl<A, V> SeaOrmArtifactDataCapabilityBroker<A, V>
@@ -66,7 +67,13 @@ where
                 quota,
             ),
             scope,
+            effect_authorizer: None,
         }
+    }
+
+    fn with_effect_authorizer(mut self, authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>) -> Self {
+        self.effect_authorizer = authorizer;
+        self
     }
 }
 
@@ -90,10 +97,14 @@ where
         {
             return Err(SandboxError::CapabilityDenied(call.capability.clone()));
         }
-        match decode_data_capability_call(call)? {
+        let decoded = decode_data_capability_call(call)?;
+        let data = match self.effect_authorizer.as_ref() {
+            Some(authorizer) => self.data.clone().with_effect_fence(authorizer.prepare(call).await?),
+            None => self.data.clone(),
+        };
+        match decoded {
             DataCapabilityCall::Get { key } => {
-                let record = self
-                    .data
+                let record = data
                     .get(&self.scope, &key)
                     .await
                     .map_err(|error| data_capability_error(&call.capability, error))?;
@@ -102,8 +113,7 @@ where
                 })
             }
             DataCapabilityCall::Put { write } => {
-                let record = self
-                    .data
+                let record = data
                     .put(&self.scope, write)
                     .await
                     .map_err(|error| data_capability_error(&call.capability, error))?;
@@ -112,8 +122,7 @@ where
                 })
             }
             DataCapabilityCall::PutBatch { batch } => {
-                let records = self
-                    .data
+                let records = data
                     .put_batch(&self.scope, batch)
                     .await
                     .map_err(|error| data_capability_error(&call.capability, error))?;
@@ -122,8 +131,7 @@ where
                 })
             }
             DataCapabilityCall::Delete { request } => {
-                let result = self
-                    .data
+                let result = data
                     .delete(&self.scope, request)
                     .await
                     .map_err(|error| data_capability_error(&call.capability, error))?;
@@ -132,8 +140,7 @@ where
                 })
             }
             DataCapabilityCall::List { page } => {
-                let page = self
-                    .data
+                let page = data
                     .list(&self.scope, page)
                     .await
                     .map_err(|error| data_capability_error(&call.capability, error))?;
@@ -145,8 +152,7 @@ where
                 })
             }
             DataCapabilityCall::QueryIndex { query } => {
-                let page = self
-                    .data
+                let page = data
                     .query_index(&self.scope, query)
                     .await
                     .map_err(|error| data_capability_error(&call.capability, error))?;
@@ -168,6 +174,7 @@ where
 pub struct SeaOrmArtifactDataCapabilityBrokerResolver {
     db: DatabaseConnection,
     quota_policy: Arc<dyn ArtifactDataQuotaPolicy>,
+    effect_authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>,
 }
 
 impl SeaOrmArtifactDataCapabilityBrokerResolver {
@@ -179,7 +186,12 @@ impl SeaOrmArtifactDataCapabilityBrokerResolver {
         db: DatabaseConnection,
         quota_policy: Arc<dyn ArtifactDataQuotaPolicy>,
     ) -> Self {
-        Self { db, quota_policy }
+        Self { db, quota_policy, effect_authorizer: None }
+    }
+
+    pub fn with_sql_effect_authorizer(mut self, authorizer: Arc<dyn crate::ArtifactSqlEffectAuthorizer>) -> Self {
+        self.effect_authorizer = Some(authorizer);
+        self
     }
 }
 
@@ -242,7 +254,7 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataCapabilityBrokerReso
             scope,
             indexes,
             quota,
-        )))
+        ).with_effect_authorizer(self.effect_authorizer.clone())))
     }
 }
 

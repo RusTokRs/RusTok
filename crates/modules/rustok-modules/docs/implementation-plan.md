@@ -3558,3 +3558,17 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
 - No atomic effect commit fence, independent worker liveness guarantee,
   channel/maintenance wiring or forced cancellation of in-flight external
   effects. Standalone non-server executor compositions are not claimed covered.
+
+### SQL capability credential and RBAC fences
+
+- Reuse the original direct credential and binding permission check inside the
+  structured-data and event-outbox transaction, with the current owner lock
+  order and a deadline check before commit. Prepare the clock before opening
+  the transaction. No nested pool checkout for credential authorization.
+- Authorize every structured commit, including read results and delete replay;
+  source regression exercises rollback and replay denial. Bind the events
+  broker to the resolved exact installation and tenant.
+- The host lease is still checked on all SQL effects; background work does not
+  impersonate users. Transactional module-policy/grant/selection/readiness
+  fences, event-outbox integration evidence, independent compositions, and
+  non-SQL effects remain outstanding. Tests and compilation are unrun.
