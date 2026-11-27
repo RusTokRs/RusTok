@@ -164,13 +164,13 @@ pub async fn update_channel(
     dispatch(
         "channel.admin.update_channel",
         || native_server_adapter::channel_update_native(channel_id.to_string(), payload.clone()),
-        || {
+        || async {
             rest_adapter::patch_json(
                 &format!("/api/channels/{channel_id}"),
                 payload,
                 rest_token,
                 rest_tenant,
-            )
+            ).await
         },
     )
     .await
@@ -188,13 +188,13 @@ pub async fn set_channel_active(
     dispatch(
         "channel.admin.set_channel_active",
         || native_server_adapter::channel_set_active_native(channel_id.to_string(), is_active),
-        || {
+        || async {
             rest_adapter::post_json(
                 &format!("/api/channels/{channel_id}/active"),
                 &serde_json::json!({ "is_active": is_active }),
                 rest_token,
                 rest_tenant,
-            )
+            ).await
         },
     )
     .await
@@ -211,12 +211,12 @@ pub async fn delete_channel(
     dispatch(
         "channel.admin.delete_channel",
         || native_server_adapter::channel_delete_native(channel_id.to_string()),
-        || {
+        || async {
             rest_adapter::delete_json(
                 &format!("/api/channels/{channel_id}"),
                 rest_token,
                 rest_tenant,
-            )
+            ).await
         },
     )
     .await
@@ -232,13 +232,13 @@ pub async fn make_default_channel(
     dispatch(
         "channel.admin.set_default_channel",
         || native_server_adapter::channel_set_default_native(channel_id.to_string()),
-        || {
+        || async {
             rest_adapter::post_json(
                 &format!("/api/channels/{channel_id}/default"),
                 &serde_json::json!({}),
                 rest_token,
                 rest_tenant,
-            )
+            ).await
         },
     )
     .await
@@ -273,13 +273,13 @@ pub async fn activate_resolution_policy_set(
                 policy_set_id.to_string(),
             )
         },
-        || {
+        || async {
             rest_adapter::post_json(
                 &format!("/api/channels/policies/{policy_set_id}/activate"),
                 &serde_json::json!({}),
                 rest_token,
                 rest_tenant,
-            )
+            ).await
         },
     )
     .await
@@ -301,13 +301,13 @@ pub async fn create_resolution_rule(
                 payload.clone(),
             )
         },
-        || {
+        || async {
             rest_adapter::post_json(
                 &format!("/api/channels/policies/{policy_set_id}/rules"),
                 payload,
                 rest_token,
                 rest_tenant,
-            )
+            ).await
         },
     )
     .await
@@ -331,13 +331,13 @@ pub async fn update_resolution_rule(
                 payload.clone(),
             )
         },
-        || {
+        || async {
             rest_adapter::patch_json(
                 &format!("/api/channels/policies/{policy_set_id}/rules/{rule_id}"),
                 payload,
                 rest_token,
                 rest_tenant,
-            )
+            ).await
         },
     )
     .await
@@ -359,13 +359,13 @@ pub async fn reorder_resolution_rules(
                 payload.clone(),
             )
         },
-        || {
+        || async {
             rest_adapter::post_json(
                 &format!("/api/channels/policies/{policy_set_id}/rules/reorder"),
                 payload,
                 rest_token,
                 rest_tenant,
-            )
+            ).await
         },
     )
     .await
@@ -387,12 +387,12 @@ pub async fn delete_resolution_rule(
                 rule_id.to_string(),
             )
         },
-        || {
+        || async {
             rest_adapter::delete_json(
                 &format!("/api/channels/policies/{policy_set_id}/rules/{rule_id}"),
                 rest_token,
                 rest_tenant,
-            )
+            ).await
         },
     )
     .await
@@ -414,13 +414,13 @@ pub async fn create_target(
                 payload.clone(),
             )
         },
-        || {
+        || async {
             rest_adapter::post_json(
                 &format!("/api/channels/{channel_id}/targets"),
                 payload,
                 rest_token,
                 rest_tenant,
-            )
+            ).await
         },
     )
     .await
@@ -444,13 +444,13 @@ pub async fn update_target(
                 payload.clone(),
             )
         },
-        || {
+        || async {
             rest_adapter::patch_json(
                 &format!("/api/channels/{channel_id}/targets/{target_id}"),
                 payload,
                 rest_token,
                 rest_tenant,
-            )
+            ).await
         },
     )
     .await
@@ -472,12 +472,12 @@ pub async fn delete_target(
                 target_id.to_string(),
             )
         },
-        || {
+        || async {
             rest_adapter::delete_json(
                 &format!("/api/channels/{channel_id}/targets/{target_id}"),
                 rest_token,
                 rest_tenant,
-            )
+            ).await
         },
     )
     .await
@@ -499,13 +499,13 @@ pub async fn bind_module(
                 payload.clone(),
             )
         },
-        || {
+        || async {
             rest_adapter::post_json(
                 &format!("/api/channels/{channel_id}/modules"),
                 payload,
                 rest_token,
                 rest_tenant,
-            )
+            ).await
         },
     )
     .await
@@ -527,12 +527,12 @@ pub async fn delete_module_binding(
                 binding_id.to_string(),
             )
         },
-        || {
+        || async {
             rest_adapter::delete_json(
                 &format!("/api/channels/{channel_id}/modules/{binding_id}"),
                 rest_token,
                 rest_tenant,
-            )
+            ).await
         },
     )
     .await
@@ -554,13 +554,13 @@ pub async fn bind_oauth_app(
                 payload.clone(),
             )
         },
-        || {
+        || async {
             rest_adapter::post_json(
                 &format!("/api/channels/{channel_id}/oauth-apps"),
                 payload,
                 rest_token,
                 rest_tenant,
-            )
+            ).await
         },
     )
     .await
@@ -582,12 +582,12 @@ pub async fn delete_oauth_app_binding(
                 binding_id.to_string(),
             )
         },
-        || {
+        || async {
             rest_adapter::delete_json(
                 &format!("/api/channels/{channel_id}/oauth-apps/{binding_id}"),
                 rest_token,
                 rest_tenant,
-            )
+            ).await
         },
     )
     .await
