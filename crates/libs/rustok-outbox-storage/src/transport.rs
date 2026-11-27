@@ -389,13 +389,21 @@ impl EventTransport for OutboxTransport {
         }
         // Distinguish an idempotent re-acknowledgement from a real state
         // conflict without ever overwriting the current state.
-        let stored = entity::Entity::find_by_id(event_id)
+        // Status alone is not proof of completion: an unresolved attempt
+        // must also block the idempotent ACK path. Read both in one snapshot.
+        if entity::Entity::find_by_id(event_id)
+            .filter(entity::Column::Status.eq(SysEventStatus::Dispatched))
+            .filter(entity::Column::ClaimedBy.is_null())
+            .filter(entity::Column::ClaimedAt.is_null())
+            .filter(Expr::cust("NOT EXISTS (SELECT 1 FROM outbox_dispatch_attempts WHERE event_id = sys_events.id AND state = 'open')"))
+            .one(&self.db).await?.is_some()
+        {
+            return Ok(());
+        }
+        entity::Entity::find_by_id(event_id)
             .one(&self.db)
             .await?
             .ok_or_else(|| Error::NotFound(format!("sys_event {event_id}")))?;
-        if stored.status == SysEventStatus::Dispatched {
-            return Ok(());
-        }
         Err(Error::Validation(format!(
             "outbox event {event_id} cannot be acknowledged from its current state"
         )))

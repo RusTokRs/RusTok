@@ -521,3 +521,9 @@ Parent identity/SQLite parent REPLACE, arbitrary privileged DDL, restored backup
 and proof of retention eligibility against direct parent DELETE are separate
 boundaries. Stop/drain older relay binaries before deployment. SQLite and
 PostgreSQL regression sources are authored, not executed.
+
+The idempotent transport ACK fallback now requires an unclaimed dispatched
+row without any open attempt in one read snapshot. A contradictory external
+status-only update cannot report successful ACK or permit retention while
+unresolved evidence exists. A SQLite source regression covers this anomaly
+and explicit closure/retention; execution remains pending.

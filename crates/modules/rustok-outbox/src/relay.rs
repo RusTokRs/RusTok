@@ -1680,6 +1680,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unresolved_attempt_blocks_ack_and_retention_even_with_dispatched_status() {
+        let db = database().await;
+        let transport = crate::OutboxTransport::new(db.clone());
+        let envelope = EventEnvelope::new(
+            Uuid::new_v4(), None,
+            rustok_events::DomainEvent::UserLoggedIn { user_id: Uuid::new_v4() },
+        );
+        let id = envelope.id;
+        transport.publish(envelope).await.unwrap();
+        let relay = OutboxRelay::new(db.clone(), Arc::new(RejectUnexpectedPublish));
+        let horizon = rustok_outbox_storage::observe_database_clock(&db).await.unwrap();
+        let claimed = relay.claim_batch(1, horizon, None).await.unwrap().pop().unwrap();
+        let renewed = relay.refresh_claim(&claimed).await.unwrap();
+        let AttemptAdmission::Ready(attempt) = relay.begin_dispatch_attempt(&renewed).await.unwrap() else { panic!("intent"); };
+        // Simulate an anomalous status-only write, not a canonical ACK.
+        entity::Entity::update_many().filter(entity::Column::Id.eq(id))
+            .set(entity::ActiveModel {
+                status: Set(SysEventStatus::Dispatched),
+                dispatched_at: Set(Some(Utc::now() - chrono::Duration::days(31))),
+                claimed_by: Set(None),
+                claimed_at: Set(None),
+                ..Default::default()
+            }).exec(&db).await.unwrap();
+        assert!(transport.acknowledge(id).await.is_err());
+        assert_eq!(crate::OutboxRetention::new(db.clone()).prune_once().await.unwrap().pruned, 0);
+        assert!(db.execute_unprepared("DELETE FROM sys_events").await.is_err());
+        // Explicitly close the unresolved attempt within a transaction.
+        // This models reviewed recovery, not evidence of actual broker acceptance.
+        let txn = db.begin().await.unwrap();
+        let now = rustok_outbox_storage::database_now(&txn).await.unwrap();
+        relay.finish_dispatch_attempt(&txn, id, attempt, attempts::CONFIRMED, now).await.unwrap();
+        txn.commit().await.unwrap();
+        transport.acknowledge(id).await.unwrap();
+        assert_eq!(crate::OutboxRetention::new(db.clone()).prune_once().await.unwrap().pruned, 1);
+    }
+
+    #[tokio::test]
     async fn stale_worker_cannot_complete_a_reclaimed_event() {
         let db = database().await;
         RelayConfig::default().verify_execution_admission(&db).await.expect("bind execution policy");
