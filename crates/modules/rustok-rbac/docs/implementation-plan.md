@@ -752,3 +752,21 @@ and pre-cutover lost history are not covered. Source regressions unrun.
 Migration `m20261127_000105_static_intent_authority_generation` installs a permanent per-tenant generation maintained transactionally by `tenant_modules` DML triggers. It complements, rather than changes, the lifecycle event cursor: INSERT/DELETE and changed enablement advance the witness; settings-only updates do not. SQLite additionally advances on override ID changes and rejects cross-tenant implicit REPLACE, including rowid conflicts. PostgreSQL forbids TRUNCATE of intent or witness history; both backends reject witness reset, deletion, identity replacement and overflow. Zero is the cutover baseline, not reconstructed history. No tenant FK removes witness history on deletion. RBAC uncached observations bracket policy evaluation with this owner-issued generation in addition to the lifecycle cursor and composition identity. A completed raw-DML ABA invalidates admitted scope and WebSocket leases, without event delivery. The witness is not a policy engine or event producer. DDL/privileged trigger bypass, database restore, composition raw-DML ABA and commit-time authorization fences remain distinct boundaries. Deployment must apply migrations before the new auth reader. Regression sources authored, not executed.
 
 PostgreSQL integration regression `static_intent_generation_observes_committed_sql_aba_and_rejects_history_reset` covers the registered migration, two independent pools, settings-only updates, reader visibility during an uncommitted write, rollback, committed direct-SQL ABA, tenant isolation and history reset/TRUNCATE denial. It is authored and ignored pending maintainer execution. The deployed application-role RLS/privilege matrix also requires verification; migrations run before auth reader cutover.
+
+## Static relation durable invalidation (2026-11-27)
+
+Migration m20261127_000207_couple_static_relation_generation advances the existing global recovery watermark for actual
+membership and static grant inserts/deletes, authority-tuple updates and
+role tenant/slug/system identity updates. Cascades use the same row triggers;
+metadata and exact tuple updates do not advance it. PostgreSQL defers the
+increments to commit by default and refuses contested watermark table/row
+locks with NOWAIT. SQLite advances inside the serialized statement. Existing
+membership and grant revision witnesses are unchanged. Cutover advances once.
+Standalone committed replacement and Auth admin role updates flush only the
+named deferred static constraints at the SQL-only tail (SQLite already
+advanced) and use the resulting generation instead of reserving an extra
+marker. Status-only updates still reserve explicitly. Existing GraphQL grant
+replacement and repair notification markers remain conservative additional
+advances pending consumer migration. Generation is a recovery watermark, not
+an operation counter; gaps require namespace-wide reconciliation. Drain old
+writers before applying. No uncertain commit retry. Source tests unrun.

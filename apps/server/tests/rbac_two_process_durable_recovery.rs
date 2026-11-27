@@ -112,11 +112,11 @@ async fn separate_process_replica_recovers_missed_local_publication_from_durable
         if mutation.redis_configured || observation.redis_configured {
             return Err(test_error("two-process missed-publication scenario must run without Redis"));
         }
-        if mutation.committed_generation != ready.initial_generation + 1 {
+        if mutation.committed_generation < ready.initial_generation + 2 {
             return Err(test_error(format!(
                 "mutation committed generation {}, expected {}",
                 mutation.committed_generation,
-                ready.initial_generation + 1
+                ready.initial_generation + 2
             )));
         }
         if observation.initial_generation != ready.initial_generation

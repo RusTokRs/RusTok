@@ -138,11 +138,8 @@ async fn run_two_process_redis_scenario() -> TestResult<()> {
         if !ready.redis_configured || !ready.fast_user_allowed || !ready.restart_user_allowed {
             return Err(test_error(format!("invalid observer readiness evidence: {ready:?}")));
         }
-        if ready.initial_generation != 0 {
-            return Err(test_error(format!(
-                "unexpected initial durable generation {}",
-                ready.initial_generation
-            )));
+        if ready.initial_generation != rustok_rbac::read_permission_invalidation_generation(&db).await? {
+            return Err(test_error("observer durable generation differs from persisted baseline"));
         }
         wait_for_redis_subscribers(&redis_url, 1, "parent initial observer subscription").await?;
 
@@ -161,7 +158,7 @@ async fn run_two_process_redis_scenario() -> TestResult<()> {
         }
         let first_mutation: MutationResult = read_json(&first_mutation_path)?;
         let fast_result: DecisionResult = read_json(&fast_result_path)?;
-        if first_mutation.committed_generation != 1
+        if first_mutation.committed_generation < ready.initial_generation + 2
             || !first_mutation.redis_configured
             || fast_result.allowed
             || fast_result.authoritative_allowed
@@ -201,7 +198,7 @@ async fn run_two_process_redis_scenario() -> TestResult<()> {
         )?;
         wait_for_child(&mut second_mutator, Duration::from_secs(10), "outage mutator").await?;
         let second_mutation: MutationResult = read_json(&second_mutation_path)?;
-        if second_mutation.committed_generation != 2 || !second_mutation.redis_configured {
+        if second_mutation.committed_generation < first_mutation.committed_generation + 2 || !second_mutation.redis_configured {
             return Err(test_error(format!(
                 "invalid Redis-outage mutation evidence: {second_mutation:?}"
             )));

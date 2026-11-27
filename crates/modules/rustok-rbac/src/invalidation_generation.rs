@@ -60,6 +60,25 @@ pub async fn reserve_permission_invalidation_generation(
     decode_generation(&row)
 }
 
+/// Finish known actual static relation changes at the SQL-only transaction
+/// tail. PostgreSQL flushes only the named deferred static constraints, not
+/// unrelated owner effects. SQLite already advanced on the relation statements.
+/// Do not call for a no-op or status-only update: those need a separate marker.
+/// The caller must have completed all earlier domain identity acquisition.
+pub async fn flush_static_relation_invalidation_generation(
+    db: &DatabaseTransaction,
+) -> Result<u64, RbacInvalidationGenerationError> {
+    if db.get_database_backend() == DbBackend::Postgres {
+        const TRIGGERS: &str = "rbac_static_membership_generation_change, rbac_static_membership_generation_update, rbac_static_grant_generation_change, rbac_static_grant_generation_update, rbac_static_role_identity_generation";
+        for timing in ["IMMEDIATE", "DEFERRED"] {
+            db.execute_unprepared(&format!("SET CONSTRAINTS {TRIGGERS} {timing}"))
+                .await
+                .map_err(RbacInvalidationGenerationError::Database)?;
+        }
+    }
+    read_permission_invalidation_generation(db).await
+}
+
 pub async fn read_permission_invalidation_generation<C>(
     db: &C,
 ) -> Result<u64, RbacInvalidationGenerationError>

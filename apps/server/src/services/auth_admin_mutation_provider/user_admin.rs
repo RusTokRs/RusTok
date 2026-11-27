@@ -36,7 +36,7 @@ use crate::services::auth_invite::{
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::rbac_cache_invalidation::publish_user_rbac_invalidation;
-use crate::services::rbac_invalidation_generation::reserve_rbac_invalidation_generation;
+use crate::services::rbac_invalidation_generation::{flush_rbac_static_relation_generation, reserve_rbac_invalidation_generation};
 use crate::services::rbac_request_scope::{
     OAuthCredentialEvidence, credential_for_admin, permissions_for, role_for,
 };
@@ -1375,7 +1375,12 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             };
             let invalidates_authorization = role_mutation_plan.is_some() || status_changed;
             let durable_generation = if invalidates_authorization {
-                match reserve_rbac_invalidation_generation(&tx).await {
+                let generation = if role_mutation_plan.is_some() {
+                    flush_rbac_static_relation_generation(&tx).await
+                } else {
+                    reserve_rbac_invalidation_generation(&tx).await
+                };
+                match generation {
                     Ok(generation) => Some(generation),
                     Err(crate::error::Error::Database(error)) => {
                         if rustok_core::resilience::retry::rollback_for_transaction_retry(

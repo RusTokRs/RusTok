@@ -160,6 +160,7 @@ async fn dry_run_is_read_only_and_apply_preserves_existing_role_grants() {
     let manager_role_id = role_id(&db, tenant_id, "manager").await;
     let stale_permission_id = insert_stale_role_permission(&db, tenant_id, manager_role_id).await;
 
+    let baseline = read_permission_invalidation_generation(&db).await.unwrap();
     let plan = plan_system_role_repair(&db, Some(tenant_id))
         .await
         .expect("build repair plan");
@@ -172,7 +173,7 @@ async fn dry_run_is_read_only_and_apply_preserves_existing_role_grants() {
     assert!(role_permission_exists(&db, manager_role_id, stale_permission_id).await);
     assert_eq!(
         read_permission_invalidation_generation(&db).await.unwrap(),
-        0
+        baseline
     );
 
     let tx = db.begin().await.unwrap();
@@ -188,10 +189,10 @@ async fn dry_run_is_read_only_and_apply_preserves_existing_role_grants() {
 
     assert!(applied.applied);
     assert!(!applied.runtime_restart_required);
-    assert_eq!(generation, 1);
+    assert_eq!(generation, baseline + applied.role_permission_links_added + 1);
     assert_eq!(
         read_permission_invalidation_generation(&db).await.unwrap(),
-        1
+        generation
     );
     // The pre-existing grant survives repair untouched.
     assert!(role_permission_exists(&db, manager_role_id, stale_permission_id).await);
@@ -206,6 +207,7 @@ async fn global_apply_rolls_back_when_any_tenant_has_reserved_slug_collision() {
     insert_tenant(&db, collision_tenant_id, "repair-collision").await;
     insert_non_system_role(&db, collision_tenant_id, Uuid::new_v4(), "admin").await;
 
+    let baseline = read_permission_invalidation_generation(&db).await.unwrap();
     let tx = db.begin().await.unwrap();
     let error = apply_system_role_repair_in_transaction(&tx, None)
         .await
@@ -219,7 +221,7 @@ async fn global_apply_rolls_back_when_any_tenant_has_reserved_slug_collision() {
     ));
     assert_eq!(
         read_permission_invalidation_generation(&db).await.unwrap(),
-        0
+        baseline
     );
     assert_eq!(role_count(&db, clean_tenant_id).await, 0);
     assert_eq!(role_count(&db, collision_tenant_id).await, 1);

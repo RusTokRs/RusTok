@@ -4,7 +4,7 @@ use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionTrait};
 use crate::error::{Error, Result};
 
 use super::rbac_cache_invalidation::publish_user_rbac_invalidation;
-use super::rbac_invalidation_generation::reserve_rbac_invalidation_generation;
+use super::rbac_invalidation_generation::flush_rbac_static_relation_generation;
 use super::rbac_persistence::replace_user_role_via_store;
 use super::rbac_service::RbacService;
 
@@ -56,7 +56,7 @@ impl RbacService {
                 if !changed {
                     return Ok(None);
                 }
-                reserve_rbac_invalidation_generation(&tx).await.map(Some)
+                flush_rbac_static_relation_generation(&tx).await.map(Some)
             }
             .await;
             match result {
@@ -208,7 +208,7 @@ mod tests {
                 .await
                 .expect("admin permission lookup should succeed")
         );
-        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
+        let baseline = read_rbac_invalidation_generation(&db).await.unwrap();
 
         RbacService::replace_user_role_committed(
             &db,
@@ -220,7 +220,7 @@ mod tests {
         .await
         .expect("committed demotion should succeed");
 
-        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 1);
+        assert!(read_rbac_invalidation_generation(&db).await.unwrap() >= baseline + 2);
         assert!(
             !RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::SETTINGS_MANAGE,)
                 .await
@@ -247,6 +247,7 @@ mod tests {
             .await
             .unwrap();
 
+        let baseline = read_rbac_invalidation_generation(&db).await.unwrap();
         RbacService::replace_user_role_committed(
             &db,
             &cache_service,
@@ -257,7 +258,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
+        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), baseline);
     }
 
     #[tokio::test]
@@ -277,6 +278,7 @@ mod tests {
             .await
             .unwrap();
 
+        let baseline = read_rbac_invalidation_generation(&db).await.unwrap();
         RbacService::replace_user_role_committed(
             &db,
             &cache_service,
@@ -287,7 +289,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 1);
+        assert!(read_rbac_invalidation_generation(&db).await.unwrap() > baseline);
         assert!(
             !RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::PRODUCTS_CREATE,)
                 .await
@@ -314,7 +316,7 @@ mod tests {
                 .await
                 .expect("super-admin permission lookup should succeed")
         );
-        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
+        let baseline = read_rbac_invalidation_generation(&db).await.unwrap();
 
         let error = RbacService::replace_user_role_committed(
             &db,
@@ -326,7 +328,7 @@ mod tests {
         .await
         .expect_err("last active super-admin demotion must be rejected");
         assert!(matches!(error, Error::BadRequest(_)));
-        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
+        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), baseline);
 
         let authoritative =
             RbacService::get_user_permissions_authoritative(&db, &tenant_id, &user_id)

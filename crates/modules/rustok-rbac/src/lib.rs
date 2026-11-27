@@ -30,6 +30,7 @@ mod m20261127_000013_preserve_rbac_identity_witnesses;
 mod m20261127_000016_fence_artifact_catalog_parents;
 mod m20261127_000017_couple_artifact_grant_generation;
 mod m20261127_000206_preserve_artifact_operation_witnesses;
+mod m20261127_000207_couple_static_relation_generation;
 mod membership_revision;
 pub mod module;
 pub mod ports;
@@ -64,7 +65,8 @@ pub use control_plane::{
 pub use error::RbacError;
 pub use invalidation_generation::{
     RBAC_PERMISSION_INVALIDATION_SCOPE, RbacInvalidationGenerationError,
-    read_permission_invalidation_generation, reserve_permission_invalidation_generation,
+    flush_static_relation_invalidation_generation, read_permission_invalidation_generation,
+    reserve_permission_invalidation_generation,
 };
 pub use ports::{
     RbacPermissionCheckMode, RbacPermissionCheckRequest, RbacPermissionCheckResponse,

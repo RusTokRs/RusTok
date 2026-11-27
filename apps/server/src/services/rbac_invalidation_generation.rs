@@ -159,6 +159,12 @@ pub(crate) async fn reserve_rbac_invalidation_generation(db: &DatabaseTransactio
         .map_err(reservation_error)
 }
 
+pub(crate) async fn flush_rbac_static_relation_generation(db: &DatabaseTransaction) -> Result<u64> {
+    rustok_rbac::flush_static_relation_invalidation_generation(db)
+        .await
+        .map_err(reservation_error)
+}
+
 // Preserve the driver error until the transaction owner decides whether a
 // complete rollback and fresh attempt are safe. Recovery reads retain their
 // existing cache diagnostic contract and never enter the write retry path.
@@ -551,27 +557,27 @@ mod tests {
     #[tokio::test]
     async fn durable_generation_commits_and_rolls_back_with_the_owner_transaction() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
-        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
+        let baseline = read_rbac_invalidation_generation(&db).await.unwrap();
 
         let rolled_back = db.begin().await.unwrap();
         assert_eq!(
             reserve_rbac_invalidation_generation(&rolled_back)
                 .await
                 .unwrap(),
-            1
+            baseline + 1
         );
         rolled_back.rollback().await.unwrap();
-        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
+        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), baseline);
 
         let committed = db.begin().await.unwrap();
         assert_eq!(
             reserve_rbac_invalidation_generation(&committed)
                 .await
                 .unwrap(),
-            1
+            baseline + 1
         );
         committed.commit().await.unwrap();
-        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 1);
+        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), baseline + 1);
     }
 
     #[tokio::test]

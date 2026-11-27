@@ -213,7 +213,7 @@ mod tests {
                 .expect("primed permission lookup should succeed")
             );
         }
-        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
+        let baseline = read_rbac_invalidation_generation(&db).await.unwrap();
 
         let system_roles_before = roles::Entity::find()
             .filter(roles::Column::TenantId.eq(tenant_id))
@@ -245,7 +245,7 @@ mod tests {
         assert_eq!(report.role_permission_links_removed, 0);
         assert!(report.affected_users.is_empty());
         assert!(!report.runtime_restart_required);
-        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
+        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), baseline + report.role_permission_links_added);
 
         for user_id in [first_user, second_user] {
             assert!(

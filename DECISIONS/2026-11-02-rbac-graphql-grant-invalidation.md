@@ -193,3 +193,21 @@ The witness is not a full response receipt and is not a commit-recovery API.
 It retains exact keys permanently; keys must not contain secrets. Drain old
 writers before applying the additive migration, which cannot be downgraded
 safely. Privileged DDL/restore is outside ordinary DML guarantees.
+
+## Static relation durable invalidation (2026-11-27)
+
+Migration m20261127_000207_couple_static_relation_generation advances the existing global recovery watermark for actual
+membership and static grant inserts/deletes, authority-tuple updates and
+role tenant/slug/system identity updates. Cascades use the same row triggers;
+metadata and exact tuple updates do not advance it. PostgreSQL defers the
+increments to commit by default and refuses contested watermark table/row
+locks with NOWAIT. SQLite advances inside the serialized statement. Existing
+membership and grant revision witnesses are unchanged. Cutover advances once.
+Standalone committed replacement and Auth admin role updates flush only the
+named deferred static constraints at the SQL-only tail (SQLite already
+advanced) and use the resulting generation instead of reserving an extra
+marker. Status-only updates still reserve explicitly. Existing GraphQL grant
+replacement and repair notification markers remain conservative additional
+advances pending consumer migration. Generation is a recovery watermark, not
+an operation counter; gaps require namespace-wide reconciliation. Drain old
+writers before applying. No uncertain commit retry. Source tests unrun.
