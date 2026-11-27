@@ -13,7 +13,7 @@ both the mapped node and agent identity before the owner sees them. Payload
 fields cannot select a node, agent, installation, release, or policy.
 
 `ArtifactNodeReconciliationService.ReconcileTopology` is the operator-only
-surface. Its body has an expected durable-state revision, policy revision,
+surface. Its body has an expected durable-state revision, deployment intent revision (wire field `policy_revision`),
 idempotency UUID, and strict JSON `ModuleArtifactNodeTopologySnapshot`; it
 has no actor, release, payload, capability, tenant, or readiness field. The
 service derives the audit actor from its mTLS certificate, enforces that every
@@ -38,3 +38,7 @@ sandbox. A node-agent process must separately consume its one work item,
 perform only the allowed materialization and health action, and return its
 owner-fenced observation through the agent service. Neither transport service
 is a topology source or an application-server background task.
+
+The request intent and owner-issued assignment readiness revision are distinct.
+The owner binds the latter to exact topology and admitted identities; agent
+reports echo the owner-issued revision. Neither is a tenant authorization token.

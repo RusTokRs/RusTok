@@ -172,6 +172,8 @@ pub trait ModuleArtifactNodeTopologyResolver: Send + Sync {
 #[serde(deny_unknown_fields)]
 pub struct ModuleArtifactNodeReconciliationRequest {
     pub expected_reconciliation_state_revision: u64,
+    /// Deployment intent revision, not a tenant serving-policy revision.
+    /// The owner derives the assignment revision from this and frozen topology.
     pub policy_revision: String,
     pub topology_digest: String,
     pub context: ModuleCommandContext,
@@ -492,9 +494,10 @@ impl SeaOrmArtifactNodeReadiness {
         policy: &crate::ModuleEffectivePolicy,
     ) -> Result<(), ModuleArtifactNodeReconciliationError> {
         let before = load_state(&self.db, false).await?;
-        if before.observed_id.is_none() {
-            return Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable);
-        }
+        let observed_id = before.observed_id
+            .filter(|id| before.desired_id == Some(*id))
+            .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
+        let readiness_revision = load_deployment_readiness_revision(&self.db, observed_id).await?;
         let selected = crate::SeaOrmArtifactInstallationStore::new(self.db.clone())
             .list_active_for_tenant(tenant_id)
             .await
@@ -504,7 +507,7 @@ impl SeaOrmArtifactNodeReadiness {
             .collect::<BTreeMap<_, _>>();
         let required = serving_artifact_closure(tenant_id, artifact, policy, &selected)?;
         for item in required {
-            self.require_active(item, policy.policy_revision()).await?;
+            self.require_active(item, &readiness_revision).await?;
         }
         let after = load_state(&self.db, false).await?;
         if before.revision != after.revision || before.observed_id != after.observed_id {
@@ -513,9 +516,9 @@ impl SeaOrmArtifactNodeReadiness {
         Ok(())
     }
 
-    /// Requires the complete durable assignment identity and current canonical
-    /// effective-policy revision for the admitted installation selected by the
-    /// runtime. The method deliberately does not accept a slug, release tag,
+    /// Requires the complete durable assignment identity and current owner
+    /// deployment readiness revision for the admitted installation selected by
+    /// the runtime. Use require_active_policy_closure for serving authority. The method deliberately does not accept a slug, release tag,
     /// cache generation, or agent report.
     pub async fn require_active(
         &self,
@@ -579,6 +582,8 @@ impl SeaOrmArtifactNodeReadiness {
                        ON admission.installation_id = installation.installation_id \
                      WHERE state.state_id = {} \
                        AND reconciliation.status = 'converged' \
+                       AND state.desired_reconciliation_id = state.observed_reconciliation_id \
+                       AND reconciliation.deployment_intent_revision IS NOT NULL \
                        AND reconciliation.policy_revision = {} \
                        AND assignment.node_id = {} \
                        AND assignment.installation_id = {} \
@@ -847,6 +852,9 @@ where
         }
         let resolved_assignments =
             resolve_assignment_identities(&transaction, &topology, true).await?;
+        let readiness_revision = deployment_readiness_revision(
+            &command.policy_revision, &topology.topology_digest, &resolved_assignments,
+        )?;
         let predecessor = match state.observed_id {
             Some(reconciliation_id) => {
                 Some(load_reconciliation(&transaction, reconciliation_id, true).await?)
@@ -856,7 +864,7 @@ where
         if predecessor.as_ref().is_some_and(|reconciliation| {
             reconciliation.status == ModuleArtifactNodeReconciliationStatus::Converged
                 && reconciliation.topology_digest == topology.topology_digest
-                && reconciliation.policy_revision == command.policy_revision
+                && reconciliation.policy_revision == readiness_revision
                 && reconciliation_matches_identities(reconciliation, &resolved_assignments)
         }) {
             return Err(ModuleArtifactNodeReconciliationError::NoReconciliationChange);
@@ -882,12 +890,13 @@ where
             reconciliation_revision,
             &topology,
             &command,
+            &readiness_revision,
         )
         .await?;
         insert_assignments(
             &transaction,
             reconciliation_id,
-            &command.policy_revision,
+            &readiness_revision,
             &resolved_assignments,
         )
         .await?;
@@ -920,7 +929,7 @@ where
                         reconciliation_revision,
                         reconciliation_state_revision,
                         topology_digest: topology.topology_digest,
-                        policy_revision: command.policy_revision,
+                        policy_revision: readiness_revision,
                         target_assignments: u32::try_from(resolved_assignments.len())
                             .map_err(|_| ModuleArtifactNodeReconciliationError::InvalidTopology)?,
                     },
@@ -1355,7 +1364,7 @@ pub fn module_artifact_node_topology_digest(
     .map_err(digest_error)
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 struct ResolvedAssignment {
     target: ModuleArtifactNodeAssignmentTarget,
     identity: InstallationIdentity,
@@ -1364,7 +1373,7 @@ struct ResolvedAssignment {
 /// Identity reloaded from the installation/admission owner tables. It does not
 /// carry a node because node placement belongs to the topology resolver, never
 /// to an installation record.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 struct InstallationIdentity {
     installation_scope: ModuleArtifactNodeInstallationScope,
     release_digest: String,
@@ -1599,6 +1608,85 @@ fn validate_transition(
     Ok(())
 }
 
+/// A deployment revision is derived by the owner, not supplied by a tenant
+/// or copied from a serving-policy digest. Its inputs are immutable and
+/// ordered by canonical topology order.
+fn deployment_readiness_revision(
+    intent: &str,
+    topology_digest: &str,
+    assignments: &[ResolvedAssignment],
+) -> Result<String, ModuleArtifactNodeReconciliationError> {
+    if !valid_digest(intent) || !valid_digest(topology_digest) || assignments.is_empty() {
+        return Err(ModuleArtifactNodeReconciliationError::InvalidTopology);
+    }
+    digest_json(&serde_json::json!({
+        "contract": "rustok.artifact_node_deployment_readiness.v1",
+        "deployment_intent_revision": intent,
+        "topology_digest": topology_digest,
+        "assignments": assignments,
+    })).map_err(digest_error)
+}
+
+/// Reconstruct the digest from the persisted owner-issued set. Old rows
+/// have no deployment intent and cannot satisfy the new serving contract.
+async fn load_deployment_readiness_revision(
+    db: &DatabaseConnection,
+    reconciliation_id: Uuid,
+) -> Result<String, ModuleArtifactNodeReconciliationError> {
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(store_error)?;
+    let row = db.query_one_raw(Statement::from_sql_and_values(
+        backend.db_backend(),
+        format!("SELECT deployment_intent_revision FROM module_artifact_node_reconciliations WHERE reconciliation_id = {}", backend.placeholder(1)),
+        vec![backend.uuid_value(reconciliation_id)],
+    )).await.map_err(store_error)?
+        .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
+    let intent: Option<String> = row.try_get("", "deployment_intent_revision").map_err(store_error)?;
+    let intent = intent.ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
+    let reconciliation = load_reconciliation(db, reconciliation_id, false).await?;
+    if reconciliation.status != ModuleArtifactNodeReconciliationStatus::Converged {
+        return Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable);
+    }
+    let mut targets = Vec::with_capacity(reconciliation.assignments.len());
+    let mut resolved = Vec::with_capacity(reconciliation.assignments.len());
+    for assignment in &reconciliation.assignments {
+        if assignment.phase != ModuleReconciliationPhase::Active
+            || assignment.policy_revision != reconciliation.policy_revision
+        {
+            return Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable);
+        }
+        let target = ModuleArtifactNodeAssignmentTarget {
+            node_id: assignment.node_id,
+            installation_id: assignment.installation_id,
+        };
+        targets.push(target.clone());
+        resolved.push(ResolvedAssignment {
+            target,
+            identity: InstallationIdentity {
+                installation_scope: assignment.installation_scope,
+                release_digest: assignment.release_digest.clone(),
+                payload_digest: assignment.payload_digest.clone(),
+                payload_kind: assignment.payload_kind,
+                payload_media_type: assignment.payload_media_type.clone(),
+                admission_revision: assignment.admission_revision,
+                dependency_graph_revision: assignment.dependency_graph_revision,
+                dependency_graph_digest: assignment.dependency_graph_digest.clone(),
+                capability_grant_revision: assignment.capability_grant_revision,
+                executor_abi: assignment.executor_abi.clone(),
+            },
+        });
+    }
+    validate_topology(&ModuleArtifactNodeTopologySnapshot {
+        topology_reference: reconciliation.topology_reference,
+        topology_digest: reconciliation.topology_digest.clone(),
+        assignments: targets,
+    })?;
+    let expected = deployment_readiness_revision(&intent, &reconciliation.topology_digest, &resolved)?;
+    if expected != reconciliation.policy_revision {
+        return Err(ModuleArtifactNodeReconciliationError::StaleReconciliation);
+    }
+    Ok(expected)
+}
+
 async fn resolve_assignment_identities(
     connection: &impl ConnectionTrait,
     topology: &ModuleArtifactNodeTopologySnapshot,
@@ -1696,6 +1784,7 @@ async fn insert_reconciliation(
     reconciliation_revision: u64,
     topology: &ModuleArtifactNodeTopologySnapshot,
     command: &ModuleArtifactNodeReconciliationRequest,
+    readiness_revision: &str,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
     let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     transaction
@@ -1705,8 +1794,8 @@ async fn insert_reconciliation(
                 "INSERT INTO module_artifact_node_reconciliations \
                  (reconciliation_id, predecessor_reconciliation_id, reconciliation_revision, \
                   topology_reference, topology_digest, policy_revision, target_assignment_count, \
-                  status, requested_by, requested_at, status_changed_at) \
-                 VALUES ({}, {}, {}, {}, {}, {}, {}, 'preparing', {}, {}, {})",
+                  status, requested_by, requested_at, status_changed_at, deployment_intent_revision) \
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, 'preparing', {}, {}, {}, {})",
                 backend.placeholder(1),
                 backend.placeholder(2),
                 backend.placeholder(3),
@@ -1717,6 +1806,7 @@ async fn insert_reconciliation(
                 backend.placeholder(8),
                 backend.now_sql(),
                 backend.now_sql(),
+                backend.placeholder(9),
             ),
             vec![
                 backend.uuid_value(reconciliation_id),
@@ -1724,11 +1814,12 @@ async fn insert_reconciliation(
                 revision_value(reconciliation_revision)?,
                 topology.topology_reference.clone().into(),
                 topology.topology_digest.clone().into(),
-                command.policy_revision.clone().into(),
+                readiness_revision.to_owned().into(),
                 i64::try_from(topology.assignments.len())
                     .map_err(|_| ModuleArtifactNodeReconciliationError::InvalidTopology)?
                     .into(),
                 backend.uuid_value(command.context.actor_id),
+                command.policy_revision.clone().into(),
             ],
         ))
         .await
@@ -3467,6 +3558,32 @@ mod tests {
         );
         let readiness =
             SeaOrmArtifactNodeReadiness::new(service.db.clone(), node_id).expect("node readiness");
+        let deployment_revision = load_deployment_readiness_revision(&service.db, created.reconciliation_id)
+            .await.expect("owner-issued deployment revision");
+        assert_ne!(deployment_revision, policy_revision);
+        assert_eq!(deployment_revision, reconciliation.policy_revision);
+        // Neither legacy evidence nor a substituted deployment intent can
+        // be reinterpreted as a valid deployment readiness revision.
+        let reconciliation_id = created.reconciliation_id;
+        service.db.execute_unprepared(&format!(
+            "UPDATE module_artifact_node_reconciliations SET deployment_intent_revision = NULL WHERE reconciliation_id = '{reconciliation_id}'"
+        )).await.unwrap();
+        assert!(matches!(
+            load_deployment_readiness_revision(&service.db, reconciliation_id).await,
+            Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)
+        ));
+        service.db.execute_unprepared(&format!(
+            "UPDATE module_artifact_node_reconciliations SET deployment_intent_revision = '{}' WHERE reconciliation_id = '{reconciliation_id}'", digest('e')
+        )).await.unwrap();
+        assert!(matches!(
+            load_deployment_readiness_revision(&service.db, reconciliation_id).await,
+            Err(ModuleArtifactNodeReconciliationError::StaleReconciliation)
+        ));
+        service.db.execute_unprepared(&format!(
+            "UPDATE module_artifact_node_reconciliations SET deployment_intent_revision = '{policy_revision}' WHERE reconciliation_id = '{reconciliation_id}'"
+        )).await.unwrap();
+        assert_eq!(load_deployment_readiness_revision(&service.db, reconciliation_id).await.unwrap(), deployment_revision);
+        let policy_revision = deployment_revision;
         let identity = InstallationIdentity {
             installation_scope: ModuleArtifactNodeInstallationScope::Platform,
             release_digest: digest('1'),
@@ -3489,6 +3606,16 @@ mod tests {
                 .await,
             Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)
         ));
+        service.db.execute_unprepared(
+            "UPDATE module_artifact_node_reconciliation_state SET desired_reconciliation_id = NULL WHERE state_id = 'current'"
+        ).await.unwrap();
+        assert!(matches!(
+            readiness.require_active_identity(installation_id, &identity, &policy_revision).await,
+            Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)
+        ));
+        service.db.execute_unprepared(&format!(
+            "UPDATE module_artifact_node_reconciliation_state SET desired_reconciliation_id = '{reconciliation_id}' WHERE state_id = 'current'"
+        )).await.unwrap();
         service
             .db
             .execute_unprepared(&format!(
@@ -3846,6 +3973,10 @@ mod tests {
             .up(&SchemaManager::new(&database))
             .await
             .expect("artifact node migration");
+        crate::migrations::m20261127_000094_artifact_deployment_readiness::Migration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("deployment readiness migration");
         database
     }
 

@@ -3529,3 +3529,16 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   needs an explicit contract change and migration (not a fallback comparison).
   Contextual channel/maintenance inputs, independent liveness/expiry and
   atomic post-admission enforcement remain open.
+
+### Deployment readiness authority separation
+
+- Source-wired owner-derived deployment revision from intent, topology and exact
+  assignment identities. Reconstruct it from the converged desired/observed
+  set before checking each required node assignment. Tenant policy is an
+  independent mandatory authority; no equality between unrelated digests.
+- Migration 000094 preserves old rows as legacy (NULL intent); require fresh
+  reconciliation, coordinated writer/reader cutover, and new idempotency key.
+- Extended owner test with distinct intent/derived digest, legacy marker,
+  intent tamper and desired/observed mismatch. Tests and migration unrun;
+  real cross-tenant integration, PostgreSQL/RLS and continuous liveness remain
+  open. See [ADR](../../../../DECISIONS/2026-11-27-artifact-deployment-readiness-authority.md).
