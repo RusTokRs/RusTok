@@ -30,6 +30,7 @@ pub struct SeaOrmArtifactDataObjectCapabilityBroker<A> {
     objects: SeaOrmArtifactDataObjectBroker<A>,
     uploads: SeaOrmArtifactDataObjectUploadService<A>,
     scope: ArtifactDataScope,
+    effect_authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>,
 }
 
 impl<A> SeaOrmArtifactDataObjectCapabilityBroker<A>
@@ -92,7 +93,16 @@ where
                 quota,
             ),
             scope,
+            effect_authorizer: None,
         }
+    }
+
+    fn with_sql_effect_authorizer(
+        mut self,
+        authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>,
+    ) -> Self {
+        self.effect_authorizer = authorizer;
+        self
     }
 }
 
@@ -104,9 +114,10 @@ where
     async fn invoke(
         &self,
         call: &CapabilityCall,
-        _grant: &CapabilityGrant,
+        grant: &CapabilityGrant,
     ) -> SandboxResult<CapabilityResponse> {
-        if call.capability.as_str() != "platform.data.objects"
+        if grant.name != call.capability
+            || call.capability.as_str() != "platform.data.objects"
             || call.context.tenant_id != Some(self.scope.tenant_id)
             || !matches!(
                 &call.subject,
@@ -115,10 +126,22 @@ where
         {
             return Err(SandboxError::CapabilityDenied(call.capability.clone()));
         }
-        match decode_object_data_capability_call(call)? {
+        let decoded = decode_object_data_capability_call(call)?;
+        let effect_fence = match self.effect_authorizer.as_ref() {
+            Some(authorizer) => Some(Arc::from(authorizer.prepare(call).await?)),
+            None => None,
+        };
+        let objects = match effect_fence.as_ref() {
+            Some(fence) => objects.clone().with_effect_fence(Arc::clone(fence)),
+            None => objects.clone(),
+        };
+        let uploads = match effect_fence.as_ref() {
+            Some(fence) => uploads.clone().with_effect_fence(Arc::clone(fence)),
+            None => uploads.clone(),
+        };
+        match decoded {
             ObjectDataCapabilityCall::GetMetadata { name } => {
-                let object = self
-                    .objects
+                let object = objects
                     .get_object(&self.scope, &name)
                     .await
                     .map_err(|error| data_capability_error(&call.capability, error))?;
@@ -127,8 +150,7 @@ where
                 })
             }
             ObjectDataCapabilityCall::Read { name } => {
-                let object = self
-                    .objects
+                let object = objects
                     .read_object(&self.scope, &name)
                     .await
                     .map_err(|error| data_capability_error(&call.capability, error))?;
@@ -150,8 +172,7 @@ where
                 Ok(CapabilityResponse { output })
             }
             ObjectDataCapabilityCall::Put { upload } => {
-                let object = self
-                    .objects
+                let object = objects
                     .put_object(&self.scope, upload)
                     .await
                     .map_err(|error| data_capability_error(&call.capability, error))?;
@@ -160,8 +181,7 @@ where
                 })
             }
             ObjectDataCapabilityCall::Delete { request } => {
-                let result = self
-                    .objects
+                let result = objects
                     .delete_object(&self.scope, request)
                     .await
                     .map_err(|error| data_capability_error(&call.capability, error))?;
@@ -170,8 +190,7 @@ where
                 })
             }
             ObjectDataCapabilityCall::BeginUpload { request } => {
-                let session = self
-                    .uploads
+                let session = uploads
                     .begin(&self.scope, request)
                     .await
                     .map_err(|error| data_capability_error(&call.capability, error))?;
@@ -180,15 +199,14 @@ where
                 })
             }
             ObjectDataCapabilityCall::AppendChunk { chunk } => {
-                self.uploads
+                uploads
                     .append_chunk(&self.scope, chunk)
                     .await
                     .map_err(|error| data_capability_error(&call.capability, error))?;
                 Ok(CapabilityResponse { output: json!({}) })
             }
             ObjectDataCapabilityCall::CompleteUpload { request } => {
-                let object = self
-                    .uploads
+                let object = uploads
                     .complete(&self.scope, request)
                     .await
                     .map_err(|error| data_capability_error(&call.capability, error))?;
@@ -197,8 +215,7 @@ where
                 })
             }
             ObjectDataCapabilityCall::List { page } => {
-                let page = self
-                    .objects
+                let page = objects
                     .list_objects(&self.scope, page)
                     .await
                     .map_err(|error| data_capability_error(&call.capability, error))?;
@@ -222,6 +239,7 @@ pub struct SeaOrmArtifactDataObjectCapabilityBrokerResolver {
     storage: StorageRuntime,
     infrastructure: ControlPlaneInfrastructure,
     quota_policy: Arc<dyn ArtifactDataQuotaPolicy>,
+    effect_authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>,
 }
 
 impl SeaOrmArtifactDataObjectCapabilityBrokerResolver {
@@ -258,7 +276,16 @@ impl SeaOrmArtifactDataObjectCapabilityBrokerResolver {
             storage,
             infrastructure,
             quota_policy,
+            effect_authorizer: None,
         }
+    }
+
+    pub fn with_sql_effect_authorizer(
+        mut self,
+        authorizer: Arc<dyn crate::ArtifactSqlEffectAuthorizer>,
+    ) -> Self {
+        self.effect_authorizer = Some(authorizer);
+        self
     }
 }
 
@@ -299,7 +326,8 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataObjectCapabilityBrok
                 scope,
                 self.infrastructure.clone(),
                 quota,
-            ),
+            )
+            .with_sql_effect_authorizer(self.effect_authorizer.clone()),
         ))
     }
 }
