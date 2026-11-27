@@ -1024,7 +1024,8 @@ async fn detect_oauth_refresh_reuse(
             .add(oauth_tokens::Column::UserId.eq(user_id))
             .add(oauth_tokens::Column::FamilyId.eq(family_id)),
         now,
-    ).await;
+    )
+    .await;
     if let Err(error) = result {
         tracing::error!(
             %error,
@@ -1134,10 +1135,10 @@ async fn revoke_authorization_code_family_in_tx(
             .add(oauth_tokens::Column::GrantType.eq(AUTHORIZATION_CODE_GRANT)),
         Utc::now(),
     )
-        .await
-        .map_err(|_| {
-            OAuthTokenProtocolError::server_error("Failed to revoke replayed authorization code")
-        })?;
+    .await
+    .map_err(|_| {
+        OAuthTokenProtocolError::server_error("Failed to revoke replayed authorization code")
+    })?;
     tracing::warn!(
         app_id = %code.app_id,
         tenant_id = %code.tenant_id,
@@ -1883,8 +1884,8 @@ async fn commit_refresh_rotation(
     let tx = db.begin().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to begin refresh-token rotation")
     })?;
-    let current_app = match lock_issuance_oauth_app(&tx, authenticated_app.id, current.tenant_id).await
-    {
+    let current_app =
+        match lock_issuance_oauth_app(&tx, authenticated_app.id, current.tenant_id).await {
         Ok(app) => app,
         Err(error) => {
             tx.rollback().await.map_err(|_| {
@@ -4408,10 +4409,16 @@ mod tests {
             created_at: now.into(),
         };
         let stored_code: oauth_codes::ActiveModel = code.clone().into();
-        stored_code.insert(&db).await.expect("persist used authorization code");
+        stored_code
+            .insert(&db)
+            .await
+            .expect("persist used authorization code");
         let mut inactive_tenant: tenants::ActiveModel = tenant.clone().into();
         inactive_tenant.is_active = Set(false);
-        inactive_tenant.update(&db).await.expect("deactivate replay tenant");
+        inactive_tenant
+            .update(&db)
+            .await
+            .expect("deactivate replay tenant");
 
         // A client authenticated with a superseded secret must not revoke
         // the lineage, even when it knows the original authorization code.
