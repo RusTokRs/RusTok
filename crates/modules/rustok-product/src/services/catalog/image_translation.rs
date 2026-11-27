@@ -314,6 +314,12 @@ impl CatalogService {
             .await?;
         }
 
+        // The Image row owns its modification timestamp even though localized
+        // alt text is stored in a child table.
+        let mut image_active: entities::product_image::ActiveModel = image.clone().into();
+        image_active.updated_at = Set(Utc::now().into());
+        image_active.update(&txn).await?;
+
         let translations_after = load_image_translations(&txn, image_id).await?;
         let target_after =
             exact_image_locale_row(&translations_after, &target_locale).ok_or_else(|| {

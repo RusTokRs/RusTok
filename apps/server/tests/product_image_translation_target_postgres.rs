@@ -31,7 +31,7 @@ use rustok_translation_targets::{
     TranslationResourceSnapshot, TranslationTargetChangesRequest, TranslationTargetProgressRequest,
     TranslationTargetProvider, translation_target_registry,
 };
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, Statement};
 use sea_orm_migration::MigratorTrait;
 use serde_json::json;
 use uuid::Uuid;
@@ -83,6 +83,11 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     // progress read, journal transition, and lifecycle change below goes through
     // production CatalogService / registered Translation provider paths.
     seed_image_source(&seed_connection, product_id, image_id).await?;
+    seed_connection
+        .execute_unprepared(&format!(
+            "UPDATE product_images SET updated_at = TIMESTAMPTZ '2000-01-01 00:00:00+00' WHERE id = '{image_id}'"
+        ))
+        .await?;
     let predecessor = owner.get_product(tenant_id, product_id).await?.revision;
     let updated = owner
         .update_product(
@@ -195,6 +200,14 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             first_patch.clone(),
         )
         .await?;
+    let updated_image = rustok_product::entities::ProductImage::find_by_id(image_id)
+        .one(&seed_connection)
+        .await?
+        .ok_or("Product Image disappeared after translation apply")?;
+    assert!(
+        updated_image.updated_at.timestamp() > 946684800,
+        "the owning Product Image timestamp must advance when localized alt text changes"
+    );
     let replay = second_provider
         .apply_patch(
             apply_context(tenant_id, "first-replay", "image-first-apply"),
