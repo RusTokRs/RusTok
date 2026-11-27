@@ -293,6 +293,7 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         context: &AuthAdminMutationContext,
         limit: u64,
     ) -> Result<Vec<AuthorizedOAuthAppRecord>, AuthAdminMutationError> {
+        require_direct_user_consent(context)?;
         self.inner
             .list_authorized_oauth_apps(context, clamp_oauth_guard_list_limit(limit))
             .await
@@ -463,6 +464,12 @@ mod tests {
             assert!(
                 matches!(revoke_result, Err(AuthAdminMutationError::Forbidden(_))),
                 "principal_kind {principal_kind:?} must not revoke consent, got {revoke_result:?}"
+            );
+
+            let list_result = guarded.list_authorized_oauth_apps(&context, 10).await;
+            assert!(
+                matches!(list_result, Err(AuthAdminMutationError::Forbidden(_))),
+                "principal_kind {principal_kind:?} must not enumerate consent, got {list_result:?}"
             );
         }
     }
