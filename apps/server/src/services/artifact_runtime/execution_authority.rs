@@ -374,7 +374,7 @@ impl ArtifactSqlEffectAuthorizer for ExecutionAuthority {
     ) -> SandboxResult<Box<dyn ArtifactSqlEffectFence>> {
         if !matches!(
             call.capability.as_str(),
-            "platform.data" | "platform.events"
+            "platform.data" | "platform.data.objects" | "platform.events"
         ) {
             return Err(SandboxError::CapabilityDenied(call.capability.clone()));
         }
@@ -608,6 +608,41 @@ impl<B: CapabilityBroker> CapabilityBroker for FencedCapabilityBroker<B> {
         if !Arc::ptr_eq(&live, &lease) {
             return Err(denied());
         }
-        self.inner.invoke(call, grant).await
+        let response = self.inner.invoke(call, grant).await?;
+        if call.capability.as_str() == "platform.data.objects" {
+            // Object bytes are fetched after the metadata transaction commits.
+            // Revalidate before releasing them (and before acknowledging a
+            // completed external object-store operation). Mutations carry
+            // durable owner receipts so a denied response can be replayed
+            // under a fresh, still-authorized execution.
+            let current = authority.lookup(call)?;
+            if !Arc::ptr_eq(&current, &lease) {
+                return Err(denied());
+            }
+            let current_installation = resolve_granted_artifact_capability(
+                &self.resolver.db,
+                &ArtifactCapabilityExecution {
+                    installation_id: lease.artifact.installation_id,
+                    tenant_id: lease.tenant_id(),
+                    slug: lease.artifact.release.slug.clone(),
+                    version: lease.artifact.release.version.clone(),
+                    digest: lease.artifact.release.digest.clone(),
+                },
+                &call.capability,
+            )
+            .await?;
+            if current_installation != lease.artifact
+                || !check_policy(&self.resolver, &lease).await.unwrap_or(false)
+                || !authority.check_direct(&lease).await
+                || !check_security(&self.resolver, &lease).await
+            {
+                return Err(denied());
+            }
+            let current = authority.lookup(call)?;
+            if !Arc::ptr_eq(&current, &lease) {
+                return Err(denied());
+            }
+        }
+        Ok(response)
     }
 }
