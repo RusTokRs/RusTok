@@ -3627,8 +3627,9 @@ fn validate_registry_version(version: &str) -> Result<(), Error> {
 #[cfg(test)]
 mod marketplace_registry_tests {
     use super::{
-        RegistryCatalogListParams, build_registry_response, map_module_governance_error,
-        paginate_catalog_modules, request_matches_etag,
+        RegistryCatalogListParams, VerifiedRegistryRunnerAccess, build_registry_response,
+        map_module_governance_error, paginate_catalog_modules, request_matches_etag,
+        require_remote_executor_access,
     };
     use crate::modules::CatalogManifestModule;
     use axum::body::to_bytes;
