@@ -74,10 +74,11 @@ impl OutboxRetentionConfig {
         {
             return Err(Error::Validation("outbox retention windows must not exceed 3650 days".to_string()));
         }
-        if self.batch_size == 0 {
-            return Err(Error::Validation(
-                "outbox retention batch size must be greater than zero".to_string(),
-            ));
+        if !(1..=rustok_outbox_storage::MAX_RETENTION_BATCH_SIZE).contains(&self.batch_size) {
+            return Err(Error::Validation(format!(
+                "outbox retention batch size must be between 1 and {}",
+                rustok_outbox_storage::MAX_RETENTION_BATCH_SIZE
+            )));
         }
         Ok(())
     }
@@ -558,6 +559,17 @@ mod tests {
                 .expect("query")
                 .is_some()
         );
+    }
+
+    #[test]
+    fn retention_batch_size_has_a_hard_upper_bound() {
+        let mut config = OutboxRetentionConfig::default();
+        config.batch_size = rustok_outbox_storage::MAX_RETENTION_BATCH_SIZE;
+        assert!(config.validate().is_ok());
+        config.batch_size += 1;
+        assert!(config.validate().is_err());
+        config.batch_size = 0;
+        assert!(config.validate().is_err());
     }
 
     // The table shape a pruner depends on: the migration must create the index

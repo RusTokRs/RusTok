@@ -521,16 +521,16 @@ pub async fn prune_terminal_receipts(
     older_than: Duration,
     batch_size: u64,
 ) -> Result<u64, PortError> {
-    if older_than <= Duration::zero() {
+    if older_than <= Duration::zero() || older_than > Duration::days(3650) {
         return Err(PortError::validation(
             "outbox.operation_receipt_retention_invalid",
-            "operation receipt retention window must be positive",
+            "operation receipt retention window must be positive and at most 3650 days",
         ));
     }
-    if batch_size == 0 {
+    if !(1..=crate::MAX_RETENTION_BATCH_SIZE).contains(&batch_size) {
         return Err(PortError::validation(
             "outbox.operation_receipt_retention_invalid",
-            "operation receipt prune batch size must be greater than zero",
+            format!("operation receipt prune batch size must be between 1 and {}", crate::MAX_RETENTION_BATCH_SIZE),
         ));
     }
     let cutoff = crate::observe_database_clock(database)
@@ -913,6 +913,21 @@ mod tests {
                 "AAAAAAAAAAAAAAAAx",
             ),
         );
+    }
+
+    #[tokio::test]
+    async fn terminal_receipt_pruning_rejects_unbounded_direct_requests() {
+        let database = Database::connect("sqlite::memory:").await.expect("database");
+        for (window, batch) in [
+            (Duration::days(3651), 1),
+            (Duration::zero(), 1),
+            (Duration::days(1), 0),
+            (Duration::days(1), crate::MAX_RETENTION_BATCH_SIZE + 1),
+        ] {
+            let error = prune_terminal_receipts(&database, window, batch)
+                .await.expect_err("invalid retention");
+            assert!(format!("{error:?}").contains("outbox.operation_receipt_retention_invalid"));
+        }
     }
 
     #[tokio::test]

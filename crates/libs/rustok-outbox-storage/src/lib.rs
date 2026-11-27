@@ -1,5 +1,8 @@
 //! Shared local persistence for the platform Outbox. Event delivery belongs to the relay.
 
+/// Maximum candidate IDs per bounded event or receipt retention delete.
+pub const MAX_RETENTION_BATCH_SIZE: u64 = 10_000;
+
 pub mod consumers;
 pub mod entity;
 pub mod idempotency;

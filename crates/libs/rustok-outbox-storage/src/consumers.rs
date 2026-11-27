@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
     DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, QueryTrait, TransactionTrait,
-    sea_query::{LockType, OnConflict},
+    sea_query::{LockBehavior, LockType, OnConflict},
 };
 use uuid::Uuid;
 
@@ -135,7 +135,8 @@ impl OutboxConsumer {
     }
 
     /// Acknowledges a terminal owner receipt during startup backfill. A missing
-    /// event row is already outside Outbox retention and needs no further hold.
+    /// event row is already outside Outbox retention and needs no further hold,
+    /// but the consumer must still have an active registration.
     pub async fn acknowledge_existing(
         &self,
         consumer_key: &str,
@@ -253,16 +254,28 @@ impl OutboxConsumer {
 
         let query = sys_event::Entity::find_by_id(outbox_event_id);
         let event = if backend == DatabaseBackend::Postgres {
-            query.lock(LockType::Share).one(txn).await?
+            // Serialize canonical ACKs for this event without waiting with owner locks.
+            query.lock_with_behavior(LockType::Update, LockBehavior::Nowait).one(txn).await?
         } else {
             query.one(txn).await?
         };
         let Some(event) = event else {
-            return if expected_event_type.is_none() {
-                Ok(())
-            } else {
-                Err(sea_orm::DbErr::RecordNotFound(format!("sys_events row {outbox_event_id}")))
-            };
+            if expected_event_type.is_some() {
+                return Err(sea_orm::DbErr::RecordNotFound(format!("sys_events row {outbox_event_id}")));
+            }
+            // The registry fence protects this read. Missing-event backfill
+            // is not an exception to active consumer registration.
+            if subscription::Entity::find()
+                .filter(subscription::Column::ConsumerKey.eq(consumer_key))
+                .one(txn)
+                .await?
+                .is_none()
+            {
+                return Err(sea_orm::DbErr::Custom(
+                    "outbox consumer is not registered".to_string(),
+                ));
+            }
+            return Ok(());
         };
         let event_type = expected_event_type.unwrap_or(event.event_type.as_str());
         if event.event_type != event_type {
@@ -275,7 +288,7 @@ impl OutboxConsumer {
             .filter(subscription::Column::ConsumerKey.eq(consumer_key))
             .filter(subscription::Column::EventType.eq(event_type));
         let registered = if backend == DatabaseBackend::Postgres {
-            query.lock(LockType::Share).one(txn).await?
+            query.lock_with_behavior(LockType::Share, LockBehavior::Nowait).one(txn).await?
         } else {
             query.one(txn).await?
         };
@@ -433,6 +446,27 @@ mod tests {
             .is_err()
         );
         txn.rollback().await.expect("rollback");
+    }
+
+    #[tokio::test]
+    async fn missing_event_backfill_requires_an_active_consumer() {
+        let db = test_db().await;
+        let consumer = OutboxConsumer::new(db.clone());
+        let key = "consumer.backfill";
+        let event_id = Uuid::new_v4();
+        assert!(consumer.acknowledge_existing(key, event_id).await.is_err());
+        consumer
+            .register_required_event_types(key, &["tenant.updated".to_string()])
+            .await
+            .expect("register");
+        consumer.acknowledge_existing(key, event_id).await.expect("pruned event");
+        let txn = db.begin().await.expect("begin");
+        assert!(OutboxConsumer::acknowledge_in_transaction(
+            &txn, key, event_id, "tenant.updated"
+        ).await.is_err());
+        txn.rollback().await.expect("rollback");
+        consumer.retire_if_drained(key).await.expect("retire");
+        assert!(consumer.acknowledge_existing(key, event_id).await.is_err());
     }
 
     #[tokio::test]

@@ -181,3 +181,14 @@ window without losing events it has not yet accepted or permanently rejected.
 The tradeoff is that unacknowledged rows remain stored until the consumer
 recovers or its registration is explicitly retired. The same mechanism can
 protect future durable consumers without teaching Outbox their domain schema.
+
+## Consumer ACK admission and retention bounds (source only)
+
+PostgreSQL consumer ACK reserves the source event row exclusively with NOWAIT
+and reads its subscription with NOWAIT under the registry SHARE fence. This
+serializes canonical ACK writers for one event without waiting while holding
+owner locks. Contention requires rollback and retry of the owner transaction.
+Trusted backfill may skip a missing event only for a currently registered
+consumer. Live ACK still requires an existing event and exact event type.
+Source regressions are unrun; PostgreSQL multi-connection contention,
+compilation and runtime verification remain open.

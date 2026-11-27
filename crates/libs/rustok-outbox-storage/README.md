@@ -102,3 +102,16 @@ policy editing API is provided; online cap reduction or TTL change is not
 supported. Multiple databases/schemas have independent budgets. Direct SQL
 claim mutations outside the protocol, primary clock anomalies, uncooperative
 transport cancellation and broker-side fencing remain outside this guarantee.
+
+## Consumer ACK admission and retention bounds (source only)
+
+PostgreSQL consumer ACK reserves the source event row exclusively with NOWAIT
+and reads its subscription with NOWAIT under the registry SHARE fence. This
+serializes canonical ACK writers for one event without waiting while holding
+owner locks. Contention requires rollback and retry of the owner transaction.
+Trusted backfill may skip a missing event only for a currently registered
+consumer. Live ACK still requires an existing event and exact event type.
+Event and terminal-receipt pruning accept batches of 1..=10000; direct receipt
+pruning also enforces the positive, at-most-3650-day window before SQL.
+Source regressions are unrun; PostgreSQL multi-connection contention,
+compilation and runtime verification remain open.
