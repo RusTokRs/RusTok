@@ -2189,3 +2189,21 @@ added; tests and formatting were not run at the user's request.
 ## Direct-session mutation and recovery timestamp fences (2026-11-26)
 
 The proving session for password changes and revoke-other-sessions is checked with the database-correlated application clock after row-lock waits and again before commit. The shared session fence includes creation time, sliding expiry, explicit absolute expiry, and the legacy 90-day cap. Session listing uses the same clock and excludes future-created rows. Refresh-token logout remains a security-reducing revocation after a session deadline when the presented digest is still bound to that session; already-revoked or mismatched credentials retain their existing rejection behavior. Email verification records both `email_verified_at` and `updated_at` from the corroborated post-lock timestamp. Regression cases were added; formatting and tests were not run at the user's request.
+
+## Server follow-up — bootstrap side effects and registry runner request boundaries (2026-11-27)
+
+SuperAdmin bootstrap now resolves the normalized existing tenant/account before
+validating new credentials. A bad password can no longer create an empty tenant,
+and an existing account remains idempotent even when the configured replacement
+password is invalid. Regression coverage was added for both cases.
+
+The atomic registry remote-runner middleware now requires one JSON content-type
+header before decoding a mutation body. Missing, non-JSON and duplicate content
+type values are rejected. Artifact-access fallback routing shares the canonical
+remote-runner path recognizer and passes a private verified-authority extension
+after stripping the shared secret; the controller fallback no longer needs to
+re-read a removed header and rejects duplicate token headers.
+
+Focused source regressions cover password/tenant side effects, runner media type,
+path classification, verified-authority propagation and duplicate token headers.
+Compilation, formatting and tests were not run at the maintainer's request.
