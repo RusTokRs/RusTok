@@ -1060,6 +1060,36 @@ fn repairing_invalid_component_ids_remaps_action_and_aria_references() {
 }
 
 #[test]
+fn opaque_component_ids_are_repaired_without_discarding_unknown_fields() {
+    let document = GrapesJsCodec::decode_value(json!({
+        "pages": [{
+            "id": "home",
+            "component": {
+                "id": "root",
+                "type": "wrapper",
+                "components": [{
+                    "id": "bad target",
+                    "type": 42,
+                    "futureConfig": { "keep": true }
+                }]
+            }
+        }]
+    }))
+    .expect("document");
+
+    let editor = FlyEditor::new(document, RegistrySet::with_builtins());
+    let root = editor.document().component("root").expect("root");
+    let child = root.children().first().expect("opaque child");
+    let ComponentNode::Opaque(raw) = child else {
+        panic!("unknown component should remain opaque");
+    };
+
+    assert_ne!(raw.get("id").and_then(Value::as_str), Some("bad target"));
+    assert_eq!(raw["futureConfig"]["keep"], true);
+    assert!(editor.document().all_component_ids_stable());
+}
+
+#[test]
 fn inserting_invalid_component_ids_remaps_internal_action_references() {
     let mut editor = editor();
     let component: ComponentNode = serde_json::from_value(json!({
