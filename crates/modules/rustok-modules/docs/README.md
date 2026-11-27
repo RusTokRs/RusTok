@@ -1159,7 +1159,27 @@ before the platform lock and hold both through commit; on a domain conflict
 they roll back, release the aggregate claim, and record a replayable failure.
 PostgreSQL transactions use READ COMMITTED so post-lock checks see commits made
 while waiting. The platform lock serializes all tenants of a slug, a deliberate
-concurrency cost.
+concurrency cost. On PostgreSQL, migration 000098 requires the transaction
+advisory gate before the permanent platform activation row. The registry
+BEFORE ROW guard tries the same gate and uses NOWAIT on an existing row;
+a competing late writer fails with SQLSTATE 55P03 and must roll back.
+The AFTER trigger advances only the exact registry witness. Multi-slug SQL
+maintenance must pre-acquire gates and rows in sorted slug order, and TRUNCATE
+of releases is rejected. No witness changes on metadata-only updates,
+failed writes or rollback. Drain old writers/leases before the coordinated
+migration and application rollout. PostgreSQL regressions are unrun.
+
+Governed checkpoint staging, activation and finalization retain the durable
+security epoch through commit: platform/tenant slug fences precede the epoch
+(FOR SHARE on PostgreSQL, SQLite writer reservation), followed by domain
+writes. Quarantine/revoke acquire the exclusive epoch after the slug and before
+security state writes; security receipts are private admission fences.
+Finalization rechecks exact receipt replay after waiting on the platform
+fence, then acquires the epoch before the FK-bearing receipt. Epoch advancement
+returns the exact assigned successor and fails closed on exhaustion.
+This is not a guarantee of global deadlock freedom or of immediate interruption
+of an admitted transaction. PostgreSQL and SQLite regressions are authored,
+not executed.
 
 Lifecycle toggle and post-hook recovery admission now take that same platform
 lock while checking checkpoints and acquiring the durable journal aggregate
@@ -1597,3 +1617,35 @@ acquiring its slug fence; no-transition commits do not acquire a cursor.
 Direct serving SQL checks composition before roles; background serving checks
 composition before closure locks. SQLite composition reserves its writer
 itself. See the [execution authority ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md) for the scoped ordering and remaining audit gaps.
+
+Reconciliation request/claim/heartbeat/report now acquire sorted distinct
+platform slug fences before the readiness state row and read installation
+and admission identity under PostgreSQL FOR SHARE (compatible with FK KEY
+SHARE). Agent paths recheck the exact desired state and target installation
+set after waiting; either convergence branch revalidates all target identities.
+Migration checkpoint writes now acquire platform/tenant slug fences before
+receipt and identity writes. No new migration; coordinate owner writer rollout.
+Migration 000098 removes the blocking registry AFTER-trigger platform edge.
+Migration 000099 adds PostgreSQL BEFORE guards for new release request references
+and publication/yank/unyank receipt parents. The guard takes KEY SHARE NOWAIT
+in request-before-release order where both are referenced, rejects missing or
+invisible parents, and retains existing FK constraints. SET NULL cascades and
+unchanged release request references need no new request parent lock. Retry
+55P03 from a new transaction. Source regressions are authored, unrun. Other
+implicit FK/receipt/generation ordering remains open.
+
+Validation claim, remote completion and expired-claim requeue acquire the
+publish request before locking its job/stage, matching manual stage reports
+and enqueue. Locate without locking a child, then re-read it under the exact
+request fence and child row lock; use PostgreSQL read committed and a live
+clock for remote lease predicates. The lock-order regression is authored,
+unrun; broader owner/worker contention evidence remains open.
+
+Migration 000100 adds request-child and owner-receipt FK guards, including
+review/create/upload/validation receipts, evidence and its receipt, job/stage,
+build/external/Alloy staging, platform admission and release artifact identity.
+The guards run on INSERT or explicit FK-column UPDATE, taking request before
+evidence/release with KEY SHARE NOWAIT. Metadata-only heartbeat updates do not
+acquire a parent fence. Existing FK actions are retained. Retry SQLSTATE 55P03
+from a new transaction; missing/invisible parents fail closed. Source-only
+regressions cover all listed parent classes; no runtime proof yet.

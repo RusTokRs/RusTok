@@ -134,9 +134,7 @@ impl SeaOrmModuleGovernanceService {
             let stage_id: String = candidate
                 .try_get("", "id")
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-            let tx = self
-                .db
-                .begin()
+            let tx = crate::backend::begin_fenced_transaction(&self.db)
                 .await
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             crate::backend::set_platform_scope(&tx)
@@ -145,7 +143,12 @@ impl SeaOrmModuleGovernanceService {
             let tx_backend =
                 SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
             let tx_mark = |n| tx_backend.placeholder(n);
-            let tx_now = tx_backend.now_sql();
+            let tx_now = tx_backend.lease_now_sql();
+            let Some(fenced_request) = lock_validation_request(&tx, tx_backend, ValidationRequestLocator::StageId, &stage_id).await? else {
+                tx.rollback().await.map_err(store_error)?;
+                continue;
+            };
+            let stage_lock = validation_child_lock(tx_backend, ValidationRequestLocator::StageId);
             let Some(stage) = tx
                 .query_one_raw(Statement::from_sql_and_values(
                     tx_backend.db_backend(),
@@ -155,10 +158,10 @@ impl SeaOrmModuleGovernanceService {
                          r.slug, r.version, r.status AS request_status, \
                          r.crate_name, r.artifact_storage_key, r.artifact_checksum_sha256 \
                          FROM registry_validation_stages s JOIN registry_publish_requests r ON r.id = s.request_id \
-                         WHERE s.id = {}",
-                        tx_mark(1)
+                         WHERE s.id = {} AND r.id = {}{stage_lock}",
+                        tx_mark(1), tx_mark(2)
                     ),
-                    vec![stage_id.clone().into()],
+                    vec![stage_id.clone().into(), fenced_request.into()],
                 ))
                 .await
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?
@@ -441,9 +444,7 @@ impl SeaOrmModuleGovernanceService {
             let stage_id: String = candidate
                 .try_get("", "id")
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-            let tx = self
-                .db
-                .begin()
+            let tx = crate::backend::begin_fenced_transaction(&self.db)
                 .await
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             crate::backend::set_platform_scope(&tx)
@@ -451,11 +452,16 @@ impl SeaOrmModuleGovernanceService {
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
             let mark = |n| backend.placeholder(n);
-            let now = backend.now_sql();
+            let now = backend.lease_now_sql();
+            let Some(fenced_request) = lock_validation_request(&tx, backend, ValidationRequestLocator::StageId, &stage_id).await? else {
+                tx.rollback().await.map_err(store_error)?;
+                continue;
+            };
+            let stage_lock = validation_child_lock(backend, ValidationRequestLocator::StageId);
             let Some(stage) = tx.query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
-                format!("SELECT s.stage_key, s.attempt_number, s.queue_reason, s.claim_id, s.claimed_by, r.id AS request_id, r.revision AS request_revision, r.slug, r.version, r.status AS request_status FROM registry_validation_stages s JOIN registry_publish_requests r ON r.id = s.request_id WHERE s.id = {}", mark(1)),
-                vec![stage_id.clone().into()],
+                format!("SELECT s.stage_key, s.attempt_number, s.queue_reason, s.claim_id, s.claimed_by, r.id AS request_id, r.revision AS request_revision, r.slug, r.version, r.status AS request_status FROM registry_validation_stages s JOIN registry_publish_requests r ON r.id = s.request_id WHERE s.id = {} AND r.id = {}{stage_lock}", mark(1), mark(2)),
+                vec![stage_id.clone().into(), fenced_request.into()],
             )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))? else {
                 tx.rollback().await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
                 continue;

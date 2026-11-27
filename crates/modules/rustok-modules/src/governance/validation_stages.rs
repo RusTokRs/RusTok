@@ -373,9 +373,7 @@ impl SeaOrmModuleGovernanceService {
         command: ModuleRemoteValidationTerminalCommand,
     ) -> Result<ModuleRemoteValidationStageTransition, ModuleGovernanceError> {
         command.validate()?;
-        let tx = self
-            .db
-            .begin()
+        let tx = crate::backend::begin_fenced_transaction(&self.db)
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         crate::backend::set_platform_scope(&tx)
@@ -383,10 +381,13 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| backend.placeholder(n);
-        let now = backend.now_sql();
+        let now = backend.lease_now_sql();
+        let fenced_request = lock_validation_request(&tx, backend, ValidationRequestLocator::ClaimId, &command.claim_id).await?
+            .ok_or(ModuleGovernanceError::RemoteValidationLeaseNotFound)?;
+        let stage_lock = validation_child_lock(backend, ValidationRequestLocator::ClaimId);
         let row = tx.query_one_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
             "SELECT s.id, s.stage_key, s.status, s.claimed_by, s.runner_kind, s.attempt_number, s.queue_reason, r.id AS request_id, r.revision AS request_revision, r.slug, r.version, r.status AS request_status \
-             FROM registry_validation_stages s JOIN registry_publish_requests r ON r.id = s.request_id WHERE s.claim_id = {}", mark(1)), vec![command.claim_id.clone().into()]))
+             FROM registry_validation_stages s JOIN registry_publish_requests r ON r.id = s.request_id WHERE s.claim_id = {} AND r.id = {}{stage_lock}", mark(1), mark(2)), vec![command.claim_id.clone().into(), fenced_request.into()]))
             .await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?
             .ok_or(ModuleGovernanceError::RemoteValidationLeaseNotFound)?;
         let stage_id: String = row

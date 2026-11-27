@@ -72,7 +72,10 @@ See [the cache-consistency decision](../../../DECISIONS/2026-11-02-rbac-cache-re
   only; after seeding, tenant grant changes are legitimate persisted state.
   System-role repair (an explicit operator action) restores missing default
   roles with their bootstrap grants and never rewrites an existing role's
-  grants; it is not part of the normal request flow, so roles deleted through
+  grants, including when a concurrent initializer wins the missing-role
+  insert. Only a successfully inserted role is seeded; single-role vocabulary
+  materialization uses the same ordered (resource, action) keys as control-plane
+  grant writes. Repair is not part of the normal request flow, so roles deleted through
   the control plane stay deleted.
 - The decision engine is the platform's own set-based evaluator over the
   resolved permission set (see
@@ -96,6 +99,10 @@ a generation-aware host callback supports cache clearing and best-effort fan-out
 its compatibility default calls the legacy membership callback. Recovery is
 eventual and depends on healthy generation watchers; this is not a transactional
 outbox or a revocation fence. Metadata-only edits do not advance the generation.
+The reservation is a late transaction-held row write returning its exact
+successor and rejecting invalid or exhausted integer storage. Never acquire
+new earlier-ranked tenant/credential/user/role/grant/receipt identities after
+reserving it. Bulk lock-order verification remains open.
 [ADR](../../../DECISIONS/2026-11-02-rbac-graphql-grant-invalidation.md).
 
 ## Module availability (dormant grants)

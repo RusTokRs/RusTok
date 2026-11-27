@@ -35,6 +35,15 @@ documentation for this module must live inside the crate, not spread across
   the requested role in stable identity order and returns their canonical
   revision binding. Static grants and role identity changes advance the role
   epoch transactionally; see the [role epoch ADR](../../../../DECISIONS/2026-11-27-rbac-role-grant-revision.md).
+  Migration 000006 adds PostgreSQL nonblocking BEFORE relation guards for
+  surviving membership/grant revision parents, followed by referenced
+  role/permission FK parents. The existing AFTER revision triggers remain
+  the sole revision writers. Late contention returns SQLSTATE 55P03;
+  roll back the entire transaction. Direct artifact grants and receipts
+  also pre-lock actor, role and definition FK parents with KEY SHARE NOWAIT.
+  This does not cover arbitrary bulk child-row acquisition or cascade waits
+  before the trigger runs. No SQLite behavior or stored revision changes.
+  PostgreSQL regression evidence remains unrun.
   `lock_actor_role_grants_on` uses the same ordered static-role fence as
   invitation grant binding, without requiring a destination role. The caller
   holds the actor user fence and owns the subsequent permission decision.
@@ -218,11 +227,22 @@ thresholds and tune only after retaining workload evidence:
 1. Produce the read-only repair plan first and review the affected system roles.
 2. Execute the approved `rbac repair-system-roles --apply` command against the
    authoritative database.
-3. Confirm the repair transaction commits one new durable generation.
+3. If the committed repair affects existing authorization snapshots, confirm
+   the repair transaction commits one new durable generation. A no-op or a
+   lost insert race must not claim another writer's change.
 4. Confirm local invalidation occurs immediately and remote replicas recover to the
    committed generation without a restart.
 5. Verify representative allow and deny decisions. Do not infer success only from
    the CLI exit code or Redis publication.
+
+Single-role seed and grant paths order shared permission vocabulary keys by
+(resource, action). Repair seeds only its own successful role insertion;
+a concurrent winning persisted system role is left unchanged. The RBAC
+generation reservation rejects non-integer SQLite storage and exhausted
+counters, and returns the exact assigned successor. SQLite regressions and
+an opt-in PostgreSQL reservation contention test
+(`RUSTOK_RBAC_TEST_DATABASE_URL`) are authored, not run. Full bulk
+role/permission ordering and FK/trigger auditing remain open.
 
 The current metrics and runbook make generation recovery observable, but a complete
 single-incident chain from evaluator decision through relation state, cache snapshot,

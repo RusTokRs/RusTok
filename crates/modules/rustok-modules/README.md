@@ -187,6 +187,10 @@ production readiness. The documented implementation and operational gaps include
   are also fenced, including implicit clear and quarantine/clear ABA.
   Independent monotonic registry release authority fences publication, yank,
   unyank and availability ABA for the root and entire serving artifact closure.
+  Migration 000098 moves PostgreSQL registry fence admission to a BEFORE guard
+  with the canonical advisory gate and nonblocking late acquisition; the
+  AFTER trigger only advances the witness. Coordinated writer cutover and
+  PostgreSQL contention verification remain required.
   Artifact scope selection generations fence lifecycle ABA on the exact
   serving closure. Migration 000095 requires coordinated writer/reader
   cutover. Mixed native/artifact serving closures also fence tenant lifecycle
@@ -254,3 +258,18 @@ and evidence. These items must not be presented as production-ready until their
 owner contracts, runtime composition, and production evidence are complete.
 
 See the [local documentation](./docs/README.md).
+
+Deployment reconciliation and migration checkpoints now share the platform slug
+ordering: reconciliation fences all target slugs before readiness state, uses
+read-only identity locks compatible with PostgreSQL FK KEY SHARE, and rechecks
+all target identities before convergence. This is source-only remediation;
+registry platform trigger entry is fenced by migration 000098. Migration 000099
+also rejects contended late release/request and publication/yank/unyank receipt
+FK parent acquisition (PostgreSQL 55P03). Retry from a new transaction; broader
+FK/receipt ordering and PostgreSQL runtime verification remain open.
+
+Registry validation request-first locking and migration 000100 extend the
+nonblocking FK admission boundary to review/validation/evidence receipts,
+request staging, admissions, release artifacts and owner transfer receipts.
+PostgreSQL contention and migration verification remain pending; the broader
+Auth/RBAC and cross-owner FK order is not certified.
