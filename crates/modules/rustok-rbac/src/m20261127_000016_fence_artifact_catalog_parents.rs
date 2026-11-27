@@ -159,7 +159,36 @@ mod tests {
              INSERT INTO rbac_artifact_permission_translations VALUES ('{id}','{id}','old');
              INSERT INTO rbac_artifact_release_permission_translations VALUES ('{id}','{id}','old');"
         )).await.unwrap();
-        Migration.up(&SchemaManager::new(&setup)).await.unwrap();
+        // Install the actual predecessor triggers before replacing their function.
+        // The assignment and operation tables keep the three exact FK tuples.
+        setup.execute_unprepared(&format!(
+            "CREATE TABLE users (id UUID PRIMARY KEY, tenant_id UUID NOT NULL, UNIQUE(tenant_id,id));
+             CREATE TABLE roles (id UUID PRIMARY KEY, tenant_id UUID NOT NULL, UNIQUE(tenant_id,id));
+             CREATE TABLE permissions (id UUID PRIMARY KEY);
+             CREATE TABLE user_roles (id UUID PRIMARY KEY, user_id UUID, role_id UUID);
+             CREATE TABLE role_permissions (id UUID PRIMARY KEY, role_id UUID, permission_id UUID);
+             CREATE TABLE rbac_artifact_role_permissions (
+                id UUID PRIMARY KEY, tenant_id UUID NOT NULL, role_id UUID NOT NULL,
+                artifact_permission_id UUID NOT NULL, permission_scope_key TEXT NOT NULL,
+                granted_by_actor_id UUID NOT NULL,
+                FOREIGN KEY(tenant_id,role_id) REFERENCES roles(tenant_id,id),
+                FOREIGN KEY(tenant_id,granted_by_actor_id) REFERENCES users(tenant_id,id),
+                FOREIGN KEY(artifact_permission_id,permission_scope_key)
+                    REFERENCES rbac_artifact_permission_definitions(id,scope_key));
+             CREATE TABLE rbac_artifact_role_permission_operations (
+                id UUID PRIMARY KEY, tenant_id UUID NOT NULL, role_id UUID NOT NULL,
+                artifact_permission_id UUID NOT NULL, permission_scope_key TEXT NOT NULL,
+                actor_id UUID NOT NULL,
+                FOREIGN KEY(tenant_id,role_id) REFERENCES roles(tenant_id,id),
+                FOREIGN KEY(tenant_id,actor_id) REFERENCES users(tenant_id,id),
+                FOREIGN KEY(artifact_permission_id,permission_scope_key)
+                    REFERENCES rbac_artifact_permission_definitions(id,scope_key));
+             INSERT INTO users VALUES ('{id}','{other}');
+             INSERT INTO roles VALUES ('{id}','{other}');"
+        )).await.unwrap();
+        let manager = SchemaManager::new(&setup);
+        crate::m20261127_000006_fence_rbac_relation_parents::Migration.up(&manager).await.unwrap();
+        Migration.up(&manager).await.unwrap();
         setup.commit().await.unwrap();
 
         let cases = [
@@ -181,6 +210,42 @@ mod tests {
             let retry = tx(&db, &schema).await;
             retry.execute_unprepared(&insert).await.unwrap();
             retry.rollback().await.unwrap();
+        }
+
+        // Exercise both existing triggers, not just the new catalog trigger.
+        for table in ["rbac_artifact_role_permissions", "rbac_artifact_role_permission_operations"] {
+            let insert = format!(
+                "INSERT INTO {table} VALUES ('{id}','{other}','{id}','{id}','platform','{id}')"
+            );
+            for parent in ["users", "roles", "rbac_artifact_permission_definitions"] {
+                for lock in [
+                    format!("SELECT 1 FROM {parent} FOR UPDATE"),
+                    format!("LOCK TABLE {parent} IN ACCESS EXCLUSIVE MODE"),
+                ] {
+                    let holder = tx(&db, &schema).await;
+                    holder.execute_unprepared(&lock).await.unwrap();
+                    let writer = tx(&db, &schema).await;
+                    let error = tokio::time::timeout(Duration::from_secs(5), writer.execute_unprepared(&insert))
+                        .await.expect("late assignment parent must not wait").unwrap_err();
+                    assert!(error.to_string().contains("RBAC artifact authority parent fence busy"), "{error}");
+                    writer.rollback().await.unwrap();
+                    holder.rollback().await.unwrap();
+                }
+            }
+
+            // An exact earlier parent held by the owner transaction is reentrant.
+            let retry = tx(&db, &schema).await;
+            retry.execute_unprepared("SELECT 1 FROM users FOR UPDATE; SELECT 1 FROM roles FOR UPDATE; SELECT 1 FROM rbac_artifact_permission_definitions FOR UPDATE")
+                .await.unwrap();
+            retry.execute_unprepared(&insert).await.unwrap();
+            retry.rollback().await.unwrap();
+
+            // A different tenant cannot reuse the actor/role FK identity.
+            let writer = tx(&db, &schema).await;
+            let wrong = format!("INSERT INTO {table} VALUES ('{id}','{id}','{id}','{id}','platform','{id}')");
+            let error = writer.execute_unprepared(&wrong).await.unwrap_err();
+            assert!(error.to_string().contains("RBAC artifact actor parent missing"), "{error}");
+            writer.rollback().await.unwrap();
         }
 
         let holder = tx(&db, &schema).await;

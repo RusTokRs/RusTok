@@ -531,3 +531,7 @@ exists.
   parent row/table contention, retry, wrong tuple and metadata-only update.
   Compilation and runtime evidence remain pending; arbitrary bulk DML,
   generation coupling for direct relation writes and cross-owner edges remain open.
+  Extended the 000016 PostgreSQL regression to install the actual 000006
+  predecessor and exercise both artifact grant and operation receipt guards
+  against all three FK parents (row and relation contention), exact tenant
+  rejection and reentrant owner locks. No migration SQL change; unrun.

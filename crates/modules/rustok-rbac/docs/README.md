@@ -360,3 +360,8 @@ grant/receipt guards also take parent relation locks NOWAIT. Contention rejects
 the transaction with 55P03; retry only the complete owner transaction. SQLite
 retains serialized writers and existing FKs. This is not a proof of arbitrary
 bulk SQL or global deadlock freedom; PostgreSQL regression unrun.
+
+The 000016 contention regression also installs the predecessor 000006
+triggers and exercises the grant and operation receipt guards against each
+actor, role and definition FK parent, with row/table contention and reentrant
+owner admission. Cross-tenant FK substitution is rejected; source only.
