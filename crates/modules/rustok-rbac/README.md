@@ -128,9 +128,15 @@ deletes or hides roles or their grants — the module's grants become
 The GraphQL role-assignment adapter forwards its direct-user principal to
 the Auth user-administration port; the host request scope carries admitted
 session identity and credential deadline into that transaction. Role
-definition create/update/delete and artifact permission changes still need
-transaction-bound credential and live policy authorization; inter-module
-lock ordering and runtime verification remain pending.
+definition create/update/delete and the host REST artifact grant/revoke
+routes now require the host transaction authority port on the RBAC owner
+transaction. Lock the direct session, current static module policy and
+the actor/target role union before evaluating live grants; require the
+admitted permission ceiling and a final credential deadline before commit.
+Missing host authority denies writes. Artifact operations retain their
+exact registered scope, idempotency receipt and transactional event. This
+does not establish artifact-runtime entitlement or global inter-module
+lock ordering; compile and contention evidence remain pending.
 
 - **Role assignment replaces all tenant memberships with a single role.**
   `assign_user_role` accepts a built-in role enum (`role`) or any

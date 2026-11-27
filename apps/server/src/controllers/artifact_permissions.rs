@@ -20,7 +20,8 @@ use rustok_rbac::{
     require_direct_control_plane_user,
 };
 use rustok_web::json_response;
-use sea_orm::DatabaseTransaction;
+use sea_orm::{DatabaseTransaction, TransactionTrait};
+use rustok_rbac::graphql::{RbacMutationAuthorityHandle, RbacGraphqlRoleWriteError};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -179,8 +180,16 @@ async fn assign(
         transactional_event_bus_from_context(ctx),
     ));
     let service = RbacArtifactPermissionAssignmentService::new(ctx.db_clone(), event_publisher);
+    let extensions = ctx.shared_get::<Arc<rustok_core::ModuleRuntimeExtensions>>()
+        .ok_or(Error::InternalServerError)?;
+    let authority = extensions.get::<RbacMutationAuthorityHandle>()
+        .cloned().ok_or(Error::InternalServerError)?;
+    authority.0.prepare().await.map_err(map_authority_error)?;
+    let tx = ctx.db().begin().await?;
+    let locked = authority.0.lock(&tx, tenant_id, actor_id, Some(role_id), &[Permission::MODULES_MANAGE])
+        .await.map_err(map_authority_error)?;
     let result = service
-        .assign(ArtifactRolePermissionAssignmentCommand {
+        .assign_in_transaction(&tx, ArtifactRolePermissionAssignmentCommand {
             tenant_id,
             role_id,
             scope: input.scope.into(),
@@ -192,6 +201,8 @@ async fn assign(
         })
         .await
         .map_err(map_assignment_error)?;
+    authority.0.ensure_deadline(&tx, &locked).await.map_err(map_authority_error)?;
+    tx.commit().await?;
     Ok(json_response(ArtifactRolePermissionAssignmentResponse {
         applied: result.applied,
     }))
@@ -223,6 +234,16 @@ fn ensure_modules_manage(permissions: &[Permission]) -> Result<()> {
         "forbidden",
         "Permission denied: modules:manage required",
     )))
+}
+
+fn map_authority_error(error: RbacGraphqlRoleWriteError) -> Error {
+    match error {
+        RbacGraphqlRoleWriteError::Forbidden(_) => http_error(rustok_web::HttpError::forbidden(
+            "forbidden", "Current direct-session artifact permission authority required",
+        )),
+        RbacGraphqlRoleWriteError::NotFound(_) => Error::NotFound,
+        _ => Error::InternalServerError,
+    }
 }
 
 fn map_assignment_error(error: ArtifactPermissionAssignmentError) -> Error {
