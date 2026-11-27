@@ -11,8 +11,10 @@ use async_trait::async_trait;
 use rustok_core::ModuleRegistry;
 use rustok_mcp::{
     McpAccessContext, McpAccessPolicy, McpActorType, McpAuditSink, McpIdentity,
-    McpToolCallAuditEvent, McpToolCallOutcome, REGISTRY_TOOL_NAMES, RegistryToolInvocationError,
-    default_tool_requirement, invoke_registry_tool,
+    McpToolCallAuditEvent, McpToolCallOutcome, RegistryToolInvocationError,
+    TOOL_BLOG_MODULE, TOOL_CONTENT_MODULE, TOOL_FORUM_MODULE, TOOL_LIST_MODULES,
+    TOOL_MCP_HEALTH, TOOL_MCP_WHOAMI, TOOL_MODULE_DETAILS, TOOL_MODULE_EXISTS,
+    TOOL_PAGES_MODULE, TOOL_QUERY_MODULES, default_tool_requirement, invoke_registry_tool,
 };
 use rustok_modules::{ArtifactMcpCallRequest, ArtifactMcpError, ArtifactMcpInvoker};
 use rustok_sandbox::SandboxSubject;
@@ -20,6 +22,22 @@ use serde_json::Value;
 
 const RUSTOK_SERVER_ALIAS: &str = "rustok";
 const ARTIFACT_MCP_TRANSPORT: &str = "artifact_capability";
+
+// Keep the artifact surface separate from the general MCP registry. A future
+// mutating/admin tool must never become artifact-callable merely by joining
+// the interactive registry's global tool list.
+const ARTIFACT_READ_ONLY_REGISTRY_TOOLS: &[&str] = &[
+    TOOL_LIST_MODULES,
+    TOOL_QUERY_MODULES,
+    TOOL_MODULE_EXISTS,
+    TOOL_MODULE_DETAILS,
+    TOOL_CONTENT_MODULE,
+    TOOL_BLOG_MODULE,
+    TOOL_FORUM_MODULE,
+    TOOL_PAGES_MODULE,
+    TOOL_MCP_HEALTH,
+    TOOL_MCP_WHOAMI,
+];
 
 #[async_trait]
 trait ArtifactMcpServer: Send + Sync {
@@ -40,7 +58,7 @@ struct RegistryArtifactMcpServer {
 #[async_trait]
 impl ArtifactMcpServer for RegistryArtifactMcpServer {
     fn supports(&self, tool_name: &str) -> bool {
-        REGISTRY_TOOL_NAMES.contains(&tool_name)
+        ARTIFACT_READ_ONLY_REGISTRY_TOOLS.contains(&tool_name)
     }
 
     async fn invoke(
