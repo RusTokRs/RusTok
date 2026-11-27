@@ -29,10 +29,10 @@ pub(crate) type SharedForumPostingPolicyFactsComposer = Arc<ForumPostingPolicyFa
 type AccountAgeClock = Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>;
 
 /// Host-owned exact-user adapter over the authoritative `users.created_at`
-/// timestamp. Production observations use the Auth application's DB-
-—corroborated clock; tests may inject a deterministic observation time. Forum
-/// receives only the derived bounded age in seconds and never imports the
-/// server user entity or reads the users table directly.
+/// timestamp. Production observations use the Auth application's
+/// database-corroborated clock; tests may inject a deterministic observation
+/// time. Forum receives only the derived bounded age in seconds and never
+/// imports the server user entity or reads the users table directly.
 #[derive(Clone)]
 pub(crate) struct ServerForumAccountAgeFactPort {
     db: DatabaseConnection,
