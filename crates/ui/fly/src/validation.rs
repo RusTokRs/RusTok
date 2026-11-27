@@ -603,7 +603,7 @@ fn walk_component(
                 "page_content_slot is only allowed inside layout templates",
             ));
         }
-        if !component.children().is_empty() {
+        if !component.components.is_empty() {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
                 "page_content_slot_cannot_have_children",
@@ -1177,7 +1177,7 @@ fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
                 "symbol instance must carry a component id",
             ));
         }
-        if !component.children().is_empty() {
+        if !component.components.is_empty() {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
                 "symbol_instance_with_children",
@@ -1283,6 +1283,66 @@ mod tests {
                 .count(),
             3
         );
+    }
+
+    #[test]
+    fn page_content_slot_rejects_opaque_children() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flyDocumentKind": "layout_template",
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "slot",
+                        "type": "page_content_slot",
+                        "components": { "id": "opaque-child" }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "page_content_slot_cannot_have_children"
+        }));
+    }
+
+    #[test]
+    fn symbol_instance_rejects_opaque_children() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [{
+                "id": "cta",
+                "components": [{ "id": "cta-1", "type": "text" }]
+            }],
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "slot",
+                        "type": "symbol",
+                        "symbolId": "cta",
+                        "components": { "id": "opaque-child" }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "symbol_instance_with_children"
+        }));
     }
 
     #[test]
