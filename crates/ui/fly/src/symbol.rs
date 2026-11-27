@@ -217,6 +217,36 @@ fn apply_symbol_command_inner(
     }
 }
 
+enum SymbolComponentRef<'a> {
+    Typed(&'a ComponentNode),
+    Opaque(&'a Value),
+}
+
+fn push_opaque_symbol_children<'a>(
+    value: &'a Value,
+    pending: &mut Vec<SymbolComponentRef<'a>>,
+) {
+    match value {
+        Value::Array(children) => {
+            pending.extend(children.iter().map(SymbolComponentRef::Opaque));
+        }
+        Value::Null => {}
+        _ => pending.push(SymbolComponentRef::Opaque(value)),
+    }
+}
+
+fn push_opaque_symbol_node_children<'a>(
+    value: &'a Value,
+    pending: &mut Vec<SymbolComponentRef<'a>>,
+) {
+    if let Some(children) = value
+        .as_object()
+        .and_then(|object| object.get("components"))
+    {
+        push_opaque_symbol_children(children, pending);
+    }
+}
+
 fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()> {
     let encoded = serde_json::to_vec(descriptor)
         .map_err(|error| FlyError::InvalidSymbolReference(error.to_string()))?;
@@ -226,7 +256,11 @@ fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()> {
             descriptor.id
         )));
     }
-    let mut pending: Vec<&ComponentNode> = descriptor.components.iter().collect();
+    let mut pending = descriptor
+        .components
+        .iter()
+        .map(SymbolComponentRef::Typed)
+        .collect::<Vec<_>>();
     let mut count = 0;
     while let Some(component) = pending.pop() {
         count += 1;
@@ -236,8 +270,21 @@ fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()> {
                 descriptor.id
             )));
         }
-        if let ComponentNode::Object(object) = component {
-            pending.extend(object.children());
+        match component {
+            SymbolComponentRef::Typed(ComponentNode::Object(object)) => {
+                match &object.components {
+                    crate::ComponentChildren::Nodes(children) => {
+                        pending.extend(children.iter().map(SymbolComponentRef::Typed));
+                    }
+                    crate::ComponentChildren::Opaque(children) => {
+                        push_opaque_symbol_children(children, &mut pending);
+                    }
+                }
+            }
+            SymbolComponentRef::Typed(ComponentNode::Opaque(raw))
+            | SymbolComponentRef::Opaque(raw) => {
+                push_opaque_symbol_node_children(raw, &mut pending);
+            }
         }
     }
     if let Err(reason) = validate_identifier(&descriptor.id) {
@@ -1312,6 +1359,36 @@ mod tests {
             .collect();
         assert!(codes.contains(&"symbol_reference_missing"));
         assert!(codes.contains(&"symbol_instance_with_children"));
+    }
+
+    #[test]
+    fn symbol_component_limit_counts_opaque_children() {
+        let opaque_children = (0..MAX_SYMBOL_COMPONENTS)
+            .map(|index| json!({ "id": format!("opaque-{index}") }))
+            .collect::<Vec<_>>();
+        let descriptor = SymbolDescriptor {
+            id: "large-symbol".to_string(),
+            name: None,
+            components: vec![ComponentNode::Object(Box::new(ComponentObject {
+                id: Some("root".to_string()),
+                component_type: Some("wrapper".to_string()),
+                components: crate::ComponentChildren::Opaque(Value::Object(
+                    serde_json::Map::from_iter([
+                        ("id".to_string(), json!("opaque-parent")),
+                        ("components".to_string(), json!(opaque_children)),
+                    ]),
+                )),
+                ..ComponentObject::default()
+            }))],
+            styles: Vec::new(),
+            assets: Vec::new(),
+        };
+
+        assert!(matches!(
+            validate_definition(&descriptor),
+            Err(FlyError::InvalidSymbolReference(message))
+                if message.contains("exceeds 512 components")
+        ));
     }
 
     #[test]
