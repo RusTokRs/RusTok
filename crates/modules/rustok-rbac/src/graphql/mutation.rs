@@ -70,11 +70,13 @@ async fn lock_role_authority(
     tenant_id: Uuid,
     target_role_id: Option<Uuid>,
 ) -> Result<RbacLockedMutationAuthority> {
-    let authority = handle
+    let mut authority = handle
         .0
         .lock(tx, tenant_id, auth.user_id, target_role_id, ROLE_MANAGEMENT)
         .await
         .map_err(map_role_write_error)?;
+    // Enforce the owner contract even if an adapter returns raw live grants.
+    authority.restrict_to(&auth.permissions);
     if !ROLE_MANAGEMENT
         .iter()
         .any(|p| has_effective_permission(&authority.permissions, p))

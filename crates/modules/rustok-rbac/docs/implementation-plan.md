@@ -39,6 +39,16 @@ cross-tenant grants and membership, cache misses, and caller-transaction
 revocation. Compilation, PostgreSQL concurrent execution and distributed cache
 recovery remain pending; a statement snapshot is not a revocation fence.
 
+## Transaction-bound management ceiling (2026-11-27)
+
+The control-plane host and GraphQL owner intersect admitted and live effective
+grants before evaluating the management OR gate. Independent successful
+checks against disjoint grant sets are no longer sufficient. The host rechecks
+request scope after lock/read waits. Regressions cover wildcard narrowing,
+disjoint management alternatives on create/update/delete, and unchanged state
+on denial. Compile and execution evidence remain pending. Artifact purge
+authorization and global inter-module fences remain separate work.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`

@@ -705,21 +705,23 @@ impl ServerAuthAdminMutationProvider {
         if let Some(snapshot) = &availability {
             permissions = snapshot.active_permissions(&permissions);
         }
-        if !required
-            .iter()
-            .any(|p| has_effective_permission(&permissions, p))
-        {
-            return Err(AuthAdminMutationError::Forbidden(
-                "current RBAC management permission required".into(),
-            ));
-        }
         self.ensure_user_admin_credential_deadline(tx, Some(deadline))
             .await?;
-        Ok(rustok_rbac::graphql::RbacLockedMutationAuthority {
+        let mut authority = rustok_rbac::graphql::RbacLockedMutationAuthority {
             permissions,
             availability,
             deadline,
-        })
+        };
+        // Reconfirm the admitted scope after the asynchronous lock/read path.
+        // A different alternative permission obtained since admission cannot
+        // substitute for a revoked one, nor enlarge the returned authority.
+        authority.restrict_to(&self.request_permissions(&context)?);
+        if !has_any_effective_permission(&authority.permissions, required) {
+            return Err(AuthAdminMutationError::Forbidden(
+                "current RBAC management permission within admitted authority required".into(),
+            ));
+        }
+        Ok(authority)
     }
 }
 

@@ -20,6 +20,9 @@
   - `authorize_all_permissions`, `authorize_any_permission`, `authorize_permission`
   - `check_all_permissions`, `check_any_permission`, `check_permission`
   - `has_effective_permission_in_set`, `missing_permissions`
+- **Transaction-bound control-plane authority** (GraphQL feature):
+  - `RbacLockedMutationAuthority::restrict_to` narrows live grants to admitted
+    effective grants; a management alternative must remain in both sets.
 - **Role & Invalidation Management**:
   - `RbacRoleAssignmentDbWriter`, `RbacRoleMutationPlan`, `replace_persisted_user_role_on`
   - `read_permission_invalidation_generation`, `reserve_permission_invalidation_generation`

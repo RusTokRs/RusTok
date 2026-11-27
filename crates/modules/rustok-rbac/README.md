@@ -145,7 +145,11 @@ routes now require the host transaction authority port on the RBAC owner
 transaction. Lock the direct session, current static module policy and
 the actor/target role union before evaluating live grants; require the
 admitted permission ceiling and a final credential deadline before commit.
-Missing host authority denies writes. Artifact operations retain their
+The returned locked permission set is the effective intersection of admitted
+and live grants (including manage wildcard narrowing). At least one identical
+management alternative must survive both checks; a newly acquired alternative
+cannot replace a revoked one. The GraphQL owner also applies its admitted
+ceiling to the adapter result. Missing host authority denies writes. Artifact operations retain their
 exact registered scope, idempotency receipt and transactional event. Every
 actual artifact grant or revoke advances the existing durable RBAC generation
 in the same transaction; exact retries and state no-ops do not. Missing,

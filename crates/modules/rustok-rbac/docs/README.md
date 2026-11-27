@@ -18,6 +18,16 @@ documentation for this module must live inside the crate, not spread across
 - permission-aware runtime contracts and typed RBAC primitives in conjunction with `rustok-core`;
 - absence of rollout-mode and shadow-runtime logic in the live surface.
 
+## Transaction-bound management alternatives
+
+The host RBAC control-plane authority returns only the effective intersection
+of the admitted request and current module-filtered grants. The GraphQL owner
+also applies its request ceiling before testing management alternatives.
+A disjoint old/new management permission pair never authorizes a mutation;
+a concrete grant can survive a manage wildcard in either direction, but
+cannot be widened to manage. Credential deadline and database fences remain
+mandatory; source regressions are unrun.
+
 ## Integration
 
 - `SeaOrmRelationPermissionStore` owns persisted relation reads for both cached
