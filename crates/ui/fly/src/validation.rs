@@ -432,9 +432,12 @@ fn walk_opaque_value(
                 "page_content_slot is only allowed inside layout templates",
             ));
         }
-        if let Some(children) = object.get("components").and_then(Value::as_array)
-            && !children.is_empty()
-        {
+        let has_children = object.get("components").is_some_and(|children| match children {
+            Value::Array(children) => !children.is_empty(),
+            Value::Null => false,
+            _ => true,
+        });
+        if has_children {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
                 "page_content_slot_cannot_have_children",
@@ -462,12 +465,25 @@ fn walk_opaque_value(
         }
     }
 
-    if let Some(children) = object.get("components").and_then(Value::as_array) {
-        for (index, child) in children.iter().enumerate() {
+    if let Some(children) = object.get("components") {
+        if let Some(children) = children.as_array() {
+            for (index, child) in children.iter().enumerate() {
+                walk_opaque_value(
+                    child,
+                    depth + 1,
+                    &format!("{path}.components[{index}]"),
+                    limits,
+                    document_kind,
+                    ids,
+                    slot_count,
+                    report,
+                );
+            }
+        } else if !children.is_null() {
             walk_opaque_value(
-                child,
+                children,
                 depth + 1,
-                &format!("{path}.components[{index}]"),
+                &format!("{path}.components"),
                 limits,
                 document_kind,
                 ids,
@@ -691,7 +707,9 @@ fn walk_component(
 
     // A *child list* can be opaque too (`ComponentChildren::Opaque`), and `children()` reports it
     // as empty — a second blind spot of the same kind as an opaque node.
-    if let ComponentChildren::Opaque(value) = &component.components {
+    if let ComponentChildren::Opaque(value) = &component.components
+        && !value.is_null()
+    {
         report.opaque_component_count += 1;
         report.diagnostics.push(diagnostic(
             ValidationSeverity::Warning,
@@ -1265,6 +1283,44 @@ mod tests {
                 .count(),
             3
         );
+    }
+
+    #[test]
+    fn validates_nested_object_opaque_children_for_identity_and_depth() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": {
+                        "id": "opaque-parent",
+                        "components": {
+                            "id": "opaque-parent"
+                        }
+                    }
+                }
+            }]
+        }))
+        .expect("document");
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits {
+                maximum_depth: 1,
+                ..ValidationLimits::default()
+            },
+        );
+
+        assert_eq!(report.node_count, 3);
+        assert_eq!(report.maximum_depth, 2);
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "maximum_depth_exceeded"
+                && diagnostic.path.ends_with("components.components")
+        }));
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "duplicate_component_id"
+                && diagnostic.path.ends_with("components.components")
+        }));
     }
 
     #[test]
