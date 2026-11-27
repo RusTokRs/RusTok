@@ -27,6 +27,90 @@ use uuid::Uuid;
 
 pub const DEFAULT_MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024; // 10 MB
 
+#[derive(Clone)]
+struct HttpEffectReceiptKey {
+    tenant_id: Uuid,
+    installation_id: Uuid,
+    execution_idempotency_key: Uuid,
+    request_idempotency_key: Uuid,
+    request_digest: String,
+}
+
+fn http_effect_receipt_key(
+    call: &CapabilityCall,
+    input: &serde_json::Map<String, Value>,
+) -> SandboxResult<HttpEffectReceiptKey> {
+    let tenant_id = call
+        .context
+        .tenant_id
+        .filter(|id| !id.is_nil())
+        .ok_or_else(|| SandboxError::CapabilityDenied(call.capability.clone()))?;
+    let execution_idempotency_key = call
+        .context
+        .idempotency_key
+        .filter(|id| !id.is_nil())
+        .ok_or_else(|| SandboxError::CapabilityConstraintDenied {
+            capability: call.capability.clone(),
+            reason: "mutating HTTP calls require a stable execution idempotency key".to_string(),
+        })?;
+    let installation_id = match &call.subject {
+        SandboxSubject::ModuleArtifact { installation_id, .. } if !installation_id.is_nil() => {
+            *installation_id
+        }
+        _ => return Err(SandboxError::CapabilityDenied(call.capability.clone())),
+    };
+    let request_idempotency_key = input
+        .get("idempotency_key")
+        .and_then(Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .filter(|id| !id.is_nil())
+        .ok_or_else(|| SandboxError::CapabilityConstraintDenied {
+            capability: call.capability.clone(),
+            reason: "mutating HTTP calls require a non-nil per-request idempotency_key UUID".to_string(),
+        })?;
+    let request_digest = crate::idempotency::semantic_request_digest(&call.input)
+        .map_err(|_| SandboxError::InvalidRequest("HTTP request could not be fingerprinted".to_string()))?;
+    Ok(HttpEffectReceiptKey {
+        tenant_id,
+        installation_id,
+        execution_idempotency_key,
+        request_idempotency_key,
+        request_digest,
+    })
+}
+
+fn http_receipt_identity_values(
+    key: &HttpEffectReceiptKey,
+    backend: SupportedBackend,
+) -> Vec<sea_orm::Value> {
+    vec![
+        backend.uuid_value(key.tenant_id),
+        backend.uuid_value(key.installation_id),
+        backend.uuid_value(key.execution_idempotency_key),
+        backend.uuid_value(key.request_idempotency_key),
+        key.request_digest.clone().into(),
+    ]
+}
+
+fn http_receipt_scope_values(
+    key: &HttpEffectReceiptKey,
+    backend: SupportedBackend,
+) -> Vec<sea_orm::Value> {
+    vec![
+        backend.uuid_value(key.tenant_id),
+        backend.uuid_value(key.installation_id),
+        backend.uuid_value(key.execution_idempotency_key),
+        backend.uuid_value(key.request_idempotency_key),
+    ]
+}
+
+fn http_host_error(call: &CapabilityCall, message: &str) -> SandboxError {
+    SandboxError::HostCapability {
+        capability: call.capability.clone(),
+        message: message.to_string(),
+    }
+}
+
 /// Production broker for the `platform.http` sandbox capability.
 ///
 /// Executes outbound HTTP requests on behalf of admitted guest modules within
@@ -100,6 +184,182 @@ impl ArtifactHttpCapabilityBroker {
         let (transaction, guard) =
             begin_artifact_capability_effect(db, call, authorizer).await?;
         commit_artifact_capability_effect(transaction, guard, &call.capability).await
+    }
+
+    async fn claim_effect_receipt(
+        &self,
+        call: &CapabilityCall,
+        key: &HttpEffectReceiptKey,
+    ) -> SandboxResult<Option<Value>> {
+        let (db, authorizer) = self.effect_dependencies(call)?;
+        let (transaction, guard) =
+            begin_artifact_capability_effect(db, call, authorizer).await?;
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|_| http_host_error(call, "HTTP receipt backend is unavailable"))?;
+        let inserted = transaction
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "INSERT INTO module_artifact_http_effect_receipts
+                     (tenant_id, installation_id, execution_idempotency_key,
+                      request_idempotency_key, request_digest, status, created_at, updated_at)
+                     VALUES ({}, {}, {}, {}, {}, 'dispatching', {}, {})
+                     ON CONFLICT (tenant_id, installation_id, execution_idempotency_key,
+                                  request_idempotency_key) DO NOTHING",
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.now_sql(),
+                    backend.now_sql(),
+                ),
+                http_receipt_identity_values(key, backend),
+            ))
+            .await
+            .map_err(|_| http_host_error(call, "HTTP effect receipt could not be claimed"))?;
+        if inserted.rows_affected() == 1 {
+            commit_artifact_capability_effect(transaction, guard, &call.capability).await?;
+            return Ok(None);
+        }
+
+        let row = transaction
+            .query_one_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "SELECT request_digest, status, CAST(response AS TEXT) AS response
+                     FROM module_artifact_http_effect_receipts
+                     WHERE tenant_id = {} AND installation_id = {}
+                       AND execution_idempotency_key = {} AND request_idempotency_key = {}",
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                ),
+                http_receipt_scope_values(key, backend),
+            ))
+            .await
+            .map_err(|_| http_host_error(call, "HTTP effect receipt could not be read"))?;
+        commit_artifact_capability_effect(transaction, guard, &call.capability).await?;
+        let row = row.ok_or_else(|| {
+            http_host_error(call, "HTTP effect receipt disappeared during idempotency claim")
+        })?;
+        let stored_digest: String = row
+            .try_get("", "request_digest")
+            .map_err(|_| http_host_error(call, "HTTP effect receipt is invalid"))?;
+        if stored_digest != key.request_digest {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: call.capability.clone(),
+                reason: "HTTP idempotency key was reused for a different request".to_string(),
+            });
+        }
+        let status: String = row
+            .try_get("", "status")
+            .map_err(|_| http_host_error(call, "HTTP effect receipt is invalid"))?;
+        if status == "completed" {
+            let response: String = row
+                .try_get("", "response")
+                .map_err(|_| http_host_error(call, "HTTP replay response is unavailable"))?;
+            let output = serde_json::from_str(&response)
+                .map_err(|_| http_host_error(call, "HTTP replay response is invalid"))?;
+            return Ok(Some(output));
+        }
+        Err(http_host_error(
+            call,
+            "the previous HTTP request outcome is unresolved; automatic replay is disabled",
+        ))
+    }
+
+    async fn complete_effect_receipt(
+        &self,
+        call: &CapabilityCall,
+        key: &HttpEffectReceiptKey,
+        output: &Value,
+    ) -> SandboxResult<()> {
+        let (db, authorizer) = self.effect_dependencies(call)?;
+        let (transaction, guard) =
+            begin_artifact_capability_effect(db, call, authorizer).await?;
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|_| http_host_error(call, "HTTP receipt backend is unavailable"))?;
+        let completed = transaction
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "UPDATE module_artifact_http_effect_receipts
+                     SET status = 'completed', response = {}, updated_at = {}, completed_at = {}
+                     WHERE tenant_id = {} AND installation_id = {}
+                       AND execution_idempotency_key = {} AND request_idempotency_key = {}
+                       AND request_digest = {} AND status = 'dispatching'",
+                    backend.placeholder(1),
+                    backend.now_sql(),
+                    backend.now_sql(),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                ),
+                vec![
+                    SqlValue::Json(Some(Box::new(output.clone()))),
+                    backend.uuid_value(key.tenant_id),
+                    backend.uuid_value(key.installation_id),
+                    backend.uuid_value(key.execution_idempotency_key),
+                    backend.uuid_value(key.request_idempotency_key),
+                    key.request_digest.clone().into(),
+                ],
+            ))
+            .await
+            .map_err(|_| http_host_error(call, "HTTP effect receipt could not be completed"))?;
+        if completed.rows_affected() != 1 {
+            return Err(http_host_error(call, "HTTP effect receipt is no longer dispatchable"));
+        }
+        commit_artifact_capability_effect(transaction, guard, &call.capability).await
+    }
+
+    async fn mark_effect_receipt_ambiguous(
+        &self,
+        call: &CapabilityCall,
+        key: &HttpEffectReceiptKey,
+    ) {
+        let Ok((db, authorizer)) = self.effect_dependencies(call) else {
+            return;
+        };
+        let Ok((transaction, guard)) =
+            begin_artifact_capability_effect(db, call, authorizer).await
+        else {
+            return;
+        };
+        let Ok(backend) = SupportedBackend::new(transaction.get_database_backend()) else {
+            return;
+        };
+        let result = transaction
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "UPDATE module_artifact_http_effect_receipts
+                     SET status = 'ambiguous', updated_at = {}
+                     WHERE tenant_id = {} AND installation_id = {}
+                       AND execution_idempotency_key = {} AND request_idempotency_key = {}
+                       AND request_digest = {} AND status = 'dispatching'",
+                    backend.now_sql(),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                ),
+                vec![
+                    backend.uuid_value(key.tenant_id),
+                    backend.uuid_value(key.installation_id),
+                    backend.uuid_value(key.execution_idempotency_key),
+                    backend.uuid_value(key.request_idempotency_key),
+                    key.request_digest.clone().into(),
+                ],
+            ))
+            .await;
+        if result.is_ok() {
+            let _ = commit_artifact_capability_effect(transaction, guard, &call.capability).await;
+        }
     }
 }
 
