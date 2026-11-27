@@ -618,6 +618,9 @@ impl RuntimeExpander<'_> {
             }
         }
         let Some(object) = node.as_object() else {
+            if let ComponentNode::Opaque(raw) = node {
+                collect_opaque_template_ids(raw, ids);
+            }
             return;
         };
         // A valid form's authored `id` is discarded during form materialization.
@@ -630,8 +633,13 @@ impl RuntimeExpander<'_> {
                     .map(ToString::to_string)
             }));
         }
-        for child in object.children() {
-            self.collect_scoped_template_ids(child, context, origin, false, ids);
+        match &object.components {
+            ComponentChildren::Nodes(children) => {
+                for child in children {
+                    self.collect_scoped_template_ids(child, context, origin, false, ids);
+                }
+            }
+            ComponentChildren::Opaque(raw) => collect_opaque_template_ids(raw, ids),
         }
     }
 
@@ -852,14 +860,7 @@ impl RuntimeExpander<'_> {
         // Charge the entire cloned subtree, not just each repeater root.
         // Reserve all copies before recursion so nested expansion cannot consume
         // capacity already promised to later siblings.
-        let mut subtree_nodes = 0usize;
-        let mut pending = vec![&template];
-        while let Some(node) = pending.pop() {
-            subtree_nodes = subtree_nodes.saturating_add(1);
-            if let Some(object) = node.as_object() {
-                pending.extend(object.children());
-            }
-        }
+        let subtree_nodes = count_component_subtree_nodes(&template);
         let copy_cost = subtree_nodes.saturating_mul(values.len());
         if self.generated_node_work.saturating_add(copy_cost) > MAX_TOTAL_REPEATED_NODES {
             if !self.budget_reported {
@@ -1631,6 +1632,77 @@ fn template_uses_alias(value: &str, alias: &str) -> bool {
     false
 }
 
+fn collect_opaque_template_ids(value: &Value, ids: &mut Vec<String>) {
+    match value {
+        Value::Array(children) => {
+            for child in children {
+                collect_opaque_template_ids(child, ids);
+            }
+        }
+        Value::Object(object) => {
+            if let Some(attributes) = object.get("attributes").and_then(Value::as_object) {
+                ids.extend(attributes.iter().filter_map(|(name, value)| {
+                    (name.eq_ignore_ascii_case("id"))
+                        .then(|| value.as_str())
+                        .flatten()
+                        .filter(|id| id.contains("{{"))
+                        .map(ToString::to_string)
+                }));
+            }
+            if let Some(children) = object.get("components") {
+                collect_opaque_template_ids(children, ids);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn count_component_subtree_nodes(node: &ComponentNode) -> usize {
+    match node {
+        ComponentNode::Object(object) => {
+            1usize.saturating_add(count_component_children(&object.components))
+        }
+        ComponentNode::Opaque(raw) => count_opaque_component_node(raw),
+    }
+}
+
+fn count_component_children(children: &ComponentChildren) -> usize {
+    match children {
+        ComponentChildren::Nodes(children) => children
+            .iter()
+            .map(count_component_subtree_nodes)
+            .fold(0usize, usize::saturating_add),
+        ComponentChildren::Opaque(raw) => count_opaque_component_children(raw),
+    }
+}
+
+fn count_opaque_component_children(value: &Value) -> usize {
+    match value {
+        Value::Array(children) => children
+            .iter()
+            .map(count_opaque_component_node)
+            .fold(0usize, usize::saturating_add),
+        Value::Null => 0,
+        _ => count_opaque_component_node(value),
+    }
+}
+
+fn count_opaque_component_node(value: &Value) -> usize {
+    match value {
+        Value::Array(children) => children
+            .iter()
+            .map(count_opaque_component_node)
+            .fold(0usize, usize::saturating_add),
+        Value::Object(object) => 1usize.saturating_add(
+            object
+                .get("components")
+                .map(count_opaque_component_children)
+                .unwrap_or_default(),
+        ),
+        _ => 1,
+    }
+}
+
 fn interpolate_node(node: &mut ComponentNode, context: &Value) {
     match node {
         ComponentNode::Opaque(value) => interpolate_value(value, context),
@@ -1647,10 +1719,13 @@ fn interpolate_node(node: &mut ComponentNode, context: &Value) {
             for value in component.extensions.values_mut() {
                 interpolate_value(value, context);
             }
-            if let Some(children) = component.children_mut() {
-                for child in children {
-                    interpolate_node(child, context);
+            match &mut component.components {
+                ComponentChildren::Nodes(children) => {
+                    for child in children {
+                        interpolate_node(child, context);
+                    }
                 }
+                ComponentChildren::Opaque(raw) => interpolate_value(raw, context),
             }
         }
     }
@@ -2641,6 +2716,107 @@ mod tests {
                 .iter()
                 .any(|d| d.code == "runtime_repeater_budget_exceeded")
         );
+    }
+
+    #[test]
+    fn repeater_budget_counts_object_valued_opaque_descendants_before_cloning() {
+        let children = (0..60)
+            .map(|index| json!({
+                "id": format!("opaque-child-{index}"),
+                "provider": "provider.opaque-child",
+                "attributes": { "data-index": index }
+            }))
+            .collect::<Vec<_>>();
+        let source = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "card",
+                        "type": "section",
+                        "components": {
+                            "id": "opaque-root",
+                            "provider": "provider.opaque-root",
+                            "components": children
+                        }
+                    }]
+                }
+            }],
+            "flyRuntimeRepeaters": [{
+                "id": "cards",
+                "component_id": "card",
+                "path": "items",
+                "limit": 1000
+            }]
+        }))
+        .expect("source");
+        let result = materialize_runtime(&source, &json!({ "items": vec![1; 1000] }));
+
+        assert_eq!(result.repeated_nodes, 0);
+        assert_eq!(result.document, source);
+        assert!(result.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "runtime_repeater_budget_exceeded"
+        }));
+    }
+
+    #[test]
+    fn repeater_interpolates_opaque_child_html_ids_and_their_references() {
+        let source = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "card",
+                        "type": "section",
+                        "components": {
+                            "id": "opaque-panel",
+                            "provider": "provider.opaque-panel",
+                            "attributes": { "id": "panel-{{item.slug}}" },
+                            "components": {
+                                "id": "opaque-trigger",
+                                "provider": "provider.opaque-trigger",
+                                "attributes": { "aria-controls": "panel-{{item.slug}}" }
+                            }
+                        }
+                    }]
+                }
+            }],
+            "flyRuntimeRepeaters": [{
+                "id": "cards",
+                "component_id": "card",
+                "path": "items",
+                "item_alias": "item",
+                "index_alias": "index"
+            }]
+        }))
+        .expect("source");
+        let result = materialize_runtime(
+            &source,
+            &json!({ "items": [{ "slug": "same" }, { "slug": "same" }] }),
+        );
+
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let mut ids = BTreeSet::new();
+        for index in 0..2 {
+            let card = result
+                .document
+                .component(&format!("card--cards-{index}"))
+                .expect("repeated card");
+            let ComponentChildren::Opaque(panel) = &card.components else {
+                panic!("provider child must remain opaque")
+            };
+            let id = panel["attributes"]["id"]
+                .as_str()
+                .expect("opaque panel id");
+            let trigger = &panel["components"];
+            let reference = trigger["attributes"]["aria-controls"]
+                .as_str()
+                .expect("opaque trigger reference");
+            assert_eq!(reference, id);
+            assert!(ids.insert(id.to_string()), "duplicate opaque id {id}");
+        }
     }
 
     #[test]
