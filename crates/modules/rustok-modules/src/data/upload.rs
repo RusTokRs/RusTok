@@ -113,7 +113,7 @@ where
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-        ensure_active_namespace(&transaction, scope, backend).await?;
+        ensure_active_object_namespace(&transaction, scope, backend).await?;
         if let Some(row) = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -293,7 +293,7 @@ where
         let staged = async {
             let backend =
                 SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-            ensure_active_namespace(&transaction, scope, backend).await?;
+            ensure_active_object_namespace(&transaction, scope, backend).await?;
             let active = transaction
                 .execute_raw(Statement::from_sql_and_values(
                     backend.db_backend(),
@@ -535,7 +535,7 @@ where
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-        ensure_active_namespace(&transaction, scope, backend).await?;
+        ensure_active_object_namespace(&transaction, scope, backend).await?;
         let max_chunk_count = usize::try_from(MAX_ARTIFACT_OBJECT_UPLOAD_CHUNKS_PER_SESSION)
             .map_err(|_| ArtifactDataError::ObjectIntegrity)?;
         let query_limit = i64::try_from(MAX_ARTIFACT_OBJECT_UPLOAD_CHUNKS_PER_SESSION + 1)
@@ -620,7 +620,7 @@ where
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-        ensure_active_namespace(&transaction, scope, backend).await?;
+        ensure_active_object_namespace(&transaction, scope, backend).await?;
         let completed = transaction.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
