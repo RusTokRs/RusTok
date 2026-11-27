@@ -724,13 +724,13 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   cross-owner receipts and outbox still require closure.
 
 - Credential identity continuation: Auth migration 000014 adds append-only
-  session, OAuth app/client/token/code UUID claims and OAuth token/code digest
-  claims. The SQLite witness table has no hidden rowid conflict key, and
+  session, OAuth app/client/token/code UUID claims and session refresh/OAuth
+  token/code digest claims. Current and retained historical session digests
+  are backfilled; new session digest claims are atomic with birth/rotation. The SQLite witness table has no hidden rowid conflict key, and
   SQLite rejects alternate refresh-family REPLACE; normal rotation and
   rollback remain supported. Source regressions authored, unrun; incremental
   migration, lock contention and storage growth require verification. Tenant
-  identity, terminal state transitions and direct session digest continuity
-  remain open.
+  identity and terminal state transitions remain open.
 
 - Transaction retry authority first consumer: consent revocation prelocks
   exact credential scope and preserves typed statement failures. Confirmed
