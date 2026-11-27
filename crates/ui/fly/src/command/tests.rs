@@ -1029,7 +1029,8 @@ fn repairing_invalid_component_ids_remaps_action_and_aria_references() {
                             "target_id": "bad target"
                         }
                     },
-                    { "id": "bad target", "type": "section" }
+                    { "id": "bad target", "type": "section" },
+                    { "id": "bad target", "type": "section", "attributes": { "title": "second" } }
                 ]
             }
         }]
@@ -1050,6 +1051,11 @@ fn repairing_invalid_component_ids_remaps_action_and_aria_references() {
 
     assert_ne!(repaired_id, "bad target");
     assert!(editor.document().component(repaired_id).is_some());
+    let root = editor.document().component("root").expect("root");
+    let first_target_id = root.children()[1].id().expect("first repaired target");
+    let second_target_id = root.children()[2].id().expect("second repaired target");
+    assert_ne!(first_target_id, second_target_id);
+    assert_eq!(repaired_id, first_target_id);
     assert_eq!(
         trigger
             .attributes
