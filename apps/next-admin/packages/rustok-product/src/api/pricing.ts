@@ -9,6 +9,7 @@
  */
 
 import { graphqlRequest, type GqlOpts } from '@/lib/graphql';
+import { requireOwnerResult } from './write-confirmation';
 import type {
   ActivePriceList,
   PricingAdjustmentPreview,
@@ -223,5 +224,8 @@ export async function applyVariantDiscount(
     opts.tenantSlug
   );
 
-  return data.applyAdminPricingVariantDiscount;
+  return requireOwnerResult(
+    data.applyAdminPricingVariantDiscount,
+    'Variant discount application'
+  );
 }

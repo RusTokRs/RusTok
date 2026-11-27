@@ -9,6 +9,7 @@
  */
 
 import { graphqlRequest, type GqlOpts } from '@/lib/graphql';
+import { requireOwnerResult } from './write-confirmation';
 import type {
   CreateVariantInput,
   ProductDetail,
@@ -410,7 +411,7 @@ export async function setVariantAxes(
     { tenantId: opts.tenantId, locale: opts.locale }
   );
 
-  return data.setProductVariantAxes;
+  return requireOwnerResult(data.setProductVariantAxes, 'Variant axis reconfiguration');
 }
 
 export async function fetchProductDetail(
@@ -480,7 +481,7 @@ export async function updateProductDetail(
     opts.tenantSlug
   );
 
-  return data.updateProduct;
+  return requireOwnerResult(data.updateProduct, 'Product update');
 }
 
 export async function deleteProductDetail(
@@ -528,7 +529,7 @@ export async function createVariant(
     { locale: opts.locale }
   );
 
-  return data.createProductVariant;
+  return requireOwnerResult(data.createProductVariant, 'Variant creation');
 }
 
 export async function updateVariant(
@@ -555,7 +556,7 @@ export async function updateVariant(
     opts.tenantSlug
   );
 
-  return data.updateProductVariant;
+  return requireOwnerResult(data.updateProductVariant, 'Variant update');
 }
 
 export async function deleteVariant(
@@ -606,7 +607,7 @@ export async function addProductImage(
     opts.tenantSlug
   );
 
-  return data.addProductImage;
+  return requireOwnerResult(data.addProductImage, 'Product image addition');
 }
 
 export async function deleteProductImage(
@@ -654,7 +655,7 @@ export async function reorderProductImages(
     opts.tenantSlug
   );
 
-  return data.reorderProductImages;
+  return requireOwnerResult(data.reorderProductImages, 'Product image reorder');
 }
 
 export async function updateProductImage(
@@ -679,7 +680,7 @@ export async function updateProductImage(
     opts.tenantSlug
   );
 
-  return data.updateProductImage;
+  return requireOwnerResult(data.updateProductImage, 'Product image update');
 }
 
 export async function saveProductAttributeValues(
@@ -709,5 +710,5 @@ export async function saveProductAttributeValues(
     opts.tenantSlug
   );
 
-  return data.saveProductAttributeValues;
+  return requireOwnerResult(data.saveProductAttributeValues, 'Product attribute value save');
 }
