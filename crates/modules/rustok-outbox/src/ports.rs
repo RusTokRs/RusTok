@@ -27,9 +27,9 @@ pub struct OutboxRelayRunOnceRequest {
 
 /// Outcome of one relay pass.
 ///
-/// Every counter describes **this run only** (the delta of the relay's
-/// lifetime metrics across the pass), so callers can alert and bill per
-/// invocation without diffing snapshots themselves.
+/// Every counter describes durable outcomes joined by this invocation, not
+/// a delta of shared lifetime metrics. Failed or timed-out passes return an
+/// error even if earlier waves committed some outcomes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutboxRelayRunOnceProjection {
     pub claimed_count: usize,
@@ -58,16 +58,15 @@ impl OutboxRelayPort for crate::OutboxRelay {
         request: OutboxRelayRunOnceRequest,
     ) -> Result<OutboxRelayRunOnceProjection, PortError> {
         require_outbox_relay_policy(&context)?;
-        let baseline = self.metrics();
         // The deadline is enforced, not merely required to be present: a
         // pass that overruns it is aborted and its claimed rows become
         // eligible again when their claim leases expire.
-        let run = self.process_pending_once(request.max_batch_hint);
-        let claimed_count = match context.deadline_ms {
+        let run = self.process_pending_once_report(request.max_batch_hint);
+        match context.deadline_ms {
             Some(deadline_ms) if deadline_ms > 0 => {
                 match tokio::time::timeout(std::time::Duration::from_millis(deadline_ms), run).await
                 {
-                    Ok(result) => result.map_err(map_outbox_error)?,
+                    Ok(result) => result.map_err(map_outbox_error),
                     Err(_elapsed) => {
                         return Err(PortError::timeout(
                             "outbox.deadline_exceeded",
@@ -76,19 +75,8 @@ impl OutboxRelayPort for crate::OutboxRelay {
                     }
                 }
             }
-            _ => run.await.map_err(map_outbox_error)?,
-        };
-        let metrics = self.metrics();
-        Ok(OutboxRelayRunOnceProjection {
-            claimed_count,
-            success_total: metrics.success_total.saturating_sub(baseline.success_total),
-            failure_total: metrics.failure_total.saturating_sub(baseline.failure_total),
-            retry_total: metrics.retry_total.saturating_sub(baseline.retry_total),
-            dlq_total: metrics.dlq_total.saturating_sub(baseline.dlq_total),
-            processed_total: metrics
-                .processed_total
-                .saturating_sub(baseline.processed_total),
-        })
+            _ => run.await.map_err(map_outbox_error),
+        }
     }
 }
 

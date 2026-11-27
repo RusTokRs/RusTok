@@ -10,12 +10,15 @@ use rustok_core::events::{EventTransport, ReliabilityLevel};
 use rustok_core::{Error, Result};
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_outbox::entity::{self, SysEventStatus};
-use rustok_outbox::{OutboxRelay, RelayConfig, SysEventsMigration};
+use rustok_outbox::{
+    OutboxRelay, OutboxRelayPort, OutboxRelayRunOnceRequest, RelayConfig, SysEventsMigration,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend,
     DatabaseConnection, EntityTrait, QueryFilter, Set, Statement,
 };
 use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
+use tokio::sync::Semaphore;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -261,6 +264,65 @@ async fn relay_bounds_parallel_dispatch() -> TestResult<()> {
 
     assert_eq!(relay.process_pending_once(None).await?, 4);
     assert_eq!(transport.max_active(), 2);
+    Ok(())
+}
+
+struct GatedTransport {
+    entered: Semaphore,
+    release: Semaphore,
+}
+
+#[async_trait]
+impl EventTransport for GatedTransport {
+    async fn publish(&self, _envelope: EventEnvelope) -> Result<()> {
+        self.entered.add_permits(1);
+        self.release.acquire().await.expect("gate open").forget();
+        Ok(())
+    }
+
+    fn reliability_level(&self) -> ReliabilityLevel { ReliabilityLevel::Outbox }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+fn relay_context() -> rustok_api::PortContext {
+    rustok_api::PortContext::new(
+        "tenant-1", rustok_api::PortActor::service("outbox-test"), "en", "outbox-test",
+    ).with_idempotency_key("relay-pass").with_deadline(std::time::Duration::from_secs(10))
+}
+
+#[tokio::test]
+async fn relay_claims_only_available_slots_and_reports_each_clone_pass() -> TestResult<()> {
+    let db = setup_sqlite_db().await?;
+    for _ in 0..6 {
+        seed_event(&db).await?;
+    }
+    let target = Arc::new(GatedTransport {
+        entered: Semaphore::new(0),
+        release: Semaphore::new(0),
+    });
+    let relay = OutboxRelay::new(db.clone(), target.clone()).with_config(RelayConfig {
+        batch_size: 4, max_concurrency: 2, ..Default::default()
+    });
+    let clone = relay.clone();
+    let first = tokio::spawn(async move {
+        OutboxRelayPort::process_pending_once(&relay, relay_context(),
+            OutboxRelayRunOnceRequest { max_batch_hint: Some(4) }).await
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(5), target.entered.acquire_many(2))
+        .await?.expect("gate open").forget();
+    let second = tokio::spawn(async move {
+        OutboxRelayPort::process_pending_once(&clone, relay_context(),
+            OutboxRelayRunOnceRequest { max_batch_hint: Some(4) }).await
+    });
+    let claimed = entity::Entity::find()
+        .filter(entity::Column::ClaimedBy.is_not_null()).all(&db).await?;
+    assert_eq!(claimed.len(), 2);
+    target.release.add_permits(6);
+    let first = first.await??;
+    let second = second.await??;
+    assert_eq!((first.claimed_count, first.success_total, first.processed_total), (4, 4, 4));
+    assert_eq!((second.claimed_count, second.success_total, second.processed_total), (2, 2, 2));
+    assert_eq!(first.failure_total + second.failure_total, 0);
     Ok(())
 }
 

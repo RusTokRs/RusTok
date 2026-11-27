@@ -174,3 +174,18 @@ Relay renewal rotates its token even within the same clock tick and counts
 database wait time in its monotonic dispatch budget. Clock errors fail closed.
 Relay and retention intervals are bounded to 3650 days. This does not fence
 primary clock discontinuities or guarantee exactly-once broker effects.
+
+## Relay execution admission
+
+Relay passes reserve at most max_concurrency rows per dispatch wave and
+advance a stable (created_at, id) cursor within the invocation. Due/reclaim
+eligibility uses one initial SQL-clock horizon. A shared pass guard serializes
+clones of a relay instance, including aborted tasks until they actually exit.
+Independent relay instances/processes still coordinate through SQL claims;
+there is no deployment-wide concurrency quota. Reports count the joined
+durable outcomes of the specific pass, not differences of lifetime counters.
+A failed or cancelled pass can have committed earlier outcomes.
+Retry uses equal jitter between half the capped exponential delay and the cap
+(with a one millisecond floor). Startup validates relay configuration before
+connecting broker transports. Waves deliberately trade some utilization for
+bounded reservation; a slower event can delay the next wave.

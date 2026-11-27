@@ -193,3 +193,21 @@ primary clock discontinuities or guarantee exactly-once broker effects.
 Source regressions cover clock progress, token rotation and capped backoff.
 PostgreSQL contention, primary clock discontinuity handling, retry jitter and
 per-pass metrics remain pending. No compilation or tests were run.
+
+## Relay execution and retry hardening (2026-11-27, source only)
+
+Relay passes reserve at most max_concurrency rows per dispatch wave and
+advance a stable (created_at, id) cursor within the invocation. Due/reclaim
+eligibility uses one initial SQL-clock horizon. A shared pass guard serializes
+clones of a relay instance, including aborted tasks until they actually exit.
+Independent relay instances/processes still coordinate through SQL claims;
+there is no deployment-wide concurrency quota. Reports count the joined
+durable outcomes of the specific pass, not differences of lifetime counters.
+A failed or cancelled pass can have committed earlier outcomes.
+Retry uses equal jitter between half the capped exponential delay and the cap
+(with a one millisecond floor). Startup validates relay configuration before
+connecting broker transports. Waves deliberately trade some utilization for
+bounded reservation; a slower event can delay the next wave.
+Regression source covers gated slot admission, concurrent clone calls,
+per-pass accounting and jitter endpoints. Compilation, cancellation contention,
+PostgreSQL multi-process dispatch and broker behavior remain unverified.

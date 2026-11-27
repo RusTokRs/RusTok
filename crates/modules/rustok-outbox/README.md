@@ -136,7 +136,7 @@ environment variables over the `RelayConfig` defaults:
   unregistered schema, transport-side validation) move the event
   straight to `failed` (DLQ) without burning the retry budget. Transient
   failures follow the retry policy below.
-- Retry uses exponential backoff from `backoff_base` up to `backoff_max`.
+- Retry uses capped exponential backoff with equal jitter.
 - `max_attempts` is resolved by the server runtime from `rustok.events.dlq.max_attempts` when DLQ is enabled, otherwise from `rustok.events.relay_retry_policy.max_attempts`.
 - A retryable failure keeps the event in `pending`, increments `retry_count`, stores `last_error`, clears the claim and sets `next_attempt_at`.
 - A terminal failure moves the event to `failed` (DLQ), preserves `last_error`, clears the claim and increments DLQ metrics.
@@ -213,3 +213,18 @@ Relay renewal rotates its token even within the same clock tick and counts
 database wait time in its monotonic dispatch budget. Clock errors fail closed.
 Relay and retention intervals are bounded to 3650 days. This does not fence
 primary clock discontinuities or guarantee exactly-once broker effects.
+
+## Relay execution admission
+
+Relay passes reserve at most max_concurrency rows per dispatch wave and
+advance a stable (created_at, id) cursor within the invocation. Due/reclaim
+eligibility uses one initial SQL-clock horizon. A shared pass guard serializes
+clones of a relay instance, including aborted tasks until they actually exit.
+Independent relay instances/processes still coordinate through SQL claims;
+there is no deployment-wide concurrency quota. Reports count the joined
+durable outcomes of the specific pass, not differences of lifetime counters.
+A failed or cancelled pass can have committed earlier outcomes.
+Retry uses equal jitter between half the capped exponential delay and the cap
+(with a one millisecond floor). Startup validates relay configuration before
+connecting broker transports. Waves deliberately trade some utilization for
+bounded reservation; a slower event can delay the next wave.

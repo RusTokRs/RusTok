@@ -2,10 +2,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-#[cfg(test)]
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, TransactionTrait,
     sea_query::{LockBehavior, LockType},
 };
@@ -18,11 +17,12 @@ use rustok_events::{ContractEventEnvelope, EventEnvelope};
 
 use crate::entity;
 use crate::entity::SysEventStatus;
+use crate::ports::OutboxRelayRunOnceProjection;
 
 /// Upper bound on rows claimed in one relay pass. Matches the server
 /// runtime cap so a library caller cannot materialise an unbounded batch.
 pub const MAX_RELAY_BATCH_SIZE: u64 = 10_000;
-/// Upper bound on simultaneous dispatches in one relay pass.
+/// Upper bound on simultaneous dispatches across one relay's clones.
 pub const MAX_RELAY_CONCURRENCY: usize = 1_024;
 const MAX_RELAY_INTERVAL: Duration = Duration::from_secs(3650 * 86_400);
 
@@ -57,6 +57,70 @@ impl Default for RelayConfig {
     }
 }
 
+impl RelayConfig {
+    pub fn validate(&self) -> Result<()> {
+        if self.batch_size == 0 || self.batch_size > MAX_RELAY_BATCH_SIZE {
+            return Err(Error::Validation(format!(
+                "outbox relay batch_size must be between 1 and {MAX_RELAY_BATCH_SIZE}"
+            )));
+        }
+        if self.max_concurrency > MAX_RELAY_CONCURRENCY {
+            return Err(Error::Validation(format!(
+                "outbox relay max_concurrency must not exceed {MAX_RELAY_CONCURRENCY}"
+            )));
+        }
+        if self.publish_timeout.is_zero() {
+            return Err(Error::Validation(
+                "outbox relay publish_timeout must be greater than zero".to_string(),
+            ));
+        }
+        if self.claim_ttl.saturating_sub(self.publish_timeout) <= Duration::from_millis(1) {
+            return Err(Error::Validation(
+                "outbox relay claim_ttl must exceed publish_timeout by more than one millisecond"
+                    .to_string(),
+            ));
+        }
+        if self.max_attempts <= 0 {
+            return Err(Error::Validation(
+                "outbox relay max_attempts must be greater than zero".to_string(),
+            ));
+        }
+        if self.max_concurrency == 0 {
+            return Err(Error::Validation(
+                "outbox relay max_concurrency must be greater than zero".to_string(),
+            ));
+        }
+        if self.claim_ttl.is_zero() {
+            return Err(Error::Validation(
+                "outbox relay claim_ttl must be greater than zero".to_string(),
+            ));
+        }
+        // `claimed_by` is capped at 128 bytes and also carries a per-claim
+        // fencing nonce (`{worker_id}:{uuid}`), so the worker id itself must
+        // leave room for it.
+        if self.worker_id.trim().is_empty() || self.worker_id.len() > 64 {
+            return Err(Error::Validation(
+                "outbox relay worker_id must contain 1 to 64 bytes".to_string(),
+            ));
+        }
+        if self.backoff_base < Duration::from_millis(1) {
+            return Err(Error::Validation(
+                "outbox relay backoff_base must be at least one millisecond".to_string(),
+            ));
+        }
+        if self.backoff_max < self.backoff_base {
+            return Err(Error::Validation(
+                "outbox relay backoff_max must be greater than or equal to backoff_base"
+                    .to_string(),
+            ));
+        }
+        if self.claim_ttl > MAX_RELAY_INTERVAL || self.backoff_max > MAX_RELAY_INTERVAL {
+            return Err(Error::Validation("outbox relay intervals must not exceed 3650 days".to_string()));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Default)]
 struct RelayMetrics {
     success_total: AtomicU64,
@@ -88,6 +152,12 @@ impl RelayMetrics {
             processed_total: self.processed_total.load(Ordering::Relaxed),
         }
     }
+}
+
+enum DispatchOutcome {
+    Succeeded,
+    Retried,
+    DeadLettered,
 }
 
 enum RelayEnvelope {
@@ -132,6 +202,7 @@ pub struct OutboxRelay {
     target: Arc<dyn EventTransport>,
     config: RelayConfig,
     metrics: Arc<RelayMetrics>,
+    pass_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl std::fmt::Debug for OutboxRelay {
@@ -150,6 +221,7 @@ impl OutboxRelay {
             target,
             config: RelayConfig::default(),
             metrics: Arc::new(RelayMetrics::default()),
+            pass_lock: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 
@@ -163,6 +235,7 @@ impl OutboxRelay {
     }
 
     pub async fn run(&self) -> Result<()> {
+        self.config.validate()?;
         loop {
             match self.process_pending_once(None).await {
                 Ok(count) => {
@@ -179,7 +252,14 @@ impl OutboxRelay {
     }
 
     pub async fn process_pending_once(&self, max_batch_hint: Option<u64>) -> Result<usize> {
-        self.validate_config()?;
+        Ok(self.process_pending_once_report(max_batch_hint).await?.claimed_count)
+    }
+
+    pub(crate) async fn process_pending_once_report(
+        &self,
+        max_batch_hint: Option<u64>,
+    ) -> Result<OutboxRelayRunOnceProjection> {
+        self.config.validate()?;
         if max_batch_hint == Some(0) {
             return Err(Error::Validation(
                 "outbox max_batch_hint must be greater than zero".to_string(),
@@ -187,100 +267,99 @@ impl OutboxRelay {
         }
         let batch_size = max_batch_hint
             .unwrap_or(self.config.batch_size)
-            .min(self.config.batch_size);
-        let claimed = self.claim_batch(batch_size).await?;
-        let claimed_count = claimed.len();
-        let mut tasks = tokio::task::JoinSet::new();
-        let mut first_error = None;
+            .min(self.config.batch_size) as usize;
+        // Keep the pass guard alive inside each spawned task as well. Dropping
+        // a timed-out pass aborts its JoinSet, but a later pass must wait until
+        // those tasks have actually released their guard clones.
+        let guard = Arc::new(self.pass_lock.clone().lock_owned().await);
+        let eligible_at = rustok_outbox_storage::database_now(&self.db).await?;
+        let mut cursor = None;
+        let mut report = OutboxRelayRunOnceProjection {
+            claimed_count: 0, success_total: 0, failure_total: 0,
+            retry_total: 0, dlq_total: 0, processed_total: 0,
+        };
 
-        for model in claimed {
-            while tasks.len() >= self.config.max_concurrency {
-                Self::collect_dispatch_result(&mut tasks, &mut first_error).await;
+        while report.claimed_count < batch_size {
+            // Reserve no more rows than can begin dispatch in this wave.
+            // A forward-only cursor prevents reprocessing a row in this pass,
+            // even if an operator requeues it or its retry delay elapses.
+            let limit = (batch_size - report.claimed_count).min(self.config.max_concurrency);
+            let claimed = self.claim_batch(limit as u64, eligible_at, cursor).await?;
+            if claimed.is_empty() {
+                break;
             }
+            cursor = claimed.last().map(|row| (row.created_at, row.id));
+            report.claimed_count += claimed.len();
 
-            let relay = self.clone();
-            tasks.spawn(async move { relay.process_claimed_event(&model).await });
+            let mut tasks = tokio::task::JoinSet::new();
+            let mut first_error = None;
+            for model in claimed {
+                let relay = self.clone();
+                let task_guard = Arc::clone(&guard);
+                tasks.spawn(async move {
+                    let _guard = task_guard;
+                    relay.process_claimed_event(&model).await
+                });
+            }
+            while let Some(result) = tasks.join_next().await {
+                match result {
+                    Ok(Ok(outcome)) => {
+                        report.processed_total += 1;
+                        match outcome {
+                            DispatchOutcome::Succeeded => report.success_total += 1,
+                            DispatchOutcome::Retried => {
+                                report.failure_total += 1;
+                                report.retry_total += 1;
+                            }
+                            DispatchOutcome::DeadLettered => {
+                                report.failure_total += 1;
+                                report.dlq_total += 1;
+                            }
+                        }
+                    }
+                    Ok(Err(error)) => {
+                        if first_error.is_none() {
+                            first_error = Some(error);
+                        }
+                    }
+                    Err(error) => {
+                        tracing::error!(error = ?error, "Outbox relay dispatch task failed");
+                        if first_error.is_none() {
+                            first_error = Some(Error::External(format!(
+                                "outbox relay dispatch task failed: {error}"
+                            )));
+                        }
+                    }
+                }
+            }
+            if let Some(error) = first_error {
+                return Err(error);
+            }
         }
-
-        while !tasks.is_empty() {
-            Self::collect_dispatch_result(&mut tasks, &mut first_error).await;
-        }
-
-        if let Some(error) = first_error {
-            return Err(error);
-        }
-
-        Ok(claimed_count)
+        Ok(report)
     }
 
+    #[cfg(test)]
     fn validate_config(&self) -> Result<()> {
-        if self.config.batch_size == 0 || self.config.batch_size > MAX_RELAY_BATCH_SIZE {
-            return Err(Error::Validation(format!(
-                "outbox relay batch_size must be between 1 and {MAX_RELAY_BATCH_SIZE}"
-            )));
-        }
-        if self.config.max_concurrency > MAX_RELAY_CONCURRENCY {
-            return Err(Error::Validation(format!(
-                "outbox relay max_concurrency must not exceed {MAX_RELAY_CONCURRENCY}"
-            )));
-        }
-        if self.config.publish_timeout.is_zero() {
-            return Err(Error::Validation(
-                "outbox relay publish_timeout must be greater than zero".to_string(),
-            ));
-        }
-        if self.config.publish_timeout >= self.config.claim_ttl {
-            return Err(Error::Validation(
-                "outbox relay publish_timeout must be less than claim_ttl so a dispatch cannot outlive its claim lease"
-                    .to_string(),
-            ));
-        }
-        if self.config.max_attempts <= 0 {
-            return Err(Error::Validation(
-                "outbox relay max_attempts must be greater than zero".to_string(),
-            ));
-        }
-        if self.config.max_concurrency == 0 {
-            return Err(Error::Validation(
-                "outbox relay max_concurrency must be greater than zero".to_string(),
-            ));
-        }
-        if self.config.claim_ttl.is_zero() {
-            return Err(Error::Validation(
-                "outbox relay claim_ttl must be greater than zero".to_string(),
-            ));
-        }
-        // `claimed_by` is capped at 128 bytes and also carries a per-claim
-        // fencing nonce (`{worker_id}:{uuid}`), so the worker id itself must
-        // leave room for it.
-        if self.config.worker_id.trim().is_empty() || self.config.worker_id.len() > 64 {
-            return Err(Error::Validation(
-                "outbox relay worker_id must contain 1 to 64 bytes".to_string(),
-            ));
-        }
-        if self.config.backoff_base.is_zero() {
-            return Err(Error::Validation(
-                "outbox relay backoff_base must be greater than zero".to_string(),
-            ));
-        }
-        if self.config.backoff_max < self.config.backoff_base {
-            return Err(Error::Validation(
-                "outbox relay backoff_max must be greater than or equal to backoff_base"
-                    .to_string(),
-            ));
-        }
-        if self.config.claim_ttl > MAX_RELAY_INTERVAL || self.config.backoff_max > MAX_RELAY_INTERVAL {
-            return Err(Error::Validation("outbox relay intervals must not exceed 3650 days".to_string()));
-        }
-        Ok(())
+        self.config.validate()
     }
 
-    async fn claim_batch(&self, batch_size: u64) -> Result<Vec<entity::Model>> {
+    async fn claim_batch(
+        &self,
+        batch_size: u64,
+        eligible_at: DateTime<Utc>,
+        cursor: Option<(DateTime<Utc>, Uuid)>,
+    ) -> Result<Vec<entity::Model>> {
         let txn = self.db.begin().await?;
-        let now = rustok_outbox_storage::database_now(&txn).await?;
+        let backend = txn.get_database_backend();
+        if backend == DatabaseBackend::Sqlite {
+            // Avoid upgrading a stale read snapshot into a writer.
+            txn.execute_unprepared("UPDATE sys_events SET claimed_at = claimed_at WHERE 1 = 0")
+                .await?;
+        }
         let claim_ttl = chrono::Duration::from_std(self.config.claim_ttl)
             .map_err(|_| Error::Validation("outbox relay claim_ttl is out of range".to_string()))?;
-        let stale_before = now.checked_sub_signed(claim_ttl)
+        let stale_before = eligible_at.checked_sub_signed(claim_ttl)
             .ok_or_else(|| Error::Validation("outbox relay lease cutoff is out of range".to_string()))?;
         // Fencing owner for this claim pass: unique per pass, so two relay
         // processes configured with the same worker_id (and two passes of
@@ -288,12 +367,12 @@ impl OutboxRelay {
         // completion updates match on this exact value.
         let worker_id = format!("{}:{}", self.config.worker_id, Uuid::new_v4());
 
-        let candidates_query = entity::Entity::find()
+        let mut candidates_query = entity::Entity::find()
             .filter(entity::Column::Status.eq(SysEventStatus::Pending))
             .filter(
                 Condition::any()
                     .add(entity::Column::NextAttemptAt.is_null())
-                    .add(entity::Column::NextAttemptAt.lte(now)),
+                    .add(entity::Column::NextAttemptAt.lte(eligible_at)),
             )
             .filter(
                 Condition::any()
@@ -303,7 +382,16 @@ impl OutboxRelay {
             .order_by_asc(entity::Column::CreatedAt)
             .order_by_asc(entity::Column::Id)
             .limit(batch_size);
-        let candidates = if self.db.get_database_backend() == DatabaseBackend::Postgres {
+        if let Some((created_at, id)) = cursor {
+            candidates_query = candidates_query.filter(
+                Condition::any()
+                    .add(entity::Column::CreatedAt.gt(created_at))
+                    .add(Condition::all()
+                        .add(entity::Column::CreatedAt.eq(created_at))
+                        .add(entity::Column::Id.gt(id))),
+            );
+        }
+        let candidates = if backend == DatabaseBackend::Postgres {
             candidates_query
                 .lock_with_behavior(LockType::Update, LockBehavior::SkipLocked)
                 .all(&txn)
@@ -318,13 +406,14 @@ impl OutboxRelay {
             return Ok(Vec::new());
         }
 
+        let now = rustok_outbox_storage::database_now(&txn).await?;
         entity::Entity::update_many()
             .filter(entity::Column::Id.is_in(candidate_ids.clone()))
             .filter(entity::Column::Status.eq(SysEventStatus::Pending))
             .filter(
                 Condition::any()
                     .add(entity::Column::NextAttemptAt.is_null())
-                    .add(entity::Column::NextAttemptAt.lte(now)),
+                    .add(entity::Column::NextAttemptAt.lte(eligible_at)),
             )
             .filter(
                 Condition::any()
@@ -344,6 +433,8 @@ impl OutboxRelay {
             .filter(entity::Column::Status.eq(SysEventStatus::Pending))
             .filter(entity::Column::ClaimedBy.eq(worker_id))
             .filter(entity::Column::ClaimedAt.eq(now))
+            .order_by_asc(entity::Column::CreatedAt)
+            .order_by_asc(entity::Column::Id)
             .all(&txn)
             .await?;
 
@@ -351,29 +442,7 @@ impl OutboxRelay {
         Ok(claimed)
     }
 
-    async fn collect_dispatch_result(
-        tasks: &mut tokio::task::JoinSet<Result<()>>,
-        first_error: &mut Option<Error>,
-    ) {
-        match tasks.join_next().await {
-            Some(Ok(Ok(()))) | None => {}
-            Some(Ok(Err(error))) => {
-                if first_error.is_none() {
-                    *first_error = Some(error);
-                }
-            }
-            Some(Err(error)) => {
-                tracing::error!(error = ?error, "Outbox relay dispatch task failed");
-                if first_error.is_none() {
-                    *first_error = Some(Error::External(format!(
-                        "outbox relay dispatch task failed: {error}"
-                    )));
-                }
-            }
-        }
-    }
-
-    // A batch claim may expire while a row waits for a dispatch slot.
+    // A claim may expire during scheduling or database contention.
     // Re-arm only the exact pending claim, before invoking the target.
     async fn refresh_claim(&self, model: &entity::Model) -> Result<entity::Model> {
         if model.claimed_by.is_none() || model.claimed_at.is_none() {
@@ -404,7 +473,7 @@ impl OutboxRelay {
         Ok(refreshed)
     }
 
-    async fn process_claimed_event(&self, model: &entity::Model) -> Result<()> {
+    async fn process_claimed_event(&self, model: &entity::Model) -> Result<DispatchOutcome> {
         let started = Instant::now();
         let refreshed = self.refresh_claim(model).await?;
         let model = &refreshed;
@@ -420,20 +489,21 @@ impl OutboxRelay {
                     error = %error,
                     "Outbox event payload is invalid"
                 );
-                self.mark_failed_attempt(model, error, true).await?;
+                let outcome = self.mark_failed_attempt(model, error, true).await?;
                 self.record_processed(
                     &model.event_type,
                     started.elapsed().as_millis() as u64,
                     false,
                 );
-                return Ok(());
+                return Ok(outcome);
             }
         };
 
         let publish_timeout = self.config.publish_timeout;
         // Renewal and decoding consume the lease too. Do not start an
         // external effect unless the configured timeout fits the budget.
-        if started.elapsed() >= self.config.claim_ttl.saturating_sub(publish_timeout) {
+        if started.elapsed() >= self.config.claim_ttl.saturating_sub(publish_timeout).saturating_sub(Duration::from_millis(1)) {
+            self.release_unpublished_claim(model).await?;
             return Err(Error::External(format!(
                 "outbox event {event_id} dispatch lease budget exhausted before publication"
             )));
@@ -460,14 +530,14 @@ impl OutboxRelay {
                 self.mark_dispatched(model).await?;
                 tracing::info!(event_id = %event_id, latency_ms = elapsed_ms, "Outbox event dispatched");
                 self.record_processed(&model.event_type, elapsed_ms, true);
-                Ok(())
+                Ok(DispatchOutcome::Succeeded)
             }
             Err(err) => {
                 tracing::warn!(event_id = %event_id, error = %err, "Outbox event dispatch failed");
                 let terminal = Self::is_terminal_dispatch_error(&err);
-                self.mark_failed_attempt(model, err, terminal).await?;
+                let outcome = self.mark_failed_attempt(model, err, terminal).await?;
                 self.record_processed(&model.event_type, elapsed_ms, false);
-                Ok(())
+                Ok(outcome)
             }
         }
     }
@@ -547,6 +617,24 @@ impl OutboxRelay {
         }
     }
 
+    // No broker effect has started, so this exact claim can be released
+    // without incrementing the delivery retry budget.
+    async fn release_unpublished_claim(&self, model: &entity::Model) -> Result<()> {
+        let result = entity::Entity::update_many()
+            .filter(entity::Column::Id.eq(model.id))
+            .filter(entity::Column::Status.eq(SysEventStatus::Pending))
+            .filter(entity::Column::ClaimedBy.eq(model.claimed_by.clone()))
+            .filter(entity::Column::ClaimedAt.eq(model.claimed_at))
+            .set(entity::ActiveModel {
+                claimed_by: Set(None),
+                claimed_at: Set(None),
+                ..Default::default()
+            })
+            .exec(&self.db)
+            .await?;
+        self.ensure_claim_owned(model.id, result.rows_affected)
+    }
+
     async fn mark_dispatched(&self, model: &entity::Model) -> Result<()> {
         let result = entity::Entity::update_many()
             .filter(entity::Column::Id.eq(model.id))
@@ -572,7 +660,7 @@ impl OutboxRelay {
         model: &entity::Model,
         error: Error,
         terminal: bool,
-    ) -> Result<()> {
+    ) -> Result<DispatchOutcome> {
         let retry_count = model.retry_count.saturating_add(1);
         let (status, next_attempt_at, moved_to_dlq) =
             if terminal || retry_count >= self.config.max_attempts {
@@ -581,7 +669,7 @@ impl OutboxRelay {
                 (
                     SysEventStatus::Pending,
                     Some(rustok_outbox_storage::database_now(&self.db).await?
-                        .checked_add_signed(self.backoff_duration(retry_count)?)
+                        .checked_add_signed(self.jittered_backoff(retry_count, Uuid::new_v4().as_u128())?)
                         .ok_or_else(|| Error::Validation("outbox retry deadline is out of range".to_string()))?),
                     false,
                 )
@@ -615,6 +703,7 @@ impl OutboxRelay {
         if moved_to_dlq {
             tracing::error!(event_id = %model.id, retry_count, "Outbox event moved to DLQ (failed)");
             self.metrics.dlq_total.fetch_add(1, Ordering::Relaxed);
+            Ok(DispatchOutcome::DeadLettered)
         } else {
             tracing::info!(
                 event_id = %model.id,
@@ -623,8 +712,8 @@ impl OutboxRelay {
                 "Outbox event scheduled for retry"
             );
             self.metrics.retry_total.fetch_add(1, Ordering::Relaxed);
+            Ok(DispatchOutcome::Retried)
         }
-        Ok(())
     }
 
     fn ensure_claim_owned(&self, event_id: Uuid, rows_affected: u64) -> Result<()> {
@@ -635,6 +724,15 @@ impl OutboxRelay {
                 "outbox event {event_id} claim was lost before completion"
             )))
         }
+    }
+
+    // Equal jitter spreads a shared outage's retry traffic without exceeding
+    // the configured exponential ceiling. SQL clock precision is one ms.
+    fn jittered_backoff(&self, retry_count: i32, sample: u128) -> Result<chrono::Duration> {
+        let ceiling = self.backoff_duration(retry_count)?.num_milliseconds().max(1);
+        let floor = (ceiling / 2).max(1);
+        let span = (ceiling - floor + 1) as u128;
+        Ok(chrono::Duration::milliseconds(floor + (sample % span) as i64))
     }
 
     fn backoff_duration(&self, retry_count: i32) -> Result<chrono::Duration> {
@@ -752,6 +850,9 @@ mod tests {
             });
         assert_eq!(relay.backoff_duration(1).unwrap(), chrono::Duration::milliseconds(1));
         assert_eq!(relay.backoff_duration(18).unwrap(), chrono::Duration::milliseconds(131_072));
+        assert_eq!(relay.jittered_backoff(18, 0).unwrap(), chrono::Duration::milliseconds(65_536));
+        assert_eq!(relay.jittered_backoff(18, 65_536).unwrap(), chrono::Duration::milliseconds(131_072));
+        assert_eq!(relay.jittered_backoff(1, u128::MAX).unwrap(), chrono::Duration::milliseconds(1));
         assert_eq!(relay.backoff_duration(i32::MAX).unwrap(), chrono::Duration::seconds(1000));
         let invalid = relay.with_config(RelayConfig {
             backoff_max: Duration::MAX,
