@@ -1533,12 +1533,14 @@ The `platform.http` broker disables process/system proxies on both its shared
 and DNS-pinned clients. Hostname resolution is bounded by the capability
 deadline, every returned address is screened before the first validated address
 is pinned, and the remaining deadline is shared by connection, request and
-response-body consumption. IPv4-mapped, IPv4-compatible, well-known NAT64
-and 6to4 addresses are checked against their embedded IPv4 destination. The
-RFC 8215 local-use NAT64 prefix is rejected outright because it is not globally
-reachable. Site-local, Teredo, benchmarking, documentation, discard-only,
-dummy, SRv6 and other non-globally-reachable special-purpose IPv6 ranges are
-rejected. More-specific [IANA IPv6 special-purpose allocations](https://www.iana.org/assignments/iana-ipv6-special-registry)
+response-body consumption. IPv4-mapped, IPv4-translated, IPv4-compatible,
+well-known NAT64, 6to4 and ISATAP addresses are checked against their embedded
+IPv4 destination; ISATAP additionally requires a global-unicast IPv6 prefix.
+The RFC 8215 local-use NAT64 prefix is rejected outright because it is not
+globally reachable. Non-global IPv6 ranges and site-local, Teredo, benchmarking,
+documentation, discard-only, dummy, SRv6 and other non-globally-reachable
+special-purpose IPv6 ranges are rejected. More-specific
+[IANA IPv6 special-purpose allocations](https://www.iana.org/assignments/iana-ipv6-special-registry)
 explicitly marked globally reachable remain available to an exact host grant.
 Redirects remain disabled and response bytes are streamed under an
 overflow-safe configured ceiling. Zero timeouts and zero response limits are
