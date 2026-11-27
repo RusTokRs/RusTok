@@ -1534,8 +1534,9 @@ and DNS-pinned clients. Hostname resolution is bounded by the capability
 deadline, every returned address is screened before the first validated address
 is pinned, and the remaining deadline is shared by connection, request and
 response-body consumption. IPv4-mapped, IPv4-compatible, NAT64 (including the
-RFC 8215 local-use prefix), 6to4, site-local and IETF special-purpose IPv6
-destinations are screened against private/reserved IPv4 or IPv6 ranges.
+RFC 8215 local-use prefix), 6to4, site-local and non-globally-reachable IANA
+special-purpose IPv6 ranges are screened. More-specific IANA allocations
+explicitly marked globally reachable remain available to an exact host grant.
 Redirects remain disabled and response bytes are streamed under an
 overflow-safe configured ceiling. Zero timeouts and zero response limits are
 rejected during construction.
