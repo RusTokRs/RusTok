@@ -2047,6 +2047,12 @@ representation `Content-Length` on HEAD responses while keeping the body empty.
 Focused regressions were added; tests, compilation and formatting were not run
 at the maintainer's request.
 
+The explicit `RUSTOK_CORS_ALLOWED_ORIGINS` value is fail-closed even when
+the operating system cannot decode it: a non-Unicode value becomes an explicit
+empty allow-list and never falls back to development loopback defaults.
+Host-only origins with a trailing slash retain the HTTPS default-port rule for
+port 443.
+
 ## Server follow-up — installer heartbeat ownership and search limiter readiness (2026-11-25)
 
 The installer heartbeat now runs as a sibling future inside the runtime-owned
