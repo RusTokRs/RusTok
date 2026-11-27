@@ -103,3 +103,23 @@ in each capability lease and structured SQL transaction. This does not change
 tenant intent, prove external quiescence, or block owner recovery. Native
 serving integration, concrete operator authorization and operator transport
 are subsequent work. No existing operations-tool maintenance state is reused.
+
+### Lifecycle cursor continuity integrity
+
+The tenant `module.lifecycle` cursor is durable security authority, not
+disposable consumer progress. The Modules migration prevents ordinary DML
+from deleting, replacing, moving or resetting that cursor, including SQLite
+implicit REPLACE deletes through rowid or alternate UUID representations.
+New lifecycle cursors start at zero with no digest; existing legacy
+sequence-zero digests are preserved. An advance requires the exact next
+integer sequence and a different valid digest. Exact no-op writes remain
+legal. PostgreSQL TRUNCATE is rejected for the cursor table because it would
+bypass per-row history; other consumers retain normal row mutation semantics.
+Install with old writers drained, validate existing rows and reject
+inconsistent identity/sequence evidence rather than reconstruct history.
+Lifecycle cursors persist even after tenant removal; do not reuse tenant IDs.
+The owner cursor remains the source of truth. No new generation table.
+This does not couple direct tenant_modules edits to the cursor or prove that
+a manually supplied successor digest describes the current policy; the
+existing content observation remains necessary. Privileged DDL, restores
+and pre-cutover lost history are not covered. Source regressions unrun.
