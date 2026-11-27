@@ -312,7 +312,7 @@ mod tests {
     }
 
     #[test]
-    fn HTTP_constraints_restrict_nonstandard_ports() {
+    fn http_constraints_restrict_nonstandard_ports() {
         let mut call = call("GET", json!({}), None);
         call.input["url"] = json!("https://api.example.test:8443/v1/items");
         let constraints = HttpCapabilityConstraints {
