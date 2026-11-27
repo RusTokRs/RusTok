@@ -255,8 +255,10 @@ fn collect_component_asset_ids(
             {
                 asset_ids.insert(asset_id.clone());
             }
-            for child in object.children() {
-                collect_component_asset_ids(child, asset_ids);
+            if let Some(children) = object.children() {
+                for child in children {
+                    collect_component_asset_ids(child, asset_ids);
+                }
             }
         }
         ComponentNode::Opaque(raw) => collect_opaque_asset_ids(raw, asset_ids),
