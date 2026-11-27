@@ -14,7 +14,7 @@ const MAX_CATEGORY_CODE_CHARACTERS = 128;
 function canonicalSlug(value: string): string {
   const normalized = value.normalize('NFC').toLowerCase();
   let slug = Array.from(normalized)
-    .filter((character) => /[\p{L}\p{N}\\- _]/u.test(character))
+    .filter((character) => /[\p{L}\p{N}_ -]/u.test(character))
     .map((character) =>
       character === ' ' || character === '_' ? '-' : character
     )

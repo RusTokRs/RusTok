@@ -2,6 +2,7 @@ export interface CategoryHierarchyNode {
   id: string;
   parentId: string | null;
   code: string;
+  slug: string;
   name: string;
 }
 
@@ -34,7 +35,8 @@ export function buildCategoryHierarchyOptions(
 
     while (current && !visited.has(current.id)) {
       visited.add(current.id);
-      const label = current.name.trim() || current.code.trim();
+      const label =
+        current.slug.trim() || current.name.trim() || current.code.trim();
       if (label) segments.push(label);
       current = current.parentId
         ? categoriesById.get(current.parentId)

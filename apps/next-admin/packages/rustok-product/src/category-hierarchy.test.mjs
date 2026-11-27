@@ -8,6 +8,7 @@ test('category labels and depth follow current parent IDs, not stale paths', () 
       id: 'parent',
       parentId: null,
       code: 'new-parent',
+      slug: 'new-parent',
       name: 'New Parent',
       path: 'old-parent'
     },
@@ -15,22 +16,23 @@ test('category labels and depth follow current parent IDs, not stale paths', () 
       id: 'child',
       parentId: 'parent',
       code: 'child',
+      slug: 'child',
       name: 'Child',
       path: 'old-parent/child'
     }
   ];
 
   assert.deepEqual(buildCategoryHierarchyOptions(categories), [
-    { id: 'parent', label: 'New Parent', depth: 0 },
-    { id: 'child', label: 'New Parent / Child', depth: 1 }
+    { id: 'parent', label: 'new-parent', depth: 0 },
+    { id: 'child', label: 'new-parent / child', depth: 1 }
   ]);
 });
 
 test('category hierarchy tolerates missing parents and cycles without looping', () => {
   const options = buildCategoryHierarchyOptions([
-    { id: 'a', parentId: 'b', code: 'a', name: 'A' },
-    { id: 'b', parentId: 'a', code: 'b', name: 'B' },
-    { id: 'orphan', parentId: 'missing', code: 'orphan', name: 'Orphan' }
+    { id: 'a', parentId: 'b', code: 'a', slug: 'a', name: 'A' },
+    { id: 'b', parentId: 'a', code: 'b', slug: 'b', name: 'B' },
+    { id: 'orphan', parentId: 'missing', code: 'orphan', slug: 'orphan', name: 'Orphan' }
   ]);
 
   assert.deepEqual(options, [
