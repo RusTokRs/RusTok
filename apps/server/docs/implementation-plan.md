@@ -13,8 +13,10 @@ filenames carry a content fingerprint. Stable names such as `output.css`,
 `leptos-adapter.mjs`, and `asset-manifest.json` use ETag-backed revalidation;
 conditional 304 responses preserve that policy. Focused route and cache
 regressions were added. Maintainer verification remains pending:
-`cargo check -p rustok-server` and targeted `cargo test -p rustok-server --lib
-app_router`. Tests and compilation were not run in this session.
+`cargo check -p rustok-server`,
+`cargo test -p rustok-server --lib admin_only_profile_serves_root_richtext_frame_assets`,
+and `cargo test -p rustok-server --lib stable_name_admin_assets_are_revalidated_after_deployments`.
+Tests and compilation were not run in this session.
 
 ## Nonzero host listener port validation (2026-11-27)
 
@@ -23,9 +25,10 @@ because it is a valid `u16`, even though TCP interprets it as a request for an
 ephemeral listener. Both environment overrides and the final resolved
 `server.port` now reject zero and require `1..=65535`. Regression sources
 cover the environment parser and configured endpoint. Maintainer verification
-remains pending: `cargo check -p rustok-server` and targeted
-`cargo test -p rustok-server --lib host`. Tests and compilation were not run
-in this session.
+remains pending: `cargo check -p rustok-server`,
+`cargo test -p rustok-server --lib parse_server_port_rejects_zero`, and
+`cargo test -p rustok-server --lib resolve_server_endpoint_rejects_zero_configured_port`.
+Tests and compilation were not run in this session.
 
 
 ## GraphQL system diagnostic authority parity (2026-11-27)
