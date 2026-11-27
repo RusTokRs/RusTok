@@ -60,7 +60,7 @@ pub struct ReadinessSettings {
     pub search_max_lag_seconds: u64,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct RegistryRemoteExecutorSettings {
     #[serde(default)]
     pub enabled: bool,
@@ -77,7 +77,7 @@ pub struct RegistryRemoteExecutorSettings {
 /// `redis_url` overrides `RUSTOK_REDIS_URL` / `REDIS_URL` env vars when set.
 /// This lets ops teams set Redis URL via YAML config instead of env, useful in
 /// containerised deployments where config files are preferred over env injection.
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Clone, Deserialize, Serialize, Default)]
 pub struct CacheSettings {
     /// Explicit Redis URL. When absent, falls back to `RUSTOK_REDIS_URL` → `REDIS_URL` env vars.
     pub redis_url: Option<String>,
@@ -95,7 +95,7 @@ pub enum EmailProvider {
     None,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct EmailSettings {
     #[serde(default)]
     pub enabled: bool,
@@ -111,7 +111,7 @@ pub struct EmailSettings {
     pub reset_base_url: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct SmtpSettings {
     #[serde(default = "default_smtp_host")]
     pub host: String,
@@ -155,6 +155,71 @@ impl Default for RegistryRemoteExecutorSettings {
             lease_ttl_ms: default_registry_remote_executor_lease_ttl_ms(),
             requeue_scan_interval_ms: default_registry_remote_executor_requeue_scan_interval_ms(),
         }
+    }
+}
+
+impl std::fmt::Debug for RegistryRemoteExecutorSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RegistryRemoteExecutorSettings")
+            .field("enabled", &self.enabled)
+            .field(
+                "shared_token_configured",
+                &self.shared_token.as_ref().is_some_and(|value| !value.trim().is_empty()),
+            )
+            .field("lease_ttl_ms", &self.lease_ttl_ms)
+            .field("requeue_scan_interval_ms", &self.requeue_scan_interval_ms)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for CacheSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CacheSettings")
+            .field(
+                "redis_url_configured",
+                &self.redis_url.as_ref().is_some_and(|value| !value.trim().is_empty()),
+            )
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for EmailSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EmailSettings")
+            .field("enabled", &self.enabled)
+            .field("provider", &self.provider)
+            .field("allow_disabled_in_production", &self.allow_disabled_in_production)
+            .field("smtp", &self.smtp)
+            .field("from_configured", &!self.from.trim().is_empty())
+            .field("reset_base_url_configured", &!self.reset_base_url.trim().is_empty())
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for SmtpSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SmtpSettings")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("username_configured", &!self.username.is_empty())
+            .field("password_configured", &!self.password.is_empty())
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for SearchSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SearchSettings")
+            .field("enabled", &self.enabled)
+            .field("driver", &self.driver)
+            .field("url_configured", &!self.url.trim().is_empty())
+            .field(
+                "api_key_configured",
+                &self.api_key.as_ref().is_some_and(|value| !value.trim().is_empty()),
+            )
+            .field("index_prefix", &self.index_prefix)
+            .field("reindex", &self.reindex)
+            .finish()
     }
 }
 
@@ -423,7 +488,7 @@ pub struct FeatureSettings {
     pub invite_only_registration: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct SearchSettings {
     #[serde(default)]
     pub enabled: bool,
@@ -1526,6 +1591,43 @@ mod tests {
                     None => std::env::remove_var(self.key),
                 }
             }
+        }
+    }
+
+    #[test]
+    fn debug_output_redacts_secret_configuration_values() {
+        let mut settings = RustokSettings::default();
+        settings.cache.redis_url =
+            Some("redis://cache-user:redis-password@cache.example/0".to_string());
+        settings.registry.remote_executor.shared_token = Some("runner-shared-secret".to_string());
+        settings.email.smtp.username = "smtp-user-secret".to_string();
+        settings.email.smtp.password = "smtp-password-secret".to_string();
+        settings.search.url = "https://search-user:search-password@search.example".to_string();
+        settings.search.api_key = Some("search-api-secret".to_string());
+        settings.events.iggy.external.username = "iggy-user-secret".to_string();
+        settings.events.iggy.external.password = "iggy-password-secret".to_string();
+        settings.events.iggy.bundled.arguments.push("--token=bundled-argument-secret".to_string());
+        settings.events.iggy.bundled.environment.insert(
+            "PRIVATE_ENV".to_string(),
+            "bundled-environment-secret".to_string(),
+        );
+
+        let debug = format!("{settings:?}");
+        for secret in [
+            "redis-password",
+            "cache-user",
+            "runner-shared-secret",
+            "smtp-user-secret",
+            "smtp-password-secret",
+            "search-user",
+            "search-password",
+            "search-api-secret",
+            "iggy-user-secret",
+            "iggy-password-secret",
+            "bundled-argument-secret",
+            "bundled-environment-secret",
+        ] {
+            assert!(!debug.contains(secret), "Debug output leaked {secret}: {debug}");
         }
     }
 
