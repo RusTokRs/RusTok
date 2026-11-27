@@ -464,7 +464,7 @@ where
             }
         };
         if let Err(error) = commit_artifact_data_effect(transaction, guard).await {
-            if matches!(&error, ArtifactDataError::PolicyDenied) {
+            if !inserted || matches!(&error, ArtifactDataError::PolicyDenied) {
                 delete_uploaded_object_best_effort(
                     &self.storage,
                     &Path::from(stored_path.as_str()),
