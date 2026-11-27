@@ -362,6 +362,9 @@ impl ArtifactSqlEffectFence for SqlEffectFence {
             if let Some(channel) = &authority.channel {
                 channel.require_current_on(tx).await.map_err(|_| self.deny())?;
             }
+            // Operational maintenance is an independent owner gate, not a
+            // tenant override or upgrade operation. Hold its revision until commit.
+            authority.maintenance.require_current_on(tx).await.map_err(|_| self.deny())?;
         } else {
             self.lease.lifecycle_generation.as_ref().ok_or_else(|| self.deny())?
                 .require_current_on(tx).await.map_err(|_| self.deny())?;

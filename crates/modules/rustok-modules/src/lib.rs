@@ -89,6 +89,7 @@ mod lifecycle_transition_fence;
 #[cfg(feature = "oci-distribution")]
 mod oci_transport;
 mod operation_store;
+mod operational_maintenance;
 pub mod operations_tool;
 pub mod operator;
 mod policy;
@@ -592,6 +593,11 @@ pub use operation_store::{
 };
 pub(crate) use operation_store::{
     TenantModuleSettingsRequest, TenantModuleStateRequest, TenantModuleStateStore,
+};
+pub use operational_maintenance::{
+    OperationalMaintenanceAuthority, OperationalMaintenanceAuthorizer, OperationalMaintenanceError,
+    OperationalMaintenanceScope, OperationalMaintenanceService, OperationalMaintenanceState,
+    ReplaceOperationalMaintenanceCommand,
 };
 pub use policy::{
     EffectivePolicyCacheIdentity, ModuleEffectivePolicy, ModuleEffectivePolicyChannelBinding,

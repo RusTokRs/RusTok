@@ -88,3 +88,18 @@ unready or stale observation fails closed before serving.
   stale concurrent transition rolls back the tenant mutation.
 - The enabled projection alone is insufficient evidence for execution once the
   remaining Phase 8 facts are integrated.
+
+
+## Operational serving maintenance (2026-11-27)
+
+Modules owns the durable serving gate and monotonic revision in migration
+000097. The normalized active scope set supports platform-wide, tenant-wide,
+module-wide and tenant/module gates; overlapping scopes combine by union.
+The host-only owner replacement service requires a transaction-bound platform
+authorizer and predecessor revision; changed state and command history commit
+together. The artifact serving resolver projects this revision into the existing
+neutral maintenance input, including an inactive snapshot, and checks continuity
+in each capability lease and structured SQL transaction. This does not change
+tenant intent, prove external quiescence, or block owner recovery. Native
+serving integration, concrete operator authorization and operator transport
+are subsequent work. No existing operations-tool maintenance state is reused.

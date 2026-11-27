@@ -195,7 +195,10 @@ production readiness. The documented implementation and operational gaps include
   owner row lock in the SQL effect transaction. Serving closures bind and
   transactionally revalidate converged deployment ledger evidence. Full effective-policy,
   HTTP channel context is now evaluated and fenced by the existing Channel generation.
-  Contextual operational maintenance, deferred/background channel context, continuous node liveness,
+  Operational artifact serving maintenance now captures and fences the durable
+  Modules-owned revision (migration 000097); operator transport/authorization
+  composition and native serving are still open.
+  Deferred/background channel context, continuous node liveness,
   cross-owner lock ordering and external-effect fencing remain open; see the
   [SQL capability authority contract](./docs/README.md#sql-capability-effect-authority).
   Source regressions and compilation/concurrent PostgreSQL evidence remain unrun.

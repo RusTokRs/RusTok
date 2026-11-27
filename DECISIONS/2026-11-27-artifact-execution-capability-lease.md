@@ -102,7 +102,7 @@ assignment and observation revision. The ledger owner serializes requests,
 claims, heartbeats and reports using the exclusive state row lock. A restored
 head cannot revive an older revision. Fresh preflight compares the same
 evidence, not a tenant policy digest. This does not fence independent compiled
-registry changes, contextual maintenance,
+registry changes,
 full effective-policy revision or continuous worker/node liveness. PostgreSQL
 cross-owner lock-order and runtime evidence remain required. Mixed-closure
 tenant intent and composition identity fencing require no additional
@@ -138,14 +138,43 @@ structured SQL effects take the owner shared generation lock after composition
 and readiness locks. No new migration is required. Channel writes advance the
 existing trigger-backed generation; unrelated changes conservatively invalidate
 contextual leases. Lifecycle remains owner-only. Deferred transport and
-background channel context, operational maintenance authority, and full
+background channel context, and full
 cross-owner ordering are not implemented by this change.
+
+## Operational maintenance authority
+
+Migration 000097 introduces a Modules-owned singleton serving-maintenance
+state and revision history. It is separate from operations-tool upgrades,
+data-copy authorization, and lifecycle intent. Active scopes form a union:
+all tenants/all modules, one tenant/all modules, all tenants/one module,
+or one tenant/one module. The platform owner replaces the normalized set
+with an expected revision through an injected transaction-bound authorizer.
+The owner locks the singleton after authorization, advances the revision
+only on a changed set, and records the command context and reason atomically.
+A no-op does not advance it. Missing or invalid evidence denies serving;
+SQL guards prohibit resetting or deleting the singleton.
+
+Artifact serving captures the tenant projection, including an inactive
+revision, and evaluates it through the canonical mixed policy. All selected
+dependencies and co-requisites participate. The lease retains exact evidence;
+fresh capability checks reject changed revisions even after an on/off ABA.
+SQL effects retain the shared maintenance row lock after composition and
+Channel authority (SQLite writer reservation) until commit. Global revision
+changes conservatively invalidate all serving leases. Lifecycle/recovery
+admission remains a separate owner path; no maintenance lease is required
+to remove the gate. The gate is not proof of quiescence of external effects.
+
+No HTTP/GraphQL/CLI mutation or concrete platform operator authorization
+adapter is introduced here. Hosts must not expose the owner replacement API
+until that boundary is composed and checked. Native/static serving and
+cached operator projections are not wired to this durable gate in this step.
+Drain old serving nodes and leases before relying on migration 000097;
+downgrade is denied. Direct administrative SQL is not an authorized writer.
 
 ## Context, events and migration
 
 Tenant, actor, phase, binding, release/installation, capability, execution ID,
-trace and idempotency identity remain bound. Operational maintenance and
-non-HTTP channel policy inputs still require owner wiring. Locale, currency and timezone do not
+trace and idempotency identity remain bound. Non-HTTP channel policy inputs and the maintenance operator transport still require owner wiring. Locale, currency and timezone do not
 participate. The lease is not an event or durable record; existing audit and
 idempotency/reconciliation semantics remain unchanged. Migration 000095 adds
 a nonnegative selection generation to the permanent activation lock row.

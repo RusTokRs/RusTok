@@ -74,6 +74,7 @@ struct ArtifactServingAuthority {
     closure: rustok_modules::ArtifactServingClosure,
     composition: rustok_modules::ModuleCompositionIdentity,
     channel: Option<ArtifactChannelAuthority>,
+    maintenance: rustok_modules::OperationalMaintenanceAuthority,
 }
 
 /// Exact request resolution input, retained only by the host. The owner
@@ -169,6 +170,8 @@ impl ServerArtifactEffectivePolicyResolver {
         if channel.as_ref().is_some_and(|authority| authority.tenant_id != tenant_id) {
             return Err(ArtifactEffectivePolicyResolveError::Store("artifact channel tenant mismatch".into()));
         }
+        let maintenance = rustok_modules::OperationalMaintenanceAuthority::capture(&self.db, tenant_id)
+            .await.map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?;
         let (policy, composition) =
             crate::services::effective_module_policy::EffectiveModulePolicyService::resolve_artifact_serving(
                 &self.db,
@@ -176,6 +179,7 @@ impl ServerArtifactEffectivePolicyResolver {
                 tenant_id,
                 &self.supported_payload_kinds,
                 channel.as_ref().and_then(|authority| authority.input.clone()),
+                maintenance.input().clone(),
             )
             .await
             .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?;
@@ -217,7 +221,14 @@ impl ServerArtifactEffectivePolicyResolver {
                 return Err(ArtifactEffectivePolicyResolveError::Store("artifact channel authority changed during serving admission".into()));
             }
         }
-        Ok((policy, Some(ArtifactServingAuthority { closure, composition, channel })))
+        if !maintenance.is_current(&self.db).await
+            .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?
+        {
+            return Err(ArtifactEffectivePolicyResolveError::Store(
+                "operational maintenance authority changed during serving admission".into(),
+            ));
+        }
+        Ok((policy, Some(ArtifactServingAuthority { closure, composition, channel, maintenance })))
     }
 }
 
