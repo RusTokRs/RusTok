@@ -199,7 +199,7 @@ production readiness. The documented implementation and operational gaps include
   Modules-owned revision (migration 000097); operator transport/authorization
   composition and native serving are still open.
   Deferred/background channel context, continuous node liveness,
-  cross-owner lock ordering and external-effect fencing remain open; see the
+  Cross-owner ordering now aligns the inspected credential/composition/role and lifecycle cursor/slug paths; the full lock audit and external-effect fencing remain open; see the
   [SQL capability authority contract](./docs/README.md#sql-capability-effect-authority).
   Source regressions and compilation/concurrent PostgreSQL evidence remain unrun.
 

@@ -171,15 +171,7 @@ pub(crate) async fn lock_invite_module_policy(
             "module.lifecycle",
             registry,
             snapshot.manifest.settings.default_enabled,
-            corequisites.into_iter().flat_map(|(module_slug, requirements)| {
-                requirements.into_iter().map(move |(required_module_slug, version_requirement)| {
-                    rustok_modules::ModuleEffectivePolicyCoRequisite {
-                        module_slug: module_slug.clone(),
-                        required_module_slug,
-                        version_requirement,
-                    }
-                })
-            }),
+            corequisites,
         )
         .await
         .map_err(|error| Error::Message(format!("module policy lock failed: {error}")))?;

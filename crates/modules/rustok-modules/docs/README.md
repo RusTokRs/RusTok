@@ -1586,3 +1586,14 @@ remains outstanding. Independent non-server broker
 compositions still need an explicitly supplied authority. External effects and
 objects/secrets/MCP/HTTP are not covered by this SQL commit guard.
 See [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).
+
+### Cross-owner transaction ordering
+
+For the inspected Auth/RBAC and artifact serving/security/lifecycle boundaries,
+acquire credentials before composition, lifecycle policy cursor (when needed),
+roles, sorted module slugs (platform then tenant), readiness, Channel and
+maintenance. Lifecycle state commit validates the cursor predecessor before
+acquiring its slug fence; no-transition commits do not acquire a cursor.
+Direct serving SQL checks composition before roles; background serving checks
+composition before closure locks. SQLite composition reserves its writer
+itself. See the [execution authority ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md) for the scoped ordering and remaining audit gaps.

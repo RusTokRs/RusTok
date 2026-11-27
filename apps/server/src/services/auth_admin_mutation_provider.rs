@@ -570,7 +570,7 @@ impl ServerAuthAdminMutationProvider {
         self.prepare_artifact_effect_authority().await?;
         let tx = self.db.begin().await.map_err(internal_admin_error)?;
         let (keys, _) = self.lock_artifact_runtime_permission_keys_on(
-            &tx, tenant_id, actor_id, installation,
+            &tx, tenant_id, actor_id, installation, None,
         ).await?;
         tx.commit().await.map_err(internal_admin_error)?;
         Ok(keys)
@@ -588,6 +588,7 @@ impl ServerAuthAdminMutationProvider {
         tenant_id: Uuid,
         actor_id: Uuid,
         installation: &rustok_modules::InstalledModuleArtifact,
+        composition: Option<&rustok_modules::ModuleCompositionIdentity>,
     ) -> Result<(Vec<String>, chrono::DateTime<chrono::Utc>), AuthAdminMutationError> {
         let context = bind_admin_context(tenant_id, actor_id, AuthPrincipalKind::DirectUser, None)?;
         let scope = match &installation.scope {
@@ -611,6 +612,13 @@ impl ServerAuthAdminMutationProvider {
             .lock_user_admin_credential(tx, &context, &actor, None)
             .await?
             .ok_or(AuthAdminMutationError::Unauthorized)?;
+        // Same ordering as administrative Auth/RBAC: credentials, then
+        // composition, then roles. Do not acquire composition after roles or
+        // a module slug lock. The preflight-only caller has no lease proof.
+        if let Some(composition) = composition {
+            composition.require_current_in_transaction(tx)
+                .await.map_err(internal_admin_error)?;
+        }
         rustok_rbac::lock_actor_role_grants_on(tx, tenant_id, actor_id)
             .await
             .map_err(internal_admin_error)?;

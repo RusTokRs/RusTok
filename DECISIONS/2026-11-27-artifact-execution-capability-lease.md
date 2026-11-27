@@ -83,9 +83,9 @@ invalidate leases through the shared lifecycle revision.
 Serving policy derivation now retains the exact verified active owner
 composition revision/hash from which defaults and co-requisites were read.
 Reject a changed composition after closure/readiness derivation and compare
-its identity at each capability preflight. After mixed-closure fences, SQL
+its identity at each capability preflight. Before mixed-closure fences, SQL
 admission takes the existing owner shared active-snapshot row lock (SQLite
-already owns its write reservation), revalidates the canonical stored hash
+reserves the writer at the owner boundary), revalidates the canonical stored hash
 and compares both revision and hash. Composition CAS writes conflict with
 this lock; restoration of the same manifest cannot renew an old lease.
 Missing composition must not be bootstrapped by revalidation. Unrelated
@@ -94,8 +94,7 @@ Lifecycle hooks remain root-only. Serving closures also bind converged
 deployment state revision, head IDs, owner-derived readiness digest, node ID
 and exact assignment observation revisions for all artifact members. Capture
 readiness in one read snapshot and reject a changed head; no selection-only
-closure can authorize a serving SQL effect. After mixed-selection fences and
-before the composition lock, acquire the existing reconciliation state row
+closure can authorize a serving SQL effect. After composition and mixed-selection fences, acquire the existing reconciliation state row
 shared lock (SQLite already has its write reservation), compare head/revision,
 recompute the persisted digest and check each required live/observed
 assignment and observation revision. The ledger owner serializes requests,
@@ -121,8 +120,7 @@ eligibility is retained; unavailable status denies admission. A fresh lease
 may admit a yanked release but an earlier lease is invalidated by the mutation.
 The witness is checked for the exact root and every artifact in the serving
 dependency/co-requisite closure, including non-SQL preflight. SQL admission
-checks it after sorted platform/tenant slug fences and before readiness and
-composition locks; lifecycle remains root-only. No lock is held across guest
+checks it after composition and sorted platform/tenant slug fences and before readiness; lifecycle remains root-only. No lock is held across guest
 execution. Stop old writers and drain leases before migration and rollout;
 downgrade would discard continuity evidence and is rejected. PostgreSQL
 cross-owner ordering and execution tests remain required.
@@ -170,6 +168,42 @@ until that boundary is composed and checked. Native/static serving and
 cached operator projections are not wired to this durable gate in this step.
 Drain old serving nodes and leases before relying on migration 000097;
 downgrade is denied. Direct administrative SQL is not an authorized writer.
+
+## Cross-owner transaction lock order (first integration)
+
+For the Auth/RBAC and artifact serving/security/lifecycle seams examined here,
+the canonical order, omitting gates not required by a particular operation, is:
+
+1. active tenant, sorted OAuth app identities, sorted user identities,
+   exact credential/session and consent authority;
+2. active composition shared row, then tenant lifecycle policy cursor
+   where the operation needs static policy authority;
+3. sorted role identities and current role-derived authority;
+4. sorted module slugs, platform then tenant per slug; selection,
+   lifecycle/registry/security evidence under these owner fences;
+5. deployment reconciliation state and observation evidence;
+6. Channel generation, then operational maintenance revision;
+7. effect-specific domain state, receipts and transactional events.
+
+Never discover a new earlier-ranked identity while holding later fences:
+abort and restart from the unlocked locator if necessary. Reacquiring an
+already-owned slug or cursor is permitted. No new lock may be acquired in a
+late recheck; use the transaction's retained owner authority.
+
+Previously static lifecycle commit took the slug and then the lifecycle
+cursor, while security administration took the cursor and then the slug.
+Lifecycle now locks the cursor and validates the expected predecessor before
+the slug on the state-commit path. No-op paths that publish no revision
+transition retain only the slug fence. Direct artifact SQL admission now
+checks the exact composition after credential locks and before role locks;
+background serving acquires composition before the mixed closure. SQLite's
+composition owner obtains its own write reservation before reading. Root
+grant/security/registry checks finish before Channel and maintenance locks.
+
+This is a partial cross-owner order, not an exhaustive proof. Reconciliation
+writers' installation/admission row locks, arbitrary SQL trigger entry,
+FK-induced locks, other domain effects and external effects need separate
+analysis. Do not infer production deadlock freedom from the authored tests.
 
 ## Context, events and migration
 
