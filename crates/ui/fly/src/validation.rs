@@ -122,6 +122,33 @@ pub fn validate_project_with_embed_registry(
     if report.page_count > DEFAULT_MAXIMUM_PAGES {
         return report;
     }
+    if document.project().assets.len() > DEFAULT_MAXIMUM_ASSETS {
+        report.asset_count = document.project().assets.len();
+        report.diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "maximum_assets_exceeded",
+            "assets",
+            format!(
+                "project contains {} assets, exceeding maximum {}",
+                report.asset_count, DEFAULT_MAXIMUM_ASSETS
+            ),
+        ));
+        return report;
+    }
+    if document.project().styles.len() > DEFAULT_MAXIMUM_STYLE_RULES {
+        report.style_rule_count = document.project().styles.len();
+        report.diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "maximum_style_rules_exceeded",
+            "styles",
+            format!(
+                "project contains {} style rules, exceeding maximum {}",
+                report.style_rule_count, DEFAULT_MAXIMUM_STYLE_RULES
+            ),
+        ));
+        return report;
+    }
+
     let resolved_document = if crate::document_has_symbol_instances(document) {
         match crate::resolve_symbol_instances(document) {
             Ok(resolved) => Some(resolved),
@@ -136,33 +163,6 @@ pub fn validate_project_with_embed_registry(
         None
     };
     let effective_document = resolved_document.as_ref().unwrap_or(document);
-
-    if effective_document.project().assets.len() > DEFAULT_MAXIMUM_ASSETS {
-        report.asset_count = effective_document.project().assets.len();
-        report.diagnostics.push(diagnostic(
-            ValidationSeverity::Error,
-            "maximum_assets_exceeded",
-            "assets",
-            format!(
-                "project contains {} assets, exceeding maximum {}",
-                report.asset_count, DEFAULT_MAXIMUM_ASSETS
-            ),
-        ));
-        return report;
-    }
-    if effective_document.project().styles.len() > DEFAULT_MAXIMUM_STYLE_RULES {
-        report.style_rule_count = effective_document.project().styles.len();
-        report.diagnostics.push(diagnostic(
-            ValidationSeverity::Error,
-            "maximum_style_rules_exceeded",
-            "styles",
-            format!(
-                "project contains {} style rules, exceeding maximum {}",
-                report.style_rule_count, DEFAULT_MAXIMUM_STYLE_RULES
-            ),
-        ));
-        return report;
-    }
 
     // Reuses the document-resident index if already built, avoiding a redundant tree walk.
     let index = effective_document.component_index();
