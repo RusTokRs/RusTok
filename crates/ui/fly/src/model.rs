@@ -297,7 +297,8 @@ impl ProjectDocument {
         Ok(cloned)
     }
 
-    /// Give every component a unique, syntactically valid id, minting new ones where needed.
+    /// Ensure typed components have unique, syntactically valid ids and repair ids carried by
+    /// opaque component nodes when those ids are invalid or duplicated.
     ///
     /// Ids that fail [`validate_identifier`] are replaced rather than preserved. An id is
     /// interpolated into HTML attributes and into CSS selectors inside a raw `<style>` element, so
