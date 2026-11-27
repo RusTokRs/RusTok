@@ -386,7 +386,7 @@ impl AdminEditorRuntime {
     pub fn dispatch(&self, intent: UiIntent) {
         let invalidates_preview =
             intent.mutates_document() || matches!(&intent, UiIntent::ActivatePage { .. });
-        if self.peer_write_conflicted() && intent.mutates_document() {
+        if self.peer_write_conflicted() && intent.requires_write_fence() {
             self.reject_peer_write_conflict();
             return;
         }
@@ -932,6 +932,39 @@ mod tests {
         )
         .expect("controller");
         AdminEditorRuntime::new(controller, None, None, None, "facade missing", "Saved")
+    }
+
+    #[test]
+    fn save_request_preserves_preview_but_remains_write_fenced() {
+        let runtime = runtime();
+        let hash = runtime
+            .controller
+            .get_untracked()
+            .editor()
+            .revision()
+            .project_hash;
+        let preview_attempt = PreviewAttempt::new(hash, 0, serde_json::json!({}), None);
+        runtime
+            .server_preview_html
+            .set(Some("<main>last good preview</main>".to_string()));
+        runtime.preview_request.set(Some(preview_attempt.clone()));
+        runtime.preview_in_progress.set(true);
+
+        runtime.dispatch(UiIntent::RequestSave);
+
+        assert_eq!(
+            runtime.server_preview_html.get_untracked().as_deref(),
+            Some("<main>last good preview</main>")
+        );
+        assert!(runtime.preview_in_progress.get_untracked());
+        assert_eq!(
+            runtime
+                .preview_request
+                .get_untracked()
+                .as_ref()
+                .map(|attempt| attempt.id),
+            Some(preview_attempt.id)
+        );
     }
 
     #[test]
