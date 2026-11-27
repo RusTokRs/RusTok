@@ -1214,6 +1214,17 @@ fn validate_symbols(
                     &mut symbol_report,
                 );
             }
+            if symbol_report.node_count > limits.maximum_nodes {
+                report.diagnostics.push(diagnostic(
+                    ValidationSeverity::Error,
+                    "symbol_definition_maximum_nodes_exceeded",
+                    &path,
+                    format!(
+                        "symbol definition contains {} components, exceeding configured maximum {}",
+                        symbol_report.node_count, limits.maximum_nodes
+                    ),
+                ));
+            }
             report.diagnostics.extend(symbol_report.diagnostics);
         }
         if catalog.insert(descriptor.id.clone(), descriptor).is_some() {
