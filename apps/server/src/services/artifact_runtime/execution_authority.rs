@@ -340,6 +340,46 @@ async fn check_policy(
         && authority.as_ref() == lease.serving_authority.as_ref())
 }
 
+/// Revalidates the exact lease and all mutable authority after an awaited
+/// capability broker operation. This protects response release even when the
+/// owner performs an external operation outside the SQL effect transaction.
+async fn revalidate_capability_authority(
+    resolver: &ServerArtifactEffectivePolicyResolver,
+    authority: &ExecutionAuthority,
+    call: &CapabilityCall,
+    lease: &Arc<ExecutionLease>,
+) -> SandboxResult<()> {
+    let denied = || SandboxError::CapabilityDenied(call.capability.clone());
+    let current = authority.lookup(call)?;
+    if !Arc::ptr_eq(&current, lease) {
+        return Err(denied());
+    }
+    let current_installation = resolve_granted_artifact_capability(
+        &resolver.db,
+        &ArtifactCapabilityExecution {
+            installation_id: lease.artifact.installation_id,
+            tenant_id: lease.tenant_id(),
+            slug: lease.artifact.release.slug.clone(),
+            version: lease.artifact.release.version.clone(),
+            digest: lease.artifact.release.digest.clone(),
+        },
+        &call.capability,
+    )
+    .await?;
+    if current_installation != lease.artifact
+        || !check_policy(resolver, lease).await.unwrap_or(false)
+        || !authority.check_direct(lease).await
+        || !check_security(resolver, lease).await
+    {
+        return Err(denied());
+    }
+    let current = authority.lookup(call)?;
+    if !Arc::ptr_eq(&current, lease) {
+        return Err(denied());
+    }
+    Ok(())
+}
+
 /// A bound call is produced from the live host registry, not the guest.
 struct SqlEffectFence {
     authority: ExecutionAuthority,
@@ -580,69 +620,15 @@ impl<B: CapabilityBroker> CapabilityBroker for FencedCapabilityBroker<B> {
         {
             return Err(denied());
         }
-        // Resolve the live capability revision even for lifecycle hooks; a
-        // revoked or replaced installation/grant cannot inherit an old lease.
-        let current = resolve_granted_artifact_capability(
-            &self.resolver.db,
-            &ArtifactCapabilityExecution {
-                installation_id: lease.artifact.installation_id,
-                tenant_id: lease.tenant_id(),
-                slug: lease.artifact.release.slug.clone(),
-                version: lease.artifact.release.version.clone(),
-                digest: lease.artifact.release.digest.clone(),
-            },
-            &call.capability,
-        )
-        .await?;
-        if current != lease.artifact
-            || !check_policy(&self.resolver, &lease).await.unwrap_or(false)
-            || !authority.check_direct(&lease).await
-            || !check_security(&self.resolver, &lease).await
-        {
-            return Err(denied());
-        }
-        // The independent owner broker still performs its own capability
-        // grant and transactional effect checks. Recheck lease membership
-        // after all awaits: cancellation may have removed the execution.
-        let live = authority.lookup(call)?;
-        if !Arc::ptr_eq(&live, &lease) {
-            return Err(denied());
-        }
+        revalidate_capability_authority(&self.resolver, authority, call, &lease).await?;
+        // The owner broker may perform an external operation outside the SQL
+        // effect transaction. Revalidate every capability result before
+        // releasing output: expiry, cancellation, installation replacement,
+        // policy changes, or credential revocation during the await must deny
+        // the response. This does not cancel an already-completed remote effect;
+        // a post-launch denial therefore remains an ambiguous outcome.
         let response = self.inner.invoke(call, grant).await?;
-        if call.capability.as_str() == "platform.data.objects" {
-            // Object bytes are fetched after the metadata transaction commits.
-            // Revalidate before releasing them (and before acknowledging a
-            // completed external object-store operation). Mutations carry
-            // durable owner receipts so a denied response can be replayed
-            // under a fresh, still-authorized execution.
-            let current = authority.lookup(call)?;
-            if !Arc::ptr_eq(&current, &lease) {
-                return Err(denied());
-            }
-            let current_installation = resolve_granted_artifact_capability(
-                &self.resolver.db,
-                &ArtifactCapabilityExecution {
-                    installation_id: lease.artifact.installation_id,
-                    tenant_id: lease.tenant_id(),
-                    slug: lease.artifact.release.slug.clone(),
-                    version: lease.artifact.release.version.clone(),
-                    digest: lease.artifact.release.digest.clone(),
-                },
-                &call.capability,
-            )
-            .await?;
-            if current_installation != lease.artifact
-                || !check_policy(&self.resolver, &lease).await.unwrap_or(false)
-                || !authority.check_direct(&lease).await
-                || !check_security(&self.resolver, &lease).await
-            {
-                return Err(denied());
-            }
-            let current = authority.lookup(call)?;
-            if !Arc::ptr_eq(&current, &lease) {
-                return Err(denied());
-            }
-        }
+        revalidate_capability_authority(&self.resolver, authority, call, &lease).await?;
         Ok(response)
     }
 }
