@@ -114,7 +114,7 @@ BEGIN
     RETURN NEW;
 END; $$;
 
-CREATE FUNCTION auth_guard_issued_oauth_claims() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE FUNCTION auth_guard_issued_oauth_claims() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE field_name text;
 BEGIN
     FOREACH field_name IN ARRAY TG_ARGV LOOP
@@ -123,7 +123,7 @@ BEGIN
         END IF;
     END LOOP;
     RETURN NEW;
-END; $;
+END; $$;
 
 CREATE FUNCTION auth_guard_revoked_oauth_rotation() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
