@@ -1288,10 +1288,9 @@ fn expand_instance(
         .iter()
         .map(count_component_node)
         .fold(0usize, usize::saturating_add);
-    let next_node_count = identities
-        .node_count
-        .saturating_sub(1)
-        .saturating_add(replacement_nodes);
+    // The instance shell remains as the wrapper that owns the expanded children.
+    // Expansion therefore adds the definition nodes; it does not replace the instance node.
+    let next_node_count = identities.node_count.saturating_add(replacement_nodes);
     if next_node_count > crate::DEFAULT_MAXIMUM_NODES {
         return Err(FlyError::MaximumNodesExceeded {
             maximum: crate::DEFAULT_MAXIMUM_NODES,
@@ -1634,6 +1633,24 @@ mod tests {
         // Deterministic: resolving the source again reproduces the same tree.
         let repeat = resolve_symbol_instances(&document).expect("resolve repeat");
         assert_eq!(repeat, resolved);
+    }
+
+    #[test]
+    fn symbol_expansion_counts_the_retained_instance_wrapper_against_node_budget() {
+        let mut children = vec![instance("slot", "one")];
+        children.extend(
+            (0..crate::DEFAULT_MAXIMUM_NODES.saturating_sub(2))
+                .map(|index| object(&format!("filler-{index}"), "text", Vec::new())),
+        );
+        let document = document_with(
+            object("root", "wrapper", children),
+            vec![symbol_json("one", vec![plain_component_json("symbol-child")])],
+        );
+
+        assert!(matches!(
+            resolve_symbol_instances(&document),
+            Err(FlyError::MaximumNodesExceeded { .. })
+        ));
     }
 
     #[test]
