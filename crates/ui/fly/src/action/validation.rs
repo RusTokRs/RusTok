@@ -243,11 +243,7 @@ fn validate_action(
     }
 }
 
-pub(super) fn validate_action_contract(
-    action: &ComponentAction,
-    routes: &InteractionRouteCatalog,
-    form_ids: &FormIndex,
-) -> Result<(), String> {
+pub(crate) fn validate_action_syntax(action: &ComponentAction) -> Result<(), String> {
     match action {
         ComponentAction::NavigatePage {
             page_id,
@@ -255,32 +251,19 @@ pub(super) fn validate_action_contract(
             query,
             fragment,
             fallback_href,
-        } => validate_identifier(page_id, "target page id")
-            .and_then(|_| {
-                if let Some(base_path) = base_path.as_deref() {
-                    validate_base_path(base_path)?;
-                }
-                validate_suffix(query.as_deref(), "query")?;
-                validate_suffix(fragment.as_deref(), "fragment")?;
-                if let Some(href) = fallback_href.as_deref() {
-                    validate_safe_url(href, "fallback href")?;
-                }
-                Ok(())
-            })
-            .and_then(|_| match routes.page_index(page_id) {
-                Ok(page_index) if routes.has_route(page_index) => Ok(()),
-                Ok(_) if fallback_href.is_some() => Ok(()),
-                Ok(_) => Err(format!("target page `{page_id}` has no explicit slug")),
-                Err(error) => Err(error.to_string()),
-            }),
+        } => validate_identifier(page_id, "target page id").and_then(|_| {
+            if let Some(base_path) = base_path.as_deref() {
+                validate_base_path(base_path)?;
+            }
+            validate_suffix(query.as_deref(), "query")?;
+            validate_suffix(fragment.as_deref(), "fragment")?;
+            if let Some(href) = fallback_href.as_deref() {
+                validate_safe_url(href, "fallback href")?;
+            }
+            Ok(())
+        }),
         ComponentAction::NavigateUrl { href, .. } => validate_safe_url(href, "navigation href"),
-        ComponentAction::SubmitForm { form_id } => validate_identifier(form_id, "form id")
-            .and_then(|_| {
-                form_ids
-                    .contains_key(form_id)
-                    .then_some(())
-                    .ok_or_else(|| format!("form `{form_id}` does not exist"))
-            }),
+        ComponentAction::SubmitForm { form_id } => validate_identifier(form_id, "form id"),
         ComponentAction::EmitEvent { event, .. } => validate_identifier(event, "event name"),
         ComponentAction::ToggleVisibility { target_id, .. }
         | ComponentAction::ScrollTo { target_id }
@@ -325,6 +308,31 @@ pub(super) fn validate_action_contract(
             provider, action, ..
         } => validate_identifier(provider, "provider")
             .and_then(|_| validate_identifier(action, "provider action")),
+    }
+}
+
+pub(super) fn validate_action_contract(
+    action: &ComponentAction,
+    routes: &InteractionRouteCatalog,
+    form_ids: &FormIndex,
+) -> Result<(), String> {
+    validate_action_syntax(action)?;
+    match action {
+        ComponentAction::NavigatePage {
+            page_id,
+            fallback_href,
+            ..
+        } => match routes.page_index(page_id) {
+            Ok(page_index) if routes.has_route(page_index) => Ok(()),
+            Ok(_) if fallback_href.is_some() => Ok(()),
+            Ok(_) => Err(format!("target page `{page_id}` has no explicit slug")),
+            Err(error) => Err(error.to_string()),
+        },
+        ComponentAction::SubmitForm { form_id } => form_ids
+            .contains_key(form_id)
+            .then_some(())
+            .ok_or_else(|| format!("form `{form_id}` does not exist")),
+        _ => Ok(()),
     }
 }
 
