@@ -93,7 +93,7 @@ const TERMINAL_FIELDS: &[(&str, &str)] = &[
 ];
 
 const POSTGRES_TERMINAL: &str = r#"
-CREATE FUNCTION auth_guard_terminal_credential() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE FUNCTION auth_guard_terminal_credential() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE old_value jsonb := to_jsonb(OLD); new_value jsonb := to_jsonb(NEW);
 BEGIN
     IF old_value ->> TG_ARGV[0] IS NOT NULL AND
@@ -101,19 +101,19 @@ BEGIN
         RAISE EXCEPTION 'Auth terminal credential timestamp is immutable' USING ERRCODE = '23514';
     END IF;
     RETURN NEW;
-END; $;
+END; $$;
 
-CREATE FUNCTION auth_guard_revoked_oauth_rotation() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE FUNCTION auth_guard_revoked_oauth_rotation() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     IF OLD.revoked_at IS NOT NULL AND NEW.last_used_at IS DISTINCT FROM OLD.last_used_at THEN
         RAISE EXCEPTION 'OAuth terminal rotation evidence is immutable' USING ERRCODE = '23514';
     END IF;
     RETURN NEW;
-END; $;
+END; $$;
 CREATE TRIGGER auth_oauth_rotation_evidence_guard BEFORE UPDATE ON oauth_tokens
 FOR EACH ROW EXECUTE FUNCTION auth_guard_revoked_oauth_rotation();
 
-CREATE FUNCTION auth_guard_consent_identity() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE FUNCTION auth_guard_consent_identity() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     IF ROW(NEW.app_id, NEW.user_id, NEW.tenant_id) IS DISTINCT FROM
        ROW(OLD.app_id, OLD.user_id, OLD.tenant_id)
@@ -122,7 +122,7 @@ BEGIN
         RAISE EXCEPTION 'OAuth consent identity or terminal grant is immutable' USING ERRCODE = '23514';
     END IF;
     RETURN NEW;
-END; $;
+END; $$;
 CREATE TRIGGER auth_consent_identity_guard BEFORE UPDATE ON oauth_consents
 FOR EACH ROW EXECUTE FUNCTION auth_guard_consent_identity();
 "#;
