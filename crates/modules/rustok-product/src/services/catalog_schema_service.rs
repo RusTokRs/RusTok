@@ -27,7 +27,7 @@ pub use attribute_lifecycle::{
     UpdateAttributeDefinitionInput,
 };
 mod categories;
-mod effective_forms;
+pub(crate) mod effective_forms;
 pub(crate) mod policy;
 mod schemas;
 mod values;

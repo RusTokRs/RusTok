@@ -213,11 +213,12 @@ No tests, Rust compilation/macro expansion, database or mounted-client checks we
 2. Continue the Taxonomy reparenting integration: in the co-located native composition,
    the Product schema fence uses the same tenant-scoped PostgreSQL advisory lock as Taxonomy
    hierarchy writers, and the SQLite Taxonomy writer reserves the database writer before hierarchy
-   reads. Product effective-form inheritance and inherited group-label ancestry now consume strict
-   Taxonomy owner snapshots on all supported database engines; they no longer use Product path as
-   canonical ancestry. Product `catalog_categories.path` remains a Product-owned navigation
-   projection that Taxonomy moves do not refresh. Add an owner-approved projection refresh protocol
-   or remove stale path from externally visible navigation, then measure snapshot cost and lock contention.
+   reads. Product effective-form inheritance, inherited group-label ancestry, and storefront/admin
+   category subtree filters and facets now consume strict Taxonomy owner snapshots on all supported
+   database engines; they no longer use Product path or the legacy `parent_id` compatibility column as canonical
+   ancestry. Product `catalog_categories.path` remains a Product-owned navigation projection that
+   Taxonomy moves do not refresh. Add an owner-approved projection refresh protocol or remove stale
+   path from externally visible navigation, then measure snapshot cost and lock contention.
    - Implemented source-side active-Product impact validation for effective category-schema
      requirement/scope tightening. Schema-attribute bindings, category-attribute bindings and
      category schema-mode changes snapshot effective requirements under the exclusive schema

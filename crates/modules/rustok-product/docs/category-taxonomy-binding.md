@@ -1,7 +1,7 @@
 # Product Category → Taxonomy migration contract
 
-Status: **canonical Same-ID cutover complete across all backends; intermediate binding table, closure/translation donors, and redundant domain columns retired**
-Current migration cursor: **Phase 4 (Migration 32) Canonical Same-ID Taxonomy cutover; direct FK `catalog_categories(tenant_id, id) -> taxonomy_terms(tenant_id, id)` enforced; `product_catalog_category_taxonomy_bindings`, `parent_id`, `slug`, `position` dropped**.
+Status: **canonical Same-ID runtime cutover complete across all backends; PostgreSQL legacy hierarchy storage retired; non-PostgreSQL compatibility storage retained but no longer authoritative**
+Current migration cursor: **Phase 4 (Migration 32) Canonical Same-ID Taxonomy cutover; the intermediate binding table is dropped across supported backends, while the direct FK and removal of `parent_id`, `slug`, `position` are PostgreSQL-only; non-PostgreSQL keeps compatibility columns/storage**.
 
 TAXONOMY-CAT-23 introduced the tenant-safe Product-owned binding seam.
 TAXONOMY-CAT-24 added the PostgreSQL-only monotonic backfill of existing Product
@@ -398,22 +398,21 @@ Migration `m20260916_000032_clean_product_category_canonical_taxonomy` completes
    - Dual-read/join queries (`LEFT JOIN product_catalog_category_taxonomy_bindings`) in `CatalogSchemaService` are eliminated; category IDs are direct references to `taxonomy_terms`.
 
 2. **Removal of redundant domain columns**:
-   - In `catalog_categories`, redundant mirrors of hierarchy and presentation state (`parent_id`, `slug`, `position`) are dropped.
-   - Legacy tree cycle triggers (`trg_catalog_categories_validate_tree`, `rustok_product_validate_category_tree_trigger`, `rustok_product_assert_category_tree`) and slug unique constraints (`uq_catalog_categories_parent_slug`, `uq_catalog_categories_tenant_root_slug`) are dropped.
-   - Hierarchy and cycle prevention are canonically enforced by `taxonomy_category_hierarchy`.
+   - PostgreSQL drops the redundant `catalog_categories` hierarchy/presentation mirrors (`parent_id`, `slug`, `position`) and the legacy tree triggers/indexes.
+   - Non-PostgreSQL backends retain compatibility columns and closure storage; those copies are not canonical hierarchy authority and must not be used by runtime ancestry consumers.
+   - Taxonomy owns parent links and cycle prevention on every supported backend.
 
-3. **Enforcement of Same-ID foreign key constraint**:
-   - Composite foreign key `fk_catalog_categories_taxonomy_term` (`(tenant_id, id) REFERENCES taxonomy_terms(tenant_id, id) ON DELETE CASCADE`) is established on PostgreSQL and supported engines, guaranteeing cross-table referential integrity.
-   - On category creation, synchronization to `taxonomy_terms` is executed first within the write transaction, satisfying the foreign key constraint before `catalog_categories` insertion.
+3. **Same-ID referential integrity**:
+   - Migration 32 adds the composite foreign key `fk_catalog_categories_taxonomy_term` on PostgreSQL. It does not add that constraint on non-PostgreSQL backends; their runtime boundary is the Product↔Taxonomy owner port and strict Same-ID projection validation.
+   - On category creation, synchronization to `taxonomy_terms` is executed first within the write transaction, before `catalog_categories` insertion.
 
-4. **Elimination of legacy donor read/write fallbacks**:
-   - Non-PostgreSQL legacy donor writes (`should_write_legacy_category_translation`, `should_write_product_category_closure`) and donor read fallbacks (`list_categories_from_product_donor`, closure-based group label inheritance) are deleted.
-   - Category listing and effective form resolution consume `TaxonomyOwnerCategoryReader` uniformly across all database engines.
+4. **Elimination of legacy hierarchy reads**:
+   - Runtime hierarchy consumers use the Taxonomy owner port rather than Product `parent_id` or closure mirrors. Product path/level remain navigation projections; the reparenting refresh protocol is still outstanding.
+   - Category listing, effective-form resolution, inherited group labels, and storefront/admin subtree filters and facets consume `TaxonomyOwnerCategoryReader` uniformly across all supported database engines.
 
 ## Current error boundary (2026-10-18)
 
-The create/read/hierarchy source guards now follow the Migration 32 same-ID/all-backend target
-above, not the historical donor/typed-binding/closure compatibility phases. Taxonomy synchronization
+The create/read/hierarchy source guards follow the Same-ID/all-backend runtime contract above. PostgreSQL has physically retired the legacy hierarchy columns; non-PostgreSQL compatibility storage may remain but is not a runtime ancestry source. Product path/level remain navigation projections. Taxonomy synchronization
 preserves typed domain conflicts, forbidden access and storage failures with static Product copy.
 Taxonomy reads and corrupt owner projections fail as internal invariants rather than client
 Validation; storage and forbidden remain distinct. See the

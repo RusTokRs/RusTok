@@ -138,7 +138,14 @@ impl CatalogService {
         if let Some(category_id) = list_query.category_id {
             // A storefront category filter selects the category and its live
             // descendant subtree, mirroring the storefront navigation tree.
-            let subtree = load_category_filter_subtree(&self.db, tenant_id, category_id).await?;
+            let taxonomy_port = self.taxonomy();
+            let subtree = load_category_filter_subtree(
+                &self.db,
+                taxonomy_port.as_ref(),
+                tenant_id,
+                category_id,
+            )
+            .await?;
             query = if subtree.is_empty() {
                 // Unknown or deleted category: the filter matches no products.
                 query.filter(sea_orm::Condition::all().add(sea_orm::sea_query::Expr::cust("1 = 0")))

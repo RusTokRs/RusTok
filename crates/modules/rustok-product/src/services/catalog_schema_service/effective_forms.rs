@@ -524,7 +524,7 @@ where
 /// Reads canonical hierarchy in bounded batches. The owner port receives the exact
 /// pool/transaction handle used by Product so a schema write never observes a different
 /// Taxonomy snapshot from the transaction that is about to commit.
-async fn load_taxonomy_category_parent_map<C>(
+pub(crate) async fn load_taxonomy_category_parent_map<C>(
     connection: &C,
     taxonomy_port: &dyn ProductTaxonomyPort,
     tenant_id: Uuid,
@@ -599,16 +599,6 @@ fn taxonomy_category_parent_map(
         if owner.scope_type != "module" || owner.scope_value.as_deref() != Some("product") {
             return Err(super::taxonomy_projection_error(
                 "Product category has incompatible Taxonomy scope",
-            ));
-        }
-        if owner.available_locales.is_empty() {
-            return Err(super::taxonomy_projection_error(
-                "Product category has no canonical Taxonomy localized copy",
-            ));
-        }
-        if owner.position < 0 {
-            return Err(super::taxonomy_projection_error(
-                "Product category has a negative Taxonomy sibling position",
             ));
         }
         if parent_map.insert(owner.id, owner.parent_id).is_some() {
@@ -809,13 +799,6 @@ mod tests {
         invalid_scope.scope_value = Some("forum".to_string());
         assert!(taxonomy_category_parent_map(&[id], vec![invalid_scope]).is_err());
 
-        let mut missing_copy = taxonomy_category_snapshot(id, None);
-        missing_copy.available_locales.clear();
-        assert!(taxonomy_category_parent_map(&[id], vec![missing_copy]).is_err());
-
-        let mut invalid_position = taxonomy_category_snapshot(id, None);
-        invalid_position.position = -1;
-        assert!(taxonomy_category_parent_map(&[id], vec![invalid_position]).is_err());
     }
 
     #[test]

@@ -4,7 +4,10 @@ use crate::dto::{
 };
 use crate::entities;
 use crate::error::{CommerceError, CommerceResult};
+use crate::ports::{AsTaxonomyConnection, ProductTaxonomyPort};
+use crate::services::catalog_schema_service::effective_forms::load_taxonomy_category_parent_map;
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, locale_tags_match};
+use std::collections::{HashMap, HashSet, VecDeque};
 use rustok_core::field_schema::{
     CustomFieldsSchema, FieldDefinition, attached_values as field_values,
 };
@@ -230,61 +233,144 @@ pub fn variant_display_title(
 /// Bound for one category filter's subtree resolution: lists and facets refuse a
 /// filter whose live subtree exceeds this size instead of silently truncating it.
 pub const MAX_CATEGORY_FILTER_SUBTREE: usize = 1024;
+const MAX_CATEGORY_FILTER_OWNER_ROWS: usize = 10_000;
 
 #[derive(Debug, sea_orm::FromQueryResult)]
 struct CategoryFilterSubtreeRow {
     id: Uuid,
+    kind: String,
+    is_active: bool,
 }
 
-/// Resolves a category filter to the category itself plus all of its live
-/// descendant categories.
+/// Resolves a category filter from Product lifecycle/kind state and Taxonomy-owned ancestry.
 ///
-/// Lists and facets aggregate by primary-category subtree, matching the tree the
-/// category selector presents: choosing a parent includes products filed under
-/// its children. The walk is tenant-scoped over live rows and bounded; a missing
-/// or deleted root resolves to an empty set (the filter matches no products).
-pub async fn load_category_filter_subtree<C: ConnectionTrait>(
+/// Product keeps lifecycle and category kind; Taxonomy alone supplies parent links. Deleted
+/// Product rows are included in the owner read so an active child of a deleted parent is
+/// not silently promoted to a root, but traversal only follows active structural nodes.
+pub async fn load_category_filter_subtree<C>(
     conn: &C,
+    taxonomy_port: &dyn ProductTaxonomyPort,
     tenant_id: Uuid,
     category_id: Uuid,
-) -> CommerceResult<Vec<Uuid>> {
+) -> CommerceResult<Vec<Uuid>>
+where
+    C: ConnectionTrait + AsTaxonomyConnection,
+{
     let backend = conn.get_database_backend();
     let rows = CategoryFilterSubtreeRow::find_by_statement(Statement::from_sql_and_values(
         backend,
         format!(
-            r#"
-            WITH RECURSIVE category_subtree(id) AS (
-                SELECT id
-                FROM catalog_categories
-                WHERE tenant_id = {tenant}
-                  AND id = {root}
-                  AND deleted_at IS NULL
-                  AND kind = 'structural'
-                UNION ALL
-                SELECT c.id
-                FROM catalog_categories c
-                JOIN category_subtree s ON c.parent_id = s.id
-                WHERE c.tenant_id = {tenant_again}
-                  AND c.deleted_at IS NULL
-                  AND c.kind = 'structural'
-            )
-            SELECT id FROM category_subtree LIMIT {limit}
-            "#,
+            "SELECT id, kind, (deleted_at IS NULL) AS is_active FROM catalog_categories WHERE tenant_id = {tenant} ORDER BY id ASC LIMIT {limit}",
             tenant = sql_placeholder(backend, 1),
-            root = sql_placeholder(backend, 2),
-            tenant_again = sql_placeholder(backend, 3),
-            limit = MAX_CATEGORY_FILTER_SUBTREE + 1,
+            limit = MAX_CATEGORY_FILTER_OWNER_ROWS + 1,
         ),
-        vec![tenant_id.into(), category_id.into(), tenant_id.into()],
+        vec![tenant_id.into()],
     ))
     .all(conn)
     .await?;
-    if rows.len() > MAX_CATEGORY_FILTER_SUBTREE {
+    if rows.len() > MAX_CATEGORY_FILTER_OWNER_ROWS {
         return Err(CommerceError::Validation(format!(
-            "category filter subtree exceeds its bound of {MAX_CATEGORY_FILTER_SUBTREE} live categories"
+            "category owner projection exceeds its bound of {MAX_CATEGORY_FILTER_OWNER_ROWS} rows"
         )));
     }
-    Ok(rows.into_iter().map(|row| row.id).collect())
+    if rows.is_empty()
+        || !rows.iter().any(|row| {
+            row.id == category_id && row.is_active && row.kind == "structural"
+        })
+    {
+        return Ok(Vec::new());
+    }
+
+    let category_ids = rows.iter().map(|row| row.id).collect::<Vec<_>>();
+    let parent_map = load_taxonomy_category_parent_map(
+        conn,
+        taxonomy_port,
+        tenant_id,
+        &category_ids,
+        PLATFORM_FALLBACK_LOCALE,
+        Some(PLATFORM_FALLBACK_LOCALE),
+    )
+    .await?;
+
+    category_filter_subtree_from_taxonomy(category_id, rows, &parent_map)
+}
+
+/// Applies the storefront/admin subtree policy after the strict Taxonomy owner read.
+/// Deleted or non-structural nodes are branch boundaries, matching the former recursive walk.
+fn category_filter_subtree_from_taxonomy(
+    root_id: Uuid,
+    categories: Vec<CategoryFilterSubtreeRow>,
+    parent_map: &HashMap<Uuid, Option<Uuid>>,
+) -> CommerceResult<Vec<Uuid>> {
+    let mut kinds = HashMap::with_capacity(categories.len());
+    let mut active = HashMap::with_capacity(categories.len());
+    for category in categories {
+        if kinds.insert(category.id, category.kind).is_some() {
+            return Err(crate::services::catalog_schema_service::taxonomy_projection_error(
+                "Product category filter contains duplicate category identities",
+            ));
+        }
+        active.insert(category.id, category.is_active);
+    }
+    if kinds.len() != parent_map.len()
+        || kinds.keys().any(|category_id| !parent_map.contains_key(category_id))
+    {
+        return Err(crate::services::catalog_schema_service::taxonomy_projection_error(
+            "Product category filter and Taxonomy hierarchy projections do not match",
+        ));
+    }
+    if !active.get(&root_id).copied().unwrap_or(false)
+        || kinds.get(&root_id).map(String::as_str) != Some("structural")
+    {
+        return Ok(Vec::new());
+    }
+
+    let mut children_by_parent = HashMap::<Uuid, Vec<Uuid>>::new();
+    for (category_id, kind) in &kinds {
+        if kind != "structural" || !active.get(category_id).copied().unwrap_or(false) {
+            continue;
+        }
+        let parent_id = *parent_map.get(category_id).ok_or_else(|| {
+            crate::services::catalog_schema_service::taxonomy_projection_error(
+                "Product category is missing its Taxonomy parent projection",
+            )
+        })?;
+        if let Some(parent_id) = parent_id {
+            if active.get(&parent_id).copied().unwrap_or(false)
+                && kinds.get(&parent_id).map(String::as_str) == Some("structural")
+            {
+                children_by_parent
+                    .entry(parent_id)
+                    .or_default()
+                    .push(*category_id);
+            }
+        }
+    }
+    for children in children_by_parent.values_mut() {
+        children.sort_unstable();
+    }
+
+    let mut pending = VecDeque::new();
+    pending.push_back(root_id);
+    let mut visited = HashSet::new();
+    let mut subtree = Vec::new();
+    while let Some(category_id) = pending.pop_front() {
+        if !visited.insert(category_id) {
+            return Err(crate::services::catalog_schema_service::taxonomy_projection_error(
+                "Product category filter encountered a cyclic Taxonomy subtree",
+            ));
+        }
+        subtree.push(category_id);
+        if subtree.len() > MAX_CATEGORY_FILTER_SUBTREE {
+            return Err(CommerceError::Validation(format!(
+                "category filter subtree exceeds its bound of {MAX_CATEGORY_FILTER_SUBTREE} live categories"
+            )));
+        }
+        if let Some(children) = children_by_parent.get(&category_id) {
+            pending.extend(children.iter().copied());
+        }
+    }
+    Ok(subtree)
 }
 
 pub fn format_product_media_url(media_id: Uuid) -> String {
@@ -1107,140 +1193,113 @@ mod variant_title_tests {
 mod category_filter_subtree_tests {
     use super::*;
 
-    async fn subtree_db() -> sea_orm::DatabaseConnection {
-        let db = sea_orm::Database::connect("sqlite::memory:")
-            .await
-            .expect("sqlite in-memory db");
-        db.execute_raw(sea_orm::Statement::from_string(
-            sea_orm::DatabaseBackend::Sqlite,
-            r#"
-            CREATE TABLE catalog_categories (
-                id TEXT PRIMARY KEY,
-                tenant_id TEXT NOT NULL,
-                parent_id TEXT,
-                deleted_at TEXT,
-                kind TEXT NOT NULL DEFAULT 'structural'
-            )
-            "#
-            .to_string(),
-        ))
-        .await
-        .expect("create catalog_categories");
-        db
+    fn node(id: Uuid, kind: &str, is_active: bool) -> CategoryFilterSubtreeRow {
+        CategoryFilterSubtreeRow {
+            id,
+            kind: kind.to_string(),
+            is_active,
+        }
     }
 
-    async fn insert_category(
-        db: &sea_orm::DatabaseConnection,
-        tenant_id: Uuid,
-        id: Uuid,
-        parent_id: Option<Uuid>,
-        deleted: bool,
-    ) {
-        let deleted_at: Option<String> = deleted.then(|| "deleted".to_string());
-        db.execute_raw(sea_orm::Statement::from_sql_and_values(
-            sea_orm::DatabaseBackend::Sqlite,
-            "INSERT INTO catalog_categories (id, tenant_id, parent_id, deleted_at) VALUES (?, ?, ?, ?)",
-            [
-                id.into(),
-                tenant_id.into(),
-                parent_id.into(),
-                deleted_at.into(),
-            ],
-        ))
-        .await
-        .expect("insert category");
-    }
-
-    #[tokio::test]
-    async fn subtree_walks_live_descendants_of_the_requested_tenant() {
-        let db = subtree_db().await;
-        let tenant_id = Uuid::new_v4();
-        let other_tenant = Uuid::new_v4();
+    #[test]
+    fn subtree_walks_only_live_structural_descendants() {
         let root = Uuid::new_v4();
         let child = Uuid::new_v4();
         let grandchild = Uuid::new_v4();
         let deleted_child = Uuid::new_v4();
         let child_of_deleted = Uuid::new_v4();
-        let foreign_root = Uuid::new_v4();
+        let categories = vec![
+            node(root, "structural", true),
+            node(child, "structural", true),
+            node(grandchild, "structural", true),
+            node(deleted_child, "structural", false),
+            node(child_of_deleted, "structural", true),
+        ];
+        let parents = HashMap::from([
+            (root, None),
+            (child, Some(root)),
+            (grandchild, Some(child)),
+            (deleted_child, Some(root)),
+            (child_of_deleted, Some(deleted_child)),
+        ]);
 
-        insert_category(&db, tenant_id, root, None, false).await;
-        insert_category(&db, tenant_id, child, Some(root), false).await;
-        insert_category(&db, tenant_id, grandchild, Some(child), false).await;
-        insert_category(&db, tenant_id, deleted_child, Some(root), true).await;
-        insert_category(&db, tenant_id, child_of_deleted, Some(deleted_child), false).await;
-        insert_category(&db, other_tenant, foreign_root, None, false).await;
-
-        let mut subtree = load_category_filter_subtree(&db, tenant_id, root)
-            .await
-            .expect("resolve subtree");
-        subtree.sort();
+        let mut subtree =
+            category_filter_subtree_from_taxonomy(root, categories, &parents)
+                .expect("resolve Taxonomy-backed subtree");
+        subtree.sort_unstable();
         let mut expected = vec![root, child, grandchild];
-        expected.sort();
+        expected.sort_unstable();
         assert_eq!(subtree, expected);
-
-        assert!(
-            load_category_filter_subtree(&db, tenant_id, Uuid::new_v4())
-                .await
-                .expect("unknown root resolves")
-                .is_empty(),
-            "an unknown or deleted root matches no products"
-        );
     }
 
-    #[tokio::test]
-    async fn subtree_ignores_non_structural_categories_and_their_descendants() {
-        let db = subtree_db().await;
-        let tenant_id = Uuid::new_v4();
+    #[test]
+    fn subtree_stops_at_non_structural_categories_and_their_descendants() {
         let root = Uuid::new_v4();
         let virtual_child = Uuid::new_v4();
         let structural_grandchild = Uuid::new_v4();
+        let categories = vec![
+            node(root, "structural", true),
+            node(virtual_child, "virtual", true),
+            node(structural_grandchild, "structural", true),
+        ];
+        let parents = HashMap::from([
+            (root, None),
+            (virtual_child, Some(root)),
+            (structural_grandchild, Some(virtual_child)),
+        ]);
 
-        insert_category(&db, tenant_id, root, None, false).await;
-        insert_category(&db, tenant_id, virtual_child, Some(root), false).await;
-        db.execute_raw(sea_orm::Statement::from_sql_and_values(
-            sea_orm::DatabaseBackend::Sqlite,
-            "UPDATE catalog_categories SET kind = ? WHERE id = ?",
-            ["virtual".into(), virtual_child.into()],
-        ))
-        .await
-        .expect("mark child as virtual");
-        insert_category(
-            &db,
-            tenant_id,
-            structural_grandchild,
-            Some(virtual_child),
-            false,
-        )
-        .await;
-
-        let subtree = load_category_filter_subtree(&db, tenant_id, root)
-            .await
-            .expect("resolve structural subtree");
-        assert_eq!(subtree, vec![root]);
+        assert_eq!(
+            category_filter_subtree_from_taxonomy(root, categories, &parents)
+                .expect("resolve structural subtree"),
+            vec![root]
+        );
         assert!(
-            load_category_filter_subtree(&db, tenant_id, virtual_child)
-                .await
-                .expect("non-structural root resolves to an empty subtree")
-                .is_empty()
+            category_filter_subtree_from_taxonomy(
+                virtual_child,
+                vec![node(virtual_child, "virtual", true)],
+                &HashMap::from([(virtual_child, Some(root))]),
+            )
+            .expect("non-structural root resolves to empty")
+            .is_empty()
         );
     }
 
-    #[tokio::test]
-    async fn subtree_refuses_filters_whose_live_tree_exceeds_the_bound() {
-        let db = subtree_db().await;
-        let tenant_id = Uuid::new_v4();
+    #[test]
+    fn subtree_returns_empty_for_unknown_or_deleted_roots() {
         let root = Uuid::new_v4();
+        let categories = vec![node(root, "structural", false)];
+        let parents = HashMap::from([(root, None)]);
+        assert!(
+            category_filter_subtree_from_taxonomy(root, categories, &parents)
+                .expect("deleted root resolves to empty")
+                .is_empty()
+        );
+        assert!(
+            category_filter_subtree_from_taxonomy(
+                Uuid::new_v4(),
+                vec![node(root, "structural", true)],
+                &parents,
+            )
+            .expect("unknown root resolves to empty")
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn subtree_refuses_live_trees_that_exceed_the_bound() {
+        let root = Uuid::new_v4();
+        let mut categories = vec![node(root, "structural", true)];
+        let mut parents = HashMap::from([(root, None)]);
         let mut parent = root;
-        insert_category(&db, tenant_id, root, None, false).await;
         for _ in 0..MAX_CATEGORY_FILTER_SUBTREE {
-            let next = Uuid::new_v4();
-            insert_category(&db, tenant_id, next, Some(parent), false).await;
-            parent = next;
+            let child = Uuid::new_v4();
+            categories.push(node(child, "structural", true));
+            parents.insert(child, Some(parent));
+            parent = child;
         }
 
-        let error = load_category_filter_subtree(&db, tenant_id, root)
-            .await
-            .expect_err("an oversized subtree must be refused");
+        let error = category_filter_subtree_from_taxonomy(root, categories, &parents)
+            .expect_err("oversized subtree must be refused");
         assert!(matches!(error, CommerceError::Validation(_)));
     }
 }

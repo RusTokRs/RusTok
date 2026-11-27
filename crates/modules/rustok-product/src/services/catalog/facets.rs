@@ -22,6 +22,7 @@ use rustok_api::PLATFORM_FALLBACK_LOCALE;
 
 use crate::entities::product::ProductStatus;
 use crate::error::{CommerceError, CommerceResult};
+use crate::ports::ProductTaxonomyPort;
 use crate::services::catalog_schema::AttributeValueType;
 
 use super::ProductAttributeFilter;
@@ -101,8 +102,10 @@ impl super::CatalogService {
     ) -> CommerceResult<Vec<StorefrontCatalogFacet>> {
         let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
         super::types::validate_storefront_product_search(list_query.search.as_deref())?;
+        let taxonomy_port = self.taxonomy();
         load_storefront_catalog_facets(
             &self.db,
+            taxonomy_port.as_ref(),
             tenant_id,
             locale,
             fallback_locale,
@@ -133,8 +136,10 @@ impl super::CatalogService {
         let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
         super::types::validate_storefront_product_search(list_query.search.as_deref())?;
         let admin_status = list_query.status.map(ProductStatus::from);
+        let taxonomy_port = self.taxonomy();
         load_catalog_facets(
             &self.db,
+            taxonomy_port.as_ref(),
             tenant_id,
             locale,
             fallback_locale,
@@ -180,6 +185,7 @@ pub(super) struct CatalogFacetFilters<'a> {
 /// Storefront entry point: counted over the published, channel-visible population.
 pub(super) async fn load_storefront_catalog_facets(
     db: &DatabaseConnection,
+    taxonomy_port: &dyn ProductTaxonomyPort,
     tenant_id: Uuid,
     locale: &str,
     fallback_locale: &str,
@@ -189,6 +195,7 @@ pub(super) async fn load_storefront_catalog_facets(
 ) -> CommerceResult<Vec<StorefrontCatalogFacet>> {
     load_catalog_facets(
         db,
+        taxonomy_port,
         tenant_id,
         locale,
         fallback_locale,
@@ -209,6 +216,7 @@ pub(super) async fn load_storefront_catalog_facets(
 /// Counts the requested facets under one scope and filter set.
 pub(super) async fn load_catalog_facets(
     db: &DatabaseConnection,
+    taxonomy_port: &dyn ProductTaxonomyPort,
     tenant_id: Uuid,
     locale: &str,
     fallback_locale: &str,
@@ -227,7 +235,9 @@ pub(super) async fn load_catalog_facets(
     // Resolve the category filter's subtree once: every facet query aggregates by
     // primary-category subtree, mirroring the storefront navigation tree.
     let category_subtree = match filters.category_id {
-        Some(category_id) => Some(load_category_filter_subtree(db, tenant_id, category_id).await?),
+        Some(category_id) => Some(
+            load_category_filter_subtree(db, taxonomy_port, tenant_id, category_id).await?,
+        ),
         None => None,
     };
 
