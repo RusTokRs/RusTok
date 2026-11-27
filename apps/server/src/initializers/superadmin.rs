@@ -146,7 +146,9 @@ mod tests {
     use crate::common::settings::RustokSettings;
     use rustok_core::{UserRole, UserStatus};
     use rustok_migrations::SqliteTestMigrator;
+    use rustok_outbox::entity as sys_events;
     use rustok_test_utils::db::setup_test_db_with_migrations;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
     async fn test_context() -> ServerRuntimeContext {
         let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
@@ -262,6 +264,36 @@ mod tests {
         )
         .await
         .is_err());
+    }
+
+    #[tokio::test]
+    async fn default_superadmin_bootstrap_publishes_registration_event() {
+        let ctx = test_context().await;
+        let tenant = tenants::find_or_create(ctx.db(), "Bootstrap tenant", "bootstrap-tenant", None)
+            .await
+            .expect("tenant");
+
+        ensure_configured_superadmin(
+            &ctx,
+            "bootstrap-admin@example.test",
+            "StrongBootstrapPassword123!",
+            "Bootstrap tenant",
+            "bootstrap-tenant",
+        )
+        .await
+        .expect("bootstrap superadmin");
+
+        let events = sys_events::Entity::find()
+            .filter(sys_events::Column::TenantId.eq(tenant.id))
+            .filter(sys_events::Column::EventType.eq("user.account_registered"))
+            .all(ctx.db())
+            .await
+            .expect("registration outbox events");
+        assert_eq!(
+            events.len(),
+            1,
+            "bootstrap account creation must publish exactly one registration event"
+        );
     }
 
     #[tokio::test]
