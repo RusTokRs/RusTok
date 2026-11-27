@@ -2279,6 +2279,22 @@ outbox write. The REST responses are private and non-cacheable. Revisions are
 exposed as decimal strings in both transports so JavaScript clients preserve the
 full unsigned 64-bit owner revision without numeric rounding.
 
+REST contract:
+
+- `GET /api/modules/artifact-security?moduleSlug=...&version=...&payloadDigest=...`
+- `POST /api/modules/artifact-security/quarantine`
+- `POST /api/modules/artifact-security/clear-quarantine`
+- `POST /api/modules/artifact-security/revoke`
+
+The three command bodies share `moduleSlug`, `version`, `payloadDigest`,
+`expectedRevision` (decimal string), `policyRevision`, `reasonCode`,
+`reasonDetail`, and `idempotencyKey`.
+
+GraphQL exposes query `moduleArtifactSecurity` and mutations
+`quarantineModuleArtifact`, `clearModuleArtifactQuarantine`, and
+`revokeModuleArtifact`. The GraphQL `revision` and `expectedRevision`
+fields are also decimal strings.
+
 Both transports require a direct authenticated user session and the effective
 modules:manage permission in the resolved tenant. Delegated and service
 principals are rejected. The permission is checked against both the authenticated
@@ -2287,8 +2303,8 @@ process-local effective module-policy cache across all tenants, because the
 security aggregate is global to the release. The owner-side SQL execution fence
 remains authoritative for already-running artifact work.
 
-Focused source regressions cover direct-principal authorization, persisted
-permission checks, tenant/actor binding, global command context, response cache
+Focused source regressions cover direct-principal authorization, canonical RBAC
+permission-resolution checks, tenant/actor binding, global command context, response cache
 headers, owner error mapping, GraphQL field classification and OpenAPI auth
 contracts. Tests, compilation and formatting were not run at the maintainer's
 request.
