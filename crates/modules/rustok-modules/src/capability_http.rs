@@ -133,10 +133,27 @@ fn is_disallowed_ip(ip: IpAddr) -> bool {
                 // Deprecated site-local unicast remains locally routable on
                 // networks that still configure it.
                 || (segments[0] & 0xffc0) == 0xfec0
-                // 2001::/23 is reserved for IETF protocol assignments,
-                // including Teredo and benchmarking/ORCHID ranges.
-                || (segments[0] == 0x2001 && (segments[1] & 0xfe00) == 0)
-                || (segments[0] == 0x2001 && segments[1] == 0x0db8)
+                // Reject non-globally-reachable special-purpose ranges,
+                // but retain more-specific IANA allocations that are marked
+                // globally reachable (for example PCP anycast and AMT).
+                || (segments[0] == 0x2001 && segments[1] == 0x0000) // Teredo 2001::/32
+                || (segments[0] == 0x2001
+                    && segments[1] == 0x0002
+                    && segments[2] == 0x0000) // Benchmarking 2001:2::/48
+                || (segments[0] == 0x2001
+                    && segments[1] == 0x0010
+                    && (segments[2] & 0xfff0) == 0) // Deprecated ORCHID 2001:10::/28
+                || (segments[0] == 0x2001 && segments[1] == 0x0db8) // Documentation
+                || (segments[0] == 0x3fff && (segments[1] & 0xf000) == 0) // Documentation 3fff::/20
+                || (segments[0] == 0x0100
+                    && segments[1] == 0
+                    && segments[2] == 0
+                    && segments[3] == 0) // Discard-only 100::/64
+                || (segments[0] == 0x0100
+                    && segments[1] == 0
+                    && segments[2] == 0
+                    && segments[3] == 1) // Dummy prefix 100:0:0:1::/64
+                || segments[0] == 0x5f00 // Segment Routing SIDs 5f00::/16
         }
     }
 }
@@ -587,6 +604,35 @@ mod tests {
             "2001:0:4136:e378:8000:63bf:3fff:fdd2"
                 .parse()
                 .expect("teredo ipv6")
+        ));
+        assert!(is_disallowed_ip(
+            "2001:2::1".parse().expect("benchmarking ipv6")
+        ));
+        assert!(is_disallowed_ip(
+            "2001:10::1".parse().expect("deprecated orchid ipv6")
+        ));
+        assert!(is_disallowed_ip(
+            "3fff::1".parse().expect("new documentation ipv6")
+        ));
+        assert!(is_disallowed_ip(
+            "100::1".parse().expect("discard-only ipv6")
+        ));
+        assert!(is_disallowed_ip(
+            "100:0:0:1::1".parse().expect("dummy ipv6")
+        ));
+        assert!(is_disallowed_ip(
+            "5f00::1".parse().expect("segment routing sid")
+        ));
+        // More-specific IANA assignments in 2001::/23 that are explicitly
+        // globally reachable remain usable when an artifact grants them.
+        assert!(!is_disallowed_ip(
+            "2001:1::1".parse().expect("pcp anycast")
+        ));
+        assert!(!is_disallowed_ip(
+            "2001:3::1".parse().expect("amt ipv6")
+        ));
+        assert!(!is_disallowed_ip(
+            "2001:20::1".parse().expect("orchid v2 ipv6")
         ));
         // Ordinary public IPv6 is unaffected.
         assert!(!is_disallowed_ip(
