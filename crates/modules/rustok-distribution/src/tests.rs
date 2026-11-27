@@ -159,6 +159,7 @@ fn selected_product_bridge_publishes_schema_and_source_factory() {
         factory.owner_module() == "product"
             && factory.factory_name() == super::product_index::PRODUCT_INDEX_SOURCE
     }));
+    assert!(extensions.contains::<rustok_product::ports::ProductTaxonomyPortFactory>());
 }
 
 #[cfg(feature = "ai-translation")]

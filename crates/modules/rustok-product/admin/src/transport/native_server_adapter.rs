@@ -575,16 +575,28 @@ fn parse_attribute_value_patch(
 }
 
 #[cfg(feature = "ssr")]
+pub(super) fn product_taxonomy_port_from_context(
+    runtime_ctx: &rustok_api::HostRuntimeContext,
+) -> Result<rustok_product::ports::SharedProductTaxonomyPort, ServerFnError> {
+    let factory = runtime_ctx
+        .shared_get::<rustok_product::ports::ProductTaxonomyPortFactory>()
+        .ok_or_else(map_product_internal_error)?;
+    Ok((factory.0)(runtime_ctx.db_clone()))
+}
+
+#[cfg(feature = "ssr")]
 fn service_from_context(
     runtime_ctx: &rustok_api::HostRuntimeContext,
 ) -> Result<rustok_product::ProductCatalogSchemaService, ServerFnError> {
     let event_bus = runtime_ctx
         .shared_get::<rustok_outbox::TransactionalEventBus>()
         .ok_or_else(map_product_internal_error)?;
+    let taxonomy_port = product_taxonomy_port_from_context(runtime_ctx)?;
     Ok(rustok_product::ProductCatalogSchemaService::new(
         runtime_ctx.db_clone(),
         event_bus,
-    ))
+    )
+    .with_taxonomy_port(taxonomy_port))
 }
 
 #[cfg(feature = "ssr")]

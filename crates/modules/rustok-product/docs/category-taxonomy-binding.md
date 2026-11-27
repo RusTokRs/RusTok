@@ -418,3 +418,8 @@ Taxonomy reads and corrupt owner projections fail as internal invariants rather 
 Validation; storage and forbidden remain distinct. See the
 [owner error policy and unexecuted gates](./product-public-error-diagnostic-safety.md#taxonomy-and-nested-core-continuation-2026-10-18).
 This updates source guards/classification only; no migration or runtime certification is added.
+
+
+## Native admin runtime composition (2026-11-27)
+
+The native Leptos Product admin reads Taxonomy-owned hierarchy for the category directory, effective forms, product-list subtree filters and facet counts. When Product and Taxonomy are selected, Distribution publishes `ProductTaxonomyPortFactory` into the host runtime extensions. Native admin server functions resolve that factory from `HostRuntimeContext` and inject the resulting database-bound provider into both `ProductCatalogSchemaService` and `CatalogService`. A missing factory is treated as a composition failure; mounted native admin must not silently use `NoopProductTaxonomyPort`. The same provider also resolves Product tag names, keeping category and tag reads on the selected Taxonomy owner adapter.

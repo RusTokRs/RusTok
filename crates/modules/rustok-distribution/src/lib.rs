@@ -85,6 +85,14 @@ pub fn build_runtime_extensions(
             groups_taxonomy_port::in_process_group_taxonomy_port,
         ));
     }
+    #[cfg(feature = "mod-product")]
+    if registry.contains("product") && registry.contains("taxonomy")
+        && !extensions.contains::<rustok_product::ports::ProductTaxonomyPortFactory>()
+    {
+        extensions.insert(rustok_product::ports::ProductTaxonomyPortFactory(
+            product_taxonomy_port::in_process_product_taxonomy_port,
+        ));
+    }
     register_selected_index_bridges(&mut extensions)?;
     materialize_index_schema_sources(&mut extensions)?;
     Ok(extensions)

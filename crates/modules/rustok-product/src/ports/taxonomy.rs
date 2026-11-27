@@ -15,6 +15,7 @@
 //! No Taxonomy tables, SeaORM entities, or foreign types are imported here.
 
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortError};
@@ -137,6 +138,15 @@ pub trait ProductTaxonomyPort: TaxonomyTermNamesReadPort {
         fallback_locale: Option<&str>,
     ) -> Result<Vec<ProductTaxonomyCategorySnapshot>, CommerceError>;
 }
+
+/// Shared Product Taxonomy provider selected by the host composition.
+pub type SharedProductTaxonomyPort = Arc<dyn ProductTaxonomyPort>;
+
+/// Distribution binds the native provider to the host's database.
+#[derive(Clone, Copy)]
+pub struct ProductTaxonomyPortFactory(
+    pub fn(DatabaseConnection) -> SharedProductTaxonomyPort,
+);
 
 /// Refuses Taxonomy-dependent operations when Product has no provider.
 #[derive(Debug, Default, Clone, Copy)]
