@@ -3,10 +3,10 @@ use uuid::Uuid;
 
 use super::{
     AcceptInviteInput, AcceptInvitePayload, AuthPayload, ChangePasswordInput,
-    ChangePasswordPayload, ForgotPasswordInput, ForgotPasswordPayload, RefreshTokenInput,
+    ChangePasswordPayload, ConfirmEmailChangeInput, ConfirmEmailChangePayload, ForgotPasswordInput,
+    ForgotPasswordPayload, RefreshTokenInput, RequestEmailChangeInput, RequestEmailChangePayload,
     ResetPasswordInput, ResetPasswordPayload, RevokeAllSessionsPayload, RevokeSessionPayload,
-    SignInInput, SignOutPayload, SignUpInput, UpdateProfileInput, RequestEmailChangeInput,
-    RequestEmailChangePayload, ConfirmEmailChangeInput, ConfirmEmailChangePayload, auth_lifecycle_context,
+    SignInInput, SignOutPayload, SignUpInput, UpdateProfileInput, auth_lifecycle_context,
     auth_runtime, optional_auth_context,
 };
 

@@ -121,7 +121,10 @@ fn consent_csrf_mac(
     // Bind the effective scope set displayed on GET, not just the optional
     // query parameter. Omitted scope is resolved from mutable client policy.
     // Ordering and duplicate entries do not change the granted authority.
-    let mut scopes = effective_scopes.iter().map(String::as_str).collect::<Vec<_>>();
+    let mut scopes = effective_scopes
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
     scopes.sort_unstable();
     scopes.dedup();
     payload.extend_from_slice(&(scopes.len() as u64).to_be_bytes());
@@ -132,9 +135,13 @@ fn consent_csrf_mac(
     append_csrf_mac_field(&mut payload, code_challenge);
     append_csrf_mac_field(&mut payload, &expires_at.to_string());
 
-    rustok_auth::auth_purpose_mac(config, rustok_auth::AuthMacPurpose::OAuthConsentCsrf, &payload)
-        .ok()
-        .map(hex::encode)
+    rustok_auth::auth_purpose_mac(
+        config,
+        rustok_auth::AuthMacPurpose::OAuthConsentCsrf,
+        &payload,
+    )
+    .ok()
+    .map(hex::encode)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -153,7 +160,11 @@ fn issue_consent_csrf(
     if tenant_id.is_nil() || user_id.is_nil() || session_id.is_nil() {
         return None;
     }
-    let expires_at = config.credential_now().ok()?.timestamp().checked_add(CONSENT_CSRF_TTL_SECS)?;
+    let expires_at = config
+        .credential_now()
+        .ok()?
+        .timestamp()
+        .checked_add(CONSENT_CSRF_TTL_SECS)?;
     let mac = consent_csrf_mac(
         config,
         tenant_id,
@@ -209,7 +220,9 @@ fn verify_consent_csrf(
         return None;
     }
     let now = config.credential_now().ok()?.timestamp();
-    if tenant_id.is_nil() || user_id.is_nil() || session_id.is_nil()
+    if tenant_id.is_nil()
+        || user_id.is_nil()
+        || session_id.is_nil()
         || expires_at <= now
         || expires_at > now.saturating_add(CONSENT_CSRF_TTL_SECS)
     {
@@ -352,8 +365,7 @@ fn apply_basic_client_credentials(
     client_id: &mut Option<String>,
     client_secret: &mut Option<String>,
 ) -> Result<(), TokenErrorResponse> {
-    let Some((basic_client_id, basic_client_secret)) =
-        parse_basic_client_credentials(headers)?
+    let Some((basic_client_id, basic_client_secret)) = parse_basic_client_credentials(headers)?
     else {
         return Ok(());
     };
@@ -369,9 +381,7 @@ fn apply_basic_client_credentials(
     Ok(())
 }
 
-fn add_basic_auth_challenge(
-    mut response: axum::response::Response,
-) -> axum::response::Response {
+fn add_basic_auth_challenge(mut response: axum::response::Response) -> axum::response::Response {
     if response.status() == StatusCode::UNAUTHORIZED {
         response.headers_mut().insert(
             WWW_AUTHENTICATE,
@@ -447,7 +457,10 @@ fn parse_oauth_refresh_retry_key(
     headers: &HeaderMap,
 ) -> Result<Option<rustok_auth::AuthRefreshRetryKey>, TokenErrorResponse> {
     rustok_auth::AuthRefreshRetryKey::from_header_values(
-        headers.get_all(rustok_auth::REFRESH_RETRY_KEY_HEADER).iter().map(|value| value.as_bytes()),
+        headers
+            .get_all(rustok_auth::REFRESH_RETRY_KEY_HEADER)
+            .iter()
+            .map(|value| value.as_bytes()),
     )
     .map_err(|_| oauth_invalid_request_error("Invalid refresh retry key"))
 }
@@ -476,11 +489,7 @@ async fn parse_token_request(
             .map_err(|_| invalid_request())?
     };
 
-    apply_basic_client_credentials(
-        &headers,
-        &mut parsed.client_id,
-        &mut parsed.client_secret,
-    )?;
+    apply_basic_client_credentials(&headers, &mut parsed.client_id, &mut parsed.client_secret)?;
     Ok(parsed)
 }
 
@@ -696,14 +705,8 @@ pub(crate) async fn authorize_browser_handler(
         requires_user_consent,
         has_consent,
     ) {
-        return match issue_authorization_code(
-            &ctx,
-            tenant_ctx.id,
-            &validated,
-            &current_user,
-            None,
-        )
-        .await
+        return match issue_authorization_code(&ctx, tenant_ctx.id, &validated, &current_user, None)
+            .await
         {
             Ok(code) => redirect_with_code(
                 &validated.redirect_uri,
@@ -834,8 +837,9 @@ pub(crate) async fn consent_handler(
     let Some(confirmation_deadline) = confirmation_deadline else {
         return oauth_error_response(TokenErrorResponse {
             error: "invalid_request".to_string(),
-            error_description: "Invalid or expired authorization confirmation; restart the authorization flow"
-                .to_string(),
+            error_description:
+                "Invalid or expired authorization confirmation; restart the authorization flow"
+                    .to_string(),
         });
     };
 
@@ -861,8 +865,14 @@ pub(crate) async fn consent_handler(
 
     // Approval and issuance share one transaction, with a fresh direct-session
     // check under the mutation locks. Never persist consent before issuance.
-    match issue_authorization_code(&ctx, tenant_ctx.id, &validated, &current_user, Some(confirmation_deadline))
-        .await
+    match issue_authorization_code(
+        &ctx,
+        tenant_ctx.id,
+        &validated,
+        &current_user,
+        Some(confirmation_deadline),
+    )
+    .await
     {
         Ok(code) => redirect_with_code(
             &validated.redirect_uri,
@@ -1021,8 +1031,8 @@ async fn validate_authorize_request(
     if !redirect_response_query_is_unambiguous(&parsed_redirect) {
         return Err(TokenErrorResponse {
             error: "invalid_request".to_string(),
-            error_description: "redirect_uri contains reserved OAuth response parameters or a fragment"
-                .to_string(),
+            error_description:
+                "redirect_uri contains reserved OAuth response parameters or a fragment".to_string(),
         });
     }
 
@@ -1119,7 +1129,11 @@ async fn issue_authorization_code(
     confirmation_deadline: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<String, TokenErrorResponse> {
     let config = ctx.require_auth_config().map_err(map_code_issuance_error)?;
-    let clock = || config.credential_now().map_err(|_| crate::error::Error::InternalServerError);
+    let clock = || {
+        config
+            .credential_now()
+            .map_err(|_| crate::error::Error::InternalServerError)
+    };
     OAuthAppService::generate_authorization_code(
         ctx.runtime_ctx().db(),
         validated.app.id,
@@ -1245,11 +1259,7 @@ fn should_use_secure_cookie(
     peer_ip: Option<std::net::IpAddr>,
     settings: &RustokSettings,
 ) -> bool {
-    crate::common::secure_cookie_required(
-        headers,
-        peer_ip,
-        &settings.runtime.request_trust,
-    )
+    crate::common::secure_cookie_required(headers, peer_ip, &settings.runtime.request_trust)
 }
 
 fn redirect_with_code(
@@ -1506,11 +1516,7 @@ async fn parse_revoke_request(
             .map_err(|_| invalid_request())?
     };
 
-    apply_basic_client_credentials(
-        &headers,
-        &mut parsed.client_id,
-        &mut parsed.client_secret,
-    )?;
+    apply_basic_client_credentials(&headers, &mut parsed.client_id, &mut parsed.client_secret)?;
     Ok(parsed)
 }
 
@@ -1573,8 +1579,9 @@ async fn revoke_handler_inner(
     OAuthAppService::revoke_authenticated_token_by_hash(ctx.db(), &token_hash, &app, tenant_ctx.id)
         .await
         .map_err(|error| match error {
-            crate::error::Error::Unauthorized(_) =>
-                oauth_invalid_client_error("Invalid client credentials"),
+            crate::error::Error::Unauthorized(_) => {
+                oauth_invalid_client_error("Invalid client credentials")
+            }
             _ => TokenErrorResponse {
                 error: "server_error".to_string(),
                 error_description: "Failed to revoke token".to_string(),
@@ -1714,7 +1721,8 @@ mod tests {
 
     #[test]
     fn consent_csrf_mac_fields_are_unambiguous() {
-        let config = crate::auth::test_auth_config("test-consent-key-with-at-least-32-bytes".to_string());
+        let config =
+            crate::auth::test_auth_config("test-consent-key-with-at-least-32-bytes".to_string());
         let mut first = Vec::new();
         super::append_optional_csrf_mac_field(&mut first, Some("scope\0state"));
         super::append_optional_csrf_mac_field(&mut first, None);
@@ -1724,14 +1732,25 @@ mod tests {
         super::append_optional_csrf_mac_field(&mut second, Some("state"));
 
         assert_ne!(
-            rustok_auth::auth_purpose_mac(&config, rustok_auth::AuthMacPurpose::OAuthConsentCsrf, &first).unwrap(),
-            rustok_auth::auth_purpose_mac(&config, rustok_auth::AuthMacPurpose::OAuthConsentCsrf, &second).unwrap()
+            rustok_auth::auth_purpose_mac(
+                &config,
+                rustok_auth::AuthMacPurpose::OAuthConsentCsrf,
+                &first
+            )
+            .unwrap(),
+            rustok_auth::auth_purpose_mac(
+                &config,
+                rustok_auth::AuthMacPurpose::OAuthConsentCsrf,
+                &second
+            )
+            .unwrap()
         );
     }
 
     #[test]
     fn consent_confirmation_binds_the_effective_scopes_even_when_scope_is_omitted() {
-        let config = crate::auth::test_auth_config("test-oauth-consent-secret-with-32-bytes".to_string());
+        let config =
+            crate::auth::test_auth_config("test-oauth-consent-secret-with-32-bytes".to_string());
         let tenant = Uuid::new_v4();
         let user = Uuid::new_v4();
         let session = Uuid::new_v4();
@@ -1742,19 +1761,40 @@ mod tests {
         let displayed = validate_authorization_scopes(None, &allowed).unwrap();
         let token = issue_consent_csrf(
             &config, tenant, user, session, &client, redirect, None, &displayed, None, challenge,
-        ).unwrap();
+        )
+        .unwrap();
         let verify = |effective: &[String]| {
             verify_consent_csrf(
-                &config, tenant, user, session, &client, redirect, None, effective, None,
-                challenge, Some(token.as_str()),
-            ).is_some()
+                &config,
+                tenant,
+                user,
+                session,
+                &client,
+                redirect,
+                None,
+                effective,
+                None,
+                challenge,
+                Some(token.as_str()),
+            )
+            .is_some()
         };
         assert!(verify(&displayed));
         let (expiry, tag) = token.split_once('.').unwrap();
         let verified_deadline = verify_consent_csrf(
-            &config, tenant, user, session, &client, redirect, None, &displayed, None,
-            challenge, Some(&token),
-        ).unwrap();
+            &config,
+            tenant,
+            user,
+            session,
+            &client,
+            redirect,
+            None,
+            &displayed,
+            None,
+            challenge,
+            Some(&token),
+        )
+        .unwrap();
         assert_eq!(verified_deadline.timestamp().to_string(), expiry);
         for malformed in [
             format!("+{expiry}.{tag}"),
@@ -1764,18 +1804,50 @@ mod tests {
             format!("{expiry}.{}", &tag[2..]),
             format!("{expiry}.{tag}.extra"),
         ] {
-            assert!(!verify_consent_csrf(
-                &config, tenant, user, session, &client, redirect, None,
-                &displayed, None, challenge, Some(&malformed),
-            ).is_some());
+            assert!(
+                !verify_consent_csrf(
+                    &config,
+                    tenant,
+                    user,
+                    session,
+                    &client,
+                    redirect,
+                    None,
+                    &displayed,
+                    None,
+                    challenge,
+                    Some(&malformed),
+                )
+                .is_some()
+            );
         }
-        for (t, u, s) in [(Uuid::nil(), user, session), (tenant, Uuid::nil(), session), (tenant, user, Uuid::nil())] {
-            assert!(issue_consent_csrf(
-                &config, t, u, s, &client, redirect, None, &displayed, None, challenge,
-            ).is_none());
-            assert!(!verify_consent_csrf(
-                &config, t, u, s, &client, redirect, None, &displayed, None, challenge, Some(&token),
-            ).is_some());
+        for (t, u, s) in [
+            (Uuid::nil(), user, session),
+            (tenant, Uuid::nil(), session),
+            (tenant, user, Uuid::nil()),
+        ] {
+            assert!(
+                issue_consent_csrf(
+                    &config, t, u, s, &client, redirect, None, &displayed, None, challenge,
+                )
+                .is_none()
+            );
+            assert!(
+                !verify_consent_csrf(
+                    &config,
+                    t,
+                    u,
+                    s,
+                    &client,
+                    redirect,
+                    None,
+                    &displayed,
+                    None,
+                    challenge,
+                    Some(&token),
+                )
+                .is_some()
+            );
         }
         let weak_fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
         let weak_document = weak_fixture.document(1).to_string();
@@ -1789,45 +1861,123 @@ mod tests {
             .is_err(),
             "a weak independent MAC root must fail before runtime publication",
         );
-        assert!(!verify_consent_csrf(
-            &config, tenant, user, Uuid::new_v4(), &client, redirect, None,
-            &displayed, None, challenge, Some(token.as_str()),
-        ).is_some(), "a confirmation cannot cross sessions of the same user");
+        assert!(
+            !verify_consent_csrf(
+                &config,
+                tenant,
+                user,
+                Uuid::new_v4(),
+                &client,
+                redirect,
+                None,
+                &displayed,
+                None,
+                challenge,
+                Some(token.as_str()),
+            )
+            .is_some(),
+            "a confirmation cannot cross sessions of the same user"
+        );
         let future = chrono::Utc::now().timestamp() + CONSENT_CSRF_TTL_SECS + 60;
-        let future_token = format!("{future}.{}", consent_csrf_mac(
-            &config, tenant, user, session, &client, redirect, None,
-            &displayed, None, challenge, future,
-        ).unwrap());
-        assert!(!verify_consent_csrf(
-            &config, tenant, user, session, &client, redirect, None,
-            &displayed, None, challenge, Some(&future_token),
-        ).is_some(), "a signed expiry beyond the confirmation lifetime is invalid");
+        let future_token = format!(
+            "{future}.{}",
+            consent_csrf_mac(
+                &config, tenant, user, session, &client, redirect, None, &displayed, None,
+                challenge, future,
+            )
+            .unwrap()
+        );
+        assert!(
+            !verify_consent_csrf(
+                &config,
+                tenant,
+                user,
+                session,
+                &client,
+                redirect,
+                None,
+                &displayed,
+                None,
+                challenge,
+                Some(&future_token),
+            )
+            .is_some(),
+            "a signed expiry beyond the confirmation lifetime is invalid"
+        );
 
-        let expanded = vec!["profile".to_string(), "catalog:read".to_string(), "catalog:write".to_string()];
+        let expanded = vec![
+            "profile".to_string(),
+            "catalog:read".to_string(),
+            "catalog:write".to_string(),
+        ];
         let expanded = validate_authorization_scopes(None, &expanded).unwrap();
         assert!(!verify(&expanded), "new scopes require a new confirmation");
 
         let narrowed = validate_authorization_scopes(None, &allowed[..1]).unwrap();
-        assert!(!verify(&narrowed), "a changed scope set requires a new confirmation");
+        assert!(
+            !verify(&narrowed),
+            "a changed scope set requires a new confirmation"
+        );
 
-        let reordered = vec!["catalog:read".to_string(), "profile".to_string(), "profile".to_string()];
-        assert!(verify(&reordered), "equivalent scope sets have the same binding");
+        let reordered = vec![
+            "catalog:read".to_string(),
+            "profile".to_string(),
+            "profile".to_string(),
+        ];
+        assert!(
+            verify(&reordered),
+            "equivalent scope sets have the same binding"
+        );
 
         // An explicit unchanged request still works when unrelated client
         // permissions change, but is not interchangeable with an omitted scope.
         let explicit = validate_authorization_scopes(Some("profile"), &allowed).unwrap();
         let explicit_token = issue_consent_csrf(
-            &config, tenant, user, session, &client, redirect, Some("profile"), &explicit, None, challenge,
-        ).unwrap();
+            &config,
+            tenant,
+            user,
+            session,
+            &client,
+            redirect,
+            Some("profile"),
+            &explicit,
+            None,
+            challenge,
+        )
+        .unwrap();
         let still_explicit = validate_authorization_scopes(Some("profile"), &expanded).unwrap();
-        assert!(verify_consent_csrf(
-            &config, tenant, user, session, &client, redirect, Some("profile"), &still_explicit, None,
-            challenge, Some(explicit_token.as_str()),
-        ).is_some());
-        assert!(!verify_consent_csrf(
-            &config, tenant, user, session, &client, redirect, None, &still_explicit, None,
-            challenge, Some(explicit_token.as_str()),
-        ).is_some());
+        assert!(
+            verify_consent_csrf(
+                &config,
+                tenant,
+                user,
+                session,
+                &client,
+                redirect,
+                Some("profile"),
+                &still_explicit,
+                None,
+                challenge,
+                Some(explicit_token.as_str()),
+            )
+            .is_some()
+        );
+        assert!(
+            !verify_consent_csrf(
+                &config,
+                tenant,
+                user,
+                session,
+                &client,
+                redirect,
+                None,
+                &still_explicit,
+                None,
+                challenge,
+                Some(explicit_token.as_str()),
+            )
+            .is_some()
+        );
     }
 
     #[test]
@@ -2175,7 +2325,12 @@ mod tests {
         let headers = HeaderMap::new();
         let uri = "https://client.example.com/callback?locale=en&tag=a&tag=b";
         let (status, response) = redirect_with_code(
-            uri, "code-value", Some("state-value"), &headers, peer_ip, &settings,
+            uri,
+            "code-value",
+            Some("state-value"),
+            &headers,
+            peer_ip,
+            &settings,
         );
         assert_eq!(status, StatusCode::FOUND);
         assert_eq!(
@@ -2183,7 +2338,13 @@ mod tests {
             "https://client.example.com/callback?locale=en&tag=a&tag=b&code=code-value&state=state-value"
         );
         let (status, response) = redirect_with_error(
-            uri, "access_denied", "Denied", Some("state-value"), &headers, peer_ip, &settings,
+            uri,
+            "access_denied",
+            "Denied",
+            Some("state-value"),
+            &headers,
+            peer_ip,
+            &settings,
         );
         assert_eq!(status, StatusCode::FOUND);
         assert_eq!(
@@ -2289,18 +2450,20 @@ mod tests {
             [(false, false), (false, true), (true, false), (true, true)]
         {
             assert!(
-                !may_skip_browser_authorization_confirmation(
-                    false,
-                    requires_consent,
-                    has_consent,
-                ),
+                !may_skip_browser_authorization_confirmation(false, requires_consent, has_consent,),
                 "cookie-authenticated GET must always require POST confirmation"
             );
         }
 
-        assert!(may_skip_browser_authorization_confirmation(true, false, false));
-        assert!(may_skip_browser_authorization_confirmation(true, true, true));
-        assert!(!may_skip_browser_authorization_confirmation(true, true, false));
+        assert!(may_skip_browser_authorization_confirmation(
+            true, false, false
+        ));
+        assert!(may_skip_browser_authorization_confirmation(
+            true, true, true
+        ));
+        assert!(!may_skip_browser_authorization_confirmation(
+            true, true, false
+        ));
     }
 
     #[tokio::test]
@@ -2329,7 +2492,11 @@ mod tests {
     #[test]
     fn oauth_code_issuance_maps_stale_security_decisions_without_leaking_details() {
         let cases = [
-            (crate::error::Error::NotFound, "invalid_client", StatusCode::UNAUTHORIZED),
+            (
+                crate::error::Error::NotFound,
+                "invalid_client",
+                StatusCode::UNAUTHORIZED,
+            ),
             (
                 crate::error::Error::BadRequest("secret internal reason".to_string()),
                 "invalid_request",
@@ -2349,7 +2516,11 @@ mod tests {
         for (error, expected_code, expected_status) in cases {
             let protocol = map_code_issuance_error(error);
             assert_eq!(protocol.error, expected_code);
-            assert!(!protocol.error_description.contains("secret internal reason"));
+            assert!(
+                !protocol
+                    .error_description
+                    .contains("secret internal reason")
+            );
             assert_eq!(oauth_error_response(protocol).status(), expected_status);
         }
     }
@@ -2423,12 +2594,8 @@ mod tests {
 
         let mut parsed_client_id = None;
         let mut parsed_client_secret = None;
-        apply_basic_client_credentials(
-            &headers,
-            &mut parsed_client_id,
-            &mut parsed_client_secret,
-        )
-        .unwrap();
+        apply_basic_client_credentials(&headers, &mut parsed_client_id, &mut parsed_client_secret)
+            .unwrap();
         assert_eq!(parsed_client_id.as_deref(), Some(client_id));
         assert_eq!(parsed_client_secret.as_deref(), Some(client_secret));
     }
@@ -2492,8 +2659,7 @@ mod tests {
 
         let mut malformed_form = HeaderMap::new();
         use base64::{Engine as _, engine::general_purpose::STANDARD};
-        let malformed_header =
-            format!("Basic {}", STANDARD.encode(b"client%ZZ:secret"));
+        let malformed_header = format!("Basic {}", STANDARD.encode(b"client%ZZ:secret"));
         malformed_form.insert(
             AUTHORIZATION,
             HeaderValue::from_bytes(malformed_header.as_bytes()).unwrap(),

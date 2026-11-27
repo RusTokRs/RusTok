@@ -385,9 +385,7 @@ mod tests {
 
     #[test]
     fn a_claimed_slug_maps_to_a_non_retryable_conflict() {
-        let error = map_tenant_error(crate::TenantError::SlugAlreadyExists(
-            "acme".to_string(),
-        ));
+        let error = map_tenant_error(crate::TenantError::SlugAlreadyExists("acme".to_string()));
         assert_eq!(error.kind, PortErrorKind::Conflict, "{error:?}");
         assert_eq!(error.code, "tenant.slug_already_exists");
         assert!(!error.retryable, "a claimed slug must not be retryable");

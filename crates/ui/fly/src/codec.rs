@@ -66,7 +66,6 @@ impl GrapesJsCodec {
     }
 }
 
-
 /**
  * Drop an untrusted JSON value without recursively dropping nested arrays or objects.
  *
@@ -296,7 +295,6 @@ mod tests {
         assert!(GrapesJsCodec::decode_value(project).is_ok());
     }
 
-
     #[test]
     fn deeply_nested_non_object_roots_are_rejected_without_recursive_drop() {
         let mut value = serde_json::Value::Null;
@@ -316,9 +314,10 @@ mod tests {
             nested = serde_json::Value::Array(vec![nested]);
         }
         // json! would serialize the deeply nested Value before reaching the guard.
-        let project = Value::Object(serde_json::Map::from_iter([
-            ("payload".to_string(), nested),
-        ]));
+        let project = Value::Object(serde_json::Map::from_iter([(
+            "payload".to_string(),
+            nested,
+        )]));
         assert!(matches!(
             GrapesJsCodec::decode_value(project),
             Err(FlyError::MaximumDepthExceeded {
@@ -368,6 +367,4 @@ mod tests {
             Err(FlyError::Decode(_))
         ));
     }
-
-
 }

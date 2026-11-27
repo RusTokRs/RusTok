@@ -16,7 +16,8 @@ impl MigrationTrait for Migration {
         ).await?;
         db.execute_unprepared(
             "UPDATE auth_jwt_generation_fence SET untracked_until_ms = lease_until_ms WHERE id = 1",
-        ).await?;
+        )
+        .await?;
         Ok(())
     }
 
@@ -32,10 +33,16 @@ impl MigrationTrait for Migration {
         let untracked: i64 = row.try_get("", "untracked_until_ms")?;
         let grants: String = row.try_get("", "replica_grants")?;
         if generation != 0 || lease != 0 || drain != 0 || untracked != 0 || grants != "{}" {
-            return Err(DbErr::Custom("Cannot remove an exercised JWT replica fence".into()));
+            return Err(DbErr::Custom(
+                "Cannot remove an exercised JWT replica fence".into(),
+            ));
         }
-        db.execute_unprepared("ALTER TABLE auth_jwt_generation_fence DROP COLUMN untracked_until_ms").await?;
-        db.execute_unprepared("ALTER TABLE auth_jwt_generation_fence DROP COLUMN replica_grants").await?;
+        db.execute_unprepared(
+            "ALTER TABLE auth_jwt_generation_fence DROP COLUMN untracked_until_ms",
+        )
+        .await?;
+        db.execute_unprepared("ALTER TABLE auth_jwt_generation_fence DROP COLUMN replica_grants")
+            .await?;
         Ok(())
     }
 }

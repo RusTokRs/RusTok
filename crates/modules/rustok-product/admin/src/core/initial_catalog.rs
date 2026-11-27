@@ -810,7 +810,10 @@ mod pending_assignment_tests {
             inventory_quantity: Some(4),
             ..Default::default()
         };
-        assert!(!uses_scalar_initial_variant(&[], std::slice::from_ref(&row)));
+        assert!(!uses_scalar_initial_variant(
+            &[],
+            std::slice::from_ref(&row)
+        ));
         apply_selection(&mut draft, vec![], vec![row], None).unwrap();
         let selected = draft.initial_variants.as_ref().unwrap();
         assert_eq!(selected.len(), 1);

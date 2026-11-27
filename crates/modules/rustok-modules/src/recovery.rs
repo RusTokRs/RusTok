@@ -3,7 +3,9 @@ use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use thiserror::Error;
 
 use crate::backend::SupportedBackend;
-use crate::claim_heartbeat::{ClaimHeartbeatDispatchError, dispatch_lifecycle_with_claim_heartbeat};
+use crate::claim_heartbeat::{
+    ClaimHeartbeatDispatchError, dispatch_lifecycle_with_claim_heartbeat,
+};
 use crate::{
     DatabaseStaticModuleSettingsReader, ModuleCommandContext, ModuleControlPlaneError,
     ModuleDefinitionSource, ModuleExecutionDispatcher, ModuleLifecycleHookPhase,
@@ -17,8 +19,7 @@ use crate::{
 /// No current journal row carries both a trustworthy original execution
 /// identity and proof that its external work is quiescent. Never infer either
 /// from the settings digest, a lease expiry, or an absent aggregate claim.
-pub(crate) const RECOVERY_EVIDENCE_UNAVAILABLE: &str =
-    "hook_identity_and_quiescence_unverified";
+pub(crate) const RECOVERY_EVIDENCE_UNAVAILABLE: &str = "hook_identity_and_quiescence_unverified";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ModuleOperationOverrideState {
@@ -308,9 +309,10 @@ pub(crate) async fn retry_failed_post_hook_operation(
             RECOVERY_EVIDENCE_UNAVAILABLE.to_string(),
         ));
     }
-    let definition = dispatcher.catalog().get(&plan.module_slug).ok_or_else(|| {
-        ModuleOperationRecoveryError::NotRetryable("unknown_module".to_string())
-    })?;
+    let definition = dispatcher
+        .catalog()
+        .get(&plan.module_slug)
+        .ok_or_else(|| ModuleOperationRecoveryError::NotRetryable("unknown_module".to_string()))?;
     let operation = match ModuleOperationJournal::record_idempotent(db, journal_request)
         .await
         .map_err(|error| match error {
@@ -338,15 +340,23 @@ pub(crate) async fn retry_failed_post_hook_operation(
         let error = match error {
             LifecycleAdmissionError::TransitionInProgress => {
                 return Err(mark_recovery_operation_failed(
-                    db, operation.id,
-                    ModuleOperationRecoveryError::NotRetryable("release_transition_unresolved".to_string()),
-                ).await);
+                    db,
+                    operation.id,
+                    ModuleOperationRecoveryError::NotRetryable(
+                        "release_transition_unresolved".to_string(),
+                    ),
+                )
+                .await);
             }
             LifecycleAdmissionError::StaleDefinition => {
                 return Err(mark_recovery_operation_failed(
-                    db, operation.id,
-                    ModuleOperationRecoveryError::NotRetryable("artifact_definition_changed".to_string()),
-                ).await);
+                    db,
+                    operation.id,
+                    ModuleOperationRecoveryError::NotRetryable(
+                        "artifact_definition_changed".to_string(),
+                    ),
+                )
+                .await);
             }
             LifecycleAdmissionError::Database(message) => {
                 // Keep the validated operation if commit/rollback was uncertain.

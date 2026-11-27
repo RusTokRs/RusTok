@@ -2,6 +2,8 @@ use crate::browser_problem::BROWSER_SAVE_OUTCOME_UNKNOWN_CODE;
 use crate::model::{PageDetail, PageMutationResult};
 use crate::transport;
 use leptos::prelude::*;
+#[cfg(feature = "ssr")]
+use rustok_graphql::GraphqlHttpError;
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PreviewPageBuilderInput,
     PublishPageBuilderInput,
@@ -12,11 +14,9 @@ use rustok_page_builder_admin::{
     PageBuilderAdminFacadeFuture, PageBuilderAdminProviderStatus,
 };
 use serde_json::{Value, json};
-use std::sync::Arc;
 #[cfg(feature = "ssr")]
 use sha2::{Digest, Sha256};
-#[cfg(feature = "ssr")]
-use rustok_graphql::GraphqlHttpError;
+use std::sync::Arc;
 
 #[cfg(feature = "ssr")]
 use async_trait::async_trait;
@@ -264,12 +264,10 @@ async fn execute_publish(
         PageBuilderCapabilityResponse::Publish(result) if result.page_id == requested_page_id => {
             Ok(PageBuilderCapabilityResponse::Publish(result))
         }
-        PageBuilderCapabilityResponse::Publish(result) => {
-            Err(post_commit_facade_error(format!(
-                "Page Builder publish returned page `{}`, but Pages requested `{requested_page_id}`",
-                result.page_id
-            )))
-        }
+        PageBuilderCapabilityResponse::Publish(result) => Err(post_commit_facade_error(format!(
+            "Page Builder publish returned page `{}`, but Pages requested `{requested_page_id}`",
+            result.page_id
+        ))),
         response => Err(post_commit_facade_error(format!(
             "Page Builder capability transport returned `{}` for a publish request",
             response.capability()
@@ -442,9 +440,9 @@ async fn dispatch_pages_page_builder_capability(
         let saved_page = transport::fetch_page(token, tenant_slug, requested_page_id.clone())
             .await
             .map_err(post_commit_facade_error)?
-            .ok_or_else(|| post_commit_facade_error(
-                "Pages document was not found after Page Builder publish",
-            ))?;
+            .ok_or_else(|| {
+                post_commit_facade_error("Pages document was not found after Page Builder publish")
+            })?;
         let current_revision = persisted_revision(&saved_page, &requested_page_id)
             .map_err(post_commit_facade_error)?;
         ensure_publish_receipt_is_current(&result.revision_id, &current_revision)?;
@@ -717,7 +715,9 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
                     Some(self.tenant_slug.clone()),
                     page_id.to_string(),
                     request_id,
-                ).await {
+                )
+                .await
+                {
                     Ok(Some(receipt)) => receipt,
                     Ok(None) => {
                         return Err(PageBuilderServiceError::Runtime(format!(
@@ -735,8 +735,8 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
                 return Err(PageBuilderServiceError::Runtime(error.to_string()));
             }
         };
-        let saved_revision = persisted_revision(&saved_page, page_id)
-            .map_err(post_commit_observation_error)?;
+        let saved_revision =
+            persisted_revision(&saved_page, page_id).map_err(post_commit_observation_error)?;
 
         // The initial read above is needed for locale and permission checks, but it cannot
         // prove that a replayed receipt is still current: another session may commit after
@@ -756,11 +756,7 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
                 "Pages observation returned a different page",
             ));
         }
-        ensure_receipt_not_superseded(
-            revision_id,
-            &page_revision(&current_page),
-            &saved_revision,
-        )?;
+        ensure_receipt_not_superseded(revision_id, &page_revision(&current_page), &saved_revision)?;
         let result = PageBuilderProjectSaveResult {
             page_id: current_page.id.clone(),
             revision_id: saved_revision,
@@ -819,7 +815,6 @@ impl PageBuilderPreviewRenderingPort for PagesPageBuilderRenderer {
     }
 }
 
-
 /// Once a save/receipt has succeeded, an unavailable observation cannot
 /// establish that the write failed. Preserve the prepared operation so a
 /// later retry can recover the same idempotent receipt.
@@ -860,7 +855,10 @@ mod ssr_save_receipt_revision_tests {
     fn post_commit_observation_failure_remains_unknown_even_with_nested_conflict_text() {
         let error = post_commit_observation_error("REVISION_CONFLICT: observation failed");
         let facade = facade_service_error(error);
-        assert_eq!(facade.stable_code.as_deref(), Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE));
+        assert_eq!(
+            facade.stable_code.as_deref(),
+            Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE)
+        );
     }
 
     #[test]
@@ -888,9 +886,15 @@ mod save_receipt_revision_tests {
     #[test]
     fn post_commit_failure_does_not_become_a_definite_rejection() {
         let error = post_commit_facade_error("PAGE_DOCUMENT_REVISION_CONFLICT: observation failed");
-        assert_eq!(error.stable_code.as_deref(), Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE));
+        assert_eq!(
+            error.stable_code.as_deref(),
+            Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE)
+        );
         let roundtrip = PageBuilderAdminFacadeError::new(error.to_string());
-        assert_eq!(roundtrip.stable_code.as_deref(), Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE));
+        assert_eq!(
+            roundtrip.stable_code.as_deref(),
+            Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE)
+        );
     }
 
     #[test]
@@ -926,7 +930,9 @@ fn document_save_might_have_committed(error: &GraphqlHttpError) -> bool {
         GraphqlHttpError::Http(status) => {
             let code = status.split_whitespace().next().unwrap_or("");
             matches!(code, "408" | "429")
-                || code.parse::<u16>().is_ok_and(|code| (500..=599).contains(&code))
+                || code
+                    .parse::<u16>()
+                    .is_ok_and(|code| (500..=599).contains(&code))
         }
         GraphqlHttpError::Graphql(_) | GraphqlHttpError::Unauthorized => false,
     }
@@ -1131,9 +1137,7 @@ mod document_save_attempt_key_tests {
     #[test]
     fn write_identity_separates_actor_revision_and_payload() {
         let document = json!({"pages": [{"id": "home"}]});
-        let key = document_save_attempt_key(
-            "tenant", "actor", "page", "r1", "en", &document,
-        );
+        let key = document_save_attempt_key("tenant", "actor", "page", "r1", "en", &document);
         assert_eq!(
             key,
             document_save_attempt_key("tenant", "actor", "page", "r1", "en", &document),
@@ -1159,7 +1163,9 @@ mod document_save_attempt_key_tests {
 
     #[test]
     fn ambiguous_transport_errors_are_probed_but_deterministic_rejections_are_not() {
-        assert!(document_save_might_have_committed(&GraphqlHttpError::Network));
+        assert!(document_save_might_have_committed(
+            &GraphqlHttpError::Network
+        ));
         assert!(document_save_might_have_committed(&GraphqlHttpError::Http(
             "503 Service Unavailable".to_string(),
         )));
@@ -1169,12 +1175,14 @@ mod document_save_attempt_key_tests {
         assert!(document_save_might_have_committed(&GraphqlHttpError::Http(
             "429 Too Many Requests".to_string(),
         )));
-        assert!(!document_save_might_have_committed(&GraphqlHttpError::Http(
-            "400 Bad Request".to_string(),
-        )));
-        assert!(!document_save_might_have_committed(&GraphqlHttpError::Unauthorized));
-        assert!(!document_save_might_have_committed(&GraphqlHttpError::Graphql(
-            "PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT".to_string(),
-        )));
+        assert!(!document_save_might_have_committed(
+            &GraphqlHttpError::Http("400 Bad Request".to_string(),)
+        ));
+        assert!(!document_save_might_have_committed(
+            &GraphqlHttpError::Unauthorized
+        ));
+        assert!(!document_save_might_have_committed(
+            &GraphqlHttpError::Graphql("PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT".to_string(),)
+        ));
     }
 }

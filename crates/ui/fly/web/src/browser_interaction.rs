@@ -181,7 +181,10 @@ mod tests {
     fn contenteditable_values_follow_the_html_editing_state() {
         assert_eq!(contenteditable_value_is_editable(""), Some(true));
         assert_eq!(contenteditable_value_is_editable("true"), Some(true));
-        assert_eq!(contenteditable_value_is_editable("PLAINTEXT-ONLY"), Some(true));
+        assert_eq!(
+            contenteditable_value_is_editable("PLAINTEXT-ONLY"),
+            Some(true)
+        );
         assert_eq!(contenteditable_value_is_editable("false"), Some(false));
         assert_eq!(contenteditable_value_is_editable("inherit"), None);
     }

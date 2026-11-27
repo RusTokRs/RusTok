@@ -69,7 +69,10 @@ impl JwtKeyringFixture {
     /// Replace only the access ring for a rotation scenario. The three
     /// special-purpose identities remain stable across the generations.
     pub fn document_with_access(
-        &self, generation: u64, kid: &str, pair: &RsaKeyPairFixture,
+        &self,
+        generation: u64,
+        kid: &str,
+        pair: &RsaKeyPairFixture,
         history: Option<(&str, &RsaKeyPairFixture, i64)>,
     ) -> Value {
         let mut document = self.document(generation);
@@ -105,24 +108,36 @@ mod tests {
         let first = JwtKeyringFixture::generate().unwrap();
         let second = JwtKeyringFixture::generate().unwrap();
         let keys = [
-            first.access.public_pem(), first.password_reset.public_pem(),
-            first.email_verification.public_pem(), first.invite.public_pem(),
-            second.access.public_pem(), second.password_reset.public_pem(),
-            second.email_verification.public_pem(), second.invite.public_pem(),
+            first.access.public_pem(),
+            first.password_reset.public_pem(),
+            first.email_verification.public_pem(),
+            first.invite.public_pem(),
+            second.access.public_pem(),
+            second.password_reset.public_pem(),
+            second.email_verification.public_pem(),
+            second.invite.public_pem(),
         ];
         assert_eq!(keys.into_iter().collect::<HashSet<_>>().len(), 8);
         let doc = first.document(9);
         assert_eq!(doc["generation"], 9);
         assert_eq!(doc["access"]["keyring"]["active_kid"], "access");
         let rotated = first.document_with_access(
-            10, "next", &second.access, Some(("access", &first.access, 1234)),
+            10,
+            "next",
+            &second.access,
+            Some(("access", &first.access, 1234)),
         );
         assert_eq!(rotated["generation"], 10);
         assert_eq!(rotated["access"]["keyring"]["active_kid"], "next");
-        assert_eq!(rotated["access"]["keyring"]["verification_keys"][0]["material"],
-            first.access.public_pem());
+        assert_eq!(
+            rotated["access"]["keyring"]["verification_keys"][0]["material"],
+            first.access.public_pem()
+        );
         for purpose in ["password_reset", "email_verification", "invite"] {
-            assert!(rotated[purpose] == doc[purpose], "special purpose changed: {purpose}");
+            assert!(
+                rotated[purpose] == doc[purpose],
+                "special purpose changed: {purpose}"
+            );
         }
     }
 }

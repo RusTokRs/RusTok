@@ -65,9 +65,7 @@ pub fn normalize_image_size(size: Option<String>) -> Result<Option<String>, Imag
     else {
         return Ok(None);
     };
-    let (width, height) = size
-        .split_once('x')
-        .ok_or(ImageSizeError::InvalidFormat)?;
+    let (width, height) = size.split_once('x').ok_or(ImageSizeError::InvalidFormat)?;
     let width = width
         .trim()
         .parse::<u32>()

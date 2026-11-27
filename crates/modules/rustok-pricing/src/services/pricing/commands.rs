@@ -1,5 +1,7 @@
 use rust_decimal::Decimal;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait,
+};
 use std::collections::HashSet;
 use tracing::instrument;
 use uuid::Uuid;
@@ -29,12 +31,19 @@ fn price_event_predecessor(
     existing
         .map(|price| {
             if price.currency_code != currency {
-                return Err(resolution::invalid_data("Stored price currency differs from event currency").into_commerce());
+                return Err(resolution::invalid_data(
+                    "Stored price currency differs from event currency",
+                )
+                .into_commerce());
             }
-            validate_price_precision(price.amount, None, currency)
-                .map_err(|_| resolution::invalid_data("Stored price cannot supply an exact event predecessor").into_commerce())?;
-            money::to_minor_units_exact(price.amount, currency)
-                .map_err(|_| resolution::invalid_data("Stored price cannot supply an exact event predecessor").into_commerce())
+            validate_price_precision(price.amount, None, currency).map_err(|_| {
+                resolution::invalid_data("Stored price cannot supply an exact event predecessor")
+                    .into_commerce()
+            })?;
+            money::to_minor_units_exact(price.amount, currency).map_err(|_| {
+                resolution::invalid_data("Stored price cannot supply an exact event predecessor")
+                    .into_commerce()
+            })
         })
         .transpose()
 }
@@ -51,12 +60,18 @@ fn price_event_successor(
         || saved.amount != amount
         || saved.compare_at_amount != compare_at_amount
     {
-        return Err(resolution::invalid_data("Saved price differs from authored money").into_commerce());
+        return Err(
+            resolution::invalid_data("Saved price differs from authored money").into_commerce(),
+        );
     }
-    validate_price_precision(saved.amount, saved.compare_at_amount, currency)
-        .map_err(|_| resolution::invalid_data("Saved price cannot supply an exact event successor").into_commerce())?;
-    money::to_minor_units_exact(saved.amount, currency)
-        .map_err(|_| resolution::invalid_data("Saved price cannot supply an exact event successor").into_commerce())
+    validate_price_precision(saved.amount, saved.compare_at_amount, currency).map_err(|_| {
+        resolution::invalid_data("Saved price cannot supply an exact event successor")
+            .into_commerce()
+    })?;
+    money::to_minor_units_exact(saved.amount, currency).map_err(|_| {
+        resolution::invalid_data("Saved price cannot supply an exact event successor")
+            .into_commerce()
+    })
 }
 
 /// A single authoring command must not choose an arbitrary stored row.
@@ -104,7 +119,11 @@ impl PricingService {
     ) -> CommerceResult<Option<PriceListRule>> {
         let txn = self.db.begin().await?;
         let price_list = Self::write_price_list_percentage_rule_in_tx(
-            &txn, tenant_id, _actor_id, price_list_id, adjustment_percent,
+            &txn,
+            tenant_id,
+            _actor_id,
+            price_list_id,
+            adjustment_percent,
         )
         .await?;
         let rule = resolution::stored_rule(&price_list).map_err(ResolutionError::into_commerce)?;
@@ -135,7 +154,10 @@ impl PricingService {
         // Never commit a value that the owner cannot subsequently resolve.
         resolution::stored_rule(&saved).map_err(ResolutionError::into_commerce)?;
         if saved.adjustment_percent != adjustment_percent {
-            return Err(resolution::invalid_data("Stored price-list percentage differs from the authored value").into_commerce());
+            return Err(resolution::invalid_data(
+                "Stored price-list percentage differs from the authored value",
+            )
+            .into_commerce());
         }
         Ok(saved)
     }
@@ -152,14 +174,22 @@ impl PricingService {
     ) -> CommerceResult<ActivePriceListOption> {
         let txn = self.db.begin().await?;
         let saved = Self::write_price_list_percentage_rule_in_tx(
-            &txn, tenant_id, actor_id, price_list_id, adjustment_percent,
+            &txn,
+            tenant_id,
+            actor_id,
+            price_list_id,
+            adjustment_percent,
         )
         .await?;
         let translations = entities::price_list_translation::Entity::find()
             .filter(entities::price_list_translation::Column::PriceListId.eq(saved.id))
             .all(&txn)
             .await?;
-        let name = Self::resolve_price_list_name(&translations, Some(locale), fallback_locale.or(Some(locale)));
+        let name = Self::resolve_price_list_name(
+            &translations,
+            Some(locale),
+            fallback_locale.or(Some(locale)),
+        );
         let projection = ActivePriceListOption {
             id: saved.id,
             name,
@@ -262,8 +292,14 @@ impl PricingService {
         channel_slug: Option<String>,
     ) -> CommerceResult<PriceAdjustmentPreview> {
         self.apply_scoped_percentage_discount(
-            tenant_id, actor_id, variant_id, currency_code, discount_percent,
-            None, channel_id, channel_slug,
+            tenant_id,
+            actor_id,
+            variant_id,
+            currency_code,
+            discount_percent,
+            None,
+            channel_id,
+            channel_slug,
         )
         .await
     }
@@ -305,8 +341,14 @@ impl PricingService {
         channel_slug: Option<String>,
     ) -> CommerceResult<PriceAdjustmentPreview> {
         self.apply_scoped_percentage_discount(
-            tenant_id, actor_id, variant_id, currency_code, discount_percent,
-            Some(price_list_id), channel_id, channel_slug,
+            tenant_id,
+            actor_id,
+            variant_id,
+            currency_code,
+            discount_percent,
+            Some(price_list_id),
+            channel_id,
+            channel_slug,
         )
         .await
     }
@@ -326,14 +368,26 @@ impl PricingService {
         self.require_embedded_variant_service_state()?;
         validate_discount_percent(discount_percent)?;
         let txn = self.db.begin().await?;
-        let (_, preview) = self.write_scoped_price_tier_in_tx(
-            &txn, tenant_id, actor_id, variant_id, currency_code,
-            PriceWriteIntent::PercentageDiscount(discount_percent),
-            price_list_id, channel_id, channel_slug, None, None,
-        ).await?;
-        let preview = preview.ok_or_else(|| CommerceError::Core(
-            rustok_core::error::Error::Internal("Discount write returned no adjustment".into()),
-        ))?;
+        let (_, preview) = self
+            .write_scoped_price_tier_in_tx(
+                &txn,
+                tenant_id,
+                actor_id,
+                variant_id,
+                currency_code,
+                PriceWriteIntent::PercentageDiscount(discount_percent),
+                price_list_id,
+                channel_id,
+                channel_slug,
+                None,
+                None,
+            )
+            .await?;
+        let preview = preview.ok_or_else(|| {
+            CommerceError::Core(rustok_core::error::Error::Internal(
+                "Discount write returned no adjustment".into(),
+            ))
+        })?;
         txn.commit().await?;
         Ok(preview)
     }
@@ -537,11 +591,24 @@ impl PricingService {
     ) -> CommerceResult<entities::price::Model> {
         self.require_embedded_variant_service_state()?;
         let txn = self.db.begin().await?;
-        let (saved, _) = self.write_scoped_price_tier_in_tx(
-            &txn, tenant_id, actor_id, variant_id, currency_code,
-            PriceWriteIntent::Fixed { amount, compare_at_amount },
-            price_list_id, channel_id, channel_slug, min_quantity, max_quantity,
-        ).await?;
+        let (saved, _) = self
+            .write_scoped_price_tier_in_tx(
+                &txn,
+                tenant_id,
+                actor_id,
+                variant_id,
+                currency_code,
+                PriceWriteIntent::Fixed {
+                    amount,
+                    compare_at_amount,
+                },
+                price_list_id,
+                channel_id,
+                channel_slug,
+                min_quantity,
+                max_quantity,
+            )
+            .await?;
         txn.commit().await?;
         Ok(saved)
     }
@@ -579,15 +646,16 @@ impl PricingService {
 
         let normalized_channel_slug = normalize_channel_slug(channel_slug.as_deref());
 
-
         let (price_list_id, channel_id, channel_slug) = match price_list_id {
             Some(price_list_id) => {
                 let price_list =
                     resolve_active_price_list_tx(txn, tenant_id, price_list_id).await?;
                 if matches!(&intent, PriceWriteIntent::PercentageDiscount(_))
                     && !channel_scope_matches(
-                        price_list.channel_id, price_list.channel_slug.as_deref(),
-                        channel_id, normalized_channel_slug.as_deref(),
+                        price_list.channel_id,
+                        price_list.channel_slug.as_deref(),
+                        channel_id,
+                        normalized_channel_slug.as_deref(),
                     )
                 {
                     return Err(CommerceError::Validation(
@@ -612,9 +680,8 @@ impl PricingService {
             None => (None, channel_id, normalized_channel_slug),
         };
 
-        let resolved_channel = resolve_channel_identity(
-            txn, tenant_id, channel_id, channel_slug.as_deref(),
-        ).await?;
+        let resolved_channel =
+            resolve_channel_identity(txn, tenant_id, channel_id, channel_slug.as_deref()).await?;
         let scope = if price_list_id.is_none() {
             super::queries::base_price_channel_filter(resolved_channel.as_ref())
         } else {
@@ -649,25 +716,40 @@ impl PricingService {
             PriceWriteIntent::Fixed { .. } => None,
             PriceWriteIntent::PercentageDiscount(percent) => {
                 let price = existing.as_ref().ok_or_else(|| {
-                    CommerceError::InvalidPrice(format!("No canonical price found for currency {currency_code}"))
+                    CommerceError::InvalidPrice(format!(
+                        "No canonical price found for currency {currency_code}"
+                    ))
                 })?;
-                Some(super::queries::percentage_discount_preview(price, &currency_code, percent)?)
+                Some(super::queries::percentage_discount_preview(
+                    price,
+                    &currency_code,
+                    percent,
+                )?)
             }
         };
         let (amount, compare_at_amount) = match intent {
-            PriceWriteIntent::Fixed { amount, compare_at_amount } => (amount, compare_at_amount),
+            PriceWriteIntent::Fixed {
+                amount,
+                compare_at_amount,
+            } => (amount, compare_at_amount),
             PriceWriteIntent::PercentageDiscount(_) => {
-                let preview = preview.as_ref().ok_or_else(|| CommerceError::Core(
-                    rustok_core::error::Error::Internal("Discount calculation is missing".into()),
-                ))?;
+                let preview = preview.as_ref().ok_or_else(|| {
+                    CommerceError::Core(rustok_core::error::Error::Internal(
+                        "Discount calculation is missing".into(),
+                    ))
+                })?;
                 (preview.adjusted_amount, preview.compare_at_amount)
             }
         };
         if amount < Decimal::ZERO {
-            return Err(CommerceError::InvalidPrice("Amount cannot be negative".into()));
+            return Err(CommerceError::InvalidPrice(
+                "Amount cannot be negative".into(),
+            ));
         }
         if compare_at_amount.is_some_and(|compare_at| compare_at < amount) {
-            return Err(CommerceError::InvalidPrice("Compare at price must be greater than amount".into()));
+            return Err(CommerceError::InvalidPrice(
+                "Compare at price must be greater than amount".into(),
+            ));
         }
         validate_price_precision(amount, compare_at_amount, &currency_code)?;
 
@@ -725,7 +807,8 @@ impl PricingService {
             .validate()
             .map_err(|e| CommerceError::Validation(format!("Invalid price event: {}", e)))?;
 
-        let price_event_id = self.event_bus
+        let price_event_id = self
+            .event_bus
             .publish_in_tx_with_envelope_id(txn, tenant_id, Some(actor_id), event)
             .await?;
         if saved.price_list_id.is_none()
@@ -735,8 +818,14 @@ impl PricingService {
             && saved.min_quantity.is_none()
             && saved.max_quantity.is_none()
         {
-            record_catalog_price_revision(txn, tenant_id, variant.product_id, variant_id, price_event_id)
-                .await?;
+            record_catalog_price_revision(
+                txn,
+                tenant_id,
+                variant.product_id,
+                variant_id,
+                price_event_id,
+            )
+            .await?;
         }
 
         Ok((saved, preview))
@@ -776,7 +865,9 @@ impl PricingService {
             )
             .await?;
             admit_batch_price_identity(
-                &mut seen, resolved_channel.as_ref().map(|channel| channel.id), &normalized_currency,
+                &mut seen,
+                resolved_channel.as_ref().map(|channel| channel.id),
+                &normalized_currency,
             )?;
             let scope = super::queries::base_price_channel_filter(resolved_channel.as_ref());
 
@@ -801,7 +892,12 @@ impl PricingService {
                 &normalized_currency,
             )?;
 
-            prepared.push((price_input, normalized_currency, normalized_channel_slug, scope));
+            prepared.push((
+                price_input,
+                normalized_currency,
+                normalized_channel_slug,
+                scope,
+            ));
         }
 
         let mut last_catalog_price_event = None;
@@ -860,7 +956,10 @@ impl PricingService {
             };
 
             let new_cents = price_event_successor(
-                &saved, &normalized_currency, price_input.amount, price_input.compare_at_amount,
+                &saved,
+                &normalized_currency,
+                price_input.amount,
+                price_input.compare_at_amount,
             )?;
 
             let event = DomainEvent::PriceUpdated {
@@ -874,7 +973,8 @@ impl PricingService {
                 .validate()
                 .map_err(|e| CommerceError::Validation(format!("Invalid price event: {}", e)))?;
 
-            let price_event_id = self.event_bus
+            let price_event_id = self
+                .event_bus
                 .publish_in_tx_with_envelope_id(&txn, tenant_id, Some(actor_id), event)
                 .await?;
             if saved.price_list_id.is_none()
@@ -888,8 +988,14 @@ impl PricingService {
             }
         }
         if let Some(price_event_id) = last_catalog_price_event {
-            record_catalog_price_revision(&txn, tenant_id, variant.product_id, variant_id, price_event_id)
-                .await?;
+            record_catalog_price_revision(
+                &txn,
+                tenant_id,
+                variant.product_id,
+                variant_id,
+                price_event_id,
+            )
+            .await?;
         }
 
         txn.commit().await?;
@@ -946,7 +1052,11 @@ async fn record_catalog_price_revision(
     price_event_id: Uuid,
 ) -> CommerceResult<()> {
     rustok_product::services::catalog_references::record_catalog_base_price_change_in_tx(
-        txn, tenant_id, product_id, variant_id, price_event_id,
+        txn,
+        tenant_id,
+        product_id,
+        variant_id,
+        price_event_id,
     )
     .await
     .map_err(|error| match error {
@@ -984,10 +1094,20 @@ mod batch_price_admission_tests {
     fn event_predecessor_distinguishes_absence_from_invalid_stored_money() {
         assert_eq!(price_event_predecessor(None, "USD").unwrap(), None);
         let mut price = row(1);
-        assert_eq!(price_event_predecessor(Some(&price), "USD").unwrap(), Some(1000));
+        assert_eq!(
+            price_event_predecessor(Some(&price), "USD").unwrap(),
+            Some(1000)
+        );
         price.amount = Decimal::ZERO;
-        assert_eq!(price_event_predecessor(Some(&price), "USD").unwrap(), Some(0));
-        for invalid in [Decimal::new(10001, 3), Decimal::new(-1, 0), Decimal::new(10_000_000_000, 0)] {
+        assert_eq!(
+            price_event_predecessor(Some(&price), "USD").unwrap(),
+            Some(0)
+        );
+        for invalid in [
+            Decimal::new(10001, 3),
+            Decimal::new(-1, 0),
+            Decimal::new(10_000_000_000, 0),
+        ] {
             price.amount = invalid;
             assert!(price_event_predecessor(Some(&price), "USD").is_err());
         }
@@ -1001,16 +1121,32 @@ mod batch_price_admission_tests {
         price.currency_code = "KWD".into();
         price.amount = Decimal::new(79994, 3);
         price.compare_at_amount = Some(Decimal::new(99996, 3));
-        assert_eq!(price_event_successor(&price, "KWD", price.amount, price.compare_at_amount).unwrap(), 79994);
-        assert!(price_event_successor(&price, "KWD", Decimal::new(79995, 3), price.compare_at_amount).is_err());
+        assert_eq!(
+            price_event_successor(&price, "KWD", price.amount, price.compare_at_amount).unwrap(),
+            79994
+        );
+        assert!(
+            price_event_successor(
+                &price,
+                "KWD",
+                Decimal::new(79995, 3),
+                price.compare_at_amount
+            )
+            .is_err()
+        );
         assert!(price_event_successor(&price, "KWD", price.amount, None).is_err());
-        assert!(price_event_successor(&price, "USD", price.amount, price.compare_at_amount).is_err());
+        assert!(
+            price_event_successor(&price, "USD", price.amount, price.compare_at_amount).is_err()
+        );
     }
 
     #[test]
     fn both_price_writers_refuse_multiple_matching_stored_rows() {
         assert!(unique_existing_price(Vec::new()).unwrap().is_none());
-        assert_eq!(unique_existing_price(vec![row(1)]).unwrap().unwrap().id, row(1).id);
+        assert_eq!(
+            unique_existing_price(vec![row(1)]).unwrap().unwrap().id,
+            row(1).id
+        );
         assert!(unique_existing_price(vec![row(1), row(2)]).is_err());
         assert!(unique_existing_price(vec![row(2), row(1)]).is_err());
     }

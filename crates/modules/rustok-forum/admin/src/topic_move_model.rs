@@ -127,7 +127,9 @@ fn looks_like_uuid(value: &str) -> bool {
             parts.next(),
         ),
         (Some(8), Some(4), Some(4), Some(4), Some(12), None)
-    ) && value.bytes().all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
+    ) && value
+        .bytes()
+        .all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
 }
 
 fn fnv1a64(bytes: &[u8]) -> u64 {

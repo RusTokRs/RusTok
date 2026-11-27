@@ -7,7 +7,9 @@ use crate::features::dashboard::model::{DashboardStatsResponse, RecentActivityRe
 #[cfg(feature = "ssr")]
 use chrono::Utc;
 #[cfg(feature = "ssr")]
-use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext, has_effective_permission};
+use rustok_api::{
+    AuthContext, HostRuntimeContext, Permission, TenantContext, has_effective_permission,
+};
 #[cfg(feature = "ssr")]
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 
@@ -100,7 +102,9 @@ fn require_dashboard_permission(
     permission: Permission,
 ) -> Result<(), ServerFnError> {
     if auth.tenant_id != tenant_id || !has_effective_permission(&auth.permissions, &permission) {
-        return Err(server_error(format!("Permission denied: {permission} required")));
+        return Err(server_error(format!(
+            "Permission denied: {permission} required"
+        )));
     }
     Ok(())
 }
@@ -294,11 +298,20 @@ mod tests {
             let other_tenant = auth(Uuid::new_v4(), vec![required]);
             assert!(require_dashboard_permission(&other_tenant, tenant_id, required).is_err());
         }
-        assert!(require_dashboard_permission(&analyst, tenant_id, Permission::ANALYTICS_READ).is_ok());
+        assert!(
+            require_dashboard_permission(&analyst, tenant_id, Permission::ANALYTICS_READ).is_ok()
+        );
         assert!(require_dashboard_permission(&analyst, tenant_id, Permission::USERS_LIST).is_err());
-        assert!(require_dashboard_permission(&user_reader, tenant_id, Permission::USERS_LIST).is_ok());
-        assert!(require_dashboard_permission(&user_reader, tenant_id, Permission::ANALYTICS_READ).is_err());
-        assert!(require_dashboard_permission(&user_manager, tenant_id, Permission::USERS_LIST).is_ok());
+        assert!(
+            require_dashboard_permission(&user_reader, tenant_id, Permission::USERS_LIST).is_ok()
+        );
+        assert!(
+            require_dashboard_permission(&user_reader, tenant_id, Permission::ANALYTICS_READ)
+                .is_err()
+        );
+        assert!(
+            require_dashboard_permission(&user_manager, tenant_id, Permission::USERS_LIST).is_ok()
+        );
     }
 
     #[test]

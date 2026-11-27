@@ -9,8 +9,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use chrono::Utc;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
-    DbBackend, EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait, sea_query::OnConflict,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection,
+    DatabaseTransaction, DbBackend, EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait,
+    sea_query::OnConflict,
 };
 use uuid::Uuid;
 
@@ -104,8 +105,14 @@ pub async fn restock_returned_items(
         .filter_map(|line| line.variant_id)
         .collect::<BTreeSet<_>>();
     let variant_ids_vec = variant_ids.iter().copied().collect::<Vec<_>>();
-    let variants_map =
-        load_tenant_variants(&context, RESTOCK_OPERATION, &txn, tenant_id, &variant_ids_vec).await?;
+    let variants_map = load_tenant_variants(
+        &context,
+        RESTOCK_OPERATION,
+        &txn,
+        tenant_id,
+        &variant_ids_vec,
+    )
+    .await?;
     let mut products = BTreeMap::new();
     for variant_id in &variant_ids {
         if let Some(variant) = variants_map.get(variant_id) {
@@ -164,13 +171,8 @@ pub async fn restock_returned_items(
         )
         .await?;
 
-        let reservation = fetch_return_reservation(
-            &txn,
-            &context,
-            item.id,
-            line.order_line_item_id,
-        )
-        .await?;
+        let reservation =
+            fetch_return_reservation(&txn, &context, item.id, line.order_line_item_id).await?;
         validate_allocation(&reservation, line, item.id, variant_id)?;
         movements.insert(
             line.return_item_id,
@@ -343,9 +345,10 @@ async fn fetch_return_reservation(
     } else {
         reservation_query.lock_exclusive()
     };
-    let mut reservations = reservation_query.all(txn).await.map_err(|error| {
-        storage_unavailable_with_context(context, RESTOCK_OPERATION, error)
-    })?;
+    let mut reservations = reservation_query
+        .all(txn)
+        .await
+        .map_err(|error| storage_unavailable_with_context(context, RESTOCK_OPERATION, error))?;
     if reservations.len() != 1 {
         return Err(PortError::invariant_violation(
             "inventory.return_restock_allocation_unverified",
@@ -377,14 +380,13 @@ async fn fetch_return_levels(
     } else {
         level_query.lock_exclusive()
     };
-    let matching = level_query.all(txn).await.map_err(|error| {
-        storage_unavailable_with_context(context, RESTOCK_OPERATION, error)
-    })?;
+    let matching = level_query
+        .all(txn)
+        .await
+        .map_err(|error| storage_unavailable_with_context(context, RESTOCK_OPERATION, error))?;
     let mut levels = BTreeMap::new();
     for level in matching {
-        if level.stocked_quantity < 0
-            || level.reserved_quantity < 0
-            || level.incoming_quantity < 0
+        if level.stocked_quantity < 0 || level.reserved_quantity < 0 || level.incoming_quantity < 0
         {
             return Err(identity_conflict());
         }

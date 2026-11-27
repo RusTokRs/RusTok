@@ -234,7 +234,12 @@ fn ssr_action_form_preserves_exclusive_accordion_actions() {
     );
     dispatch_browser_intent(&mut controller, request).expect("accordion action dispatch");
     assert_eq!(
-        controller.editor().document().component("cta").unwrap().extensions[fly::FLY_ACTION_FIELD]["exclusive"],
+        controller
+            .editor()
+            .document()
+            .component("cta")
+            .unwrap()
+            .extensions[fly::FLY_ACTION_FIELD]["exclusive"],
         true
     );
 }

@@ -23,6 +23,8 @@ pub(crate) use crate::transport::graphql_fallback_mutations::{
 use rustok_graphql::{GraphqlHttpError, GraphqlOperationError};
 
 use crate::catalog_controls::ProductAdminListInput;
+use crate::core::variant_mutation::{normalized_refusal, valid_revision};
+use crate::core::write_journal::ProductWriteScope;
 use crate::model::{
     CatalogCategoryList, ProductAdminBootstrap, ProductAttributeList, ProductAttributeSchemaList,
     ProductAttributeValueItem, ProductCatalogSearchOptions, ProductDetail, ProductDraft,
@@ -30,8 +32,6 @@ use crate::model::{
     VariantUpdateDraft,
 };
 use crate::transport as legacy;
-use crate::core::variant_mutation::{normalized_refusal, valid_revision};
-use crate::core::write_journal::ProductWriteScope;
 
 use graphql_error_safety::{
     GraphqlMutationContext, GraphqlReadContext, SELECTED_PRODUCT_ADMIN_TRANSPORT,
@@ -142,9 +142,7 @@ pub(crate) async fn fetch_products(
         let _ = (token, tenant_slug);
         legacy::admin_catalog_native::fetch_products(tenant_id, locale, controls)
             .await
-            .map_err(|error| {
-                context.map_error(GraphqlHttpError::Graphql(error.to_string()))
-            })
+            .map_err(|error| context.map_error(GraphqlHttpError::Graphql(error.to_string())))
     }
 
     #[cfg(not(any(feature = "ssr", feature = "hydrate")))]

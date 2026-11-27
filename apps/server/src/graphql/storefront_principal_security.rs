@@ -35,10 +35,7 @@ fn document_contains_storefront(
     super::selected_operations(document, operation_name)
         .into_iter()
         .any(|operation| {
-            selection_contains_storefront(
-                &operation.node.selection_set.node,
-                document,
-            )
+            selection_contains_storefront(&operation.node.selection_set.node, document)
         })
 }
 

@@ -66,7 +66,10 @@ pub fn PartyAdminPage() -> impl IntoView {
         GridColumnDef::new("title", t(locale_ref, "party-col-title", "Title"))
             .filter(GridFilterType::text()),
         GridColumnDef::new("status", t(locale_ref, "party-col-status", "Status")),
-        GridColumnDef::new("created_at", t(locale_ref, "party-col-created", "Created At")),
+        GridColumnDef::new(
+            "created_at",
+            t(locale_ref, "party-col-created", "Created At"),
+        ),
         GridColumnDef::new("actions", t(locale_ref, "party-col-actions", "Actions")),
     ];
     let action_edit = t(locale_ref, "party-action-edit", "Edit");

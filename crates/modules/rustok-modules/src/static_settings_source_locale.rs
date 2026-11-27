@@ -261,7 +261,12 @@ impl StaticSettingsSourceLocaleService {
         {
             // A transport error can arrive after the claim was committed.
             // Keep the request fingerprint until ownership is reconciled.
-            if !matches!(error, StaticSettingsSourceLocaleError::Database(_) | StaticSettingsSourceLocaleError::OperationReceipt(_) | StaticSettingsSourceLocaleError::OwnerOperationInProgress(_)) {
+            if !matches!(
+                error,
+                StaticSettingsSourceLocaleError::Database(_)
+                    | StaticSettingsSourceLocaleError::OperationReceipt(_)
+                    | StaticSettingsSourceLocaleError::OwnerOperationInProgress(_)
+            ) {
                 fail_receipt(&self.db, lease, &error).await?;
             }
             return Err(error);
@@ -519,9 +524,9 @@ async fn abandon_claim_and_fail(
     lease: idempotency::Lease,
     error: &StaticSettingsSourceLocaleError,
 ) -> Result<(), StaticSettingsSourceLocaleError> {
-    if let Err(release_error) = crate::settings_claim::abandon(
-        database, command.tenant_id, module_slug, lease,
-    ).await {
+    if let Err(release_error) =
+        crate::settings_claim::abandon(database, command.tenant_id, module_slug, lease).await
+    {
         // Keep the processing receipt if aggregate cleanup is uncertain.
         return Err(StaticSettingsSourceLocaleError::Database(format!(
             "{error}; additionally, releasing the lifecycle claim failed: {release_error}"
@@ -531,11 +536,13 @@ async fn abandon_claim_and_fail(
         // Preserve the fingerprint for a later exact-request lease retry.
         return Ok(());
     }
-    fail_receipt(database, lease, error).await.map_err(|receipt_error| {
-        StaticSettingsSourceLocaleError::Database(format!(
-            "{error}; additionally, finalizing the operation receipt failed: {receipt_error}"
-        ))
-    })
+    fail_receipt(database, lease, error)
+        .await
+        .map_err(|receipt_error| {
+            StaticSettingsSourceLocaleError::Database(format!(
+                "{error}; additionally, finalizing the operation receipt failed: {receipt_error}"
+            ))
+        })
 }
 
 async fn fail_receipt(
@@ -640,11 +647,17 @@ fn map_settings_transition_fence_error(
     }
 }
 
-fn map_settings_claim_error(error: crate::settings_claim::SettingsClaimError) -> StaticSettingsSourceLocaleError {
+fn map_settings_claim_error(
+    error: crate::settings_claim::SettingsClaimError,
+) -> StaticSettingsSourceLocaleError {
     match error {
-        crate::settings_claim::SettingsClaimError::Receipt(error) => StaticSettingsSourceLocaleError::OperationReceipt(error),
+        crate::settings_claim::SettingsClaimError::Receipt(error) => {
+            StaticSettingsSourceLocaleError::OperationReceipt(error)
+        }
         crate::settings_claim::SettingsClaimError::Owner(error) => map_owner_error(error),
-        crate::settings_claim::SettingsClaimError::Database(error) => StaticSettingsSourceLocaleError::Database(error),
+        crate::settings_claim::SettingsClaimError::Database(error) => {
+            StaticSettingsSourceLocaleError::Database(error)
+        }
     }
 }
 
@@ -691,29 +704,48 @@ mod tests {
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         rustok_outbox::migration::create_owner_operation_receipts_table(
             &sea_orm_migration::SchemaManager::new(&db),
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
         let tenant = Uuid::new_v4();
         let registry = StaticSettingsLocalizationRegistry::new(
-            "storefront", Default::default(), Default::default(), Default::default(),
-        ).unwrap();
+            "storefront",
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        )
+        .unwrap();
         let mut command = StaticSettingsSourceLocaleAssignCommand {
-            tenant_id: tenant, locale: "en".into(), expected_owner_revision: 0,
+            tenant_id: tenant,
+            locale: "en".into(),
+            expected_owner_revision: 0,
             context: ModuleCommandContext {
-                actor_id: Uuid::new_v4(), tenant_id: Some(tenant), trace_id: "test".into(),
-                correlation_id: Uuid::new_v4(), idempotency_key: Uuid::new_v4(),
+                actor_id: Uuid::new_v4(),
+                tenant_id: Some(tenant),
+                trace_id: "test".into(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
             },
         };
         let service = StaticSettingsSourceLocaleService::new(db);
         // No lifecycle tables: the claim outcome is treated as uncertain.
-        assert!(matches!(service.assign_source_locale(&registry, command.clone()).await,
-            Err(StaticSettingsSourceLocaleError::Database(_))));
-        assert!(matches!(service.assign_source_locale(&registry, command.clone()).await,
+        assert!(matches!(
+            service
+                .assign_source_locale(&registry, command.clone())
+                .await,
+            Err(StaticSettingsSourceLocaleError::Database(_))
+        ));
+        assert!(
+            matches!(service.assign_source_locale(&registry, command.clone()).await,
             Err(StaticSettingsSourceLocaleError::OperationReceipt(error))
-            if error.code == "outbox.operation_receipt_in_progress"));
+            if error.code == "outbox.operation_receipt_in_progress")
+        );
         command.locale = "fr".into();
-        assert!(matches!(service.assign_source_locale(&registry, command).await,
+        assert!(
+            matches!(service.assign_source_locale(&registry, command).await,
             Err(StaticSettingsSourceLocaleError::OperationReceipt(error))
-            if error.code == "outbox.operation_receipt_conflict"));
+            if error.code == "outbox.operation_receipt_conflict")
+        );
     }
 
     #[tokio::test]
@@ -721,26 +753,42 @@ mod tests {
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         rustok_outbox::migration::create_owner_operation_receipts_table(
             &sea_orm_migration::SchemaManager::new(&db),
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
         let tenant = Uuid::new_v4();
         let command = StaticSettingsSourceLocaleAssignCommand {
-            tenant_id: tenant, locale: "en".into(), expected_owner_revision: 0,
+            tenant_id: tenant,
+            locale: "en".into(),
+            expected_owner_revision: 0,
             context: ModuleCommandContext {
-                actor_id: Uuid::new_v4(), tenant_id: Some(tenant), trace_id: "test".into(),
-                correlation_id: Uuid::new_v4(), idempotency_key: Uuid::new_v4(),
+                actor_id: Uuid::new_v4(),
+                tenant_id: Some(tenant),
+                trace_id: "test".into(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
             },
         };
         let request = serde_json::json!({"fixture": true});
         let scope = idempotency::OwnerOperationScope::Tenant(tenant);
         let key = command.context.idempotency_key.to_string();
-        let lease = match idempotency::admit(&db, scope, OWNER_SLUG, &key, ASSIGN_OPERATION, &request).await.unwrap() {
-            Admission::Run(lease) => lease, _ => panic!("first admission must run"),
-        };
+        let lease =
+            match idempotency::admit(&db, scope, OWNER_SLUG, &key, ASSIGN_OPERATION, &request)
+                .await
+                .unwrap()
+            {
+                Admission::Run(lease) => lease,
+                _ => panic!("first admission must run"),
+            };
         let error = StaticSettingsSourceLocaleError::SourceSnapshotUnstable;
-        assert!(matches!(abandon_claim_and_fail(&db, "storefront", &command, lease, &error).await,
-            Err(StaticSettingsSourceLocaleError::Database(message)) if message.contains("snapshot") && message.contains("releasing the lifecycle claim failed")));
-        assert!(matches!(idempotency::admit(&db, scope, OWNER_SLUG, &key, ASSIGN_OPERATION, &request).await,
-            Err(error) if error.code == "outbox.operation_receipt_in_progress"));
+        assert!(
+            matches!(abandon_claim_and_fail(&db, "storefront", &command, lease, &error).await,
+            Err(StaticSettingsSourceLocaleError::Database(message)) if message.contains("snapshot") && message.contains("releasing the lifecycle claim failed"))
+        );
+        assert!(
+            matches!(idempotency::admit(&db, scope, OWNER_SLUG, &key, ASSIGN_OPERATION, &request).await,
+            Err(error) if error.code == "outbox.operation_receipt_in_progress")
+        );
     }
 
     #[test]

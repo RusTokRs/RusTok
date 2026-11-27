@@ -42,7 +42,10 @@ pub const SUPPORTED_PSEUDO_CLASSES: &[&str] = &[
 /// renderer, static publish policy) must use so the layers cannot drift apart.
 pub fn normalize_pseudo_class(value: &str) -> Option<String> {
     let value = value.trim();
-    let normalized = value.strip_prefix(':').unwrap_or(value).to_ascii_lowercase();
+    let normalized = value
+        .strip_prefix(':')
+        .unwrap_or(value)
+        .to_ascii_lowercase();
     if normalized.starts_with(':') {
         return None;
     }
@@ -925,8 +928,7 @@ mod tests {
         remap_component_style_rule(&mut copied, &mapping);
         assert_eq!(copied["selectors"][0], "#hero-copy");
 
-        let mut malformed_copy =
-            json!({ "selectors": ["##hero"], "style": { "color": "red" } });
+        let mut malformed_copy = json!({ "selectors": ["##hero"], "style": { "color": "red" } });
         remap_component_style_rule(&mut malformed_copy, &mapping);
         assert_eq!(malformed_copy["selectors"][0], "##hero");
     }

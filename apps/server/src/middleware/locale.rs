@@ -329,7 +329,10 @@ pub async fn resolve_locale(
             .map(|tenant| tenant.default_locale.as_str()),
     );
 
-    tracing::debug!(path_group = super::http_stack::trace_path_family(parts.uri.path()), "locale::resolve_locale entry");
+    tracing::debug!(
+        path_group = super::http_stack::trace_path_family(parts.uri.path()),
+        "locale::resolve_locale entry"
+    );
     if let Some(tenant) = tenant_context.as_ref() {
         let locales = match get_tenant_locales_cached(&ctx, tenant.id).await {
             Ok(locales) => locales,

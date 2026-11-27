@@ -76,7 +76,11 @@ where
 // A routing hint, not authorization. Once a nonempty value is chosen, reject
 // malformed input rather than silently falling back to a different tenant.
 fn select_tenant_slug<'a>(values: impl IntoIterator<Item = Option<&'a str>>) -> Option<String> {
-    let value = values.into_iter().flatten().map(str::trim).find(|value| !value.is_empty())?;
+    let value = values
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .find(|value| !value.is_empty())?;
     if value.len() > 255 || value.chars().any(char::is_control) {
         return None;
     }
@@ -111,10 +115,19 @@ mod tests {
 
     #[test]
     fn tenant_hint_is_bounded_and_never_falls_back_after_invalid_selection() {
-        assert_eq!(select_tenant_slug([None, Some("  "), Some(" shop-a ")]), Some("shop-a".to_string()));
+        assert_eq!(
+            select_tenant_slug([None, Some("  "), Some(" shop-a ")]),
+            Some("shop-a".to_string())
+        );
         assert_eq!(select_tenant_slug([None, Some("")]), None);
-        assert_eq!(select_tenant_slug([Some("shop\nother"), Some("shop-b")]), None);
+        assert_eq!(
+            select_tenant_slug([Some("shop\nother"), Some("shop-b")]),
+            None
+        );
         let too_long = "a".repeat(256);
-        assert_eq!(select_tenant_slug([Some(too_long.as_str()), Some("shop-b")]), None);
+        assert_eq!(
+            select_tenant_slug([Some(too_long.as_str()), Some("shop-b")]),
+            None
+        );
     }
 }

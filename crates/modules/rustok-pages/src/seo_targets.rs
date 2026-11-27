@@ -7,8 +7,8 @@ use rustok_seo_targets::{
     SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
     SeoTargetCapabilities, SeoTargetError, SeoTargetLoadRequest, SeoTargetLoadScope,
     SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetResult as AnyResult,
-    SeoTargetRouteResolveRequest, SeoTargetRuntimeContext, SeoTargetSitemapRequest,
-    SeoTargetSlug, SeoTemplateFieldMap, builtin_slug, populate_image_template_fields, schema,
+    SeoTargetRouteResolveRequest, SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug,
+    SeoTemplateFieldMap, builtin_slug, populate_image_template_fields, schema,
 };
 use url::Url;
 
@@ -172,7 +172,7 @@ impl SeoTargetProvider for PagesSeoTargetProvider {
                     BULK_FETCH_SIZE,
                 )
                 .await
-            .map_err(SeoTargetError::provider)?;
+                .map_err(SeoTargetError::provider)?;
 
             for item in items {
                 if let Some(candidate) = load_page_sitemap_candidate(
@@ -385,8 +385,8 @@ fn map_page_response(
     populate_image_template_fields(&mut template_fields, open_graph_images.as_slice());
 
     // INVARIANT: `builtin_slug::PAGE` is a compile-time constant satisfying SeoTargetSlug requirements.
-    let target_kind = SeoTargetSlug::new(builtin_slug::PAGE)
-        .expect("builtin SEO target slug must stay valid");
+    let target_kind =
+        SeoTargetSlug::new(builtin_slug::PAGE).expect("builtin SEO target slug must stay valid");
 
     SeoLoadedTargetRecord {
         target_kind,

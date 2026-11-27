@@ -129,7 +129,11 @@ pub fn builtin_embed_providers() -> Vec<EmbedProvider> {
 /// Validate one embed URL against a provider registration.
 pub fn validate_embed_url(provider: &EmbedProvider, raw_url: &str) -> Result<(), String> {
     let raw_url = raw_url.trim();
-    if !url_allowed(raw_url, UrlAttributeKind::Resource, &UrlPolicy::permissive()) {
+    if !url_allowed(
+        raw_url,
+        UrlAttributeKind::Resource,
+        &UrlPolicy::permissive(),
+    ) {
         return Err("embed URL is not a safe URL".to_string());
     }
 
@@ -144,10 +148,7 @@ pub fn validate_embed_url(provider: &EmbedProvider, raw_url: &str) -> Result<(),
         .ok_or_else(|| "embed URL must be a valid absolute HTTPS URL".to_string())?;
     let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     let authority = &rest[..authority_end];
-    if authority.contains('@')
-        || !parsed.username().is_empty()
-        || parsed.password().is_some()
-    {
+    if authority.contains('@') || !parsed.username().is_empty() || parsed.password().is_some() {
         return Err("embed URL must not contain credentials".to_string());
     }
     if parsed.port().is_some() {
@@ -171,12 +172,21 @@ pub fn validate_embed_url(provider: &EmbedProvider, raw_url: &str) -> Result<(),
 
     // The WHATWG parser removes literal and percent-encoded dot segments.
     // Inspect the authored path before normalization, excluding query/fragment.
-    let raw_path = rest[authority_end..].split(['?', '#']).next().unwrap_or_default();
+    let raw_path = rest[authority_end..]
+        .split(['?', '#'])
+        .next()
+        .unwrap_or_default();
     let lower_path = raw_path.to_ascii_lowercase();
-    if ["%2e", "%2f", "%5c"].iter().any(|encoded| lower_path.contains(encoded))
-        || raw_path.split('/').any(|segment| segment == "." || segment == "..")
+    if ["%2e", "%2f", "%5c"]
+        .iter()
+        .any(|encoded| lower_path.contains(encoded))
+        || raw_path
+            .split('/')
+            .any(|segment| segment == "." || segment == "..")
     {
-        return Err("embed URL path must not contain encoded separators or dot segments".to_string());
+        return Err(
+            "embed URL path must not contain encoded separators or dot segments".to_string(),
+        );
     }
     let path = parsed.path();
     if !provider
@@ -286,7 +296,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn embeds_reject_credentials_non_default_ports_and_path_escape() {
         let registry = EmbedProviderRegistry::with_builtins();
@@ -355,9 +364,6 @@ mod tests {
         assert_eq!(decoded.provider, "custom");
     }
 
-
-
-
     #[test]
     fn deeply_nested_embed_specs_are_rejected_before_deserialization() {
         let registry = EmbedProviderRegistry::with_builtins();
@@ -371,6 +377,4 @@ mod tests {
         }
         assert!(decode_embed_spec_with_registry(&raw, &registry).is_err());
     }
-
-
 }

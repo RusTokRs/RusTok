@@ -4,9 +4,7 @@ use std::sync::Arc;
 use async_graphql::extensions::{
     Extension, ExtensionContext, ExtensionFactory, NextExecute, NextPrepareRequest,
 };
-use async_graphql::parser::types::{
-    ExecutableDocument, OperationDefinition, SelectionSet,
-};
+use async_graphql::parser::types::{ExecutableDocument, OperationDefinition, SelectionSet};
 use async_graphql::{FieldError, Name, Pos, Request, Response, ServerResult, Variables};
 use async_graphql_value::{ConstValue, Value};
 use rustok_api::TenantContext;
@@ -103,12 +101,7 @@ fn collect_selection_set_tenant_arguments(
     let _completed = super::visit_selection_fields(document, selection_set, (), |field, ()| {
         for (argument_name, argument_value) in &field.arguments {
             if is_tenant_argument_name(argument_name.node.as_str()) {
-                collect_direct_tenant_value(
-                    &argument_value.node,
-                    variables,
-                    defaults,
-                    policy,
-                );
+                collect_direct_tenant_value(&argument_value.node, variables, defaults, policy);
             } else {
                 collect_nested_tenant_value(
                     &argument_value.node,

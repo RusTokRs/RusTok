@@ -770,7 +770,6 @@ impl ExternalConnector {
             .addresses
             .iter()
             .map(|address| {
-
                 let mut connection_string = if !config.username.is_empty() {
                     format!("iggy://{}:{}@{}", config.username, config.password, address)
                 } else {

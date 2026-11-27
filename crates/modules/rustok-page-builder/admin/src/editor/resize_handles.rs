@@ -3,10 +3,10 @@ use leptos::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
 use crate::AdminCanvasController;
-#[cfg(target_arch = "wasm32")]
-use fly::ComponentPatch;
 #[cfg(any(target_arch = "wasm32", test))]
 use crate::core::page_builder_resize_policy;
+#[cfg(target_arch = "wasm32")]
+use fly::ComponentPatch;
 #[cfg(any(target_arch = "wasm32", test))]
 use fly_ui::{CanvasRect, ResizeHandle, ViewportState};
 #[cfg(target_arch = "wasm32")]
@@ -282,9 +282,10 @@ fn install_resize_listeners(
             }
             let captured = move_context.get_value();
             let current = move_runtime.controller.with(current_resize_context);
-            if !captured.as_ref().is_some_and(|captured| {
-                resize_context_is_current(captured, current.as_ref())
-            }) {
+            if !captured
+                .as_ref()
+                .is_some_and(|captured| resize_context_is_current(captured, current.as_ref()))
+            {
                 cancel_active_resize(
                     &move_runtime,
                     move_session,
@@ -317,9 +318,10 @@ fn install_resize_listeners(
             }
             let captured = up_context.get_value();
             let current = up_runtime.controller.with(current_resize_context);
-            if !captured.as_ref().is_some_and(|captured| {
-                resize_context_is_current(captured, current.as_ref())
-            }) {
+            if !captured
+                .as_ref()
+                .is_some_and(|captured| resize_context_is_current(captured, current.as_ref()))
+            {
                 cancel_active_resize(
                     &up_runtime,
                     up_session,
@@ -332,8 +334,8 @@ fn install_resize_listeners(
                 return;
             }
             let result = active.update(&event).or_else(|| up_preview.get_untracked());
-            if let Some(result) = result
-                .filter(|result| result.width_changed || result.height_changed)
+            if let Some(result) =
+                result.filter(|result| result.width_changed || result.height_changed)
             {
                 apply_resize_patch(
                     &up_runtime,
@@ -342,7 +344,8 @@ fn install_resize_listeners(
                 );
             }
             if let Some(element) = up_element.get_value() {
-                if let Err(error) = fly_leptos::release_pointer_capture(&element, active.pointer_id) {
+                if let Err(error) = fly_leptos::release_pointer_capture(&element, active.pointer_id)
+                {
                     up_runtime.fail(error.to_string());
                 }
             }
@@ -399,24 +402,32 @@ fn install_resize_listeners(
     let blur_element = captured_element;
     let blur_context = resize_context;
     let blur_preview = preview;
-    let blur_listener = fly_leptos::EventListenerHandle::new::<Event>(
-        &target,
-        "blur",
-        move |_| {
-            cancel_active_resize(
-                &blur_runtime,
-                blur_session,
-                blur_element,
-                blur_context,
-                blur_preview,
-                None,
-                true,
-            );
-        },
-    );
+    let blur_listener = fly_leptos::EventListenerHandle::new::<Event>(&target, "blur", move |_| {
+        cancel_active_resize(
+            &blur_runtime,
+            blur_session,
+            blur_element,
+            blur_context,
+            blur_preview,
+            None,
+            true,
+        );
+    });
 
-    match (move_listener, up_listener, cancel_listener, lost_listener, blur_listener) {
-        (Ok(move_listener), Ok(up_listener), Ok(cancel_listener), Ok(lost_listener), Ok(blur_listener)) => {
+    match (
+        move_listener,
+        up_listener,
+        cancel_listener,
+        lost_listener,
+        blur_listener,
+    ) {
+        (
+            Ok(move_listener),
+            Ok(up_listener),
+            Ok(cancel_listener),
+            Ok(lost_listener),
+            Ok(blur_listener),
+        ) => {
             let _listeners = StoredValue::new_local((
                 move_listener,
                 up_listener,
@@ -443,9 +454,9 @@ fn install_resize_listeners(
 
 #[cfg(target_arch = "wasm32")]
 fn apply_resize_patch(runtime: &AdminEditorRuntime, component_id: &str, patch: ComponentPatch) {
-    let intent = runtime.controller.with(|controller| {
-        controller.ssr_selected_style_patch_intent(Some(component_id), patch)
-    });
+    let intent = runtime
+        .controller
+        .with(|controller| controller.ssr_selected_style_patch_intent(Some(component_id), patch));
     match intent {
         Ok(intent) => runtime.dispatch(intent),
         Err(error) => runtime.fail(error),
@@ -473,9 +484,7 @@ fn cancel_active_resize(
     }
     if release_capture {
         if let Some(element) = captured_element.get_value() {
-            if let Err(error) =
-                fly_leptos::release_pointer_capture(&element, active.pointer_id)
-            {
+            if let Err(error) = fly_leptos::release_pointer_capture(&element, active.pointer_id) {
                 runtime.fail(error.to_string());
             }
         }

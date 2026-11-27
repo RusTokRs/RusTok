@@ -299,11 +299,9 @@ async fn public_handle_fallback_is_stable_across_locales_and_respects_publicatio
         ("it", "zh", products[0]),
     ] {
         assert_eq!(
-            find_published_product_id_by_handle(
-                &db, tenant_id, &handle, locale, fallback, None,
-            )
-            .await
-            .expect("resolve public handle"),
+            find_published_product_id_by_handle(&db, tenant_id, &handle, locale, fallback, None,)
+                .await
+                .expect("resolve public handle"),
             Some(expected)
         );
     }

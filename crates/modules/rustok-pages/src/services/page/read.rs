@@ -86,7 +86,6 @@ impl PageService {
         .await
     }
 
-
     /// Build a mutation acknowledgement from the write transaction without requiring
     /// a second `pages:read` grant. The caller has already authorized the specific
     /// create/update/publish action; source content is still filtered by

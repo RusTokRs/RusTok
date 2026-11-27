@@ -9,13 +9,13 @@ use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::OutboxModule;
 use rustok_pages::entities::{page, page_body, page_body_revision, page_translation};
 use rustok_pages::{
-    CreatePageInput, PageBodyInput, PageService, PagesModule, PageTranslationInput,
+    CreatePageInput, PageBodyInput, PageService, PageTranslationInput, PagesModule,
     RestorePageBodyRevisionInput, SavePageDocumentInput,
 };
 use rustok_test_utils::mock_transactional_event_bus;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
-    DatabaseConnection, EntityTrait, QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
+    EntityTrait, QueryFilter, Set,
 };
 use sea_orm_migration::SchemaManager;
 use serde_json::json;
@@ -41,7 +41,9 @@ impl ScopedPg {
         };
         let control = connect(&url).await?;
         let schema = format!("pages_save_receipts_{}", Uuid::new_v4().simple());
-        control.execute_unprepared(&format!(r#"CREATE SCHEMA "{schema}""#)).await?;
+        control
+            .execute_unprepared(&format!(r#"CREATE SCHEMA "{schema}""#))
+            .await?;
         let db = scoped_connection(&url, &schema).await?;
         let manager = SchemaManager::new(&db);
         for migration in OutboxModule
@@ -61,8 +63,13 @@ impl ScopedPg {
                 created_at TIMESTAMPTZ NOT NULL,
                 updated_at TIMESTAMPTZ NOT NULL
             )",
-        ).await?;
-        Ok(Some(Self { control, url, schema }))
+        )
+        .await?;
+        Ok(Some(Self {
+            control,
+            url,
+            schema,
+        }))
     }
 
     async fn connection(&self) -> TestResult<DatabaseConnection> {
@@ -70,23 +77,29 @@ impl ScopedPg {
     }
 
     async fn close(self) -> TestResult<()> {
-        self.control.execute_unprepared(&format!(
-            r#"DROP SCHEMA IF EXISTS "{}" CASCADE"#,
-            self.schema
-        )).await?;
+        self.control
+            .execute_unprepared(&format!(
+                r#"DROP SCHEMA IF EXISTS "{}" CASCADE"#,
+                self.schema
+            ))
+            .await?;
         Ok(())
     }
 }
 
 async fn connect(url: &str) -> TestResult<DatabaseConnection> {
     let mut options = ConnectOptions::new(url.to_string());
-    options.max_connections(1).min_connections(1).sqlx_logging(false);
+    options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
     Ok(Database::connect(options).await?)
 }
 
 async fn scoped_connection(url: &str, schema: &str) -> TestResult<DatabaseConnection> {
     let db = connect(url).await?;
-    db.execute_unprepared(&format!(r#"SET search_path TO "{schema}""#)).await?;
+    db.execute_unprepared(&format!(r#"SET search_path TO "{schema}""#))
+        .await?;
     Ok(db)
 }
 
@@ -112,7 +125,9 @@ async fn seed_page(
         published_at: Set(Some(now)),
         archived_at: Set(None),
         version: Set(1),
-    }.insert(db).await?;
+    }
+    .insert(db)
+    .await?;
     page_translation::ActiveModel {
         id: Set(Uuid::new_v4()),
         page_id: Set(page_id),
@@ -123,7 +138,9 @@ async fn seed_page(
         meta_title: Set(None),
         meta_description: Set(None),
         revision: Set(1),
-    }.insert(db).await?;
+    }
+    .insert(db)
+    .await?;
     page_body::ActiveModel {
         id: Set(Uuid::new_v4()),
         tenant_id: Set(tenant_id),
@@ -132,7 +149,9 @@ async fn seed_page(
         content: Set(builder_document("initial").to_string()),
         format: Set(rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT.to_string()),
         updated_at: Set(now),
-    }.insert(db).await?;
+    }
+    .insert(db)
+    .await?;
     Ok((page_id, now.to_string()))
 }
 
@@ -174,13 +193,17 @@ async fn revision_count(
     Ok(page_body_revision::Entity::find()
         .filter(page_body_revision::Column::TenantId.eq(tenant_id))
         .filter(page_body_revision::Column::PageId.eq(page_id))
-        .all(db).await?.len())
+        .all(db)
+        .await?
+        .len())
 }
 
 #[tokio::test]
-async fn postgres_duplicate_and_distinct_saves_are_serialized_across_connections()
--> TestResult<()> {
-    let Some(db_scope) = ScopedPg::new().await? else { return Ok(()); };
+async fn postgres_duplicate_and_distinct_saves_are_serialized_across_connections() -> TestResult<()>
+{
+    let Some(db_scope) = ScopedPg::new().await? else {
+        return Ok(());
+    };
     let primary = db_scope.connection().await?;
     let secondary = db_scope.connection().await?;
     let tenant_id = Uuid::new_v4();
@@ -192,41 +215,63 @@ async fn postgres_duplicate_and_distinct_saves_are_serialized_across_connections
     let duplicate = command(&base, "same-body");
     let (left, right) = tokio::join!(
         a.save_document_with_receipt(
-            tenant_id, user.clone(), duplicate_id,
-            duplicate.clone(), Some("postgres:duplicate".into()),
+            tenant_id,
+            user.clone(),
+            duplicate_id,
+            duplicate.clone(),
+            Some("postgres:duplicate".into()),
         ),
         b.save_document_with_receipt(
-            tenant_id, user.clone(), duplicate_id,
-            duplicate.clone(), Some("postgres:duplicate".into()),
+            tenant_id,
+            user.clone(),
+            duplicate_id,
+            duplicate.clone(),
+            Some("postgres:duplicate".into()),
         ),
     );
     let first = left?;
     let second = right?;
-    assert_eq!(
-        serde_json::to_value(first)?,
-        serde_json::to_value(second)?
-    );
+    assert_eq!(serde_json::to_value(first)?, serde_json::to_value(second)?);
     assert_eq!(revision_count(&primary, tenant_id, duplicate_id).await?, 1);
 
     let (competing_id, base) = seed_page(&primary, tenant_id, "competing-saves").await?;
     let (left, right) = tokio::join!(
         a.save_document_with_receipt(
-            tenant_id, user.clone(), competing_id,
-            command(&base, "left"), Some("postgres:left".into()),
+            tenant_id,
+            user.clone(),
+            competing_id,
+            command(&base, "left"),
+            Some("postgres:left".into()),
         ),
         b.save_document_with_receipt(
-            tenant_id, user.clone(), competing_id,
-            command(&base, "right"), Some("postgres:right".into()),
+            tenant_id,
+            user.clone(),
+            competing_id,
+            command(&base, "right"),
+            Some("postgres:right".into()),
         ),
     );
-    assert_ne!(left.is_ok(), right.is_ok(), "exactly one distinct writer must win CAS");
-    let loser = if left.is_err() { left.err() } else { right.err() }
-        .expect("the other writer must be rejected");
+    assert_ne!(
+        left.is_ok(),
+        right.is_ok(),
+        "exactly one distinct writer must win CAS"
+    );
+    let loser = if left.is_err() {
+        left.err()
+    } else {
+        right.err()
+    }
+    .expect("the other writer must be rejected");
     assert!(
-        loser.to_string().contains("PAGE_DOCUMENT_REVISION_CONFLICT"),
+        loser
+            .to_string()
+            .contains("PAGE_DOCUMENT_REVISION_CONFLICT"),
         "stale writer must receive typed CAS conflict: {loser}"
     );
-    assert_eq!(revision_count(&secondary, tenant_id, competing_id).await?, 1);
+    assert_eq!(
+        revision_count(&secondary, tenant_id, competing_id).await?,
+        1
+    );
     let persisted_body = page_body::Entity::find()
         .filter(page_body::Column::TenantId.eq(tenant_id))
         .filter(page_body::Column::PageId.eq(competing_id))
@@ -234,11 +279,9 @@ async fn postgres_duplicate_and_distinct_saves_are_serialized_across_connections
         .one(&secondary)
         .await?
         .expect("the winning writer's body remains persisted");
-    let persisted_document: serde_json::Value =
-        serde_json::from_str(&persisted_body.content)?;
-    let persisted_label = persisted_document["pages"][0]["component"]["components"][0]
-        ["content"]
-        .as_str();
+    let persisted_document: serde_json::Value = serde_json::from_str(&persisted_body.content)?;
+    let persisted_label =
+        persisted_document["pages"][0]["component"]["components"][0]["content"].as_str();
     assert!(
         matches!(persisted_label, Some("left") | Some("right")),
         "independent connections must persist exactly one complete winner, got {persisted_label:?}"
@@ -246,17 +289,18 @@ async fn postgres_duplicate_and_distinct_saves_are_serialized_across_connections
 
     // The original request can still be queried across a second process/
     // connection, not only from the service instance that performed the save.
-    let recovered = b.document_save_receipt(
-        tenant_id, user, duplicate_id, "postgres:duplicate",
-    ).await?.expect("durable original acknowledgement");
+    let recovered = b
+        .document_save_receipt(tenant_id, user, duplicate_id, "postgres:duplicate")
+        .await?
+        .expect("durable original acknowledgement");
     assert_eq!(recovered.id, duplicate_id);
     db_scope.close().await?;
     Ok(())
 }
 
 #[tokio::test]
-async fn postgres_concurrent_page_create_replays_across_independent_connections()
--> TestResult<()> {
+async fn postgres_concurrent_page_create_replays_across_independent_connections() -> TestResult<()>
+{
     let Some(db_scope) = ScopedPg::new().await? else {
         return Ok(());
     };
@@ -314,8 +358,7 @@ async fn postgres_concurrent_page_create_replays_across_independent_connections(
 }
 
 #[tokio::test]
-async fn postgres_concurrent_unpublish_replays_across_independent_connections()
--> TestResult<()> {
+async fn postgres_concurrent_unpublish_replays_across_independent_connections() -> TestResult<()> {
     let Some(db_scope) = ScopedPg::new().await? else {
         return Ok(());
     };
@@ -345,7 +388,10 @@ async fn postgres_concurrent_unpublish_replays_across_independent_connections()
     );
     let first = left?;
     let second = right?;
-    assert_eq!(serde_json::to_value(&first)?, serde_json::to_value(&second)?);
+    assert_eq!(
+        serde_json::to_value(&first)?,
+        serde_json::to_value(&second)?
+    );
     assert_eq!(second.version, 2);
     assert_eq!(
         second.status,
@@ -357,8 +403,7 @@ async fn postgres_concurrent_unpublish_replays_across_independent_connections()
 }
 
 #[tokio::test]
-async fn postgres_concurrent_delete_replays_after_the_page_row_is_removed()
--> TestResult<()> {
+async fn postgres_concurrent_delete_replays_after_the_page_row_is_removed() -> TestResult<()> {
     let Some(db_scope) = ScopedPg::new().await? else {
         return Ok(());
     };
@@ -407,7 +452,10 @@ async fn postgres_concurrent_delete_replays_after_the_page_row_is_removed()
     left?;
     right?;
     assert!(
-        page::Entity::find_by_id(created.id).one(&primary).await?.is_none(),
+        page::Entity::find_by_id(created.id)
+            .one(&primary)
+            .await?
+            .is_none(),
         "the page row must be deleted once"
     );
 
@@ -416,8 +464,7 @@ async fn postgres_concurrent_delete_replays_after_the_page_row_is_removed()
 }
 
 #[tokio::test]
-async fn postgres_duplicate_restores_replay_across_independent_connections()
--> TestResult<()> {
+async fn postgres_duplicate_restores_replay_across_independent_connections() -> TestResult<()> {
     let Some(db_scope) = ScopedPg::new().await? else {
         return Ok(());
     };
@@ -430,12 +477,7 @@ async fn postgres_duplicate_restores_replay_across_independent_connections()
 
     let (page_id, base) = seed_page(&primary, tenant_id, "duplicate-restores").await?;
     let v2 = a
-        .save_document(
-            tenant_id,
-            user.clone(),
-            page_id,
-            command(&base, "v2"),
-        )
+        .save_document(tenant_id, user.clone(), page_id, command(&base, "v2"))
         .await?;
     let v2_revision = v2.body.expect("v2 body").updated_at;
     let v3 = a
@@ -462,7 +504,10 @@ async fn postgres_duplicate_restores_replay_across_independent_connections()
     );
     let first = left?;
     let second = right?;
-    assert_eq!(serde_json::to_value(&first)?, serde_json::to_value(&second)?);
+    assert_eq!(
+        serde_json::to_value(&first)?,
+        serde_json::to_value(&second)?
+    );
     assert_eq!(
         revision_count(&primary, tenant_id, page_id).await?,
         3,

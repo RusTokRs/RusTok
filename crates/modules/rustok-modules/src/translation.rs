@@ -324,7 +324,8 @@ impl StaticSettingsTranslationIdentity {
                 expected_target_revision: field.target_revision.unwrap_or(0),
                 context: step_context,
             });
-            expected_owner_revision = expected_owner_revision.checked_add(1)
+            expected_owner_revision = expected_owner_revision
+                .checked_add(1)
                 .ok_or(StaticSettingsTranslationIdentityError::OwnerRevisionOverflow)?;
         }
 

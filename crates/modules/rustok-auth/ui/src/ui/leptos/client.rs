@@ -40,7 +40,9 @@ where
         let expected_epoch = crate::transport::browser_epoch::read();
         #[cfg(target_arch = "wasm32")]
         let failure = (|| -> Result<(), AuthorizedBrowserClientError> {
-            let epoch = expected_epoch.as_ref().map_err(|_| AuthorizedBrowserClientError::SessionUnavailable)?;
+            let epoch = expected_epoch
+                .as_ref()
+                .map_err(|_| AuthorizedBrowserClientError::SessionUnavailable)?;
             if !crate::transport::browser_epoch::matches(epoch) {
                 return Err(AuthorizedBrowserClientError::SessionUnavailable);
             }
@@ -53,7 +55,10 @@ where
             let session = super::storage::load_session()
                 .map_err(|_| AuthorizedBrowserClientError::SessionUnavailable)?;
             headers
-                .set("Authorization", format!("Bearer {}", session.token).as_str())
+                .set(
+                    "Authorization",
+                    format!("Bearer {}", session.token).as_str(),
+                )
                 .map_err(|_| AuthorizedBrowserClientError::AuthMetadataFailed)?;
             headers
                 .set("X-Tenant-ID", session.tenant.as_str())
@@ -76,7 +81,10 @@ where
                 )));
             }
             #[cfg(target_arch = "wasm32")]
-            if !expected_epoch.as_ref().is_ok_and(crate::transport::browser_epoch::matches) {
+            if !expected_epoch
+                .as_ref()
+                .is_ok_and(crate::transport::browser_epoch::matches)
+            {
                 return Err(Error::from_server_fn_error(ServerFnErrorErr::Request(
                     AuthorizedBrowserClientError::SessionUnavailable.to_string(),
                 )));

@@ -13,9 +13,9 @@ use rustok_payment::{
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use thiserror::Error;
+use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
-use tracing::instrument;
 
 use super::journaled_payment_provider::{
     execute_journaled_provider_operation, local_persistence_after_provider_error,

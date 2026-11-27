@@ -125,12 +125,13 @@ pub use parsing::{FieldDefinitionsConfigParseError, parse_field_definitions_conf
 pub use registry::{
     CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionError, FieldDefinitionService,
     FieldDefinitionSource, FieldDefinitionView, FieldDefinitionViewSource,
-    UpdateFieldDefinitionCommand, field_definition_cache_invalidation_target, field_definition_created_event,
-    field_definition_deleted_event, field_definition_description_json,
-    field_definition_from_source, field_definition_label_json, field_definition_position_or_next,
-    field_definition_type_name, field_definition_updated_event, field_definition_validation_json,
-    validate_field_definition_create, validate_field_definition_key,
-    validate_field_definition_reorder_coverage, validate_field_definition_reorder_request,
+    UpdateFieldDefinitionCommand, field_definition_cache_invalidation_target,
+    field_definition_created_event, field_definition_deleted_event,
+    field_definition_description_json, field_definition_from_source, field_definition_label_json,
+    field_definition_position_or_next, field_definition_type_name, field_definition_updated_event,
+    field_definition_validation_json, validate_field_definition_create,
+    validate_field_definition_key, validate_field_definition_reorder_coverage,
+    validate_field_definition_reorder_request,
 };
 pub use rest::{
     CreateFlexEntryRequest, CreateFlexSchemaRequest, DeleteFlexResponse, FlexEntryResponse,

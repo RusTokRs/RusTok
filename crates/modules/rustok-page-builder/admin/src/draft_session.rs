@@ -204,8 +204,11 @@ impl PersistentDraftSessionRecord {
         let mut previous_generation = 1;
         for receipt in &self.operation_receipts {
             validate_operation_receipt_input(
-                &receipt.operation_id, &receipt.request_hash, &receipt.response,
-            ).map_err(|error| invalid(&error.to_string()))?;
+                &receipt.operation_id,
+                &receipt.request_hash,
+                &receipt.response,
+            )
+            .map_err(|error| invalid(&error.to_string()))?;
             if !operation_ids.insert(receipt.operation_id.as_str()) {
                 return Err(invalid("duplicate draft operation identity"));
             }
@@ -213,7 +216,8 @@ impl PersistentDraftSessionRecord {
                 return Err(invalid("invalid draft operation generation"));
             }
             if receipt_is_prepared(&receipt.response)
-                && (self.format < 2 || receipt.generation != self.generation
+                && (self.format < 2
+                    || receipt.generation != self.generation
                     || self.generation == u64::MAX)
             {
                 return Err(invalid("invalid prepared save generation or format"));
@@ -263,7 +267,14 @@ pub trait SsrDraftSessionStore: Send + Sync {
         operation_id: &str,
         request_hash: &str,
     ) -> Result<Option<Value>, SsrDraftSessionError> {
-        let _ = (token, page_id, owner, expected_generation, operation_id, request_hash);
+        let _ = (
+            token,
+            page_id,
+            owner,
+            expected_generation,
+            operation_id,
+            request_hash,
+        );
         Err(SsrDraftSessionError::OperationReceiptsUnsupported)
     }
 
@@ -284,8 +295,14 @@ pub trait SsrDraftSessionStore: Send + Sync {
         response: Value,
     ) -> Result<SsrDraftOperationCommit, SsrDraftSessionError> {
         let _ = (
-            token, expected_generation, controller, runtime_context, owner,
-            operation_id, request_hash, response,
+            token,
+            expected_generation,
+            controller,
+            runtime_context,
+            owner,
+            operation_id,
+            request_hash,
+            response,
         );
         Err(SsrDraftSessionError::OperationReceiptsUnsupported)
     }
@@ -343,9 +360,9 @@ pub trait SsrDraftSessionStore: Send + Sync {
 
 fn validate_operation_id(operation_id: &str) -> Result<(), SsrDraftSessionError> {
     let valid_id = (1..=128).contains(&operation_id.len())
-        && operation_id.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')
-        });
+        && operation_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'));
     if valid_id {
         Ok(())
     } else {
@@ -359,16 +376,16 @@ fn validate_operation_receipt_input(
     response: &Value,
 ) -> Result<(), SsrDraftSessionError> {
     validate_operation_id(operation_id)?;
-    if request_hash.len() != 64
-        || !request_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
-    {
+    if request_hash.len() != 64 || !request_hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(SsrDraftSessionError::InvalidOperationHash);
     }
     // The prepared_save field is a reserved internal sentinel, never an arbitrary
     // response field. Malformed lookalikes must not be replayed as completed saves.
     if response.get("prepared_save").is_some()
         && (response.get("prepared_save").and_then(Value::as_bool) != Some(true)
-            || response.as_object().map_or(true, |object| object.len() != 1))
+            || response
+                .as_object()
+                .map_or(true, |object| object.len() != 1))
     {
         return Err(SsrDraftSessionError::Serialization(
             "invalid prepared-save receipt marker".to_string(),
@@ -401,10 +418,14 @@ fn receipt_is_prepared(response: &Value) -> bool {
 }
 
 fn has_prepared_save(receipts: &[SsrDraftOperationReceipt]) -> bool {
-    receipts.iter().any(|receipt| receipt_is_prepared(&receipt.response))
+    receipts
+        .iter()
+        .any(|receipt| receipt_is_prepared(&receipt.response))
 }
 
-fn ensure_no_prepared_save(receipts: &[SsrDraftOperationReceipt]) -> Result<(), SsrDraftSessionError> {
+fn ensure_no_prepared_save(
+    receipts: &[SsrDraftOperationReceipt],
+) -> Result<(), SsrDraftSessionError> {
     if has_prepared_save(receipts) {
         return Err(SsrDraftSessionError::OperationReceiptPending);
     }
@@ -421,14 +442,18 @@ fn receipt_completion_index(
     request_hash: &str,
     response: &Value,
 ) -> Result<Option<usize>, SsrDraftSessionError> {
-    if let Some((index, receipt)) = receipts.iter().enumerate()
+    if let Some((index, receipt)) = receipts
+        .iter()
+        .enumerate()
         .find(|(_, receipt)| receipt.operation_id == operation_id)
     {
         if receipt.request_hash != request_hash {
             return Err(SsrDraftSessionError::OperationReceiptConflict);
         }
-        if receipt_is_prepared(&receipt.response) && !receipt_is_prepared(response)
-            && receipt.generation == generation && generation == expected_generation
+        if receipt_is_prepared(&receipt.response)
+            && !receipt_is_prepared(response)
+            && receipt.generation == generation
+            && generation == expected_generation
         {
             return Ok(Some(index));
         }
@@ -436,7 +461,9 @@ fn receipt_completion_index(
     }
     ensure_no_prepared_save(receipts)?;
     if receipt_is_prepared(response) {
-        generation.checked_add(2).ok_or(SsrDraftSessionError::GenerationExhausted)?;
+        generation
+            .checked_add(2)
+            .ok_or(SsrDraftSessionError::GenerationExhausted)?;
     }
     Ok(None)
 }
@@ -464,7 +491,9 @@ fn admit_operation_receipt(
             maximum: MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION,
         });
     }
-    generation.checked_add(1).ok_or(SsrDraftSessionError::GenerationExhausted)?;
+    generation
+        .checked_add(1)
+        .ok_or(SsrDraftSessionError::GenerationExhausted)?;
     Ok(None)
 }
 
@@ -473,7 +502,10 @@ fn check_operation_receipt_hash(
     operation_id: &str,
     request_hash: &str,
 ) -> Result<Option<Value>, SsrDraftSessionError> {
-    let Some(receipt) = receipts.iter().find(|receipt| receipt.operation_id == operation_id) else {
+    let Some(receipt) = receipts
+        .iter()
+        .find(|receipt| receipt.operation_id == operation_id)
+    else {
         return Ok(None);
     };
     if receipt.request_hash != request_hash {
@@ -652,9 +684,10 @@ impl InMemorySsrDraftSessionStore {
         before.saturating_sub(entries.len())
     }
 
-    fn evict_oldest(entries: &mut HashMap<String, DraftEntry>, maximum_entries: usize)
-        -> Result<(), SsrDraftSessionError>
-    {
+    fn evict_oldest(
+        entries: &mut HashMap<String, DraftEntry>,
+        maximum_entries: usize,
+    ) -> Result<(), SsrDraftSessionError> {
         while entries.len() >= maximum_entries {
             let Some(oldest) = entries
                 .iter()
@@ -679,16 +712,21 @@ impl InMemorySsrDraftSessionStore {
         let mut owned: Vec<(String, u64, bool)> = entries
             .iter()
             .filter(|(_, entry)| entry.owner.as_ref() == Some(owner))
-            .map(|(token, entry)| (
-                token.clone(), entry.expires_at.get(),
-                has_prepared_save(&entry.operation_receipts),
-            ))
+            .map(|(token, entry)| {
+                (
+                    token.clone(),
+                    entry.expires_at.get(),
+                    has_prepared_save(&entry.operation_receipts),
+                )
+            })
             .collect();
         if owned.iter().filter(|(_, _, prepared)| *prepared).count() > keep {
             return Err(SsrDraftSessionError::OperationReceiptPending);
         }
         while owned.len() > keep {
-            let index = owned.iter().enumerate()
+            let index = owned
+                .iter()
+                .enumerate()
                 .filter(|(_, (_, _, prepared))| !prepared)
                 .min_by_key(|(_, (_, expires_at, _))| *expires_at)
                 .map(|(index, _)| index)
@@ -735,7 +773,9 @@ impl InMemorySsrDraftSessionStore {
                         actual: expected_generation.unwrap_or_default(),
                     });
                 }
-                let generation = entry.generation.checked_add(1)
+                let generation = entry
+                    .generation
+                    .checked_add(1)
                     .ok_or(SsrDraftSessionError::GenerationExhausted)?;
                 entry.controller = controller;
                 if let Some(runtime_context) = runtime_context {
@@ -811,9 +851,13 @@ impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
         operation_id: &str,
         request_hash: &str,
     ) -> Result<Option<Value>, SsrDraftSessionError> {
-        let entries = self.entries.read().map_err(|_| SsrDraftSessionError::Poisoned)?;
+        let entries = self
+            .entries
+            .read()
+            .map_err(|_| SsrDraftSessionError::Poisoned)?;
         let now = self.now();
-        let entry = entries.get(token.trim())
+        let entry = entries
+            .get(token.trim())
             .filter(|entry| entry.expires_at.get() > now)
             .ok_or(SsrDraftSessionError::DraftUnavailable)?;
         if entry.controller.page_id() != page_id {
@@ -824,8 +868,11 @@ impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
         }
         ensure_session_owner(entry.owner.as_ref(), owner)?;
         admit_operation_receipt(
-            &entry.operation_receipts, entry.generation, expected_generation,
-            operation_id, request_hash,
+            &entry.operation_receipts,
+            entry.generation,
+            expected_generation,
+            operation_id,
+            request_hash,
         )
     }
 
@@ -838,9 +885,15 @@ impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
         request_hash: Option<&str>,
     ) -> Result<Option<Value>, SsrDraftSessionError> {
         validate_operation_id(operation_id)?;
-        let entries = self.entries.read().map_err(|_| SsrDraftSessionError::Poisoned)?;
+        let entries = self
+            .entries
+            .read()
+            .map_err(|_| SsrDraftSessionError::Poisoned)?;
         let now = self.now();
-        let Some(entry) = entries.get(token.trim()).filter(|entry| entry.expires_at.get() > now) else {
+        let Some(entry) = entries
+            .get(token.trim())
+            .filter(|entry| entry.expires_at.get() > now)
+        else {
             return Ok(None);
         };
         if entry.controller.page_id() != page_id {
@@ -851,8 +904,13 @@ impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
         }
         ensure_session_owner(entry.owner.as_ref(), owner)?;
         match request_hash {
-            Some(hash) => check_operation_receipt_hash(&entry.operation_receipts, operation_id, hash),
-            None => Ok(lookup_operation_receipt(&entry.operation_receipts, operation_id)),
+            Some(hash) => {
+                check_operation_receipt_hash(&entry.operation_receipts, operation_id, hash)
+            }
+            None => Ok(lookup_operation_receipt(
+                &entry.operation_receipts,
+                operation_id,
+            )),
         }
     }
 
@@ -872,10 +930,15 @@ impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
         if token.is_empty() {
             return Err(SsrDraftSessionError::OperationReceiptRequiresSession);
         }
-        let mut entries = self.entries.write().map_err(|_| SsrDraftSessionError::Poisoned)?;
+        let mut entries = self
+            .entries
+            .write()
+            .map_err(|_| SsrDraftSessionError::Poisoned)?;
         let now = self.now();
         Self::prune_locked(&mut entries, now);
-        let entry = entries.get_mut(token).ok_or(SsrDraftSessionError::DraftUnavailable)?;
+        let entry = entries
+            .get_mut(token)
+            .ok_or(SsrDraftSessionError::DraftUnavailable)?;
         if entry.controller.page_id() != controller.page_id() {
             return Err(SsrDraftSessionError::PageMismatch {
                 expected: entry.controller.page_id().to_string(),
@@ -884,13 +947,17 @@ impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
         }
         ensure_session_owner(entry.owner.as_ref(), owner)?;
         let completion = receipt_completion_index(
-            &entry.operation_receipts, entry.generation, expected_generation,
-            operation_id, request_hash, &response,
+            &entry.operation_receipts,
+            entry.generation,
+            expected_generation,
+            operation_id,
+            request_hash,
+            &response,
         )?;
         if completion.is_none() {
-            if let Some(response) = check_operation_receipt_hash(
-                &entry.operation_receipts, operation_id, request_hash,
-            )? {
+            if let Some(response) =
+                check_operation_receipt_hash(&entry.operation_receipts, operation_id, request_hash)?
+            {
                 return Ok(SsrDraftOperationCommit::Replayed(response));
             }
         }
@@ -900,12 +967,16 @@ impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
                 actual: expected_generation,
             });
         }
-        if completion.is_none() && entry.operation_receipts.len() >= MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION {
+        if completion.is_none()
+            && entry.operation_receipts.len() >= MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION
+        {
             return Err(SsrDraftSessionError::OperationReceiptCapacity {
                 maximum: MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION,
             });
         }
-        let generation = entry.generation.checked_add(1)
+        let generation = entry
+            .generation
+            .checked_add(1)
             .ok_or(SsrDraftSessionError::GenerationExhausted)?;
         entry.controller = controller;
         entry.runtime_context = runtime_context;
@@ -925,13 +996,15 @@ impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
             entry.operation_receipts.push(receipt);
         }
         entry.expires_at = EntryDeadline::new(self.deadline_from(now));
-        Ok(SsrDraftOperationCommit::Committed(SsrDraftSessionSnapshot {
-            token: token.to_string(),
-            generation,
-            controller: entry.controller.clone(),
-            runtime_context: entry.runtime_context.clone(),
-            owner: entry.owner.clone(),
-        }))
+        Ok(SsrDraftOperationCommit::Committed(
+            SsrDraftSessionSnapshot {
+                token: token.to_string(),
+                generation,
+                controller: entry.controller.clone(),
+                runtime_context: entry.runtime_context.clone(),
+                owner: entry.owner.clone(),
+            },
+        ))
     }
 
     fn load(
@@ -1097,8 +1170,7 @@ pub const DRAFT_SESSION_DIR_ENV: &str = "RUSTOK_DRAFT_SESSION_DIR";
 
 /// Default retention for editor draft sessions. Expiration is measured from
 /// the last successful write, not from the first open.
-pub const DEFAULT_EDITOR_DRAFT_SESSION_TTL: Duration =
-    Duration::from_secs(60 * 60 * 24 * 30);
+pub const DEFAULT_EDITOR_DRAFT_SESSION_TTL: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 
 /// Partition for sessions without an owner (hosts without a user identity).
 const UNATTRIBUTED_PARTITION: &str = "_unattributed";
@@ -1647,18 +1719,17 @@ impl FileSsrDraftSessionStore {
         if owned.len() >= MAX_DRAFT_SESSIONS_PER_OWNER {
             owned.sort_by_key(|(_, _, _, age, prepared)| (*prepared, *age));
             let excess = owned.len() + 1 - MAX_DRAFT_SESSIONS_PER_OWNER;
-            if owned.iter().filter(|(_, _, _, _, prepared)| !prepared).count() < excess {
+            if owned
+                .iter()
+                .filter(|(_, _, _, _, prepared)| !prepared)
+                .count()
+                < excess
+            {
                 return Err(SsrDraftSessionError::OperationReceiptPending);
             }
             let mut removed = 0;
             for (path, token, generation, age, _) in owned.into_iter().take(excess) {
-                if self.remove_record_if_unchanged(
-                    &path,
-                    &token,
-                    generation,
-                    age,
-                    Some(owner),
-                )? {
+                if self.remove_record_if_unchanged(&path, &token, generation, age, Some(owner))? {
                     removed += 1;
                 }
             }
@@ -1752,7 +1823,9 @@ impl FileSsrDraftSessionStore {
                     actual: expected_generation.unwrap_or_default(),
                 });
             }
-            record.generation = record.generation.checked_add(1)
+            record.generation = record
+                .generation
+                .checked_add(1)
                 .ok_or(SsrDraftSessionError::GenerationExhausted)?;
             record.controller = controller;
             if let Some(runtime_context) = runtime_context {
@@ -1824,7 +1897,14 @@ impl FileSsrDraftSessionStore {
         &self,
         partition: &Path,
         now: u64,
-        surviving: &mut Vec<(PathBuf, String, u64, RecordAge, Option<DraftSessionOwner>, bool)>,
+        surviving: &mut Vec<(
+            PathBuf,
+            String,
+            u64,
+            RecordAge,
+            Option<DraftSessionOwner>,
+            bool,
+        )>,
     ) -> Result<usize, SsrDraftSessionError> {
         let entries = match fs::read_dir(partition) {
             Ok(entries) => entries,
@@ -1874,7 +1954,14 @@ impl FileSsrDraftSessionStore {
                 Some(record) if record.expires_at_unix_secs > now => {
                     let age = record_age(&path, record.expires_at_unix_secs);
                     let prepared = has_prepared_save(&record.operation_receipts);
-                    surviving.push((path, record.token, record.generation, age, record.owner, prepared));
+                    surviving.push((
+                        path,
+                        record.token,
+                        record.generation,
+                        age,
+                        record.owner,
+                        prepared,
+                    ));
                 }
                 // Expired or unreadable: decided again under the token lock.
                 _ => {
@@ -1975,7 +2062,8 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
         operation_id: &str,
         request_hash: &str,
     ) -> Result<Option<Value>, SsrDraftSessionError> {
-        let record = self.load_record(token, owner)?
+        let record = self
+            .load_record(token, owner)?
             .ok_or(SsrDraftSessionError::DraftUnavailable)?;
         if record.controller.page_id() != page_id {
             return Err(SsrDraftSessionError::PageMismatch {
@@ -1985,8 +2073,11 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
         }
         ensure_session_owner(record.owner.as_ref(), owner)?;
         admit_operation_receipt(
-            &record.operation_receipts, record.generation, expected_generation,
-            operation_id, request_hash,
+            &record.operation_receipts,
+            record.generation,
+            expected_generation,
+            operation_id,
+            request_hash,
         )
     }
 
@@ -2010,8 +2101,13 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
         }
         ensure_session_owner(record.owner.as_ref(), owner)?;
         match request_hash {
-            Some(hash) => check_operation_receipt_hash(&record.operation_receipts, operation_id, hash),
-            None => Ok(lookup_operation_receipt(&record.operation_receipts, operation_id)),
+            Some(hash) => {
+                check_operation_receipt_hash(&record.operation_receipts, operation_id, hash)
+            }
+            None => Ok(lookup_operation_receipt(
+                &record.operation_receipts,
+                operation_id,
+            )),
         }
     }
 
@@ -2043,12 +2139,18 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
             }
             ensure_session_owner(record.owner.as_ref(), owner)?;
             let completion = receipt_completion_index(
-                &record.operation_receipts, record.generation, expected_generation,
-                operation_id, request_hash, &response,
+                &record.operation_receipts,
+                record.generation,
+                expected_generation,
+                operation_id,
+                request_hash,
+                &response,
             )?;
             if completion.is_none() {
                 if let Some(replayed) = check_operation_receipt_hash(
-                    &record.operation_receipts, operation_id, request_hash,
+                    &record.operation_receipts,
+                    operation_id,
+                    request_hash,
                 )? {
                     return Ok(SsrDraftOperationCommit::Replayed(replayed));
                 }
@@ -2059,12 +2161,16 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
                     actual: expected_generation,
                 });
             }
-            if completion.is_none() && record.operation_receipts.len() >= MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION {
+            if completion.is_none()
+                && record.operation_receipts.len() >= MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION
+            {
                 return Err(SsrDraftSessionError::OperationReceiptCapacity {
                     maximum: MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION,
                 });
             }
-            let generation = record.generation.checked_add(1)
+            let generation = record
+                .generation
+                .checked_add(1)
                 .ok_or(SsrDraftSessionError::GenerationExhausted)?;
             record.format = DRAFT_SESSION_RECORD_FORMAT;
             record.generation = generation;
@@ -2225,8 +2331,12 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
         // survivors (audit §2.5) — mirroring the KV backend.
         if surviving.len() > self.maximum_entries {
             surviving.sort_by_key(|(_, _, _, age, _, prepared)| (*prepared, *age));
-            let excess = (surviving.len() - self.maximum_entries)
-                .min(surviving.iter().filter(|(_, _, _, _, _, prepared)| !prepared).count());
+            let excess = (surviving.len() - self.maximum_entries).min(
+                surviving
+                    .iter()
+                    .filter(|(_, _, _, _, _, prepared)| !prepared)
+                    .count(),
+            );
             let evicted: Vec<(
                 PathBuf,
                 String,
@@ -2252,7 +2362,14 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
 
         let mut per_owner: HashMap<
             (String, String),
-            Vec<(PathBuf, String, u64, RecordAge, Option<DraftSessionOwner>, bool)>,
+            Vec<(
+                PathBuf,
+                String,
+                u64,
+                RecordAge,
+                Option<DraftSessionOwner>,
+                bool,
+            )>,
         > = HashMap::new();
         for (path, token, generation, age, owner, prepared) in &surviving {
             if let Some(owner) = owner {
@@ -2272,8 +2389,12 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
         for (_, mut owned) in per_owner {
             if owned.len() > MAX_DRAFT_SESSIONS_PER_OWNER {
                 owned.sort_by_key(|(_, _, _, age, _, prepared)| (*prepared, *age));
-                let excess = (owned.len() - MAX_DRAFT_SESSIONS_PER_OWNER)
-                    .min(owned.iter().filter(|(_, _, _, _, _, prepared)| !prepared).count());
+                let excess = (owned.len() - MAX_DRAFT_SESSIONS_PER_OWNER).min(
+                    owned
+                        .iter()
+                        .filter(|(_, _, _, _, _, prepared)| !prepared)
+                        .count(),
+                );
                 for (path, token, generation, age, owner, _) in owned.into_iter().take(excess) {
                     match self.remove_record_if_unchanged(
                         &path,
@@ -2533,8 +2654,7 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
     ) -> Result<usize, SsrDraftSessionError> {
         let keys = self.driver.scan_keys(&self.prefix)?;
         let mut surviving = Vec::new();
-        let mut per_owner: HashMap<(String, String), Vec<(String, u64, bool)>> =
-            HashMap::new();
+        let mut per_owner: HashMap<(String, String), Vec<(String, u64, bool)>> = HashMap::new();
         let mut deletions: BTreeSet<String> = BTreeSet::new();
         // Generation each key held when it was scanned. A key is deleted
         // only while it still holds that generation, so a session committed
@@ -2567,8 +2687,12 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
 
         if surviving.len() > max_entries {
             surviving.sort_by_key(|(_, expires, prepared)| (*prepared, *expires));
-            let excess = (surviving.len() - max_entries)
-                .min(surviving.iter().filter(|(_, _, prepared)| !prepared).count());
+            let excess = (surviving.len() - max_entries).min(
+                surviving
+                    .iter()
+                    .filter(|(_, _, prepared)| !prepared)
+                    .count(),
+            );
             for (key, _, _) in surviving.into_iter().take(excess) {
                 deletions.insert(key);
             }
@@ -2822,21 +2946,31 @@ impl DurableSsrDraftSessionStore {
         // Stage the candidate only in local variables. The persistent backend,
         // not the memory tier, owns the generation and runtime context.
         let generation = match persistent_record.as_ref() {
-            Some(record) => record.generation.checked_add(1)
+            Some(record) => record
+                .generation
+                .checked_add(1)
                 .ok_or(SsrDraftSessionError::GenerationExhausted)?,
             None => 1,
         };
         let committed = SsrDraftSessionSnapshot {
-            token: persistent_record.as_ref()
+            token: persistent_record
+                .as_ref()
                 .map(|record| record.token.clone())
                 .unwrap_or_else(|| Uuid::new_v4().simple().to_string()),
             generation,
             controller,
-            runtime_context: runtime_context.or_else(|| persistent_record.as_ref()
-                .map(|record| record.runtime_context.clone()))
+            runtime_context: runtime_context
+                .or_else(|| {
+                    persistent_record
+                        .as_ref()
+                        .map(|record| record.runtime_context.clone())
+                })
                 .unwrap_or_else(InMemorySsrDraftSessionStore::empty_context),
-            owner: owner.cloned().or_else(|| persistent_record.as_ref()
-                .and_then(|record| record.owner.clone())),
+            owner: owner.cloned().or_else(|| {
+                persistent_record
+                    .as_ref()
+                    .and_then(|record| record.owner.clone())
+            }),
         };
         let record = PersistentDraftSessionRecord {
             format: DRAFT_SESSION_RECORD_FORMAT,
@@ -2846,7 +2980,8 @@ impl DurableSsrDraftSessionStore {
             runtime_context: committed.runtime_context.clone(),
             owner: committed.owner.clone(),
             expires_at_unix_secs: current_unix_secs().saturating_add(self.memory.ttl().as_secs()),
-            operation_receipts: persistent_record.as_ref()
+            operation_receipts: persistent_record
+                .as_ref()
                 .map(|record| record.operation_receipts.clone())
                 .unwrap_or_default(),
         };
@@ -2936,7 +3071,9 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         operation_id: &str,
         request_hash: &str,
     ) -> Result<Option<Value>, SsrDraftSessionError> {
-        let record = self.backend.load_record(token, owner)?
+        let record = self
+            .backend
+            .load_record(token, owner)?
             .ok_or(SsrDraftSessionError::DraftUnavailable)?;
         record.validate()?;
         record.validate_storage_key(token)?;
@@ -2948,8 +3085,11 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         }
         ensure_session_owner(record.owner.as_ref(), owner)?;
         admit_operation_receipt(
-            &record.operation_receipts, record.generation, expected_generation,
-            operation_id, request_hash,
+            &record.operation_receipts,
+            record.generation,
+            expected_generation,
+            operation_id,
+            request_hash,
         )
     }
 
@@ -2975,8 +3115,13 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         }
         ensure_session_owner(record.owner.as_ref(), owner)?;
         match request_hash {
-            Some(hash) => check_operation_receipt_hash(&record.operation_receipts, operation_id, hash),
-            None => Ok(lookup_operation_receipt(&record.operation_receipts, operation_id)),
+            Some(hash) => {
+                check_operation_receipt_hash(&record.operation_receipts, operation_id, hash)
+            }
+            None => Ok(lookup_operation_receipt(
+                &record.operation_receipts,
+                operation_id,
+            )),
         }
     }
 
@@ -3009,12 +3154,18 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         }
         ensure_session_owner(expected_record.owner.as_ref(), owner)?;
         let completion = receipt_completion_index(
-            &expected_record.operation_receipts, expected_record.generation, expected_generation,
-            operation_id, request_hash, &response,
+            &expected_record.operation_receipts,
+            expected_record.generation,
+            expected_generation,
+            operation_id,
+            request_hash,
+            &response,
         )?;
         if completion.is_none() {
             if let Some(replayed) = check_operation_receipt_hash(
-                &expected_record.operation_receipts, operation_id, request_hash,
+                &expected_record.operation_receipts,
+                operation_id,
+                request_hash,
             )? {
                 return Ok(SsrDraftOperationCommit::Replayed(replayed));
             }
@@ -3025,13 +3176,17 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
                 actual: expected_generation,
             });
         }
-        if completion.is_none() && expected_record.operation_receipts.len() >= MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION {
+        if completion.is_none()
+            && expected_record.operation_receipts.len() >= MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION
+        {
             return Err(SsrDraftSessionError::OperationReceiptCapacity {
                 maximum: MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION,
             });
         }
         let controller_page_id = controller.page_id().to_string();
-        let generation = expected_record.generation.checked_add(1)
+        let generation = expected_record
+            .generation
+            .checked_add(1)
             .ok_or(SsrDraftSessionError::GenerationExhausted)?;
         let mut new_record = expected_record.clone();
         new_record.format = DRAFT_SESSION_RECORD_FORMAT;
@@ -3062,7 +3217,10 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
             runtime_context: new_record.runtime_context.clone(),
             owner: new_record.owner.clone(),
         };
-        match self.backend.compare_and_save_record(Some(&expected_record), &new_record)? {
+        match self
+            .backend
+            .compare_and_save_record(Some(&expected_record), &new_record)?
+        {
             true => {
                 self.memory.insert_snapshot(snapshot.clone())?;
                 Ok(SsrDraftOperationCommit::Committed(snapshot))
@@ -3090,7 +3248,9 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
                 };
                 self.memory.insert_snapshot(current_snapshot)?;
                 if let Some(replayed) = check_operation_receipt_hash(
-                    &current.operation_receipts, operation_id, request_hash,
+                    &current.operation_receipts,
+                    operation_id,
+                    request_hash,
                 )? {
                     Ok(SsrDraftOperationCommit::Replayed(replayed))
                 } else {
@@ -3268,12 +3428,10 @@ fn try_lock_file(file: &fs::File) -> Result<bool, std::io::Error> {
 /// opening a token lock file, and while unlinking one during pruning. A waiter
 /// never keeps a token descriptor open after a failed try-lock.
 #[cfg(not(target_arch = "wasm32"))]
-fn try_acquire_lock_directory_guard(
-    dir: &Path,
-) -> Result<Option<fs::File>, SsrDraftSessionError> {
+fn try_acquire_lock_directory_guard(dir: &Path) -> Result<Option<fs::File>, SsrDraftSessionError> {
     let path = dir.join(LOCKS_DIR_GUARD_FILE);
-    let guard = open_lock_file(&path)
-        .map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
+    let guard =
+        open_lock_file(&path).map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
     match try_lock_file(&guard).map_err(|error| SsrDraftSessionError::Io(error.to_string()))? {
         true => Ok(Some(guard)),
         false => Ok(None),
@@ -3353,11 +3511,9 @@ fn try_with_token_lock<T>(
         return Ok(None);
     };
     let lock_path = dir.join(format!("{token}.lock"));
-    let token_lock = open_lock_file(&lock_path)
-        .map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
-    match try_lock_file(&token_lock)
-        .map_err(|error| SsrDraftSessionError::Io(error.to_string()))?
-    {
+    let token_lock =
+        open_lock_file(&lock_path).map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
+    match try_lock_file(&token_lock).map_err(|error| SsrDraftSessionError::Io(error.to_string()))? {
         true => {
             drop(directory_guard);
             let result = action();
@@ -3790,7 +3946,9 @@ pub enum SsrDraftSessionError {
     InvalidOperationHash,
     #[error("SSR draft operation id was reused with a different request")]
     OperationReceiptConflict,
-    #[error("SSR draft has a prepared save; resolve or retry its original operation before editing")]
+    #[error(
+        "SSR draft has a prepared save; resolve or retry its original operation before editing"
+    )]
     OperationReceiptPending,
     #[error("SSR draft operation receipt capacity of {maximum} has been reached")]
     OperationReceiptCapacity { maximum: usize },
@@ -3877,35 +4035,45 @@ mod tests {
             "draft_generation": 2
         });
 
-        let committed = store.commit_with_operation_receipt(
-            &first.token,
-            first.generation,
-            first.controller.clone(),
-            json!({ "context": "first" }),
-            None,
-            "operation-123",
-            &request_hash,
-            response.clone(),
-        ).expect("commit operation and receipt");
+        let committed = store
+            .commit_with_operation_receipt(
+                &first.token,
+                first.generation,
+                first.controller.clone(),
+                json!({ "context": "first" }),
+                None,
+                "operation-123",
+                &request_hash,
+                response.clone(),
+            )
+            .expect("commit operation and receipt");
         assert!(matches!(committed, SsrDraftOperationCommit::Committed(_)));
 
         // A retry with the original generation receives the original result,
         // even though the session has already advanced.
-        let replay = store.commit_with_operation_receipt(
-            &first.token,
-            first.generation,
-            controller("home"),
-            json!({ "context": "ignored-on-replay" }),
-            None,
-            "operation-123",
-            &request_hash,
-            json!({ "different": "response" }),
-        ).expect("replay receipt");
+        let replay = store
+            .commit_with_operation_receipt(
+                &first.token,
+                first.generation,
+                controller("home"),
+                json!({ "context": "ignored-on-replay" }),
+                None,
+                "operation-123",
+                &request_hash,
+                json!({ "different": "response" }),
+            )
+            .expect("replay receipt");
         assert_eq!(replay, SsrDraftOperationCommit::Replayed(response.clone()));
         assert_eq!(
-            store.lookup_operation_receipt(
-                &first.token, "home", None, "operation-123", Some(&request_hash),
-            ).expect("lookup"),
+            store
+                .lookup_operation_receipt(
+                    &first.token,
+                    "home",
+                    None,
+                    "operation-123",
+                    Some(&request_hash),
+                )
+                .expect("lookup"),
             Some(response),
         );
         assert!(matches!(
@@ -3922,93 +4090,204 @@ mod tests {
             Err(SsrDraftSessionError::OperationReceiptConflict)
         ));
         assert_eq!(
-            store.load(&first.token, "home", None).expect("load").unwrap().generation,
+            store
+                .load(&first.token, "home", None)
+                .expect("load")
+                .unwrap()
+                .generation,
             2,
         );
     }
 
     fn assert_prepared_save_lifecycle(store: &dyn SsrDraftSessionStore) {
-        let original = store.commit(None, None, controller("home"), None).expect("create");
+        let original = store
+            .commit(None, None, controller("home"), None)
+            .expect("create");
         let hash = "a".repeat(64);
         let marker = json!({"prepared_save": true});
-        let prepared = store.commit_with_operation_receipt(
-            &original.token, original.generation, original.controller.clone(), json!({}),
-            None, "save-op", &hash, marker.clone(),
-        ).expect("prepare");
-        let SsrDraftOperationCommit::Committed(prepared) = prepared else { panic!("prepare"); };
+        let prepared = store
+            .commit_with_operation_receipt(
+                &original.token,
+                original.generation,
+                original.controller.clone(),
+                json!({}),
+                None,
+                "save-op",
+                &hash,
+                marker.clone(),
+            )
+            .expect("prepare");
+        let SsrDraftOperationCommit::Committed(prepared) = prepared else {
+            panic!("prepare");
+        };
         assert_eq!(prepared.generation, original.generation + 1);
-        assert_eq!(store.admit_operation_receipt(
-            &original.token, "home", None, original.generation, "save-op", &hash,
-        ).expect("retry"), Some(marker));
-        assert!(matches!(store.admit_operation_receipt(
-            &original.token, "home", None, prepared.generation, "other-op", &"b".repeat(64),
-        ), Err(SsrDraftSessionError::OperationReceiptPending)));
-        assert!(matches!(store.commit(
-            Some(&original.token), Some(prepared.generation), prepared.controller.clone(), None,
-        ), Err(SsrDraftSessionError::OperationReceiptPending)));
+        assert_eq!(
+            store
+                .admit_operation_receipt(
+                    &original.token,
+                    "home",
+                    None,
+                    original.generation,
+                    "save-op",
+                    &hash,
+                )
+                .expect("retry"),
+            Some(marker)
+        );
+        assert!(matches!(
+            store.admit_operation_receipt(
+                &original.token,
+                "home",
+                None,
+                prepared.generation,
+                "other-op",
+                &"b".repeat(64),
+            ),
+            Err(SsrDraftSessionError::OperationReceiptPending)
+        ));
+        assert!(matches!(
+            store.commit(
+                Some(&original.token),
+                Some(prepared.generation),
+                prepared.controller.clone(),
+                None,
+            ),
+            Err(SsrDraftSessionError::OperationReceiptPending)
+        ));
         assert!(matches!(
             store.remove(&original.token, None),
             Err(SsrDraftSessionError::OperationReceiptPending)
         ));
         assert_eq!(
-            store.lookup_operation_receipt(&original.token, "home", None, "save-op", Some(&hash))
+            store
+                .lookup_operation_receipt(&original.token, "home", None, "save-op", Some(&hash))
                 .expect("receipt preserved"),
             Some(json!({"prepared_save": true}))
         );
         let response = json!({"save_failure": null});
-        let done = store.commit_with_operation_receipt(
-            &original.token, prepared.generation, prepared.controller.clone(), json!({}),
-            None, "save-op", &hash, response.clone(),
-        ).expect("complete");
-        let SsrDraftOperationCommit::Committed(done) = done else { panic!("complete"); };
+        let done = store
+            .commit_with_operation_receipt(
+                &original.token,
+                prepared.generation,
+                prepared.controller.clone(),
+                json!({}),
+                None,
+                "save-op",
+                &hash,
+                response.clone(),
+            )
+            .expect("complete");
+        let SsrDraftOperationCommit::Committed(done) = done else {
+            panic!("complete");
+        };
         assert_eq!(done.generation, prepared.generation + 1);
-        assert_eq!(store.lookup_operation_receipt(
-            &original.token, "home", None, "save-op", Some(&hash),
-        ).expect("receipt"), Some(response));
-        assert_eq!(store.admit_operation_receipt(
-            &original.token, "home", None, done.generation, "other-op", &"b".repeat(64),
-        ).expect("unfenced"), None);
-        store.remove(&original.token, None).expect("remove completed draft");
-        assert!(store.load(&original.token, "home", None).expect("load").is_none());
+        assert_eq!(
+            store
+                .lookup_operation_receipt(&original.token, "home", None, "save-op", Some(&hash),)
+                .expect("receipt"),
+            Some(response)
+        );
+        assert_eq!(
+            store
+                .admit_operation_receipt(
+                    &original.token,
+                    "home",
+                    None,
+                    done.generation,
+                    "other-op",
+                    &"b".repeat(64),
+                )
+                .expect("unfenced"),
+            None
+        );
+        store
+            .remove(&original.token, None)
+            .expect("remove completed draft");
+        assert!(
+            store
+                .load(&original.token, "home", None)
+                .expect("load")
+                .is_none()
+        );
     }
 
     #[test]
     fn prepared_save_is_not_evicted_to_make_room_for_another_session() {
         let store = InMemorySsrDraftSessionStore::new(Duration::from_secs(3600), 1);
-        let first = store.commit(None, None, controller("home"), None).expect("create");
+        let first = store
+            .commit(None, None, controller("home"), None)
+            .expect("create");
         let hash = "a".repeat(64);
-        store.commit_with_operation_receipt(
-            &first.token, first.generation, first.controller.clone(), json!({}),
-            None, "save-op", &hash, json!({"prepared_save": true}),
-        ).expect("prepare");
-        assert!(matches!(store.commit(None, None, controller("other"), None),
-            Err(SsrDraftSessionError::OperationReceiptPending)));
-        assert!(store.load(&first.token, "home", None).expect("load").is_some());
+        store
+            .commit_with_operation_receipt(
+                &first.token,
+                first.generation,
+                first.controller.clone(),
+                json!({}),
+                None,
+                "save-op",
+                &hash,
+                json!({"prepared_save": true}),
+            )
+            .expect("prepare");
+        assert!(matches!(
+            store.commit(None, None, controller("other"), None),
+            Err(SsrDraftSessionError::OperationReceiptPending)
+        ));
+        assert!(
+            store
+                .load(&first.token, "home", None)
+                .expect("load")
+                .is_some()
+        );
     }
 
     fn assert_prepared_survives_capacity_prune(store: &dyn SsrDraftSessionStore) {
-        let first = store.commit(None, None, controller("home"), None).expect("create");
+        let first = store
+            .commit(None, None, controller("home"), None)
+            .expect("create");
         let hash = "a".repeat(64);
-        store.commit_with_operation_receipt(
-            &first.token, first.generation, first.controller.clone(), json!({}),
-            None, "save-op", &hash, json!({"prepared_save": true}),
-        ).expect("prepare");
-        let other = store.commit(None, None, controller("other"), None).expect("other");
+        store
+            .commit_with_operation_receipt(
+                &first.token,
+                first.generation,
+                first.controller.clone(),
+                json!({}),
+                None,
+                "save-op",
+                &hash,
+                json!({"prepared_save": true}),
+            )
+            .expect("prepare");
+        let other = store
+            .commit(None, None, controller("other"), None)
+            .expect("other");
         store.prune().expect("prune");
-        assert!(store.load(&first.token, "home", None).expect("load").is_some());
-        assert!(store.load(&other.token, "other", None).expect("load").is_none());
+        assert!(
+            store
+                .load(&first.token, "home", None)
+                .expect("load")
+                .is_some()
+        );
+        assert!(
+            store
+                .load(&other.token, "other", None)
+                .expect("load")
+                .is_none()
+        );
     }
 
     #[test]
     fn prepared_save_survives_capacity_prune_in_file_and_kv_stores() {
         let dir = std::env::temp_dir().join(format!("fly-prepared-prune-{}", Uuid::new_v4()));
-        let file = FileSsrDraftSessionStore::new(&dir, Duration::from_secs(3600), 1)
-            .expect("file");
+        let file = FileSsrDraftSessionStore::new(&dir, Duration::from_secs(3600), 1).expect("file");
         assert_prepared_survives_capacity_prune(&file);
         std::fs::remove_dir_all(dir).expect("cleanup");
         let durable = DurableSsrDraftSessionStore::distributed(
             InMemorySsrDraftSessionStore::new(Duration::from_secs(3600), 1),
-            Arc::new(MemoryKvDriver::new()), Duration::from_secs(3600), 1,
+            Arc::new(MemoryKvDriver::new()),
+            Duration::from_secs(3600),
+            1,
         );
         assert_prepared_survives_capacity_prune(&durable);
     }
@@ -4016,35 +4295,71 @@ mod tests {
     #[test]
     fn prepared_save_survives_cold_restart_and_concurrent_completion() {
         let driver = Arc::new(MemoryKvDriver::new());
-        let make_store = || DurableSsrDraftSessionStore::distributed(
-            InMemorySsrDraftSessionStore::default(),
-            driver.clone(), Duration::from_secs(3600), 100,
-        );
+        let make_store = || {
+            DurableSsrDraftSessionStore::distributed(
+                InMemorySsrDraftSessionStore::default(),
+                driver.clone(),
+                Duration::from_secs(3600),
+                100,
+            )
+        };
         let store = make_store();
-        let original = store.commit(None, None, controller("home"), None).expect("create");
+        let original = store
+            .commit(None, None, controller("home"), None)
+            .expect("create");
         let hash = "a".repeat(64);
-        let prepared = store.commit_with_operation_receipt(
-            &original.token, original.generation, original.controller.clone(),
-            json!({"checkpoint": true}), None, "save-op", &hash,
-            json!({"prepared_save": true}),
-        ).expect("prepare");
-        let SsrDraftOperationCommit::Committed(prepared) = prepared else { panic!("prepare"); };
+        let prepared = store
+            .commit_with_operation_receipt(
+                &original.token,
+                original.generation,
+                original.controller.clone(),
+                json!({"checkpoint": true}),
+                None,
+                "save-op",
+                &hash,
+                json!({"prepared_save": true}),
+            )
+            .expect("prepare");
+        let SsrDraftOperationCommit::Committed(prepared) = prepared else {
+            panic!("prepare");
+        };
         drop(store);
         let left = make_store();
         let right = make_store();
         assert!(left.memory().is_empty().expect("cold cache"));
-        assert_eq!(left.load(&original.token, "home", None).expect("load"), Some(prepared.clone()));
-        assert_eq!(right.admit_operation_receipt(
-            &original.token, "home", None, original.generation, "save-op", &hash,
-        ).expect("admit"), Some(json!({"prepared_save": true})));
+        assert_eq!(
+            left.load(&original.token, "home", None).expect("load"),
+            Some(prepared.clone())
+        );
+        assert_eq!(
+            right
+                .admit_operation_receipt(
+                    &original.token,
+                    "home",
+                    None,
+                    original.generation,
+                    "save-op",
+                    &hash,
+                )
+                .expect("admit"),
+            Some(json!({"prepared_save": true}))
+        );
         let barrier = Arc::new(std::sync::Barrier::new(2));
         let response = json!({"save_failure": null});
         let complete = |store: DurableSsrDraftSessionStore, barrier: Arc<std::sync::Barrier>| {
             barrier.wait();
-            store.commit_with_operation_receipt(
-                &prepared.token, prepared.generation, prepared.controller.clone(),
-                prepared.runtime_context.clone(), None, "save-op", &hash, response.clone(),
-            ).expect("complete")
+            store
+                .commit_with_operation_receipt(
+                    &prepared.token,
+                    prepared.generation,
+                    prepared.controller.clone(),
+                    prepared.runtime_context.clone(),
+                    None,
+                    "save-op",
+                    &hash,
+                    response.clone(),
+                )
+                .expect("complete")
         };
         let results = std::thread::scope(|scope| {
             let left_barrier = barrier.clone();
@@ -4053,27 +4368,45 @@ mod tests {
             let b = scope.spawn(move || complete(right, right_barrier));
             [a.join().expect("left"), b.join().expect("right")]
         });
-        assert_eq!(results.iter().filter(|r| matches!(r, SsrDraftOperationCommit::Committed(_))).count(), 1);
-        assert_eq!(results.iter().filter(|r| matches!(r, SsrDraftOperationCommit::Replayed(value) if value == &response)).count(), 1);
+        assert_eq!(
+            results
+                .iter()
+                .filter(|r| matches!(r, SsrDraftOperationCommit::Committed(_)))
+                .count(),
+            1
+        );
+        assert_eq!(
+            results
+                .iter()
+                .filter(
+                    |r| matches!(r, SsrDraftOperationCommit::Replayed(value) if value == &response)
+                )
+                .count(),
+            1
+        );
         let restarted = make_store();
-        let final_state = restarted.load(&original.token, "home", None)
-            .expect("load").expect("session");
+        let final_state = restarted
+            .load(&original.token, "home", None)
+            .expect("load")
+            .expect("session");
         assert_eq!(final_state.generation, prepared.generation + 1);
-        assert_eq!(restarted.lookup_operation_receipt(
-            &original.token, "home", None, "save-op", Some(&hash),
-        ).expect("receipt"), Some(response));
+        assert_eq!(
+            restarted
+                .lookup_operation_receipt(&original.token, "home", None, "save-op", Some(&hash),)
+                .expect("receipt"),
+            Some(response)
+        );
     }
 
     #[test]
     fn prepared_save_reserves_and_completes_the_same_receipt() {
         assert_prepared_save_lifecycle(&InMemorySsrDraftSessionStore::default());
         let dir = std::env::temp_dir().join(format!("fly-prepared-{}", Uuid::new_v4()));
-        let file = FileSsrDraftSessionStore::new(&dir, Duration::from_secs(3600), 100)
-            .expect("file");
+        let file =
+            FileSsrDraftSessionStore::new(&dir, Duration::from_secs(3600), 100).expect("file");
         assert_prepared_save_lifecycle(&file);
-        let durable = DurableSsrDraftSessionStore::new(
-            InMemorySsrDraftSessionStore::default(), file,
-        );
+        let durable =
+            DurableSsrDraftSessionStore::new(InMemorySsrDraftSessionStore::default(), file);
         assert_prepared_save_lifecycle(&durable);
         std::fs::remove_dir_all(dir).expect("cleanup");
         let distributed = DurableSsrDraftSessionStore::distributed(
@@ -4089,40 +4422,60 @@ mod tests {
     fn operation_receipt_capacity_fails_closed_without_evicting_older_acknowledgements() {
         let store = InMemorySsrDraftSessionStore::default();
         assert!(store.supports_operation_receipts());
-        let first = store.commit(None, None, controller("home"), None).expect("create");
+        let first = store
+            .commit(None, None, controller("home"), None)
+            .expect("create");
         let token = first.token.clone();
 
         for index in 0..MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION {
-            let current = store.load(&token, "home", None).expect("load").expect("session");
+            let current = store
+                .load(&token, "home", None)
+                .expect("load")
+                .expect("session");
             let operation_id = format!("operation-{index}");
             let request_hash = format!("{index:064x}");
-            store.commit_with_operation_receipt(
-                &token,
-                current.generation,
-                current.controller,
-                current.runtime_context,
-                None,
-                &operation_id,
-                &request_hash,
-                json!({ "index": index }),
-            ).expect("receipt commit");
+            store
+                .commit_with_operation_receipt(
+                    &token,
+                    current.generation,
+                    current.controller,
+                    current.runtime_context,
+                    None,
+                    &operation_id,
+                    &request_hash,
+                    json!({ "index": index }),
+                )
+                .expect("receipt commit");
         }
 
-        let current = store.load(&token, "home", None).expect("load").expect("session");
+        let current = store
+            .load(&token, "home", None)
+            .expect("load")
+            .expect("session");
         // Reject a new identity before its caller executes any external side effect.
         assert!(matches!(
             store.admit_operation_receipt(
-                &token, "home", None, current.generation,
-                "operation-overflow", &"f".repeat(64),
+                &token,
+                "home",
+                None,
+                current.generation,
+                "operation-overflow",
+                &"f".repeat(64),
             ),
             Err(SsrDraftSessionError::OperationReceiptCapacity { .. })
         ));
         // The full ledger still admits an exact replay, even at a stale generation.
         assert_eq!(
-            store.admit_operation_receipt(
-                &token, "home", None, first.generation,
-                "operation-0", &format!("{:064x}", 0),
-            ).expect("replay admission"),
+            store
+                .admit_operation_receipt(
+                    &token,
+                    "home",
+                    None,
+                    first.generation,
+                    "operation-0",
+                    &format!("{:064x}", 0),
+                )
+                .expect("replay admission"),
             Some(json!({ "index": 0 })),
         );
         let overflow = store.commit_with_operation_receipt(
@@ -4140,55 +4493,62 @@ mod tests {
             Err(SsrDraftSessionError::OperationReceiptCapacity { .. })
         ));
         assert_eq!(
-            store.lookup_operation_receipt(
-                &token, "home", None, "operation-0", None,
-            ).expect("oldest receipt remains"),
+            store
+                .lookup_operation_receipt(&token, "home", None, "operation-0", None,)
+                .expect("oldest receipt remains"),
             Some(json!({ "index": 0 })),
         );
     }
 
     #[test]
     fn durable_operation_receipt_survives_store_restart() {
-        let temp_dir = std::env::temp_dir()
-            .join(format!("rustok_draft_receipt_restart_{}", Uuid::new_v4().simple()));
-        let file = FileSsrDraftSessionStore::new(
-            &temp_dir, Duration::from_secs(3600), 100,
-        ).expect("file store");
+        let temp_dir = std::env::temp_dir().join(format!(
+            "rustok_draft_receipt_restart_{}",
+            Uuid::new_v4().simple()
+        ));
+        let file = FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100)
+            .expect("file store");
         let store = DurableSsrDraftSessionStore::new(
             InMemorySsrDraftSessionStore::new(Duration::from_secs(3600), 100),
             file,
         );
-        let first = store.commit(None, None, controller("home"), None).expect("create");
+        let first = store
+            .commit(None, None, controller("home"), None)
+            .expect("create");
         let request_hash = "c".repeat(64);
         let response = json!({ "result": { "revision_id": "rev-2" } });
-        let committed = store.commit_with_operation_receipt(
-            &first.token,
-            first.generation,
-            first.controller,
-            json!({}),
-            None,
-            "operation-restart",
-            &request_hash,
-            response.clone(),
-        ).expect("commit");
+        let committed = store
+            .commit_with_operation_receipt(
+                &first.token,
+                first.generation,
+                first.controller,
+                json!({}),
+                None,
+                "operation-restart",
+                &request_hash,
+                response.clone(),
+            )
+            .expect("commit");
         assert!(matches!(committed, SsrDraftOperationCommit::Committed(_)));
         drop(store);
 
         let restarted = DurableSsrDraftSessionStore::new(
             InMemorySsrDraftSessionStore::new(Duration::from_secs(3600), 100),
-            FileSsrDraftSessionStore::new(
-                &temp_dir, Duration::from_secs(3600), 100,
-            ).expect("restarted file store"),
+            FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100)
+                .expect("restarted file store"),
         );
         assert_eq!(
-            restarted.lookup_operation_receipt(
-                &first.token, "home", None, "operation-restart", None,
-            ).expect("lookup after restart"),
+            restarted
+                .lookup_operation_receipt(&first.token, "home", None, "operation-restart", None,)
+                .expect("lookup after restart"),
             Some(response),
         );
         assert_eq!(
-            restarted.load(&first.token, "home", None).expect("load after restart")
-                .expect("session").generation,
+            restarted
+                .load(&first.token, "home", None)
+                .expect("load after restart")
+                .expect("session")
+                .generation,
             2,
         );
         drop(restarted);
@@ -4197,14 +4557,17 @@ mod tests {
 
     #[test]
     fn independent_durable_stores_converge_on_one_concurrent_operation_receipt() {
-        let temp_dir = std::env::temp_dir()
-            .join(format!("rustok_draft_receipt_race_{}", Uuid::new_v4().simple()));
-        let make_store = || DurableSsrDraftSessionStore::new(
-            InMemorySsrDraftSessionStore::new(Duration::from_secs(3600), 100),
-            FileSsrDraftSessionStore::new(
-                &temp_dir, Duration::from_secs(3600), 100,
-            ).expect("file store"),
-        );
+        let temp_dir = std::env::temp_dir().join(format!(
+            "rustok_draft_receipt_race_{}",
+            Uuid::new_v4().simple()
+        ));
+        let make_store = || {
+            DurableSsrDraftSessionStore::new(
+                InMemorySsrDraftSessionStore::new(Duration::from_secs(3600), 100),
+                FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100)
+                    .expect("file store"),
+            )
+        };
         let first_store = Arc::new(make_store());
         let second_store = Arc::new(make_store());
         let first = first_store
@@ -4225,27 +4588,58 @@ mod tests {
         let left_controller = first.controller.clone();
         let right_controller = first.controller.clone();
 
-        let left = std::thread::spawn(move || left_store.commit_with_operation_receipt(
-            &left_token, generation, left_controller, json!({}), None,
-            "operation-race", &left_hash, left_response,
-        ));
-        let right = std::thread::spawn(move || right_store.commit_with_operation_receipt(
-            &right_token, generation, right_controller, json!({}), None,
-            "operation-race", &right_hash, right_response,
-        ));
-        let outcomes = [left.join().expect("left thread"), right.join().expect("right thread")];
+        let left = std::thread::spawn(move || {
+            left_store.commit_with_operation_receipt(
+                &left_token,
+                generation,
+                left_controller,
+                json!({}),
+                None,
+                "operation-race",
+                &left_hash,
+                left_response,
+            )
+        });
+        let right = std::thread::spawn(move || {
+            right_store.commit_with_operation_receipt(
+                &right_token,
+                generation,
+                right_controller,
+                json!({}),
+                None,
+                "operation-race",
+                &right_hash,
+                right_response,
+            )
+        });
+        let outcomes = [
+            left.join().expect("left thread"),
+            right.join().expect("right thread"),
+        ];
         assert_eq!(
-            outcomes.iter().filter(|outcome| matches!(outcome, Ok(SsrDraftOperationCommit::Committed(_)))).count(),
+            outcomes
+                .iter()
+                .filter(|outcome| matches!(outcome, Ok(SsrDraftOperationCommit::Committed(_))))
+                .count(),
             1,
         );
         assert_eq!(
-            outcomes.iter().filter(|outcome| matches!(outcome, Ok(SsrDraftOperationCommit::Replayed(_)))).count(),
+            outcomes
+                .iter()
+                .filter(|outcome| matches!(outcome, Ok(SsrDraftOperationCommit::Replayed(_))))
+                .count(),
             1,
         );
         assert_eq!(
-            second_store.lookup_operation_receipt(
-                &token, "home", None, "operation-race", Some(&request_hash),
-            ).expect("durable receipt"),
+            second_store
+                .lookup_operation_receipt(
+                    &token,
+                    "home",
+                    None,
+                    "operation-race",
+                    Some(&request_hash),
+                )
+                .expect("durable receipt"),
             Some(response),
         );
         drop(first_store);
@@ -4297,16 +4691,30 @@ mod tests {
     }
 
     fn assert_exhausted_generation_is_immutable(store: &dyn SsrDraftSessionStore, token: &str) {
-        let before = store.load(token, "home", None).expect("load").expect("session");
+        let before = store
+            .load(token, "home", None)
+            .expect("load")
+            .expect("session");
         assert_eq!(before.generation, u64::MAX);
         let mut edited = before.controller.clone();
-        edited.dispatch(UiIntent::Select(Some("hero".to_string()))).expect("select");
+        edited
+            .dispatch(UiIntent::Select(Some("hero".to_string())))
+            .expect("select");
         for expected in [Some(u64::MAX), None] {
             assert!(matches!(
-                store.commit_with_context(Some(token), expected, edited.clone(), json!({"changed": true}), None),
+                store.commit_with_context(
+                    Some(token),
+                    expected,
+                    edited.clone(),
+                    json!({"changed": true}),
+                    None
+                ),
                 Err(SsrDraftSessionError::GenerationExhausted)
             ));
-            let after = store.load(token, "home", None).expect("load").expect("session");
+            let after = store
+                .load(token, "home", None)
+                .expect("load")
+                .expect("session");
             assert_eq!(after.generation, before.generation);
             assert_eq!(after, before, "failed commit changed the stored session");
         }
@@ -4315,19 +4723,33 @@ mod tests {
     #[test]
     fn ordinary_commits_fail_closed_at_exhausted_generation() {
         let memory = InMemorySsrDraftSessionStore::default();
-        let first = memory.commit(None, None, controller("home"), None).expect("create");
-        memory.entries.write().expect("entries")
-            .get_mut(&first.token).expect("entry").generation = u64::MAX;
+        let first = memory
+            .commit(None, None, controller("home"), None)
+            .expect("create");
+        memory
+            .entries
+            .write()
+            .expect("entries")
+            .get_mut(&first.token)
+            .expect("entry")
+            .generation = u64::MAX;
         assert_exhausted_generation_is_immutable(&memory, &first.token);
 
         let dir = temp_store_dir();
         let file = file_store(&dir);
-        let first = file.commit(None, None, controller("home"), None).expect("create");
-        let mut record = file.load_record(&first.token, None).expect("load").expect("record");
+        let first = file
+            .commit(None, None, controller("home"), None)
+            .expect("create");
+        let mut record = file
+            .load_record(&first.token, None)
+            .expect("load")
+            .expect("record");
         record.generation = u64::MAX;
-        file.save_record(&record).expect("seed exhausted generation");
+        file.save_record(&record)
+            .expect("seed exhausted generation");
         assert_exhausted_generation_is_immutable(&file, &first.token);
-        let durable = DurableSsrDraftSessionStore::new(InMemorySsrDraftSessionStore::default(), file);
+        let durable =
+            DurableSsrDraftSessionStore::new(InMemorySsrDraftSessionStore::default(), file);
         assert_exhausted_generation_is_immutable(&durable, &first.token);
         fs::remove_dir_all(dir).expect("cleanup");
     }
@@ -4339,7 +4761,10 @@ mod tests {
         operation_id: &str,
         response: Value,
     ) {
-        let before = store.load(token, "home", None).expect("load").expect("session");
+        let before = store
+            .load(token, "home", None)
+            .expect("load")
+            .expect("session");
         assert_eq!(before.generation, generation);
         let request_hash = "a".repeat(64);
         assert!(matches!(
@@ -4355,45 +4780,87 @@ mod tests {
             ),
             Err(SsrDraftSessionError::GenerationExhausted)
         ));
-        let after = store.load(token, "home", None).expect("load").expect("session");
-        assert_eq!(after, before, "failed receipt commit changed the stored session");
+        let after = store
+            .load(token, "home", None)
+            .expect("load")
+            .expect("session");
+        assert_eq!(
+            after, before,
+            "failed receipt commit changed the stored session"
+        );
     }
 
     #[test]
     fn receipt_commits_fail_closed_at_generation_exhaustion() {
         let memory = InMemorySsrDraftSessionStore::default();
-        let first = memory.commit(None, None, controller("home"), None).expect("create");
-        memory.entries.write().expect("entries")
-            .get_mut(&first.token).expect("entry").generation = u64::MAX;
+        let first = memory
+            .commit(None, None, controller("home"), None)
+            .expect("create");
+        memory
+            .entries
+            .write()
+            .expect("entries")
+            .get_mut(&first.token)
+            .expect("entry")
+            .generation = u64::MAX;
         assert_receipt_generation_exhaustion_is_immutable(
-            &memory, &first.token, u64::MAX, "overflow-final", json!({"saved": true}),
+            &memory,
+            &first.token,
+            u64::MAX,
+            "overflow-final",
+            json!({"saved": true}),
         );
-        memory.entries.write().expect("entries")
-            .get_mut(&first.token).expect("entry").generation = u64::MAX - 1;
+        memory
+            .entries
+            .write()
+            .expect("entries")
+            .get_mut(&first.token)
+            .expect("entry")
+            .generation = u64::MAX - 1;
         assert_receipt_generation_exhaustion_is_immutable(
-            &memory, &first.token, u64::MAX - 1, "overflow-prepared",
+            &memory,
+            &first.token,
+            u64::MAX - 1,
+            "overflow-prepared",
             json!({"prepared_save": true}),
         );
 
         let dir = temp_store_dir();
         let file = file_store(&dir);
-        let first = file.commit(None, None, controller("home"), None).expect("create");
-        let mut record = file.load_record(&first.token, None).expect("load").expect("record");
+        let first = file
+            .commit(None, None, controller("home"), None)
+            .expect("create");
+        let mut record = file
+            .load_record(&first.token, None)
+            .expect("load")
+            .expect("record");
         record.generation = u64::MAX;
-        file.save_record(&record).expect("seed exhausted generation");
+        file.save_record(&record)
+            .expect("seed exhausted generation");
         assert_receipt_generation_exhaustion_is_immutable(
-            &file, &first.token, u64::MAX, "overflow-final", json!({"saved": true}),
+            &file,
+            &first.token,
+            u64::MAX,
+            "overflow-final",
+            json!({"saved": true}),
         );
         record.generation = u64::MAX - 1;
         file.save_record(&record).expect("seed prepared exhaustion");
         assert_receipt_generation_exhaustion_is_immutable(
-            &file, &first.token, u64::MAX - 1, "overflow-prepared",
+            &file,
+            &first.token,
+            u64::MAX - 1,
+            "overflow-prepared",
             json!({"prepared_save": true}),
         );
 
-        let durable = DurableSsrDraftSessionStore::new(InMemorySsrDraftSessionStore::default(), file);
+        let durable =
+            DurableSsrDraftSessionStore::new(InMemorySsrDraftSessionStore::default(), file);
         assert_receipt_generation_exhaustion_is_immutable(
-            &durable, &first.token, u64::MAX - 1, "overflow-prepared-durable",
+            &durable,
+            &first.token,
+            u64::MAX - 1,
+            "overflow-prepared-durable",
             json!({"prepared_save": true}),
         );
         fs::remove_dir_all(dir).expect("cleanup");
@@ -4859,11 +5326,12 @@ mod tests {
         let left = owner("tenant:one", "user");
         let right = owner("tenant", "one:user");
 
-        let dir =
-            std::env::temp_dir().join(format!("rustok_draft_owner_key_{}", Uuid::new_v4().simple()));
-        let file_store =
-            FileSsrDraftSessionStore::new(&dir, Duration::from_secs(3600), 100)
-                .expect("file store");
+        let dir = std::env::temp_dir().join(format!(
+            "rustok_draft_owner_key_{}",
+            Uuid::new_v4().simple()
+        ));
+        let file_store = FileSsrDraftSessionStore::new(&dir, Duration::from_secs(3600), 100)
+            .expect("file store");
         let mut file_tokens = Vec::new();
         for _ in 0..5 {
             let created = file_store
@@ -5231,25 +5699,48 @@ mod tests {
         let driver = Arc::new(MemoryKvDriver::new());
         let store = DurableSsrDraftSessionStore::distributed(
             InMemorySsrDraftSessionStore::new(Duration::from_secs(3600), 2),
-            driver, Duration::from_secs(3600), 2,
+            driver,
+            Duration::from_secs(3600),
+            2,
         );
-        let first = store.commit_with_context(
-            None, None, controller("home"), json!({"source": "backend"}), None,
-        ).expect("create");
-        let other = store.commit(None, None, controller("other"), None).expect("other");
+        let first = store
+            .commit_with_context(
+                None,
+                None,
+                controller("home"),
+                json!({"source": "backend"}),
+                None,
+            )
+            .expect("create");
+        let other = store
+            .commit(None, None, controller("other"), None)
+            .expect("other");
         for generation in [first.generation + 1, first.generation] {
             let mut divergent = first.clone();
             divergent.generation = generation;
             divergent.runtime_context = json!({"source": "uncommitted"});
-            store.memory().insert_snapshot(divergent).expect("seed stale cache");
-            let observed = store.load(&first.token, "home", None)
-                .expect("load").expect("session");
+            store
+                .memory()
+                .insert_snapshot(divergent)
+                .expect("seed stale cache");
+            let observed = store
+                .load(&first.token, "home", None)
+                .expect("load")
+                .expect("session");
             assert_eq!(observed, first);
-            assert_eq!(store.memory().generation(&other.token).expect("probe"), Some(1));
+            assert_eq!(
+                store.memory().generation(&other.token).expect("probe"),
+                Some(1)
+            );
         }
-        let saved = store.commit(
-            Some(&first.token), Some(first.generation), first.controller.clone(), None,
-        ).expect("commit");
+        let saved = store
+            .commit(
+                Some(&first.token),
+                Some(first.generation),
+                first.controller.clone(),
+                None,
+            )
+            .expect("commit");
         assert_eq!(saved.generation, first.generation + 1);
         assert_eq!(saved.runtime_context, first.runtime_context);
     }
@@ -5504,7 +5995,10 @@ mod tests {
             ("future_generation", json!(6)),
             ("older_generation", json!(2)),
             ("invalid_hash", json!("not-a-hash")),
-            ("oversized_response", json!("x".repeat(MAX_DRAFT_OPERATION_RECEIPT_BYTES))),
+            (
+                "oversized_response",
+                json!("x".repeat(MAX_DRAFT_OPERATION_RECEIPT_BYTES)),
+            ),
             ("old_format", json!(1)),
             ("zero_generation", json!(0)),
         ] {
@@ -5523,7 +6017,13 @@ mod tests {
                 }
                 _ => unreachable!("all corruption cases are named"),
             }
-            assert!(matches!(decode(&corrupted), Err(SsrDraftSessionError::Serialization(_))), "{path}");
+            assert!(
+                matches!(
+                    decode(&corrupted),
+                    Err(SsrDraftSessionError::Serialization(_))
+                ),
+                "{path}"
+            );
         }
     }
 
@@ -5536,10 +6036,14 @@ mod tests {
         assert!(decode(&record).is_ok());
         let mut wrong_hash = record.clone();
         let hash = wrong_hash["controller"]["editor"]["revision"]["project_hash"]
-            .as_u64().expect("project hash");
+            .as_u64()
+            .expect("project hash");
         wrong_hash["controller"]["editor"]["revision"]["project_hash"] = json!(hash ^ 1);
         wrong_hash["controller"]["ui"]["state"]["dirty"]["project_hash"] = json!(hash ^ 1);
-        assert!(matches!(decode(&wrong_hash), Err(SsrDraftSessionError::Serialization(_))));
+        assert!(matches!(
+            decode(&wrong_hash),
+            Err(SsrDraftSessionError::Serialization(_))
+        ));
 
         for (field, value) in [
             ("command_sequence", json!(1)),
@@ -5550,20 +6054,34 @@ mod tests {
         ] {
             let mut corrupted = record.clone();
             corrupted["controller"]["ui"]["state"]["dirty"][field] = value;
-            assert!(matches!(decode(&corrupted), Err(SsrDraftSessionError::Serialization(_))), "{field}");
+            assert!(
+                matches!(
+                    decode(&corrupted),
+                    Err(SsrDraftSessionError::Serialization(_))
+                ),
+                "{field}"
+            );
         }
         let mut invalid_conflict = record.clone();
         invalid_conflict["controller"]["editor"]["revision"]["save_conflict"] = json!(true);
         invalid_conflict["controller"]["ui"]["state"]["dirty"]["save_conflict"] = json!(true);
-        assert!(matches!(decode(&invalid_conflict), Err(SsrDraftSessionError::Serialization(_))));
+        assert!(matches!(
+            decode(&invalid_conflict),
+            Err(SsrDraftSessionError::Serialization(_))
+        ));
     }
 
     #[test]
     fn prepared_save_receipt_marker_has_one_canonical_shape() {
         let hash = "a".repeat(64);
-        assert!(validate_operation_receipt_input(
-            "prepared-op", &hash, &json!({ "prepared_save": true }),
-        ).is_ok());
+        assert!(
+            validate_operation_receipt_input(
+                "prepared-op",
+                &hash,
+                &json!({ "prepared_save": true }),
+            )
+            .is_ok()
+        );
         for response in [
             json!({ "prepared_save": false }),
             json!({ "prepared_save": "true" }),
@@ -5586,16 +6104,18 @@ mod tests {
             "generation": 2,
             "response": { "result": "saved" }
         }]);
-        let record = PersistentDraftSessionRecord::decode(
-            &serde_json::to_vec(&legacy).expect("json"),
-        ).expect("format 1 record");
+        let record =
+            PersistentDraftSessionRecord::decode(&serde_json::to_vec(&legacy).expect("json"))
+                .expect("format 1 record");
         assert_eq!(record.format, 1);
 
         let dir = temp_store_dir();
         let store = file_store(&dir);
         store.save_record(&record).expect("upgrade legacy record");
-        let upgraded = store.load_record("tokFormatOne", None)
-            .expect("load").expect("record");
+        let upgraded = store
+            .load_record("tokFormatOne", None)
+            .expect("load")
+            .expect("record");
         assert_eq!(upgraded.format, DRAFT_SESSION_RECORD_FORMAT);
         assert_eq!(upgraded.operation_receipts, record.operation_receipts);
         fs::remove_dir_all(dir).expect("cleanup");
@@ -5623,7 +6143,8 @@ mod tests {
         let store = file_store(&dir);
         let mut corrupted = record_json("tokWriteBad01", 1, 4_000_000_000);
         let hash = corrupted["controller"]["editor"]["revision"]["project_hash"]
-            .as_u64().expect("project hash");
+            .as_u64()
+            .expect("project hash");
         corrupted["controller"]["editor"]["revision"]["project_hash"] = json!(hash ^ 1);
         corrupted["controller"]["ui"]["state"]["dirty"]["project_hash"] = json!(hash ^ 1);
         // Deserialize the struct directly to simulate an invalid in-process caller;
@@ -5634,7 +6155,11 @@ mod tests {
             store.save_record(&record),
             Err(SsrDraftSessionError::Serialization(_))
         ));
-        assert!(!dir.join(UNATTRIBUTED_PARTITION).join("tokWriteBad01.json").exists());
+        assert!(
+            !dir.join(UNATTRIBUTED_PARTITION)
+                .join("tokWriteBad01.json")
+                .exists()
+        );
         fs::remove_dir_all(dir).expect("cleanup");
     }
 
@@ -5645,8 +6170,8 @@ mod tests {
         let partition = dir.join(UNATTRIBUTED_PARTITION);
         fs::create_dir_all(&partition).expect("partition");
         let path = partition.join("tokExpected01.json");
-        let bytes = serde_json::to_vec(&record_json("tokDifferent01", 1, 4_000_000_000))
-            .expect("json");
+        let bytes =
+            serde_json::to_vec(&record_json("tokDifferent01", 1, 4_000_000_000)).expect("json");
         fs::write(&path, &bytes).expect("record");
         assert!(matches!(
             store.load("tokExpected01", "home", None),
@@ -6416,9 +6941,13 @@ mod tests {
     fn token_lock_is_released_when_an_operation_unwinds() {
         let dir = temp_store_dir();
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            with_token_lock(&dir, "tokPANIC01", || -> Result<(), SsrDraftSessionError> {
-                panic!("simulate a process-local panic while the token lock is held");
-            })
+            with_token_lock(
+                &dir,
+                "tokPANIC01",
+                || -> Result<(), SsrDraftSessionError> {
+                    panic!("simulate a process-local panic while the token lock is held");
+                },
+            )
         }));
         assert!(outcome.is_err());
 
@@ -6700,7 +7229,10 @@ mod tests {
 
         barrier.wait();
         first.join().expect("first writer").expect("first create");
-        second.join().expect("second writer").expect("second create");
+        second
+            .join()
+            .expect("second writer")
+            .expect("second create");
 
         let owner_partition =
             dir.join(FileSsrDraftSessionStore::partition_name(Some(&owner)).expect("partition"));
@@ -6745,15 +7277,17 @@ mod tests {
             .expect("concurrent update");
         assert_eq!(updated.generation, scanned.generation + 1);
 
-        assert!(!store
-            .remove_record_if_unchanged(
-                &path,
-                &created.token,
-                scanned.generation,
-                scanned_age,
-                None,
-            )
-            .expect("compare and delete"));
+        assert!(
+            !store
+                .remove_record_if_unchanged(
+                    &path,
+                    &created.token,
+                    scanned.generation,
+                    scanned_age,
+                    None,
+                )
+                .expect("compare and delete")
+        );
         assert_eq!(
             store
                 .load_record(&created.token, None)
@@ -7165,9 +7699,15 @@ mod tests {
             ExternalKvDraftSessionBackend::new(driver.clone(), Duration::from_secs(3600), 100);
         assert!(matches!(
             backend.delete_record("tokDEL01", None),
-            Err(SsrDraftSessionError::GenerationConflict { expected: 5, actual: 4 })
+            Err(SsrDraftSessionError::GenerationConflict {
+                expected: 5,
+                actual: 4
+            })
         ));
-        let current = backend.load_record("tokDEL01", None).expect("load").expect("newer draft");
+        let current = backend
+            .load_record("tokDEL01", None)
+            .expect("load")
+            .expect("newer draft");
         assert_eq!(current.generation, 5);
     }
 

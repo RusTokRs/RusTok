@@ -109,9 +109,7 @@ impl EventBus {
     /// Claims primary release ownership, preempting a fallback owner. The
     /// durable event forwarder uses this: slots are released only after the
     /// event is persisted, regardless of consumer startup order.
-    pub fn claim_primary_backpressure_ownership(
-        &self,
-    ) -> Option<super::BackpressureOwnership> {
+    pub fn claim_primary_backpressure_ownership(&self) -> Option<super::BackpressureOwnership> {
         self.backpressure
             .as_ref()
             .and_then(|controller| controller.claim_primary_ownership())

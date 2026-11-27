@@ -3,9 +3,7 @@ use std::collections::BTreeMap;
 use dioxus::prelude::*;
 use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind};
 use fly_dioxus::FlyCanvasIframe;
-use fly_ui::{
-    CanvasRect, ResizeHandle, ResizeResult, ResizeSession, UiIntent, ViewportState,
-};
+use fly_ui::{CanvasRect, ResizeHandle, ResizeResult, ResizeSession, UiIntent, ViewportState};
 
 use super::dioxus::canvas_instance_id;
 use crate::core::{page_builder_resize_policy, session::EditorSessionState};
@@ -60,7 +58,13 @@ pub fn DioxusIsolatedCanvas(
         (
             current.controller.ui().state.viewport,
             current.controller.ui().state.selection.component_id.clone(),
-            current.controller.ui().state.selection.hovered_component_id.clone(),
+            current
+                .controller
+                .ui()
+                .state
+                .selection
+                .hovered_component_id
+                .clone(),
             current.controller.ui().state.overlays.insertion,
             can_resize
                 && selected
@@ -68,8 +72,7 @@ pub fn DioxusIsolatedCanvas(
                     .is_some_and(|selected| !selected.is_root && !selected.is_locked),
         )
     };
-    let instance_is_current =
-        active_instance_id.read().as_str() == instance_id.as_str();
+    let instance_is_current = active_instance_id.read().as_str() == instance_id.as_str();
     let geometry_snapshot = if instance_is_current {
         geometry.read().clone()
     } else {
@@ -80,16 +83,12 @@ pub fn DioxusIsolatedCanvas(
     } else {
         None
     };
-    let selected_rect = selected_id.as_ref().and_then(|id| {
-        geometry_snapshot
-            .get(id)
-            .map(|item| canvas_rect(item.rect))
-    });
-    let hovered_rect = hovered_id.as_ref().and_then(|id| {
-        geometry_snapshot
-            .get(id)
-            .map(|item| canvas_rect(item.rect))
-    });
+    let selected_rect = selected_id
+        .as_ref()
+        .and_then(|id| geometry_snapshot.get(id).map(|item| canvas_rect(item.rect)));
+    let hovered_rect = hovered_id
+        .as_ref()
+        .and_then(|id| geometry_snapshot.get(id).map(|item| canvas_rect(item.rect)));
     let zoom = f64::from(viewport.zoom.max(0.01));
     let preview_rect = if instance_is_current {
         resize_preview
@@ -169,9 +168,7 @@ pub fn DioxusIsolatedCanvas(
                 return;
             }
             #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-            if let Some((_, message)) =
-                decode_canvas_message(&payload, &expected_instance, None)
-            {
+            if let Some((_, message)) = decode_canvas_message(&payload, &expected_instance, None) {
                 handle_canvas_message(
                     message,
                     session,
@@ -293,13 +290,11 @@ pub fn DioxusIsolatedCanvas(
                     else {
                         return;
                     };
-                    let Ok(Some(handle_element)) =
-                        target.closest("[data-fly-resize-handle]")
+                    let Ok(Some(handle_element)) = target.closest("[data-fly-resize-handle]")
                     else {
                         return;
                     };
-                    let Some(handle_name) =
-                        handle_element.get_attribute("data-fly-resize-handle")
+                    let Some(handle_name) = handle_element.get_attribute("data-fly-resize-handle")
                     else {
                         return;
                     };
@@ -320,9 +315,7 @@ pub fn DioxusIsolatedCanvas(
                         policy,
                         coordinate_scale,
                     );
-                    if let Err(error) =
-                        set_pointer_capture(&handle_element, active.pointer_id)
-                    {
+                    if let Err(error) = set_pointer_capture(&handle_element, active.pointer_id) {
                         if let Some(handler) = on_error {
                             handler.call(error.to_string());
                         }
@@ -379,9 +372,7 @@ pub fn DioxusIsolatedCanvas(
                         ));
                     }
                     if let Some(element) = captured_element.peek().clone() {
-                        if let Err(error) =
-                            release_pointer_capture(&element, active.pointer_id)
-                        {
+                        if let Err(error) = release_pointer_capture(&element, active.pointer_id) {
                             if let Some(handler) = on_error {
                                 handler.call(error.to_string());
                             }
@@ -435,10 +426,8 @@ pub fn DioxusIsolatedCanvas(
                 },
             );
 
-            let window_blur = EventListenerHandle::new::<Event>(
-                &window_target,
-                "blur",
-                move |_| {
+            let window_blur =
+                EventListenerHandle::new::<Event>(&window_target, "blur", move |_| {
                     cancel_resize_session(
                         resize_session,
                         resize_preview,
@@ -450,8 +439,7 @@ pub fn DioxusIsolatedCanvas(
                     if session_has_active_drag(session) {
                         on_ui_intent.call(UiIntent::CancelDrag);
                     }
-                },
-            );
+                });
 
             let registration = (|| {
                 handles.push(pointer_down?);
@@ -483,11 +471,14 @@ pub fn DioxusIsolatedCanvas(
         String::new()
     };
     let geometry_limit_message = instance_is_current
-        .then(|| geometry_limit.read().as_ref().map(|limit| {
-        format!(
-            "Canvas geometry limit reached: {} components observed, limit {}. Selection and drag/drop overlays are unavailable until the page is simplified.",
-            limit.observed, limit.limit
-        }))
+        .then(|| {
+            geometry_limit.read().as_ref().map(|limit| {
+                format!(
+                    "Canvas geometry limit reached: {} components observed, limit {}. Selection and drag/drop overlays are unavailable until the page is simplified.",
+                    limit.observed, limit.limit
+                )
+            })
+        })
         .flatten();
 
     rsx! {
@@ -645,7 +636,9 @@ fn resize_context_for_keyboard(
     selected_rect: Option<CanvasRect>,
     zoom: f64,
 ) -> Option<(String, CanvasRect, f64)> {
-    selected_id.zip(selected_rect).map(|(id, rect)| (id, rect, zoom))
+    selected_id
+        .zip(selected_rect)
+        .map(|(id, rect)| (id, rect, zoom))
 }
 
 fn canvas_rect(rect: fly_web::BrowserRect) -> CanvasRect {
@@ -799,7 +792,10 @@ fn handle_canvas_message(
             }
         }
         CanvasBridgeMessage::PointerMoved { sample } => {
-            pointer.set(Some(format!("{:.0}, {:.0}", sample.position.x, sample.position.y)));
+            pointer.set(Some(format!(
+                "{:.0}, {:.0}",
+                sample.position.x, sample.position.y
+            )));
             update_drag_candidates(session, geometry, on_ui_intent, sample.position);
         }
         CanvasBridgeMessage::DragMoved { position } => {
@@ -816,7 +812,12 @@ fn handle_canvas_message(
             }
             if session_has_active_drag(session) {
                 update_drag_candidates(session, geometry, on_ui_intent, position);
-                let has_legal_candidate = session.read().controller.ui().state.drag
+                let has_legal_candidate = session
+                    .read()
+                    .controller
+                    .ui()
+                    .state
+                    .drag
                     .as_ref()
                     .and_then(|drag| drag.active_candidate())
                     .is_some_and(|candidate| candidate.legal);

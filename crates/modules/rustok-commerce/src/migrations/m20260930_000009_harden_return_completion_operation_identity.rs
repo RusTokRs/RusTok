@@ -128,7 +128,12 @@ impl MigrationTrait for Migration {
                     )
                     .await?;
             }
-            backend => return Err(DbErr::Custom(format!("unsupported SeaORM database backend: {:?}", backend))),
+            backend => {
+                return Err(DbErr::Custom(format!(
+                    "unsupported SeaORM database backend: {:?}",
+                    backend
+                )));
+            }
         }
 
         Ok(())
@@ -160,7 +165,12 @@ impl MigrationTrait for Migration {
                     )
                     .await?;
             }
-            backend => return Err(DbErr::Custom(format!("unsupported SeaORM database backend: {:?}", backend))),
+            backend => {
+                return Err(DbErr::Custom(format!(
+                    "unsupported SeaORM database backend: {:?}",
+                    backend
+                )));
+            }
         }
 
         Ok(())

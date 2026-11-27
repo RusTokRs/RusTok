@@ -101,7 +101,10 @@ impl<S, R, T, B> FlyAdapterBackedPageBuilderService<S, R, T, B> {
         Ok(inspection)
     }
 
-    fn inspect_loaded(&self, project_data: Value) -> PageBuilderServiceResult<FlyProjectInspection> {
+    fn inspect_loaded(
+        &self,
+        project_data: Value,
+    ) -> PageBuilderServiceResult<FlyProjectInspection> {
         let result = self.inspect(&project_data);
         if result.is_err() {
             fly::drop_value_iteratively(project_data);
@@ -232,10 +235,7 @@ where
             }
         }
         .ok_or_else(|| {
-            PageBuilderServiceError::Validation(format!(
-                "page `{}` was not found",
-                input.page_id
-            ))
+            PageBuilderServiceError::Validation(format!("page `{}` was not found", input.page_id))
         })?;
         self.inspect_loaded(project_data)?
             .component_properties(&input.node_id)?;

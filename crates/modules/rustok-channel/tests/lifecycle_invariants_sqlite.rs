@@ -20,9 +20,10 @@
 //! that the owner avoids.
 
 use rustok_channel::{
-    migrations, ChannelError, ChannelResolutionRuleDefinition, ChannelResponse, ChannelService,
+    ChannelError, ChannelResolutionRuleDefinition, ChannelResponse, ChannelService,
     CreateChannelInput, CreateChannelResolutionPolicySetInput, CreateChannelResolutionRuleInput,
     CreateChannelTargetInput, ResolutionAction, ResolutionPredicate, UpdateChannelInput,
+    migrations,
 };
 use rustok_test_utils::setup_test_db;
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
@@ -136,7 +137,11 @@ async fn add_web_target(db: &DatabaseConnection, channel_id: Uuid, host: &str, i
 
 /// Runs a statement that the schema is expected to reject and returns the error
 /// message, so a test can assert *why* it was rejected.
-async fn expect_rejected(db: &DatabaseConnection, sql: &str, values: Vec<sea_orm::Value>) -> String {
+async fn expect_rejected(
+    db: &DatabaseConnection,
+    sql: &str,
+    values: Vec<sea_orm::Value>,
+) -> String {
     let result = db
         .execute_raw(Statement::from_sql_and_values(
             db.get_database_backend(),
@@ -158,8 +163,14 @@ async fn only_one_default_channel_per_tenant() {
 
     let first = create_channel(&db, tenant_id, "first").await;
     let second = create_channel(&db, tenant_id, "second").await;
-    assert!(first.is_default, "the first channel of a tenant is the default");
-    assert!(!second.is_default, "a second channel must not become the default");
+    assert!(
+        first.is_default,
+        "the first channel of a tenant is the default"
+    );
+    assert!(
+        !second.is_default,
+        "a second channel must not become the default"
+    );
 
     let message = expect_rejected(
         &db,
@@ -364,7 +375,11 @@ async fn adding_a_second_primary_target_demotes_the_previous_one() {
         .iter()
         .filter(|target| target.is_primary)
         .collect::<Vec<_>>();
-    assert_eq!(primaries.len(), 1, "uq_channel_targets_channel_primary allows one primary");
+    assert_eq!(
+        primaries.len(),
+        1,
+        "uq_channel_targets_channel_primary allows one primary"
+    );
     assert_eq!(primaries[0].value, "second.example.test");
 }
 

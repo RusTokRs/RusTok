@@ -28,7 +28,9 @@ impl OrderLineFulfillmentRequirement {
         match value.trim().to_ascii_lowercase().as_str() {
             "digital" => Ok(Self::Digital),
             "physical" => Ok(Self::Physical),
-            _ => Err(UnknownOrderLineFulfillmentRequirementError(value.to_string())),
+            _ => Err(UnknownOrderLineFulfillmentRequirementError(
+                value.to_string(),
+            )),
         }
     }
 

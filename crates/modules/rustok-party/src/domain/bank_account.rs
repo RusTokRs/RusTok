@@ -57,9 +57,7 @@ impl BankAccount {
         let currency = currency.into().trim().to_ascii_uppercase();
 
         if bank_name.is_empty() {
-            return Err(PartyError::Validation(
-                "Bank name cannot be empty".into(),
-            ));
+            return Err(PartyError::Validation("Bank name cannot be empty".into()));
         }
 
         validate_account_number(&account_number)?;

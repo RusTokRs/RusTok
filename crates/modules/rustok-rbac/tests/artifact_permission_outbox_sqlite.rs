@@ -71,6 +71,8 @@ async fn setup_database() -> DatabaseConnection {
         .await
         .expect("enable SQLite foreign keys");
     for statement in [
+        "CREATE TABLE rbac_invalidation_state (scope TEXT PRIMARY KEY, generation BIGINT NOT NULL, updated_at TEXT NOT NULL)",
+        "INSERT INTO rbac_invalidation_state (scope, generation, updated_at) VALUES ('permissions', 0, CURRENT_TIMESTAMP)",
         "CREATE TABLE roles (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, UNIQUE (tenant_id, id))",
         "CREATE TABLE users (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, UNIQUE (tenant_id, id))",
         "CREATE TABLE rbac_artifact_permission_installations (installation_id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (installation_id, scope_key, module_slug, release_digest))",
@@ -254,7 +256,9 @@ async fn only_state_changes_publish_artifact_permission_events() {
     );
 
     assert!(service.assign(grant.clone()).await.expect("grant").applied);
+    assert_eq!(rustok_rbac::read_permission_invalidation_generation(&db).await.unwrap(), 1);
     assert!(!service.assign(grant).await.expect("exact retry").applied);
+    assert_eq!(rustok_rbac::read_permission_invalidation_generation(&db).await.unwrap(), 1);
     assert!(
         service
             .assign(command(
@@ -272,6 +276,7 @@ async fn only_state_changes_publish_artifact_permission_events() {
             .applied
     );
     assert_eq!(event_grants(&db).await, vec![true]);
+    assert_eq!(rustok_rbac::read_permission_invalidation_generation(&db).await.unwrap(), 1);
     let persisted_scope: String = db
         .query_one_raw(Statement::from_string(
             db.get_database_backend(),
@@ -330,6 +335,7 @@ async fn only_state_changes_publish_artifact_permission_events() {
             .applied
     );
     assert_eq!(event_grants(&db).await, vec![true, false]);
+    assert_eq!(rustok_rbac::read_permission_invalidation_generation(&db).await.unwrap(), 2);
 }
 
 #[tokio::test]
@@ -466,5 +472,33 @@ async fn publication_failure_rolls_back_grant_and_idempotency_receipt() {
         table_count(&db, "rbac_artifact_role_permission_operations").await,
         0
     );
+    assert_eq!(table_count(&db, "rbac_artifact_permission_events").await, 0);
+    assert_eq!(rustok_rbac::read_permission_invalidation_generation(&db).await.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn missing_generation_rolls_back_artifact_grant_and_receipt() {
+    let db = setup_database().await;
+    let tenant_id = Uuid::new_v4();
+    let role_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let installation_id = Uuid::new_v4();
+    let permission_key = "sample.events.handle";
+    insert_role_and_actor(&db, tenant_id, role_id, actor_id).await;
+    insert_definition(&db, &format!("tenant:{tenant_id}"), installation_id, permission_key).await;
+    db.execute_unprepared("DELETE FROM rbac_invalidation_state").await.unwrap();
+    let service = RbacArtifactPermissionAssignmentService::new(
+        db.clone(),
+        Arc::new(SqliteArtifactPermissionEventPublisher { fail: false }),
+    );
+    assert!(matches!(
+        service.assign(command(
+            tenant_id, role_id, ArtifactPermissionAssignmentScope::Tenant,
+            installation_id, permission_key, actor_id, true, "missing-generation",
+        )).await,
+        Err(ArtifactPermissionAssignmentError::Database(_))
+    ));
+    assert_eq!(table_count(&db, "rbac_artifact_role_permissions").await, 0);
+    assert_eq!(table_count(&db, "rbac_artifact_role_permission_operations").await, 0);
     assert_eq!(table_count(&db, "rbac_artifact_permission_events").await, 0);
 }

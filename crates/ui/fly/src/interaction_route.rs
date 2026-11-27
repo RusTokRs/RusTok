@@ -1,7 +1,8 @@
 use crate::{
     FLY_PAGE_METADATA_FIELD, FlyError, FlyResult, LOCALIZED_VALUES_FIELD, LocalizedPageRouteEntry,
-    ProjectDocument, RuntimeLocaleSelection, localized_page_route_index, normalize_slug,
+    ProjectDocument, RuntimeLocaleSelection, localized_page_route_index,
     localized_route::match_route_entry,
+    normalize_slug,
     runtime_locale::{duplicate_locale_key, invalid_locale_key, select_translation},
 };
 use serde_json::Value;
@@ -82,7 +83,9 @@ impl InteractionRouteCatalog {
         let selected = match raw {
             Value::String(value) => Some(value.as_str()),
             Value::Object(wrapper) => {
-                let Some(values) = wrapper.get(LOCALIZED_VALUES_FIELD).and_then(Value::as_object)
+                let Some(values) = wrapper
+                    .get(LOCALIZED_VALUES_FIELD)
+                    .and_then(Value::as_object)
                 else {
                     return Ok(None);
                 };
@@ -101,7 +104,8 @@ impl InteractionRouteCatalog {
             }
             _ => None,
         };
-        let Some(slug) = selected.map(|value| normalize_slug(value.to_string()))
+        let Some(slug) = selected
+            .map(|value| normalize_slug(value.to_string()))
             .filter(|slug| !slug.is_empty())
         else {
             return Ok(None);
@@ -244,15 +248,23 @@ mod tests {
             catalog.page_index("missing"),
             Err(PageTargetError::Missing(_))
         ));
-        assert!(crate::validate_internal_page_links(&document).iter().any(|diagnostic| {
-            diagnostic.code == "internal_page_link_target_ambiguous"
-                && diagnostic.severity == crate::ValidationSeverity::Error
-        }));
-        assert!(crate::validate_component_actions(&document).iter().any(|diagnostic| {
-            diagnostic.code == "action_definition_invalid"
-                && diagnostic.severity == crate::ValidationSeverity::Error
-                && diagnostic.message.contains("ambiguous")
-        }));
+        assert!(
+            crate::validate_internal_page_links(&document)
+                .iter()
+                .any(|diagnostic| {
+                    diagnostic.code == "internal_page_link_target_ambiguous"
+                        && diagnostic.severity == crate::ValidationSeverity::Error
+                })
+        );
+        assert!(
+            crate::validate_component_actions(&document)
+                .iter()
+                .any(|diagnostic| {
+                    diagnostic.code == "action_definition_invalid"
+                        && diagnostic.severity == crate::ValidationSeverity::Error
+                        && diagnostic.message.contains("ambiguous")
+                })
+        );
         let materialized = crate::materialize_project_with_runtime_context(&document, &json!({}));
         assert_eq!(materialized.unresolved_internal_links, 1);
         assert_eq!(materialized.unresolved_actions, 1);
@@ -260,9 +272,16 @@ mod tests {
         assert_eq!(materialized.fallback_actions, 0);
         for id in ["link", "action"] {
             let attributes = &materialized.document.component(id).unwrap().attributes;
-            assert!(!attributes.keys().any(|name| name.eq_ignore_ascii_case("href")));
+            assert!(
+                !attributes
+                    .keys()
+                    .any(|name| name.eq_ignore_ascii_case("href"))
+            );
             assert_eq!(document.component(id).unwrap().attributes["href"], "/stale");
-            assert_eq!(document.component(id).unwrap().attributes["HREF"], "/stale-uppercase");
+            assert_eq!(
+                document.component(id).unwrap().attributes["HREF"],
+                "/stale-uppercase"
+            );
         }
     }
 
@@ -313,11 +332,19 @@ mod tests {
             (&full.document, "link"),
             (&full.document, "action"),
         ] {
-            assert!(!result.component(id).unwrap().attributes.contains_key("href"));
+            assert!(
+                !result
+                    .component(id)
+                    .unwrap()
+                    .attributes
+                    .contains_key("href")
+            );
         }
 
-        document.project_mut().pages[1].extensions
-            .get_mut(FLY_PAGE_METADATA_FIELD).unwrap()["slug"]["$fallback"] = json!("fr");
+        document.project_mut().pages[1]
+            .extensions
+            .get_mut(FLY_PAGE_METADATA_FIELD)
+            .unwrap()["slug"]["$fallback"] = json!("fr");
         let full = crate::materialize_project_with_runtime_context(&document, &context);
         let links = crate::materialize_internal_page_links(&document, &context);
         let actions = crate::materialize_component_actions(&document, &context);
@@ -334,9 +361,13 @@ mod tests {
 
         // A multi-language slug with no matching locale or configured fallback
         // must not silently select the first translation.
-        document.project_mut().pages[1].extensions
-            .get_mut(FLY_PAGE_METADATA_FIELD).unwrap()["slug"]
-            .as_object_mut().unwrap().remove("$fallback");
+        document.project_mut().pages[1]
+            .extensions
+            .get_mut(FLY_PAGE_METADATA_FIELD)
+            .unwrap()["slug"]
+            .as_object_mut()
+            .unwrap()
+            .remove("$fallback");
         let full = crate::materialize_project_with_runtime_context(&document, &context);
         assert_eq!(full.fallback_internal_links, 1);
         assert_eq!(full.fallback_actions, 1);
@@ -369,16 +400,25 @@ mod tests {
         for slug in ["first", "second", "third"] {
             assert!(crate::resolve_localized_page_route(&document, slug, &context).is_err());
         }
-        assert!(crate::validate_runtime_extensions(&document).iter().any(|diagnostic| {
-            diagnostic.code == "localized_metadata_locale_ambiguous"
-        }));
+        assert!(
+            crate::validate_runtime_extensions(&document)
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "localized_metadata_locale_ambiguous" })
+        );
         let full = crate::materialize_project_with_runtime_context(&document, &context);
         assert_eq!(full.unresolved_internal_links, 1);
         assert_eq!(full.unresolved_actions, 1);
         assert_eq!(full.fallback_internal_links, 0);
         assert_eq!(full.fallback_actions, 0);
         for id in ["link", "action"] {
-            assert!(!full.document.component(id).unwrap().attributes.contains_key("href"));
+            assert!(
+                !full
+                    .document
+                    .component(id)
+                    .unwrap()
+                    .attributes
+                    .contains_key("href")
+            );
         }
     }
 
@@ -409,17 +449,28 @@ mod tests {
         for slug in ["valid", "invalid"] {
             assert!(crate::resolve_localized_page_route(&document, slug, &context).is_err());
         }
-        assert!(crate::validate_project_locale_policy(&document).iter().any(|diagnostic| {
-            diagnostic.code == "localized_metadata_locale_invalid"
-                && diagnostic.severity == crate::ValidationSeverity::Error
-        }));
+        assert!(
+            crate::validate_project_locale_policy(&document)
+                .iter()
+                .any(|diagnostic| {
+                    diagnostic.code == "localized_metadata_locale_invalid"
+                        && diagnostic.severity == crate::ValidationSeverity::Error
+                })
+        );
         let full = crate::materialize_project_with_runtime_context(&document, &context);
         assert_eq!(full.unresolved_internal_links, 1);
         assert_eq!(full.unresolved_actions, 1);
         assert_eq!(full.fallback_internal_links, 0);
         assert_eq!(full.fallback_actions, 0);
         for id in ["link", "action"] {
-            assert!(!full.document.component(id).unwrap().attributes.contains_key("href"));
+            assert!(
+                !full
+                    .document
+                    .component(id)
+                    .unwrap()
+                    .attributes
+                    .contains_key("href")
+            );
         }
     }
 

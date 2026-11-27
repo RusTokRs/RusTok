@@ -18,10 +18,17 @@ impl Model {
     /// Exact recovery identity; callers separately apply active-status and
     /// purpose-specific requirements (including verification idempotency).
     pub(crate) fn matches_recovery_identity(
-        &self, tenant_id: Uuid, user_id: Uuid, email: &str, revision: i64,
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        email: &str,
+        revision: i64,
     ) -> bool {
-        self.tenant_id == tenant_id && self.id == user_id
-            && self.email == email && self.recovery_revision == revision && revision >= 0
+        self.tenant_id == tenant_id
+            && self.id == user_id
+            && self.email == email
+            && self.recovery_revision == revision
+            && revision >= 0
     }
 
     /// Fail closed for delegated OAuth credentials minted at or before the last
@@ -63,7 +70,9 @@ impl ActiveModel {
     /// A trusted password replacement starts a new credential epoch and clears
     /// failures attributable to the old password. Do not use for login rehash.
     pub(crate) fn set_replacement_password(
-        &mut self, password_hash: String, now: chrono::DateTime<chrono::Utc>,
+        &mut self,
+        password_hash: String,
+        now: chrono::DateTime<chrono::Utc>,
     ) {
         use sea_orm::ActiveValue::Set;
         self.password_hash = Set(password_hash);

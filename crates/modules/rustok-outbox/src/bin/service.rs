@@ -56,12 +56,10 @@ async fn open_database(value: &str) -> Result<DatabaseConnection> {
         .connect_timeout(CONNECT_TIMEOUT)
         .acquire_timeout(CONNECT_TIMEOUT)
         .sqlx_logging(false);
-    let db = Database::connect(options)
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "Outbox PostgreSQL connection failed");
-            anyhow!("Outbox PostgreSQL connection failed")
-        })?;
+    let db = Database::connect(options).await.map_err(|error| {
+        tracing::error!(%error, "Outbox PostgreSQL connection failed");
+        anyhow!("Outbox PostgreSQL connection failed")
+    })?;
     // Probe schema readability without loading a full event payload.
     SysEvents::find()
         .select_only()

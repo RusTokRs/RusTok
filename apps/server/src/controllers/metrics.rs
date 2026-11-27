@@ -17,8 +17,8 @@ use crate::services::outbox_retention_worker::{
     OutboxRetentionSupervisorMetricsSnapshot, outbox_retention_supervisor_metrics_snapshot,
 };
 use chrono::Utc;
-use rustok_outbox::RelayMetricsSnapshot;
 use rustok_api::HostAuthorityContext;
+use rustok_outbox::RelayMetricsSnapshot;
 use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity, SysEventStatus};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
@@ -115,8 +115,11 @@ async fn render_jwt_operational_metrics(ctx: &ServerRuntimeContext) -> String {
         return "# TYPE rustok_auth_jwt_collection_status gauge\nrustok_auth_jwt_collection_status 0\n".to_string();
     };
     let cluster = match tokio::time::timeout(
-        std::time::Duration::from_secs(2), metrics.cluster_snapshot(),
-    ).await {
+        std::time::Duration::from_secs(2),
+        metrics.cluster_snapshot(),
+    )
+    .await
+    {
         Ok(Ok(snapshot)) => Some(snapshot),
         Ok(Err(_)) | Err(_) => {
             warn!("failed to collect JWT operational metrics");

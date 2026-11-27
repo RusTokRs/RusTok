@@ -11,8 +11,8 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::entities::{
-    ExecutionStatus, Workflow, WorkflowExecutionActiveModel, WorkflowExecutionEntity, WorkflowStatus, workflow,
-    workflow_cron_cursor as cursor, workflow_cron_firing as firing,
+    ExecutionStatus, Workflow, WorkflowExecutionActiveModel, WorkflowExecutionEntity,
+    WorkflowStatus, workflow, workflow_cron_cursor as cursor, workflow_cron_firing as firing,
     workflow_cron_review as review, workflow_execution,
 };
 use crate::error::{WorkflowError, WorkflowResult};
@@ -44,7 +44,9 @@ fn seed_cursor(workflow: &Workflow, now: DateTime<Utc>) -> DateTime<Utc> {
     // A wall-clock-skewed node may persist updated_at in the future.
     // Keep the definition revision monotonic, but never seed a due-slot
     // cursor beyond now: doing so would silently freeze the schedule.
-    workflow.updated_at.with_timezone(&Utc)
+    workflow
+        .updated_at
+        .with_timezone(&Utc)
         .max(workflow.created_at.with_timezone(&Utc))
         .min(now)
         .max(now - ChronoDuration::hours(CATCH_UP_HORIZON_HOURS))
@@ -52,11 +54,7 @@ fn seed_cursor(workflow: &Workflow, now: DateTime<Utc>) -> DateTime<Utc> {
 
 /// Pure schedule expansion. Unlike the legacy one-second comparison, this
 /// returns slots missed during process downtime (bounded per pass).
-fn due_slots(
-    schedule: &Schedule,
-    after: DateTime<Utc>,
-    now: DateTime<Utc>,
-) -> Vec<DateTime<Utc>> {
+fn due_slots(schedule: &Schedule, after: DateTime<Utc>, now: DateTime<Utc>) -> Vec<DateTime<Utc>> {
     schedule
         .after(&after)
         .take(MAX_SLOTS_PER_WORKFLOW_PASS)
@@ -85,20 +83,28 @@ pub(super) async fn enqueue_due_slots(
         generation: Set(0),
         updated_at: Set(at(now)),
     })
-    .on_conflict(OnConflict::column(cursor::Column::WorkflowId).do_nothing().to_owned())
+    .on_conflict(
+        OnConflict::column(cursor::Column::WorkflowId)
+            .do_nothing()
+            .to_owned(),
+    )
     .exec_without_returning(&transaction)
     .await?;
 
     let stored = cursor::Entity::find_by_id(workflow.id)
         .one(&transaction)
         .await?
-        .ok_or_else(|| WorkflowError::InvalidTriggerConfig(
-            "cron cursor disappeared during insertion".into()
-        ))?;
+        .ok_or_else(|| {
+            WorkflowError::InvalidTriggerConfig("cron cursor disappeared during insertion".into())
+        })?;
     // Any workflow edit changes its revision. A new definition starts at its
     // own update time, not at the previous expression's schedule cursor.
     let changed = stored.schedule_revision != revision;
-    let after = if changed { seed } else { stored.last_enqueued_at.with_timezone(&Utc) };
+    let after = if changed {
+        seed
+    } else {
+        stored.last_enqueued_at.with_timezone(&Utc)
+    };
     let slots = due_slots(schedule, after, now);
     if slots.is_empty() && !changed {
         transaction.commit().await?;
@@ -111,7 +117,10 @@ pub(super) async fn enqueue_due_slots(
     })?;
 
     let affected = cursor::Entity::update_many()
-        .col_expr(cursor::Column::ScheduleRevision, Expr::value(revision.clone()))
+        .col_expr(
+            cursor::Column::ScheduleRevision,
+            Expr::value(revision.clone()),
+        )
         .col_expr(cursor::Column::LastEnqueuedAt, Expr::value(at(last)))
         .col_expr(cursor::Column::UpdatedAt, Expr::value(at(now)))
         .col_expr(cursor::Column::Generation, Expr::value(next_generation))
@@ -146,7 +155,9 @@ pub(super) async fn enqueue_due_slots(
                 firing::Column::WorkflowId,
                 firing::Column::ScheduleRevision,
                 firing::Column::ScheduledAt,
-            ]).do_nothing().to_owned()
+            ])
+            .do_nothing()
+            .to_owned(),
         )
         .exec_without_returning(&transaction)
         .await?;
@@ -193,7 +204,9 @@ pub(super) async fn claim_firing(
         .col_expr(firing::Column::ClaimedAt, Expr::value(at(now)))
         .filter(firing::Column::Id.eq(item.id))
         .filter(firing::Column::Status.eq(firing::PENDING))
-        .exec(db).await?.rows_affected;
+        .exec(db)
+        .await?
+        .rows_affected;
     Ok((affected == 1).then_some(token))
 }
 
@@ -210,12 +223,17 @@ async fn settle_claim(
     let affected = firing::Entity::update_many()
         .col_expr(firing::Column::Status, Expr::value(status))
         .col_expr(firing::Column::ExecutionId, Expr::value(execution_id))
-        .col_expr(firing::Column::Reason, Expr::value(reason.map(str::to_owned)))
+        .col_expr(
+            firing::Column::Reason,
+            Expr::value(reason.map(str::to_owned)),
+        )
         .col_expr(firing::Column::CompletedAt, Expr::value(at(Utc::now())))
         .filter(firing::Column::Id.eq(item.id))
         .filter(firing::Column::Status.eq(firing::RUNNING))
         .filter(firing::Column::AttemptToken.eq(token))
-        .exec(db).await?.rows_affected;
+        .exec(db)
+        .await?
+        .rows_affected;
     Ok(affected == 1)
 }
 
@@ -233,7 +251,9 @@ async fn heartbeat_claim(
         .filter(firing::Column::TenantId.eq(item.tenant_id))
         .filter(firing::Column::Status.eq(firing::RUNNING))
         .filter(firing::Column::AttemptToken.eq(token))
-        .exec(db).await?.rows_affected;
+        .exec(db)
+        .await?
+        .rows_affected;
     Ok(affected == 1)
 }
 
@@ -249,7 +269,9 @@ async fn owns_current_claim(
     Ok(firing::Entity::find_by_id(item.id)
         .filter(firing::Column::Status.eq(firing::RUNNING))
         .filter(firing::Column::AttemptToken.eq(token))
-        .one(db).await?.is_some())
+        .one(db)
+        .await?
+        .is_some())
 }
 
 /// Atomically reserve the execution journal in the same transaction that
@@ -267,27 +289,39 @@ async fn reserve_execution_for_claim(
     // same workflow row before writing the definition. The revision check
     // must be inside the claim+journal transaction: the earlier read-only
     // preparation check cannot fence a concurrent step graph mutation.
-    let live_workflow =
-        super::workflow_service::lock_workflow_for_update(
-            &transaction, item.tenant_id, item.workflow_id,
-        ).await?;
-    let still_eligible =
-        live_workflow.status == WorkflowStatus::Active
-            && live_workflow.trigger_config.get("type").and_then(|v| v.as_str()) == Some("cron")
-            && live_workflow.trigger_config.get("expression").and_then(|v| v.as_str())
-                .is_some_and(|expression|
-                    schedule_revision(&live_workflow, expression) == item.schedule_revision
-                );
+    let live_workflow = super::workflow_service::lock_workflow_for_update(
+        &transaction,
+        item.tenant_id,
+        item.workflow_id,
+    )
+    .await?;
+    let still_eligible = live_workflow.status == WorkflowStatus::Active
+        && live_workflow
+            .trigger_config
+            .get("type")
+            .and_then(|v| v.as_str())
+            == Some("cron")
+        && live_workflow
+            .trigger_config
+            .get("expression")
+            .and_then(|v| v.as_str())
+            .is_some_and(|expression| {
+                schedule_revision(&live_workflow, expression) == item.schedule_revision
+            });
     if !still_eligible {
         firing::Entity::update_many()
             .col_expr(firing::Column::Status, Expr::value(firing::SKIPPED))
-            .col_expr(firing::Column::Reason, Expr::value("workflow_changed_before_execution"))
+            .col_expr(
+                firing::Column::Reason,
+                Expr::value("workflow_changed_before_execution"),
+            )
             .col_expr(firing::Column::CompletedAt, Expr::value(at(Utc::now())))
             .filter(firing::Column::Id.eq(item.id))
             .filter(firing::Column::TenantId.eq(item.tenant_id))
             .filter(firing::Column::Status.eq(firing::RUNNING))
             .filter(firing::Column::AttemptToken.eq(token))
-            .exec(&transaction).await?;
+            .exec(&transaction)
+            .await?;
         transaction.commit().await?;
         return Ok(None);
     }
@@ -300,7 +334,9 @@ async fn reserve_execution_for_claim(
         .filter(firing::Column::TenantId.eq(item.tenant_id))
         .filter(firing::Column::Status.eq(firing::RUNNING))
         .filter(firing::Column::AttemptToken.eq(token))
-        .exec(&transaction).await?.rows_affected;
+        .exec(&transaction)
+        .await?
+        .rows_affected;
     if affected != 1 {
         return Ok(None);
     }
@@ -309,7 +345,8 @@ async fn reserve_execution_for_claim(
         .filter(workflow_execution::Column::WorkflowId.eq(item.workflow_id))
         .filter(workflow_execution::Column::TenantId.eq(item.tenant_id))
         .filter(workflow_execution::Column::TriggerEventId.eq(item.id))
-        .one(&transaction).await?;
+        .one(&transaction)
+        .await?;
     if prior.is_some() {
         return Err(WorkflowError::CronReconciliationConflict(item.id));
     }
@@ -324,7 +361,9 @@ async fn reserve_execution_for_claim(
         error: Set(None),
         started_at: Set(at(Utc::now())),
         completed_at: Set(None),
-    }.insert(&transaction).await?;
+    }
+    .insert(&transaction)
+    .await?;
     transaction.commit().await?;
     Ok(Some(execution_id))
 }
@@ -347,32 +386,67 @@ pub(super) async fn execute_claim(
         wf.tenant_id == item.tenant_id
             && wf.status == WorkflowStatus::Active
             && wf.trigger_config.get("type").and_then(|v| v.as_str()) == Some("cron")
-            && wf.trigger_config.get("expression").and_then(|v| v.as_str())
-                .is_some_and(|expression| schedule_revision(wf, expression) == item.schedule_revision)
+            && wf
+                .trigger_config
+                .get("expression")
+                .and_then(|v| v.as_str())
+                .is_some_and(|expression| {
+                    schedule_revision(wf, expression) == item.schedule_revision
+                })
     });
     if !eligible {
-        settle_claim(db, &item, token, firing::SKIPPED, None, Some("workflow_definition_changed")).await?;
+        settle_claim(
+            db,
+            &item,
+            token,
+            firing::SKIPPED,
+            None,
+            Some("workflow_definition_changed"),
+        )
+        .await?;
         return Ok(());
     }
 
     let steps = match service.load_steps(item.workflow_id).await {
         Ok(steps) => steps,
         Err(_) => {
-            settle_claim(db, &item, token, firing::RECONCILIATION_REQUIRED, None, Some("steps_unavailable")).await?;
+            settle_claim(
+                db,
+                &item,
+                token,
+                firing::RECONCILIATION_REQUIRED,
+                None,
+                Some("steps_unavailable"),
+            )
+            .await?;
             return Ok(());
         }
     };
     // A configuration edit may race the step query. Do not apply a firing
     // against steps from an unverified newer definition.
     let current_after_load = workflow::Entity::find_by_id(item.workflow_id)
-        .one(db).await?;
+        .one(db)
+        .await?;
     if current_after_load.as_ref().is_none_or(|wf| {
         wf.status != WorkflowStatus::Active
             || wf.tenant_id != item.tenant_id
-            || wf.trigger_config.get("expression").and_then(|v| v.as_str())
-                .is_none_or(|expression| schedule_revision(wf, expression) != item.schedule_revision)
+            || wf
+                .trigger_config
+                .get("expression")
+                .and_then(|v| v.as_str())
+                .is_none_or(|expression| {
+                    schedule_revision(wf, expression) != item.schedule_revision
+                })
     }) {
-        settle_claim(db, &item, token, firing::SKIPPED, None, Some("workflow_changed_during_preparation")).await?;
+        settle_claim(
+            db,
+            &item,
+            token,
+            firing::SKIPPED,
+            None,
+            Some("workflow_changed_during_preparation"),
+        )
+        .await?;
         return Ok(());
     }
 
@@ -397,9 +471,7 @@ pub(super) async fn execute_claim(
     // Keep an accepted operation alive while the engine is processing an
     // external provider call. Polling a pinned future in the select preserves
     // it across heartbeats; shutdown does not cancel the owner operation.
-    let execution = engine.execute_preclaimed_cron(
-        execution_id, item.id, token, steps, context,
-    );
+    let execution = engine.execute_preclaimed_cron(execution_id, item.id, token, steps, context);
     tokio::pin!(execution);
     let mut heartbeat = tokio::time::interval_at(
         tokio::time::Instant::now() + tokio::time::Duration::from_secs(30),
@@ -433,15 +505,19 @@ pub(super) async fn execute_claim(
         .filter(workflow_execution::Column::WorkflowId.eq(item.workflow_id))
         .filter(workflow_execution::Column::TenantId.eq(item.tenant_id))
         .filter(workflow_execution::Column::TriggerEventId.eq(item.id))
-        .one(db).await?;
+        .one(db)
+        .await?;
     // The journal is the authority. If the engine returned a transport error
     // after writing a terminal receipt, do not overwrite that known result
     // with an ambiguous firing status.
     let (next_status, reason) = match recorded.as_ref() {
         Some(execution)
             if execution.id == execution_id
-                && matches!(execution.status,
-                    ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::TimedOut
+                && matches!(
+                    execution.status,
+                    ExecutionStatus::Completed
+                        | ExecutionStatus::Failed
+                        | ExecutionStatus::TimedOut
                 ) =>
         {
             if let Err(error) = &result {
@@ -459,11 +535,23 @@ pub(super) async fn execute_claim(
                 },
             )
         }
-        _ => (firing::RECONCILIATION_REQUIRED, "execution_outcome_ambiguous"),
+        _ => (
+            firing::RECONCILIATION_REQUIRED,
+            "execution_outcome_ambiguous",
+        ),
     };
     // The reservation wrote this ID before any external effect. Keep the ID
     // even if a subsequent journal lookup fails, so operators can investigate.
-    if !settle_claim(db, &item, token, next_status, Some(execution_id), Some(reason)).await? {
+    if !settle_claim(
+        db,
+        &item,
+        token,
+        next_status,
+        Some(execution_id),
+        Some(reason),
+    )
+    .await?
+    {
         tracing::warn!(
             firing_id = %item.id,
             "Cron firing was already fenced by a concurrent recovery decision"
@@ -481,17 +569,27 @@ async fn quarantine_stale_candidate(
     cutoff: DateTime<Utc>,
     now: DateTime<Utc>,
 ) -> WorkflowResult<bool> {
-    let Some(token) = item.attempt_token else { return Ok(false) };
+    let Some(token) = item.attempt_token else {
+        return Ok(false);
+    };
     let affected = firing::Entity::update_many()
-        .col_expr(firing::Column::Status, Expr::value(firing::RECONCILIATION_REQUIRED))
-        .col_expr(firing::Column::Reason, Expr::value("stale_attempt_requires_reconciliation"))
+        .col_expr(
+            firing::Column::Status,
+            Expr::value(firing::RECONCILIATION_REQUIRED),
+        )
+        .col_expr(
+            firing::Column::Reason,
+            Expr::value("stale_attempt_requires_reconciliation"),
+        )
         .col_expr(firing::Column::CompletedAt, Expr::value(at(now)))
         .filter(firing::Column::Id.eq(item.id))
         .filter(firing::Column::TenantId.eq(item.tenant_id))
         .filter(firing::Column::Status.eq(firing::RUNNING))
         .filter(firing::Column::AttemptToken.eq(token))
         .filter(firing::Column::ClaimedAt.lt(at(cutoff)))
-        .exec(db).await?.rows_affected;
+        .exec(db)
+        .await?
+        .rows_affected;
     Ok(affected == 1)
 }
 
@@ -507,7 +605,8 @@ pub(super) async fn quarantine_stale_attempts(
         .filter(firing::Column::ClaimedAt.lt(at(cutoff)))
         .order_by_asc(firing::Column::ClaimedAt)
         .limit(STALE_SCAN_LIMIT)
-        .all(db).await?;
+        .all(db)
+        .await?;
     let mut quarantined = 0;
     for item in stale {
         if quarantine_stale_candidate(db, &item, cutoff, now).await? {
@@ -520,15 +619,20 @@ pub(super) async fn quarantine_stale_attempts(
 /// Read-only owner projection for an authenticated tenant operator surface.
 /// It intentionally does not provide a blind "reset to pending" operation.
 pub async fn reconciliation_required_for_tenant(
-    db: &DatabaseConnection, tenant_id: Uuid, limit: u64,
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    limit: u64,
 ) -> WorkflowResult<Vec<firing::Model>> {
-    if tenant_id.is_nil() { return Ok(Vec::new()); }
+    if tenant_id.is_nil() {
+        return Ok(Vec::new());
+    }
     Ok(firing::Entity::find()
         .filter(firing::Column::TenantId.eq(tenant_id))
         .filter(firing::Column::Status.eq(firing::RECONCILIATION_REQUIRED))
         .order_by_asc(firing::Column::ScheduledAt)
         .limit(limit.min(100))
-        .all(db).await?)
+        .all(db)
+        .await?)
 }
 
 /// Read-only visibility for legacy or event-driven executions without a
@@ -551,7 +655,8 @@ pub async fn unconfirmed_executions_for_tenant(
         .order_by_asc(workflow_execution::Column::StartedAt)
         .order_by_asc(workflow_execution::Column::Id)
         .limit(limit.min(100))
-        .all(db).await?)
+        .all(db)
+        .await?)
 }
 
 /// All decisions require a privileged transport to supply the authenticated
@@ -585,8 +690,10 @@ pub async fn reconcile_firing(
     prior_worker_fenced: bool,
 ) -> WorkflowResult<firing::Model> {
     let evidence = evidence.trim();
-    if tenant_id.is_nil() || actor_id.is_nil()
-        || evidence.len() < 32 || evidence.len() > 2_048
+    if tenant_id.is_nil()
+        || actor_id.is_nil()
+        || evidence.len() < 32
+        || evidence.len() > 2_048
         || evidence.contains('\0')
     {
         return Err(WorkflowError::InvalidCronReconciliationEvidence);
@@ -594,31 +701,36 @@ pub async fn reconcile_firing(
     let txn = db.begin().await?;
     let item = firing::Entity::find_by_id(firing_id)
         .filter(firing::Column::TenantId.eq(tenant_id))
-        .one(&txn).await?
+        .one(&txn)
+        .await?
         .ok_or(WorkflowError::CronReconciliationConflict(firing_id))?;
     if item.status != firing::RECONCILIATION_REQUIRED {
         return Err(WorkflowError::CronReconciliationConflict(firing_id));
     }
-    let previous_token = item.attempt_token.ok_or(
-        WorkflowError::CronReconciliationConflict(firing_id)
-    )?;
+    let previous_token = item
+        .attempt_token
+        .ok_or(WorkflowError::CronReconciliationConflict(firing_id))?;
     let existing = WorkflowExecutionEntity::find()
         .filter(workflow_execution::Column::WorkflowId.eq(item.workflow_id))
         .filter(workflow_execution::Column::TenantId.eq(tenant_id))
         .filter(workflow_execution::Column::TriggerEventId.eq(item.id))
-        .one(&txn).await?;
+        .one(&txn)
+        .await?;
 
     let (next_status, execution_id, reason) = match decision {
         CronReconciliationDecision::ConfirmTerminal => {
-            let execution = existing.ok_or(
-                WorkflowError::CronReconciliationConflict(firing_id)
-            )?;
-            if matches!(execution.status,
+            let execution = existing.ok_or(WorkflowError::CronReconciliationConflict(firing_id))?;
+            if matches!(
+                execution.status,
                 ExecutionStatus::Running | ExecutionStatus::ReconciliationRequired
             ) {
                 return Err(WorkflowError::CronReconciliationConflict(firing_id));
             }
-            (firing::COMPLETED, Some(execution.id), "operator_confirmed_terminal")
+            (
+                firing::COMPLETED,
+                Some(execution.id),
+                "operator_confirmed_terminal",
+            )
         }
         CronReconciliationDecision::ConfirmExternalCompleted
         | CronReconciliationDecision::ConfirmExternalFailed => {
@@ -628,17 +740,15 @@ pub async fn reconcile_firing(
             if !prior_worker_fenced {
                 return Err(WorkflowError::CronReconciliationConflict(firing_id));
             }
-            let execution = existing.ok_or(
-                WorkflowError::CronReconciliationConflict(firing_id)
-            )?;
-            if !matches!(execution.status,
+            let execution = existing.ok_or(WorkflowError::CronReconciliationConflict(firing_id))?;
+            if !matches!(
+                execution.status,
                 ExecutionStatus::Running | ExecutionStatus::ReconciliationRequired
             ) {
                 return Err(WorkflowError::CronReconciliationConflict(firing_id));
             }
             let completed_status = match decision {
-                CronReconciliationDecision::ConfirmExternalCompleted =>
-                    ExecutionStatus::Completed,
+                CronReconciliationDecision::ConfirmExternalCompleted => ExecutionStatus::Completed,
                 _ => ExecutionStatus::Failed,
             };
             let affected = WorkflowExecutionEntity::update_many()
@@ -662,7 +772,9 @@ pub async fn reconcile_firing(
                     ExecutionStatus::Running.to_string(),
                     ExecutionStatus::ReconciliationRequired.to_string(),
                 ]))
-                .exec(&txn).await?.rows_affected;
+                .exec(&txn)
+                .await?
+                .rows_affected;
             if affected != 1 {
                 return Err(WorkflowError::CronReconciliationConflict(firing_id));
             }
@@ -693,15 +805,25 @@ pub async fn reconcile_firing(
         .col_expr(firing::Column::ExecutionId, Expr::value(execution_id))
         .col_expr(firing::Column::Reason, Expr::value(reason))
         .col_expr(firing::Column::AttemptToken, Expr::value(None::<Uuid>))
-        .col_expr(firing::Column::ClaimedAt, Expr::value(None::<DateTime<FixedOffset>>))
-        .col_expr(firing::Column::CompletedAt, Expr::value(
-            if next_status == firing::COMPLETED { Some(at(Utc::now())) } else { None }
-        ))
+        .col_expr(
+            firing::Column::ClaimedAt,
+            Expr::value(None::<DateTime<FixedOffset>>),
+        )
+        .col_expr(
+            firing::Column::CompletedAt,
+            Expr::value(if next_status == firing::COMPLETED {
+                Some(at(Utc::now()))
+            } else {
+                None
+            }),
+        )
         .filter(firing::Column::Id.eq(firing_id))
         .filter(firing::Column::TenantId.eq(tenant_id))
         .filter(firing::Column::Status.eq(firing::RECONCILIATION_REQUIRED))
         .filter(firing::Column::AttemptToken.eq(previous_token))
-        .exec(&txn).await?.rows_affected;
+        .exec(&txn)
+        .await?
+        .rows_affected;
     if affected != 1 {
         return Err(WorkflowError::CronReconciliationConflict(firing_id));
     }
@@ -716,15 +838,19 @@ pub async fn reconcile_firing(
             CronReconciliationDecision::RequeueConfirmedUnstarted => "requeue_confirmed_unstarted",
             CronReconciliationDecision::ConfirmExternalCompleted => "confirm_external_completed",
             CronReconciliationDecision::ConfirmExternalFailed => "confirm_external_failed",
-        }.to_owned()),
+        }
+        .to_owned()),
         evidence: Set(evidence.to_owned()),
         previous_attempt_token: Set(Some(previous_token)),
         created_at: Set(at(Utc::now())),
     })
-    .exec_without_returning(&txn).await?;
+    .exec_without_returning(&txn)
+    .await?;
     txn.commit().await?;
 
-    firing::Entity::find_by_id(firing_id).one(db).await?
+    firing::Entity::find_by_id(firing_id)
+        .one(db)
+        .await?
         .ok_or(WorkflowError::CronReconciliationConflict(firing_id))
 }
 
@@ -768,7 +894,9 @@ mod tests {
     fn missed_cron_slots_are_bounded_and_reproducible() {
         use std::str::FromStr;
         let schedule = Schedule::from_str("0 * * * * *").unwrap();
-        let now = DateTime::parse_from_rfc3339("2026-11-23T12:30:00Z").unwrap().with_timezone(&Utc);
+        let now = DateTime::parse_from_rfc3339("2026-11-23T12:30:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
         let previous = now - ChronoDuration::minutes(90);
         let slots = due_slots(&schedule, previous, now);
         assert_eq!(slots.len(), MAX_SLOTS_PER_WORKFLOW_PASS);
@@ -804,22 +932,46 @@ mod tests {
             auto_disabled_at: Set(None),
             webhook_slug: Set(None),
             webhook_secret: Set(None),
-        }.insert(&db).await.unwrap();
-        let current = workflow::Entity::find_by_id(wf_id).one(&db).await.unwrap().unwrap();
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+        let current = workflow::Entity::find_by_id(wf_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
         let expression = "0 * * * * *";
         enqueue_due_slots(&db, &current, expression, &expression.parse().unwrap(), now)
-            .await.unwrap();
+            .await
+            .unwrap();
         let item = pending_firings(&db, 1).await.unwrap().remove(0);
         let token = claim_firing(&db, &item, now - ChronoDuration::minutes(15))
-            .await.unwrap().expect("first attempt owns the claim");
+            .await
+            .unwrap()
+            .expect("first attempt owns the claim");
         let previously_stale = firing::Entity::find_by_id(item.id)
-            .one(&db).await.unwrap().unwrap();
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
         assert!(heartbeat_claim(&db, &item, token).await.unwrap());
-        assert!(!quarantine_stale_candidate(
-            &db, &previously_stale,
-            now - ChronoDuration::minutes(STALE_ATTEMPT_MINUTES), now,
-        ).await.unwrap(), "a refreshed heartbeat must win over a stale scan");
-        let running = firing::Entity::find_by_id(item.id).one(&db).await.unwrap().unwrap();
+        assert!(
+            !quarantine_stale_candidate(
+                &db,
+                &previously_stale,
+                now - ChronoDuration::minutes(STALE_ATTEMPT_MINUTES),
+                now,
+            )
+            .await
+            .unwrap(),
+            "a refreshed heartbeat must win over a stale scan"
+        );
+        let running = firing::Entity::find_by_id(item.id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(running.status, firing::RUNNING);
 
         // Simulate an actually dead worker by moving the heartbeat back.
@@ -830,26 +982,68 @@ mod tests {
             )
             .filter(firing::Column::Id.eq(item.id))
             .filter(firing::Column::AttemptToken.eq(token))
-            .exec(&db).await.unwrap();
+            .exec(&db)
+            .await
+            .unwrap();
         assert_eq!(quarantine_stale_attempts(&db, now).await.unwrap(), 1);
-        assert!(pending_firings(&db, 10).await.unwrap().iter().all(|row| row.id != item.id));
+        assert!(
+            pending_firings(&db, 10)
+                .await
+                .unwrap()
+                .iter()
+                .all(|row| row.id != item.id)
+        );
 
         let actor_id = Uuid::new_v4();
         let evidence = "Process was stopped and no execution journal entry was created";
-        assert!(reconcile_firing(&db, tenant_id, item.id, actor_id,
-            CronReconciliationDecision::RequeueConfirmedUnstarted, evidence, false,
-        ).await.is_err(), "time expiry alone cannot requeue uncertain work");
-        assert!(reconcile_firing(&db, Uuid::new_v4(), item.id, actor_id,
-            CronReconciliationDecision::RequeueConfirmedUnstarted, evidence, true,
-        ).await.is_err(), "another tenant cannot reconcile this firing");
+        assert!(
+            reconcile_firing(
+                &db,
+                tenant_id,
+                item.id,
+                actor_id,
+                CronReconciliationDecision::RequeueConfirmedUnstarted,
+                evidence,
+                false,
+            )
+            .await
+            .is_err(),
+            "time expiry alone cannot requeue uncertain work"
+        );
+        assert!(
+            reconcile_firing(
+                &db,
+                Uuid::new_v4(),
+                item.id,
+                actor_id,
+                CronReconciliationDecision::RequeueConfirmedUnstarted,
+                evidence,
+                true,
+            )
+            .await
+            .is_err(),
+            "another tenant cannot reconcile this firing"
+        );
 
-        let requeued = reconcile_firing(&db, tenant_id, item.id, actor_id,
-            CronReconciliationDecision::RequeueConfirmedUnstarted, evidence, true,
-        ).await.unwrap();
+        let requeued = reconcile_firing(
+            &db,
+            tenant_id,
+            item.id,
+            actor_id,
+            CronReconciliationDecision::RequeueConfirmedUnstarted,
+            evidence,
+            true,
+        )
+        .await
+        .unwrap();
         assert_eq!(requeued.status, firing::PENDING);
         assert!(!owns_current_claim(&db, &item, token).await.unwrap());
-        assert!(!settle_claim(&db, &item, token, firing::COMPLETED, None, Some("stale"))
-            .await.unwrap(), "old attempt cannot acknowledge a new admission");
+        assert!(
+            !settle_claim(&db, &item, token, firing::COMPLETED, None, Some("stale"))
+                .await
+                .unwrap(),
+            "old attempt cannot acknowledge a new admission"
+        );
         let next_token = claim_firing(&db, &requeued, now).await.unwrap().unwrap();
         assert_ne!(next_token, token);
         let audit = review::Entity::find().all(&db).await.unwrap();
@@ -871,19 +1065,49 @@ mod tests {
             error: Set(None),
             started_at: Set(at(now)),
             completed_at: Set(Some(at(now))),
-        }.insert(&db).await.unwrap();
+        }
+        .insert(&db)
+        .await
+        .unwrap();
 
-        assert!(settle_claim(
-            &db, &requeued, next_token, firing::RECONCILIATION_REQUIRED,
-            Some(execution_id), Some("acknowledgement_lost"),
-        ).await.unwrap());
-        assert!(reconcile_firing(&db, tenant_id, item.id, actor_id,
-            CronReconciliationDecision::RequeueConfirmedUnstarted, evidence, true,
-        ).await.is_err(), "a started execution must never be blindly requeued");
+        assert!(
+            settle_claim(
+                &db,
+                &requeued,
+                next_token,
+                firing::RECONCILIATION_REQUIRED,
+                Some(execution_id),
+                Some("acknowledgement_lost"),
+            )
+            .await
+            .unwrap()
+        );
+        assert!(
+            reconcile_firing(
+                &db,
+                tenant_id,
+                item.id,
+                actor_id,
+                CronReconciliationDecision::RequeueConfirmedUnstarted,
+                evidence,
+                true,
+            )
+            .await
+            .is_err(),
+            "a started execution must never be blindly requeued"
+        );
 
-        let completed = reconcile_firing(&db, tenant_id, item.id, actor_id,
-            CronReconciliationDecision::ConfirmTerminal, evidence, false,
-        ).await.unwrap();
+        let completed = reconcile_firing(
+            &db,
+            tenant_id,
+            item.id,
+            actor_id,
+            CronReconciliationDecision::ConfirmTerminal,
+            evidence,
+            false,
+        )
+        .await
+        .unwrap();
         assert_eq!(completed.status, firing::COMPLETED);
         assert_eq!(completed.execution_id, Some(execution_id));
         assert!(claim_firing(&db, &completed, now).await.unwrap().is_none());
@@ -901,29 +1125,40 @@ mod tests {
         let wf_id = Uuid::new_v4();
         let tenant_id = Uuid::new_v4();
         let wf = workflow::ActiveModel {
-            id: Set(wf_id), tenant_id: Set(tenant_id),
-            name: Set("Durable cron".to_string()), description: Set(None),
+            id: Set(wf_id),
+            tenant_id: Set(tenant_id),
+            name: Set("Durable cron".to_string()),
+            description: Set(None),
             status: Set(WorkflowStatus::Active),
             trigger_config: Set(serde_json::json!({"type":"cron","expression":"0 * * * * *"})),
-            created_by: Set(None), created_at: Set(at(now - ChronoDuration::minutes(5))),
+            created_by: Set(None),
+            created_at: Set(at(now - ChronoDuration::minutes(5))),
             updated_at: Set(at(now - ChronoDuration::minutes(5))),
-            failure_count: Set(0), auto_disabled_at: Set(None),
-            webhook_slug: Set(None), webhook_secret: Set(None),
+            failure_count: Set(0),
+            auto_disabled_at: Set(None),
+            webhook_slug: Set(None),
+            webhook_secret: Set(None),
         };
         wf.insert(&db).await.unwrap();
-        let record = workflow::Entity::find_by_id(wf_id).one(&db).await.unwrap().unwrap();
+        let record = workflow::Entity::find_by_id(wf_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
         let schedule = "0 * * * * *".parse::<Schedule>().unwrap();
-        let _ = enqueue_due_slots(&db, &record, "0 * * * * *", &schedule, now).await.unwrap();
-        let _ = enqueue_due_slots(&db, &record, "0 * * * * *", &schedule, now).await.unwrap();
+        let _ = enqueue_due_slots(&db, &record, "0 * * * * *", &schedule, now)
+            .await
+            .unwrap();
+        let _ = enqueue_due_slots(&db, &record, "0 * * * * *", &schedule, now)
+            .await
+            .unwrap();
         let pending = pending_firings(&db, 32).await.unwrap();
         assert_eq!(pending.len(), 5);
         let first = &pending[0];
         // Two contenders attempt to claim the same durable slot. Only one
         // process gets an attempt token even when both selected the same row.
-        let (first_claim, second_claim) = tokio::join!(
-            claim_firing(&db, first, now),
-            claim_firing(&db, first, now),
-        );
+        let (first_claim, second_claim) =
+            tokio::join!(claim_firing(&db, first, now), claim_firing(&db, first, now),);
         let owners = [first_claim.unwrap(), second_claim.unwrap()];
         assert_eq!(owners.iter().filter(|value| value.is_some()).count(), 1);
         let token = owners.into_iter().flatten().next().unwrap();
@@ -933,43 +1168,83 @@ mod tests {
             "trigger": {"type":"cron","firing_id":first.id.to_string()}
         });
         let execution_id = reserve_execution_for_claim(&db, first, token, &context)
-            .await.unwrap().expect("journal reserved under owning attempt");
+            .await
+            .unwrap()
+            .expect("journal reserved under owning attempt");
         let journal = WorkflowExecutionEntity::find_by_id(execution_id)
-            .one(&db).await.unwrap().unwrap();
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(journal.trigger_event_id, Some(first.id));
         assert_eq!(journal.status, ExecutionStatus::Running);
-        assert!(reserve_execution_for_claim(&db, first, token, &context).await.is_err(),
-            "a journal cannot be allocated twice for one trigger");
+        assert!(
+            reserve_execution_for_claim(&db, first, token, &context)
+                .await
+                .is_err(),
+            "a journal cannot be allocated twice for one trigger"
+        );
 
         // Even after a stale-attempt quarantine, the operator cannot requeue
         // a firing for which a step execution could have begun.
-        assert_eq!(quarantine_stale_attempts(
-            &db, Utc::now() + ChronoDuration::minutes(15),
-        ).await.unwrap(), 1);
+        assert_eq!(
+            quarantine_stale_attempts(&db, Utc::now() + ChronoDuration::minutes(15),)
+                .await
+                .unwrap(),
+            1
+        );
         let actor_id = Uuid::new_v4();
         let evidence = "External provider case verified and prior worker process fully fenced";
-        assert!(reconcile_firing(
-            &db, tenant_id, first.id, actor_id,
-            CronReconciliationDecision::RequeueConfirmedUnstarted,
-            evidence, true,
-        ).await.is_err());
-        assert!(reconcile_firing(
-            &db, tenant_id, first.id, actor_id,
-            CronReconciliationDecision::ConfirmExternalFailed,
-            evidence, false,
-        ).await.is_err(), "an active worker cannot be overridden by an unverified review");
+        assert!(
+            reconcile_firing(
+                &db,
+                tenant_id,
+                first.id,
+                actor_id,
+                CronReconciliationDecision::RequeueConfirmedUnstarted,
+                evidence,
+                true,
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            reconcile_firing(
+                &db,
+                tenant_id,
+                first.id,
+                actor_id,
+                CronReconciliationDecision::ConfirmExternalFailed,
+                evidence,
+                false,
+            )
+            .await
+            .is_err(),
+            "an active worker cannot be overridden by an unverified review"
+        );
 
         let resolved = reconcile_firing(
-            &db, tenant_id, first.id, actor_id,
+            &db,
+            tenant_id,
+            first.id,
+            actor_id,
             CronReconciliationDecision::ConfirmExternalFailed,
-            evidence, true,
-        ).await.unwrap();
+            evidence,
+            true,
+        )
+        .await
+        .unwrap();
         assert_eq!(resolved.status, firing::COMPLETED);
         let journal = WorkflowExecutionEntity::find_by_id(execution_id)
-            .one(&db).await.unwrap().unwrap();
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(journal.status, ExecutionStatus::Failed);
-        assert!(!heartbeat_claim(&db, first, token).await.unwrap(),
-            "a previous worker may not extend an operator-settled attempt");
+        assert!(
+            !heartbeat_claim(&db, first, token).await.unwrap(),
+            "a previous worker may not extend an operator-settled attempt"
+        );
         let audit = review::Entity::find().all(&db).await.unwrap();
         assert_eq!(audit.len(), 1);
         assert_eq!(audit[0].actor_id, actor_id);

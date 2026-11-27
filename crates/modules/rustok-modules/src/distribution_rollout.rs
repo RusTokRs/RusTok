@@ -762,7 +762,9 @@ where
             .await
             .map_err(store_error)?;
         // All rollout paths lock the release head before the rollout head.
-        load_release_state(&transaction, true).await.map_err(release_error)?;
+        load_release_state(&transaction, true)
+            .await
+            .map_err(release_error)?;
         let state = load_rollout_state(&transaction, true).await?;
         let Some(rollout_id) = state.desired_id else {
             transaction.commit().await.map_err(store_error)?;
@@ -850,15 +852,20 @@ where
             .map_err(store_error)?;
         // Match request/claim/report lock order and do not renew an assignment
         // after its rollout ceased being the desired, executable release.
-        load_release_state(&transaction, true).await.map_err(release_error)?;
+        load_release_state(&transaction, true)
+            .await
+            .map_err(release_error)?;
         let state = load_rollout_state(&transaction, true).await?;
-        let rollout_id = state.desired_id.ok_or(ModuleStaticDistributionRolloutError::ClaimConflict)?;
+        let rollout_id = state
+            .desired_id
+            .ok_or(ModuleStaticDistributionRolloutError::ClaimConflict)?;
         let rollout = load_rollout(&transaction, rollout_id, true).await?;
         if !rollout.status.is_claimable() {
             return Err(ModuleStaticDistributionRolloutError::ClaimConflict);
         }
         validate_rollout_release_identity(&transaction, &rollout).await?;
-        let lease_expires_at = heartbeat_rollout_assignment(&transaction, rollout_id, &command).await?;
+        let lease_expires_at =
+            heartbeat_rollout_assignment(&transaction, rollout_id, &command).await?;
         transaction.commit().await.map_err(store_error)?;
         Ok(ModuleStaticDistributionAssignmentHeartbeatReceipt {
             claim_id: command.claim_id,
@@ -2323,14 +2330,20 @@ fn rollout_lease_now_sql(backend: SupportedBackend) -> &'static str {
 fn rollout_lease_timestamp_is_canonical_sql(backend: SupportedBackend) -> &'static str {
     match backend {
         SupportedBackend::Postgres => "TRUE",
-        SupportedBackend::Sqlite => "strftime('%Y-%m-%dT%H:%M:%f+00:00', claim_expires_at) = claim_expires_at",
+        SupportedBackend::Sqlite => {
+            "strftime('%Y-%m-%dT%H:%M:%f+00:00', claim_expires_at) = claim_expires_at"
+        }
     }
 }
 
 fn rollout_lease_expiry_sql(backend: SupportedBackend) -> String {
     match backend {
-        SupportedBackend::Postgres => format!("clock_timestamp() + interval '{ASSIGNMENT_LEASE_SECONDS} seconds'"),
-        SupportedBackend::Sqlite => format!("strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now', '+{ASSIGNMENT_LEASE_SECONDS} seconds')"),
+        SupportedBackend::Postgres => {
+            format!("clock_timestamp() + interval '{ASSIGNMENT_LEASE_SECONDS} seconds'")
+        }
+        SupportedBackend::Sqlite => format!(
+            "strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now', '+{ASSIGNMENT_LEASE_SECONDS} seconds')"
+        ),
     }
 }
 
@@ -2338,12 +2351,21 @@ async fn rollout_lease_database_now(
     transaction: &DatabaseTransaction,
 ) -> Result<DateTime<Utc>, ModuleStaticDistributionRolloutError> {
     let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
-    let row = transaction.query_one_raw(Statement::from_string(
-        backend.db_backend(), format!("SELECT {} AS lease_now", rollout_lease_now_sql(backend)),
-    )).await.map_err(store_error)?.ok_or_else(|| ModuleStaticDistributionRolloutError::Store(
-        "database lease clock returned no row".to_string(),
-    ))?;
-    backend.datetime_from_row(&row, "lease_now").map_err(store_error)
+    let row = transaction
+        .query_one_raw(Statement::from_string(
+            backend.db_backend(),
+            format!("SELECT {} AS lease_now", rollout_lease_now_sql(backend)),
+        ))
+        .await
+        .map_err(store_error)?
+        .ok_or_else(|| {
+            ModuleStaticDistributionRolloutError::Store(
+                "database lease clock returned no row".to_string(),
+            )
+        })?;
+    backend
+        .datetime_from_row(&row, "lease_now")
+        .map_err(store_error)
 }
 
 fn replayable_assignment_claim(
@@ -2351,8 +2373,14 @@ fn replayable_assignment_claim(
     agent_id: &str,
     now: DateTime<Utc>,
 ) -> Option<(Uuid, DateTime<Utc>)> {
-    match (assignment.active_claim_id, assignment.claimed_by_agent.as_deref(), assignment.claim_expires_at) {
-        (Some(claim_id), Some(owner), Some(expires_at)) if owner == agent_id && expires_at > now => {
+    match (
+        assignment.active_claim_id,
+        assignment.claimed_by_agent.as_deref(),
+        assignment.claim_expires_at,
+    ) {
+        (Some(claim_id), Some(owner), Some(expires_at))
+            if owner == agent_id && expires_at > now =>
+        {
             Some((claim_id, expires_at))
         }
         _ => None,
@@ -2483,7 +2511,9 @@ async fn read_exact_claim_expiry(
     if rows.len() != 1 {
         return Err(ModuleStaticDistributionRolloutError::ClaimConflict);
     }
-    backend.datetime_from_row(&rows[0], "claim_expires_at").map_err(store_error)
+    backend
+        .datetime_from_row(&rows[0], "claim_expires_at")
+        .map_err(store_error)
 }
 
 async fn heartbeat_rollout_assignment(
@@ -2492,7 +2522,11 @@ async fn heartbeat_rollout_assignment(
     command: &ModuleStaticDistributionAssignmentHeartbeatCommand,
 ) -> Result<DateTime<Utc>, ModuleStaticDistributionRolloutError> {
     let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
-    let lock = if backend == SupportedBackend::Postgres { " FOR UPDATE" } else { "" };
+    let lock = if backend == SupportedBackend::Postgres {
+        " FOR UPDATE"
+    } else {
+        ""
+    };
     let canonical = rollout_lease_timestamp_is_canonical_sql(backend);
     // Acquire row locks before sampling the wall clock. In particular an
     // UPDATE's WHERE predicate must not be evaluated before a lock wait.
@@ -2506,16 +2540,29 @@ async fn heartbeat_rollout_assignment(
     if rows.len() != 1 {
         return Err(ModuleStaticDistributionRolloutError::ClaimConflict);
     }
-    let updated = transaction.execute_raw(Statement::from_sql_and_values(
-        backend.db_backend(),
-        format!("UPDATE module_static_distribution_rollout_assignments \
+    let updated = transaction
+        .execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            format!(
+                "UPDATE module_static_distribution_rollout_assignments \
                  SET claim_expires_at = {}, last_claimed_at = {} \
                  WHERE rollout_id = {} AND active_claim_id = {} AND claimed_by_agent = {} \
                    AND {canonical} AND claim_expires_at > {}",
-            rollout_lease_expiry_sql(backend), rollout_lease_now_sql(backend),
-            backend.placeholder(1), backend.placeholder(2), backend.placeholder(3), rollout_lease_now_sql(backend)),
-        vec![backend.uuid_value(rollout_id), backend.uuid_value(command.claim_id), command.agent_id.clone().into()],
-    )).await.map_err(store_error)?;
+                rollout_lease_expiry_sql(backend),
+                rollout_lease_now_sql(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                rollout_lease_now_sql(backend)
+            ),
+            vec![
+                backend.uuid_value(rollout_id),
+                backend.uuid_value(command.claim_id),
+                command.agent_id.clone().into(),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
     if updated.rows_affected() != 1 {
         return Err(ModuleStaticDistributionRolloutError::ClaimConflict);
     }
@@ -3023,58 +3070,165 @@ mod tests {
         let tx = db.begin().await.unwrap();
         let now = super::rollout_lease_database_now(&tx).await.unwrap();
         let assignment = super::load_next_assignment_for_node(
-            &tx, rollout, ModuleStaticDistributionRolloutStatus::Preparing, "node-a", "agent-a", &now,
-        ).await.unwrap().unwrap();
+            &tx,
+            rollout,
+            ModuleStaticDistributionRolloutStatus::Preparing,
+            "node-a",
+            "agent-a",
+            &now,
+        )
+        .await
+        .unwrap()
+        .unwrap();
         assert!(super::replayable_assignment_claim(&assignment, "agent-a", now).is_none());
         let expiry = super::claim_rollout_assignment(
-            &tx, rollout, ModuleStaticDistributionRolloutStatus::Preparing, &assignment, fresh, "agent-a",
-        ).await.unwrap();
+            &tx,
+            rollout,
+            ModuleStaticDistributionRolloutStatus::Preparing,
+            &assignment,
+            fresh,
+            "agent-a",
+        )
+        .await
+        .unwrap();
         assert!(expiry > now);
-        let renewed = super::heartbeat_rollout_assignment(&tx, rollout,
-            &ModuleStaticDistributionAssignmentHeartbeatCommand { claim_id: fresh, agent_id: "agent-a".into() }).await.unwrap();
+        let renewed = super::heartbeat_rollout_assignment(
+            &tx,
+            rollout,
+            &ModuleStaticDistributionAssignmentHeartbeatCommand {
+                claim_id: fresh,
+                agent_id: "agent-a".into(),
+            },
+        )
+        .await
+        .unwrap();
         assert!(renewed >= expiry);
-        assert!(matches!(super::heartbeat_rollout_assignment(&tx, rollout,
-            &ModuleStaticDistributionAssignmentHeartbeatCommand { claim_id: expired, agent_id: "agent-a".into() }).await,
-            Err(ModuleStaticDistributionRolloutError::ClaimConflict)));
-        assert!(matches!(super::heartbeat_rollout_assignment(&tx, rollout,
-            &ModuleStaticDistributionAssignmentHeartbeatCommand { claim_id: fresh, agent_id: "other".into() }).await,
-            Err(ModuleStaticDistributionRolloutError::ClaimConflict)));
-        let live = super::load_rollout_assignment(&tx, rollout, "node-a", ModuleStaticDistributionRole::Api, true).await.unwrap();
-        assert_eq!(super::replayable_assignment_claim(&live, "agent-a", now), Some((fresh, renewed)));
+        assert!(matches!(
+            super::heartbeat_rollout_assignment(
+                &tx,
+                rollout,
+                &ModuleStaticDistributionAssignmentHeartbeatCommand {
+                    claim_id: expired,
+                    agent_id: "agent-a".into()
+                }
+            )
+            .await,
+            Err(ModuleStaticDistributionRolloutError::ClaimConflict)
+        ));
+        assert!(matches!(
+            super::heartbeat_rollout_assignment(
+                &tx,
+                rollout,
+                &ModuleStaticDistributionAssignmentHeartbeatCommand {
+                    claim_id: fresh,
+                    agent_id: "other".into()
+                }
+            )
+            .await,
+            Err(ModuleStaticDistributionRolloutError::ClaimConflict)
+        ));
+        let live = super::load_rollout_assignment(
+            &tx,
+            rollout,
+            "node-a",
+            ModuleStaticDistributionRole::Api,
+            true,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            super::replayable_assignment_claim(&live, "agent-a", now),
+            Some((fresh, renewed))
+        );
         assert!(super::replayable_assignment_claim(&live, "agent-a", renewed).is_none());
         // A stale report cannot consume the replacement claim.
         let mut report = ModuleStaticDistributionAssignmentReport {
-            claim_id: expired, rollout_id: rollout, node_id: "node-a".into(), role: ModuleStaticDistributionRole::Api,
-            candidate_artifact_digest: digest('a'), expected_observation_revision: 0,
-            phase: ModuleReconciliationPhase::Prepared, distribution_release_id: Uuid::new_v4(),
-            distribution_release_revision: 1, composition_revision: 1, composition_digest: digest('b'),
-            bundle_root_digest: digest('c'), role_set_digest: digest('d'), policy_revision: "policy-a".into(),
-            executor_mode: ModuleStaticDistributionExecutorMode::StaticNative, health_evidence: None, failure: None,
-            agent_id: "agent-a".into(), idempotency_key: Uuid::new_v4(),
+            claim_id: expired,
+            rollout_id: rollout,
+            node_id: "node-a".into(),
+            role: ModuleStaticDistributionRole::Api,
+            candidate_artifact_digest: digest('a'),
+            expected_observation_revision: 0,
+            phase: ModuleReconciliationPhase::Prepared,
+            distribution_release_id: Uuid::new_v4(),
+            distribution_release_revision: 1,
+            composition_revision: 1,
+            composition_digest: digest('b'),
+            bundle_root_digest: digest('c'),
+            role_set_digest: digest('d'),
+            policy_revision: "policy-a".into(),
+            executor_mode: ModuleStaticDistributionExecutorMode::StaticNative,
+            health_evidence: None,
+            failure: None,
+            agent_id: "agent-a".into(),
+            idempotency_key: Uuid::new_v4(),
         };
-        assert!(matches!(super::update_rollout_assignment(&tx, &report, 1, &digest('e'), &now).await,
-            Err(ModuleStaticDistributionRolloutError::ClaimConflict)));
+        assert!(matches!(
+            super::update_rollout_assignment(&tx, &report, 1, &digest('e'), &now).await,
+            Err(ModuleStaticDistributionRolloutError::ClaimConflict)
+        ));
         tx.execute_unprepared("UPDATE module_static_distribution_rollout_assignments SET claim_expires_at = '2000-01-01T00:00:00.000+00:00'").await.unwrap();
         report.claim_id = fresh;
-        assert!(matches!(super::heartbeat_rollout_assignment(&tx, rollout,
-            &ModuleStaticDistributionAssignmentHeartbeatCommand { claim_id: fresh, agent_id: "agent-a".into() }).await,
-            Err(ModuleStaticDistributionRolloutError::ClaimConflict)));
-        assert!(matches!(super::update_rollout_assignment(&tx, &report, 1, &digest('e'), &now).await,
-            Err(ModuleStaticDistributionRolloutError::ClaimConflict)));
+        assert!(matches!(
+            super::heartbeat_rollout_assignment(
+                &tx,
+                rollout,
+                &ModuleStaticDistributionAssignmentHeartbeatCommand {
+                    claim_id: fresh,
+                    agent_id: "agent-a".into()
+                }
+            )
+            .await,
+            Err(ModuleStaticDistributionRolloutError::ClaimConflict)
+        ));
+        assert!(matches!(
+            super::update_rollout_assignment(&tx, &report, 1, &digest('e'), &now).await,
+            Err(ModuleStaticDistributionRolloutError::ClaimConflict)
+        ));
         // Legacy sqlx timestamp forms must not be compared lexically with the
         // canonical clock, even if the same agent asks for a replay.
-        for legacy in ["2000-01-01T00:00:00+00:00", "2999-01-01T00:00:00.123456+00:00", "2000-01-01 00:00:00"] {
-            tx.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+        for legacy in [
+            "2000-01-01T00:00:00+00:00",
+            "2999-01-01T00:00:00.123456+00:00",
+            "2000-01-01 00:00:00",
+        ] {
+            tx.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
                 "UPDATE module_static_distribution_rollout_assignments SET claim_expires_at = ?1",
-                vec![legacy.into()])).await.unwrap();
+                vec![legacy.into()],
+            ))
+            .await
+            .unwrap();
             let current = super::rollout_lease_database_now(&tx).await.unwrap();
-            assert!(super::load_next_assignment_for_node(&tx, rollout, ModuleStaticDistributionRolloutStatus::Preparing,
-                "node-a", "agent-a", &current).await.unwrap().is_none());
-            assert!(matches!(super::heartbeat_rollout_assignment(&tx, rollout,
-                &ModuleStaticDistributionAssignmentHeartbeatCommand { claim_id: fresh, agent_id: "agent-a".into() }).await,
-                Err(ModuleStaticDistributionRolloutError::ClaimConflict)));
-            assert!(matches!(super::update_rollout_assignment(&tx, &report, 1, &digest('e'), &current).await,
-                Err(ModuleStaticDistributionRolloutError::ClaimConflict)));
+            assert!(
+                super::load_next_assignment_for_node(
+                    &tx,
+                    rollout,
+                    ModuleStaticDistributionRolloutStatus::Preparing,
+                    "node-a",
+                    "agent-a",
+                    &current
+                )
+                .await
+                .unwrap()
+                .is_none()
+            );
+            assert!(matches!(
+                super::heartbeat_rollout_assignment(
+                    &tx,
+                    rollout,
+                    &ModuleStaticDistributionAssignmentHeartbeatCommand {
+                        claim_id: fresh,
+                        agent_id: "agent-a".into()
+                    }
+                )
+                .await,
+                Err(ModuleStaticDistributionRolloutError::ClaimConflict)
+            ));
+            assert!(matches!(
+                super::update_rollout_assignment(&tx, &report, 1, &digest('e'), &current).await,
+                Err(ModuleStaticDistributionRolloutError::ClaimConflict)
+            ));
         }
         tx.rollback().await.unwrap();
     }
@@ -3085,7 +3239,10 @@ mod tests {
     async fn postgres_rollout_heartbeat_rechecks_expiry_after_row_lock_wait() {
         async fn connection(url: &str) -> sea_orm::DatabaseConnection {
             let mut options = sea_orm::ConnectOptions::new(url);
-            options.max_connections(1).min_connections(1).sqlx_logging(false);
+            options
+                .max_connections(1)
+                .min_connections(1)
+                .sqlx_logging(false);
             Database::connect(options).await.unwrap()
         }
         let url = std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").expect("test database URL");
@@ -3096,9 +3253,20 @@ mod tests {
         locker.execute_unprepared(&format!("CREATE SCHEMA {schema}; SET search_path TO {schema}; \
             CREATE TABLE module_static_distribution_rollout_assignments (rollout_id UUID NOT NULL, \
             active_claim_id UUID NOT NULL, claimed_by_agent TEXT NOT NULL, claim_expires_at TIMESTAMPTZ NOT NULL, last_claimed_at TIMESTAMPTZ)")).await.unwrap();
-        worker.execute_unprepared(&format!("SET search_path TO {schema}")).await.unwrap();
-        let pid: i32 = worker.query_one_raw(Statement::from_string(DbBackend::Postgres,
-            "SELECT pg_backend_pid() AS pid".to_string())).await.unwrap().unwrap().try_get("", "pid").unwrap();
+        worker
+            .execute_unprepared(&format!("SET search_path TO {schema}"))
+            .await
+            .unwrap();
+        let pid: i32 = worker
+            .query_one_raw(Statement::from_string(
+                DbBackend::Postgres,
+                "SELECT pg_backend_pid() AS pid".to_string(),
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "pid")
+            .unwrap();
         let rollout = Uuid::new_v4();
         let claim = Uuid::new_v4();
         locker.execute_raw(Statement::from_sql_and_values(DbBackend::Postgres,
@@ -3110,8 +3278,15 @@ mod tests {
             vec![claim.into()])).await.unwrap();
         let task = tokio::spawn(async move {
             let worker_tx = worker.begin().await.unwrap();
-            let result = super::heartbeat_rollout_assignment(&worker_tx, rollout,
-                &ModuleStaticDistributionAssignmentHeartbeatCommand { claim_id: claim, agent_id: "agent-a".into() }).await;
+            let result = super::heartbeat_rollout_assignment(
+                &worker_tx,
+                rollout,
+                &ModuleStaticDistributionAssignmentHeartbeatCommand {
+                    claim_id: claim,
+                    agent_id: "agent-a".into(),
+                },
+            )
+            .await;
             worker_tx.rollback().await.unwrap();
             result
         });
@@ -3120,18 +3295,31 @@ mod tests {
             let row = monitor.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres,
                 "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND wait_event_type='Lock') AS blocked",
                 vec![pid.into()])).await.unwrap().unwrap();
-            if row.try_get::<bool>("", "blocked").unwrap() { blocked = true; break; }
+            if row.try_get::<bool>("", "blocked").unwrap() {
+                blocked = true;
+                break;
+            }
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
         assert!(blocked, "heartbeat did not wait for the row lock");
         tokio::time::sleep(std::time::Duration::from_millis(2200)).await;
         tx.commit().await.unwrap();
-        assert!(matches!(task.await.unwrap(), Err(ModuleStaticDistributionRolloutError::ClaimConflict)));
+        assert!(matches!(
+            task.await.unwrap(),
+            Err(ModuleStaticDistributionRolloutError::ClaimConflict)
+        ));
         let row = locker.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres,
             "SELECT last_claimed_at FROM module_static_distribution_rollout_assignments WHERE active_claim_id=$1",
             vec![claim.into()])).await.unwrap().unwrap();
-        assert!(row.try_get::<Option<chrono::DateTime<Utc>>>("", "last_claimed_at").unwrap().is_none());
-        locker.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+        assert!(
+            row.try_get::<Option<chrono::DateTime<Utc>>>("", "last_claimed_at")
+                .unwrap()
+                .is_none()
+        );
+        locker
+            .execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
+            .await
+            .unwrap();
     }
 
     #[test]

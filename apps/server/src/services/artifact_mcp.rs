@@ -253,9 +253,14 @@ mod tests {
 
     #[async_trait]
     impl McpAuditSink for RecordingAudit {
-        async fn record_tool_call(&self, event: McpToolCallAuditEvent) -> rustok_mcp::McpRuntimeResult<()> {
+        async fn record_tool_call(
+            &self,
+            event: McpToolCallAuditEvent,
+        ) -> rustok_mcp::McpRuntimeResult<()> {
             if self.fail {
-                return Err(rustok_mcp::McpRuntimeError::Message("audit unavailable".to_string()));
+                return Err(rustok_mcp::McpRuntimeError::Message(
+                    "audit unavailable".to_string(),
+                ));
             }
             self.events.lock().expect("audit lock").push(event);
             Ok(())

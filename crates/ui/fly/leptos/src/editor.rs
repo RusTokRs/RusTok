@@ -1896,16 +1896,11 @@ pub fn FlyEditorWorkspace(
     /// authoritative changes and the local FlyEditor remains independent.
     #[prop(optional_no_strip)]
     controlled_document: Option<Signal<ProjectDocument>>,
-    #[prop(optional_no_strip)]
-    controlled_selection: Option<Signal<Option<String>>>,
-    #[prop(optional_no_strip)]
-    controlled_page: Option<Signal<usize>>,
-    #[prop(optional_no_strip)]
-    controlled_can_undo: Option<Signal<bool>>,
-    #[prop(optional_no_strip)]
-    controlled_can_redo: Option<Signal<bool>>,
-    #[prop(optional_no_strip)]
-    controlled_capabilities: Option<Signal<CapabilityState>>,
+    #[prop(optional_no_strip)] controlled_selection: Option<Signal<Option<String>>>,
+    #[prop(optional_no_strip)] controlled_page: Option<Signal<usize>>,
+    #[prop(optional_no_strip)] controlled_can_undo: Option<Signal<bool>>,
+    #[prop(optional_no_strip)] controlled_can_redo: Option<Signal<bool>>,
+    #[prop(optional_no_strip)] controlled_capabilities: Option<Signal<CapabilityState>>,
     /// Page/revision/hash identity attached to every typed intent from this controlled projection.
     #[prop(optional_no_strip)]
     intent_context: Option<Signal<WorkspaceIntentContext>>,
@@ -1959,13 +1954,9 @@ pub fn FlyEditorWorkspace(
             let next_document = authoritative.get();
             let next_selection = controlled_selection.map(|signal| signal.get());
             let next_page = controlled_page.map(|signal| signal.get());
-            let document_changed =
-                editor.with_untracked(|ed| ed.document() != &next_document);
+            let document_changed = editor.with_untracked(|ed| ed.document() != &next_document);
             if document_changed {
-                let mut replacement = FlyEditor::new(
-                    next_document,
-                    controlled_registries.clone(),
-                );
+                let mut replacement = FlyEditor::new(next_document, controlled_registries.clone());
                 if let Some(selection) = next_selection
                     && let Err(error) = replacement.apply(EditorCommand::Select {
                         component_id: selection,
@@ -1979,8 +1970,7 @@ pub fn FlyEditorWorkspace(
                 }
                 editor.set(replacement);
             } else if let Some(selection) = next_selection {
-                let previous =
-                    editor.with_untracked(|ed| ed.selection().map(ToString::to_string));
+                let previous = editor.with_untracked(|ed| ed.selection().map(ToString::to_string));
                 if previous != selection {
                     match editor.try_update(|ed| {
                         ed.apply(EditorCommand::Select {
@@ -2189,7 +2179,8 @@ pub fn FlyEditorWorkspace(
         });
         match apply_result {
             Some(Ok(_)) => {
-                let remaining = remove_editor.with(|editor| editor.document().project().pages.len());
+                let remaining =
+                    remove_editor.with(|editor| editor.document().project().pages.len());
                 let current = active_page.get_untracked();
                 let clamped = if remaining == 0 {
                     0

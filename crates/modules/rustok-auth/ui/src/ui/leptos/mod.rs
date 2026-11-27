@@ -5,9 +5,9 @@ pub mod components;
 pub mod context;
 pub mod hooks;
 mod realm;
-pub mod storage;
 #[cfg(feature = "ssr")]
 pub mod ssr;
+pub mod storage;
 
 pub use client::AuthorizedBrowserClient;
 pub use components::{GuestRoute, ProtectedRoute, RequireAuth};

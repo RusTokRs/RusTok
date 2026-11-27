@@ -12,7 +12,9 @@ use crate::{ModuleInstallationScope, TransitionCheckpointStore};
 
 #[derive(Debug, Error)]
 pub(crate) enum SettingsTransitionFenceError {
-    #[error("settings cannot be changed during an unresolved module transition until the applicable release schemas can be verified")]
+    #[error(
+        "settings cannot be changed during an unresolved module transition until the applicable release schemas can be verified"
+    )]
     TransitionInProgress,
     #[error("settings transition fence failed: {0}")]
     Database(String),
@@ -23,11 +25,14 @@ pub(crate) async fn check<C: ConnectionTrait>(
     tenant_id: Uuid,
     module_slug: &str,
 ) -> Result<(), SettingsTransitionFenceError> {
-    let checkpoints = TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(
-        connection, module_slug, tenant_id,
-    )
-    .await
-    .map_err(|error| SettingsTransitionFenceError::Database(error.to_string()))?;
+    let checkpoints =
+        TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(
+            connection,
+            module_slug,
+            tenant_id,
+        )
+        .await
+        .map_err(|error| SettingsTransitionFenceError::Database(error.to_string()))?;
     if !checkpoints.is_empty() {
         return Err(SettingsTransitionFenceError::TransitionInProgress);
     }

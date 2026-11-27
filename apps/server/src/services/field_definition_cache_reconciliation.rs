@@ -144,21 +144,22 @@ fn start_field_definition_cache_generation_reconciliation_with_timing(
         return;
     }
 
-    let previous_generation =
-        if let Some(existing) = ctx.shared_get::<FieldDefinitionCacheGenerationReconciliationHandle>() {
-            if existing.is_running() {
-                return;
-            }
-            let generation = existing.applied_generation();
-            tracing::warn!(
-                applied_generation = generation,
-                "Field-definition cache generation reconciler stopped; replacing supervised runtime"
-            );
-            existing.abort();
-            generation
-        } else {
-            0
-        };
+    let previous_generation = if let Some(existing) =
+        ctx.shared_get::<FieldDefinitionCacheGenerationReconciliationHandle>()
+    {
+        if existing.is_running() {
+            return;
+        }
+        let generation = existing.applied_generation();
+        tracing::warn!(
+            applied_generation = generation,
+            "Field-definition cache generation reconciler stopped; replacing supervised runtime"
+        );
+        existing.abort();
+        generation
+    } else {
+        0
+    };
 
     let state = Arc::new(FieldDefinitionCacheGenerationState {
         healthy: AtomicBool::new(false),

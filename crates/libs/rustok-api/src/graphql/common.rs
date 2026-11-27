@@ -497,7 +497,9 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            clamped_backward.normalize().expect("valid bounded backward"),
+            clamped_backward
+                .normalize()
+                .expect("valid bounded backward"),
             (0, 3)
         );
 

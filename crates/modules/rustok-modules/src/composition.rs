@@ -423,7 +423,11 @@ impl SeaOrmModuleCompositionService {
                     "SELECT revision, manifest_hash, CAST(manifest_json AS TEXT) AS manifest_json \
                      FROM platform_state WHERE id = {}{}",
                     backend.placeholder(1),
-                    if lock && backend == SupportedBackend::Postgres { " FOR SHARE" } else { "" },
+                    if lock && backend == SupportedBackend::Postgres {
+                        " FOR SHARE"
+                    } else {
+                        ""
+                    },
                 ),
                 vec![ACTIVE_MODULE_COMPOSITION_ID.into()],
             ))

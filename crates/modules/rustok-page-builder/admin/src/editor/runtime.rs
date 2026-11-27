@@ -2,13 +2,15 @@
 use crate::capability_access::intent_allowed;
 use crate::core::session::PreviewAttempt;
 use crate::{
-    AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade,
-    PageBuilderAdminFacadeError, SaveAttempt,
+    AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade, PageBuilderAdminFacadeError,
+    SaveAttempt,
 };
 use fly::{ProjectHash, TraitSchemaRegistry};
 #[cfg(not(target_arch = "wasm32"))]
 use fly_browser::BrowserIntentKind;
 use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+use fly_web::{BrowserPeerWriteChannel, BrowserPeerWriteConflict};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use rustok_page_builder::dto::{
@@ -20,8 +22,6 @@ use rustok_page_builder::{
 };
 use serde_json::{Map, Value};
 use std::sync::Arc;
-#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
-use fly_web::{BrowserPeerWriteChannel, BrowserPeerWriteConflict};
 
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 fn make_peer_write_channel(
@@ -40,9 +40,9 @@ fn make_peer_write_channel(
     let on_conflict = move |conflict| {
         let expected = controller.with_untracked(|controller| controller.revision_id().to_string());
         let actual = conflict.revision.clone();
-        if let Some(Err(error)) = controller.try_update(|controller| {
-            controller.mark_peer_write_conflict(expected, actual)
-        }) {
+        if let Some(Err(error)) = controller
+            .try_update(|controller| controller.mark_peer_write_conflict(expected, actual))
+        {
             tracing::warn!(?error, "Failed to mark peer-tab save conflict");
         }
         peer_write_conflict.set(Some(conflict.clone()));
@@ -59,17 +59,15 @@ fn make_peer_write_channel(
             scope_id,
             on_conflict,
         ),
-        None => BrowserPeerWriteChannel::new(
-            page_id,
-            revision_id,
-            project_hash,
-            on_conflict,
-        ),
+        None => BrowserPeerWriteChannel::new(page_id, revision_id, project_hash, on_conflict),
     };
     match channel {
         Ok(channel) => Some(channel),
         Err(error) => {
-            tracing::warn!(?error, "Cross-tab write notifications are unavailable; server revision checks remain authoritative");
+            tracing::warn!(
+                ?error,
+                "Cross-tab write notifications are unavailable; server revision checks remain authoritative"
+            );
             None
         }
     }
@@ -349,7 +347,8 @@ impl AdminEditorRuntime {
         let runtime_scenario_id = self.active_runtime_scenario.get_untracked();
         let request = self.controller.with(|controller| {
             let active_page_index = controller.active_page_index();
-            controller.active_page_project()
+            controller
+                .active_page_project()
                 .map(|project_data| {
                     (
                         PageBuilderCapabilityRequest::Preview(
@@ -375,9 +374,9 @@ impl AdminEditorRuntime {
                     runtime_context,
                     scenario_id,
                 )));
-                let sequence = self.controller.with_untracked(|controller| {
-                    controller.editor().revision().command_sequence
-                });
+                let sequence = self
+                    .controller
+                    .with_untracked(|controller| controller.editor().revision().command_sequence);
                 self.execute_request(request, None, sequence);
             }
             Err(error) => self.fail(error),
@@ -541,7 +540,8 @@ impl AdminEditorRuntime {
             return;
         }
         if capability == BuilderCapabilityKind::Preview
-            && self.facade
+            && self
+                .facade
                 .as_ref()
                 .and_then(|facade| facade.provider_status())
                 .is_some_and(|status| !status.preview_enabled())
@@ -557,11 +557,9 @@ impl AdminEditorRuntime {
                 return;
             }
             if self.facade.is_some() || self.on_request.is_some() {
-                let start = self
-                    .controller
-                    .try_update(|controller| {
-                        controller.begin_save_request(&request, expected_hash, command_sequence)
-                    });
+                let start = self.controller.try_update(|controller| {
+                    controller.begin_save_request(&request, expected_hash, command_sequence)
+                });
                 match start {
                     Some(Ok(attempt_id)) => Some(attempt_id),
                     Some(Err(error)) => {
@@ -630,7 +628,9 @@ impl AdminEditorRuntime {
             if capability == BuilderCapabilityKind::Preview {
                 let active = preview_attempt_id.is_some_and(|id| {
                     self.preview_in_progress.get_untracked()
-                        && self.preview_request.get_untracked()
+                        && self
+                            .preview_request
+                            .get_untracked()
                             .is_some_and(|attempt| attempt.id == id)
                 });
                 if active {
@@ -666,7 +666,11 @@ impl AdminEditorRuntime {
         if capability == BuilderCapabilityKind::Preview
             && (!self.preview_in_progress.get_untracked()
                 || preview_attempt_id.is_none()
-                || self.preview_request.get_untracked().map(|attempt| attempt.id) != preview_attempt_id)
+                || self
+                    .preview_request
+                    .get_untracked()
+                    .map(|attempt| attempt.id)
+                    != preview_attempt_id)
         {
             // An old callback (including a duplicate completion) must not
             // consume the correlation state or error of a newer preview.
@@ -679,12 +683,11 @@ impl AdminEditorRuntime {
                 let preview_request = self.preview_request.get_untracked();
                 self.preview_request.set(None);
                 self.preview_in_progress.set(false);
-                let current_runtime_context =
-                    if self.runtime_context_configured.get_untracked() {
-                        self.runtime_context.get_untracked()
-                    } else {
-                        Value::Object(Map::new())
-                    };
+                let current_runtime_context = if self.runtime_context_configured.get_untracked() {
+                    self.runtime_context.get_untracked()
+                } else {
+                    Value::Object(Map::new())
+                };
                 let current_runtime_scenario = self.active_runtime_scenario.get_untracked();
                 let current = self.controller.with(|controller| {
                     (
@@ -764,9 +767,8 @@ impl AdminEditorRuntime {
                             self.finish_failed_request(capability, save_attempt.as_ref());
                         self.report_completion_failure(error, completion);
                     }
-                    None => self.fail(
-                        "Page Builder controller was disposed before save acknowledgement",
-                    ),
+                    None => self
+                        .fail("Page Builder controller was disposed before save acknowledgement"),
                 }
             }
             Ok(response) => {
@@ -774,8 +776,7 @@ impl AdminEditorRuntime {
                     "Page Builder facade returned `{}` for a `{capability}` request",
                     response.capability()
                 );
-                let completion =
-                    self.finish_failed_request(capability, save_attempt.as_ref());
+                let completion = self.finish_failed_request(capability, save_attempt.as_ref());
                 self.report_completion_failure(message, completion);
             }
             Err(error) => {
@@ -823,9 +824,9 @@ impl AdminEditorRuntime {
         let attempt = attempt.ok_or_else(|| {
             "Page Builder publish conflict has no tracked save attempt".to_string()
         })?;
-        let expected = self.controller.with_untracked(|controller| {
-            controller.revision_id().to_string()
-        });
+        let expected = self
+            .controller
+            .with_untracked(|controller| controller.revision_id().to_string());
         let actual = conflict_actual_revision(message)
             .unwrap_or_else(|| "newer server revision".to_string());
         match self.controller.try_update(|controller| {
@@ -941,11 +942,7 @@ mod tests {
     fn publish_conflict_without_attempt_is_reported_as_an_invariant_error() {
         let runtime = runtime();
         let error = runtime
-            .finish_conflicted_request(
-                BuilderCapabilityKind::Publish,
-                None,
-                "revision conflict",
-            )
+            .finish_conflicted_request(BuilderCapabilityKind::Publish, None, "revision conflict")
             .expect_err("a publish conflict must be correlated to its save attempt");
         assert!(error.contains("tracked save attempt"));
     }

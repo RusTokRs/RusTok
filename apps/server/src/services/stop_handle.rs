@@ -85,10 +85,8 @@ where
 /// Use only for workers whose current operation is safe to cancel (for
 /// example, cache invalidation listeners and read-only reconciliation). Durable
 /// claims and externally visible operations must finish or compensate instead.
-pub(crate) async fn run_until_stopped<F>(
-    mut stop_rx: tokio::sync::watch::Receiver<bool>,
-    worker: F,
-) where
+pub(crate) async fn run_until_stopped<F>(mut stop_rx: tokio::sync::watch::Receiver<bool>, worker: F)
+where
     F: std::future::Future<Output = ()>,
 {
     if !may_admit_next_worker_operation(&stop_rx) {
@@ -227,7 +225,9 @@ mod tests {
             .is_none()
         });
 
-        waiting_rx.await.expect("startup reached the busy registration mutex");
+        waiting_rx
+            .await
+            .expect("startup reached the busy registration mutex");
         stop.stop().await;
 
         assert!(
@@ -245,12 +245,12 @@ mod tests {
     #[tokio::test]
     async fn completed_bootstrap_is_not_reported_after_stop() {
         let (stop, _receiver) = StopHandle::new();
-        assert_eq!(await_worker_startup_or_stop(&stop, async { 7 }).await, Some(7));
-        stop.stop().await;
         assert_eq!(
-            await_worker_startup_or_stop(&stop, async { 8 }).await,
-            None
+            await_worker_startup_or_stop(&stop, async { 7 }).await,
+            Some(7)
         );
+        stop.stop().await;
+        assert_eq!(await_worker_startup_or_stop(&stop, async { 8 }).await, None);
     }
 
     #[tokio::test]
@@ -293,7 +293,10 @@ mod tests {
         })
         .await;
         assert_eq!(result, None);
-        assert!(!invoked.get(), "the effectful operation must not be admitted");
+        assert!(
+            !invoked.get(),
+            "the effectful operation must not be admitted"
+        );
     }
 
     #[tokio::test]
@@ -325,7 +328,8 @@ mod tests {
         let result = run_admitted_worker_operation(&receiver, || {
             invoked.set(true);
             async { 42_u32 }
-        }).await;
+        })
+        .await;
         assert_eq!(result, None);
         assert!(!invoked.get());
     }
@@ -337,7 +341,8 @@ mod tests {
             drop(stop);
             tokio::task::yield_now().await;
             42_u32
-        }).await;
+        })
+        .await;
         assert_eq!(result, Some(42));
         assert!(!may_admit_next_worker_operation(&receiver));
     }

@@ -55,21 +55,25 @@ pub fn AdapterWorkspacePanel(
     let controlled_document = {
         let runtime = runtime.clone();
         Signal::derive(move || {
-            runtime.controller.with(|controller| controller.editor().document().clone())
+            runtime
+                .controller
+                .with(|controller| controller.editor().document().clone())
         })
     };
     let controlled_selection = {
         let runtime = runtime.clone();
         Signal::derive(move || {
-            runtime.controller.with(|controller| {
-                controller.ui().state.selection.component_id.clone()
-            })
+            runtime
+                .controller
+                .with(|controller| controller.ui().state.selection.component_id.clone())
         })
     };
     let controlled_page = {
         let runtime = runtime.clone();
         Signal::derive(move || {
-            runtime.controller.with(|controller| controller.active_page_index())
+            runtime
+                .controller
+                .with(|controller| controller.active_page_index())
         })
     };
     let controlled_can_undo = {
@@ -91,17 +95,21 @@ pub fn AdapterWorkspacePanel(
     let controlled_capabilities = {
         let runtime = runtime.clone();
         Signal::derive(move || {
-            runtime.controller.with(|controller| controller.ui().state.capabilities)
+            runtime
+                .controller
+                .with(|controller| controller.ui().state.capabilities)
         })
     };
     let controlled_intent_context = {
         let runtime = runtime.clone();
         Signal::derive(move || {
-            runtime.controller.with(|controller| WorkspaceIntentContext {
-                page_id: controller.page_id().to_string(),
-                revision: controller.revision_id().to_string(),
-                project_hash: controller.editor().revision().project_hash.hex(),
-            })
+            runtime
+                .controller
+                .with(|controller| WorkspaceIntentContext {
+                    page_id: controller.page_id().to_string(),
+                    revision: controller.revision_id().to_string(),
+                    project_hash: controller.editor().revision().project_hash.hex(),
+                })
         })
     };
 
@@ -119,9 +127,9 @@ pub fn AdapterWorkspacePanel(
         // FlyEditorWorkspace binds the page/revision/hash from its controlled projection.
         // Do not re-read the live controller here: that would upgrade a stale event to a
         // newer document snapshot before the shared mutation admission check.
-        let result = intent_runtime.controller.try_update(|controller| {
-            crate::dispatch_browser_intent(controller, envelope)
-        });
+        let result = intent_runtime
+            .controller
+            .try_update(|controller| crate::dispatch_browser_intent(controller, envelope));
         match result {
             Some(Ok(result)) => intent_runtime.apply_browser_result(result),
             Some(Err(error)) => intent_runtime.fail(error.to_string()),

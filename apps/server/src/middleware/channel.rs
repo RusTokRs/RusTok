@@ -315,7 +315,10 @@ pub async fn resolve(
     mut req: Request<Body>,
     next: Next,
 ) -> Result<Response, axum::http::StatusCode> {
-    tracing::debug!(path_group = crate::middleware::http_stack::trace_path_family(req.uri().path()), "channel::resolve entry");
+    tracing::debug!(
+        path_group = crate::middleware::http_stack::trace_path_family(req.uri().path()),
+        "channel::resolve entry"
+    );
     let Some(tenant) = req.extensions().tenant_context().cloned() else {
         tracing::debug!(
             path_group = crate::middleware::http_stack::trace_path_family(req.uri().path()),
@@ -338,7 +341,10 @@ pub async fn resolve(
             .insert(ChannelContextExtension(context));
     }
 
-    tracing::debug!(path_group = crate::middleware::http_stack::trace_path_family(req.uri().path()), "channel::resolve calling next");
+    tracing::debug!(
+        path_group = crate::middleware::http_stack::trace_path_family(req.uri().path()),
+        "channel::resolve calling next"
+    );
     Ok(next.run(req).await)
 }
 
@@ -582,8 +588,8 @@ fn channel_id_from_header(
     let raw = first
         .to_str()
         .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
-    let channel_id = Uuid::parse_str(raw.trim())
-        .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+    let channel_id =
+        Uuid::parse_str(raw.trim()).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
     if channel_id.is_nil() {
         tracing::warn!(
             header = CHANNEL_ID_HEADER,
@@ -613,14 +619,11 @@ fn channel_slug_from_header(
     let raw = first
         .to_str()
         .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
-    let slug = bounded_channel_selector(raw)
-        .ok_or(axum::http::StatusCode::BAD_REQUEST)?;
+    let slug = bounded_channel_selector(raw).ok_or(axum::http::StatusCode::BAD_REQUEST)?;
     Ok(Some(slug))
 }
 
-fn channel_slug_from_query(
-    query: Option<&str>,
-) -> Result<Option<String>, axum::http::StatusCode> {
+fn channel_slug_from_query(query: Option<&str>) -> Result<Option<String>, axum::http::StatusCode> {
     let Some(query) = query else {
         return Ok(None);
     };

@@ -89,12 +89,14 @@ impl RateLimiterPort for MokaRateLimiter {
             .await;
 
         match result {
-            CompResult::Inserted(entry) | CompResult::ReplacedWith(entry) => Ok(RateLimitDecision {
-                allowed: true,
-                current_count: entry.into_value().count,
-                limit,
-                retry_after_secs: None,
-            }),
+            CompResult::Inserted(entry) | CompResult::ReplacedWith(entry) => {
+                Ok(RateLimitDecision {
+                    allowed: true,
+                    current_count: entry.into_value().count,
+                    limit,
+                    retry_after_secs: None,
+                })
+            }
             CompResult::Unchanged(entry) => Ok(RateLimitDecision {
                 allowed: false,
                 current_count: entry.into_value().count,

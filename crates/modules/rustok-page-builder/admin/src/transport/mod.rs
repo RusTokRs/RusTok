@@ -122,14 +122,11 @@ mod tests {
     #[test]
     fn server_function_error_round_trip_preserves_stable_save_codes() {
         for code in ["REVISION_CONFLICT", "PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN"] {
-            let server_error = PageBuilderAdminFacadeError::with_stable_code(
-                "Page Builder save failed",
-                code,
-            )
-            .to_string();
-            let client_error = PageBuilderAdminFacadeError::new(format!(
-                "Server function error: {server_error}"
-            ));
+            let server_error =
+                PageBuilderAdminFacadeError::with_stable_code("Page Builder save failed", code)
+                    .to_string();
+            let client_error =
+                PageBuilderAdminFacadeError::new(format!("Server function error: {server_error}"));
             assert_eq!(client_error.stable_code.as_deref(), Some(code));
             assert_eq!(
                 client_error.message,
@@ -164,19 +161,29 @@ mod tests {
             nested,
             "PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN",
         );
-        let restored = PageBuilderAdminFacadeError::new(format!("Server function error: {wrapped}"));
-        assert_eq!(restored.stable_code.as_deref(), Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN"));
+        let restored =
+            PageBuilderAdminFacadeError::new(format!("Server function error: {wrapped}"));
+        assert_eq!(
+            restored.stable_code.as_deref(),
+            Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN")
+        );
         assert_eq!(restored.message, format!("Server function error: {nested}"));
 
         let graphql = PageBuilderAdminFacadeError::new(format!(
             "PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN: {nested}"
         ));
-        assert_eq!(graphql.stable_code.as_deref(), Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN"));
+        assert_eq!(
+            graphql.stable_code.as_deref(),
+            Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN")
+        );
 
         let explicit_conflict = PageBuilderAdminFacadeError::new(
             "Earlier PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN resolved (REVISION_CONFLICT)",
         );
-        assert_eq!(explicit_conflict.stable_code.as_deref(), Some("REVISION_CONFLICT"));
+        assert_eq!(
+            explicit_conflict.stable_code.as_deref(),
+            Some("REVISION_CONFLICT")
+        );
     }
 
     #[test]

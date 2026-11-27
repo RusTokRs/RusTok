@@ -376,12 +376,11 @@ FOR UPDATE OF pvav
 
         let product =
             super::lock_product_for_update_in_tx(&txn, tenant_id, owner.product_id).await?;
-        let before_aggregate =
-            load_variant_attribute_value_aggregate(&txn, tenant_id, value_id)
-                .await?
-                .ok_or(ProductVariantAttributeValueTranslationError::ValueNotFound(
-                    value_id,
-                ))?;
+        let before_aggregate = load_variant_attribute_value_aggregate(&txn, tenant_id, value_id)
+            .await?
+            .ok_or(ProductVariantAttributeValueTranslationError::ValueNotFound(
+                value_id,
+            ))?;
         super::validate_localized_attribute_translation_in(
             &txn,
             tenant_id,

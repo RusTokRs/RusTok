@@ -821,9 +821,10 @@ fn action_from_request(request: SsrComponentActionRequest) -> Result<ComponentAc
             };
             let index = match request.index.trim() {
                 "" => None,
-                raw => Some(raw.parse::<usize>().map_err(|_| {
-                    "slide index must be a non-negative integer".to_string()
-                })?),
+                raw => Some(
+                    raw.parse::<usize>()
+                        .map_err(|_| "slide index must be a non-negative integer".to_string())?,
+                ),
             };
             let target_slide = if !request.target_slide.trim().is_empty() {
                 Some(validate_token(&request.target_slide, "target slide id")?)

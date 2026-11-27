@@ -402,7 +402,6 @@ pub(super) async fn fetch_product_attribute_values(
     Ok(response.product_attribute_values)
 }
 
-
 #[cfg(test)]
 mod variant_revision_query_tests {
     use super::PRODUCT_QUERY;

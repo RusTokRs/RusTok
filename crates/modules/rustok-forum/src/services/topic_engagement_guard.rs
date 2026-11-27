@@ -116,10 +116,13 @@ mod tests {
         )
     }
 
-    fn assert_err(kind: TopicEngagementKind, topic: &forum_topic::Model, security: &SecurityContext) {
+    fn assert_err(
+        kind: TopicEngagementKind,
+        topic: &forum_topic::Model,
+        security: &SecurityContext,
+    ) {
         let resource = match kind {
-            TopicEngagementKind::Vote
-            | TopicEngagementKind::UpdateTopic => Resource::ForumTopics,
+            TopicEngagementKind::Vote | TopicEngagementKind::UpdateTopic => Resource::ForumTopics,
             TopicEngagementKind::CreateReply
             | TopicEngagementKind::UpdateReply
             | TopicEngagementKind::RestoreReply => Resource::ForumReplies,

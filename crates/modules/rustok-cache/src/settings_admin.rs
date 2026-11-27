@@ -49,7 +49,8 @@ impl From<CacheSettingsAdminError> for String {
 pub trait CacheSettingsAdminPort: Send + Sync {
     /// Read the effective cache settings for `tenant_id`, with secrets redacted,
     /// together with the revision required for a compare-and-set write.
-    async fn read(&self, tenant_id: Uuid) -> Result<CacheSettingsSnapshot, CacheSettingsAdminError>;
+    async fn read(&self, tenant_id: Uuid)
+    -> Result<CacheSettingsSnapshot, CacheSettingsAdminError>;
 
     /// Persist validated cache settings only while the category still has the
     /// expected revision, and return the stored, redacted snapshot.
@@ -92,7 +93,10 @@ mod tests {
 
     #[async_trait]
     impl CacheSettingsAdminPort for RecordingPort {
-        async fn read(&self, _tenant_id: Uuid) -> Result<CacheSettingsSnapshot, CacheSettingsAdminError> {
+        async fn read(
+            &self,
+            _tenant_id: Uuid,
+        ) -> Result<CacheSettingsSnapshot, CacheSettingsAdminError> {
             Ok(self.stored.lock().expect("lock").clone())
         }
 
@@ -105,7 +109,9 @@ mod tests {
         ) -> Result<CacheSettingsSnapshot, CacheSettingsAdminError> {
             let mut stored = self.stored.lock().expect("lock");
             if stored.schema_version != expected_schema_version {
-                return Err(CacheSettingsAdminError::from("settings changed concurrently"));
+                return Err(CacheSettingsAdminError::from(
+                    "settings changed concurrently",
+                ));
             }
             stored.settings = settings.clone();
             stored.schema_version += 1;

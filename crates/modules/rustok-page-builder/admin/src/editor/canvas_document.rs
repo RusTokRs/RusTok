@@ -104,8 +104,8 @@ fn canvas_styles() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustok_ui_core::UiCspNonce;
     use fly::GrapesJsCodec;
+    use rustok_ui_core::UiCspNonce;
     use serde_json::json;
 
     #[test]
@@ -237,8 +237,12 @@ mod tests {
         .expect("decode");
         let nonce = UiCspNonce::new("0f3a9c").expect("nonce");
 
-        let html =
-            render_canvas_srcdoc_with_context(&document, "canvas-home", &json!({}), Some(nonce.as_str()));
+        let html = render_canvas_srcdoc_with_context(
+            &document,
+            "canvas-home",
+            &json!({}),
+            Some(nonce.as_str()),
+        );
         assert!(html.contains("<style nonce=\"0f3a9c\">"));
         assert!(html.contains("<script nonce=\"0f3a9c\">"));
         assert_eq!(html.matches(" nonce=\"").count(), 2);

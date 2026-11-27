@@ -10,25 +10,46 @@ async fn base_price_write_invalidates_catalog_variant_predecessor() {
     let actor_id = Uuid::new_v4();
     let (_, variant_id) = create_test_product(&catalog, tenant_id).await;
     let previous = product_variant::Entity::find_by_id(variant_id)
-        .one(&db).await.unwrap().unwrap().index_revision;
-    service.set_price(tenant_id, actor_id, variant_id, "USD", dec!(49.99), None)
-        .await.unwrap();
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap()
+        .index_revision;
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(49.99), None)
+        .await
+        .unwrap();
     let current = product_variant::Entity::find_by_id(variant_id)
-        .one(&db).await.unwrap().unwrap().index_revision;
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap()
+        .index_revision;
     assert!(current > previous);
-    let error = catalog.update_variant(
-        tenant_id, actor_id, variant_id,
-        UpdateVariantInput {
-            expected_revision: Some(previous.to_string()),
-            sku: rustok_api::Patch::Set("STALE-SKU".into()),
-            ..Default::default()
-        },
-    ).await.expect_err("stale catalog predecessor");
+    let error = catalog
+        .update_variant(
+            tenant_id,
+            actor_id,
+            variant_id,
+            UpdateVariantInput {
+                expected_revision: Some(previous.to_string()),
+                sku: rustok_api::Patch::Set("STALE-SKU".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect_err("stale catalog predecessor");
     assert_eq!(
         rustok_product::map_product_public_error(&error, "test", "test").code,
         "PRODUCT_REVISION_CONFLICT",
     );
-    assert_eq!(service.get_price(tenant_id, variant_id, "USD").await.unwrap(), Some(dec!(49.99)));
+    assert_eq!(
+        service
+            .get_price(tenant_id, variant_id, "USD")
+            .await
+            .unwrap(),
+        Some(dec!(49.99))
+    );
 }
 
 #[tokio::test]
@@ -592,7 +613,10 @@ async fn test_set_prices_rejects_inexact_compare_at_and_rolls_back_batch() {
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let (_, variant_id) = create_test_product(&catalog, tenant_id).await;
-    let before = service.get_price(tenant_id, variant_id, "USD").await.unwrap();
+    let before = service
+        .get_price(tenant_id, variant_id, "USD")
+        .await
+        .unwrap();
 
     let result = service
         .set_prices(
@@ -618,8 +642,20 @@ async fn test_set_prices_rejects_inexact_compare_at_and_rolls_back_batch() {
         )
         .await;
     assert!(matches!(result, Err(CommerceError::InvalidPrice(_))));
-    assert_eq!(service.get_price(tenant_id, variant_id, "USD").await.unwrap(), before);
-    assert_eq!(service.get_price(tenant_id, variant_id, "EUR").await.unwrap(), None);
+    assert_eq!(
+        service
+            .get_price(tenant_id, variant_id, "USD")
+            .await
+            .unwrap(),
+        before
+    );
+    assert_eq!(
+        service
+            .get_price(tenant_id, variant_id, "EUR")
+            .await
+            .unwrap(),
+        None
+    );
 }
 
 #[tokio::test]
@@ -1001,44 +1037,92 @@ async fn test_base_price_authoring_and_discount_preview_share_channel_identity()
     seed_pricing_channel(&db, tenant_id, channel_id, "web-store").await;
     service
         .set_price_tier_with_channel(
-            tenant_id, actor_id, variant_id, "USD", dec!(80), None,
-            None, Some("web-store".into()), None, None,
+            tenant_id,
+            actor_id,
+            variant_id,
+            "USD",
+            dec!(80),
+            None,
+            None,
+            Some("web-store".into()),
+            None,
+            None,
         )
         .await
         .unwrap();
-    let original = service.get_variant_prices(tenant_id, variant_id).await.unwrap()
-        .into_iter().find(|row| row.channel_slug.as_deref() == Some("web-store")).unwrap();
+    let original = service
+        .get_variant_prices(tenant_id, variant_id)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|row| row.channel_slug.as_deref() == Some("web-store"))
+        .unwrap();
 
     service
         .set_price_tier_with_channel(
-            tenant_id, actor_id, variant_id, "USD", dec!(90), None,
-            Some(channel_id), None, None, None,
+            tenant_id,
+            actor_id,
+            variant_id,
+            "USD",
+            dec!(90),
+            None,
+            Some(channel_id),
+            None,
+            None,
+            None,
         )
         .await
         .unwrap();
     service
         .set_prices(
-            tenant_id, actor_id, variant_id,
+            tenant_id,
+            actor_id,
+            variant_id,
             vec![rustok_commerce_foundation::dto::PriceInput {
-                currency_code: "USD".into(), channel_id: Some(channel_id),
-                channel_slug: Some("WEB-STORE".into()), amount: dec!(100), compare_at_amount: None,
+                currency_code: "USD".into(),
+                channel_id: Some(channel_id),
+                channel_slug: Some("WEB-STORE".into()),
+                amount: dec!(100),
+                compare_at_amount: None,
             }],
         )
         .await
         .unwrap();
-    let preview = service.preview_percentage_discount_with_channel(
-        variant_id, "USD", dec!(10), Some(channel_id), None,
-    ).await.unwrap();
+    let preview = service
+        .preview_percentage_discount_with_channel(
+            variant_id,
+            "USD",
+            dec!(10),
+            Some(channel_id),
+            None,
+        )
+        .await
+        .unwrap();
     assert_eq!(preview.current_amount, dec!(100));
     assert_eq!(preview.adjusted_amount, dec!(90));
-    let saved = service.apply_percentage_discount_with_channel(
-        tenant_id, actor_id, variant_id, "USD", dec!(10), Some(channel_id), None,
-    ).await.unwrap();
+    let saved = service
+        .apply_percentage_discount_with_channel(
+            tenant_id,
+            actor_id,
+            variant_id,
+            "USD",
+            dec!(10),
+            Some(channel_id),
+            None,
+        )
+        .await
+        .unwrap();
     assert_eq!(saved.adjusted_amount, preview.adjusted_amount);
 
-    let rows: Vec<_> = service.get_variant_prices(tenant_id, variant_id).await.unwrap()
-        .into_iter().filter(|row| row.channel_id == Some(channel_id)
-            || row.channel_slug.as_deref() == Some("web-store")).collect();
+    let rows: Vec<_> = service
+        .get_variant_prices(tenant_id, variant_id)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|row| {
+            row.channel_id == Some(channel_id) || row.channel_slug.as_deref() == Some("web-store")
+        })
+        .collect();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].id, original.id);
     assert_eq!(rows[0].amount, dec!(90));
@@ -1053,40 +1137,90 @@ async fn invalid_stored_price_predecessor_refuses_single_and_batch_events() {
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let (_, variant_id) = create_test_product(&catalog, tenant_id).await;
-    service.set_price(tenant_id, actor_id, variant_id, "USD", dec!(10), None)
-        .await.unwrap();
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(10), None)
+        .await
+        .unwrap();
 
     let row = entities::price::Entity::find()
         .filter(entities::price::Column::VariantId.eq(variant_id))
         .filter(entities::price::Column::CurrencyCode.eq("USD"))
         .filter(entities::price::Column::ChannelId.is_null())
         .filter(entities::price::Column::ChannelSlug.is_null())
-        .one(&db).await.unwrap().unwrap();
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
     let id = row.id;
     // Historical money that fits the decimal column but not USD minor units.
     let mut corrupt: entities::price::ActiveModel = row.into();
     corrupt.amount = Set(dec!(10.001));
     corrupt.update(&db).await.unwrap();
     let revision = product_variant::Entity::find_by_id(variant_id)
-        .one(&db).await.unwrap().unwrap().index_revision;
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap()
+        .index_revision;
     transport.clear();
 
-    assert!(service.set_price(tenant_id, actor_id, variant_id, "USD", dec!(12), None)
-        .await.is_err());
-    assert!(service.set_prices(tenant_id, actor_id, variant_id, vec![
-        rustok_commerce_foundation::dto::PriceInput {
-            currency_code: "EUR".into(), channel_id: None, channel_slug: None,
-            amount: dec!(20), compare_at_amount: None,
-        },
-        rustok_commerce_foundation::dto::PriceInput {
-            currency_code: "USD".into(), channel_id: None, channel_slug: None,
-            amount: dec!(12), compare_at_amount: None,
-        },
-    ]).await.is_err());
+    assert!(
+        service
+            .set_price(tenant_id, actor_id, variant_id, "USD", dec!(12), None)
+            .await
+            .is_err()
+    );
+    assert!(
+        service
+            .set_prices(
+                tenant_id,
+                actor_id,
+                variant_id,
+                vec![
+                    rustok_commerce_foundation::dto::PriceInput {
+                        currency_code: "EUR".into(),
+                        channel_id: None,
+                        channel_slug: None,
+                        amount: dec!(20),
+                        compare_at_amount: None,
+                    },
+                    rustok_commerce_foundation::dto::PriceInput {
+                        currency_code: "USD".into(),
+                        channel_id: None,
+                        channel_slug: None,
+                        amount: dec!(12),
+                        compare_at_amount: None,
+                    },
+                ]
+            )
+            .await
+            .is_err()
+    );
 
-    assert_eq!(entities::price::Entity::find_by_id(id).one(&db).await.unwrap().unwrap().amount, dec!(10.001));
-    assert_eq!(service.get_price(tenant_id, variant_id, "EUR").await.unwrap(), None);
-    assert_eq!(product_variant::Entity::find_by_id(variant_id)
-        .one(&db).await.unwrap().unwrap().index_revision, revision);
+    assert_eq!(
+        entities::price::Entity::find_by_id(id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap()
+            .amount,
+        dec!(10.001)
+    );
+    assert_eq!(
+        service
+            .get_price(tenant_id, variant_id, "EUR")
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        product_variant::Entity::find_by_id(variant_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap()
+            .index_revision,
+        revision
+    );
     assert!(transport.events_of_type("PriceUpdated").is_empty());
 }

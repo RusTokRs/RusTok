@@ -21,7 +21,9 @@ pub enum WorkflowError {
     #[error("Workflow {0} has running or unresolved execution receipts and cannot be deleted")]
     WorkflowDeletionBlocked(Uuid),
 
-    #[error("Workflow execution {0} is running with an unconfirmed outcome; operator reconciliation required")]
+    #[error(
+        "Workflow execution {0} is running with an unconfirmed outcome; operator reconciliation required"
+    )]
     ExecutionOutcomeUncertain(Uuid),
 
     #[error("Workflow cron firing {0} requires an explicit reconciliation decision")]

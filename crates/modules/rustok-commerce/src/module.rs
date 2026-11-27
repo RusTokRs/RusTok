@@ -52,21 +52,15 @@ impl RusToKModule for CommerceModule {
 
         #[cfg(feature = "marketplace-financial")]
         {
-            let Some(financial_runtime) = ctx
-                .extensions
-                .get::<MarketplaceFinancialRuntime>()
-                .cloned()
+            let Some(financial_runtime) =
+                ctx.extensions.get::<MarketplaceFinancialRuntime>().cloned()
             else {
                 tracing::warn!(
                     "commerce marketplace-financial capability requires MarketplaceFinancialRuntime in ModuleRuntimeExtensions"
                 );
                 return;
             };
-            let Some(event_bus) = ctx
-                .extensions
-                .get::<TransactionalEventBus>()
-                .cloned()
-            else {
+            let Some(event_bus) = ctx.extensions.get::<TransactionalEventBus>().cloned() else {
                 tracing::warn!(
                     "commerce marketplace-financial capability requires TransactionalEventBus in ModuleRuntimeExtensions"
                 );

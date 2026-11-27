@@ -125,7 +125,9 @@ impl std::io::Write for PreviewContextByteBudget {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
         if bytes.len() > self.remaining {
             self.exceeded = true;
-            return Err(std::io::Error::other("preview context byte budget exceeded"));
+            return Err(std::io::Error::other(
+                "preview context byte budget exceeded",
+            ));
         }
         self.remaining -= bytes.len();
         Ok(bytes.len())
@@ -192,13 +194,12 @@ impl PageBuilderPreviewRuntime {
                 "preview runtime context must be a JSON object",
             ));
         }
-        fly::ensure_depth_within_limit(&self.context, fly::MAXIMUM_DECODE_DEPTH)
-            .map_err(|_| {
-                PageBuilderPreviewRuntimeValidationError::new(format!(
-                    "preview runtime context exceeds maximum JSON depth {}",
-                    fly::MAXIMUM_DECODE_DEPTH
-                ))
-            })?;
+        fly::ensure_depth_within_limit(&self.context, fly::MAXIMUM_DECODE_DEPTH).map_err(|_| {
+            PageBuilderPreviewRuntimeValidationError::new(format!(
+                "preview runtime context exceeds maximum JSON depth {}",
+                fly::MAXIMUM_DECODE_DEPTH
+            ))
+        })?;
         let mut budget = PreviewContextByteBudget {
             remaining: MAX_PREVIEW_RUNTIME_CONTEXT_BYTES,
             exceeded: false,

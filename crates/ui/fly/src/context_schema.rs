@@ -165,8 +165,12 @@ impl ContextSchemaCatalog {
                 .extensions
                 .get(FLY_RUNTIME_CONTEXT_SCHEMA_FIELD),
         );
-        let (computed, unknown_computed_entries) =
-            decode_entries(document.project().extensions.get(FLY_RUNTIME_COMPUTED_FIELD));
+        let (computed, unknown_computed_entries) = decode_entries(
+            document
+                .project()
+                .extensions
+                .get(FLY_RUNTIME_COMPUTED_FIELD),
+        );
         Self {
             fields,
             computed,
@@ -278,7 +282,8 @@ pub fn materialize_context(document: &ProjectDocument, input: &Value) -> Context
             unresolved_computed += 1;
             let (code, reason) = match fallback_reason.as_deref() {
                 Some("dependencies did not resolve") => (
-                    "runtime_computed_unresolved", "dependencies did not resolve"
+                    "runtime_computed_unresolved",
+                    "dependencies did not resolve",
                 ),
                 Some(reason) => ("runtime_computed_evaluation_failed", reason),
                 None => ("runtime_computed_unresolved", "no value"),
@@ -310,7 +315,10 @@ pub fn materialize_context(document: &ProjectDocument, input: &Value) -> Context
                     ValidationSeverity::Warning,
                     "runtime_computed_write_failed",
                     &computed.path,
-                    format!("computed value `{}` could not be written: {error}", computed.id),
+                    format!(
+                        "computed value `{}` could not be written: {error}",
+                        computed.id
+                    ),
                 ));
             }
         }
@@ -512,9 +520,9 @@ pub fn validate_context_definitions(document: &ProjectDocument) -> Vec<Validatio
                     ),
                 ));
             }
-            if parse_context_path(&dependency).is_some_and(|path| {
-                Some(path) == parse_context_path(&computed.path)
-            }) {
+            if parse_context_path(&dependency)
+                .is_some_and(|path| Some(path) == parse_context_path(&computed.path))
+            {
                 diagnostics.push(context_diagnostic(
                     ValidationSeverity::Error,
                     "runtime_computed_self_reference",
@@ -595,7 +603,11 @@ pub fn is_valid_context_path(path: &str) -> bool {
     parse_context_path(path).is_some()
 }
 
-fn remove_path_segments(current: &mut Value, segments: &[ContextPathSegment], shift_indices: bool) -> bool {
+fn remove_path_segments(
+    current: &mut Value,
+    segments: &[ContextPathSegment],
+    shift_indices: bool,
+) -> bool {
     let Some((first, rest)) = segments.split_first() else {
         return false;
     };
@@ -655,7 +667,8 @@ fn validate_context_write(root: &Value, segments: &[ContextPathSegment]) -> Resu
         match segment {
             ContextPathSegment::Key(key) => {
                 current = match current {
-                    Some(value) => value.as_object()
+                    Some(value) => value
+                        .as_object()
                         .ok_or_else(|| format!("path segment `{key}` requires an object"))?
                         .get(key),
                     None => None,
@@ -663,7 +676,8 @@ fn validate_context_write(root: &Value, segments: &[ContextPathSegment]) -> Resu
             }
             ContextPathSegment::Index(index) => {
                 let length = match current {
-                    Some(value) => value.as_array()
+                    Some(value) => value
+                        .as_array()
                         .ok_or_else(|| format!("path index `{index}` requires an array"))?
                         .len(),
                     None => 0,
@@ -797,7 +811,10 @@ fn parse_context_path(path: &str) -> Option<Vec<ContextPathSegment>> {
                     return None;
                 }
                 segments.push(ContextPathSegment::Key(std::mem::take(&mut token)));
-                if matches!(chars.peek().copied(), None | Some('.') | Some('[') | Some(']')) {
+                if matches!(
+                    chars.peek().copied(),
+                    None | Some('.') | Some('[') | Some(']')
+                ) {
                     return None;
                 }
             }
@@ -1198,7 +1215,8 @@ fn validate_computed_identity(computed: &ComputedContextValue) -> FlyResult<()> 
     let mut paths = BTreeSet::new();
     collect_expression_paths(&computed.expression, &mut paths);
     if paths.iter().any(|path| {
-        parse_context_path(path).is_some_and(|path| Some(path) == parse_context_path(&computed.path))
+        parse_context_path(path)
+            .is_some_and(|path| Some(path) == parse_context_path(&computed.path))
     }) {
         return Err(FlyError::Decode(
             "computed context value cannot reference its own target path".to_string(),
@@ -1417,14 +1435,18 @@ fn computed_evaluation_order(
     for (index, value) in computed.iter().enumerate() {
         let Some(path) = parse_context_path(&value.path) else {
             diagnostics.push(context_diagnostic(
-                ValidationSeverity::Error, "runtime_computed_path_invalid", &value.path,
+                ValidationSeverity::Error,
+                "runtime_computed_path_invalid",
+                &value.path,
                 format!("computed value `{}` path is invalid", value.id),
             ));
             continue;
         };
         if targets.insert(path, index).is_some() {
             diagnostics.push(context_diagnostic(
-                ValidationSeverity::Error, "duplicate_runtime_computed_path", &value.path,
+                ValidationSeverity::Error,
+                "duplicate_runtime_computed_path",
+                &value.path,
                 format!("computed value `{}` has a duplicate target", value.id),
             ));
         }
@@ -1432,7 +1454,9 @@ fn computed_evaluation_order(
     for (path, &index) in &targets {
         if (1..path.len()).any(|length| targets.contains_key(&path[..length])) {
             diagnostics.push(context_diagnostic(
-                ValidationSeverity::Error, "runtime_computed_target_overlap", &computed[index].path,
+                ValidationSeverity::Error,
+                "runtime_computed_target_overlap",
+                &computed[index].path,
                 "computed targets must not overlap as ancestor and descendant",
             ));
         }
@@ -1464,8 +1488,10 @@ fn computed_evaluation_order(
             }
             if edges.saturating_add(dependencies.len()) > MAX_DEPENDENCY_EDGES {
                 diagnostics.push(context_diagnostic(
-                    ValidationSeverity::Error, "runtime_computed_dependency_budget_exceeded",
-                    &value.path, "computed dependency graph exceeds its edge budget",
+                    ValidationSeverity::Error,
+                    "runtime_computed_dependency_budget_exceeded",
+                    &value.path,
+                    "computed dependency graph exceeds its edge budget",
                 ));
                 return (Vec::new(), diagnostics);
             }
@@ -1476,7 +1502,9 @@ fn computed_evaluation_order(
             dependents[producer].push(index);
         }
     }
-    let mut ready = indegree.iter().enumerate()
+    let mut ready = indegree
+        .iter()
+        .enumerate()
         .filter_map(|(index, &count)| (count == 0).then_some(index))
         .collect::<BTreeSet<_>>();
     let mut order = Vec::with_capacity(computed.len());
@@ -1492,8 +1520,13 @@ fn computed_evaluation_order(
     for (index, count) in indegree.into_iter().enumerate() {
         if count != 0 {
             diagnostics.push(context_diagnostic(
-                ValidationSeverity::Error, "runtime_computed_dependency_cycle", &computed[index].path,
-                format!("computed value `{}` is in or depends on a dependency cycle", computed[index].id),
+                ValidationSeverity::Error,
+                "runtime_computed_dependency_cycle",
+                &computed[index].path,
+                format!(
+                    "computed value `{}` is in or depends on a dependency cycle",
+                    computed[index].id
+                ),
             ));
         }
     }
@@ -1677,10 +1710,14 @@ mod tests {
             let document = GrapesJsCodec::decode_value(json!({
                 "pages": [{"component": {"id": "root", "type": "wrapper"}}],
                 "flyRuntimeComputed": values
-            })).expect("document");
-            let result = materialize_context(&document, &json!({
-                "product": {"name": "Stale"}, "cart": {"amount": 0}
-            }));
+            }))
+            .expect("document");
+            let result = materialize_context(
+                &document,
+                &json!({
+                    "product": {"name": "Stale"}, "cart": {"amount": 0}
+                }),
+            );
             assert_eq!(result.context["label"], "Fresh!");
             assert_eq!(result.context["aggregate"]["amount"], 7);
             assert_eq!(result.computed_applied, 4);
@@ -1723,21 +1760,37 @@ mod tests {
         assert_eq!(result.computed_applied, 0);
         assert_eq!(result.unresolved_computed, 3);
         assert_eq!(result.computed_fallbacks, 0);
-        assert!(result.diagnostics.iter().any(|d| d.code == "runtime_computed_dependency_cycle"));
-        assert!(validate_context_definitions(&document).iter().any(|d| d.code == "runtime_computed_dependency_cycle"));
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|d| d.code == "runtime_computed_dependency_cycle")
+        );
+        assert!(
+            validate_context_definitions(&document)
+                .iter()
+                .any(|d| d.code == "runtime_computed_dependency_cycle")
+        );
     }
 
     #[test]
     fn overlapping_computed_targets_are_rejected_and_failed_writes_are_counted() {
-        let source = |values| GrapesJsCodec::decode_value(json!({
-            "pages": [{"component": {"id": "root", "type": "wrapper"}}],
-            "flyRuntimeComputed": values
-        })).expect("document");
+        let source = |values| {
+            GrapesJsCodec::decode_value(json!({
+                "pages": [{"component": {"id": "root", "type": "wrapper"}}],
+                "flyRuntimeComputed": values
+            }))
+            .expect("document")
+        };
         let overlap = source(json!([
             {"id": "one", "path": "obj", "expression": {"op": "literal", "value": {}}},
             {"id": "two", "path": "obj.child", "expression": {"op": "literal", "value": 1}}
         ]));
-        assert!(validate_context_definitions(&overlap).iter().any(|d| d.code == "runtime_computed_target_overlap"));
+        assert!(
+            validate_context_definitions(&overlap)
+                .iter()
+                .any(|d| d.code == "runtime_computed_target_overlap")
+        );
         let bad_write = source(json!([
             {"id": "one", "path": "obj.child", "expression": {"op": "literal", "value": 1}}
         ]));
@@ -1798,14 +1851,18 @@ mod tests {
         };
 
         let unclosed = document_with_template("{{name}} {{broken");
-        assert!(validate_context_definitions(&unclosed)
-            .iter()
-            .any(|diagnostic| diagnostic.code == "runtime_computed_format_unclosed"));
+        assert!(
+            validate_context_definitions(&unclosed)
+                .iter()
+                .any(|diagnostic| diagnostic.code == "runtime_computed_format_unclosed")
+        );
 
         let empty = document_with_template("{{name}} {{}}");
-        assert!(validate_context_definitions(&empty)
-            .iter()
-            .any(|diagnostic| diagnostic.code == "runtime_computed_format_empty"));
+        assert!(
+            validate_context_definitions(&empty)
+                .iter()
+                .any(|diagnostic| diagnostic.code == "runtime_computed_format_empty")
+        );
     }
 
     #[test]
@@ -1848,16 +1905,26 @@ mod tests {
         let mut root = json!({"existing": 1});
         let before = root.clone();
         for path in [
-            "items[10000]", "items[18446744073709551615]", "items.[0]",
-            "items[+1]", "items[9999][9999]", "existing.child",
+            "items[10000]",
+            "items[18446744073709551615]",
+            "items.[0]",
+            "items[+1]",
+            "items[9999][9999]",
+            "existing.child",
         ] {
-            assert!(set_context_path(&mut root, path, json!(1)).is_err(), "{path}");
+            assert!(
+                set_context_path(&mut root, path, json!(1)).is_err(),
+                "{path}"
+            );
             assert_eq!(root, before, "{path}");
         }
         assert!(!is_valid_context_path(&vec!["x"; 65].join(".")));
         assert!(!is_valid_context_path(&"x".repeat(2049)));
         set_context_path(&mut root, "items[2].name", json!("ok")).expect("bounded write");
-        assert_eq!(resolve_context_path(&root, "$.items[02].name"), Some(&json!("ok")));
+        assert_eq!(
+            resolve_context_path(&root, "$.items[02].name"),
+            Some(&json!("ok"))
+        );
     }
 
     #[test]
@@ -1874,7 +1941,11 @@ mod tests {
             ]
         })).expect("document");
         let diagnostics = validate_context_definitions(&document);
-        for code in ["duplicate_runtime_context_field_path", "duplicate_runtime_computed_path", "runtime_computed_self_reference"] {
+        for code in [
+            "duplicate_runtime_context_field_path",
+            "duplicate_runtime_computed_path",
+            "runtime_computed_self_reference",
+        ] {
             assert!(diagnostics.iter().any(|d| d.code == code), "{code}");
         }
     }

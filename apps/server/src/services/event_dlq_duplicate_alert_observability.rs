@@ -10,9 +10,7 @@ use rustok_telemetry::dlq_duplicate_alert_metrics::{
 };
 use tokio::task::JoinHandle;
 
-use crate::services::app_lifecycle::{
-    EventDlqObserverInitializationLock, StopHandle,
-};
+use crate::services::app_lifecycle::{EventDlqObserverInitializationLock, StopHandle};
 use crate::services::event_dlq_duplicate_alert_observer::{
     EventDlqDuplicateAlertObserverHandle, EventDlqDuplicateAlertObserverMode,
 };

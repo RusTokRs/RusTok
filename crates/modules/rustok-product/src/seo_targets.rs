@@ -239,7 +239,7 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
             let (product_ids, next_after) = service
                 .scan_published_product_ids(request.tenant_id, None, after, BULK_FETCH_SIZE)
                 .await
-            .map_err(SeoTargetError::provider)?;
+                .map_err(SeoTargetError::provider)?;
             let projections = service
                 .get_product_seo_projections(
                     request.tenant_id,
@@ -248,7 +248,7 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
                     request.default_locale,
                 )
                 .await
-            .map_err(SeoTargetError::provider)?;
+                .map_err(SeoTargetError::provider)?;
             let mut by_id = projections
                 .into_iter()
                 .map(|projection| (projection.id, projection))
@@ -418,7 +418,9 @@ fn resolve_product_translation<'a>(
         }
     }
 
-    let stable_fallback = items.iter().min_by(|left, right| left.locale.cmp(&right.locale));
+    let stable_fallback = items
+        .iter()
+        .min_by(|left, right| left.locale.cmp(&right.locale));
     (
         stable_fallback,
         stable_fallback

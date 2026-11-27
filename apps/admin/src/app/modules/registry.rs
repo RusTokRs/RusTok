@@ -201,7 +201,9 @@ mod tests {
             Some("Runs")
         );
         assert_eq!(
-            registration.child_page_for_subpath("history/runs-old").map(|page| page.nav_label),
+            registration
+                .child_page_for_subpath("history/runs-old")
+                .map(|page| page.nav_label),
             Some("History")
         );
     }

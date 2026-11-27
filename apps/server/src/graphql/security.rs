@@ -89,7 +89,9 @@ fn collect_sensitive_fields_from_selection_set(
     fields: &mut BTreeSet<SensitiveGraphqlField>,
 ) {
     let _completed = super::visit_selection_fields(document, selection_set, (), |field, ()| {
-        if let Some(field) = SensitiveGraphqlField::from_root_field(operation_type, field.name.node.as_str()) {
+        if let Some(field) =
+            SensitiveGraphqlField::from_root_field(operation_type, field.name.node.as_str())
+        {
             fields.insert(field);
         }
         std::ops::ControlFlow::Continue(None)
@@ -629,7 +631,10 @@ mod tests {
 
         assert_eq!(
             sensitive_graphql_fields(&document, Some("Reporting")),
-            vec![SensitiveGraphqlField::DashboardStats, SensitiveGraphqlField::RecentActivity],
+            vec![
+                SensitiveGraphqlField::DashboardStats,
+                SensitiveGraphqlField::RecentActivity
+            ],
         );
     }
 
@@ -640,14 +645,37 @@ mod tests {
             .finish();
 
         for (permission, allowed, denied, hint) in [
-            (Permission::ANALYTICS_READ, "{ dashboardStats }", "{ recentActivity }", "users:list"),
-            (Permission::USERS_LIST, "{ recentActivity }", "{ dashboardStats }", "analytics:read"),
-            (Permission::USERS_MANAGE, "{ recentActivity }", "{ dashboardStats }", "analytics:read"),
+            (
+                Permission::ANALYTICS_READ,
+                "{ dashboardStats }",
+                "{ recentActivity }",
+                "users:list",
+            ),
+            (
+                Permission::USERS_LIST,
+                "{ recentActivity }",
+                "{ dashboardStats }",
+                "analytics:read",
+            ),
+            (
+                Permission::USERS_MANAGE,
+                "{ recentActivity }",
+                "{ dashboardStats }",
+                "analytics:read",
+            ),
         ] {
             let auth = auth_context(vec![permission]);
-            let response = schema.execute(Request::new(allowed).data(auth.clone())).await;
-            assert!(response.errors.is_empty(), "{allowed}: {:?}", response.errors);
-            let response = schema.execute(Request::new(denied).data(auth.clone())).await;
+            let response = schema
+                .execute(Request::new(allowed).data(auth.clone()))
+                .await;
+            assert!(
+                response.errors.is_empty(),
+                "{allowed}: {:?}",
+                response.errors
+            );
+            let response = schema
+                .execute(Request::new(denied).data(auth.clone()))
+                .await;
             assert_eq!(response.errors.len(), 1, "{denied}");
             assert!(response.errors[0].message.contains(hint));
 
@@ -665,7 +693,10 @@ mod tests {
             )
             .await;
         assert!(response.errors.is_empty(), "{:?}", response.errors);
-        assert_eq!(response.data.into_json().expect("reporting data"), json!({"stats": 42, "activity": [1, 2]}));
+        assert_eq!(
+            response.data.into_json().expect("reporting data"),
+            json!({"stats": 42, "activity": [1, 2]})
+        );
     }
 
     #[tokio::test]

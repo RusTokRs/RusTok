@@ -148,7 +148,8 @@ async fn concurrent_publishers_have_one_claim_owner() -> TestResult<()> {
 }
 
 #[tokio::test]
-async fn expired_lease_requires_reconciliation_and_preserves_original_publisher() -> TestResult<()> {
+async fn expired_lease_requires_reconciliation_and_preserves_original_publisher() -> TestResult<()>
+{
     let Some(test_db) = PostgresPoisonReceiptTestDb::setup("lease_reconciliation").await? else {
         return Ok(());
     };

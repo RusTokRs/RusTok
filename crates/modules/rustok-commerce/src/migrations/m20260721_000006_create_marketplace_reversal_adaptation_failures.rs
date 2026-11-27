@@ -122,7 +122,12 @@ impl MigrationTrait for Migration {
             DatabaseBackend::Postgres => install_postgres_guards(manager).await?,
             DatabaseBackend::Sqlite => install_sqlite_guards(manager).await?,
             DatabaseBackend::MySql => install_mysql_guards(manager).await?,
-            backend => return Err(DbErr::Custom(format!("unsupported SeaORM database backend: {:?}", backend))),
+            backend => {
+                return Err(DbErr::Custom(format!(
+                    "unsupported SeaORM database backend: {:?}",
+                    backend
+                )));
+            }
         }
         Ok(())
     }
@@ -151,7 +156,12 @@ impl MigrationTrait for Migration {
                     )
                     .await?;
             }
-            backend => return Err(DbErr::Custom(format!("unsupported SeaORM database backend: {:?}", backend))),
+            backend => {
+                return Err(DbErr::Custom(format!(
+                    "unsupported SeaORM database backend: {:?}",
+                    backend
+                )));
+            }
         }
         manager
             .drop_table(

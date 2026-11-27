@@ -39,7 +39,11 @@ pub fn ForumTopicMoveAdmin() -> impl IntoView {
         "forum.move.category",
         "Target category",
     );
-    let choose_topic_label = t(ui_locale.as_deref(), "forum.move.chooseTopic", "Choose a topic");
+    let choose_topic_label = t(
+        ui_locale.as_deref(),
+        "forum.move.chooseTopic",
+        "Choose a topic",
+    );
     let choose_category_label = t(
         ui_locale.as_deref(),
         "forum.move.chooseCategory",
@@ -48,7 +52,11 @@ pub fn ForumTopicMoveAdmin() -> impl IntoView {
     let reason_label = t(ui_locale.as_deref(), "forum.move.reason", "Reason");
     let submit_label = t(ui_locale.as_deref(), "forum.move.submit", "Move topic");
     let pending_label = t(ui_locale.as_deref(), "forum.move.pending", "Moving…");
-    let complete_label = t(ui_locale.as_deref(), "forum.move.complete", "Move committed");
+    let complete_label = t(
+        ui_locale.as_deref(),
+        "forum.move.complete",
+        "Move committed",
+    );
     let operation_label = t(
         ui_locale.as_deref(),
         "forum.move.operation",

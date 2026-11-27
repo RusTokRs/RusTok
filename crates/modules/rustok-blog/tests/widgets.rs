@@ -269,8 +269,9 @@ async fn public_scope_preview_applies_channel_visibility_before_keyset_limits() 
             .await
             .unwrap();
     }
-    let posts = PostService::new(db.clone(), bus.clone())
-        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()));
+    let posts = PostService::new(db.clone(), bus.clone()).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
     let admin = SecurityContext::new(UserRole::Admin, Some(auth.user_id));
     let mut expected = Vec::new();
     let mut hidden = None;
@@ -368,8 +369,9 @@ async fn public_scope_preview_applies_channel_visibility_before_keyset_limits() 
 #[tokio::test]
 async fn graphql_executes_the_owner_contract_and_fails_closed_on_context_or_module_denial() {
     let (db, bus, tenant, auth) = fixture().await;
-    let posts = PostService::new(db.clone(), bus.clone())
-        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()));
+    let posts = PostService::new(db.clone(), bus.clone()).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
     let id = create_post(&posts, tenant.id, auth.user_id, "GraphQL preview", None).await;
     let schema = Schema::build(BlogQuery, BlogMutation, EmptySubscription)
         .data(db.clone())
@@ -460,8 +462,9 @@ async fn graphql_executes_the_owner_contract_and_fails_closed_on_context_or_modu
 #[tokio::test]
 async fn real_rest_router_serves_catalog_validation_preview_and_explicit_denials() {
     let (db, bus, tenant, auth) = fixture().await;
-    let posts = PostService::new(db.clone(), bus.clone())
-        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()));
+    let posts = PostService::new(db.clone(), bus.clone()).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
     let id = create_post(&posts, tenant.id, auth.user_id, "HTTP preview", None).await;
     let app = router(db.clone(), bus.clone(), tenant.clone(), Some(auth.clone()));
     let (status, catalog) =

@@ -5,15 +5,11 @@
 //! Provider Configuration document because this server does not implement the
 //! complete OIDC ID-token/JWKS surface.
 
-use axum::{
-    Json,
-    extract::State,
-    routing::get,
-};
-use reqwest::Url;
-use serde::Serialize;
 use crate::error::Error;
 use crate::services::server_runtime_context::ServerAuthRuntime;
+use axum::{Json, extract::State, routing::get};
+use reqwest::Url;
+use serde::Serialize;
 
 const AUTHORIZATION_ENDPOINT_PATH: &str = "api/oauth/authorize";
 const TOKEN_ENDPOINT_PATH: &str = "api/oauth/token";
@@ -104,7 +100,10 @@ fn metadata_for_issuer(issuer: &str) -> Result<OAuthAuthorizationServerMetadata,
 }
 
 pub(crate) fn parse_metadata_issuer(issuer: &str) -> Result<Url, Error> {
-    if issuer.chars().any(|ch| ch.is_whitespace() || ch.is_control() || ch == '\\') {
+    if issuer
+        .chars()
+        .any(|ch| ch.is_whitespace() || ch.is_control() || ch == '\\')
+    {
         return Err(Error::Message(
             "OAuth metadata issuer URL must not contain whitespace, control characters or backslashes".into(),
         ));
@@ -112,13 +111,18 @@ pub(crate) fn parse_metadata_issuer(issuer: &str) -> Result<Url, Error> {
 
     // Inspect the literal authority and root path before WHATWG parsing:
     // special URLs can normalize dot segments or recover missing slashes.
-    let (_, authority) = issuer.split_once("://").ok_or_else(|| {
-        Error::Message("OAuth metadata requires an absolute issuer URL".into())
-    })?;
+    let (_, authority) = issuer
+        .split_once("://")
+        .ok_or_else(|| Error::Message("OAuth metadata requires an absolute issuer URL".into()))?;
     let authority = authority.strip_suffix('/').unwrap_or(authority);
-    if authority.is_empty() || authority.chars().any(|ch| matches!(ch, '/' | '?' | '#' | '@')) {
+    if authority.is_empty()
+        || authority
+            .chars()
+            .any(|ch| matches!(ch, '/' | '?' | '#' | '@'))
+    {
         return Err(Error::Message(
-            "OAuth metadata issuer must have an authority and no userinfo, path, query or fragment".into(),
+            "OAuth metadata issuer must have an authority and no userinfo, path, query or fragment"
+                .into(),
         ));
     }
     let url = Url::parse(issuer)
@@ -175,8 +179,7 @@ mod tests {
         let metadata = metadata_for_issuer("https://api.example.com/").expect("valid issuer");
 
         assert_eq!(
-            metadata.issuer,
-            "https://api.example.com/",
+            metadata.issuer, "https://api.example.com/",
             "discovery must preserve the exact configured JWT issuer"
         );
         assert_eq!(
@@ -218,13 +221,11 @@ mod tests {
             "client_secret_basic".to_string(),
         ];
         assert_eq!(
-            metadata.token_endpoint_auth_methods_supported,
-            supported_client_auth_methods,
+            metadata.token_endpoint_auth_methods_supported, supported_client_auth_methods,
             "discovery must advertise public-client auth and every confidential method implemented by the token endpoint"
         );
         assert_eq!(
-            metadata.revocation_endpoint_auth_methods_supported,
-            supported_client_auth_methods,
+            metadata.revocation_endpoint_auth_methods_supported, supported_client_auth_methods,
             "discovery must advertise public-client revocation and every confidential method implemented by the revocation endpoint"
         );
         assert_eq!(

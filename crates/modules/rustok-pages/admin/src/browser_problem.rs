@@ -30,7 +30,8 @@ pub const BROWSER_SAVE_OUTCOME_UNKNOWN_CODE: &str = "PAGE_DOCUMENT_SAVE_OUTCOME_
 pub const BROWSER_OPERATION_ID_CONFLICT_CODE: &str = "OPERATION_ID_CONFLICT";
 pub const BROWSER_OPERATION_RECEIPT_CAPACITY_CODE: &str = "OPERATION_RECEIPT_CAPACITY";
 pub const BROWSER_OPERATION_RECEIPTS_UNSUPPORTED_CODE: &str = "OPERATION_RECEIPTS_UNSUPPORTED";
-pub const BROWSER_OPERATION_RECEIPT_SESSION_REQUIRED_CODE: &str = "OPERATION_RECEIPT_SESSION_REQUIRED";
+pub const BROWSER_OPERATION_RECEIPT_SESSION_REQUIRED_CODE: &str =
+    "OPERATION_RECEIPT_SESSION_REQUIRED";
 pub const BROWSER_OPERATION_RECEIPT_TOO_LARGE_CODE: &str = "OPERATION_RECEIPT_TOO_LARGE";
 pub const BROWSER_OPERATION_ID_INVALID_CODE: &str = "OPERATION_ID_INVALID";
 pub const BROWSER_OPERATION_HASH_INVALID_CODE: &str = "OPERATION_HASH_INVALID";
@@ -153,8 +154,7 @@ fn status_for_error(error: &PagesBrowserIntentAccessError) -> u16 {
             | SsrDraftSessionError::DraftUnavailable,
         )) => HTTP_CONFLICT,
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
-            SsrDraftSessionError::InvalidOperationId
-            | SsrDraftSessionError::InvalidOperationHash,
+            SsrDraftSessionError::InvalidOperationId | SsrDraftSessionError::InvalidOperationHash,
         )) => HTTP_BAD_REQUEST,
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
             SsrDraftSessionError::OperationReceiptTooLarge { .. }
@@ -227,18 +227,32 @@ fn stable_code_for_error(error: &PagesBrowserIntentAccessError) -> Option<&str> 
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::OperationFingerprint(_)) => {
             Some(BROWSER_OPERATION_FINGERPRINT_FAILED_CODE)
         }
-        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(error)) => match error {
-            SsrDraftSessionError::OperationReceiptConflict => Some(BROWSER_OPERATION_ID_CONFLICT_CODE),
-            SsrDraftSessionError::OperationReceiptPending => Some("OPERATION_RECEIPT_PENDING"),
-            SsrDraftSessionError::OperationReceiptCapacity { .. } => Some(BROWSER_OPERATION_RECEIPT_CAPACITY_CODE),
-            SsrDraftSessionError::OperationReceiptsUnsupported => Some(BROWSER_OPERATION_RECEIPTS_UNSUPPORTED_CODE),
-            SsrDraftSessionError::OperationReceiptRequiresSession => Some(BROWSER_OPERATION_RECEIPT_SESSION_REQUIRED_CODE),
-            SsrDraftSessionError::OperationReceiptTooLarge { .. } => Some(BROWSER_OPERATION_RECEIPT_TOO_LARGE_CODE),
-            SsrDraftSessionError::InvalidOperationId => Some(BROWSER_OPERATION_ID_INVALID_CODE),
-            SsrDraftSessionError::InvalidOperationHash => Some(BROWSER_OPERATION_HASH_INVALID_CODE),
-            SsrDraftSessionError::DraftUnavailable => Some(BROWSER_DRAFT_UNAVAILABLE_CODE),
-            _ => None,
-        },
+        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(error)) => {
+            match error {
+                SsrDraftSessionError::OperationReceiptConflict => {
+                    Some(BROWSER_OPERATION_ID_CONFLICT_CODE)
+                }
+                SsrDraftSessionError::OperationReceiptPending => Some("OPERATION_RECEIPT_PENDING"),
+                SsrDraftSessionError::OperationReceiptCapacity { .. } => {
+                    Some(BROWSER_OPERATION_RECEIPT_CAPACITY_CODE)
+                }
+                SsrDraftSessionError::OperationReceiptsUnsupported => {
+                    Some(BROWSER_OPERATION_RECEIPTS_UNSUPPORTED_CODE)
+                }
+                SsrDraftSessionError::OperationReceiptRequiresSession => {
+                    Some(BROWSER_OPERATION_RECEIPT_SESSION_REQUIRED_CODE)
+                }
+                SsrDraftSessionError::OperationReceiptTooLarge { .. } => {
+                    Some(BROWSER_OPERATION_RECEIPT_TOO_LARGE_CODE)
+                }
+                SsrDraftSessionError::InvalidOperationId => Some(BROWSER_OPERATION_ID_INVALID_CODE),
+                SsrDraftSessionError::InvalidOperationHash => {
+                    Some(BROWSER_OPERATION_HASH_INVALID_CODE)
+                }
+                SsrDraftSessionError::DraftUnavailable => Some(BROWSER_DRAFT_UNAVAILABLE_CODE),
+                _ => None,
+            }
+        }
         _ => None,
     }
 }
@@ -272,9 +286,7 @@ mod tests {
         );
         assert_eq!(as_save_failure.intent.as_deref(), Some("save"));
         let as_http_error = PagesBrowserIntentProblem::from_error(
-            &PagesBrowserIntentAccessError::Pages(
-                PagesBrowserIntentError::Facade(error),
-            )
+            &PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Facade(error)),
         );
         assert_eq!(as_http_error.status, HTTP_SERVICE_UNAVAILABLE);
     }
@@ -376,16 +388,19 @@ mod tests {
 
     #[test]
     fn operation_receipt_errors_have_stable_conflict_and_server_statuses() {
-        let conflict = PagesBrowserIntentAccessError::Pages(
-            PagesBrowserIntentError::Draft(SsrDraftSessionError::OperationReceiptConflict),
-        );
+        let conflict = PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
+            SsrDraftSessionError::OperationReceiptConflict,
+        ));
         let problem = PagesBrowserIntentProblem::from(&conflict);
         assert_eq!(problem.status, HTTP_CONFLICT);
-        assert_eq!(problem.code.as_deref(), Some(BROWSER_OPERATION_ID_CONFLICT_CODE));
-
-        let unsupported = PagesBrowserIntentAccessError::Pages(
-            PagesBrowserIntentError::Draft(SsrDraftSessionError::OperationReceiptsUnsupported),
+        assert_eq!(
+            problem.code.as_deref(),
+            Some(BROWSER_OPERATION_ID_CONFLICT_CODE)
         );
+
+        let unsupported = PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
+            SsrDraftSessionError::OperationReceiptsUnsupported,
+        ));
         let problem = PagesBrowserIntentProblem::from(&unsupported);
         assert_eq!(problem.status, HTTP_SERVICE_UNAVAILABLE);
         assert_eq!(
@@ -393,12 +408,12 @@ mod tests {
             Some(BROWSER_OPERATION_RECEIPTS_UNSUPPORTED_CODE),
         );
 
-        let too_large = PagesBrowserIntentAccessError::Pages(
-            PagesBrowserIntentError::Draft(SsrDraftSessionError::OperationReceiptTooLarge {
+        let too_large = PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
+            SsrDraftSessionError::OperationReceiptTooLarge {
                 bytes: MAX_DRAFT_OPERATION_RECEIPT_BYTES + 1,
                 maximum: MAX_DRAFT_OPERATION_RECEIPT_BYTES,
-            }),
-        );
+            },
+        ));
         let problem = PagesBrowserIntentProblem::from(&too_large);
         assert_eq!(problem.status, HTTP_PAYLOAD_TOO_LARGE);
         assert_eq!(

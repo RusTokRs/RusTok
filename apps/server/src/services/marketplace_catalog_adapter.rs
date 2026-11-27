@@ -210,7 +210,10 @@ fn map_marketplace_entry(
         has_admin_ui: entry.has_admin_ui,
         has_storefront_ui: entry.has_storefront_ui,
         ui_classification: entry.ui_classification,
-        registry_lifecycle: entry.registry_lifecycle.map(map_registry_lifecycle).transpose()?,
+        registry_lifecycle: entry
+            .registry_lifecycle
+            .map(map_registry_lifecycle)
+            .transpose()?,
         compatible: entry.compatible,
         recommended_admin_surfaces: entry.recommended_admin_surfaces,
         showcase_admin_surfaces: entry.showcase_admin_surfaces,
@@ -233,65 +236,76 @@ fn map_registry_lifecycle(
             restriction_reason_code: snapshot.moderation_policy.restriction_reason_code,
             restriction_reason: snapshot.moderation_policy.restriction_reason,
         },
-        owner_binding: snapshot.owner_binding.map(|owner| {
-            Ok::<_, ModuleMarketplaceError>(RegistryOwnerLifecycle {
-                owner: principal_label(&owner.owner_principal)?,
-                bound_by: principal_label(&owner.bound_by_principal)?,
-                bound_at: owner.bound_at,
-                updated_at: owner.updated_at,
+        owner_binding: snapshot
+            .owner_binding
+            .map(|owner| {
+                Ok::<_, ModuleMarketplaceError>(RegistryOwnerLifecycle {
+                    owner: principal_label(&owner.owner_principal)?,
+                    bound_by: principal_label(&owner.bound_by_principal)?,
+                    bound_at: owner.bound_at,
+                    updated_at: owner.updated_at,
+                })
             })
-        }).transpose()?,
+            .transpose()?,
         latest_request: snapshot
             .latest_request
-            .map(|request| Ok::<_, ModuleMarketplaceError>(RegistryPublishRequestLifecycle {
-                id: request.id,
-                revision: request.revision,
-                status: request.status,
-                requested_by: principal_label(&request.requested_by_principal)?,
-                publisher: optional_principal_label(request.publisher_principal.as_ref())?,
-                approved_by: optional_principal_label(request.approved_by_principal.as_ref())?,
-                rejected_by: optional_principal_label(request.rejected_by_principal.as_ref())?,
-                rejection_reason: request.rejection_reason,
-                changes_requested_by: optional_principal_label(
-                    request.changes_requested_by_principal.as_ref(),
-                )?,
-                changes_requested_reason: request.changes_requested_reason,
-                changes_requested_reason_code: request.changes_requested_reason_code,
-                changes_requested_at: request.changes_requested_at,
-                held_by: optional_principal_label(request.held_by_principal.as_ref())?,
-                held_reason: request.held_reason,
-                held_reason_code: request.held_reason_code,
-                held_at: request.held_at,
-                held_from_status: request.held_from_status,
-                warnings: request.warnings,
-                errors: request.errors,
-                created_at: request.created_at,
-                updated_at: request.updated_at,
-                published_at: request.published_at,
-            })).transpose()?,
+            .map(|request| {
+                Ok::<_, ModuleMarketplaceError>(RegistryPublishRequestLifecycle {
+                    id: request.id,
+                    revision: request.revision,
+                    status: request.status,
+                    requested_by: principal_label(&request.requested_by_principal)?,
+                    publisher: optional_principal_label(request.publisher_principal.as_ref())?,
+                    approved_by: optional_principal_label(request.approved_by_principal.as_ref())?,
+                    rejected_by: optional_principal_label(request.rejected_by_principal.as_ref())?,
+                    rejection_reason: request.rejection_reason,
+                    changes_requested_by: optional_principal_label(
+                        request.changes_requested_by_principal.as_ref(),
+                    )?,
+                    changes_requested_reason: request.changes_requested_reason,
+                    changes_requested_reason_code: request.changes_requested_reason_code,
+                    changes_requested_at: request.changes_requested_at,
+                    held_by: optional_principal_label(request.held_by_principal.as_ref())?,
+                    held_reason: request.held_reason,
+                    held_reason_code: request.held_reason_code,
+                    held_at: request.held_at,
+                    held_from_status: request.held_from_status,
+                    warnings: request.warnings,
+                    errors: request.errors,
+                    created_at: request.created_at,
+                    updated_at: request.updated_at,
+                    published_at: request.published_at,
+                })
+            })
+            .transpose()?,
         latest_release: snapshot
             .latest_release
-            .map(|release| Ok::<_, ModuleMarketplaceError>(RegistryReleaseLifecycle {
-                version: release.version,
-                status: release.status,
-                publisher: principal_label(&release.publisher_principal)?,
-                checksum_sha256: release.checksum_sha256,
-                published_at: release.published_at,
-                yanked_reason: release.yanked_reason,
-                yanked_by: optional_principal_label(release.yanked_by_principal.as_ref())?,
-                yanked_at: release.yanked_at,
-            })).transpose()?,
+            .map(|release| {
+                Ok::<_, ModuleMarketplaceError>(RegistryReleaseLifecycle {
+                    version: release.version,
+                    status: release.status,
+                    publisher: principal_label(&release.publisher_principal)?,
+                    checksum_sha256: release.checksum_sha256,
+                    published_at: release.published_at,
+                    yanked_reason: release.yanked_reason,
+                    yanked_by: optional_principal_label(release.yanked_by_principal.as_ref())?,
+                    yanked_at: release.yanked_at,
+                })
+            })
+            .transpose()?,
         recent_events: snapshot
             .recent_events
             .into_iter()
-            .map(|event| Ok::<_, ModuleMarketplaceError>(RegistryGovernanceEventLifecycle {
-                id: event.id,
-                event_type: event.event_type,
-                actor: principal_label(&event.actor_principal)?,
-                publisher: optional_principal_label(event.publisher_principal.as_ref())?,
-                payload: map_registry_event_payload(event.payload)?,
-                created_at: event.created_at,
-            }))
+            .map(|event| {
+                Ok::<_, ModuleMarketplaceError>(RegistryGovernanceEventLifecycle {
+                    id: event.id,
+                    event_type: event.event_type,
+                    actor: principal_label(&event.actor_principal)?,
+                    publisher: optional_principal_label(event.publisher_principal.as_ref())?,
+                    payload: map_registry_event_payload(event.payload)?,
+                    created_at: event.created_at,
+                })
+            })
             .collect::<Result<Vec<_>, ModuleMarketplaceError>>()?,
         follow_up_gates: snapshot
             .follow_up_gates
@@ -321,15 +335,18 @@ fn map_registry_event_payload(
         version: payload.version,
         stage_key: payload.stage_key,
         attempt_number: payload.attempt_number,
-        owner_transition: payload.owner_transition.map(|transition| {
-            Ok::<_, ModuleMarketplaceError>(RegistryOwnerTransitionLifecycle {
-                previous_owner: optional_principal_label(
-                    transition.previous_owner_principal.as_ref(),
-                )?,
-                new_owner: optional_principal_label(transition.new_owner_principal.as_ref())?,
-                bound_by: optional_principal_label(transition.bound_by_principal.as_ref())?,
+        owner_transition: payload
+            .owner_transition
+            .map(|transition| {
+                Ok::<_, ModuleMarketplaceError>(RegistryOwnerTransitionLifecycle {
+                    previous_owner: optional_principal_label(
+                        transition.previous_owner_principal.as_ref(),
+                    )?,
+                    new_owner: optional_principal_label(transition.new_owner_principal.as_ref())?,
+                    bound_by: optional_principal_label(transition.bound_by_principal.as_ref())?,
+                })
             })
-        }).transpose()?,
+            .transpose()?,
         warnings: payload.warnings,
         errors: payload.errors,
         mode: payload.mode,

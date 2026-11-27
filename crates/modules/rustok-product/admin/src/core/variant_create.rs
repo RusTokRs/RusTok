@@ -105,11 +105,10 @@ pub(crate) fn valid_input(input: &VariantDraft) -> bool {
                 && valid_amount(&price.amount)
                 && price.compare_at_amount.as_ref().is_none_or(|amount| {
                     valid_amount(amount)
-                        && rust_decimal::Decimal::from_str_exact(amount)
-                            .is_ok_and(|compare_at| {
-                                rust_decimal::Decimal::from_str_exact(&price.amount)
-                                    .is_ok_and(|base| compare_at >= base)
-                            })
+                        && rust_decimal::Decimal::from_str_exact(amount).is_ok_and(|compare_at| {
+                            rust_decimal::Decimal::from_str_exact(&price.amount)
+                                .is_ok_and(|base| compare_at >= base)
+                        })
                 })
         })
 }
@@ -425,6 +424,7 @@ mod tests {
                 attribute_id: id(4),
                 option_id: id(5),
             }],
+            attribute_values: Vec::new(),
             prices: vec![VariantPriceDraft {
                 currency_code: "USD".into(),
                 amount: "12.000001".into(),

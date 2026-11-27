@@ -554,7 +554,10 @@ fn assert_content_revisions_unchanged(
     Ok(())
 }
 
-fn registered_provider(db: DatabaseConnection, auth_config: AuthConfig) -> TestResult<Arc<dyn TranslationTargetProvider>> {
+fn registered_provider(
+    db: DatabaseConnection,
+    auth_config: AuthConfig,
+) -> TestResult<Arc<dyn TranslationTargetProvider>> {
     let registry = ModuleRegistry::new()
         .register(FlexModule)
         .register(TaxonomyModule);

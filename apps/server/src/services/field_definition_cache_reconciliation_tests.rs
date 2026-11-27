@@ -209,7 +209,10 @@ async fn reconciliation_restart_rejects_a_lower_durable_seed() {
     let error = tokio::time::timeout(
         Duration::from_secs(1),
         run_field_definition_cache_generation_once(
-            db, cache.clone(), Arc::clone(&state), Duration::from_secs(60),
+            db,
+            cache.clone(),
+            Arc::clone(&state),
+            Duration::from_secs(60),
         ),
     )
     .await

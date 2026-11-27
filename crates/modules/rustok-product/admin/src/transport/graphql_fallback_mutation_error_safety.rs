@@ -168,7 +168,10 @@ impl GraphqlFallbackMutationContext {
         )
     }
 
-    #[expect(dead_code, reason = "Product attribute values transport pending UI editor panel integration")]
+    #[expect(
+        dead_code,
+        reason = "Product attribute values transport pending UI editor panel integration"
+    )]
     pub(super) fn for_save_product_attribute_values(
         token: Option<&str>,
         tenant_slug: Option<&str>,

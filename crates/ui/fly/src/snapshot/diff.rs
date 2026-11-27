@@ -50,10 +50,10 @@ fn page_map(document: &ProjectDocument) -> OrderedEntries {
     let mut pages = OrderedEntries::new();
     for (index, page) in document.project().pages.iter().enumerate() {
         let key = page.id.clone().unwrap_or_else(|| format!("@index:{index}"));
-        pages.entry(key).or_default().push((
-            index,
-            serde_json::to_value(page).unwrap_or(Value::Null),
-        ));
+        pages
+            .entry(key)
+            .or_default()
+            .push((index, serde_json::to_value(page).unwrap_or(Value::Null)));
     }
     pages
 }

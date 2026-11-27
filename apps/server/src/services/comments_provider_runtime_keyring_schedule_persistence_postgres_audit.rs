@@ -308,7 +308,9 @@ fn run_postgres_audit_store_worker(
                     &database, &expected, &candidate, &audit,
                 ));
                 if response.send(result).is_err() {
-                    tracing::debug!("Caller dropped compare_and_store_with_audit response receiver");
+                    tracing::debug!(
+                        "Caller dropped compare_and_store_with_audit response receiver"
+                    );
                 }
             }
         }

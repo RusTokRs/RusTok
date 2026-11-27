@@ -331,13 +331,7 @@ impl PagesMutation {
         let security = page_security(&auth);
         let page = if let Some(idempotency_key) = idempotency_key {
             service
-                .unpublish_with_receipt(
-                    tenant_id,
-                    security,
-                    id,
-                    expected_version,
-                    idempotency_key,
-                )
+                .unpublish_with_receipt(tenant_id, security, id, expected_version, idempotency_key)
                 .await
         } else {
             service
@@ -366,13 +360,7 @@ impl PagesMutation {
         let security = page_security(&auth);
         let page = if let Some(idempotency_key) = idempotency_key {
             service
-                .archive_with_receipt(
-                    tenant_id,
-                    security,
-                    id,
-                    expected_version,
-                    idempotency_key,
-                )
+                .archive_with_receipt(tenant_id, security, id, expected_version, idempotency_key)
                 .await
         } else {
             service
@@ -400,13 +388,7 @@ impl PagesMutation {
         let security = page_security(&auth);
         let result = if let Some(idempotency_key) = idempotency_key {
             service
-                .delete_with_receipt(
-                    tenant_id,
-                    security,
-                    id,
-                    expected_version,
-                    idempotency_key,
-                )
+                .delete_with_receipt(tenant_id, security, id, expected_version, idempotency_key)
                 .await
         } else {
             service

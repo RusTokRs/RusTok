@@ -5,8 +5,8 @@ use crate::{
     use_grid_locale,
 };
 use rustok_grid::{
-    CellValue, ColumnFilters, ColumnWidths, FilterValue, GridColumnDef, GridMessages, GridPagination,
-    PaginationMode, RowSelection, SortState, visible_column_count,
+    CellValue, ColumnFilters, ColumnWidths, FilterValue, GridColumnDef, GridMessages,
+    GridPagination, PaginationMode, RowSelection, SortState, visible_column_count,
 };
 
 /// SSR-first data grid.
@@ -73,7 +73,8 @@ pub fn DataGrid<T, K, KF>(
     /// core comparator, so ties keep their input order. Without it the grid
     /// cannot know how to compare two rows and stops advertising sorting until
     /// the caller sorts itself through `on_sort_change`.
-    #[prop(optional)] sort_cell: Option<Callback<(T, String), CellValue>>,
+    #[prop(optional)]
+    sort_cell: Option<Callback<(T, String), CellValue>>,
     #[prop(optional)] selection: Option<RwSignal<RowSelection>>,
     #[prop(optional)] on_selection_change: Option<Callback<RowSelection>>,
     #[prop(optional)] column_widths: Option<RwSignal<ColumnWidths>>,

@@ -574,7 +574,8 @@ fn severity_rank(status: RuntimeGuardrailStatus) -> u8 {
 #[cfg(test)]
 mod host_mode_tests {
     use super::{
-        collect_rate_limit_snapshot, runtime_guardrail_policy_from_settings, runtime_host_mode_label,
+        collect_rate_limit_snapshot, runtime_guardrail_policy_from_settings,
+        runtime_host_mode_label,
     };
     use crate::common::settings::{RuntimeHostMode, RustokSettings};
     use crate::middleware::rate_limit::{RateLimitConfig, RateLimiter};
@@ -585,8 +586,11 @@ mod host_mode_tests {
         for configured in [false, true] {
             settings.rate_limit.trusted_auth_dimensions = configured;
             let policy = runtime_guardrail_policy_from_settings(&settings);
-            for (namespace, expected) in [("auth", false), ("api", configured), ("oauth", configured)] {
-                let limiter = RateLimiter::new_with_namespace(RateLimitConfig::default(), namespace);
+            for (namespace, expected) in
+                [("auth", false), ("api", configured), ("oauth", configured)]
+            {
+                let limiter =
+                    RateLimiter::new_with_namespace(RateLimitConfig::default(), namespace);
                 let snapshot = collect_rate_limit_snapshot(namespace, &limiter, &policy).await;
                 assert_eq!(snapshot.policy.trusted_auth_dimensions, expected);
             }

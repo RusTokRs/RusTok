@@ -1461,6 +1461,7 @@ pub struct CreateVariantInput {
     pub barcode: Option<String>,
     pub shipping_profile_slug: Option<String>,
     pub axis_values: Option<Vec<VariantAxisValueInputObject>>,
+    pub attribute_values: Option<Vec<ProductAttributeValueBatchInput>>,
     pub prices: Vec<PriceInput>,
     pub inventory_quantity: Option<i32>,
     pub inventory_policy: Option<String>,
@@ -1521,6 +1522,7 @@ pub struct UpdateVariantInput {
     pub weight: MaybeUndefined<String>,
     pub weight_unit: MaybeUndefined<String>,
     pub axis_values: Option<Vec<VariantAxisValueInputObject>>,
+    pub attribute_values: Option<Vec<ProductAttributeValueBatchInput>>,
     pub prices: Option<Vec<PriceInput>>,
     pub inventory_quantity: Option<i32>,
     pub expected_inventory_quantity: Option<i32>,
@@ -2125,7 +2127,11 @@ impl From<dto::ProductResponse> for GqlProduct {
                 .map(GqlVariantAxisConfig::from)
                 .collect(),
             variants: product.variants.into_iter().map(GqlVariant::from).collect(),
-            brands: product.brands.into_iter().map(GqlProductBrand::from).collect(),
+            brands: product
+                .brands
+                .into_iter()
+                .map(GqlProductBrand::from)
+                .collect(),
             images: product
                 .images
                 .into_iter()

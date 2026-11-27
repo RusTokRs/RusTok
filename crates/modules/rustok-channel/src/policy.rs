@@ -207,8 +207,8 @@ fn normalize_locale(raw: &str) -> ChannelResult<String> {
     let mut parts = normalized.splitn(2, '-');
     let language = parts.next().unwrap_or_default();
     let region = parts.next();
-    let language_is_valid = (2..=3).contains(&language.len())
-        && language.chars().all(|ch| ch.is_ascii_alphabetic());
+    let language_is_valid =
+        (2..=3).contains(&language.len()) && language.chars().all(|ch| ch.is_ascii_alphabetic());
     let region_is_valid = region.is_none_or(|region| {
         (2..=8).contains(&region.len()) && region.chars().all(|ch| ch.is_ascii_alphanumeric())
     });

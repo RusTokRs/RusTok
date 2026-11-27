@@ -171,9 +171,7 @@ pub(crate) async fn lock_oauth_app_for_mutation<C>(
 where
     C: ConnectionTrait,
 {
-    let query = || {
-        OAuthApps::find_by_id(app_id).filter(oauth_apps::Column::TenantId.eq(tenant_id))
-    };
+    let query = || OAuthApps::find_by_id(app_id).filter(oauth_apps::Column::TenantId.eq(tenant_id));
     match db.get_database_backend() {
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(db).await,
         DbBackend::Sqlite => {
@@ -214,7 +212,10 @@ where
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(db).await,
         DbBackend::Sqlite => {
             let locked = users::Entity::update_many()
-                .col_expr(users::Column::UpdatedAt, Expr::col(users::Column::UpdatedAt))
+                .col_expr(
+                    users::Column::UpdatedAt,
+                    Expr::col(users::Column::UpdatedAt),
+                )
                 .filter(users::Column::Id.eq(user_id))
                 .filter(users::Column::TenantId.eq(tenant_id))
                 .exec(db)
@@ -247,8 +248,13 @@ impl AuthorizationSession {
         session: &crate::models::sessions::Model,
         now: chrono::DateTime<Utc>,
     ) -> Result<()> {
-        if self.confirmation_deadline.is_some_and(|deadline| now >= deadline) {
-            return Err(Error::Unauthorized("OAuth authorization confirmation expired".to_string()));
+        if self
+            .confirmation_deadline
+            .is_some_and(|deadline| now >= deadline)
+        {
+            return Err(Error::Unauthorized(
+                "OAuth authorization confirmation expired".to_string(),
+            ));
         }
         if session.revoked_at.is_some()
             || session.created_at.with_timezone(&Utc) > now
@@ -594,7 +600,10 @@ impl OAuthAppService {
         // Deactivate the app (column-scoped; see update_app)
         let deactivated = oauth_apps::Entity::update_many()
             .col_expr(oauth_apps::Column::IsActive, Expr::value(false))
-            .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now.clone())))
+            .col_expr(
+                oauth_apps::Column::RevokedAt,
+                Expr::value(Some(now.clone())),
+            )
             .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now.clone()))
             .filter(oauth_apps::Column::Id.eq(app_id))
             .filter(oauth_apps::Column::TenantId.eq(tenant_id))
@@ -706,16 +715,18 @@ impl OAuthAppService {
         }
         // Legacy persisted redirect URIs may predate registration validation.
         // Reject ambiguous callbacks before any consent or code is written.
-        if !Url::parse(&redirect_uri).is_ok_and(|url| redirect_response_query_is_unambiguous(&url)) {
+        if !Url::parse(&redirect_uri).is_ok_and(|url| redirect_response_query_is_unambiguous(&url))
+        {
             return Err(Error::BadRequest(
-                "OAuth redirect URI contains reserved response parameters or is invalid".to_string(),
+                "OAuth redirect URI contains reserved response parameters or is invalid"
+                    .to_string(),
             ));
         }
         let allowed_scopes = app.scopes_list();
         if scopes.is_empty()
-            || scopes.iter().any(|scope| {
-                scope.trim().is_empty() || !scope_matches(&allowed_scopes, scope)
-            })
+            || scopes
+                .iter()
+                .any(|scope| scope.trim().is_empty() || !scope_matches(&allowed_scopes, scope))
         {
             return Err(Error::BadRequest(
                 "OAuth authorization scopes are no longer permitted".to_string(),
@@ -727,10 +738,14 @@ impl OAuthAppService {
             .map_err(|_| Error::InternalServerError)?
             .filter(|user| user.is_active())
             .ok_or_else(|| {
-                Error::Unauthorized("OAuth authorization subject is missing or inactive".to_string())
+                Error::Unauthorized(
+                    "OAuth authorization subject is missing or inactive".to_string(),
+                )
             })?;
         if subject.require_email_verification && !user.is_email_verified() {
-            return Err(Error::Unauthorized("Email verification required".to_string()));
+            return Err(Error::Unauthorized(
+                "Email verification required".to_string(),
+            ));
         }
         let session = crate::services::auth_lifecycle::AuthLifecycleService::find_session_by_id_for_update_in_tx(
             &tx, tenant_id, subject.session_id,
@@ -740,7 +755,10 @@ impl OAuthAppService {
         .filter(|session| session.user_id == user.id)
         .ok_or_else(|| Error::Unauthorized("OAuth authorization session is no longer active".to_string()))?;
         let verified = rustok_auth::application_clock::verified_now(&tx).await?;
-        subject.ensure_live(&session, rustok_auth::application_clock::decision_time(verified, clock()?)?)?;
+        subject.ensure_live(
+            &session,
+            rustok_auth::application_clock::decision_time(verified, clock()?)?,
+        )?;
 
         if app.requires_user_consent() {
             let consent = OAuthConsents::find_active_consent(&tx, app_id, user.id, tenant_id)
@@ -748,7 +766,9 @@ impl OAuthAppService {
                 .map_err(|_| Error::InternalServerError)?;
             let covered = match consent {
                 Some(consent) => {
-                    let granted = consent.scopes_list().map_err(|_| Error::InternalServerError)?;
+                    let granted = consent
+                        .scopes_list()
+                        .map_err(|_| Error::InternalServerError)?;
                     scopes.iter().all(|scope| scope_matches(&granted, scope))
                 }
                 None => false,
@@ -759,13 +779,18 @@ impl OAuthAppService {
                         "OAuth authorization requires active user consent".to_string(),
                     ));
                 }
-                let scopes_json = serde_json::to_value(&scopes)
-                    .map_err(|_| Error::InternalServerError)?;
+                let scopes_json =
+                    serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?;
                 let verified = rustok_auth::application_clock::verified_now(&tx).await?;
                 let now = rustok_auth::application_clock::decision_time(verified, clock()?)?;
                 subject.ensure_live(&session, now)?;
                 Self::grant_consent_in_transaction(
-                    &tx, app_id, user.id, tenant_id, &scopes_json, now,
+                    &tx,
+                    app_id,
+                    user.id,
+                    tenant_id,
+                    &scopes_json,
+                    now,
                 )
                 .await
                 .map_err(|attempt| match attempt {
@@ -780,8 +805,8 @@ impl OAuthAppService {
         // Generate a fresh code only after the caller has passed authoritative
         // checks. Hashing an opaque random code does not leak plaintext to DB.
         // Use the Auth owner's fallible CSPRNG; preserve base64url wire format.
-        let random_bytes = hex::decode(auth::generate_refresh_token()?)
-            .map_err(|_| Error::InternalServerError)?;
+        let random_bytes =
+            hex::decode(auth::generate_refresh_token()?).map_err(|_| Error::InternalServerError)?;
         use base64::{Engine as _, engine::general_purpose};
         let code = general_purpose::URL_SAFE_NO_PAD.encode(random_bytes);
         let code_hash = auth::hash_refresh_token(&code);
@@ -789,7 +814,8 @@ impl OAuthAppService {
         let verified = rustok_auth::application_clock::verified_now(&tx).await?;
         let now = rustok_auth::application_clock::decision_time(verified, clock()?)?;
         subject.ensure_live(&session, now)?;
-        let expires_at = now.checked_add_signed(chrono::Duration::minutes(10))
+        let expires_at = now
+            .checked_add_signed(chrono::Duration::minutes(10))
             .ok_or(Error::InternalServerError)?;
         let stored = OAuthCodeActiveModel {
             id: Set(Uuid::new_v4()),
@@ -814,14 +840,18 @@ impl OAuthAppService {
         let now = rustok_auth::application_clock::decision_time(verified, clock()?)?;
         subject.ensure_live(&session, now)?;
         if !stored.is_active_at(now) {
-            return Err(Error::Unauthorized("OAuth authorization code expired before commit".to_string()));
+            return Err(Error::Unauthorized(
+                "OAuth authorization code expired before commit".to_string(),
+            ));
         }
         tx.commit().await.map_err(|_| Error::InternalServerError)?;
         // A committed code cannot be rolled back after acknowledgement.
         // Refuse publication if the clock fence closed or the code expired.
         rustok_auth::application_clock::check_local()?;
         if !stored.is_active_at(clock()?) {
-            return Err(Error::Unauthorized("OAuth authorization code expired before response".to_string()));
+            return Err(Error::Unauthorized(
+                "OAuth authorization code expired before response".to_string(),
+            ));
         }
         Ok(code)
     }
@@ -870,7 +900,11 @@ impl OAuthAppService {
         tenant_id: Uuid,
     ) -> Result<()> {
         Self::revoke_token_by_hash_inner(
-            db, token_hash, authenticated_app.id, tenant_id, Some(authenticated_app),
+            db,
+            token_hash,
+            authenticated_app.id,
+            tenant_id,
+            Some(authenticated_app),
         )
         .await
     }
@@ -912,7 +946,9 @@ impl OAuthAppService {
                     && authenticated.client_secret_hash == current.client_secret_hash
             });
             if !unchanged {
-                return Err(Error::Unauthorized("OAuth client credentials changed".to_string()));
+                return Err(Error::Unauthorized(
+                    "OAuth client credentials changed".to_string(),
+                ));
             }
         }
         let token = OAuthTokens::find()
@@ -1351,7 +1387,10 @@ pub async fn sync_app_connections(
         if current_app.is_active || current_app.revoked_at.is_none() {
             let result = oauth_apps::Entity::update_many()
                 .col_expr(oauth_apps::Column::IsActive, Expr::value(false))
-                .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now.clone())))
+                .col_expr(
+                    oauth_apps::Column::RevokedAt,
+                    Expr::value(Some(now.clone())),
+                )
                 .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now.clone()))
                 .filter(oauth_apps::Column::Id.eq(current_app.id))
                 .filter(oauth_apps::Column::TenantId.eq(tenant_id))
@@ -1462,7 +1501,10 @@ where
     C: ConnectionTrait,
 {
     OAuthTokens::update_many()
-        .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(Some(now.clone())))
+        .col_expr(
+            oauth_tokens::Column::RevokedAt,
+            Expr::value(Some(now.clone())),
+        )
         .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now.clone()))
         .filter(oauth_tokens::Column::AppId.eq(app_id))
         .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
@@ -2104,12 +2146,8 @@ fn validate_app_configuration(
         ));
     }
 
-    let supports_authorization_code = grant_types
-        .iter()
-        .any(|item| item == "authorization_code");
-    let supports_client_credentials = grant_types
-        .iter()
-        .any(|item| item == "client_credentials");
+    let supports_authorization_code = grant_types.iter().any(|item| item == "authorization_code");
+    let supports_client_credentials = grant_types.iter().any(|item| item == "client_credentials");
 
     if matches!(app_type, "mobile" | "third_party") && supports_client_credentials {
         return Err(Error::BadRequest(
@@ -2591,15 +2629,31 @@ mod tests {
 
     #[test]
     fn redirect_uris_reserve_oauth_response_parameters() {
-        for name in ["code", "state", "error", "error_description", "error_uri", "%63ode", "st%61te"] {
+        for name in [
+            "code",
+            "state",
+            "error",
+            "error_description",
+            "error_uri",
+            "%63ode",
+            "st%61te",
+        ] {
             let uri = format!("https://client.example.com/callback?locale=en&{name}=stale");
             assert!(validate_redirect_uri("third_party", &uri, false).is_err());
-            assert!(!super::redirect_response_query_is_unambiguous(&reqwest::Url::parse(&uri).unwrap()));
+            assert!(!super::redirect_response_query_is_unambiguous(
+                &reqwest::Url::parse(&uri).unwrap()
+            ));
         }
-        assert!(validate_redirect_uri(
-            "third_party", "https://client.example.com/callback?locale=en&tag=a&tag=b", false
-        ).is_ok());
-        let fragment = reqwest::Url::parse("https://client.example.com/callback#state=stale").unwrap();
+        assert!(
+            validate_redirect_uri(
+                "third_party",
+                "https://client.example.com/callback?locale=en&tag=a&tag=b",
+                false
+            )
+            .is_ok()
+        );
+        let fragment =
+            reqwest::Url::parse("https://client.example.com/callback#state=stale").unwrap();
         assert!(!super::redirect_response_query_is_unambiguous(&fragment));
     }
 
@@ -3167,7 +3221,9 @@ mod tests {
                 .filter(oauth_tokens::Column::Id.eq(root_id))
                 .filter(oauth_tokens::Column::AppId.eq(app.id))
                 .filter(oauth_tokens::Column::TenantId.eq(app.tenant_id))
-                .exec(db).await.expect("consume test root");
+                .exec(db)
+                .await
+                .expect("consume test root");
         }
         oauth_tokens::ActiveModel {
             id: Set(id),
@@ -3245,27 +3301,26 @@ mod tests {
                 tenant.id,
                 redirect_uri.to_string(),
                 scopes.clone(),
-                "challenge".to_string(), &authorization_test_clock,
+                "challenge".to_string(),
+                &authorization_test_clock,
             )
         };
 
-        let missing_consent = issue().await
+        let missing_consent = issue()
+            .await
             .expect_err("third-party app must not issue without current consent");
         assert!(matches!(missing_consent, Error::Unauthorized(_)));
         assert_eq!(
-            oauth_authorization_codes::Entity::find().count(&db).await.expect("count codes"),
+            oauth_authorization_codes::Entity::find()
+                .count(&db)
+                .await
+                .expect("count codes"),
             0,
         );
 
-        OAuthAppService::grant_consent_strict(
-            &db,
-            app.id,
-            user.id,
-            tenant.id,
-            scopes.clone(),
-        )
-        .await
-        .expect("grant consent");
+        OAuthAppService::grant_consent_strict(&db, app.id, user.id, tenant.id, scopes.clone())
+            .await
+            .expect("grant consent");
         let code = issue().await.expect("issue after consent");
         use sha2::{Digest, Sha256};
         let code_hash = hex::encode(Sha256::digest(code.as_bytes()));
@@ -3290,27 +3345,27 @@ mod tests {
             .expect("prior code survives for replay detection");
         assert!(revoked_code.used_at.is_some());
         assert_eq!(
-            oauth_authorization_codes::Entity::find().count(&db).await.expect("count codes"),
+            oauth_authorization_codes::Entity::find()
+                .count(&db)
+                .await
+                .expect("count codes"),
             1,
             "no code may be admitted after consent revocation"
         );
 
-        OAuthAppService::grant_consent_strict(
-            &db,
-            app.id,
-            user.id,
-            tenant.id,
-            scopes.clone(),
-        )
-        .await
-        .expect("renew consent");
+        OAuthAppService::grant_consent_strict(&db, app.id, user.id, tenant.id, scopes.clone())
+            .await
+            .expect("renew consent");
         let _another_code = issue().await.expect("admit code after re-consent");
         OAuthAppService::revoke_app(&db, tenant.id, app.id)
             .await
             .expect("revoke app and pending codes");
         assert!(matches!(issue().await, Err(Error::NotFound)));
         assert_eq!(
-            oauth_authorization_codes::Entity::find().count(&db).await.expect("count codes"),
+            oauth_authorization_codes::Entity::find()
+                .count(&db)
+                .await
+                .expect("count codes"),
             2,
             "app revocation cannot be followed by newly inserted auth codes"
         );
@@ -3332,9 +3387,15 @@ mod tests {
             .expect("session exists");
         let now = Utc::now();
         assert!(subject.ensure_live(&session, now).is_ok());
-        let expired = AuthorizationSession { access_expires_at: now, ..subject };
+        let expired = AuthorizationSession {
+            access_expires_at: now,
+            ..subject
+        };
         assert!(expired.ensure_live(&session, now).is_err());
-        let confirmed = AuthorizationSession { confirmation_deadline: Some(now), ..subject };
+        let confirmed = AuthorizationSession {
+            confirmation_deadline: Some(now),
+            ..subject
+        };
         assert!(confirmed.ensure_live(&session, now).is_err());
         session.expires_at = now.into();
         assert!(subject.ensure_live(&session, now).is_err());
@@ -3354,21 +3415,38 @@ mod tests {
             .expect("user");
         let subject = authorization_subject(&db, &user).await;
         crate::models::sessions::Entity::update_many()
-            .col_expr(crate::models::sessions::Column::RevokedAt, Expr::value(Utc::now()))
+            .col_expr(
+                crate::models::sessions::Column::RevokedAt,
+                Expr::value(Utc::now()),
+            )
             .filter(crate::models::sessions::Column::Id.eq(subject.session_id))
             .exec(&db)
             .await
             .expect("revoke session");
 
         let result = OAuthAppService::generate_authorization_code(
-            &db, app.id, AuthorizationSession { confirmation_deadline: Some(subject.access_expires_at), ..subject }, tenant.id,
+            &db,
+            app.id,
+            AuthorizationSession {
+                confirmation_deadline: Some(subject.access_expires_at),
+                ..subject
+            },
+            tenant.id,
             "https://partner.example.com/callback".to_string(),
-            vec!["openid".to_string()], "challenge".to_string(), &authorization_test_clock,
+            vec!["openid".to_string()],
+            "challenge".to_string(),
+            &authorization_test_clock,
         )
         .await;
         assert!(matches!(result, Err(Error::Unauthorized(_))));
         assert_eq!(OAuthConsents::find().count(&db).await.expect("consents"), 0);
-        assert_eq!(oauth_authorization_codes::Entity::find().count(&db).await.expect("codes"), 0);
+        assert_eq!(
+            oauth_authorization_codes::Entity::find()
+                .count(&db)
+                .await
+                .expect("codes"),
+            0
+        );
     }
 
     #[tokio::test]
@@ -3377,26 +3455,47 @@ mod tests {
         let (db, tenant) = test_db_with_tenant().await;
         let app = insert_revocation_app(&db, tenant.id, "confirmation-deadline").await;
         let user = users::ActiveModel::new(tenant.id, "confirmation-deadline@example.com", "hash")
-            .insert(&db).await.expect("user");
+            .insert(&db)
+            .await
+            .expect("user");
         let subject = authorization_subject(&db, &user).await;
         let start = Utc::now();
         let deadline = start + chrono::Duration::seconds(1);
-        let subject = AuthorizationSession { confirmation_deadline: Some(deadline), ..subject };
+        let subject = AuthorizationSession {
+            confirmation_deadline: Some(deadline),
+            ..subject
+        };
         let samples = std::sync::atomic::AtomicUsize::new(0);
-        let clock = || Ok(if samples.fetch_add(1, std::sync::atomic::Ordering::SeqCst) >= 4 {
-            deadline
-        } else {
-            start
-        });
+        let clock = || {
+            Ok(
+                if samples.fetch_add(1, std::sync::atomic::Ordering::SeqCst) >= 4 {
+                    deadline
+                } else {
+                    start
+                },
+            )
+        };
         let result = OAuthAppService::generate_authorization_code(
-            &db, app.id, subject, tenant.id,
+            &db,
+            app.id,
+            subject,
+            tenant.id,
             "https://partner.example.com/callback".to_string(),
-            vec!["openid".to_string()], "challenge".to_string(), &clock,
-        ).await;
+            vec!["openid".to_string()],
+            "challenge".to_string(),
+            &clock,
+        )
+        .await;
         assert!(matches!(result, Err(Error::Unauthorized(_))));
         assert_eq!(samples.load(std::sync::atomic::Ordering::SeqCst), 5);
         assert_eq!(OAuthConsents::find().count(&db).await.expect("consents"), 0);
-        assert_eq!(oauth_authorization_codes::Entity::find().count(&db).await.expect("codes"), 0);
+        assert_eq!(
+            oauth_authorization_codes::Entity::find()
+                .count(&db)
+                .await
+                .expect("codes"),
+            0
+        );
     }
 
     #[tokio::test]
@@ -3415,11 +3514,21 @@ mod tests {
         )
         .await
         .expect("inject code write failure");
-        let issue = || OAuthAppService::generate_authorization_code(
-            &db, app.id, AuthorizationSession { confirmation_deadline: Some(subject.access_expires_at), ..subject }, tenant.id,
-            "https://partner.example.com/callback".to_string(),
-            vec!["openid".to_string()], "challenge".to_string(), &authorization_test_clock,
-        );
+        let issue = || {
+            OAuthAppService::generate_authorization_code(
+                &db,
+                app.id,
+                AuthorizationSession {
+                    confirmation_deadline: Some(subject.access_expires_at),
+                    ..subject
+                },
+                tenant.id,
+                "https://partner.example.com/callback".to_string(),
+                vec!["openid".to_string()],
+                "challenge".to_string(),
+                &authorization_test_clock,
+            )
+        };
         assert!(issue().await.is_err());
         assert_eq!(OAuthConsents::find().count(&db).await.expect("consents"), 0);
         db.execute_unprepared("DROP TRIGGER fail_authorization_code")
@@ -3427,7 +3536,13 @@ mod tests {
             .expect("remove injected failure");
         assert!(issue().await.is_ok());
         assert_eq!(OAuthConsents::find().count(&db).await.expect("consents"), 1);
-        assert_eq!(oauth_authorization_codes::Entity::find().count(&db).await.expect("codes"), 1);
+        assert_eq!(
+            oauth_authorization_codes::Entity::find()
+                .count(&db)
+                .await
+                .expect("codes"),
+            1
+        );
     }
 
     #[tokio::test]
@@ -3452,7 +3567,10 @@ mod tests {
             insert_pending_authorization_code(&db, app.id, other.id, tenant.id).await;
         let mut delegated = Vec::new();
         for subject in [user.id, other.id] {
-            for kind in [oauth_tokens::TOKEN_KIND_ACCESS, oauth_tokens::TOKEN_KIND_REFRESH] {
+            for kind in [
+                oauth_tokens::TOKEN_KIND_ACCESS,
+                oauth_tokens::TOKEN_KIND_REFRESH,
+            ] {
                 let now = Utc::now();
                 let id = Uuid::new_v4();
                 let token = oauth_tokens::ActiveModel {
@@ -3510,15 +3628,17 @@ mod tests {
             tenant.id,
             "https://partner.example.com/callback".to_string(),
             scopes,
-            "challenge".to_string(), &authorization_test_clock,
+            "challenge".to_string(),
+            &authorization_test_clock,
         )
         .await
         .expect("new epoch admits a new code");
         use sha2::{Digest, Sha256};
         let new_code = oauth_authorization_codes::Entity::find()
-            .filter(oauth_authorization_codes::Column::CodeHash.eq(hex::encode(
-                Sha256::digest(raw.as_bytes()),
-            )))
+            .filter(
+                oauth_authorization_codes::Column::CodeHash
+                    .eq(hex::encode(Sha256::digest(raw.as_bytes()))),
+            )
             .one(&db)
             .await
             .expect("read new code")
@@ -3559,7 +3679,8 @@ mod tests {
                 tenant_id,
                 "https://partner.example.com/callback".to_string(),
                 vec!["openid".to_string()],
-                "challenge".to_string(), &authorization_test_clock,
+                "challenge".to_string(),
+                &authorization_test_clock,
             )
         };
         assert!(matches!(issue(Uuid::new_v4()).await, Err(Error::NotFound)));
@@ -3605,9 +3726,15 @@ mod tests {
         let mut inactive = users::ActiveModel::from(user);
         inactive.status = Set(rustok_core::UserStatus::Inactive);
         inactive.update(&db).await.expect("deactivate subject");
-        assert!(matches!(issue(tenant.id).await, Err(Error::Unauthorized(_))));
+        assert!(matches!(
+            issue(tenant.id).await,
+            Err(Error::Unauthorized(_))
+        ));
         assert_eq!(
-            oauth_authorization_codes::Entity::find().count(&db).await.expect("count codes"),
+            oauth_authorization_codes::Entity::find()
+                .count(&db)
+                .await
+                .expect("count codes"),
             0,
             "invalid tenant, redirect, scope and user decisions cannot persist codes"
         );
@@ -3620,34 +3747,55 @@ mod tests {
         let app = insert_revocation_app(&db, tenant.id, "revoke-client-fence").await;
         let token = insert_revocation_token(&db, &app, "revoke-client-fence-token", None).await;
         oauth_apps::Entity::update_many()
-            .col_expr(oauth_apps::Column::ClientSecretHash, Expr::value("new-secret-hash"))
+            .col_expr(
+                oauth_apps::Column::ClientSecretHash,
+                Expr::value("new-secret-hash"),
+            )
             .filter(oauth_apps::Column::Id.eq(app.id))
             .exec(&db)
             .await
             .expect("rotate client credentials");
         let rejected = OAuthAppService::revoke_authenticated_token_by_hash(
-            &db, &token.token_hash, &app, tenant.id,
+            &db,
+            &token.token_hash,
+            &app,
+            tenant.id,
         )
         .await;
         assert!(matches!(rejected, Err(Error::Unauthorized(_))));
         let persisted = OAuthTokens::find_by_id(token.id)
-            .one(&db).await.expect("read token").expect("token");
+            .one(&db)
+            .await
+            .expect("read token")
+            .expect("token");
         assert!(persisted.revoked_at.is_none());
-        let current = OAuthAppService::find_security_by_client_id_scoped(
-            &db, tenant.id, app.client_id,
-        )
-        .await.expect("read client").expect("active client");
+        let current =
+            OAuthAppService::find_security_by_client_id_scoped(&db, tenant.id, app.client_id)
+                .await
+                .expect("read client")
+                .expect("active client");
         OAuthAppService::revoke_authenticated_token_by_hash(
-            &db, &token.token_hash, &current, tenant.id,
+            &db,
+            &token.token_hash,
+            &current,
+            tenant.id,
         )
-        .await.expect("current client can revoke");
+        .await
+        .expect("current client can revoke");
         let persisted = OAuthTokens::find_by_id(token.id)
-            .one(&db).await.expect("read token").expect("token");
+            .one(&db)
+            .await
+            .expect("read token")
+            .expect("token");
         assert!(persisted.revoked_at.is_some());
         OAuthAppService::revoke_authenticated_token_by_hash(
-            &db, "unknown-token", &current, tenant.id,
+            &db,
+            "unknown-token",
+            &current,
+            tenant.id,
         )
-        .await.expect("authenticated unknown token remains idempotent");
+        .await
+        .expect("authenticated unknown token remains idempotent");
     }
 
     #[tokio::test]
@@ -3668,8 +3816,14 @@ mod tests {
             &serde_json::json!(["profile", "openid", "openid"]),
             &requested,
         ));
-        assert!(!oauth_policy_matches(&serde_json::json!(["openid"]), &requested));
-        assert!(!oauth_policy_matches(&serde_json::json!({"openid": true}), &requested));
+        assert!(!oauth_policy_matches(
+            &serde_json::json!(["openid"]),
+            &requested
+        ));
+        assert!(!oauth_policy_matches(
+            &serde_json::json!({"openid": true}),
+            &requested
+        ));
     }
 
     #[tokio::test]
@@ -3682,7 +3836,11 @@ mod tests {
             .await
             .expect("user");
         OAuthAppService::grant_consent_strict(
-            &db, app.id, user.id, tenant.id, vec!["openid".to_string()],
+            &db,
+            app.id,
+            user.id,
+            tenant.id,
+            vec!["openid".to_string()],
         )
         .await
         .expect("grant consent");
@@ -3694,7 +3852,10 @@ mod tests {
             icon_url: None,
             redirect_uris: vec!["https://partner.example.com/callback".to_string()],
             scopes: vec![scope.to_string()],
-            grant_types: vec!["authorization_code".to_string(), "refresh_token".to_string()],
+            grant_types: vec![
+                "authorization_code".to_string(),
+                "refresh_token".to_string(),
+            ],
             granted_permissions: vec![],
         };
         for (scope, revoked) in [("openid", false), ("profile", true), ("openid", true)] {
@@ -4155,8 +4316,14 @@ mod tests {
             .await
             .expect("reload app")
             .expect("app remains present");
-        assert!(!stored.is_active, "stale update must not reactivate a revoked app");
-        assert!(stored.revoked_at.is_some(), "revocation timestamp must survive");
+        assert!(
+            !stored.is_active,
+            "stale update must not reactivate a revoked app"
+        );
+        assert!(
+            stored.revoked_at.is_some(),
+            "revocation timestamp must survive"
+        );
         assert_eq!(
             stored.last_used_at,
             Some(used_at),
@@ -4340,14 +4507,9 @@ mod tests {
         )
         .await
         .expect("regrant consent through the lower-level service");
-        OAuthAppService::revoke_user_consent(
-            &db,
-            created.app.id,
-            token_user.id,
-            tenant.id,
-        )
-        .await
-        .expect("revoke lower-level service grant");
+        OAuthAppService::revoke_user_consent(&db, created.app.id, token_user.id, tenant.id)
+            .await
+            .expect("revoke lower-level service grant");
 
         let mut inactive_user: crate::models::users::ActiveModel = token_user.clone().into();
         inactive_user.status = Set(rustok_core::UserStatus::Inactive);
@@ -4355,16 +4517,15 @@ mod tests {
             .update(&db)
             .await
             .expect("deactivate consent subject");
-        let strict_grant_for_inactive_user =
-            OAuthAppService::grant_consent_strict(
-                &db,
-                created.app.id,
-                token_user.id,
-                tenant.id,
-                vec!["catalog:read".to_string()],
-            )
-            .await
-            .expect_err("strict grant must reject an inactive user");
+        let strict_grant_for_inactive_user = OAuthAppService::grant_consent_strict(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+            vec!["catalog:read".to_string()],
+        )
+        .await
+        .expect_err("strict grant must reject an inactive user");
         assert!(matches!(
             strict_grant_for_inactive_user,
             Error::Unauthorized(_)
@@ -4575,7 +4736,10 @@ mod tests {
             .expect("app remains");
         assert!(stored.is_active());
         assert!(stored.managed_by_manifest());
-        assert_eq!(stored.redirect_uris_list(), vec!["https://partner.example.com/callback"]);
+        assert_eq!(
+            stored.redirect_uris_list(),
+            vec!["https://partner.example.com/callback"]
+        );
         assert!(stored.revoked_at.is_none());
     }
 
@@ -4766,15 +4930,11 @@ mod tests {
         )
         .await
         .expect("grant consent before app revocation");
-        let active_consent = OAuthConsents::find_active_consent(
-            &db,
-            created.app.id,
-            user.id,
-            tenant.id,
-        )
-        .await
-        .expect("load active consent")
-        .expect("consent exists before app revocation");
+        let active_consent =
+            OAuthConsents::find_active_consent(&db, created.app.id, user.id, tenant.id)
+                .await
+                .expect("load active consent")
+                .expect("consent exists before app revocation");
 
         OAuthAppService::revoke_app(&db, tenant.id, created.app.id)
             .await
@@ -5164,8 +5324,7 @@ mod tests {
 
         // Simulate an inactive managed app left by an older server version:
         // the app is disabled, but a dependent token, consent, and code remain live.
-        let mut legacy_consent: oauth_consents::ActiveModel =
-            revoked_orphan_consent.clone().into();
+        let mut legacy_consent: oauth_consents::ActiveModel = revoked_orphan_consent.clone().into();
         legacy_consent.revoked_at = Set(None);
         legacy_consent
             .update(&db)

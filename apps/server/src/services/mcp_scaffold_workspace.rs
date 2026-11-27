@@ -28,23 +28,17 @@ pub struct McpScaffoldWorkspaceLock {
 /// Acquire the permanent workspace scaffold lock before claiming a persisted
 /// draft. This coordinates MCP applies with native xtask scaffolding and
 /// refuses to write while native scaffold recovery is pending.
-pub async fn lock_mcp_scaffold_workspace(
-    workspace_root: &str,
-) -> Result<McpScaffoldWorkspaceLock> {
+pub async fn lock_mcp_scaffold_workspace(workspace_root: &str) -> Result<McpScaffoldWorkspaceLock> {
     let workspace_root = workspace_root.to_owned();
-    tokio::task::spawn_blocking(move || {
-        lock_mcp_scaffold_workspace_blocking(&workspace_root)
-    })
-    .await
-    .map_err(|error| {
-        tracing::error!(%error, "MCP scaffold workspace lock worker failed");
-        Error::Message("MCP scaffold workspace lock failed".to_string())
-    })?
+    tokio::task::spawn_blocking(move || lock_mcp_scaffold_workspace_blocking(&workspace_root))
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "MCP scaffold workspace lock worker failed");
+            Error::Message("MCP scaffold workspace lock failed".to_string())
+        })?
 }
 
-fn lock_mcp_scaffold_workspace_blocking(
-    workspace_root: &str,
-) -> Result<McpScaffoldWorkspaceLock> {
+fn lock_mcp_scaffold_workspace_blocking(workspace_root: &str) -> Result<McpScaffoldWorkspaceLock> {
     let root = std::fs::canonicalize(workspace_root).map_err(|error| {
         tracing::error!(%error, "Failed to canonicalize MCP scaffold workspace for locking");
         Error::InternalServerError
@@ -56,8 +50,7 @@ fn lock_mcp_scaffold_workspace_blocking(
 
     let lock_path = state_dir.join("lock");
     match std::fs::symlink_metadata(&lock_path) {
-        Ok(metadata)
-            if metadata.is_file() && !metadata.file_type().is_symlink() => {}
+        Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {}
         Ok(_) => {
             return Err(Error::BadRequest(
                 "Native scaffold lock path must be a regular file".to_string(),
@@ -122,7 +115,9 @@ fn lock_mcp_scaffold_workspace_blocking(
 fn ensure_control_directory(path: &Path, label: &str) -> Result<()> {
     match std::fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
-            return Err(Error::BadRequest(format!("{label} cannot be a symbolic link")));
+            return Err(Error::BadRequest(format!(
+                "{label} cannot be a symbolic link"
+            )));
         }
         Ok(metadata) if metadata.is_dir() => return Ok(()),
         Ok(_) => return Err(Error::BadRequest(format!("{label} must be a directory"))),
@@ -161,10 +156,7 @@ pub fn apply_mcp_scaffold_atomically(
     draft: &rustok_mcp::StagedModuleScaffold,
     workspace_root: &str,
     _workspace_lock: McpScaffoldWorkspaceLock,
-) -> std::result::Result<
-    rustok_mcp::ApplyModuleScaffoldResponse,
-    rustok_mcp::AlloyScaffoldError,
-> {
+) -> std::result::Result<rustok_mcp::ApplyModuleScaffoldResponse, rustok_mcp::AlloyScaffoldError> {
     let file_paths = draft
         .preview
         .files
@@ -217,15 +209,13 @@ pub fn apply_mcp_scaffold_atomically(
                 "Failed to create private MCP scaffold workspace root: {error}"
             ))
         })?;
-        std::fs::write(
-            staging_workspace_root.join("Cargo.toml"),
-            "[workspace]\n",
-        )
-        .map_err(|error| {
-            rustok_mcp::AlloyScaffoldError::Workspace(format!(
-                "Failed to initialize private MCP scaffold workspace: {error}"
-            ))
-        })?;
+        std::fs::write(staging_workspace_root.join("Cargo.toml"), "[workspace]\n").map_err(
+            |error| {
+                rustok_mcp::AlloyScaffoldError::Workspace(format!(
+                    "Failed to initialize private MCP scaffold workspace: {error}"
+                ))
+            },
+        )?;
         std::fs::create_dir(staging_workspace_root.join("crates")).map_err(|error| {
             rustok_mcp::AlloyScaffoldError::Workspace(format!(
                 "Failed to initialize private MCP scaffold crate root: {error}"
@@ -299,12 +289,10 @@ fn rename_directory_noreplace(from: &Path, to: &Path) -> std::io::Result<()> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
 
-    let from = CString::new(from.as_os_str().as_bytes()).map_err(|error| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, error)
-    })?;
-    let to = CString::new(to.as_os_str().as_bytes()).map_err(|error| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, error)
-    })?;
+    let from = CString::new(from.as_os_str().as_bytes())
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
+    let to = CString::new(to.as_os_str().as_bytes())
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
 
     const RENAME_NOREPLACE: libc::c_uint = 1;
     let result = unsafe {
@@ -338,12 +326,10 @@ fn rename_directory_noreplace(from: &Path, to: &Path) -> std::io::Result<()> {
     }
 
     const RENAME_EXCL: libc::c_uint = 0x0000_0004;
-    let from = CString::new(from.as_os_str().as_bytes()).map_err(|error| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, error)
-    })?;
-    let to = CString::new(to.as_os_str().as_bytes()).map_err(|error| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, error)
-    })?;
+    let from = CString::new(from.as_os_str().as_bytes())
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
+    let to = CString::new(to.as_os_str().as_bytes())
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
 
     let result = unsafe { renamex_np(from.as_ptr(), to.as_ptr(), RENAME_EXCL) };
     if result == 0 {
@@ -560,18 +546,16 @@ pub async fn authorize_mcp_scaffold_workspace(requested_root: &str) -> Result<St
     require_host_scaffold_manage_authority()?;
 
     let requested_root = requested_root.to_owned();
-    tokio::task::spawn_blocking(move || {
-        rustok_mcp::authorize_scaffold_workspace(&requested_root)
-    })
-    .await
-    .map_err(|error| {
-        tracing::error!(
-            %error,
-            "MCP scaffold workspace authorization worker failed"
-        );
-        Error::Message("MCP scaffold workspace authorization failed".to_string())
-    })?
-    .map_err(|error| Error::BadRequest(error.to_string()))
+    tokio::task::spawn_blocking(move || rustok_mcp::authorize_scaffold_workspace(&requested_root))
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                %error,
+                "MCP scaffold workspace authorization worker failed"
+            );
+            Error::Message("MCP scaffold workspace authorization failed".to_string())
+        })?
+        .map_err(|error| Error::BadRequest(error.to_string()))
 }
 
 /// Validate the persisted scaffold target before any files are written.
@@ -726,10 +710,8 @@ mod tests {
     use crate::error::Error;
 
     fn workspace(label: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!(
-            "rustok-mcp-scaffold-{label}-{}",
-            Uuid::new_v4()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("rustok-mcp-scaffold-{label}-{}", Uuid::new_v4()));
         std::fs::create_dir_all(root.join("crates")).expect("crates directory");
         std::fs::write(root.join("Cargo.toml"), "[workspace]\n").expect("workspace manifest");
         root
@@ -740,13 +722,15 @@ mod tests {
         let root = workspace("path");
         let root_string = root.to_string_lossy().into_owned();
 
-        assert!(super::validate_mcp_scaffold_target_path_blocking(
-            &root_string,
-            "rustok-example",
-            "crates/modules/rustok-example",
-            &["Cargo.toml".to_string(), "src/lib.rs".to_string()],
-        )
-        .is_ok());
+        assert!(
+            super::validate_mcp_scaffold_target_path_blocking(
+                &root_string,
+                "rustok-example",
+                "crates/modules/rustok-example",
+                &["Cargo.toml".to_string(), "src/lib.rs".to_string()],
+            )
+            .is_ok()
+        );
         assert!(matches!(
             super::validate_mcp_scaffold_target_path_blocking(
                 &root_string,
@@ -785,10 +769,8 @@ mod tests {
         let root = workspace("symlink");
         let root_string = root.to_string_lossy().into_owned();
         let modules = root.join("crates/modules");
-        let outside = std::env::temp_dir().join(format!(
-            "rustok-mcp-scaffold-outside-{}",
-            Uuid::new_v4()
-        ));
+        let outside =
+            std::env::temp_dir().join(format!("rustok-mcp-scaffold-outside-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&outside).expect("outside directory");
 
         std::os::unix::fs::symlink(&outside, &modules).expect("modules symlink");
@@ -804,11 +786,8 @@ mod tests {
 
         std::fs::remove_file(&modules).expect("remove modules symlink");
         std::fs::create_dir_all(&modules).expect("modules directory");
-        std::os::unix::fs::symlink(
-            root.join("missing-target"),
-            modules.join("rustok-example"),
-        )
-        .expect("dangling target symlink");
+        std::os::unix::fs::symlink(root.join("missing-target"), modules.join("rustok-example"))
+            .expect("dangling target symlink");
         assert!(matches!(
             super::validate_mcp_scaffold_target_path_blocking(
                 &root_string,
@@ -857,7 +836,10 @@ mod tests {
         std::fs::create_dir(&target).expect("empty target directory");
 
         assert!(super::rename_directory_noreplace(&source, &target).is_err());
-        assert!(source.is_dir(), "source must remain available after collision");
+        assert!(
+            source.is_dir(),
+            "source must remain available after collision"
+        );
         assert!(target.is_dir(), "existing target must remain untouched");
         assert!(
             std::fs::read_dir(&target)
@@ -896,8 +878,7 @@ mod tests {
             ),
         )
         .expect("staging marker");
-        std::fs::write(stale_staging.join("partial.txt"), "partial")
-            .expect("stale partial file");
+        std::fs::write(stale_staging.join("partial.txt"), "partial").expect("stale partial file");
 
         let request = rustok_mcp::ScaffoldModuleRequest {
             slug: "atomic-example".to_string(),
@@ -908,8 +889,7 @@ mod tests {
             with_rest: false,
             write_files: false,
         };
-        let preview =
-            rustok_mcp::generate_module_scaffold(&request).expect("scaffold preview");
+        let preview = rustok_mcp::generate_module_scaffold(&request).expect("scaffold preview");
         let draft = rustok_mcp::StagedModuleScaffold {
             draft_id: Uuid::new_v4().to_string(),
             request,
@@ -919,9 +899,8 @@ mod tests {
         let lock = super::lock_mcp_scaffold_workspace_blocking(&root_string)
             .expect("native workspace lock");
 
-        let response =
-            super::apply_mcp_scaffold_atomically(&draft, &root_string, lock)
-                .expect("atomic scaffold apply");
+        let response = super::apply_mcp_scaffold_atomically(&draft, &root_string, lock)
+            .expect("atomic scaffold apply");
         let target = root.join(&response.crate_path);
         assert!(target.join("Cargo.toml").is_file());
         assert!(target.join("src/lib.rs").is_file());
@@ -946,25 +925,22 @@ mod tests {
             Err(Error::Forbidden(_))
         ));
 
-        let read_authority = HostAuthorityContext::for_actor(
-            HostAuthority::Read,
-            Uuid::new_v4(),
-        )
-        .expect("read host authority");
-        let read_result = crate::host_authority::with_host_authority_scope(
-            Some(read_authority),
-            async { super::require_host_scaffold_manage_authority() },
-        )
-        .await;
+        let read_authority = HostAuthorityContext::for_actor(HostAuthority::Read, Uuid::new_v4())
+            .expect("read host authority");
+        let read_result =
+            crate::host_authority::with_host_authority_scope(Some(read_authority), async {
+                super::require_host_scaffold_manage_authority()
+            })
+            .await;
         assert!(matches!(read_result, Err(Error::Forbidden(_))));
 
         let manage_authority =
             HostAuthorityContext::manage(Uuid::new_v4()).expect("manage host authority");
-        let manage_result = crate::host_authority::with_host_authority_scope(
-            Some(manage_authority),
-            async { super::require_host_scaffold_manage_authority() },
-        )
-        .await;
+        let manage_result =
+            crate::host_authority::with_host_authority_scope(Some(manage_authority), async {
+                super::require_host_scaffold_manage_authority()
+            })
+            .await;
         assert!(manage_result.is_ok());
     }
 }

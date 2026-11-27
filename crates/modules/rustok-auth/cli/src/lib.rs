@@ -32,21 +32,29 @@ impl CommandProvider for AuthCommandProvider {
                 "create-app",
                 "Create an OAuth application for an explicitly selected tenant",
             ),
-            CommandDescriptor::new("auth", "sessions-cleanup", "Remove auth sessions past the retention window"),
             CommandDescriptor::new(
-                "auth", "jwt-authority-init",
+                "auth",
+                "sessions-cleanup",
+                "Remove auth sessions past the retention window",
+            ),
+            CommandDescriptor::new(
+                "auth",
+                "jwt-authority-init",
                 "Import the offline JWT ledger into a new independent authority",
             ),
             CommandDescriptor::new(
-                "auth", "jwt-witness-init",
+                "auth",
+                "jwt-witness-init",
                 "Initialize an independent JWT rollback witness offline",
             ),
             CommandDescriptor::new(
-                "auth", "jwt-witness-recover",
+                "auth",
+                "jwt-witness-recover",
                 "Restore the exact authenticated JWT witness snapshot offline",
             ),
             CommandDescriptor::new(
-                "auth", "jwt-revoke",
+                "auth",
+                "jwt-revoke",
                 "Irreversibly revoke an enrolled JWT key across the deployment",
             ),
         ]
@@ -55,12 +63,17 @@ impl CommandProvider for AuthCommandProvider {
     async fn execute(&self, request: CommandRequest) -> CliCoreResult<CommandOutcome> {
         match (request.namespace.as_str(), request.name.as_str()) {
             ("oauth", "create-app") => self.create_app(request.args).await,
-            ("auth", "sessions-cleanup") if request.dry_run => Err(CliCoreError::DryRunNotSupported {
-                namespace: request.namespace,
-                name: request.name,
-            }),
+            ("auth", "sessions-cleanup") if request.dry_run => {
+                Err(CliCoreError::DryRunNotSupported {
+                    namespace: request.namespace,
+                    name: request.name,
+                })
+            }
             ("auth", "sessions-cleanup") => self.cleanup_sessions().await,
-            ("auth", "jwt-revoke" | "jwt-authority-init" | "jwt-witness-init" | "jwt-witness-recover") if request.dry_run => Err(CliCoreError::DryRunNotSupported {
+            (
+                "auth",
+                "jwt-revoke" | "jwt-authority-init" | "jwt-witness-init" | "jwt-witness-recover",
+            ) if request.dry_run => Err(CliCoreError::DryRunNotSupported {
                 namespace: request.namespace,
                 name: request.name,
             }),
@@ -109,7 +122,10 @@ impl AuthCommandProvider {
             }
         })?;
         let authority = required_jwt_authority()?;
-        let receipt = authority.revoke_key(&root, purpose, kid).await.map_err(command_failed)?;
+        let receipt = authority
+            .revoke_key(&root, purpose, kid)
+            .await
+            .map_err(command_failed)?;
         let data = serde_json::to_value(receipt).map_err(command_failed)?;
         Ok(CommandOutcome::success("JWT key revocation recorded").with_data(data))
     }
@@ -117,44 +133,75 @@ impl AuthCommandProvider {
     async fn init_jwt_authority(&self, args: serde_json::Value) -> CliCoreResult<CommandOutcome> {
         validate_authority_init_options(&args)?;
         let root = std::env::var("RUSTOK_JWT_REVOCATION_ROOT").map_err(|_| {
-            CliCoreError::InvalidInput { message: "RUSTOK_JWT_REVOCATION_ROOT is required".into() }
+            CliCoreError::InvalidInput {
+                message: "RUSTOK_JWT_REVOCATION_ROOT is required".into(),
+            }
         })?;
         let authority = required_jwt_authority()?;
         let source = db_clone(self.runtime.require_host().map_err(command_failed)?);
-        authority.import_offline(&source, &root).await.map_err(command_failed)?;
-        Ok(CommandOutcome::success("Independent JWT authority initialized"))
+        authority
+            .import_offline(&source, &root)
+            .await
+            .map_err(command_failed)?;
+        Ok(CommandOutcome::success(
+            "Independent JWT authority initialized",
+        ))
     }
 
-    async fn manage_jwt_witness(&self, args: serde_json::Value, recover: bool) -> CliCoreResult<CommandOutcome> {
+    async fn manage_jwt_witness(
+        &self,
+        args: serde_json::Value,
+        recover: bool,
+    ) -> CliCoreResult<CommandOutcome> {
         validate_authority_init_options(&args)?;
         let root = std::env::var("RUSTOK_JWT_REVOCATION_ROOT").map_err(|_| {
-            CliCoreError::InvalidInput { message: "RUSTOK_JWT_REVOCATION_ROOT is required".into() }
+            CliCoreError::InvalidInput {
+                message: "RUSTOK_JWT_REVOCATION_ROOT is required".into(),
+            }
         })?;
         let authority = required_jwt_authority()?;
         if recover {
-            authority.recover_witness(&root).await.map_err(command_failed)?;
-            Ok(CommandOutcome::success("JWT authority restored from the authenticated witness"))
+            authority
+                .recover_witness(&root)
+                .await
+                .map_err(command_failed)?;
+            Ok(CommandOutcome::success(
+                "JWT authority restored from the authenticated witness",
+            ))
         } else {
-            authority.init_witness(&root).await.map_err(command_failed)?;
-            Ok(CommandOutcome::success("Independent JWT rollback witness initialized"))
+            authority
+                .init_witness(&root)
+                .await
+                .map_err(command_failed)?;
+            Ok(CommandOutcome::success(
+                "Independent JWT rollback witness initialized",
+            ))
         }
     }
 
     async fn cleanup_sessions(&self) -> CliCoreResult<CommandOutcome> {
         let db = db_clone(self.runtime.require_host().map_err(command_failed)?);
-        let database_uri = std::env::var("RUSTOK_DATABASE_URL").ok()
+        let database_uri = std::env::var("RUSTOK_DATABASE_URL")
+            .ok()
             .filter(|value| !value.trim().is_empty())
-            .or_else(|| std::env::var("DATABASE_URL").ok().filter(|value| !value.trim().is_empty()))
+            .or_else(|| {
+                std::env::var("DATABASE_URL")
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+            })
             .unwrap_or_default();
         rustok_auth::application_clock::configure_late_observation_store(&db, &database_uri)
-            .await.map_err(command_failed)?;
+            .await
+            .map_err(command_failed)?;
         let deleted = rustok_auth::retention::purge_expired_sessions(&db)
             .await
             .map_err(command_failed)?;
         Ok(
-            CommandOutcome::success("Auth sessions past retention removed").with_data(serde_json::json!({
-                "deleted_sessions": deleted,
-            })),
+            CommandOutcome::success("Auth sessions past retention removed").with_data(
+                serde_json::json!({
+                    "deleted_sessions": deleted,
+                }),
+            ),
         )
     }
 }
@@ -284,33 +331,54 @@ fn required_jwt_authority() -> CliCoreResult<rustok_auth::JwtAuthorityConfig> {
 }
 
 fn validate_authority_init_options(args: &serde_json::Value) -> CliCoreResult<()> {
-    let valid = args.get("options").and_then(serde_json::Value::as_object)
-        .is_some_and(|options| options.len() == 1
-            && options.get("confirm").and_then(serde_json::Value::as_bool) == Some(true))
-        && args.get("positionals").is_none_or(|value| value.as_array().is_some_and(|p| p.is_empty()));
+    let valid = args
+        .get("options")
+        .and_then(serde_json::Value::as_object)
+        .is_some_and(|options| {
+            options.len() == 1
+                && options.get("confirm").and_then(serde_json::Value::as_bool) == Some(true)
+        })
+        && args
+            .get("positionals")
+            .is_none_or(|value| value.as_array().is_some_and(|p| p.is_empty()));
     if !valid {
         return Err(CliCoreError::InvalidInput {
-            message: "JWT authority/witness commands require --confirm and no other arguments".into(),
+            message: "JWT authority/witness commands require --confirm and no other arguments"
+                .into(),
         });
     }
     Ok(())
 }
 
 fn jwt_revocation_options(args: &serde_json::Value) -> CliCoreResult<(&str, &str)> {
-    let invalid = || CliCoreError::InvalidInput {
+    let invalid = || {
+        CliCoreError::InvalidInput {
         message: "auth jwt-revoke requires --purpose access|password-reset|email-verification|invite --kid <id> --confirm and no other arguments".into(),
+    }
     };
-    let opts = args.get("options").and_then(serde_json::Value::as_object).ok_or_else(invalid)?;
-    if opts.len() != 3 || opts.get("confirm").and_then(serde_json::Value::as_bool) != Some(true)
-        || args.get("positionals").and_then(serde_json::Value::as_array).is_some_and(|p| !p.is_empty())
+    let opts = args
+        .get("options")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(invalid)?;
+    if opts.len() != 3
+        || opts.get("confirm").and_then(serde_json::Value::as_bool) != Some(true)
+        || args
+            .get("positionals")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|p| !p.is_empty())
     {
         return Err(invalid());
     }
     let purpose = option(opts, "purpose").ok_or_else(invalid)?;
     let kid = option(opts, "kid").ok_or_else(invalid)?;
-    if !matches!(purpose, "access" | "password-reset" | "email-verification" | "invite")
-        || kid.is_empty() || kid.len() > 64
-        || !kid.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    if !matches!(
+        purpose,
+        "access" | "password-reset" | "email-verification" | "invite"
+    ) || kid.is_empty()
+        || kid.len() > 64
+        || !kid
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
     {
         return Err(invalid());
     }
@@ -368,17 +436,28 @@ mod tests {
         let provider = super::AuthCommandProvider {
             runtime: rustok_runtime::RuntimeComposition::without_database(serde_json::Value::Null),
         };
-        let result = provider.execute(CommandRequest::new(
-            "auth", "jwt-revoke",
-            serde_json::json!({"options":{"purpose":"access","kid":"key-1","confirm":true}}),
-            true,
-        )).await;
-        assert!(matches!(result, Err(CliCoreError::DryRunNotSupported { .. })));
+        let result = provider
+            .execute(CommandRequest::new(
+                "auth",
+                "jwt-revoke",
+                serde_json::json!({"options":{"purpose":"access","kid":"key-1","confirm":true}}),
+                true,
+            ))
+            .await;
+        assert!(matches!(
+            result,
+            Err(CliCoreError::DryRunNotSupported { .. })
+        ));
     }
 
     #[test]
     fn authority_import_requires_explicit_confirmation() {
-        assert!(super::validate_authority_init_options(&serde_json::json!({"options":{"confirm":true}})).is_ok());
+        assert!(
+            super::validate_authority_init_options(
+                &serde_json::json!({"options":{"confirm":true}})
+            )
+            .is_ok()
+        );
         for args in [
             serde_json::json!({"options":{}}),
             serde_json::json!({"options":{"confirm":"true"}}),
@@ -392,7 +471,10 @@ mod tests {
     #[test]
     fn jwt_revocation_requires_exact_target_and_confirmation() {
         let args = serde_json::json!({"options":{"purpose":"access","kid":"key-1","confirm":true}});
-        assert_eq!(super::jwt_revocation_options(&args).unwrap(), ("access", "key-1"));
+        assert_eq!(
+            super::jwt_revocation_options(&args).unwrap(),
+            ("access", "key-1")
+        );
         for args in [
             serde_json::json!({"options":{"purpose":"access","kid":"key-1"}}),
             serde_json::json!({"options":{"purpose":"access","kid":"key-1","confirm":"true"}}),

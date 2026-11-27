@@ -726,7 +726,6 @@ async fn legacy_catalog_read_path_is_stable_after_complete_checkout() {
     );
 }
 
-
 #[tokio::test]
 async fn admin_catalog_graphql_applies_vendor_filter_before_pagination() {
     let (db, catalog, _) = setup().await;
@@ -753,9 +752,33 @@ async fn admin_catalog_graphql_applies_vendor_filter_before_pagination() {
             .expect("vendor test product should be created");
     }
 
-    create_vendor_product(&catalog, tenant_id, actor_id, "Acme", "Acme First", "ACME-1").await;
-    create_vendor_product(&catalog, tenant_id, actor_id, "Acme", "Acme Second", "ACME-2").await;
-    create_vendor_product(&catalog, tenant_id, actor_id, "Other", "Other Vendor", "OTHER-1").await;
+    create_vendor_product(
+        &catalog,
+        tenant_id,
+        actor_id,
+        "Acme",
+        "Acme First",
+        "ACME-1",
+    )
+    .await;
+    create_vendor_product(
+        &catalog,
+        tenant_id,
+        actor_id,
+        "Acme",
+        "Acme Second",
+        "ACME-2",
+    )
+    .await;
+    create_vendor_product(
+        &catalog,
+        tenant_id,
+        actor_id,
+        "Other",
+        "Other Vendor",
+        "OTHER-1",
+    )
+    .await;
 
     let schema = build_schema(
         &db,
@@ -795,7 +818,10 @@ async fn admin_catalog_graphql_applies_vendor_filter_before_pagination() {
     assert_eq!(first_page["adminProductCatalog"]["total"], Value::from(2));
     assert_eq!(first_page["adminProductCatalog"]["page"], Value::from(1));
     assert_eq!(first_page["adminProductCatalog"]["perPage"], Value::from(1));
-    assert_eq!(first_page["adminProductCatalog"]["hasNext"], Value::from(true));
+    assert_eq!(
+        first_page["adminProductCatalog"]["hasNext"],
+        Value::from(true)
+    );
     assert_eq!(
         first_page["adminProductCatalog"]["items"][0]["vendor"],
         Value::from("Acme")
@@ -831,7 +857,10 @@ async fn admin_catalog_graphql_applies_vendor_filter_before_pagination() {
         .expect("second admin catalog page should serialize");
     assert_eq!(second_page["adminProductCatalog"]["total"], Value::from(2));
     assert_eq!(second_page["adminProductCatalog"]["page"], Value::from(2));
-    assert_eq!(second_page["adminProductCatalog"]["hasNext"], Value::from(false));
+    assert_eq!(
+        second_page["adminProductCatalog"]["hasNext"],
+        Value::from(false)
+    );
     assert_eq!(
         second_page["adminProductCatalog"]["items"][0]["vendor"],
         Value::from("Acme")

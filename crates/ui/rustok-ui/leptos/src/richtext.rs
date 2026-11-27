@@ -191,7 +191,11 @@ pub fn RichTextEditorFrame(
             let Some(handle) = editor_handle.get_value() else {
                 return;
             };
-            drop(set_richtext_authoring_context(&handle, content_locale.as_str(), spellcheck));
+            drop(set_richtext_authoring_context(
+                &handle,
+                content_locale.as_str(),
+                spellcheck,
+            ));
         });
 
         Effect::new(move |_| {

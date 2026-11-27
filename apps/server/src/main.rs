@@ -139,10 +139,13 @@ mod tests {
 
     #[test]
     fn keyring_validation_command_requires_exact_invocation() {
-        assert!(is_validate_jwt_keyring_command(&["validate-jwt-keyring".to_string()]));
+        assert!(is_validate_jwt_keyring_command(&[
+            "validate-jwt-keyring".to_string()
+        ]));
         assert!(!is_validate_jwt_keyring_command(&[]));
         assert!(!is_validate_jwt_keyring_command(&[
-            "validate-jwt-keyring".to_string(), "extra".to_string(),
+            "validate-jwt-keyring".to_string(),
+            "extra".to_string(),
         ]));
         assert!(!is_validate_jwt_keyring_command(&["validate".to_string()]));
     }
@@ -250,10 +253,12 @@ mod tests {
 
     #[test]
     fn resolve_otel_config_propagates_enabled_and_resolved_service_name() {
-        assert!(resolve_otel_config(None, "custom-svc", || {
-            panic!("base builder must not run when OTEL is disabled");
-        })
-        .is_none());
+        assert!(
+            resolve_otel_config(None, "custom-svc", || {
+                panic!("base builder must not run when OTEL is disabled");
+            })
+            .is_none()
+        );
 
         let resolved = resolve_otel_config(Some("yes"), "custom-svc", || {
             rustok_telemetry::otel::OtelConfig {

@@ -82,9 +82,8 @@ impl ChannelService {
         // is the conflict test: a pre-flight `SELECT` would still race, and the
         // database is the only authority that can decide the winner.
         let now = chrono::Utc::now().into();
-        let settings = normalize_channel_settings(
-            input.settings.unwrap_or_else(|| serde_json::json!({})),
-        )?;
+        let settings =
+            normalize_channel_settings(input.settings.unwrap_or_else(|| serde_json::json!({})))?;
 
         for attempt in 0..2 {
             let is_default = attempt == 0
@@ -138,7 +137,9 @@ impl ChannelService {
         channel_id: Uuid,
         input: UpdateChannelInput,
     ) -> ChannelResult<ChannelResponse> {
-        let channel = self.ensure_channel_for_tenant(tenant_id, channel_id).await?;
+        let channel = self
+            .ensure_channel_for_tenant(tenant_id, channel_id)
+            .await?;
         let name = match input.name {
             Some(name) => Some(normalize_channel_name(&name)?),
             None => None,
@@ -175,7 +176,9 @@ impl ChannelService {
         channel_id: Uuid,
         is_active: bool,
     ) -> ChannelResult<ChannelResponse> {
-        let channel = self.ensure_channel_for_tenant(tenant_id, channel_id).await?;
+        let channel = self
+            .ensure_channel_for_tenant(tenant_id, channel_id)
+            .await?;
         if channel.is_active == is_active {
             return Ok(to_channel_response(channel));
         }
@@ -205,7 +208,10 @@ impl ChannelService {
                 promoted_active.updated_at = Set(now);
                 if let Err(error) = promoted_active.update(&txn).await {
                     txn.rollback().await?;
-                    return Err(map_unique_violation(error, "promote the tenant default channel"));
+                    return Err(map_unique_violation(
+                        error,
+                        "promote the tenant default channel",
+                    ));
                 }
             }
         }
@@ -227,7 +233,9 @@ impl ChannelService {
         tenant_id: Uuid,
         channel_id: Uuid,
     ) -> ChannelResult<ChannelResponse> {
-        let channel = self.ensure_channel_for_tenant(tenant_id, channel_id).await?;
+        let channel = self
+            .ensure_channel_for_tenant(tenant_id, channel_id)
+            .await?;
         let response = to_channel_response(channel.clone());
         let now = chrono::Utc::now().into();
 
@@ -256,7 +264,10 @@ impl ChannelService {
                 promoted_active.updated_at = Set(now);
                 if let Err(error) = promoted_active.update(&txn).await {
                     txn.rollback().await?;
-                    return Err(map_unique_violation(error, "promote the tenant default channel"));
+                    return Err(map_unique_violation(
+                        error,
+                        "promote the tenant default channel",
+                    ));
                 }
             }
         }
@@ -569,7 +580,9 @@ impl ChannelService {
         tenant_id: Uuid,
         channel_id: Uuid,
     ) -> ChannelResult<ChannelResponse> {
-        let channel = self.ensure_channel_for_tenant(tenant_id, channel_id).await?;
+        let channel = self
+            .ensure_channel_for_tenant(tenant_id, channel_id)
+            .await?;
         if !channel.is_active {
             return Err(ChannelError::InactiveChannel(channel_id));
         }
@@ -724,16 +737,14 @@ impl ChannelService {
             Ok(model) => model,
             Err(error) if is_unique_violation(&error) => {
                 txn.rollback().await?;
-                return Err(
-                    classify_target_conflict(
-                        &self.db,
-                        channel.tenant_id,
-                        target_type,
-                        target_value.as_str(),
-                        input.is_primary,
-                    )
-                    .await,
-                );
+                return Err(classify_target_conflict(
+                    &self.db,
+                    channel.tenant_id,
+                    target_type,
+                    target_value.as_str(),
+                    input.is_primary,
+                )
+                .await);
             }
             Err(error) => {
                 txn.rollback().await?;
@@ -788,16 +799,14 @@ impl ChannelService {
             Ok(model) => model,
             Err(error) if is_unique_violation(&error) => {
                 txn.rollback().await?;
-                return Err(
-                    classify_target_conflict(
-                        &self.db,
-                        channel.tenant_id,
-                        target_type,
-                        target_value.as_str(),
-                        input.is_primary,
-                    )
-                    .await,
-                );
+                return Err(classify_target_conflict(
+                    &self.db,
+                    channel.tenant_id,
+                    target_type,
+                    target_value.as_str(),
+                    input.is_primary,
+                )
+                .await);
             }
             Err(error) => {
                 txn.rollback().await?;
@@ -1489,7 +1498,10 @@ impl ChannelService {
             for rule in rules {
                 let policy_set_id = rule.policy_set_id;
                 let response = to_channel_resolution_rule_response(rule)?;
-                rules_by_set.entry(policy_set_id).or_default().push(response);
+                rules_by_set
+                    .entry(policy_set_id)
+                    .or_default()
+                    .push(response);
             }
         }
 

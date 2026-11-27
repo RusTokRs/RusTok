@@ -102,7 +102,9 @@ impl PeerWriteBase {
 
 fn validate_field(name: &str, value: &str) -> Result<(), String> {
     if value.trim().is_empty() || value.len() > MAX_PEER_WRITE_FIELD_BYTES {
-        return Err(format!("peer write {name} is empty or exceeds the size limit"));
+        return Err(format!(
+            "peer write {name} is empty or exceeds the size limit"
+        ));
     }
     Ok(())
 }
@@ -113,8 +115,8 @@ mod browser {
     use crate::BrowserRuntimeError;
     use std::cell::RefCell;
     use std::rc::Rc;
-    use wasm_bindgen::{JsCast, JsValue};
     use wasm_bindgen::closure::Closure;
+    use wasm_bindgen::{JsCast, JsValue};
     use web_sys::{BroadcastChannel, MessageEvent};
 
     fn peer_write_document_id() -> Result<String, BrowserRuntimeError> {
@@ -134,12 +136,13 @@ mod browser {
             js_sys::Math::random(),
             js_sys::Math::random()
         );
-        let stored = js_sys::Reflect::set(&global, &key, &JsValue::from_str(&generated))
-            .map_err(|error| {
+        let stored = js_sys::Reflect::set(&global, &key, &JsValue::from_str(&generated)).map_err(
+            |error| {
                 BrowserRuntimeError::Browser(format!(
                     "cannot establish shared Fly document identity: {error:?}"
                 ))
-            })?;
+            },
+        )?;
         if !stored {
             return Err(BrowserRuntimeError::Browser(
                 "cannot establish shared Fly document identity".to_string(),
@@ -374,15 +377,16 @@ mod tests {
     #[test]
     fn same_document_channel_advances_baseline_without_fencing() {
         let mut base = base();
-        assert!(base
-            .observe(PeerWriteMessage {
+        assert!(
+            base.observe(PeerWriteMessage {
                 kind: "confirmed-write".to_string(),
                 page_id: "page-1".to_string(),
                 revision: "revision-2".to_string(),
                 hash: "hash-2".to_string(),
                 sender_id: "document-a".to_string(),
             })
-            .is_none());
+            .is_none()
+        );
         assert_eq!(base.revision, "revision-2");
         assert_eq!(base.project_hash, "hash-2");
         assert!(!base.conflicted);
@@ -443,40 +447,52 @@ mod tests {
             " \u{85}".to_string(),
             "é".repeat(MAX_PEER_WRITE_FIELD_BYTES / 2 + 1),
         ] {
-            assert!(base.observe(PeerWriteMessage {
-                kind: "confirmed-write".to_string(),
-                page_id: "page-1".to_string(),
-                revision: "revision-2".to_string(),
-                hash: "hash-2".to_string(),
-                sender_id,
-            }).is_none());
+            assert!(
+                base.observe(PeerWriteMessage {
+                    kind: "confirmed-write".to_string(),
+                    page_id: "page-1".to_string(),
+                    revision: "revision-2".to_string(),
+                    hash: "hash-2".to_string(),
+                    sender_id,
+                })
+                .is_none()
+            );
             assert!(!base.conflicted);
             assert_eq!(base.revision, "revision-1");
             assert_eq!(base.project_hash, "hash-1");
         }
-        assert!(serde_json::from_value::<PeerWriteMessage>(serde_json::json!({
-            "kind": "confirmed-write",
-            "pageId": "page-1",
-            "revision": "revision-2",
-            "hash": "hash-2"
-        })).is_err());
-        assert!(base.observe(PeerWriteMessage {
-            kind: "confirmed-write".to_string(),
-            page_id: "page-1".to_string(),
-            revision: "revision-2".to_string(),
-            hash: "hash-2".to_string(),
-            sender_id: "document-b".to_string(),
-        }).is_some());
+        assert!(
+            serde_json::from_value::<PeerWriteMessage>(serde_json::json!({
+                "kind": "confirmed-write",
+                "pageId": "page-1",
+                "revision": "revision-2",
+                "hash": "hash-2"
+            }))
+            .is_err()
+        );
+        assert!(
+            base.observe(PeerWriteMessage {
+                kind: "confirmed-write".to_string(),
+                page_id: "page-1".to_string(),
+                revision: "revision-2".to_string(),
+                hash: "hash-2".to_string(),
+                sender_id: "document-b".to_string(),
+            })
+            .is_some()
+        );
     }
 
     #[test]
     fn rejects_invalid_baselines_and_messages() {
-        assert!(PeerWriteBase::new(
-            "".to_string(),
-            "r".to_string(),
-            "h".to_string(),
-            "document-a".to_string(),
-        ).is_err());
+        assert!(
+            PeerWriteBase::new(
+                "".to_string(),
+                "r".to_string(),
+                "h".to_string(),
+                "document-a".to_string(),
+            )
+            .is_err()
+        );
         let mut base = base();
         assert!(
             base.observe(PeerWriteMessage {

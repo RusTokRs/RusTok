@@ -417,7 +417,10 @@ where
         auth: &PageBuilderRequestAuth,
         input: PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<PreviewPageBuilderResult> {
-        if let Err(error) = self.authorizer.authorize(auth, BuilderCapabilityKind::Preview) {
+        if let Err(error) = self
+            .authorizer
+            .authorize(auth, BuilderCapabilityKind::Preview)
+        {
             fly::drop_value_iteratively(input.project_data);
             fly::drop_value_iteratively(input.runtime.context);
             return Err(error);
@@ -442,7 +445,10 @@ where
         auth: &PageBuilderRequestAuth,
         input: BuilderNodePropertiesInput,
     ) -> PageBuilderServiceResult<BuilderNodePropertiesResult> {
-        if let Err(error) = self.authorizer.authorize(auth, BuilderCapabilityKind::Properties) {
+        if let Err(error) = self
+            .authorizer
+            .authorize(auth, BuilderCapabilityKind::Properties)
+        {
             fly::drop_value_iteratively(input.properties);
             return Err(error);
         }
@@ -456,7 +462,10 @@ where
         auth: &PageBuilderRequestAuth,
         input: PublishPageBuilderInput,
     ) -> PageBuilderServiceResult<PublishPageBuilderResult> {
-        if let Err(error) = self.authorizer.authorize(auth, BuilderCapabilityKind::Publish) {
+        if let Err(error) = self
+            .authorizer
+            .authorize(auth, BuilderCapabilityKind::Publish)
+        {
             fly::drop_value_iteratively(input.project_data);
             return Err(error);
         }

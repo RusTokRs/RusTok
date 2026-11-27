@@ -20,7 +20,10 @@ use crate::collection_translation_changes::{
     read_collection_translation_changes as read_changes_page,
     record_collection_translation_change_in_tx,
 };
-use crate::{CommerceResult, entities::{collection, collection_translation}};
+use crate::{
+    CommerceResult,
+    entities::{collection, collection_translation},
+};
 
 pub const MAX_COLLECTION_TRANSLATION_RESOURCE_PAGE: u16 = 200;
 

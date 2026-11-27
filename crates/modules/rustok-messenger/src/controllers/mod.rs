@@ -176,7 +176,9 @@ pub fn router(runtime: MessengerHttpRuntime) -> Router {
 }
 
 /// Construct the Axum router directly from the platform host runtime.
-pub fn axum_router(host_runtime: &HostRuntimeContext) -> Result<Router, crate::error::MessengerError> {
+pub fn axum_router(
+    host_runtime: &HostRuntimeContext,
+) -> Result<Router, crate::error::MessengerError> {
     let runtime = MessengerHttpRuntime::from_host(host_runtime);
     Ok(router(runtime))
 }

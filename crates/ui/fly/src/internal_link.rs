@@ -189,7 +189,10 @@ fn materialize_component(
         }
     };
 
-    match resolution.routes.slug_for(target_page_index, resolution.locale) {
+    match resolution
+        .routes
+        .slug_for(target_page_index, resolution.locale)
+    {
         Ok(Some(slug)) => {
             apply_href(
                 component,

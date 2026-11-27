@@ -388,15 +388,10 @@ mod tests {
 
     #[test]
     fn worker_published_but_finished_is_not_successful_bootstrap() {
-        let ctx = ServerRuntimeContext::new(
-            DatabaseConnection::default(),
-            RustokSettings::default(),
-        );
-        let inspect = || super::published_worker_running::<bool>(
-            &ctx,
-            "sample worker",
-            |finished| *finished,
-        );
+        let ctx =
+            ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
+        let inspect =
+            || super::published_worker_running::<bool>(&ctx, "sample worker", |finished| *finished);
         assert!(!inspect().expect("missing handle permits bootstrap"));
 
         ctx.shared_insert(false);
@@ -411,21 +406,19 @@ mod tests {
 
     #[tokio::test]
     async fn published_worker_is_not_reported_ready_after_stop() {
-        let ctx = ServerRuntimeContext::new(
-            DatabaseConnection::default(),
-            RustokSettings::default(),
-        );
+        let ctx =
+            ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
         ctx.shared_insert(false);
         let stop = crate::services::stop_handle::StopHandle::ensure(&ctx);
         stop.stop().await;
-        let error = super::published_worker_running::<bool>(
-            &ctx,
-            "sample worker",
-            |finished| *finished,
-        )
-        .expect_err("shutdown must fence repeated worker bootstrap");
+        let error =
+            super::published_worker_running::<bool>(&ctx, "sample worker", |finished| *finished)
+                .expect_err("shutdown must fence repeated worker bootstrap");
         assert!(format!("{error}").contains("during server shutdown"));
-        assert!(ctx.shared_contains::<bool>(), "shutdown still owns the handle");
+        assert!(
+            ctx.shared_contains::<bool>(),
+            "shutdown still owns the handle"
+        );
     }
 
     #[test]
@@ -450,10 +443,8 @@ mod tests {
 
     #[test]
     fn start_reservation_rolls_back_and_preserves_committed_ownership() {
-        let ctx = ServerRuntimeContext::new(
-            DatabaseConnection::default(),
-            RustokSettings::default(),
-        );
+        let ctx =
+            ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
         {
             let claimed = super::ServerRuntimeStartReservation::try_claim(&ctx, 5_usize)
                 .expect("first bootstrap owns reservation");
@@ -464,7 +455,10 @@ mod tests {
             assert_eq!(ctx.shared_get::<usize>(), Some(5));
             drop(claimed);
         }
-        assert!(!ctx.shared_contains::<usize>(), "failed startup must release claim");
+        assert!(
+            !ctx.shared_contains::<usize>(),
+            "failed startup must release claim"
+        );
         super::ServerRuntimeStartReservation::try_claim(&ctx, 7_usize)
             .expect("retry after failed startup")
             .commit();
@@ -482,10 +476,8 @@ mod tests {
             atomic::{AtomicUsize, Ordering},
         };
 
-        let ctx = ServerRuntimeContext::new(
-            DatabaseConnection::default(),
-            RustokSettings::default(),
-        );
+        let ctx =
+            ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
         const STARTERS: usize = 12;
         let enter = Arc::new(Barrier::new(STARTERS));
         let leave = Arc::new(Barrier::new(STARTERS));
@@ -499,8 +491,7 @@ mod tests {
                 let winners = winners.clone();
                 scope.spawn(move || {
                     enter.wait();
-                    let claim =
-                        super::ServerRuntimeStartReservation::try_claim(&ctx, 1_u16);
+                    let claim = super::ServerRuntimeStartReservation::try_claim(&ctx, 1_u16);
                     if claim.is_some() {
                         winners.fetch_add(1, Ordering::Relaxed);
                     }
@@ -522,14 +513,11 @@ mod tests {
         use std::future::Future;
         use std::task::{Context, Waker};
 
-        let ctx = ServerRuntimeContext::new(
-            DatabaseConnection::default(),
-            RustokSettings::default(),
-        );
+        let ctx =
+            ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
         let pending_bootstrap = async {
-            let _reservation =
-                super::ServerRuntimeStartReservation::try_claim(&ctx, 1_u32)
-                    .expect("startup claims marker");
+            let _reservation = super::ServerRuntimeStartReservation::try_claim(&ctx, 1_u32)
+                .expect("startup claims marker");
             std::future::pending::<()>().await;
         };
         let mut pending_bootstrap = Box::pin(pending_bootstrap);
@@ -607,7 +595,10 @@ mod tests {
         let unauth = ServerAuthRuntime::without_auth(ctx.clone());
         assert!(unauth.require_auth_config().is_err());
 
-        let authed = ServerAuthRuntime::new(ctx, crate::auth::test_auth_config("aB3!zY7@qW8#eR2$".repeat(4)));
+        let authed = ServerAuthRuntime::new(
+            ctx,
+            crate::auth::test_auth_config("aB3!zY7@qW8#eR2$".repeat(4)),
+        );
         assert!(authed.require_auth_config().is_ok());
     }
 

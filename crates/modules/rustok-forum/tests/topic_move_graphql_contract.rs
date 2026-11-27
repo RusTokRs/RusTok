@@ -30,10 +30,7 @@ fn graphql_schema_exposes_idempotent_topic_move_command() {
         "publishedReplyCount",
         "movedAt",
     ] {
-        assert!(
-            sdl.contains(marker),
-            "missing GraphQL move marker {marker}"
-        );
+        assert!(sdl.contains(marker), "missing GraphQL move marker {marker}");
     }
 }
 

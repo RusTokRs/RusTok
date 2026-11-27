@@ -853,8 +853,10 @@ mod tests {
         };
 
         let mut req = request("/api/users");
-        req.headers_mut()
-            .insert("Host", axum::http::HeaderValue::from_static("internal.test"));
+        req.headers_mut().insert(
+            "Host",
+            axum::http::HeaderValue::from_static("internal.test"),
+        );
         req.headers_mut().append(
             "X-Forwarded-Host",
             axum::http::HeaderValue::from_static("spoofed.example.test"),
@@ -877,8 +879,8 @@ mod tests {
         // trusted tenant host, even with the same repeated header values.
         req.extensions_mut()
             .insert(SocketAddr::new(IpAddr::from([192, 0, 2, 7]), 443));
-        let untrusted = resolve_request(&req, &settings)
-            .expect("untrusted forwarding should be ignored");
+        let untrusted =
+            resolve_request(&req, &settings).expect("untrusted forwarding should be ignored");
         assert_eq!(
             untrusted.identifier,
             ResolvedTenantIdentifier::Host("internal.test".to_string())

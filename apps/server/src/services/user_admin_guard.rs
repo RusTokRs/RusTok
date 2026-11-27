@@ -276,6 +276,7 @@ mod tests {
             request_id: None,
             locale: None,
             principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
+            credential_authority: rustok_auth::CredentialAuthority::TrustedInternal,
         }
     }
 

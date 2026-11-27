@@ -35,9 +35,9 @@ pub fn provide_server_auth_snapshot(_snapshot: ServerAuthSnapshot) {}
 
 #[cfg(target_arch = "wasm32")]
 mod memory {
-    use std::cell::RefCell;
     use crate::model::{AuthSession, AuthUser};
     use crate::transport::browser_epoch;
+    use std::cell::RefCell;
 
     // One verified pair and its exact origin epoch, never separate projections.
     thread_local! {
@@ -57,13 +57,20 @@ mod memory {
             }) {
                 *cell = None;
             }
-            cell.as_ref().map(|(_, session, user)| (session.clone(), user.clone()))
+            cell.as_ref()
+                .map(|(_, session, user)| (session.clone(), user.clone()))
         })
     }
 
-    pub fn load_session() -> Option<AuthSession> { current().map(|(session, _)| session) }
-    pub fn load_user() -> Option<AuthUser> { current().map(|(_, user)| user) }
-    pub fn clear() { IDENTITY.with(|cell| *cell.borrow_mut() = None); }
+    pub fn load_session() -> Option<AuthSession> {
+        current().map(|(session, _)| session)
+    }
+    pub fn load_user() -> Option<AuthUser> {
+        current().map(|(_, user)| user)
+    }
+    pub fn clear() {
+        IDENTITY.with(|cell| *cell.borrow_mut() = None);
+    }
 }
 
 /// Remove credential entries persisted by older builds that kept the
@@ -79,8 +86,11 @@ fn purge_legacy_persisted_credentials() {
 
 #[cfg(target_arch = "wasm32")]
 fn browser_storage() -> Result<web_sys::Storage, AuthError> {
-    web_sys::window().ok_or(AuthError::Network)?.local_storage()
-        .map_err(|_| AuthError::Network)?.ok_or(AuthError::Network)
+    web_sys::window()
+        .ok_or(AuthError::Network)?
+        .local_storage()
+        .map_err(|_| AuthError::Network)?
+        .ok_or(AuthError::Network)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -92,7 +102,9 @@ fn read_tenant() -> Option<String> {
 #[cfg(target_arch = "wasm32")]
 fn write_tenant(tenant: &str) -> Result<(), AuthError> {
     let encoded = serde_json::to_string(tenant).map_err(|_| AuthError::Network)?;
-    browser_storage()?.set_item(ADMIN_TENANT_KEY, &encoded).map_err(|_| AuthError::Network)
+    browser_storage()?
+        .set_item(ADMIN_TENANT_KEY, &encoded)
+        .map_err(|_| AuthError::Network)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -108,7 +120,11 @@ pub(crate) fn load_identity() -> (Option<AuthSession>, Option<AuthUser>) {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub(crate) fn publish_identity(session: &AuthSession, user: &AuthUser, epoch: &crate::transport::browser_epoch::Epoch) -> Result<(), AuthError> {
+pub(crate) fn publish_identity(
+    session: &AuthSession,
+    user: &AuthUser,
+    epoch: &crate::transport::browser_epoch::Epoch,
+) -> Result<(), AuthError> {
     purge_legacy_persisted_credentials();
     if !crate::transport::browser_epoch::matches(epoch) {
         return Err(AuthError::Http(409));
@@ -122,7 +138,11 @@ pub(crate) fn publish_identity(session: &AuthSession, user: &AuthUser, epoch: &c
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn publish_identity(_session: &AuthSession, _user: &AuthUser, _epoch: &crate::transport::browser_epoch::Epoch) -> Result<(), AuthError> {
+pub(crate) fn publish_identity(
+    _session: &AuthSession,
+    _user: &AuthUser,
+    _epoch: &crate::transport::browser_epoch::Epoch,
+) -> Result<(), AuthError> {
     Ok(())
 }
 

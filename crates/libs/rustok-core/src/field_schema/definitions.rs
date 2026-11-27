@@ -41,9 +41,11 @@ pub fn field_definition_from_source<T: FieldDefinitionSource>(
         message: error.to_string(),
     })?;
 
-    let label: HashMap<String, String> = serde_json::from_value(source.label().clone())
-        .map_err(|error| FieldDefinitionError::InvalidLabel {
-            message: error.to_string(),
+    let label: HashMap<String, String> =
+        serde_json::from_value(source.label().clone()).map_err(|error| {
+            FieldDefinitionError::InvalidLabel {
+                message: error.to_string(),
+            }
         })?;
 
     let description: Option<HashMap<String, String>> = source

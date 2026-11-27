@@ -3,8 +3,8 @@ use chrono::Utc;
 use rustok_api::{PortActor, PortContext, PortErrorKind};
 use rustok_core::error::Error as CoreError;
 use rustok_taxonomy_ports::{
-    MAX_TAXONOMY_TERM_NAMES_PER_CALL, ReadTaxonomyTermNamesRequest,
-    TAXONOMY_TERM_NAMES_READ_CLAIM, TaxonomyTermNamesReadPort,
+    MAX_TAXONOMY_TERM_NAMES_PER_CALL, ReadTaxonomyTermNamesRequest, TAXONOMY_TERM_NAMES_READ_CLAIM,
+    TaxonomyTermNamesReadPort,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait, QueryFilter,
@@ -61,7 +61,13 @@ impl CatalogService {
         }
 
         let names = self
-            .read_taxonomy_term_names(tenant_id, &ordered_term_ids, locale, fallback_locale, context)
+            .read_taxonomy_term_names(
+                tenant_id,
+                &ordered_term_ids,
+                locale,
+                fallback_locale,
+                context,
+            )
             .await?;
 
         let mut tags_by_product = HashMap::new();
@@ -104,8 +110,14 @@ impl CatalogService {
             .collect::<Vec<_>>();
         let names = match conn.as_taxonomy_connection() {
             TaxonomyConnection::Connection(_) => {
-                self.read_taxonomy_term_names(tenant_id, &term_ids, locale, fallback_locale, context)
-                    .await?
+                self.read_taxonomy_term_names(
+                    tenant_id,
+                    &term_ids,
+                    locale,
+                    fallback_locale,
+                    context,
+                )
+                .await?
             }
             TaxonomyConnection::Transaction(txn) => {
                 self.taxonomy()
@@ -132,17 +144,29 @@ impl CatalogService {
         fallback_locale: Option<&str>,
         origin: Option<&PortContext>,
     ) -> CommerceResult<HashMap<Uuid, String>> {
-        let port = self.taxonomy_term_names_port.as_deref().or_else(|| {
-            self.taxonomy_port.as_deref().map(|port| port as &dyn TaxonomyTermNamesReadPort)
-        }).unwrap_or(&NoopProductTaxonomyPort);
+        let port = self
+            .taxonomy_term_names_port
+            .as_deref()
+            .or_else(|| {
+                self.taxonomy_port
+                    .as_deref()
+                    .map(|port| port as &dyn TaxonomyTermNamesReadPort)
+            })
+            .unwrap_or(&NoopProductTaxonomyPort);
         let budget = Duration::from_millis(
-            origin.and_then(|context| context.deadline_ms).unwrap_or(2_000).min(2_000),
+            origin
+                .and_then(|context| context.deadline_ms)
+                .unwrap_or(2_000)
+                .min(2_000),
         );
         let mut context = PortContext::new(
             tenant_id.to_string(),
             PortActor::service("product"),
             locale,
-            origin.map_or_else(|| Uuid::new_v4().to_string(), |context| context.correlation_id.clone()),
+            origin.map_or_else(
+                || Uuid::new_v4().to_string(),
+                |context| context.correlation_id.clone(),
+            ),
         )
         .with_claim(TAXONOMY_TERM_NAMES_READ_CLAIM);
         if let Some(origin) = origin {
@@ -156,7 +180,9 @@ impl CatalogService {
         for ids in term_ids.chunks(MAX_TAXONOMY_TERM_NAMES_PER_CALL) {
             let remaining = budget.saturating_sub(started.elapsed());
             if remaining.as_millis() == 0 {
-                return Err(CoreError::External("Taxonomy term names deadline elapsed".into()).into());
+                return Err(
+                    CoreError::External("Taxonomy term names deadline elapsed".into()).into(),
+                );
             }
             let response = tokio::time::timeout(
                 remaining,
@@ -174,11 +200,16 @@ impl CatalogService {
                 PortErrorKind::Unavailable | PortErrorKind::Timeout => {
                     CoreError::External("Taxonomy term names are unavailable".into())
                 }
-                PortErrorKind::Forbidden => CoreError::Forbidden("Taxonomy term names access denied".into()),
+                PortErrorKind::Forbidden => {
+                    CoreError::Forbidden("Taxonomy term names access denied".into())
+                }
                 _ => CoreError::Internal("Taxonomy term names could not be read safely".into()),
             })?;
             if response.keys().any(|id| !ids.contains(id)) {
-                return Err(CoreError::Internal("Taxonomy returned an unrequested term identity".into()).into());
+                return Err(CoreError::Internal(
+                    "Taxonomy returned an unrequested term identity".into(),
+                )
+                .into());
             }
             names.extend(response);
         }

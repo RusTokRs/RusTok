@@ -213,35 +213,72 @@ async fn unresolved_text_tenant_checkpoint_is_not_silently_skipped() {
     let tenant = Uuid::new_v4();
     let now = Utc::now();
     let checkpoint = ModuleTransitionCheckpoint {
-        operation_id: Uuid::new_v4(), revision: 1, module_slug: "orders".into(),
-        tenant_id: Some(tenant), predecessor_digest: Some("predecessor".into()),
+        operation_id: Uuid::new_v4(),
+        revision: 1,
+        module_slug: "orders".into(),
+        tenant_id: Some(tenant),
+        predecessor_digest: Some("predecessor".into()),
         candidate_digest: "candidate".into(),
-        state: ModuleTransitionState::InterventionRequired { failure_reason: "operator decision".into() },
-        security_epoch: GlobalSecurityEpoch::INITIAL, fences: ConflictFenceSet::new(vec![]),
-        recovery_attempt_count: 0, created_at: now, updated_at: now,
+        state: ModuleTransitionState::InterventionRequired {
+            failure_reason: "operator decision".into(),
+        },
+        security_epoch: GlobalSecurityEpoch::INITIAL,
+        fences: ConflictFenceSet::new(vec![]),
+        recovery_attempt_count: 0,
+        created_at: now,
+        updated_at: now,
     };
-    TransitionCheckpointStore::save_checkpoint_for_test(&db, &checkpoint).await.unwrap();
-    for representation in [tenant.to_string(), tenant.to_string().to_uppercase(), tenant.simple().to_string()] {
+    TransitionCheckpointStore::save_checkpoint_for_test(&db, &checkpoint)
+        .await
+        .unwrap();
+    for representation in [
+        tenant.to_string(),
+        tenant.to_string().to_uppercase(),
+        tenant.simple().to_string(),
+    ] {
         db.execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DbBackend::Sqlite,
             "UPDATE module_transition_checkpoints SET tenant_id = ?1 WHERE operation_id = ?2",
             vec![representation.into(), checkpoint.operation_id.into()],
-        )).await.unwrap();
+        ))
+        .await
+        .unwrap();
         for rows in [
             TransitionCheckpointStore::list_active_checkpoints_for_tenant(&db, Some(tenant)).await,
-            TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(&db, "orders", tenant).await,
+            TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(
+                &db, "orders", tenant,
+            )
+            .await,
         ] {
             // SQLx UUID decoding may reject TEXT even though it matched; a
             // storage error is safe, but silently returning no fence is not.
-            assert!(match rows {
-                Ok(rows) => rows.iter().any(|row| row.operation_id == checkpoint.operation_id),
-                Err(_) => true,
-            }, "legacy checkpoint must be returned or fail closed");
+            assert!(
+                match rows {
+                    Ok(rows) => rows
+                        .iter()
+                        .any(|row| row.operation_id == checkpoint.operation_id),
+                    Err(_) => true,
+                },
+                "legacy checkpoint must be returned or fail closed"
+            );
         }
-        assert!(TransitionCheckpointStore::list_active_checkpoints_for_tenant(&db, Some(Uuid::new_v4()))
-            .await.unwrap().is_empty());
-        assert!(TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(&db, "other", tenant)
-            .await.unwrap().is_empty());
+        assert!(
+            TransitionCheckpointStore::list_active_checkpoints_for_tenant(
+                &db,
+                Some(Uuid::new_v4())
+            )
+            .await
+            .unwrap()
+            .is_empty()
+        );
+        assert!(
+            TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(
+                &db, "other", tenant
+            )
+            .await
+            .unwrap()
+            .is_empty()
+        );
     }
 }
 
@@ -592,9 +629,13 @@ async fn committed_result_snapshot_roundtrips_and_legacy_rows_have_none() {
     ModuleOperationJournal::mark_running_for_test(&db, with_result.id)
         .await
         .expect("running");
-    ModuleOperationJournal::mark_committed_with_result_for_test(&db, with_result.id, "{\"revision\":2}")
-        .await
-        .expect("commit with result");
+    ModuleOperationJournal::mark_committed_with_result_for_test(
+        &db,
+        with_result.id,
+        "{\"revision\":2}",
+    )
+    .await
+    .expect("commit with result");
     assert_eq!(
         ModuleOperationJournal::find(&db, with_result.id)
             .await

@@ -191,7 +191,13 @@ pub async fn save_page_document_with_key(
     idempotency_key: Option<String>,
 ) -> Result<PageDetail, TransportError> {
     graphql_adapter::save_page_document_with_key(
-        token, tenant_slug, id, expected_revision, locale, project_data, idempotency_key,
+        token,
+        tenant_slug,
+        id,
+        expected_revision,
+        locale,
+        project_data,
+        idempotency_key,
     )
     .await
 }
@@ -203,10 +209,7 @@ pub async fn fetch_page_document_save_receipt(
     id: String,
     idempotency_key: String,
 ) -> Result<Option<PageDetail>, TransportError> {
-    graphql_adapter::fetch_page_document_save_receipt(
-        token, tenant_slug, id, idempotency_key,
-    )
-    .await
+    graphql_adapter::fetch_page_document_save_receipt(token, tenant_slug, id, idempotency_key).await
 }
 
 pub async fn fetch_page_body_revision_history(

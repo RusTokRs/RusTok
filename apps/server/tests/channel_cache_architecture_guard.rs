@@ -63,9 +63,7 @@ fn a_broken_invalidation_runtime_bypasses_the_resolution_cache() {
     // either: it resolves against the owner on every request instead.
     let channel = source("apps/server/src/middleware/channel.rs");
     assert!(
-        channel.contains(
-            "fn channel_resolution_cache_usable(ctx: &ServerRuntimeContext) -> bool"
-        )
+        channel.contains("fn channel_resolution_cache_usable(ctx: &ServerRuntimeContext) -> bool")
     );
     assert!(channel.contains("Some(handle) => {"));
     assert!(channel.contains("let ready = handle.is_ready();"));
@@ -113,9 +111,8 @@ fn channel_cache_is_registered_atomically() {
     // could have gutted the assertion without anyone noticing.
     let normalized = channel.split_whitespace().collect::<Vec<_>>().join(" ");
     assert!(
-        normalized.contains(
-            "ctx.shared_get::<Arc<ChannelResolutionCache>>() .unwrap_or(candidate)"
-        )
+        normalized
+            .contains("ctx.shared_get::<Arc<ChannelResolutionCache>>() .unwrap_or(candidate)")
     );
     assert!(!channel.contains("ctx.shared_insert(cache.clone());"));
 }

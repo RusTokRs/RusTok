@@ -882,7 +882,11 @@ pub async fn list_order_returns(
 
     Ok(Json(PaginatedResponse {
         data: page.items,
-        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), page.total),
+        meta: PaginationMeta::new(
+            params.pagination.page,
+            params.pagination.limit(),
+            page.total,
+        ),
     }))
 }
 
@@ -981,7 +985,11 @@ pub async fn list_order_refunds(
 
     Ok(Json(PaginatedResponse {
         data: page.items,
-        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), page.total),
+        meta: PaginationMeta::new(
+            params.pagination.page,
+            params.pagination.limit(),
+            page.total,
+        ),
     }))
 }
 
@@ -1084,6 +1092,10 @@ pub async fn list_order_changes(
 
     Ok(Json(PaginatedResponse {
         data: page.items,
-        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), page.total),
+        meta: PaginationMeta::new(
+            params.pagination.page,
+            params.pagination.limit(),
+            page.total,
+        ),
     }))
 }

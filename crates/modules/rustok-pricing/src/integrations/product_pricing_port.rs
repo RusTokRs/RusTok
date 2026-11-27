@@ -191,8 +191,7 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
             );
             if !identities.insert(identity) {
                 return Err(ProductError::Validation(
-                    "Duplicate initial price for the same variant, channel and currency"
-                        .to_owned(),
+                    "Duplicate initial price for the same variant, channel and currency".to_owned(),
                 ));
             }
         }
@@ -263,11 +262,14 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
                     "Persisted initial price identity is ambiguous".to_owned(),
                 ));
             }
-            let product_id = variant_products.get(&saved.variant_id).copied().ok_or_else(|| {
-                ProductError::Conflict(
-                    "Initial price variant lost its tenant-owned Product binding".to_owned(),
-                )
-            })?;
+            let product_id = variant_products
+                .get(&saved.variant_id)
+                .copied()
+                .ok_or_else(|| {
+                    ProductError::Conflict(
+                        "Initial price variant lost its tenant-owned Product binding".to_owned(),
+                    )
+                })?;
             let new_amount = price_event_successor(&saved, authored)?;
             self.publish_price_updated_in_tx(
                 txn,
@@ -299,9 +301,7 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
         prices: Vec<InitialPrice>,
     ) -> Result<(), ProductError> {
         let variant = crate::services::pricing::scope::load_variant_for_update_in_tx(
-            txn,
-            tenant_id,
-            variant_id,
+            txn, tenant_id, variant_id,
         )
         .await
         .map_err(map_catalog_scope_error)?;
@@ -532,12 +532,10 @@ fn select_storefront_list_price<'a>(
     let candidates = candidates
         .into_iter()
         .filter(|price| {
-            currency_code
-                .is_none_or(|code| price.currency_code.eq_ignore_ascii_case(code))
+            currency_code.is_none_or(|code| price.currency_code.eq_ignore_ascii_case(code))
         })
         .collect::<Vec<_>>();
-    let candidates =
-        select_storefront_list_price_candidates(candidates, public_channel_slug);
+    let candidates = select_storefront_list_price_candidates(candidates, public_channel_slug);
     if candidates.is_empty() {
         return None;
     }
@@ -555,14 +553,12 @@ fn select_storefront_list_price<'a>(
         }
     }
 
-    candidates
-        .into_iter()
-        .min_by(|left, right| {
-            left.amount
-                .cmp(&right.amount)
-                .then_with(|| left.variant_id.cmp(&right.variant_id))
-                .then_with(|| left.id.cmp(&right.id))
-        })
+    candidates.into_iter().min_by(|left, right| {
+        left.amount
+            .cmp(&right.amount)
+            .then_with(|| left.variant_id.cmp(&right.variant_id))
+            .then_with(|| left.id.cmp(&right.id))
+    })
 }
 
 fn select_storefront_list_price_candidates<'a>(
@@ -592,10 +588,8 @@ fn select_storefront_list_price_candidates<'a>(
             matches_channel(price)
                 || (price.channel_id.is_none()
                     && price.channel_slug.is_none()
-                    && !scoped_keys.contains(&(
-                        price.variant_id,
-                        price.currency_code.to_ascii_uppercase(),
-                    )))
+                    && !scoped_keys
+                        .contains(&(price.variant_id, price.currency_code.to_ascii_uppercase())))
         })
         .collect()
 }
@@ -656,10 +650,7 @@ mod tests {
         let mut price = initial_price(Uuid::from_u128(100));
         price.channel_id = Some(channel_id);
 
-        canonicalize_initial_price_channel_scope(
-            &mut price,
-            Some((channel_id, "web".to_owned())),
-        );
+        canonicalize_initial_price_channel_scope(&mut price, Some((channel_id, "web".to_owned())));
 
         assert_eq!(price.channel_id, Some(channel_id));
         assert_eq!(price.channel_slug.as_deref(), Some("web"));
@@ -684,10 +675,7 @@ mod tests {
         let mut price = initial_price(Uuid::from_u128(100));
         price.channel_slug = Some(" WEB ".to_owned());
 
-        canonicalize_initial_price_channel_scope(
-            &mut price,
-            Some((channel_id, "web".to_owned())),
-        );
+        canonicalize_initial_price_channel_scope(&mut price, Some((channel_id, "web".to_owned())));
 
         assert_eq!(price.channel_id, Some(channel_id));
         assert_eq!(price.channel_slug.as_deref(), Some("web"));
@@ -752,21 +740,10 @@ mod tests {
 
     #[test]
     fn channel_id_only_price_is_not_used_as_channel_neutral_fallback() {
-        let channel_only = candidate(
-            1,
-            Some(Uuid::from_u128(2)),
-            None,
-            None,
-            None,
-            None,
-            5,
-        );
+        let channel_only = candidate(1, Some(Uuid::from_u128(2)), None, None, None, None, 5);
         let neutral = candidate(3, None, None, None, None, None, 10);
 
-        let selected = select_storefront_list_price_candidates(
-            vec![&channel_only, &neutral],
-            None,
-        );
+        let selected = select_storefront_list_price_candidates(vec![&channel_only, &neutral], None);
 
         assert_eq!(selected.len(), 1);
         assert_eq!(selected[0].id, neutral.id);
@@ -794,10 +771,8 @@ mod tests {
         );
         let neutral = candidate(3, None, None, None, None, None, 10);
 
-        let selected = select_storefront_list_price_candidates(
-            vec![&matching, &other, &neutral],
-            Some("web"),
-        );
+        let selected =
+            select_storefront_list_price_candidates(vec![&matching, &other, &neutral], Some("web"));
 
         assert_eq!(selected.len(), 1);
         assert_eq!(selected[0].id, matching.id);
@@ -880,15 +855,7 @@ mod tests {
             None,
             5,
         );
-        let channel_id_only = candidate(
-            2,
-            Some(Uuid::from_u128(4)),
-            None,
-            None,
-            None,
-            None,
-            6,
-        );
+        let channel_id_only = candidate(2, Some(Uuid::from_u128(4)), None, None, None, None, 6);
 
         let selected = select_storefront_list_price_candidates(
             vec![&other_channel, &channel_id_only],
@@ -911,10 +878,8 @@ mod tests {
         );
         let neutral = candidate(2, None, None, None, None, None, 10);
 
-        let selected = select_storefront_list_price_candidates(
-            vec![&other_channel, &neutral],
-            Some("web"),
-        );
+        let selected =
+            select_storefront_list_price_candidates(vec![&other_channel, &neutral], Some("web"));
 
         assert_eq!(selected.len(), 1);
         assert_eq!(selected[0].id, neutral.id);
@@ -932,8 +897,7 @@ mod tests {
             5,
         );
 
-        let selected =
-            select_storefront_list_price_candidates(vec![&channel_only], None);
+        let selected = select_storefront_list_price_candidates(vec![&channel_only], None);
 
         assert!(selected.is_empty());
     }
@@ -972,15 +936,7 @@ mod tests {
     #[test]
     fn region_and_quantity_tiers_are_not_list_price_candidates_without_context() {
         let base = candidate(1, None, None, None, None, None, 10);
-        let regional = candidate(
-            2,
-            None,
-            None,
-            Some(Uuid::from_u128(3)),
-            None,
-            None,
-            8,
-        );
+        let regional = candidate(2, None, None, Some(Uuid::from_u128(3)), None, None, 8);
         let min_tier = candidate(4, None, None, None, Some(2), None, 7);
         let max_tier = candidate(5, None, None, None, None, Some(4), 6);
 
@@ -1015,5 +971,4 @@ mod tests {
         };
         assert!(price_event_successor(&mismatched, &authored).is_err());
     }
-
 }

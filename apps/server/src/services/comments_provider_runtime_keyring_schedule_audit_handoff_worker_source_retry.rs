@@ -500,9 +500,8 @@ mod source_retry_worker_tests {
         while !task.is_finished() {
             tokio::task::yield_now().await;
         }
-        runtime_ctx.shared_insert(
-            CommentsTcpDelegationScheduleAuditHandoffWorkerHandle::for_test(task),
-        );
+        runtime_ctx
+            .shared_insert(CommentsTcpDelegationScheduleAuditHandoffWorkerHandle::for_test(task));
         assert!(existing_comments_schedule_audit_handoff_worker(&runtime_ctx).is_err());
     }
 
@@ -566,7 +565,10 @@ mod source_retry_worker_tests {
             !exhausted.can_sweep_next(32, &receiver),
             "exhausted-row sweep budget also applies"
         );
-        receiver.changed().await.expect("stop update remains observable");
+        receiver
+            .changed()
+            .await
+            .expect("stop update remains observable");
     }
 
     #[test]

@@ -275,11 +275,7 @@ pub async fn load_category_filter_subtree<C: ConnectionTrait>(
             tenant_again = sql_placeholder(backend, 3),
             limit = MAX_CATEGORY_FILTER_SUBTREE + 1,
         ),
-        vec![
-            tenant_id.into(),
-            category_id.into(),
-            tenant_id.into(),
-        ],
+        vec![tenant_id.into(), category_id.into(), tenant_id.into()],
     ))
     .all(conn)
     .await?;
@@ -750,8 +746,8 @@ fn project_public_channel_inventory(
     for variant in variants {
         let available_inventory = available_by_variant.get(&variant.id).copied().unwrap_or(0);
         variant.inventory_quantity = available_inventory;
-        variant.in_stock = available_inventory > 0
-            || inventory_policy_allows_backorder(&variant.inventory_policy);
+        variant.in_stock =
+            available_inventory > 0 || inventory_policy_allows_backorder(&variant.inventory_policy);
     }
 }
 
@@ -1076,10 +1072,7 @@ mod variant_title_tests {
 
     #[test]
     fn display_title_treats_blank_authored_titles_as_absent() {
-        let translations = vec![
-            translation("de", Some("   ")),
-            translation("fr", Some("")),
-        ];
+        let translations = vec![translation("de", Some("   ")), translation("fr", Some(""))];
         let values = vec![axis_value(
             Uuid::new_v4(),
             Uuid::new_v4(),
@@ -1096,12 +1089,7 @@ mod variant_title_tests {
     #[test]
     fn display_title_renders_the_option_id_when_no_label_exists() {
         let option_id = Uuid::new_v4();
-        let values = vec![axis_value(
-            Uuid::new_v4(),
-            option_id,
-            Some("color"),
-            None,
-        )];
+        let values = vec![axis_value(Uuid::new_v4(), option_id, Some("color"), None)];
 
         assert_eq!(
             variant_display_title(&[], &values, "de", "en"),
@@ -1111,12 +1099,8 @@ mod variant_title_tests {
 
     #[test]
     fn display_title_defaults_without_translations_or_assignments() {
-        assert_eq!(
-            variant_display_title(&[], &[], "de", "en"),
-            "Default"
-        );
+        assert_eq!(variant_display_title(&[], &[], "de", "en"), "Default");
     }
-
 }
 
 #[cfg(test)]
@@ -1329,7 +1313,10 @@ mod product_handle_and_visibility_tests {
 
     #[test]
     fn product_title_substring_search_treats_like_metacharacters_as_literals() {
-        assert_eq!(product_title_substring_like_pattern("100%_ready!"), "%100!%!_ready!!%");
+        assert_eq!(
+            product_title_substring_like_pattern("100%_ready!"),
+            "%100!%!_ready!!%"
+        );
         assert_eq!(product_title_substring_like_pattern("a b"), "%a b%");
         assert_eq!(product_title_substring_like_pattern(""), "%%");
     }
@@ -1372,7 +1359,10 @@ mod product_handle_and_visibility_tests {
 
     #[test]
     fn blank_product_handles_fall_back_to_the_localized_title() {
-        assert_eq!(product_translation_handle(None, "Красный чай"), "красный-чай");
+        assert_eq!(
+            product_translation_handle(None, "Красный чай"),
+            "красный-чай"
+        );
         assert_eq!(product_translation_handle(Some(""), "Chair"), "chair");
         assert_eq!(product_translation_handle(Some("  \t "), "Chair"), "chair");
         assert_eq!(
@@ -1399,16 +1389,33 @@ mod product_handle_and_visibility_tests {
             "channel_visibility": { "allowed_channel_slugs": ["web"] }
         });
 
-        for metadata in [&invalid_values, &noncanonical_values, &wrong_shape, &null_values] {
-            assert!(!is_metadata_visible_for_public_channel(metadata, Some("web")));
+        for metadata in [
+            &invalid_values,
+            &noncanonical_values,
+            &wrong_shape,
+            &null_values,
+        ] {
+            assert!(!is_metadata_visible_for_public_channel(
+                metadata,
+                Some("web")
+            ));
             assert!(!is_metadata_visible_for_public_channel(metadata, None));
         }
-        assert!(is_metadata_visible_for_public_channel(&valid_values, Some("web")));
-        assert!(!is_metadata_visible_for_public_channel(&valid_values, Some("mobile")));
+        assert!(is_metadata_visible_for_public_channel(
+            &valid_values,
+            Some("web")
+        ));
+        assert!(!is_metadata_visible_for_public_channel(
+            &valid_values,
+            Some("mobile")
+        ));
         assert!(is_metadata_visible_for_public_channel(
             &json!({ "channel_visibility": { "allowed_channel_slugs": [] } }),
             None
         ));
-        assert!(is_metadata_visible_for_public_channel(&json!({}), Some("web")));
+        assert!(is_metadata_visible_for_public_channel(
+            &json!({}),
+            Some("web")
+        ));
     }
 }

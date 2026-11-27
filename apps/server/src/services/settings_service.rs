@@ -280,17 +280,23 @@ impl SettingsValidator for GeneralSettingsValidator {
             if let Some(s) = site_name.as_str() {
                 let trimmed = s.trim();
                 if trimmed.is_empty() || trimmed.len() > 255 {
-                    errors.push("general.site_name must be between 1 and 255 characters".to_string());
+                    errors
+                        .push("general.site_name must be between 1 and 255 characters".to_string());
                 }
             } else {
                 errors.push("general.site_name must be a string".to_string());
             }
         }
 
-        if let Some(site_desc) = object.get("site_description").or_else(|| object.get("siteDescription")) {
+        if let Some(site_desc) = object
+            .get("site_description")
+            .or_else(|| object.get("siteDescription"))
+        {
             if let Some(s) = site_desc.as_str() {
                 if s.len() > 2000 {
-                    errors.push("general.site_description must not exceed 2000 characters".to_string());
+                    errors.push(
+                        "general.site_description must not exceed 2000 characters".to_string(),
+                    );
                 }
             } else {
                 errors.push("general.site_description must be a string".to_string());
@@ -305,12 +311,18 @@ impl SettingsValidator for GeneralSettingsValidator {
                 } else if !trimmed.is_empty() {
                     match url::Url::parse(trimmed) {
                         Ok(parsed) => {
-                            if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
-                                errors.push("general.site_url must be an http or https URL with a host".to_string());
+                            if !matches!(parsed.scheme(), "http" | "https")
+                                || parsed.host_str().is_none()
+                            {
+                                errors.push(
+                                    "general.site_url must be an http or https URL with a host"
+                                        .to_string(),
+                                );
                             }
                         }
                         Err(_) => {
-                            errors.push("general.site_url must be a valid absolute URL".to_string());
+                            errors
+                                .push("general.site_url must be a valid absolute URL".to_string());
                         }
                     }
                 }
@@ -319,7 +331,10 @@ impl SettingsValidator for GeneralSettingsValidator {
             }
         }
 
-        if let Some(maintenance) = object.get("maintenance_mode").or_else(|| object.get("maintenanceMode")) {
+        if let Some(maintenance) = object
+            .get("maintenance_mode")
+            .or_else(|| object.get("maintenanceMode"))
+        {
             if !maintenance.is_boolean() {
                 errors.push("general.maintenance_mode must be a boolean".to_string());
             }
@@ -353,17 +368,26 @@ impl SettingsValidator for I18nSettingsValidator {
                 return false;
             }
             let parts: Vec<&str> = tag.split(['-', '_']).collect();
-            if parts.is_empty() || parts.iter().any(|p| p.is_empty() || p.len() > 8 || !p.chars().all(|c| c.is_ascii_alphanumeric())) {
+            if parts.is_empty()
+                || parts.iter().any(|p| {
+                    p.is_empty() || p.len() > 8 || !p.chars().all(|c| c.is_ascii_alphanumeric())
+                })
+            {
                 return false;
             }
             true
         };
 
         let mut default_loc = None;
-        if let Some(default_locale) = object.get("default_locale").or_else(|| object.get("defaultLocale")) {
+        if let Some(default_locale) = object
+            .get("default_locale")
+            .or_else(|| object.get("defaultLocale"))
+        {
             if let Some(s) = default_locale.as_str() {
                 if !is_valid_locale_tag(s) {
-                    errors.push(format!("i18n.default_locale '{s}' is not a valid BCP 47 locale tag"));
+                    errors.push(format!(
+                        "i18n.default_locale '{s}' is not a valid BCP 47 locale tag"
+                    ));
                 } else {
                     default_loc = Some(s.to_string());
                 }
@@ -372,10 +396,15 @@ impl SettingsValidator for I18nSettingsValidator {
             }
         }
 
-        if let Some(fallback_locale) = object.get("fallback_locale").or_else(|| object.get("fallbackLocale")) {
+        if let Some(fallback_locale) = object
+            .get("fallback_locale")
+            .or_else(|| object.get("fallbackLocale"))
+        {
             if let Some(s) = fallback_locale.as_str() {
                 if !is_valid_locale_tag(s) {
-                    errors.push(format!("i18n.fallback_locale '{s}' is not a valid BCP 47 locale tag"));
+                    errors.push(format!(
+                        "i18n.fallback_locale '{s}' is not a valid BCP 47 locale tag"
+                    ));
                 }
             } else {
                 errors.push("i18n.fallback_locale must be a string".to_string());
@@ -391,7 +420,9 @@ impl SettingsValidator for I18nSettingsValidator {
                 for (idx, item) in arr.iter().enumerate() {
                     if let Some(s) = item.as_str() {
                         if !is_valid_locale_tag(s) {
-                            errors.push(format!("i18n.locales[{idx}] '{s}' is not a valid BCP 47 locale tag"));
+                            errors.push(format!(
+                                "i18n.locales[{idx}] '{s}' is not a valid BCP 47 locale tag"
+                            ));
                         } else {
                             valid_tags.push(s);
                         }
@@ -401,7 +432,9 @@ impl SettingsValidator for I18nSettingsValidator {
                 }
                 if let Some(ref def) = default_loc {
                     if !valid_tags.is_empty() && !valid_tags.contains(&def.as_str()) {
-                        errors.push(format!("i18n.default_locale '{def}' must be listed in i18n.locales"));
+                        errors.push(format!(
+                            "i18n.default_locale '{def}' must be listed in i18n.locales"
+                        ));
                     }
                 }
             } else {
@@ -438,7 +471,10 @@ impl SettingsValidator for OAuthSettingsValidator {
             }
         }
 
-        if let Some(allow_reg) = object.get("allow_registration").or_else(|| object.get("allowRegistration")) {
+        if let Some(allow_reg) = object
+            .get("allow_registration")
+            .or_else(|| object.get("allowRegistration"))
+        {
             if !allow_reg.is_boolean() {
                 errors.push("oauth.allow_registration must be a boolean".to_string());
             }
@@ -451,30 +487,50 @@ impl SettingsValidator for OAuthSettingsValidator {
                         errors.push("oauth provider name cannot be empty".to_string());
                     }
                     if let Some(p_cfg) = p_val.as_object() {
-                        if let Some(client_id) = p_cfg.get("client_id").or_else(|| p_cfg.get("clientId")) {
+                        if let Some(client_id) =
+                            p_cfg.get("client_id").or_else(|| p_cfg.get("clientId"))
+                        {
                             if !client_id.is_string() {
-                                errors.push(format!("oauth provider '{p_name}' client_id must be a string"));
+                                errors.push(format!(
+                                    "oauth provider '{p_name}' client_id must be a string"
+                                ));
                             }
                         }
-                        if let Some(secret) = p_cfg.get("client_secret").or_else(|| p_cfg.get("clientSecret")).or_else(|| p_cfg.get("secret")) {
+                        if let Some(secret) = p_cfg
+                            .get("client_secret")
+                            .or_else(|| p_cfg.get("clientSecret"))
+                            .or_else(|| p_cfg.get("secret"))
+                        {
                             if !secret.is_string() {
-                                errors.push(format!("oauth provider '{p_name}' client_secret must be a string"));
+                                errors.push(format!(
+                                    "oauth provider '{p_name}' client_secret must be a string"
+                                ));
                             }
                         }
                     } else {
-                        errors.push(format!("oauth provider '{p_name}' configuration must be an object"));
+                        errors.push(format!(
+                            "oauth provider '{p_name}' configuration must be an object"
+                        ));
                     }
                 }
             } else if let Some(providers_arr) = providers.as_array() {
                 for (idx, p_val) in providers_arr.iter().enumerate() {
                     if let Some(p_cfg) = p_val.as_object() {
-                        if let Some(provider_name) = p_cfg.get("provider").or_else(|| p_cfg.get("name")).or_else(|| p_cfg.get("id")) {
+                        if let Some(provider_name) = p_cfg
+                            .get("provider")
+                            .or_else(|| p_cfg.get("name"))
+                            .or_else(|| p_cfg.get("id"))
+                        {
                             if let Some(s) = provider_name.as_str() {
                                 if s.trim().is_empty() {
-                                    errors.push(format!("oauth provider at index {idx} identifier cannot be empty"));
+                                    errors.push(format!(
+                                        "oauth provider at index {idx} identifier cannot be empty"
+                                    ));
                                 }
                             } else {
-                                errors.push(format!("oauth provider at index {idx} identifier must be a string"));
+                                errors.push(format!(
+                                    "oauth provider at index {idx} identifier must be a string"
+                                ));
                             }
                         }
                     } else {
@@ -526,7 +582,9 @@ impl ValidatorRegistry {
                 return v.validate(settings);
             }
         }
-        Err(vec![format!("No validator registered for category '{cat}'")])
+        Err(vec![format!(
+            "No validator registered for category '{cat}'"
+        )])
     }
 }
 
@@ -867,9 +925,7 @@ impl SettingsService {
                     .filter(platform_settings::Column::Id.eq(existing.id))
                     .filter(platform_settings::Column::TenantId.eq(tenant_id))
                     .filter(platform_settings::Column::Category.eq(cat))
-                    .filter(
-                        platform_settings::Column::SchemaVersion.eq(existing.schema_version),
-                    )
+                    .filter(platform_settings::Column::SchemaVersion.eq(existing.schema_version))
                     .exec(&tx)
                     .await?;
                 updated.rows_affected == 1
@@ -903,9 +959,7 @@ impl SettingsService {
             )
             .await
             .map_err(|e| {
-                sea_orm::DbErr::Custom(format!(
-                    "Failed to publish settings event to outbox: {e}"
-                ))
+                sea_orm::DbErr::Custom(format!("Failed to publish settings event to outbox: {e}"))
             })?;
 
         tx.commit().await?;
@@ -1037,7 +1091,8 @@ fn preserve_oauth_secret_fields(existing: Value, mut incoming: Value) -> Value {
                     .and_then(Value::as_str)
                     .filter(|s| !is_mask_or_empty(s))
                 {
-                    incoming_object.insert(key.to_string(), Value::String(existing_secret.to_string()));
+                    incoming_object
+                        .insert(key.to_string(), Value::String(existing_secret.to_string()));
                 } else {
                     incoming_object.insert(key.to_string(), Value::String(String::new()));
                 }
@@ -1047,11 +1102,15 @@ fn preserve_oauth_secret_fields(existing: Value, mut incoming: Value) -> Value {
 
     if let (Some(existing_providers), Some(incoming_providers)) = (
         existing_object.get("providers").and_then(Value::as_object),
-        incoming_object.get_mut("providers").and_then(Value::as_object_mut),
+        incoming_object
+            .get_mut("providers")
+            .and_then(Value::as_object_mut),
     ) {
         for (provider_name, incoming_val) in incoming_providers.iter_mut() {
             if let Some(incoming_cfg) = incoming_val.as_object_mut()
-                && let Some(existing_cfg) = existing_providers.get(provider_name).and_then(Value::as_object)
+                && let Some(existing_cfg) = existing_providers
+                    .get(provider_name)
+                    .and_then(Value::as_object)
             {
                 for key in ["client_secret", "clientSecret", "secret"] {
                     if let Some(s) = incoming_cfg.get(key).and_then(Value::as_str) {
@@ -1061,7 +1120,10 @@ fn preserve_oauth_secret_fields(existing: Value, mut incoming: Value) -> Value {
                                 .and_then(Value::as_str)
                                 .filter(|ex| !is_mask_or_empty(ex))
                             {
-                                incoming_cfg.insert(key.to_string(), Value::String(existing_secret.to_string()));
+                                incoming_cfg.insert(
+                                    key.to_string(),
+                                    Value::String(existing_secret.to_string()),
+                                );
                             } else {
                                 incoming_cfg.insert(key.to_string(), Value::String(String::new()));
                             }
@@ -1072,7 +1134,9 @@ fn preserve_oauth_secret_fields(existing: Value, mut incoming: Value) -> Value {
         }
     } else if let (Some(existing_arr), Some(incoming_arr)) = (
         existing_object.get("providers").and_then(Value::as_array),
-        incoming_object.get_mut("providers").and_then(Value::as_array_mut),
+        incoming_object
+            .get_mut("providers")
+            .and_then(Value::as_array_mut),
     ) {
         for incoming_item in incoming_arr.iter_mut() {
             if let Some(incoming_cfg) = incoming_item.as_object_mut() {
@@ -1083,15 +1147,18 @@ fn preserve_oauth_secret_fields(existing: Value, mut incoming: Value) -> Value {
                     .and_then(Value::as_str);
 
                 if let Some(id) = incoming_id {
-                    let matching_existing = existing_arr.iter().find(|ex_item| {
-                        ex_item.as_object().and_then(|ex_cfg| {
-                            ex_cfg
-                                .get("provider")
-                                .or_else(|| ex_cfg.get("id"))
-                                .or_else(|| ex_cfg.get("name"))
-                                .and_then(Value::as_str)
-                        }) == Some(id)
-                    }).and_then(Value::as_object);
+                    let matching_existing = existing_arr
+                        .iter()
+                        .find(|ex_item| {
+                            ex_item.as_object().and_then(|ex_cfg| {
+                                ex_cfg
+                                    .get("provider")
+                                    .or_else(|| ex_cfg.get("id"))
+                                    .or_else(|| ex_cfg.get("name"))
+                                    .and_then(Value::as_str)
+                            }) == Some(id)
+                        })
+                        .and_then(Value::as_object);
 
                     if let Some(existing_cfg) = matching_existing {
                         for key in ["client_secret", "clientSecret", "secret"] {
@@ -1102,9 +1169,13 @@ fn preserve_oauth_secret_fields(existing: Value, mut incoming: Value) -> Value {
                                         .and_then(Value::as_str)
                                         .filter(|ex| !is_mask_or_empty(ex))
                                     {
-                                        incoming_cfg.insert(key.to_string(), Value::String(existing_secret.to_string()));
+                                        incoming_cfg.insert(
+                                            key.to_string(),
+                                            Value::String(existing_secret.to_string()),
+                                        );
                                     } else {
-                                        incoming_cfg.insert(key.to_string(), Value::String(String::new()));
+                                        incoming_cfg
+                                            .insert(key.to_string(), Value::String(String::new()));
                                     }
                                 }
                             }
@@ -1299,7 +1370,8 @@ fn preserve_email_secret_fields(existing: Value, mut incoming: Value) -> Value {
                     .and_then(Value::as_str)
                     .filter(|s| !is_mask_or_empty(s))
                 {
-                    incoming_object.insert(key.to_string(), Value::String(existing_pwd.to_string()));
+                    incoming_object
+                        .insert(key.to_string(), Value::String(existing_pwd.to_string()));
                 } else {
                     incoming_object.insert(key.to_string(), Value::String(String::new()));
                 }
@@ -1320,7 +1392,10 @@ fn preserve_email_secret_fields(existing: Value, mut incoming: Value) -> Value {
                     .and_then(Value::as_str)
                     .filter(|s| !is_mask_or_empty(s))
                 {
-                    incoming_smtp.insert("password".to_string(), Value::String(existing_pwd.to_string()));
+                    incoming_smtp.insert(
+                        "password".to_string(),
+                        Value::String(existing_pwd.to_string()),
+                    );
                 } else {
                     incoming_smtp.insert("password".to_string(), Value::String(String::new()));
                 }
@@ -1975,49 +2050,90 @@ mod tests {
     #[test]
     fn features_validator_rejects_non_booleans_and_unknown_flags() {
         let v = FeaturesSettingsValidator;
-        assert!(v.validate(&json!({ "registration_enabled": true, "email_verification": false })).is_ok());
-        assert!(v.validate(&json!({ "registrationEnabled": true, "emailVerification": false })).is_ok());
-        assert!(v.validate(&json!({ "registration_enabled": "yes" })).is_err());
+        assert!(
+            v.validate(&json!({ "registration_enabled": true, "email_verification": false }))
+                .is_ok()
+        );
+        assert!(
+            v.validate(&json!({ "registrationEnabled": true, "emailVerification": false }))
+                .is_ok()
+        );
+        assert!(
+            v.validate(&json!({ "registration_enabled": "yes" }))
+                .is_err()
+        );
         assert!(v.validate(&json!({ "unsupported_flag": true })).is_err());
     }
 
     #[test]
     fn general_validator_enforces_bounds() {
         let v = GeneralSettingsValidator;
-        assert!(v.validate(&json!({ "site_name": "RusToK Platform", "maintenance_mode": false })).is_ok());
-        assert!(v.validate(&json!({ "siteName": "RusToK Platform", "maintenanceMode": false })).is_ok());
+        assert!(
+            v.validate(&json!({ "site_name": "RusToK Platform", "maintenance_mode": false }))
+                .is_ok()
+        );
+        assert!(
+            v.validate(&json!({ "siteName": "RusToK Platform", "maintenanceMode": false }))
+                .is_ok()
+        );
         assert!(v.validate(&json!({ "site_name": "" })).is_err());
         assert!(v.validate(&json!({ "site_name": "   " })).is_err());
         assert!(v.validate(&json!({ "maintenance_mode": "no" })).is_err());
-        assert!(v.validate(&json!({ "site_url": "ftp://invalid-scheme" })).is_err());
+        assert!(
+            v.validate(&json!({ "site_url": "ftp://invalid-scheme" }))
+                .is_err()
+        );
         assert!(v.validate(&json!({ "site_url": "https://" })).is_err());
-        assert!(v.validate(&json!({ "site_url": "https://rustok.dev" })).is_ok());
+        assert!(
+            v.validate(&json!({ "site_url": "https://rustok.dev" }))
+                .is_ok()
+        );
     }
 
     #[test]
     fn i18n_validator_enforces_locale_tags() {
         let v = I18nSettingsValidator;
-        assert!(v.validate(&json!({
-            "default_locale": "en",
-            "locales": ["en", "ru", "fr"]
-        })).is_ok());
-        assert!(v.validate(&json!({
-            "defaultLocale": "en-US",
-            "locales": ["en-US", "ru-RU"]
-        })).is_ok());
-        assert!(v.validate(&json!({
-            "locales": []
-        })).is_err(), "empty locales array is invalid");
-        assert!(v.validate(&json!({
-            "default_locale": "de",
-            "locales": ["en", "ru"]
-        })).is_err(), "default_locale must be in locales");
-        assert!(v.validate(&json!({
-            "default_locale": "invalid locale tag with spaces"
-        })).is_err());
-        assert!(v.validate(&json!({
-            "default_locale": "---"
-        })).is_err());
+        assert!(
+            v.validate(&json!({
+                "default_locale": "en",
+                "locales": ["en", "ru", "fr"]
+            }))
+            .is_ok()
+        );
+        assert!(
+            v.validate(&json!({
+                "defaultLocale": "en-US",
+                "locales": ["en-US", "ru-RU"]
+            }))
+            .is_ok()
+        );
+        assert!(
+            v.validate(&json!({
+                "locales": []
+            }))
+            .is_err(),
+            "empty locales array is invalid"
+        );
+        assert!(
+            v.validate(&json!({
+                "default_locale": "de",
+                "locales": ["en", "ru"]
+            }))
+            .is_err(),
+            "default_locale must be in locales"
+        );
+        assert!(
+            v.validate(&json!({
+                "default_locale": "invalid locale tag with spaces"
+            }))
+            .is_err()
+        );
+        assert!(
+            v.validate(&json!({
+                "default_locale": "---"
+            }))
+            .is_err()
+        );
     }
 
     #[test]
@@ -2052,8 +2168,14 @@ mod tests {
             }
         });
         let preserved = preserve_oauth_secret_fields(valid.clone(), incoming);
-        assert_eq!(preserved["providers"]["github"]["client_secret"], "gh-secret");
-        assert_eq!(preserved["providers"]["github"]["client_id"], "gh-id-updated");
+        assert_eq!(
+            preserved["providers"]["github"]["client_secret"],
+            "gh-secret"
+        );
+        assert_eq!(
+            preserved["providers"]["github"]["client_id"],
+            "gh-id-updated"
+        );
 
         // Preservation with mask "[REDACTED]"
         let incoming_masked = json!({
@@ -2066,7 +2188,10 @@ mod tests {
             }
         });
         let preserved_masked = preserve_oauth_secret_fields(valid, incoming_masked);
-        assert_eq!(preserved_masked["providers"]["github"]["client_secret"], "gh-secret");
+        assert_eq!(
+            preserved_masked["providers"]["github"]["client_secret"],
+            "gh-secret"
+        );
 
         // Array format preservation
         let valid_arr = json!({
@@ -2090,7 +2215,10 @@ mod tests {
             ]
         });
         let preserved_arr = preserve_oauth_secret_fields(valid_arr, incoming_arr);
-        assert_eq!(preserved_arr["providers"][0]["client_secret"], "google-secret");
+        assert_eq!(
+            preserved_arr["providers"][0]["client_secret"],
+            "google-secret"
+        );
         assert_eq!(preserved_arr["providers"][0]["client_id"], "google-id-v2");
 
         // Mask with no prior secret clears mask instead of storing literal "[REDACTED]"
@@ -2109,7 +2237,9 @@ mod tests {
                 "category {cat} must have a registered validator"
             );
         }
-        let err = registry.validate("unregistered_category", &json!({})).expect_err("must fail closed");
+        let err = registry
+            .validate("unregistered_category", &json!({}))
+            .expect_err("must fail closed");
         assert!(err[0].contains("No validator registered"));
     }
 }

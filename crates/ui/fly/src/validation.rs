@@ -4,7 +4,10 @@ use crate::{
     AssetCatalog, AssetPolicy, PageMetadata, ProjectDocument, RegistrySet, StyleRuleCatalog,
     StyleRuleScope, normalize_slug, validate_runtime_extensions,
 };
-use crate::{ComponentChildren, ComponentIndex, ComponentNode, ComponentObject, EmbedProviderRegistry, FLY_SYMBOLS_FIELD};
+use crate::{
+    ComponentChildren, ComponentIndex, ComponentNode, ComponentObject, EmbedProviderRegistry,
+    FLY_SYMBOLS_FIELD,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -799,9 +802,10 @@ fn check_component_public_urls(
     for (name, value) in &component.attributes {
         let normalized_name = name.to_ascii_lowercase();
         if normalized_name == "srcset" {
-            if !value.as_str().is_some_and(|value| {
-                safe_url::srcset_allowed(value, &UrlPolicy::permissive())
-            }) {
+            if !value
+                .as_str()
+                .is_some_and(|value| safe_url::srcset_allowed(value, &UrlPolicy::permissive()))
+            {
                 diagnostics.push(diagnostic(
                     ValidationSeverity::Error,
                     "runtime_public_url_invalid",
@@ -1339,19 +1343,30 @@ mod tests {
                     "attributes": {"srcset": "/a.webp 1x, /b.webp 1.0x"}
                 }]}
             }]
-        })).expect("document");
-        let report = validate_project(&document, &RegistrySet::with_builtins(), ValidationLimits::default());
+        }))
+        .expect("document");
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
         for field in ["canonical_url", "twitter_image"] {
-            assert!(report.diagnostics.iter().any(|diagnostic| {
-                diagnostic.code == "invalid_page_metadata_url" && diagnostic.path.ends_with(field)
-            }), "missing {field}");
+            assert!(
+                report.diagnostics.iter().any(|diagnostic| {
+                    diagnostic.code == "invalid_page_metadata_url"
+                        && diagnostic.path.ends_with(field)
+                }),
+                "missing {field}"
+            );
         }
         assert!(report.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "runtime_public_url_invalid" && diagnostic.path.ends_with(".srcset")
         }));
-        assert!(validate_component_public_urls(&document).iter().any(|diagnostic| {
-            diagnostic.path.ends_with(".srcset")
-        }));
+        assert!(
+            validate_component_public_urls(&document)
+                .iter()
+                .any(|diagnostic| { diagnostic.path.ends_with(".srcset") })
+        );
     }
 
     #[test]
@@ -1894,7 +1909,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn opaque_component_at_the_depth_limit_is_not_counted_one_level_too_deep() {
         let limits = ValidationLimits::default();
@@ -1914,7 +1928,10 @@ mod tests {
         let report = validate_project(&document, &RegistrySet::with_builtins(), limits);
         assert_eq!(report.maximum_depth, limits.maximum_depth);
         assert!(
-            !report.diagnostics.iter().any(|diagnostic| diagnostic.code == "maximum_depth_exceeded"),
+            !report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "maximum_depth_exceeded"),
             "opaque children must use their actual component depth"
         );
     }
@@ -1947,7 +1964,10 @@ mod tests {
         let registries = RegistrySet::with_builtins();
         let default_report = validate_project(&document, &registries, ValidationLimits::default());
         assert!(
-            default_report.diagnostics.iter().any(|diagnostic| diagnostic.code == "embed_invalid")
+            default_report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "embed_invalid")
         );
 
         let mut embeds = crate::EmbedProviderRegistry::with_builtins();
@@ -1960,12 +1980,12 @@ mod tests {
         let mut editor = crate::FlyEditor::new(document, registries).with_embed_registry(embeds);
         let custom_report = editor.validate();
         assert!(
-            !custom_report.diagnostics.iter().any(|diagnostic| diagnostic.code == "embed_invalid")
+            !custom_report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "embed_invalid")
         );
     }
-
-
-
 
     #[test]
     fn validation_reports_deep_symbol_catalogs_without_cloning_them() {
@@ -1983,13 +2003,13 @@ mod tests {
             &RegistrySet::with_builtins(),
             ValidationLimits::default(),
         );
-        assert!(report.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "symbol_catalog_depth_exceeded"
-        }));
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "symbol_catalog_depth_exceeded" })
+        );
     }
-
-
-
 
     #[test]
     fn validation_rejects_excessive_page_asset_and_style_collections_before_walks() {
@@ -1997,16 +2017,15 @@ mod tests {
         let page_items = (0..=DEFAULT_MAXIMUM_PAGES)
             .map(|index| json!({ "id": format!("page-{index}") }))
             .collect::<Vec<_>>();
-        let pages = GrapesJsCodec::decode_value(json!({ "pages": page_items }))
-            .expect("pages document");
-        let pages_report = validate_project(
-            &pages,
-            &registries,
-            ValidationLimits::default(),
+        let pages =
+            GrapesJsCodec::decode_value(json!({ "pages": page_items })).expect("pages document");
+        let pages_report = validate_project(&pages, &registries, ValidationLimits::default());
+        assert!(
+            pages_report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "maximum_pages_exceeded" })
         );
-        assert!(pages_report.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "maximum_pages_exceeded"
-        }));
         assert_eq!(pages_report.page_count, DEFAULT_MAXIMUM_PAGES + 1);
 
         let assets = (0..=DEFAULT_MAXIMUM_ASSETS)
@@ -2020,14 +2039,14 @@ mod tests {
             "assets": assets
         }))
         .expect("assets document");
-        let assets_report = validate_project(
-            &assets_document,
-            &registries,
-            ValidationLimits::default(),
+        let assets_report =
+            validate_project(&assets_document, &registries, ValidationLimits::default());
+        assert!(
+            assets_report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "maximum_assets_exceeded" })
         );
-        assert!(assets_report.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "maximum_assets_exceeded"
-        }));
         assert_eq!(assets_report.asset_count, DEFAULT_MAXIMUM_ASSETS + 1);
 
         let styles = (0..=DEFAULT_MAXIMUM_STYLE_RULES)
@@ -2041,16 +2060,17 @@ mod tests {
             "styles": styles
         }))
         .expect("styles document");
-        let styles_report = validate_project(
-            &styles_document,
-            &registries,
-            ValidationLimits::default(),
+        let styles_report =
+            validate_project(&styles_document, &registries, ValidationLimits::default());
+        assert!(
+            styles_report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "maximum_style_rules_exceeded" })
         );
-        assert!(styles_report.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "maximum_style_rules_exceeded"
-        }));
-        assert_eq!(styles_report.style_rule_count, DEFAULT_MAXIMUM_STYLE_RULES + 1);
+        assert_eq!(
+            styles_report.style_rule_count,
+            DEFAULT_MAXIMUM_STYLE_RULES + 1
+        );
     }
-
-
 }

@@ -867,7 +867,9 @@ mod tests {
         assert!(validate_required_locales_compatibility("integer", true, &locale_rules).is_err());
 
         let no_locale_rules = rules(json!({}));
-        assert!(validate_required_locales_compatibility("integer", false, &no_locale_rules).is_ok());
+        assert!(
+            validate_required_locales_compatibility("integer", false, &no_locale_rules).is_ok()
+        );
     }
 
     #[test]
@@ -964,34 +966,42 @@ mod tests {
             "pattern": "^[A-Z]+$"
         });
 
-        assert!(validate_localized_text_translation_value(
-            attribute_id(),
-            AttributeValueType::Text,
-            &validation,
-            "AB",
-        )
-        .is_ok());
-        assert!(validate_localized_text_translation_value(
-            attribute_id(),
-            AttributeValueType::Textarea,
-            &validation,
-            "ABC",
-        )
-        .is_ok());
-        assert!(validate_localized_text_translation_value(
-            attribute_id(),
-            AttributeValueType::Richtext,
-            &validation,
-            "ABCDE",
-        )
-        .is_err());
-        assert!(validate_localized_text_translation_value(
-            attribute_id(),
-            AttributeValueType::Text,
-            &validation,
-            "abc",
-        )
-        .is_err());
+        assert!(
+            validate_localized_text_translation_value(
+                attribute_id(),
+                AttributeValueType::Text,
+                &validation,
+                "AB",
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_localized_text_translation_value(
+                attribute_id(),
+                AttributeValueType::Textarea,
+                &validation,
+                "ABC",
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_localized_text_translation_value(
+                attribute_id(),
+                AttributeValueType::Richtext,
+                &validation,
+                "ABCDE",
+            )
+            .is_err()
+        );
+        assert!(
+            validate_localized_text_translation_value(
+                attribute_id(),
+                AttributeValueType::Text,
+                &validation,
+                "abc",
+            )
+            .is_err()
+        );
     }
 
     #[test]

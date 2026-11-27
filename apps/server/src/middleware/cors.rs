@@ -74,7 +74,9 @@ fn validated_cors_origin(configured: &str) -> Option<HeaderValue> {
     };
     let authority = authority.strip_suffix('/').unwrap_or(authority);
     if authority.is_empty()
-        || authority.chars().any(|ch| matches!(ch, '/' | '?' | '#' | '@'))
+        || authority
+            .chars()
+            .any(|ch| matches!(ch, '/' | '?' | '#' | '@'))
     {
         return None;
     }
@@ -487,11 +489,17 @@ mod tests {
 
         for explicit in ["", " , ", "https://admin.example.com/not-an-origin"] {
             let resolved = cors_origins_from_configuration(
-                Some(explicit), Some(configured.clone()), host, false,
+                Some(explicit),
+                Some(configured.clone()),
+                host,
+                false,
             );
             assert!(resolved.is_some());
             for origin in ["http://localhost:3000", "https://admin.example.com"] {
-                assert_eq!(preflight_allowed_origin(false, resolved.as_deref(), origin).await, None);
+                assert_eq!(
+                    preflight_allowed_origin(false, resolved.as_deref(), origin).await,
+                    None
+                );
             }
         }
 

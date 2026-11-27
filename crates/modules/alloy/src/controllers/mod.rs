@@ -60,7 +60,9 @@ pub enum AlloyHttpRuntimeError {
     MissingSharedRuntime,
     #[error("Alloy HTTP routes require AlloyReleaseGovernanceHandle in HostRuntimeContext")]
     MissingReleaseGovernance,
-    #[error("Alloy HTTP routes require AlloyPublishedRhaiSourceProviderHandle in HostRuntimeContext")]
+    #[error(
+        "Alloy HTTP routes require AlloyPublishedRhaiSourceProviderHandle in HostRuntimeContext"
+    )]
     MissingPublishedRhaiSource,
 }
 

@@ -4,8 +4,7 @@ pub(super) mod variant_axes;
 use super::attached_localized_storage;
 use super::concurrency::{
     ensure_expected_revision, ensure_expected_variant_revision, ensure_variant_parent_matches,
-    next_revision,
-    validate_patch_text_length,
+    next_revision, validate_patch_text_length,
 };
 use super::*;
 use crate::services::catalog_schema_service::policy::lock_schema_for_product_write;
@@ -50,9 +49,7 @@ fn validate_product_variant_count(
     incoming_count: usize,
 ) -> CommerceResult<()> {
     let total = current_count.checked_add(incoming_count).ok_or_else(|| {
-        CommerceError::Validation(
-            "Product variant count exceeds the supported limit".to_owned(),
-        )
+        CommerceError::Validation("Product variant count exceeds the supported limit".to_owned())
     })?;
     if total > crate::dto::MAX_PRODUCT_VARIANTS {
         return Err(CommerceError::Validation(format!(
@@ -148,7 +145,10 @@ fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
                 price.currency_code
             )));
         }
-        if price.channel_id.is_some_and(|channel_id| channel_id.is_nil()) {
+        if price
+            .channel_id
+            .is_some_and(|channel_id| channel_id.is_nil())
+        {
             return Err(CommerceError::Validation(
                 "Price channel ID must not be nil".to_owned(),
             ));
@@ -180,10 +180,14 @@ fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
             ));
         }
         // The Pricing resolver requires exact currency minor units.
-        for amount in [Some(price.amount), price.compare_at_amount].into_iter().flatten() {
+        for amount in [Some(price.amount), price.compare_at_amount]
+            .into_iter()
+            .flatten()
+        {
             rustok_core::money::to_minor_units_exact(amount, &currency).map_err(|_| {
                 CommerceError::Validation(
-                    "Variant prices must be exactly representable in their currency minor units".into(),
+                    "Variant prices must be exactly representable in their currency minor units"
+                        .into(),
                 )
             })?;
         }
@@ -524,8 +528,7 @@ impl CatalogService {
                 .map_err(|_| CommerceError::Validation("too many Product variants".to_owned()))?;
             let variant_id = generate_id();
             created_variant_ids.push(variant_id);
-            let normalized_sku =
-                super::helpers::normalize_variant_sku(var_input.sku.as_deref());
+            let normalized_sku = super::helpers::normalize_variant_sku(var_input.sku.as_deref());
 
             let variant = entities::product_variant::ActiveModel {
                 id: Set(variant_id),
@@ -564,6 +567,15 @@ impl CatalogService {
                     tenant_id,
                     variant_id,
                     &var_input.axis_values,
+                )
+                .await?;
+            }
+            if !var_input.attribute_values.is_empty() {
+                ProductCatalogSchemaService::apply_variant_attribute_value_batches_in_tx(
+                    &txn,
+                    tenant_id,
+                    variant_id,
+                    &var_input.attribute_values,
                 )
                 .await?;
             }
@@ -660,8 +672,10 @@ impl CatalogService {
             )
             .await?;
         if input.publish {
-            ProductCatalogSchemaService::validate_product_publish_requirements_in(&txn, tenant_id, product_id)
-                .await?;
+            ProductCatalogSchemaService::validate_product_publish_requirements_in(
+                &txn, tenant_id, product_id,
+            )
+            .await?;
         }
 
         txn.publish_in_tx(
@@ -1090,8 +1104,10 @@ impl CatalogService {
         // Validate the persisted candidate, including its new category and translations.
         // Failure rolls the entire write back before any lifecycle event is committed.
         if remains_active {
-            ProductCatalogSchemaService::validate_product_publish_requirements_in(&txn, tenant_id, product_id)
-                .await?;
+            ProductCatalogSchemaService::validate_product_publish_requirements_in(
+                &txn, tenant_id, product_id,
+            )
+            .await?;
         }
 
         txn.publish_in_tx(
@@ -1194,8 +1210,10 @@ impl CatalogService {
             return Ok(result);
         }
 
-        ProductCatalogSchemaService::validate_product_publish_requirements_in(&txn, tenant_id, product_id)
-            .await?;
+        ProductCatalogSchemaService::validate_product_publish_requirements_in(
+            &txn, tenant_id, product_id,
+        )
+        .await?;
 
         let next_revision = next_revision(product.revision)?;
         let mut product_active: entities::product::ActiveModel = product.into();
@@ -1610,21 +1628,31 @@ impl CatalogService {
             index_revision: Set(1),
         };
 
-        variant
-            .insert(&txn)
-            .await
-            .map_err(|error| map_product_unique_violation(error, "", "", normalized_sku.as_deref()))?;
+        variant.insert(&txn).await.map_err(|error| {
+            map_product_unique_violation(error, "", "", normalized_sku.as_deref())
+        })?;
 
         if !input.axis_values.is_empty() {
             assign_variant_axis_values_in_tx(&txn, tenant_id, variant_id, &input.axis_values)
                 .await?;
         }
+        if !input.attribute_values.is_empty() {
+            ProductCatalogSchemaService::apply_variant_attribute_value_batches_in_tx(
+                &txn,
+                tenant_id,
+                variant_id,
+                &input.attribute_values,
+            )
+            .await?;
+        }
 
         if product.status == entities::product::ProductStatus::Active {
             // A newly-created SKU is part of the live Product immediately. Do not commit it
             // unless every required Variant EAV value/localization is present on every SKU.
-            ProductCatalogSchemaService::validate_product_publish_requirements_in(&txn, tenant_id, product_id)
-                .await?;
+            ProductCatalogSchemaService::validate_product_publish_requirements_in(
+                &txn, tenant_id, product_id,
+            )
+            .await?;
         }
 
         self.inventory()
@@ -1783,7 +1811,7 @@ impl CatalogService {
             .await?
             .ok_or(CommerceError::VariantNotFound(variant_id))?;
         let product_id = observed_variant.product_id;
-        let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+        let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
         ensure_variant_parent_matches(product_id, variant.product_id)?;
         if has_catalog_changes {
@@ -1803,7 +1831,9 @@ impl CatalogService {
             let requested_sku = match &input.sku {
                 Patch::Keep => None,
                 Patch::Clear => Some(None),
-                Patch::Set(value) => Some(super::helpers::normalize_variant_sku(Some(value.as_str()))),
+                Patch::Set(value) => {
+                    Some(super::helpers::normalize_variant_sku(Some(value.as_str())))
+                }
             };
             if let Some(sku) = &requested_sku {
                 active.sku = Set(sku.clone());
@@ -1821,9 +1851,8 @@ impl CatalogService {
                 }
             }
             if let Some(inventory_policy) = input.inventory_policy {
-                active.inventory_policy = Set(normalize_variant_inventory_policy(
-                    &inventory_policy,
-                )?);
+                active.inventory_policy =
+                    Set(normalize_variant_inventory_policy(&inventory_policy)?);
             }
             match input.weight {
                 Patch::Keep => {}
@@ -1837,12 +1866,9 @@ impl CatalogService {
             }
             let requested_sku_for_unique_error =
                 requested_sku.as_ref().and_then(|sku| sku.as_deref());
-            let _updated_variant = active
-                .update(&txn)
-                .await
-                .map_err(|error| {
-                    map_product_unique_violation(error, "", "", requested_sku_for_unique_error)
-                })?;
+            let _updated_variant = active.update(&txn).await.map_err(|error| {
+                map_product_unique_violation(error, "", "", requested_sku_for_unique_error)
+            })?;
 
             if let Some(sku) = requested_sku {
                 self.inventory()
@@ -1862,10 +1888,9 @@ impl CatalogService {
                     .map(|axis| axis.attribute_id)
                     .collect::<Vec<_>>();
 
-                let title_snapshot = VariantAutoTitleSnapshot::capture(
-                    &txn, tenant_id, product_id, &[variant_id],
-                )
-                .await?;
+                let title_snapshot =
+                    VariantAutoTitleSnapshot::capture(&txn, tenant_id, product_id, &[variant_id])
+                        .await?;
 
                 if !configured_axis_attribute_ids.is_empty() {
                     let backend = txn.get_database_backend();
@@ -1933,10 +1958,30 @@ impl CatalogService {
                 self.pricing_port
                     .as_ref()
                     .ok_or_else(pricing_port_unavailable)?
-                    .replace_catalog_base_prices_in_tx(&txn, tenant_id, actor_id, variant_id, initial_prices)
+                    .replace_catalog_base_prices_in_tx(
+                        &txn,
+                        tenant_id,
+                        actor_id,
+                        variant_id,
+                        initial_prices,
+                    )
                     .await?;
             }
-
+            if !input.attribute_values.is_empty() {
+                ProductCatalogSchemaService::apply_variant_attribute_value_batches_in_tx(
+                    &txn,
+                    tenant_id,
+                    variant_id,
+                    &input.attribute_values,
+                )
+                .await?;
+                if product.status == entities::product::ProductStatus::Active {
+                    ProductCatalogSchemaService::validate_product_publish_requirements_in(
+                        &txn, tenant_id, product_id,
+                    )
+                    .await?;
+                }
+            }
         }
 
         if let Some(quantity) = input.inventory_quantity {
@@ -2556,7 +2601,10 @@ impl VariantAutoTitleSnapshot {
                 variants_by_locale.insert(locale, variant_ids.to_vec());
             }
             let variant_locales = entities::variant_translation::Entity::find()
-                .filter(entities::variant_translation::Column::VariantId.is_in(variant_ids.iter().copied()))
+                .filter(
+                    entities::variant_translation::Column::VariantId
+                        .is_in(variant_ids.iter().copied()),
+                )
                 .select_only()
                 .column(entities::variant_translation::Column::VariantId)
                 .column(entities::variant_translation::Column::Locale)
@@ -2571,7 +2619,10 @@ impl VariantAutoTitleSnapshot {
             }
         }
         let previous = Self::load_titles(txn, tenant_id, product_id, &variants_by_locale).await?;
-        Ok(Self { variants_by_locale, previous })
+        Ok(Self {
+            variants_by_locale,
+            previous,
+        })
     }
 
     async fn load_titles(
@@ -2584,13 +2635,20 @@ impl VariantAutoTitleSnapshot {
         // Batch the tuple projection once per locale, not once per SKU and locale.
         for (locale, variant_ids) in variants_by_locale {
             let mut generated = super::projection::load_variant_display_titles(
-                txn, tenant_id, product_id, variant_ids, locale, PLATFORM_FALLBACK_LOCALE,
+                txn,
+                tenant_id,
+                product_id,
+                variant_ids,
+                locale,
+                PLATFORM_FALLBACK_LOCALE,
             )
             .await?;
             for &variant_id in variant_ids {
                 titles.entry(variant_id).or_default().insert(
                     locale.clone(),
-                    generated.remove(&variant_id).unwrap_or_else(|| "Default".to_owned()),
+                    generated
+                        .remove(&variant_id)
+                        .unwrap_or_else(|| "Default".to_owned()),
                 );
             }
         }
@@ -2607,9 +2665,12 @@ impl VariantAutoTitleSnapshot {
         for (variant_id, previous) in self.previous {
             let locales = previous.keys().cloned().collect::<Vec<_>>();
             let next_titles = next.get(&variant_id).ok_or_else(|| {
-                CommerceError::Validation("Variant title refresh lost its locale snapshot".to_owned())
+                CommerceError::Validation(
+                    "Variant title refresh lost its locale snapshot".to_owned(),
+                )
             })?;
-            sync_variant_auto_titles_in_tx(txn, variant_id, &locales, &previous, next_titles).await?;
+            sync_variant_auto_titles_in_tx(txn, variant_id, &locales, &previous, next_titles)
+                .await?;
         }
         Ok(())
     }
@@ -2659,8 +2720,7 @@ async fn sync_variant_auto_titles_in_tx(
                         .get(locale)
                         .is_some_and(|previous| previous == current);
                 if is_auto && current != next_title {
-                    let mut active: entities::variant_translation::ActiveModel =
-                        row.clone().into();
+                    let mut active: entities::variant_translation::ActiveModel = row.clone().into();
                     active.title = Set(Some(next_title));
                     active.update(txn).await?;
                 }
@@ -3331,6 +3391,7 @@ mod tests {
             barcode: None,
             shipping_profile_slug: None,
             axis_values: Vec::new(),
+            attribute_values: Vec::new(),
             prices: Vec::new(),
             inventory_quantity: 0,
             inventory_policy: "deny".to_owned(),
@@ -3365,10 +3426,13 @@ mod tests {
 
     #[test]
     fn variant_input_nested_bounds_are_checked_before_validation() {
-        assert!(validate_variant_input_bounds(
-            crate::dto::MAX_VARIANT_AXES,
-            crate::dto::MAX_VARIANT_PRICE_ROWS
-        ).is_ok());
+        assert!(
+            validate_variant_input_bounds(
+                crate::dto::MAX_VARIANT_AXES,
+                crate::dto::MAX_VARIANT_PRICE_ROWS
+            )
+            .is_ok()
+        );
         assert!(validate_variant_input_bounds(crate::dto::MAX_VARIANT_AXES + 1, 0).is_err());
         assert!(validate_variant_input_bounds(0, crate::dto::MAX_VARIANT_PRICE_ROWS + 1).is_err());
     }
@@ -3516,9 +3580,7 @@ mod tests {
                 .collect::<Vec<_>>()
         };
 
-        assert!(
-            validate_variant_prices(&prices(crate::dto::MAX_VARIANT_PRICE_ROWS)).is_ok()
-        );
+        assert!(validate_variant_prices(&prices(crate::dto::MAX_VARIANT_PRICE_ROWS)).is_ok());
         assert!(matches!(
             validate_variant_prices(&prices(crate::dto::MAX_VARIANT_PRICE_ROWS + 1)),
             Err(CommerceError::Validation(_))
@@ -3567,10 +3629,20 @@ mod tests {
     fn validate_variant_prices_requires_exact_currency_minor_units() {
         for (currency, amount, compare_at, valid) in [
             ("USD", Decimal::new(1999, 3), None, false),
-            ("USD", Decimal::new(199, 2), Some(Decimal::new(2001, 3)), false),
+            (
+                "USD",
+                Decimal::new(199, 2),
+                Some(Decimal::new(2001, 3)),
+                false,
+            ),
             ("JPY", Decimal::new(101, 1), None, false),
             ("JPY", Decimal::new(10, 0), None, true),
-            ("KWD", Decimal::new(1999, 3), Some(Decimal::new(2001, 3)), true),
+            (
+                "KWD",
+                Decimal::new(1999, 3),
+                Some(Decimal::new(2001, 3)),
+                true,
+            ),
             ("USD", Decimal::MAX, None, false),
         ] {
             let price = PriceInput {
@@ -3580,7 +3652,11 @@ mod tests {
                 amount,
                 compare_at_amount: compare_at,
             };
-            assert_eq!(validate_variant_prices(&[price]).is_ok(), valid, "{currency}");
+            assert_eq!(
+                validate_variant_prices(&[price]).is_ok(),
+                valid,
+                "{currency}"
+            );
         }
     }
 
@@ -3633,14 +3709,13 @@ mod tests {
         .expect("create variant translations");
 
         let variant_id = Uuid::new_v4();
-        let seeded = |locale: &str, title: Option<&str>| {
-            entities::variant_translation::ActiveModel {
+        let seeded =
+            |locale: &str, title: Option<&str>| entities::variant_translation::ActiveModel {
                 id: Set(generate_id()),
                 variant_id: Set(variant_id),
                 locale: Set(locale.to_owned()),
                 title: Set(title.map(str::to_owned)),
-            }
-        };
+            };
 
         // ru is operator-authored; de is an empty row; fr still holds the
         // previous auto-generated value; en has no row at all.
@@ -3669,15 +3744,9 @@ mod tests {
         ]);
 
         let txn = db.begin().await.expect("begin transaction");
-        sync_variant_auto_titles_in_tx(
-            &txn,
-            variant_id,
-            &locales,
-            &previous_auto,
-            &next_auto,
-        )
-        .await
-        .expect("sync auto titles");
+        sync_variant_auto_titles_in_tx(&txn, variant_id, &locales, &previous_auto, &next_auto)
+            .await
+            .expect("sync auto titles");
         txn.commit().await.expect("commit");
 
         let mut rows = entities::variant_translation::Entity::find()

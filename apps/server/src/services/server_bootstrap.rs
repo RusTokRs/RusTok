@@ -87,7 +87,11 @@ fn should_initialize_default_superadmin_for_mode(
     )
 }
 
-fn check_production_environment(mac_root: &str, database_uri: &str, production: bool) -> Result<()> {
+fn check_production_environment(
+    mac_root: &str,
+    database_uri: &str,
+    production: bool,
+) -> Result<()> {
     if !production {
         return Ok(());
     }
@@ -100,7 +104,10 @@ fn check_production_environment(mac_root: &str, database_uri: &str, production: 
         ));
     }
 
-    let mac_root_bytes = mac_root.bytes().filter(|byte| !byte.is_ascii_whitespace()).count();
+    let mac_root_bytes = mac_root
+        .bytes()
+        .filter(|byte| !byte.is_ascii_whitespace())
+        .count();
     if mac_root_bytes < 64 {
         return Err(crate::error::Error::Message(
             "FATAL: MAC root must contain at least 64 non-whitespace bytes for production use."
@@ -228,11 +235,9 @@ pub async fn bootstrap_application_router(
     };
     tracing::info!("RusTok application bootstrap started");
 
-    let Some(product_catalog_result) = await_worker_startup_or_stop(
-        &stop,
-        configure_product_catalog_deployment(&runtime_ctx),
-    )
-    .await
+    let Some(product_catalog_result) =
+        await_worker_startup_or_stop(&stop, configure_product_catalog_deployment(&runtime_ctx))
+            .await
     else {
         return Err(crate::error::Error::Message(
             "server shutdown started during product catalog deployment bootstrap".to_string(),
@@ -360,8 +365,9 @@ pub async fn bootstrap_application_router(
 #[cfg(test)]
 mod tests {
     use super::{
-        check_production_environment, known_dev_mac_root_fragment, known_sample_superadmin_password,
-        sample_database_credentials_pattern, should_initialize_default_superadmin_for_mode,
+        check_production_environment, known_dev_mac_root_fragment,
+        known_sample_superadmin_password, sample_database_credentials_pattern,
+        should_initialize_default_superadmin_for_mode,
     };
 
     static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

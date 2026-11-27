@@ -114,12 +114,13 @@ impl BruteForceTrackerPort for MokaBruteForceTracker {
             .cache
             .entry_by_ref(&key)
             .and_compute_with(|maybe_entry| async move {
-                let mut record = maybe_entry
-                    .map(|entry| entry.into_value())
-                    .unwrap_or(AttemptRecord {
-                        failed_count: 0,
-                        locked_until_secs: None,
-                    });
+                let mut record =
+                    maybe_entry
+                        .map(|entry| entry.into_value())
+                        .unwrap_or(AttemptRecord {
+                            failed_count: 0,
+                            locked_until_secs: None,
+                        });
 
                 if let Some(until) = record.locked_until_secs {
                     if until > now_secs {

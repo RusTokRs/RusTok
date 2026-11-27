@@ -7,7 +7,10 @@ use uuid::Uuid;
 
 #[cfg(feature = "mod-product")]
 use flex::PRODUCT_ENTITY_TYPE;
-#[expect(unused_imports, reason = "Imports conditionally consumed depending on activated module feature flags")]
+#[expect(
+    unused_imports,
+    reason = "Imports conditionally consumed depending on activated module feature flags"
+)]
 use flex::{
     AttachedEntityRef, FlexMappedErrorKind, ORDER_ENTITY_TYPE, TAXONOMY_CATEGORY_ENTITY_TYPE,
     TOPIC_ENTITY_TYPE, USER_ENTITY_TYPE, delete_attached_localized_values,
@@ -145,13 +148,12 @@ impl FlexAttachedValuesService {
         match entity_type {
             USER_ENTITY_TYPE => {
                 let txn = db.begin().await?;
-                let user = crate::services::auth_lifecycle::AuthLifecycleService::lock_user_for_mutation(
-                    &txn,
-                    tenant_id,
-                    entity_id,
-                )
-                .await?
-                .ok_or(Error::NotFound)?;
+                let user =
+                    crate::services::auth_lifecycle::AuthLifecycleService::lock_user_for_mutation(
+                        &txn, tenant_id, entity_id,
+                    )
+                    .await?
+                    .ok_or(Error::NotFound)?;
                 let schema = UserFieldService::get_schema(&txn, tenant_id)
                     .await
                     .map_err(map_flex_host_error)?;
@@ -431,13 +433,12 @@ impl FlexAttachedValuesService {
         match entity_type {
             USER_ENTITY_TYPE => {
                 let txn = db.begin().await?;
-                let user = crate::services::auth_lifecycle::AuthLifecycleService::lock_user_for_mutation(
-                    &txn,
-                    tenant_id,
-                    entity_id,
-                )
-                .await?
-                .ok_or(Error::NotFound)?;
+                let user =
+                    crate::services::auth_lifecycle::AuthLifecycleService::lock_user_for_mutation(
+                        &txn, tenant_id, entity_id,
+                    )
+                    .await?
+                    .ok_or(Error::NotFound)?;
                 let schema = UserFieldService::get_schema(&txn, tenant_id)
                     .await
                     .map_err(map_flex_host_error)?;

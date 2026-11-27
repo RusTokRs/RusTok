@@ -12,7 +12,8 @@ impl MigrationTrait for Migration {
         let conn = manager.get_connection();
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => {
-                conn.execute_unprepared(r#"
+                conn.execute_unprepared(
+                    r#"
 CREATE TABLE IF NOT EXISTS page_document_save_receipts (
     id UUID PRIMARY KEY,
     tenant_id UUID NOT NULL,
@@ -31,10 +32,13 @@ CREATE TABLE IF NOT EXISTS page_document_save_receipts (
 );
 CREATE INDEX IF NOT EXISTS idx_page_document_save_receipts_retention
     ON page_document_save_receipts (tenant_id, page_id, created_at DESC, id DESC);
-"#).await?;
+"#,
+                )
+                .await?;
             }
             DatabaseBackend::Sqlite => {
-                conn.execute_unprepared(r#"
+                conn.execute_unprepared(
+                    r#"
 CREATE TABLE IF NOT EXISTS page_document_save_receipts (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
@@ -51,21 +55,33 @@ CREATE TABLE IF NOT EXISTS page_document_save_receipts (
         REFERENCES pages (tenant_id, id)
         ON UPDATE CASCADE ON DELETE CASCADE
 );
-"#).await?;
+"#,
+                )
+                .await?;
                 conn.execute_unprepared(
                     "CREATE INDEX IF NOT EXISTS idx_page_document_save_receipts_retention
-                     ON page_document_save_receipts (tenant_id, page_id, created_at DESC, id DESC)"
-                ).await?;
+                     ON page_document_save_receipts (tenant_id, page_id, created_at DESC, id DESC)",
+                )
+                .await?;
             }
-            backend => return Err(DbErr::Custom(format!(
-                "page document save receipts migration does not support {backend:?}"
-            ))),
+            backend => {
+                return Err(DbErr::Custom(format!(
+                    "page document save receipts migration does not support {backend:?}"
+                )));
+            }
         }
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.drop_table(Table::drop().table(PageDocumentSaveReceipts::Table).if_exists().to_owned()).await
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(PageDocumentSaveReceipts::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
     }
 }
 

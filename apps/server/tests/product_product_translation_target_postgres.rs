@@ -468,7 +468,10 @@ fn owner_service(db: DatabaseConnection) -> CatalogService {
     CatalogService::new(db, event_bus)
 }
 
-fn registered_provider(db: DatabaseConnection, auth_config: AuthConfig) -> Arc<dyn TranslationTargetProvider> {
+fn registered_provider(
+    db: DatabaseConnection,
+    auth_config: AuthConfig,
+) -> Arc<dyn TranslationTargetProvider> {
     let registry = ModuleRegistry::new().register(ProductModule);
     let settings = RustokSettings::default();
     let runtime = ServerRuntimeContext::new(db, settings.clone());

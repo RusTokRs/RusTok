@@ -16,8 +16,7 @@ use uuid::Uuid;
 // A cache service's generation owner, not its value backend, owns success
 // deduplication. Invalidating generations must never initialize value storage.
 const MAX_PAGE_CACHE_DEDUPE_OWNERS: usize = 256;
-type SharedPagesDedupeRegistry =
-    Vec<(Weak<dyn Any + Send + Sync>, Weak<BoundedCacheEventDedupe>)>;
+type SharedPagesDedupeRegistry = Vec<(Weak<dyn Any + Send + Sync>, Weak<BoundedCacheEventDedupe>)>;
 static PAGE_CACHE_DEDUPES: OnceLock<Mutex<SharedPagesDedupeRegistry>> = OnceLock::new();
 
 fn successful_page_invalidations_for(
@@ -112,7 +111,9 @@ impl PageCacheInvalidationPort for ServerPagesCachePort {
         request: PageCacheInvalidationRequest,
     ) -> Result<PageCacheInvalidationReceipt, PageCacheError> {
         let successful_invalidations = Arc::clone(&self.successful_invalidations);
-        let _event_guard = successful_invalidations.serialize_event(request.event_id).await;
+        let _event_guard = successful_invalidations
+            .serialize_event(request.event_id)
+            .await;
         if successful_invalidations.is_duplicate(request.event_id) {
             tracing::debug!(
                 event_id = %request.event_id,
@@ -258,8 +259,10 @@ mod tests {
         let first = ServerPagesCachePort::new(&cache);
         let second = ServerPagesCachePort::new(&cache.clone());
         let event = request(PageCacheInvalidationCause::Published);
-        let (first_receipt, second_receipt) =
-            tokio::join!(first.invalidate(event.clone()), second.invalidate(event.clone()));
+        let (first_receipt, second_receipt) = tokio::join!(
+            first.invalidate(event.clone()),
+            second.invalidate(event.clone())
+        );
         assert_eq!(first_receipt.unwrap(), second_receipt.unwrap());
         assert_eq!(
             first.generation_snapshot(event.tenant_id).await.unwrap(),

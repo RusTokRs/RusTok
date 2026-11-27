@@ -17,7 +17,10 @@ pub(crate) enum ProductAdminSchemaOperation {
     SetCategorySchemaMode,
     BindSchemaAttribute,
     BindCategoryAttribute,
-    #[expect(dead_code, reason = "Product attribute values transport pending UI editor panel integration")]
+    #[expect(
+        dead_code,
+        reason = "Product attribute values transport pending UI editor panel integration"
+    )]
     SaveAttributeValues,
     ClearDetachedAttributeValues,
 }

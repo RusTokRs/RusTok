@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use crate::services::mcp_scaffold_workspace::authorize_mcp_scaffold_workspace;
 use axum::{
     Json,
     body::{Body, to_bytes},
@@ -15,7 +16,6 @@ use rustok_mcp::{
     McpActorType, McpRemoteToolCallRequest, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
     UpdateMcpPolicyRequest,
 };
-use crate::services::mcp_scaffold_workspace::authorize_mcp_scaffold_workspace;
 
 const MAX_MCP_MANAGEMENT_BODY_BYTES: usize = 64 * 1024;
 type MiddlewareResult<T> = Result<T, Box<Response>>;
@@ -214,8 +214,7 @@ fn is_scaffold_apply_path(path: &str) -> bool {
 
 /// Exact POST routes authenticated by the MCP owner, not by user JWT middleware.
 pub(super) fn is_remote_mcp_auth_request(method: &Method, path: &str) -> bool {
-    method == Method::POST
-        && (path == "/api/mcp/runtime/bootstrap" || is_remote_tool_path(path))
+    method == Method::POST && (path == "/api/mcp/runtime/bootstrap" || is_remote_tool_path(path))
 }
 
 fn is_remote_tool_path(path: &str) -> bool {
@@ -327,11 +326,17 @@ mod tests {
             Some(RequestMode::UpdatePolicy)
         );
         assert_eq!(
-            request_mode(&Method::POST, &format!("/api/mcp/clients/{id}/rotate-token")),
+            request_mode(
+                &Method::POST,
+                &format!("/api/mcp/clients/{id}/rotate-token")
+            ),
             Some(RequestMode::RotateToken)
         );
         assert_eq!(
-            request_mode(&Method::POST, &format!("/api/mcp/scaffold-drafts/{id}/apply")),
+            request_mode(
+                &Method::POST,
+                &format!("/api/mcp/scaffold-drafts/{id}/apply")
+            ),
             Some(RequestMode::DirectApply)
         );
     }

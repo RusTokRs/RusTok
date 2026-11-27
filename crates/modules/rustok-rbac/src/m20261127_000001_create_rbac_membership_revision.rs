@@ -76,9 +76,15 @@ FOR EACH STATEMENT EXECUTE FUNCTION rbac_reject_membership_truncate();
             }
             DatabaseBackend::Sqlite => {
                 db.execute_unprepared("ALTER TABLE users ADD COLUMN rbac_membership_revision BIGINT NOT NULL DEFAULT 0 CHECK (typeof(rbac_membership_revision) = 'integer' AND rbac_membership_revision >= 0)").await?;
-                for sql in SQLITE_TRIGGERS { db.execute_unprepared(sql).await?; }
+                for sql in SQLITE_TRIGGERS {
+                    db.execute_unprepared(sql).await?;
+                }
             }
-            _ => return Err(DbErr::Custom("unsupported RBAC membership revision backend".into())),
+            _ => {
+                return Err(DbErr::Custom(
+                    "unsupported RBAC membership revision backend".into(),
+                ));
+            }
         }
         Ok(())
     }
@@ -87,25 +93,39 @@ FOR EACH STATEMENT EXECUTE FUNCTION rbac_reject_membership_truncate();
         let db = manager.get_connection();
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => {
-                db.execute_unprepared(r#"
+                db.execute_unprepared(
+                    r#"
 DROP TRIGGER rbac_membership_no_truncate ON user_roles;
 DROP TRIGGER rbac_membership_revision_change ON user_roles;
 DROP TRIGGER rbac_membership_revision_monotonic ON users;
 DROP FUNCTION rbac_reject_membership_truncate();
 DROP FUNCTION rbac_advance_membership_revision();
 DROP FUNCTION rbac_guard_membership_revision();
-"#).await?;
+"#,
+                )
+                .await?;
             }
             DatabaseBackend::Sqlite => {
-                for name in ["rbac_membership_revision_insert", "rbac_membership_revision_delete",
-                    "rbac_membership_revision_update", "rbac_membership_revision_monotonic",
-                    "rbac_membership_identity_insert", "rbac_membership_identity_update"] {
-                    db.execute_unprepared(&format!("DROP TRIGGER {name}")).await?;
+                for name in [
+                    "rbac_membership_revision_insert",
+                    "rbac_membership_revision_delete",
+                    "rbac_membership_revision_update",
+                    "rbac_membership_revision_monotonic",
+                    "rbac_membership_identity_insert",
+                    "rbac_membership_identity_update",
+                ] {
+                    db.execute_unprepared(&format!("DROP TRIGGER {name}"))
+                        .await?;
                 }
             }
-            _ => return Err(DbErr::Custom("unsupported RBAC membership revision backend".into())),
+            _ => {
+                return Err(DbErr::Custom(
+                    "unsupported RBAC membership revision backend".into(),
+                ));
+            }
         }
-        db.execute_unprepared("ALTER TABLE users DROP COLUMN rbac_membership_revision").await?;
+        db.execute_unprepared("ALTER TABLE users DROP COLUMN rbac_membership_revision")
+            .await?;
         Ok(())
     }
 }
@@ -117,8 +137,15 @@ mod tests {
 
     async fn revision(db: &impl ConnectionTrait, id: &str) -> i64 {
         db.query_one_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Sqlite, "SELECT rbac_membership_revision FROM users WHERE id = ?", [id.into()],
-        )).await.unwrap().unwrap().try_get("", "rbac_membership_revision").unwrap()
+            DatabaseBackend::Sqlite,
+            "SELECT rbac_membership_revision FROM users WHERE id = ?",
+            [id.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "rbac_membership_revision")
+        .unwrap()
     }
 
     #[tokio::test]
@@ -131,31 +158,67 @@ mod tests {
             "CREATE TABLE user_roles (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE, UNIQUE(user_id, role_id))",
             "INSERT INTO users VALUES ('u', 't'), ('v', 't')",
             "INSERT INTO roles VALUES ('r'), ('s')",
-        ] { db.execute_unprepared(sql).await.unwrap(); }
+        ] {
+            db.execute_unprepared(sql).await.unwrap();
+        }
         let manager = SchemaManager::new(&db);
         Migration.up(&manager).await.unwrap();
         assert_eq!(revision(&db, "u").await, 0);
-        db.execute_unprepared("INSERT INTO user_roles VALUES ('a','u','r')").await.unwrap();
-        db.execute_unprepared("INSERT INTO user_roles VALUES ('b','u','r') ON CONFLICT(user_id,role_id) DO NOTHING").await.unwrap();
-        db.execute_unprepared("UPDATE user_roles SET role_id = role_id WHERE id = 'a'").await.unwrap();
+        db.execute_unprepared("INSERT INTO user_roles VALUES ('a','u','r')")
+            .await
+            .unwrap();
+        db.execute_unprepared(
+            "INSERT INTO user_roles VALUES ('b','u','r') ON CONFLICT(user_id,role_id) DO NOTHING",
+        )
+        .await
+        .unwrap();
+        db.execute_unprepared("UPDATE user_roles SET role_id = role_id WHERE id = 'a'")
+            .await
+            .unwrap();
         assert_eq!(revision(&db, "u").await, 1);
         let tx = db.begin().await.unwrap();
-        tx.execute_unprepared("DELETE FROM user_roles WHERE id = 'a'").await.unwrap();
+        tx.execute_unprepared("DELETE FROM user_roles WHERE id = 'a'")
+            .await
+            .unwrap();
         assert_eq!(revision(&tx, "u").await, 2);
         tx.rollback().await.unwrap();
         assert_eq!(revision(&db, "u").await, 1);
-        db.execute_unprepared("DELETE FROM user_roles WHERE id = 'a'").await.unwrap();
-        db.execute_unprepared("INSERT INTO user_roles VALUES ('a','u','r')").await.unwrap();
+        db.execute_unprepared("DELETE FROM user_roles WHERE id = 'a'")
+            .await
+            .unwrap();
+        db.execute_unprepared("INSERT INTO user_roles VALUES ('a','u','r')")
+            .await
+            .unwrap();
         assert_eq!(revision(&db, "u").await, 3);
-        assert!(db.execute_unprepared("INSERT OR REPLACE INTO user_roles VALUES ('a','v','r')").await.is_err());
-        db.execute_unprepared("UPDATE user_roles SET user_id = 'v' WHERE id = 'a'").await.unwrap();
+        assert!(
+            db.execute_unprepared("INSERT OR REPLACE INTO user_roles VALUES ('a','v','r')")
+                .await
+                .is_err()
+        );
+        db.execute_unprepared("UPDATE user_roles SET user_id = 'v' WHERE id = 'a'")
+            .await
+            .unwrap();
         assert_eq!(revision(&db, "u").await, 4);
         assert_eq!(revision(&db, "v").await, 1);
-        db.execute_unprepared("DELETE FROM roles WHERE id = 'r'").await.unwrap();
+        db.execute_unprepared("DELETE FROM roles WHERE id = 'r'")
+            .await
+            .unwrap();
         assert_eq!(revision(&db, "v").await, 2);
-        assert!(db.execute_unprepared("UPDATE users SET rbac_membership_revision = 0 WHERE id = 'v'").await.is_err());
-        db.execute_unprepared("UPDATE users SET rbac_membership_revision = 9223372036854775807 WHERE id = 'u'").await.unwrap();
-        assert!(db.execute_unprepared("INSERT OR IGNORE INTO user_roles VALUES ('z','u','s')").await.is_err());
+        assert!(
+            db.execute_unprepared("UPDATE users SET rbac_membership_revision = 0 WHERE id = 'v'")
+                .await
+                .is_err()
+        );
+        db.execute_unprepared(
+            "UPDATE users SET rbac_membership_revision = 9223372036854775807 WHERE id = 'u'",
+        )
+        .await
+        .unwrap();
+        assert!(
+            db.execute_unprepared("INSERT OR IGNORE INTO user_roles VALUES ('z','u','s')")
+                .await
+                .is_err()
+        );
         Migration.down(&manager).await.unwrap();
     }
 }

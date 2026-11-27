@@ -113,7 +113,10 @@ impl WorkflowCronScheduler {
                 if *stop.borrow() {
                     break;
                 }
-                if let Err(error) = self.tick(&mut executions, Some(stop), &mut workflow_cursor).await {
+                if let Err(error) = self
+                    .tick(&mut executions, Some(stop), &mut workflow_cursor)
+                    .await
+                {
                     error!(%error, "CronScheduler tick error");
                 }
             } else {
@@ -157,7 +160,9 @@ impl WorkflowCronScheduler {
         }
 
         for wf in workflows {
-            if stop_rx.is_some_and(|rx| *rx.borrow()) { break; }
+            if stop_rx.is_some_and(|rx| *rx.borrow()) {
+                break;
+            }
             let trigger = &wf.trigger_config;
             if trigger.get("type").and_then(|v| v.as_str()) != Some("cron") {
                 continue;
@@ -188,7 +193,8 @@ impl WorkflowCronScheduler {
         if !stop_rx.is_some_and(|rx| *rx.borrow()) {
             match quarantine_stale_attempts(&self.db, now).await {
                 Ok(count) if count > 0 => warn!(
-                    count, "Workflow cron attempts require operator reconciliation"
+                    count,
+                    "Workflow cron attempts require operator reconciliation"
                 ),
                 Ok(_) => {}
                 Err(error) => error!(%error, "Workflow cron stale-attempt scan failed"),
@@ -202,9 +208,15 @@ impl WorkflowCronScheduler {
         if capacity == 0 || stop_rx.is_some_and(|rx| *rx.borrow()) {
             return Ok(());
         }
-        let pending = pending_firings(&self.db, (capacity as u64).min(MAX_PENDING_FIRINGS_PER_TICK)).await?;
+        let pending = pending_firings(
+            &self.db,
+            (capacity as u64).min(MAX_PENDING_FIRINGS_PER_TICK),
+        )
+        .await?;
         for item in pending {
-            if stop_rx.is_some_and(|rx| *rx.borrow()) { break; }
+            if stop_rx.is_some_and(|rx| *rx.borrow()) {
+                break;
+            }
             let Some(token) = claim_firing(&self.db, &item, chrono::Utc::now()).await? else {
                 continue;
             };

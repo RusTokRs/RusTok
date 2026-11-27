@@ -228,7 +228,9 @@ fn reservation_variant_query(
         DbBackend::Postgres | DbBackend::MySql => Ok(query.lock_exclusive()),
         // SQLite's write transaction/snapshot exclusion rejects conflicting writers.
         DbBackend::Sqlite => Ok(query),
-        _ => Err(DbErr::Custom("Inventory reservation isolation is unsupported".into())),
+        _ => Err(DbErr::Custom(
+            "Inventory reservation isolation is unsupported".into(),
+        )),
     }
 }
 
@@ -240,8 +242,13 @@ async fn read_variant_info<C: ConnectionTrait>(
         .into_tuple::<(Uuid, Uuid, Uuid, Option<String>, String)>()
         .one(conn)
         .await?;
-    if row.as_ref().is_some_and(|row| row.0.is_nil() || row.1.is_nil() || row.2.is_nil()) {
-        return Err(DbErr::Custom("Stored Product variant identity is invalid".into()));
+    if row
+        .as_ref()
+        .is_some_and(|row| row.0.is_nil() || row.1.is_nil() || row.2.is_nil())
+    {
+        return Err(DbErr::Custom(
+            "Stored Product variant identity is invalid".into(),
+        ));
     }
     Ok(row.map(|row| InventoryProductVariantInfo {
         variant_id: row.0,
@@ -312,7 +319,10 @@ pub(crate) async fn find_variants_info_from_conn<C: ConnectionTrait>(
         .all(conn)
         .await
         .map_err(|_| crate::ports_impl::storage_unavailable())?;
-    if rows.iter().any(|row| row.0.is_nil() || row.1.is_nil() || row.2 != tenant_id) {
+    if rows
+        .iter()
+        .any(|row| row.0.is_nil() || row.1.is_nil() || row.2 != tenant_id)
+    {
         return Err(PortError::invariant_violation(
             "inventory.variant_identity_invalid",
             "stored Product variant identity is invalid",
@@ -331,10 +341,7 @@ pub(crate) async fn find_variants_info_from_conn<C: ConnectionTrait>(
         .collect())
 }
 
-fn validate_variant_identity_batch(
-    tenant_id: Uuid,
-    variant_ids: &[Uuid],
-) -> Result<(), PortError> {
+fn validate_variant_identity_batch(tenant_id: Uuid, variant_ids: &[Uuid]) -> Result<(), PortError> {
     if tenant_id.is_nil() || variant_ids.iter().any(Uuid::is_nil) {
         return Err(PortError::validation(
             "inventory.variant_identity_invalid",
@@ -413,7 +420,10 @@ mod reservation_variant_tests {
             .build(DbBackend::Postgres)
             .to_string();
         assert!(sql.contains("JOIN"), "{sql}");
-        assert!(sql.contains("product_variants") && sql.contains("products"), "{sql}");
+        assert!(
+            sql.contains("product_variants") && sql.contains("products"),
+            "{sql}"
+        );
         assert!(sql.matches("tenant_id").count() >= 2, "{sql}");
         assert!(!sql.contains("FOR UPDATE"), "{sql}");
     }
@@ -497,17 +507,24 @@ mod reservation_variant_tests {
                 .build(backend)
                 .to_string();
             assert!(sql.contains("FOR UPDATE"), "{sql}");
-            assert!(sql.contains("tenant_id") && sql.contains("inventory_policy"), "{sql}");
+            assert!(
+                sql.contains("tenant_id") && sql.contains("inventory_policy"),
+                "{sql}"
+            );
             assert!(!sql.contains("JOIN"), "{sql}");
-            assert!(!variant_info_query(tenant, variant)
-                .build(backend)
-                .to_string()
-                .contains("FOR UPDATE"));
+            assert!(
+                !variant_info_query(tenant, variant)
+                    .build(backend)
+                    .to_string()
+                    .contains("FOR UPDATE")
+            );
         }
-        assert!(!reservation_variant_query(DbBackend::Sqlite, tenant, variant)
-            .unwrap()
-            .build(DbBackend::Sqlite)
-            .to_string()
-            .contains("FOR UPDATE"));
+        assert!(
+            !reservation_variant_query(DbBackend::Sqlite, tenant, variant)
+                .unwrap()
+                .build(DbBackend::Sqlite)
+                .to_string()
+                .contains("FOR UPDATE")
+        );
     }
 }

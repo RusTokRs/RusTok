@@ -102,7 +102,6 @@ pub(crate) fn validate_patch_text_length(
     Ok(())
 }
 
-
 const VARIANT_REVISION_CONFLICT_PREFIX: &str = "product variant revision conflict";
 
 pub(crate) fn expected_variant_revision(value: Option<&str>) -> CommerceResult<i64> {
@@ -185,10 +184,10 @@ pub(crate) fn variant_revision_conflict_of(message: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        REVISION_CONFLICT_PREFIX, ensure_expected_revision, ensure_expected_variant_revision,
-        ensure_variant_parent_matches,
-        expected_variant_revision, next_revision, revision_conflict, revision_conflict_of,
-        validate_patch_text_length, variant_revision_conflict_of, CommerceError,
+        CommerceError, REVISION_CONFLICT_PREFIX, ensure_expected_revision,
+        ensure_expected_variant_revision, ensure_variant_parent_matches, expected_variant_revision,
+        next_revision, revision_conflict, revision_conflict_of, validate_patch_text_length,
+        variant_revision_conflict_of,
     };
     use crate::entities;
     use rustok_api::Patch;
@@ -267,7 +266,6 @@ mod tests {
             3
         );
     }
-
 
     #[test]
     fn variant_write_refuses_when_parent_changed_before_child_lock() {

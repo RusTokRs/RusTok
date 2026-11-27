@@ -8,11 +8,14 @@
  */
 
 //! Independent JWT authority composition and one-time offline import.
-use std::time::Duration;
 use hmac::{Hmac, KeyInit, Mac};
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+    TransactionTrait, Value,
+};
 use sea_orm_migration::SchemaManager;
 use sha2::Sha256;
+use std::time::Duration;
 use uuid::Uuid;
 
 use super::{FenceMac, JwtGenerationFence, JwtRevocationReceipt, rejected, unavailable};
@@ -43,30 +46,43 @@ impl AuthorityBinding {
             return Err(rejected());
         }
         let mac = FenceMac::new(root)?;
-        let mut proof = Hmac::<Sha256>::new_from_slice(&mac.authority).map_err(|_| unavailable())?;
+        let mut proof =
+            Hmac::<Sha256>::new_from_slice(&mac.authority).map_err(|_| unavailable())?;
         proof.update(id.as_bytes());
-        Ok(Self { id: id.to_string(), proof: hex::encode(proof.finalize().into_bytes()), witness_key: mac.witness })
+        Ok(Self {
+            id: id.to_string(),
+            proof: hex::encode(proof.finalize().into_bytes()),
+            witness_key: mac.witness,
+        })
     }
 
     /// Authenticate the caller even when the ledger is empty.
     pub(super) fn verify_mac(&self, mac: &FenceMac) -> Result<()> {
         let id = Uuid::parse_str(&self.id).map_err(|_| unavailable())?;
         let expected = hex::decode(&self.proof).map_err(|_| unavailable())?;
-        let mut proof = Hmac::<Sha256>::new_from_slice(&mac.authority).map_err(|_| unavailable())?;
+        let mut proof =
+            Hmac::<Sha256>::new_from_slice(&mac.authority).map_err(|_| unavailable())?;
         proof.update(id.as_bytes());
         proof.verify_slice(&expected).map_err(|_| rejected())
     }
 
     /// Check the identity atomically in reads and conditional mutations,
     /// including after a reconnect between a read and its CAS.
-    pub(super) fn bind_statement(&self, backend: DbBackend, sql: &str, mut values: Vec<Value>) -> Result<Statement> {
+    pub(super) fn bind_statement(
+        &self,
+        backend: DbBackend,
+        sql: &str,
+        mut values: Vec<Value>,
+    ) -> Result<Statement> {
         let prefix = match backend {
             DbBackend::Postgres => "$",
             DbBackend::Sqlite => "?",
             _ => return Err(unavailable()),
         };
         let (first, second) = (values.len() + 1, values.len() + 2);
-        let condition = format!(" AND EXISTS (SELECT 1 FROM auth_jwt_authority_identity WHERE id = 1 AND authority_id = {prefix}{first} AND proof = {prefix}{second})");
+        let condition = format!(
+            " AND EXISTS (SELECT 1 FROM auth_jwt_authority_identity WHERE id = 1 AND authority_id = {prefix}{first} AND proof = {prefix}{second})"
+        );
         let sql = match sql.split_once(" RETURNING ") {
             Some((before, returning)) => format!("{before}{condition} RETURNING {returning}"),
             None => match sql.strip_suffix(" FOR UPDATE") {
@@ -90,18 +106,34 @@ impl JwtAuthorityConfig {
                 Err(_) => Err(rejected()),
             }
         }
-        Self::from_values(optional(DATABASE_URL)?, optional(AUTHORITY_ID)?, optional(WITNESS_URL)?)
+        Self::from_values(
+            optional(DATABASE_URL)?,
+            optional(AUTHORITY_ID)?,
+            optional(WITNESS_URL)?,
+        )
     }
 
-    fn from_values(uri: Option<String>, id: Option<String>, witness_uri: Option<String>) -> Result<Option<Self>> {
+    fn from_values(
+        uri: Option<String>,
+        id: Option<String>,
+        witness_uri: Option<String>,
+    ) -> Result<Option<Self>> {
         match (uri, id, witness_uri) {
             (None, None, None) => Ok(None),
             (Some(uri), Some(id), Some(witness_uri)) => {
                 let id = Uuid::parse_str(&id).map_err(|_| rejected())?;
-                if id.is_nil() || uri == witness_uri || !verified_tls_uri(&uri) || !verified_tls_uri(&witness_uri) {
+                if id.is_nil()
+                    || uri == witness_uri
+                    || !verified_tls_uri(&uri)
+                    || !verified_tls_uri(&witness_uri)
+                {
                     return Err(rejected());
                 }
-                Ok(Some(Self { uri, id, witness_uri }))
+                Ok(Some(Self {
+                    uri,
+                    id,
+                    witness_uri,
+                }))
             }
             _ => Err(rejected()),
         }
@@ -136,20 +168,38 @@ impl JwtAuthorityConfig {
     }
 
     /// Revocation uses the witness but does not consult lease expiry time.
-    pub async fn revoke_key(&self, root: &str, purpose: &str, kid: &str) -> Result<JwtRevocationReceipt> {
-        self.witnessed(root).await?.revoke_key(root, purpose, kid).await
+    pub async fn revoke_key(
+        &self,
+        root: &str,
+        purpose: &str,
+        kid: &str,
+    ) -> Result<JwtRevocationReceipt> {
+        self.witnessed(root)
+            .await?
+            .revoke_key(root, purpose, kid)
+            .await
     }
 
     /// Explicit one-time offline witness initialization. Never invoked by a host.
     pub async fn init_witness(&self, root: &str) -> Result<()> {
         let fence = self.witnessed(root).await?;
-        fence.witness.as_ref().ok_or_else(unavailable)?.initialize(&fence, root).await
+        fence
+            .witness
+            .as_ref()
+            .ok_or_else(unavailable)?
+            .initialize(&fence, root)
+            .await
     }
 
     /// Restore only the exact authenticated witness snapshot, offline.
     pub async fn recover_witness(&self, root: &str) -> Result<()> {
         let fence = self.witnessed(root).await?;
-        fence.witness.as_ref().ok_or_else(unavailable)?.recover(&fence, root).await
+        fence
+            .witness
+            .as_ref()
+            .ok_or_else(unavailable)?
+            .recover(&fence, root)
+            .await
     }
 
     /// Offline cutover only. Stop all old writers and let their grants expire.
@@ -164,23 +214,36 @@ fn verified_tls_uri(uri: &str) -> bool {
     if uri.trim() != uri || uri.contains('#') || uri.chars().any(char::is_control) {
         return false;
     }
-    let Some((base, query)) = uri.split_once('?') else { return false; };
-    let Some(target) = base.strip_prefix("postgres://").or_else(|| base.strip_prefix("postgresql://")) else {
+    let Some((base, query)) = uri.split_once('?') else {
         return false;
     };
-    let Some((address, database)) = target.split_once('/') else { return false; };
+    let Some(target) = base
+        .strip_prefix("postgres://")
+        .or_else(|| base.strip_prefix("postgresql://"))
+    else {
+        return false;
+    };
+    let Some((address, database)) = target.split_once('/') else {
+        return false;
+    };
     let endpoint = address.rsplit_once('@').map_or(address, |(_, host)| host);
     // Require an explicit TCP endpoint. Encoded Unix socket paths and empty
     // hosts must not select an implicit non-TLS connection.
-    if database.is_empty() || database.contains('/') || endpoint.is_empty()
-        || !endpoint.bytes().all(|b| b.is_ascii_alphanumeric() || b"-.:[]".contains(&b))
+    if database.is_empty()
+        || database.contains('/')
+        || endpoint.is_empty()
+        || !endpoint
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-.:[]".contains(&b))
         || !endpoint.bytes().any(|b| b.is_ascii_alphanumeric())
     {
         return false;
     }
     let mut keys = std::collections::BTreeSet::new();
     for option in query.split('&') {
-        let Some((key, value)) = option.split_once('=') else { return false; };
+        let Some((key, value)) = option.split_once('=') else {
+            return false;
+        };
         if value.is_empty() || !keys.insert(key) {
             return false;
         }
@@ -198,11 +261,14 @@ async fn connect_verified(uri: &str) -> Result<DatabaseConnection> {
         return Err(rejected());
     }
     let mut options = ConnectOptions::new(uri.to_string());
-    options.sqlx_logging(false)
+    options
+        .sqlx_logging(false)
         .max_connections(4)
         .connect_timeout(Duration::from_secs(5))
         .acquire_timeout(Duration::from_secs(1));
-    let db = Database::connect(options).await.map_err(|_| unavailable())?;
+    let db = Database::connect(options)
+        .await
+        .map_err(|_| unavailable())?;
     if db.get_database_backend() != DbBackend::Postgres {
         return Err(unavailable());
     }
@@ -224,13 +290,19 @@ async fn open_bound(db: DatabaseConnection, id: Uuid, root: &str) -> Result<JwtG
     Ok(fence)
 }
 
-pub(super) async fn import_bound(source: &DatabaseConnection, destination: DatabaseConnection, id: Uuid, root: &str) -> Result<()> {
+pub(super) async fn import_bound(
+    source: &DatabaseConnection,
+    destination: DatabaseConnection,
+    id: Uuid,
+    root: &str,
+) -> Result<()> {
     let binding = AuthorityBinding::new(id, root)?;
     let source = JwtGenerationFence::new(source.clone());
     let stored = source.load().await?;
     stored.ledger(&FenceMac::new(root)?)?;
     let grants = stored.live_grants()?;
-    if stored.lease_until_ms > stored.now_ms || !grants.is_empty()
+    if stored.lease_until_ms > stored.now_ms
+        || !grants.is_empty()
         || stored.drain_until_ms > stored.now_ms
     {
         return Err(rejected());
@@ -249,7 +321,9 @@ pub(super) async fn import_bound(source: &DatabaseConnection, destination: Datab
             authority_id TEXT NOT NULL,
             proof TEXT NOT NULL CHECK (length(proof) = 64)
         )",
-    ).await.map_err(|_| unavailable())?;
+    )
+    .await
+    .map_err(|_| unavailable())?;
     let backend = txn.get_database_backend();
     let (import_sql, identity_sql) = match backend {
         DbBackend::Postgres => (
@@ -262,36 +336,67 @@ pub(super) async fn import_bound(source: &DatabaseConnection, destination: Datab
         ),
         _ => return Err(unavailable()),
     };
-    let result = txn.execute_raw(Statement::from_sql_and_values(backend, import_sql,
-        vec![stored.generation.into(), stored.payload.into(), stored.tag.into(),
-            stored.lease_until_ms.into(), stored.drain_until_ms.into(),
-            stored.untracked_until_ms.into(), stored.replica_grants.into()],
-    )).await.map_err(|_| unavailable())?;
+    let result = txn
+        .execute_raw(Statement::from_sql_and_values(
+            backend,
+            import_sql,
+            vec![
+                stored.generation.into(),
+                stored.payload.into(),
+                stored.tag.into(),
+                stored.lease_until_ms.into(),
+                stored.drain_until_ms.into(),
+                stored.untracked_until_ms.into(),
+                stored.replica_grants.into(),
+            ],
+        ))
+        .await
+        .map_err(|_| unavailable())?;
     if result.rows_affected() != 1 {
         return Err(unavailable());
     }
-    txn.execute_raw(Statement::from_sql_and_values(backend, identity_sql,
+    txn.execute_raw(Statement::from_sql_and_values(
+        backend,
+        identity_sql,
         vec![binding.id.into(), binding.proof.into()],
-    )).await.map_err(|_| unavailable())?;
+    ))
+    .await
+    .map_err(|_| unavailable())?;
     txn.commit().await.map_err(|_| unavailable())?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::{
+        JwtAdmission,
+        tests::{FenceKeys, ROOT, database},
+    };
     use super::*;
-    use super::super::{JwtAdmission, tests::{ROOT, FenceKeys, database}};
 
     #[test]
     fn external_settings_and_verified_tls_are_mandatory() {
         let uri = "postgres://example/authority?sslmode=verify-full".to_string();
         let witness = "postgres://other/witness?sslmode=verify-full".to_string();
         let id = Uuid::new_v4().to_string();
-        assert!(JwtAuthorityConfig::from_values(None, None, None).unwrap().is_none());
-        assert!(JwtAuthorityConfig::from_values(Some(uri.clone()), Some(id.clone()), None).is_err());
+        assert!(
+            JwtAuthorityConfig::from_values(None, None, None)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            JwtAuthorityConfig::from_values(Some(uri.clone()), Some(id.clone()), None).is_err()
+        );
         assert!(JwtAuthorityConfig::from_values(None, None, Some(witness.clone())).is_err());
-        assert!(JwtAuthorityConfig::from_values(Some(uri.clone()), Some(id.clone()), Some(uri.clone())).is_err());
-        assert!(JwtAuthorityConfig::from_values(Some(uri), Some(id), Some(witness)).unwrap().is_some());
+        assert!(
+            JwtAuthorityConfig::from_values(Some(uri.clone()), Some(id.clone()), Some(uri.clone()))
+                .is_err()
+        );
+        assert!(
+            JwtAuthorityConfig::from_values(Some(uri), Some(id), Some(witness))
+                .unwrap()
+                .is_some()
+        );
         for bad in [
             "postgres://example/db",
             "postgres://example/db?sslmode=require",
@@ -306,7 +411,9 @@ mod tests {
         ] {
             assert!(!verified_tls_uri(bad), "{bad}");
         }
-        assert!(verified_tls_uri("postgresql://example/db?sslrootcert=%2Fca.pem&sslmode=verify-full"));
+        assert!(verified_tls_uri(
+            "postgresql://example/db?sslrootcert=%2Fca.pem&sslmode=verify-full"
+        ));
     }
 
     #[tokio::test]
@@ -316,27 +423,66 @@ mod tests {
         let original = JwtGenerationFence::new(source.clone());
         let first = keys.config(ROOT, "old", keys.old(), None);
         let clean = keys.config(ROOT, "new", &keys.next, None);
-        assert_eq!(original.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        assert_eq!(
+            original.admit(1, &first).await.unwrap(),
+            JwtAdmission::Admitted
+        );
         let destination = Database::connect("sqlite::memory:").await.unwrap();
         let id = Uuid::new_v4();
         assert!(open_bound(destination.clone(), id, ROOT).await.is_err());
-        import_bound(&source, destination.clone(), id, ROOT).await.unwrap();
+        import_bound(&source, destination.clone(), id, ROOT)
+            .await
+            .unwrap();
         let independent = open_bound(destination.clone(), id, ROOT).await.unwrap();
-        assert!(independent.revoke_key(ROOT, "access", "old").await.unwrap().newly_revoked);
-        assert_eq!(independent.admit(2, &clean).await.unwrap(), JwtAdmission::Admitted);
+        assert!(
+            independent
+                .revoke_key(ROOT, "access", "old")
+                .await
+                .unwrap()
+                .newly_revoked
+        );
+        assert_eq!(
+            independent.admit(2, &clean).await.unwrap(),
+            JwtAdmission::Admitted
+        );
         // Application database is still the pre-revocation snapshot.
         assert_eq!(original.load().await.unwrap().generation, 1);
         let reopened = open_bound(destination.clone(), id, ROOT).await.unwrap();
         assert!(reopened.admit(1, &first).await.is_err());
         assert!(reopened.admit(3, &first).await.is_err());
-        assert!(!reopened.revoke_key(ROOT, "access", "old").await.unwrap().newly_revoked);
+        assert!(
+            !reopened
+                .revoke_key(ROOT, "access", "old")
+                .await
+                .unwrap()
+                .newly_revoked
+        );
         let (_, stale) = first.into_cluster_jwt(1).unwrap();
         assert!(!reopened.renew(&stale).await.unwrap());
-        assert!(import_bound(&source, destination.clone(), id, ROOT).await.is_err());
-        assert!(open_bound(destination.clone(), Uuid::new_v4(), ROOT).await.is_err());
-        assert!(open_bound(destination.clone(), id, "incorrect-root-at-least-thirty-two-bytes").await.is_err());
+        assert!(
+            import_bound(&source, destination.clone(), id, ROOT)
+                .await
+                .is_err()
+        );
+        assert!(
+            open_bound(destination.clone(), Uuid::new_v4(), ROOT)
+                .await
+                .is_err()
+        );
+        assert!(
+            open_bound(
+                destination.clone(),
+                id,
+                "incorrect-root-at-least-thirty-two-bytes"
+            )
+            .await
+            .is_err()
+        );
         assert_eq!(reopened.load().await.unwrap().generation, 2);
-        destination.execute_unprepared("DELETE FROM auth_jwt_authority_identity").await.unwrap();
+        destination
+            .execute_unprepared("DELETE FROM auth_jwt_authority_identity")
+            .await
+            .unwrap();
         assert!(reopened.load().await.is_err());
     }
 
@@ -346,9 +492,16 @@ mod tests {
         let source = database().await;
         let destination = Database::connect("sqlite::memory:").await.unwrap();
         let id = Uuid::new_v4();
-        import_bound(&source, destination.clone(), id, ROOT).await.unwrap();
+        import_bound(&source, destination.clone(), id, ROOT)
+            .await
+            .unwrap();
         let independent = open_bound(destination.clone(), id, ROOT).await.unwrap();
-        let candidate = keys.config("incorrect-root-at-least-thirty-two-bytes", "new", &keys.next, None);
+        let candidate = keys.config(
+            "incorrect-root-at-least-thirty-two-bytes",
+            "new",
+            &keys.next,
+            None,
+        );
         assert!(independent.admit(1, &candidate).await.is_err());
         let (_, publisher) = candidate.into_cluster_jwt(1).unwrap();
         assert!(independent.renew(&publisher).await.is_err());
@@ -357,9 +510,19 @@ mod tests {
         let update = independent.statement(DbBackend::Sqlite,
             "UPDATE auth_jwt_generation_fence SET drain_until_ms = ?1 WHERE id = 1 AND generation = ?2 RETURNING drain_until_ms",
             vec![42_i64.into(), 0_i64.into()]).unwrap();
-        destination.execute_unprepared("DELETE FROM auth_jwt_authority_identity").await.unwrap();
+        destination
+            .execute_unprepared("DELETE FROM auth_jwt_authority_identity")
+            .await
+            .unwrap();
         assert!(destination.query_one_raw(update).await.unwrap().is_none());
-        assert_eq!(JwtGenerationFence::new(destination).load().await.unwrap().drain_until_ms, 0);
+        assert_eq!(
+            JwtGenerationFence::new(destination)
+                .load()
+                .await
+                .unwrap()
+                .drain_until_ms,
+            0
+        );
     }
 
     #[tokio::test]
@@ -368,13 +531,24 @@ mod tests {
         let source = database().await;
         let original = JwtGenerationFence::new(source.clone());
         let first = keys.config(ROOT, "old", keys.old(), None);
-        assert_eq!(original.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        assert_eq!(
+            original.admit(1, &first).await.unwrap(),
+            JwtAdmission::Admitted
+        );
         let id = Uuid::new_v4();
-        assert!(import_bound(&source, source.clone(), id, ROOT).await.is_err());
+        assert!(
+            import_bound(&source, source.clone(), id, ROOT)
+                .await
+                .is_err()
+        );
         let (_, publisher) = first.into_cluster_jwt(1).unwrap();
         assert!(original.renew(&publisher).await.unwrap());
         let destination = Database::connect("sqlite::memory:").await.unwrap();
-        assert!(import_bound(&source, destination.clone(), id, ROOT).await.is_err());
+        assert!(
+            import_bound(&source, destination.clone(), id, ROOT)
+                .await
+                .is_err()
+        );
         assert!(open_bound(destination, id, ROOT).await.is_err());
     }
 }

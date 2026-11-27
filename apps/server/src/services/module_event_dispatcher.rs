@@ -372,7 +372,9 @@ where
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     if crate::services::server_runtime_context::published_worker_running::<T>(
-        ctx, worker_name, is_finished,
+        ctx,
+        worker_name,
+        is_finished,
     )? {
         return Ok(());
     }
@@ -809,9 +811,11 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider::new(
             &runtime_ctx,
             auth_config.clone(),
-        ).with_invite_module_registry(registry.clone()),
+        )
+        .with_invite_module_registry(registry.clone()),
     );
     extensions.insert(rustok_rbac::graphql::RbacMutationAuthorityHandle(auth_admin_provider.clone()));
+    extensions.insert(rustok_auth::AuthAdminCredentialResolverHandle(auth_admin_provider.clone()));
     let oauth_admin_provider = Arc::new(
         crate::services::oauth_admin_guard::GuardedOAuthAdminProvider::new(
             db.clone(),
@@ -1470,10 +1474,9 @@ mod lifecycle_tests {
             matches!(result, Err(Error::Message(message)) if message.contains("has terminated")),
             "a retained finished handle must fail repeated startup"
         );
-        let retained = take_dispatcher_started_worker_for_shutdown::<PaymentProviderEventWorkerHandle>(
-            &ctx,
-        )
-        .expect("shutdown retains ownership of the terminated task");
+        let retained =
+            take_dispatcher_started_worker_for_shutdown::<PaymentProviderEventWorkerHandle>(&ctx)
+                .expect("shutdown retains ownership of the terminated task");
         assert_eq!(retained.instance_id(), instance_id);
         retained.join().await.expect("terminated task joins");
     }

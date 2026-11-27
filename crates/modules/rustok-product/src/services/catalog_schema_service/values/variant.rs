@@ -126,6 +126,141 @@ impl ProductCatalogSchemaService {
             .collect()
     }
 
+    /// Applies exact-locale Variant EAV batches inside an existing Product transaction.
+    ///
+    /// The caller owns the surrounding Variant create/update event and revision. This helper
+    /// acquires Product -> Variant locks, validates the effective schema and writes all locale
+    /// batches without opening a nested transaction or publishing a second aggregate event.
+    pub(crate) async fn apply_variant_attribute_value_batches_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        variant_id: Uuid,
+        batches: &[crate::dto::ProductAttributeValueBatch],
+    ) -> CommerceResult<bool> {
+        super::validate_attribute_value_batches(batches)?;
+        if batches.is_empty() || batches.iter().all(|batch| batch.patches.is_empty()) {
+            return Ok(false);
+        }
+
+        validate_uuid("variant_id", variant_id)?;
+        let owner = load_variant_owner_for_update(txn, tenant_id, variant_id).await?;
+        let product = super::lock_product_for_update_in_tx(txn, tenant_id, owner.product_id).await?;
+        let Some(primary_category_id) = product.primary_category_id else {
+            return Err(CommerceError::Validation(
+                "variant product must have a primary structural category before attribute values can be saved"
+                    .into(),
+            ));
+        };
+        let form =
+            Self::load_effective_form_for_category_in(txn, tenant_id, primary_category_id, &[])
+                .await?;
+        let effective_attribute_ids = form
+            .attributes
+            .iter()
+            .filter(|binding| !binding.is_disabled)
+            .map(|binding| binding.attribute_id)
+            .collect::<HashSet<_>>();
+        let validation_by_attribute = form
+            .attributes
+            .iter()
+            .map(|binding| (binding.attribute_id, binding.validation.clone()))
+            .collect::<HashMap<_, _>>();
+
+        let mut locales = Vec::with_capacity(batches.len());
+        let mut seen_locales = HashSet::new();
+        let mut seen_nonlocalized = HashSet::new();
+        let mut patch_attribute_ids = Vec::new();
+        for batch in batches {
+            let locale = canonical_variant_value_locale(&batch.locale)?;
+            if !seen_locales.insert(locale.clone()) {
+                return Err(CommerceError::Validation(
+                    "variant attribute value locale occurs more than once in one catalog command"
+                        .into(),
+                ));
+            }
+            locales.push(locale);
+            patch_attribute_ids.extend(batch.patches.iter().map(|patch| patch.attribute_id));
+        }
+
+        let definitions =
+            load_variant_patch_definitions(txn, tenant_id, &patch_attribute_ids).await?;
+        let selected_option_ids = batches
+            .iter()
+            .flat_map(|batch| batch.patches.iter())
+            .flat_map(|patch| match &patch.value {
+                ProductAttributeValuePatchValue::Select(option_id) => vec![*option_id],
+                ProductAttributeValuePatchValue::Multiselect(option_ids) => option_ids.clone(),
+                _ => Vec::new(),
+            })
+            .collect::<Vec<_>>();
+        let options = load_variant_patch_options(txn, tenant_id, &selected_option_ids).await?;
+        let no_rules = Value::Object(Default::default());
+
+        for batch in batches {
+            super::validate_attribute_value_patch_batch(&batch.patches)?;
+            let mut seen_in_batch = HashSet::new();
+            for patch in &batch.patches {
+                validate_uuid("attribute_id", patch.attribute_id)?;
+                if !seen_in_batch.insert(patch.attribute_id) {
+                    return Err(CommerceError::Validation(format!(
+                        "attribute {} occurs more than once in one patch request",
+                        patch.attribute_id
+                    )));
+                }
+                if !effective_attribute_ids.contains(&patch.attribute_id) {
+                    return Err(CommerceError::Validation(format!(
+                        "attribute {} is outside the variant effective schema",
+                        patch.attribute_id
+                    )));
+                }
+                let definition = definitions.get(&patch.attribute_id).ok_or_else(|| {
+                    CommerceError::Validation(format!(
+                        "attribute {} is not available",
+                        patch.attribute_id
+                    ))
+                })?;
+                if !definition.is_localized && !seen_nonlocalized.insert(patch.attribute_id) {
+                    return Err(CommerceError::Validation(
+                        "nonlocalized attribute occurs in more than one locale batch".into(),
+                    ));
+                }
+                let validation = validation_by_attribute
+                    .get(&patch.attribute_id)
+                    .unwrap_or(&no_rules);
+                validate_variant_value_patch(definition, patch, &options, validation)?;
+            }
+        }
+
+        reject_configured_variant_axis_attribute_changes(
+            txn,
+            tenant_id,
+            owner.product_id,
+            patch_attribute_ids.as_slice(),
+        )
+        .await?;
+
+        for (batch, locale) in batches.iter().zip(locales.iter()) {
+            for patch in &batch.patches {
+                let definition = definitions.get(&patch.attribute_id).ok_or_else(|| {
+                    CommerceError::Validation(
+                        "validated Variant attribute definition must exist".into(),
+                    )
+                })?;
+                write_variant_value_patch(
+                    txn,
+                    tenant_id,
+                    variant_id,
+                    locale.as_str(),
+                    definition,
+                    patch,
+                )
+                .await?;
+            }
+        }
+
+        Ok(true)
+    }
+
     /// Saves one exact locale of Variant-scoped EAV values through the canonical Product owner.
     ///
     /// Only effective attributes with `scope = variant|both` are admitted. All writes, the
@@ -234,8 +369,7 @@ impl ProductCatalogSchemaService {
             )
             .await?;
         }
-        if !patches.is_empty()
-            && product.status == crate::entities::product::ProductStatus::Active
+        if !patches.is_empty() && product.status == crate::entities::product::ProductStatus::Active
         {
             // Variant EAV writes must preserve the same publish invariants as Product EAV writes.
             // Validate the whole Product while its owner row remains locked, so clearing a required
@@ -611,9 +745,7 @@ async fn write_variant_value_patch<C>(
 where
     C: ConnectionTrait,
 {
-    if matches!(&patch.value, ProductAttributeValuePatchValue::Clear)
-        && definition.is_localized
-    {
+    if matches!(&patch.value, ProductAttributeValuePatchValue::Clear) && definition.is_localized {
         let Some(value) = IdRow::find_by_statement(Statement::from_sql_and_values(
             conn.get_database_backend(),
             "SELECT id FROM product_variant_attribute_values WHERE tenant_id = $1 AND variant_id = $2 AND attribute_id = $3",
@@ -768,7 +900,6 @@ fn canonical_variant_value_locale(locale: &str) -> CommerceResult<String> {
         .map_err(|error| CommerceError::Validation(error.to_string()))
 }
 
-
 #[cfg(test)]
 mod localized_clear_tests {
     use super::*;
@@ -823,11 +954,7 @@ mod localized_clear_tests {
         (db, tenant_id, variant_id, attribute_id, value_id)
     }
 
-    async fn count_rows(
-        db: &DatabaseConnection,
-        sql: &str,
-        values: Vec<sea_orm::Value>,
-    ) -> i64 {
+    async fn count_rows(db: &DatabaseConnection, sql: &str, values: Vec<sea_orm::Value>) -> i64 {
         db.query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             sql.to_owned(),
@@ -859,16 +986,9 @@ mod localized_clear_tests {
             value: ProductAttributeValuePatchValue::Clear,
         };
 
-        write_variant_value_patch(
-            &db,
-            tenant_id,
-            variant_id,
-            "ru-RU",
-            &definition,
-            &patch,
-        )
-        .await
-        .unwrap();
+        write_variant_value_patch(&db, tenant_id, variant_id, "ru-RU", &definition, &patch)
+            .await
+            .unwrap();
 
         assert_eq!(
             count_rows(
@@ -909,16 +1029,9 @@ mod localized_clear_tests {
             value: ProductAttributeValuePatchValue::Clear,
         };
 
-        write_variant_value_patch(
-            &db,
-            tenant_id,
-            variant_id,
-            "ru-RU",
-            &definition,
-            &patch,
-        )
-        .await
-        .unwrap();
+        write_variant_value_patch(&db, tenant_id, variant_id, "ru-RU", &definition, &patch)
+            .await
+            .unwrap();
 
         assert_eq!(
             count_rows(

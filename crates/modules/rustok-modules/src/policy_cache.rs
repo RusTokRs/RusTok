@@ -89,9 +89,7 @@ impl ModuleEffectivePolicyCache {
         tenant_id: Uuid,
     ) -> Option<PolicyCacheEntry> {
         let entry = entries.get(&tenant_id)?;
-        entry
-            .is_fresh(self.max_age)
-            .then(|| entry.clone())
+        entry.is_fresh(self.max_age).then(|| entry.clone())
     }
 
     /// Capture before starting an owner read. Every observed invalidation,
@@ -408,9 +406,11 @@ mod tests {
         assert!(!loader.join().unwrap());
         assert!(cache.get_latest(tenant_id).is_none());
         let stamp = cache.begin_read().unwrap();
-        assert!(cache
-            .insert_if_current(&stamp, tenant_id, empty_policy())
-            .unwrap());
+        assert!(
+            cache
+                .insert_if_current(&stamp, tenant_id, empty_policy())
+                .unwrap()
+        );
         assert!(cache.get_latest(tenant_id).is_some());
     }
 
@@ -420,19 +420,25 @@ mod tests {
         let tenant = Uuid::new_v4();
         let stamp = cache.begin_read().unwrap();
         cache.clear();
-        assert!(!cache
-            .insert_if_current(&stamp, tenant, empty_policy())
-            .unwrap());
+        assert!(
+            !cache
+                .insert_if_current(&stamp, tenant, empty_policy())
+                .unwrap()
+        );
         let stamp = cache.begin_read().unwrap();
         assert!(!cache.invalidate_if_stale(tenant, "old"));
-        assert!(!cache
-            .insert_if_current(&stamp, tenant, empty_policy())
-            .unwrap());
+        assert!(
+            !cache
+                .insert_if_current(&stamp, tenant, empty_policy())
+                .unwrap()
+        );
         let stamp = cache.begin_read().unwrap();
         assert!(!cache.apply_transition_event(tenant, Some("old"), "next"));
-        assert!(!cache
-            .insert_if_current(&stamp, tenant, empty_policy())
-            .unwrap());
+        assert!(
+            !cache
+                .insert_if_current(&stamp, tenant, empty_policy())
+                .unwrap()
+        );
     }
 
     #[test]
@@ -442,18 +448,32 @@ mod tests {
         let tenant = Uuid::new_v4();
         let first = cache.begin_read().unwrap();
         let second = cache.begin_read().unwrap();
-        assert!(cache
-            .insert_if_current(&second, tenant, empty_policy())
-            .unwrap());
-        assert!(!cache
-            .insert_if_current(&first, tenant, empty_policy())
-            .unwrap());
-        assert!(!other
-            .insert_if_current(&first, tenant, empty_policy())
-            .unwrap());
-        assert!(cache.is_current_hit(&first, tenant, &empty_policy()).unwrap());
+        assert!(
+            cache
+                .insert_if_current(&second, tenant, empty_policy())
+                .unwrap()
+        );
+        assert!(
+            !cache
+                .insert_if_current(&first, tenant, empty_policy())
+                .unwrap()
+        );
+        assert!(
+            !other
+                .insert_if_current(&first, tenant, empty_policy())
+                .unwrap()
+        );
+        assert!(
+            cache
+                .is_current_hit(&first, tenant, &empty_policy())
+                .unwrap()
+        );
         cache.clear();
-        assert!(!cache.is_current_hit(&first, tenant, &empty_policy()).unwrap());
+        assert!(
+            !cache
+                .is_current_hit(&first, tenant, &empty_policy())
+                .unwrap()
+        );
     }
 
     #[test]
@@ -477,7 +497,11 @@ mod tests {
             entry.cached_at_monotonic = Instant::now() - std::time::Duration::from_secs(61);
         }
         assert!(cache.get_latest(tenant).is_none());
-        assert!(!cache.is_current_hit(&stamp, tenant, &empty_policy()).unwrap());
+        assert!(
+            !cache
+                .is_current_hit(&stamp, tenant, &empty_policy())
+                .unwrap()
+        );
     }
 
     #[test]

@@ -71,9 +71,9 @@ struct AdmissionReverificationConfig {
 fn resolve_admission_reverification_config(
     configured: Option<Result<AdmissionReverificationConfig, String>>,
 ) -> Result<Option<AdmissionReverificationConfig>, String> {
-    configured
-        .transpose()
-        .map_err(|error| format!("Invalid artifact admission reverification configuration: {error}"))
+    configured.transpose().map_err(|error| {
+        format!("Invalid artifact admission reverification configuration: {error}")
+    })
 }
 
 fn admission_reverification_config_from_env()
@@ -566,7 +566,11 @@ mod startup_configuration_tests {
 
     #[test]
     fn absent_reverification_configuration_is_explicitly_optional() {
-        assert!(resolve_admission_reverification_config(None).unwrap().is_none());
+        assert!(
+            resolve_admission_reverification_config(None)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

@@ -12,10 +12,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+use tracing::instrument;
 use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
-use tracing::instrument;
 
 use rustok_order::OrderService;
 use rustok_payment::PaymentService;

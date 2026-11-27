@@ -182,7 +182,12 @@ mod tests {
         let (parts, _) = request.into_parts();
         let normalized = request_with_canonical_publish_body(parts, br#"{}"#.to_vec());
         assert!(normalized.headers().get(header::CONTENT_LENGTH).is_none());
-        assert!(normalized.headers().get(header::TRANSFER_ENCODING).is_none());
+        assert!(
+            normalized
+                .headers()
+                .get(header::TRANSFER_ENCODING)
+                .is_none()
+        );
         assert_eq!(
             normalized.headers().get(header::CONTENT_TYPE),
             Some(&axum::http::HeaderValue::from_static("application/json"))

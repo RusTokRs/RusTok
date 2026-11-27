@@ -475,7 +475,7 @@ pub fn parse_scalar_input_value(raw: &str, value_type: &str) -> Option<serde_jso
             serde_json::from_str::<serde_json::Value>(raw)
                 .ok()
                 .filter(serde_json::Value::is_number)
-        },
+        }
         _ => None,
     }
 }
@@ -1886,7 +1886,8 @@ mod tests {
             render_nested_json_children(&context, Vec::new(), root, None).to_html()
         });
         assert_eq!(
-            html.matches("Edit this number in the JSON editor below.").count(),
+            html.matches("Edit this number in the JSON editor below.")
+                .count(),
             2,
             "{html}"
         );

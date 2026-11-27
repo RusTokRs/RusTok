@@ -233,8 +233,7 @@ pub struct SeoBulkFilterForm {
 impl SeoBulkFilterForm {
     pub fn new(default_locale: Option<&str>) -> Self {
         Self {
-            target_kind: SeoTargetSlug::new(seo_builtin_slug::PAGE)
-                .unwrap_or_default(),
+            target_kind: SeoTargetSlug::new(seo_builtin_slug::PAGE).unwrap_or_default(),
             locale: default_locale.unwrap_or("en").to_string(),
             query: String::new(),
             source: SeoBulkSource::Any,

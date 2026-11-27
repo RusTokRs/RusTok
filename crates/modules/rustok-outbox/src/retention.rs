@@ -382,13 +382,27 @@ mod tests {
             .acknowledge_existing("consumer.one", event_id)
             .await
             .expect("first consumer acknowledgement");
-        assert_eq!(retention.prune_once().await.expect("partially acknowledged prune").pruned, 0);
+        assert_eq!(
+            retention
+                .prune_once()
+                .await
+                .expect("partially acknowledged prune")
+                .pruned,
+            0
+        );
 
         second
             .acknowledge_existing("consumer.two", event_id)
             .await
             .expect("second consumer acknowledgement");
-        assert_eq!(retention.prune_once().await.expect("fully acknowledged prune").pruned, 1);
+        assert_eq!(
+            retention
+                .prune_once()
+                .await
+                .expect("fully acknowledged prune")
+                .pruned,
+            1
+        );
         assert!(
             crate::entity::Entity::find_by_id(event_id)
                 .one(&db)
@@ -407,13 +421,12 @@ mod tests {
         // Default configuration never touches the DLQ.
         let failed = insert_event(&db, SysEventStatus::Failed, Some(stale)).await;
         // Failed retention is measured from creation; age the row.
-        let mut aged: crate::entity::ActiveModel =
-            crate::entity::Entity::find_by_id(failed)
-                .one(&db)
-                .await
-                .expect("query")
-                .expect("failed event")
-                .into();
+        let mut aged: crate::entity::ActiveModel = crate::entity::Entity::find_by_id(failed)
+            .one(&db)
+            .await
+            .expect("query")
+            .expect("failed event")
+            .into();
         aged.created_at = Set(stale);
         aged.update(&db).await.expect("age failed event");
         let retention = OutboxRetention::new(db.clone());

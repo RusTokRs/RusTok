@@ -5,8 +5,7 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 
 use super::oauth_app::{
-    GrantConsentAttempt, OAuthAppService, lock_oauth_app_for_mutation,
-    lock_oauth_user_for_mutation,
+    GrantConsentAttempt, OAuthAppService, lock_oauth_app_for_mutation, lock_oauth_user_for_mutation,
 };
 
 impl OAuthAppService {
@@ -54,12 +53,18 @@ impl OAuthAppService {
         scopes: Vec<String>,
     ) -> Result<()> {
         if !app.is_active() || !user.is_active() || user.tenant_id != app.tenant_id {
-            return Err(Error::Unauthorized("OAuth consent authority is inactive or mismatched".to_string()));
+            return Err(Error::Unauthorized(
+                "OAuth consent authority is inactive or mismatched".to_string(),
+            ));
         }
         if scopes.is_empty() {
-            return Err(Error::BadRequest("OAuth consent must include at least one scope".to_string()));
+            return Err(Error::BadRequest(
+                "OAuth consent must include at least one scope".to_string(),
+            ));
         }
-        let allowed_scopes = app.decoded_scopes().map_err(|_| Error::InternalServerError)?;
+        let allowed_scopes = app
+            .decoded_scopes()
+            .map_err(|_| Error::InternalServerError)?;
         let mut normalized = Vec::with_capacity(scopes.len());
         for scope in scopes {
             let scope = scope.trim().to_string();
@@ -78,8 +83,8 @@ impl OAuthAppService {
             }
         }
 
-        let scopes_json = serde_json::to_value(&normalized)
-            .map_err(|_| Error::InternalServerError)?;
+        let scopes_json =
+            serde_json::to_value(&normalized).map_err(|_| Error::InternalServerError)?;
         let now = rustok_auth::application_clock::verified_now(tx).await?;
         OAuthAppService::grant_consent_in_transaction(
             tx,

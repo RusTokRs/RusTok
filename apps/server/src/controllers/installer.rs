@@ -7,22 +7,21 @@ use axum::{
 use chrono::{DateTime, Utc};
 use futures_util::FutureExt;
 use rustok_installer::{
-    build_install_lock_owner, is_valid_install_lock_ttl_secs, InstallApplyOptions,
-    InstallApplyOutput, InstallComposition, InstallDistributionBinding,
-    DEFAULT_INSTALL_LOCK_TTL_SECS, MAX_INSTALL_LOCK_TTL_SECS,
-    InstallExecutor, InstallPlan, bind_instance_placement, evaluate_preflight_with_deployment,
-    load_base_distribution_receipt, redact_install_plan,
+    DEFAULT_INSTALL_LOCK_TTL_SECS, InstallApplyOptions, InstallApplyOutput, InstallComposition,
+    InstallDistributionBinding, InstallExecutor, InstallPlan, MAX_INSTALL_LOCK_TTL_SECS,
+    bind_instance_placement, build_install_lock_owner, evaluate_preflight_with_deployment,
+    is_valid_install_lock_ttl_secs, load_base_distribution_receipt, redact_install_plan,
 };
 use rustok_installer_persistence::{
-    InstallHttpJobModel, InstallStepReceiptItem, InstallerPersistenceService,
-    HTTP_INSTALL_JOB_RECOVERY_REQUIRED_MESSAGE,
+    HTTP_INSTALL_JOB_RECOVERY_REQUIRED_MESSAGE, InstallHttpJobModel, InstallStepReceiptItem,
+    InstallerPersistenceService,
 };
 use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
@@ -151,7 +150,10 @@ async fn status(State(ctx): State<ServerRuntimeContext>) -> Result<Json<InstallS
             .as_ref()
             .is_some_and(|session| job.session_id == Some(session.id))
         {
-            return Ok(Json(install_status_from_job(job, latest_session.is_some())?));
+            return Ok(Json(install_status_from_job(
+                job,
+                latest_session.is_some(),
+            )?));
         }
     }
 
@@ -296,7 +298,8 @@ async fn create_http_job_with_retry(
                 Ok(Some(existing))
                     if existing.status == "running"
                         && existing.session_id == Some(job_id)
-                        && existing.submitted_at.timestamp_micros() == submitted_at.timestamp_micros() =>
+                        && existing.submitted_at.timestamp_micros()
+                            == submitted_at.timestamp_micros() =>
                 {
                     return Ok(existing);
                 }
@@ -351,7 +354,9 @@ async fn finish_http_job_succeeded_with_retry(
     }
 
     Err(last_error.unwrap_or_else(|| {
-        sea_orm::DbErr::Custom("installer HTTP job success finalization exhausted its retry budget".to_string())
+        sea_orm::DbErr::Custom(
+            "installer HTTP job success finalization exhausted its retry budget".to_string(),
+        )
     }))
 }
 
@@ -410,7 +415,9 @@ async fn finish_http_job_failed_with_retry(
     }
 
     Err(last_error.unwrap_or_else(|| {
-        sea_orm::DbErr::Custom("installer HTTP job failure finalization exhausted its retry budget".to_string())
+        sea_orm::DbErr::Custom(
+            "installer HTTP job failure finalization exhausted its retry budget".to_string(),
+        )
     }))
 }
 
@@ -661,9 +668,7 @@ fn validate_http_lock_ttl_secs(requested: Option<i64>) -> Result<i64> {
         return Err(http_error(HttpError::new(
             StatusCode::BAD_REQUEST,
             "invalid_lock_ttl",
-            format!(
-                "lock_ttl_secs must be between 1 and {MAX_INSTALL_LOCK_TTL_SECS} seconds"
-            ),
+            format!("lock_ttl_secs must be between 1 and {MAX_INSTALL_LOCK_TTL_SECS} seconds"),
         )));
     }
     Ok(ttl_secs)
@@ -842,7 +847,9 @@ fn require_no_unresolved_http_install_job(
             "An installation job is running or requires operator reconciliation",
         ))),
         Err(_error) => {
-            tracing::error!("Unable to inspect durable installer job admission; database details redacted");
+            tracing::error!(
+                "Unable to inspect durable installer job admission; database details redacted"
+            );
             Err(internal_error(
                 "Unable to verify whether an installer job is unresolved",
             ))
@@ -850,11 +857,8 @@ fn require_no_unresolved_http_install_job(
     }
 }
 
-async fn reconcile_stale_installer_jobs(
-    persistence: &InstallerPersistenceService,
-) -> Result<()> {
-    let stale_before =
-        Utc::now() - chrono::Duration::seconds(INSTALLER_HTTP_JOB_STALE_AFTER_SECS);
+async fn reconcile_stale_installer_jobs(persistence: &InstallerPersistenceService) -> Result<()> {
+    let stale_before = Utc::now() - chrono::Duration::seconds(INSTALLER_HTTP_JOB_STALE_AFTER_SECS);
     match persistence.reconcile_stale_http_jobs(stale_before).await {
         Ok(quarantined) => {
             if quarantined > 0 {
@@ -1027,7 +1031,9 @@ fn install_job_state(value: &str) -> Result<InstallJobState> {
         "succeeded" => Ok(InstallJobState::Succeeded),
         "failed" => Ok(InstallJobState::Failed),
         "recovery_required" => Ok(InstallJobState::RecoveryRequired),
-        _ => Err(internal_error("installer job has an invalid persisted state")),
+        _ => Err(internal_error(
+            "installer job has an invalid persisted state",
+        )),
     }
 }
 
@@ -1222,7 +1228,10 @@ fn not_found_error(description: impl Into<String>) -> Error {
 /// Log operational diagnostics server-side without exposing backend connection
 /// details, filesystem paths or SQL fragments in the public installer response.
 fn installer_storage_failure(operation: &'static str, _error: impl std::fmt::Display) -> Error {
-    tracing::error!(operation, "Installer storage/host operation failed; details redacted");
+    tracing::error!(
+        operation,
+        "Installer storage/host operation failed; details redacted"
+    );
     internal_error("Installer state is temporarily unavailable")
 }
 
@@ -1342,7 +1351,10 @@ mod tests {
             .await
             .expect("heartbeat terminates")
             .expect("heartbeat completion signal");
-        assert!(!task.is_finished(), "heartbeat loss must not cancel the executor");
+        assert!(
+            !task.is_finished(),
+            "heartbeat loss must not cancel the executor"
+        );
         release_tx.send(()).expect("release admitted operation");
         tokio::time::timeout(Duration::from_secs(2), task)
             .await
@@ -1483,13 +1495,9 @@ mod tests {
             .create_http_job(job_id, job_id, submitted_at.clone())
             .await
             .expect("persist ambiguous claim");
-        settle_unstarted_http_job_after_creation_failure(
-            &persistence,
-            job_id,
-            submitted_at,
-        )
-        .await
-        .expect("settle the committed but unstarted claim");
+        settle_unstarted_http_job_after_creation_failure(&persistence, job_id, submitted_at)
+            .await
+            .expect("settle the committed but unstarted claim");
 
         let job = persistence
             .get_http_job(job_id)
@@ -1554,22 +1562,22 @@ mod tests {
         let first_attempt = Uuid::from_u128(2);
         let second_attempt = Uuid::from_u128(3);
 
-        let first = build_install_lock_owner(
-            Some("operator/worker 1"),
-            Some(job_id),
-            first_attempt,
-        );
-        let second = build_install_lock_owner(
-            Some("operator/worker 1"),
-            Some(job_id),
-            second_attempt,
-        );
+        let first =
+            build_install_lock_owner(Some("operator/worker 1"), Some(job_id), first_attempt);
+        let second =
+            build_install_lock_owner(Some("operator/worker 1"), Some(job_id), second_attempt);
 
-        assert_ne!(first, second, "each execution attempt needs a unique lease owner");
+        assert_ne!(
+            first, second,
+            "each execution attempt needs a unique lease owner"
+        );
         assert!(first.starts_with("operatorworker1:"));
         assert!(!first.contains('/'));
         assert!(!first.contains(' '));
-        assert!(first.len() <= 128, "owner must fit install_sessions.lock_owner");
+        assert!(
+            first.len() <= 128,
+            "owner must fit install_sessions.lock_owner"
+        );
         assert_eq!(
             build_install_lock_owner(Some("///"), Some(job_id), first_attempt)
                 .split(':')
@@ -1648,9 +1656,8 @@ mod tests {
         let sqlite_missing = sea_orm::DbErr::Custom("no such table: install_sessions".to_string());
         assert!(installer_schema_missing(&sqlite_missing));
 
-        let mysql_missing = sea_orm::DbErr::Custom(
-            "Table 'rustok.install_sessions' doesn't exist".to_string(),
-        );
+        let mysql_missing =
+            sea_orm::DbErr::Custom("Table 'rustok.install_sessions' doesn't exist".to_string());
         assert!(installer_schema_missing(&mysql_missing));
 
         let other_error = sea_orm::DbErr::Custom("connection refused".to_string());
@@ -1720,8 +1727,17 @@ mod tests {
         let response = install_job_status_response(model).expect("maps failed status");
         assert_eq!(response.job_id, job_id);
         assert!(matches!(response.status, InstallJobState::Failed));
-        assert_eq!(response.error.as_deref(), Some(INSTALLER_JOB_FAILURE_MESSAGE));
-        assert!(!response.error.as_deref().unwrap().contains("sensitive-password"));
+        assert_eq!(
+            response.error.as_deref(),
+            Some(INSTALLER_JOB_FAILURE_MESSAGE)
+        );
+        assert!(
+            !response
+                .error
+                .as_deref()
+                .unwrap()
+                .contains("sensitive-password")
+        );
     }
 
     #[test]
@@ -1734,14 +1750,19 @@ mod tests {
             None,
             Some("private target connection and executor details".to_string()),
         );
-        let response =
-            install_job_status_response(model).expect("maps recovery-required status");
+        let response = install_job_status_response(model).expect("maps recovery-required status");
         assert_eq!(response.status, InstallJobState::RecoveryRequired);
         assert_eq!(
             response.error.as_deref(),
             Some(HTTP_INSTALL_JOB_RECOVERY_REQUIRED_MESSAGE)
         );
-        assert!(!response.error.as_deref().unwrap().contains("private target"));
+        assert!(
+            !response
+                .error
+                .as_deref()
+                .unwrap()
+                .contains("private target")
+        );
         assert!(response.finished_at.is_none());
     }
 
@@ -1974,6 +1995,4 @@ mod tests {
             .expect("job exists");
         assert_eq!(stored.status, "failed");
     }
-
-
 }

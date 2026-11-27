@@ -105,11 +105,11 @@ impl WorkflowQuery {
             &[Permission::WORKFLOW_EXECUTIONS_LIST],
             "Permission denied: workflow_executions:list required",
         )?;
-        let items = crate::services::unconfirmed_executions_for_tenant(
-            &db, tenant.id, 100,
-        ).await.map_err(|_| async_graphql::Error::new(
-            "Workflow unconfirmed executions are unavailable"
-        ))?;
+        let items = crate::services::unconfirmed_executions_for_tenant(&db, tenant.id, 100)
+            .await
+            .map_err(|_| {
+                async_graphql::Error::new("Workflow unconfirmed executions are unavailable")
+            })?;
         Ok(items
             .into_iter()
             .map(crate::WorkflowUnconfirmedExecutionItem::from)
@@ -130,7 +130,9 @@ impl WorkflowQuery {
         )?;
         let items = crate::services::reconciliation_required_for_tenant(&db, tenant.id, 100)
             .await
-            .map_err(|_| async_graphql::Error::new("Workflow cron reconciliation is unavailable"))?;
+            .map_err(|_| {
+                async_graphql::Error::new("Workflow cron reconciliation is unavailable")
+            })?;
         Ok(items
             .into_iter()
             .map(crate::WorkflowCronReconciliationItem::from)

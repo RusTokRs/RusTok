@@ -25,6 +25,7 @@
 - **Administrative & Runtime Ports**:
   - `UserAdminMutationPort` / `UserAdminMutationRuntime`
   - `OAuthAdminPort` / `OAuthAdminRuntime`
+  - `AuthAdminMutationContext` requires `CredentialAuthority`; `AuthAdminCredentialResolver` / `AuthAdminCredentialResolverHandle` bind admitted request identity to the owner command. `AdminCredentialRequest` is a transport-neutral projection, not authority by itself. The host verifies provenance against its valid request scope. `TrustedInternal` is not a production authenticated-port capability.
   - `AuthLifecyclePort` / `AuthLifecycleRuntime`
   - `AuthUserBackfillReadPort` / `AuthUserBackfillRuntime`
   - `AuthUserBootstrapDbWriter`, `AuthUserBackfillDbReader`

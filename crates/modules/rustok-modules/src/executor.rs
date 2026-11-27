@@ -221,9 +221,14 @@ pub(crate) async fn execute_module_toggle(
             "publisher is required for an effective-policy transition".to_string(),
         ));
     }
-    let definition = dispatcher.catalog().get(&request.module_slug).ok_or_else(|| {
-        ModuleLifecycleExecutionError::Persistence("validated module definition disappeared".to_string())
-    })?;
+    let definition = dispatcher
+        .catalog()
+        .get(&request.module_slug)
+        .ok_or_else(|| {
+            ModuleLifecycleExecutionError::Persistence(
+                "validated module definition disappeared".to_string(),
+            )
+        })?;
     let operation = match ModuleOperationJournal::record_idempotent(db, operation_request.clone())
         .await
         .map_err(map_idempotency_store_error)?
@@ -271,7 +276,8 @@ pub(crate) async fn execute_module_toggle(
             }
             LifecycleAdmissionError::StaleDefinition => {
                 let mapped = ModuleLifecycleExecutionError::PolicyTransition(
-                    "the selected artifact definition is no longer the active installation".to_string(),
+                    "the selected artifact definition is no longer the active installation"
+                        .to_string(),
                 );
                 return Err(match ModuleOperationJournal::mark_failed(
                     db, operation.id,
@@ -884,8 +890,6 @@ pub(crate) async fn execute_module_toggle(
     Ok(result)
 }
 
-
-
 /// Releases the lifecycle claim on an error path without ever
 /// discarding either failure: the primary error stays visible, and a
 /// release failure is reported alongside it. A retained claim requires
@@ -1309,15 +1313,25 @@ mod tests {
     }
 
     impl MigrationSource for ReclaimDuringHook {
-        fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> { Vec::new() }
+        fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+            Vec::new()
+        }
     }
 
     #[async_trait]
     impl RusToKModule for ReclaimDuringHook {
-        fn slug(&self) -> &'static str { "claim_test" }
-        fn name(&self) -> &'static str { "Claim test" }
-        fn description(&self) -> &'static str { "Lifecycle claim test" }
-        fn version(&self) -> &'static str { "0.1.0" }
+        fn slug(&self) -> &'static str {
+            "claim_test"
+        }
+        fn name(&self) -> &'static str {
+            "Claim test"
+        }
+        fn description(&self) -> &'static str {
+            "Lifecycle claim test"
+        }
+        fn version(&self) -> &'static str {
+            "0.1.0"
+        }
 
         async fn pre_enable(&self, ctx: rustok_core::ModuleContext<'_>) -> rustok_core::Result<()> {
             self.calls.fetch_add(1, Ordering::SeqCst);
@@ -1328,7 +1342,14 @@ mod tests {
                 vec![ctx.tenant_id.to_string().into()],
             )).await.expect("expire old claim");
             assert!(matches!(
-                StaticTenantLifecycleStore::claim(ctx.db, ctx.tenant_id, "claim_test", 0, self.replacement).await,
+                StaticTenantLifecycleStore::claim(
+                    ctx.db,
+                    ctx.tenant_id,
+                    "claim_test",
+                    0,
+                    self.replacement
+                )
+                .await,
                 Err(StaticTenantLifecycleStoreError::OperationInProgress { .. })
             ));
             Ok(())
@@ -1343,25 +1364,56 @@ mod tests {
         let old = uuid::Uuid::new_v4();
         let replacement = uuid::Uuid::new_v4();
         let calls = std::sync::Arc::new(AtomicUsize::new(0));
-        let registry = ModuleRegistry::new().register(ReclaimDuringHook { calls: calls.clone(), replacement });
+        let registry = ModuleRegistry::new().register(ReclaimDuringHook {
+            calls: calls.clone(),
+            replacement,
+        });
         let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).unwrap();
         let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
-        StaticTenantLifecycleStore::claim(&database, tenant, "claim_test", 0, old).await.unwrap();
+        StaticTenantLifecycleStore::claim(&database, tenant, "claim_test", 0, old)
+            .await
+            .unwrap();
 
         // A hook that outlives its lease cannot be reported successful or
         // have its fence stolen by another worker.
-        assert!(matches!(dispatch_lifecycle_with_claim_heartbeat(
-            &database, &dispatcher, tenant, "claim_test", &serde_json::json!({}),
-            ModuleLifecycleHookPhase::PreEnable, 0, old,
-        ).await, Err(ClaimHeartbeatDispatchError::ClaimLost { .. })));
+        assert!(matches!(
+            dispatch_lifecycle_with_claim_heartbeat(
+                &database,
+                &dispatcher,
+                tenant,
+                "claim_test",
+                &serde_json::json!({}),
+                ModuleLifecycleHookPhase::PreEnable,
+                0,
+                old,
+            )
+            .await,
+            Err(ClaimHeartbeatDispatchError::ClaimLost { .. })
+        ));
         assert_eq!(calls.load(Ordering::SeqCst), 1);
-        assert_eq!(StaticTenantLifecycleStore::snapshot(&database, tenant, "claim_test").await.unwrap().active_idempotency_key, Some(old));
+        assert_eq!(
+            StaticTenantLifecycleStore::snapshot(&database, tenant, "claim_test")
+                .await
+                .unwrap()
+                .active_idempotency_key,
+            Some(old)
+        );
 
         // A stale holder must not start another hook at all.
-        assert!(matches!(dispatch_lifecycle_with_claim_heartbeat(
-            &database, &dispatcher, tenant, "claim_test", &serde_json::json!({}),
-            ModuleLifecycleHookPhase::PreEnable, 0, old,
-        ).await, Err(ClaimHeartbeatDispatchError::ClaimLost { .. })));
+        assert!(matches!(
+            dispatch_lifecycle_with_claim_heartbeat(
+                &database,
+                &dispatcher,
+                tenant,
+                "claim_test",
+                &serde_json::json!({}),
+                ModuleLifecycleHookPhase::PreEnable,
+                0,
+                old,
+            )
+            .await,
+            Err(ClaimHeartbeatDispatchError::ClaimLost { .. })
+        ));
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
@@ -1781,33 +1833,77 @@ mod tests {
         let key = uuid::Uuid::new_v4();
         let definition = ModuleDefinition::from_static_registry_module(&OptionalModule);
         crate::lifecycle_transition_fence::claim(&db, tenant, "optional_test", &definition, 0, key)
-            .await.unwrap();
+            .await
+            .unwrap();
         let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
         crate::installation::acquire_artifact_activation_lock(
-            &tx, &crate::ModuleInstallationScope::Platform, "optional_test",
-        ).await.unwrap();
-        assert!(crate::lifecycle_transition_fence::has_journal_claim(
-            &tx, &crate::ModuleInstallationScope::Platform, "optional_test",
-        ).await.unwrap());
-        assert!(!crate::lifecycle_transition_fence::has_journal_claim(
-            &tx, &crate::ModuleInstallationScope::Tenant { tenant_id: other }, "optional_test",
-        ).await.unwrap());
+            &tx,
+            &crate::ModuleInstallationScope::Platform,
+            "optional_test",
+        )
+        .await
+        .unwrap();
+        assert!(
+            crate::lifecycle_transition_fence::has_journal_claim(
+                &tx,
+                &crate::ModuleInstallationScope::Platform,
+                "optional_test",
+            )
+            .await
+            .unwrap()
+        );
+        assert!(
+            !crate::lifecycle_transition_fence::has_journal_claim(
+                &tx,
+                &crate::ModuleInstallationScope::Tenant { tenant_id: other },
+                "optional_test",
+            )
+            .await
+            .unwrap()
+        );
         tx.rollback().await.unwrap();
-        StaticTenantLifecycleStore::release(&db, tenant, "optional_test", key).await.unwrap();
+        StaticTenantLifecycleStore::release(&db, tenant, "optional_test", key)
+            .await
+            .unwrap();
         let now = chrono::Utc::now();
-        crate::TransitionCheckpointStore::save_checkpoint(&db, &crate::ModuleTransitionCheckpoint {
-            operation_id: uuid::Uuid::new_v4(), revision: 1, module_slug: "optional_test".into(),
-            tenant_id: None, predecessor_digest: None, candidate_digest: "candidate".into(),
-            state: crate::ModuleTransitionState::Fenced,
-            security_epoch: crate::GlobalSecurityEpoch::INITIAL,
-            fences: crate::ConflictFenceSet::new(vec![]), recovery_attempt_count: 0,
-            created_at: now, updated_at: now,
-        }).await.unwrap();
-        assert!(matches!(crate::lifecycle_transition_fence::claim(
-            &db, tenant, "optional_test", &definition, 0, uuid::Uuid::new_v4(),
-        ).await, Err(crate::lifecycle_transition_fence::LifecycleAdmissionError::TransitionInProgress)));
-        assert!(StaticTenantLifecycleStore::snapshot(&db, tenant, "optional_test")
-            .await.unwrap().active_idempotency_key.is_none());
+        crate::TransitionCheckpointStore::save_checkpoint(
+            &db,
+            &crate::ModuleTransitionCheckpoint {
+                operation_id: uuid::Uuid::new_v4(),
+                revision: 1,
+                module_slug: "optional_test".into(),
+                tenant_id: None,
+                predecessor_digest: None,
+                candidate_digest: "candidate".into(),
+                state: crate::ModuleTransitionState::Fenced,
+                security_epoch: crate::GlobalSecurityEpoch::INITIAL,
+                fences: crate::ConflictFenceSet::new(vec![]),
+                recovery_attempt_count: 0,
+                created_at: now,
+                updated_at: now,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            crate::lifecycle_transition_fence::claim(
+                &db,
+                tenant,
+                "optional_test",
+                &definition,
+                0,
+                uuid::Uuid::new_v4(),
+            )
+            .await,
+            Err(crate::lifecycle_transition_fence::LifecycleAdmissionError::TransitionInProgress)
+        ));
+        assert!(
+            StaticTenantLifecycleStore::snapshot(&db, tenant, "optional_test")
+                .await
+                .unwrap()
+                .active_idempotency_key
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -1906,13 +2002,26 @@ mod tests {
             static_settings_schema: None,
         };
         db.execute_unprepared("CREATE TRIGGER expire_claim_at_completion AFTER UPDATE OF status ON module_operations WHEN OLD.status = 'committed_hook_pending' AND NEW.status = 'committed' BEGIN UPDATE module_static_tenant_lifecycle SET active_claimed_at = '2000-01-01T00:00:00Z' WHERE module_slug = 'optional_test'; END").await.unwrap();
-        assert!(matches!(execute_module_toggle(&db, &dispatcher, None, request).await,
-            Err(ModuleLifecycleExecutionError::ClaimLost { .. })));
-        let row = db.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
-            "SELECT status FROM module_operations WHERE idempotency_key = ?1", vec![key.into()],
-        )).await.unwrap().unwrap();
-        assert_eq!(row.try_get::<String>("", "status").unwrap(), "committed_hook_pending");
-        let snapshot = StaticTenantLifecycleStore::snapshot(&db, tenant_id, "optional_test").await.unwrap();
+        assert!(matches!(
+            execute_module_toggle(&db, &dispatcher, None, request).await,
+            Err(ModuleLifecycleExecutionError::ClaimLost { .. })
+        ));
+        let row = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT status FROM module_operations WHERE idempotency_key = ?1",
+                vec![key.into()],
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            row.try_get::<String>("", "status").unwrap(),
+            "committed_hook_pending"
+        );
+        let snapshot = StaticTenantLifecycleStore::snapshot(&db, tenant_id, "optional_test")
+            .await
+            .unwrap();
         assert_eq!(snapshot.revision, 1);
         assert_eq!(snapshot.active_idempotency_key, Some(key));
     }
@@ -1997,68 +2106,120 @@ mod tests {
                 .unwrap()
                 .remove(0);
         let plan = crate::recovery::module_operation_recovery_plan(&db, original.id)
-            .await.unwrap();
+            .await
+            .unwrap();
         assert!(!plan.retryable && plan.hook_settings_digest_recorded);
-        assert_eq!(plan.recommended_action, crate::ModuleOperationRecoveryAction::None);
-        assert_eq!(StaticTenantLifecycleStore::snapshot(&db, tenant_id, "optional_test").await.unwrap().active_idempotency_key, Some(toggle_key));
+        assert_eq!(
+            plan.recommended_action,
+            crate::ModuleOperationRecoveryAction::None
+        );
+        assert_eq!(
+            StaticTenantLifecycleStore::snapshot(&db, tenant_id, "optional_test")
+                .await
+                .unwrap()
+                .active_idempotency_key,
+            Some(toggle_key)
+        );
         let collision = crate::recovery::ModulePostHookRetryRequest {
-            operation_id: original.id, context: command_context(tenant_id, toggle_key), expected_revision: 0,
+            operation_id: original.id,
+            context: command_context(tenant_id, toggle_key),
+            expected_revision: 0,
         };
-        assert!(matches!(crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, collision).await,
-            Err(crate::ModuleOperationRecoveryError::IdempotencyConflict)));
+        assert!(matches!(
+            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, collision).await,
+            Err(crate::ModuleOperationRecoveryError::IdempotencyConflict)
+        ));
 
         let retry_key = uuid::Uuid::new_v4();
         let retry = crate::recovery::ModulePostHookRetryRequest {
-            operation_id: original.id, context: command_context(tenant_id, retry_key), expected_revision: 1,
+            operation_id: original.id,
+            context: command_context(tenant_id, retry_key),
+            expected_revision: 1,
         };
         // Both a retained claim and a legacy/missing claim must fail closed.
         // This fixture-only release is not a production reconciliation.
         for remove_claim in [false, true] {
             if remove_claim {
-                StaticTenantLifecycleStore::release(&db, tenant_id, "optional_test", toggle_key).await.unwrap();
+                StaticTenantLifecycleStore::release(&db, tenant_id, "optional_test", toggle_key)
+                    .await
+                    .unwrap();
             }
-            assert!(matches!(crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone()).await,
+            assert!(
+                matches!(crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone()).await,
                 Err(crate::ModuleOperationRecoveryError::NotRetryable(reason))
-                    if reason == crate::recovery::RECOVERY_EVIDENCE_UNAVAILABLE));
+                    if reason == crate::recovery::RECOVERY_EVIDENCE_UNAVAILABLE)
+            );
             assert_eq!(operation_count(&db, tenant_id, retry_key).await, 0);
         }
         // A caller cannot bypass the recovery service through the public
         // executor with a new recovery_source_id either.
         let compensation_key = uuid::Uuid::new_v4();
         let compensation = ModuleLifecycleToggleRequest {
-            tenant_id, module_slug: "optional_test".into(), enabled: false,
-            context: command_context(tenant_id, compensation_key), expected_revision: 1,
-            recovery_source_id: Some(original.id), effective_enabled_modules: HashSet::new(),
-            ordering_enabled_modules: HashSet::new(), previous_override_enabled: Some(true),
-            requested_override_enabled: None, current_settings: settings,
-            policy_transition: None, static_settings_schema: None,
+            tenant_id,
+            module_slug: "optional_test".into(),
+            enabled: false,
+            context: command_context(tenant_id, compensation_key),
+            expected_revision: 1,
+            recovery_source_id: Some(original.id),
+            effective_enabled_modules: HashSet::new(),
+            ordering_enabled_modules: HashSet::new(),
+            previous_override_enabled: Some(true),
+            requested_override_enabled: None,
+            current_settings: settings,
+            policy_transition: None,
+            static_settings_schema: None,
         };
-        assert!(matches!(execute_module_toggle(&db, &dispatcher, None, compensation).await,
+        assert!(
+            matches!(execute_module_toggle(&db, &dispatcher, None, compensation).await,
             Err(ModuleLifecycleExecutionError::PolicyTransition(reason))
-                if reason == crate::recovery::RECOVERY_EVIDENCE_UNAVAILABLE));
+                if reason == crate::recovery::RECOVERY_EVIDENCE_UNAVAILABLE)
+        );
         assert_eq!(operation_count(&db, tenant_id, compensation_key).await, 0);
         assert_eq!(inputs.lock().unwrap().len(), 1);
-        assert_eq!(ModuleOperationJournal::find(&db, original.id).await.unwrap().unwrap().status,
-            ModuleOperationStatus::CommittedHookFailed);
+        assert_eq!(
+            ModuleOperationJournal::find(&db, original.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            ModuleOperationStatus::CommittedHookFailed
+        );
 
         // A committed historical retry remains a read-only idempotent replay,
         // even though creating a new retry is disabled.
         let replay_key = uuid::Uuid::new_v4();
         let replay_context = command_context(tenant_id, replay_key);
-        let previous = ModuleOperationJournal::record(&db, ModuleOperationRequest {
-            tenant_id, module_slug: "optional_test".into(), requested_enabled: true,
-            previous_effective_enabled: plan.previous_effective_enabled,
-            requested_by: Some(replay_context.actor_id.to_string()),
-            trace_id: Some(replay_context.trace_id.clone()),
-            correlation_id: replay_context.correlation_id.to_string(),
-            idempotency_key: Some(replay_key), recovery_source_id: Some(original.id),
-            expected_revision: Some(1),
-        }).await.unwrap();
-        ModuleOperationJournal::mark_committed(&db, previous.id).await.unwrap();
-        let replayed = crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher,
+        let previous = ModuleOperationJournal::record(
+            &db,
+            ModuleOperationRequest {
+                tenant_id,
+                module_slug: "optional_test".into(),
+                requested_enabled: true,
+                previous_effective_enabled: plan.previous_effective_enabled,
+                requested_by: Some(replay_context.actor_id.to_string()),
+                trace_id: Some(replay_context.trace_id.clone()),
+                correlation_id: replay_context.correlation_id.to_string(),
+                idempotency_key: Some(replay_key),
+                recovery_source_id: Some(original.id),
+                expected_revision: Some(1),
+            },
+        )
+        .await
+        .unwrap();
+        ModuleOperationJournal::mark_committed(&db, previous.id)
+            .await
+            .unwrap();
+        let replayed = crate::recovery::retry_failed_post_hook_operation(
+            &db,
+            &dispatcher,
             crate::recovery::ModulePostHookRetryRequest {
-                operation_id: original.id, context: replay_context, expected_revision: 1,
-            }).await.unwrap();
+                operation_id: original.id,
+                context: replay_context,
+                expected_revision: 1,
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(replayed.id, previous.id);
         assert_eq!(inputs.lock().unwrap().len(), 1);
     }
@@ -2167,22 +2328,40 @@ mod tests {
                 .await
                 .unwrap()
                 .remove(0);
-        assert_eq!(StaticTenantLifecycleStore::snapshot(&db, tenant_id, "optional_test").await.unwrap().active_idempotency_key, Some(toggle_key));
+        assert_eq!(
+            StaticTenantLifecycleStore::snapshot(&db, tenant_id, "optional_test")
+                .await
+                .unwrap()
+                .active_idempotency_key,
+            Some(toggle_key)
+        );
         let retry = crate::recovery::ModulePostHookRetryRequest {
-            operation_id: original.id, context: command_context(tenant_id, uuid::Uuid::new_v4()), expected_revision: 1,
+            operation_id: original.id,
+            context: command_context(tenant_id, uuid::Uuid::new_v4()),
+            expected_revision: 1,
         };
         for remove_claim in [false, true] {
             if remove_claim {
                 // Fixture only: absence of a claim is not evidence of quiescence.
-                StaticTenantLifecycleStore::release(&db, tenant_id, "optional_test", toggle_key).await.unwrap();
+                StaticTenantLifecycleStore::release(&db, tenant_id, "optional_test", toggle_key)
+                    .await
+                    .unwrap();
             }
-            assert!(matches!(crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone()).await,
+            assert!(
+                matches!(crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone()).await,
                 Err(crate::ModuleOperationRecoveryError::NotRetryable(reason))
-                    if reason == crate::recovery::RECOVERY_EVIDENCE_UNAVAILABLE));
+                    if reason == crate::recovery::RECOVERY_EVIDENCE_UNAVAILABLE)
+            );
         }
         assert_eq!(calls.load(Ordering::SeqCst), 1);
-        assert_eq!(ModuleOperationJournal::find(&db, original.id).await.unwrap().unwrap().status,
-            ModuleOperationStatus::CommittedHookFailed);
+        assert_eq!(
+            ModuleOperationJournal::find(&db, original.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            ModuleOperationStatus::CommittedHookFailed
+        );
     }
 
     #[tokio::test]

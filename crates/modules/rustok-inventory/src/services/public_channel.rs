@@ -4,11 +4,11 @@ use rustok_commerce_foundation::{
     entities::{product, product_variant, stock_location},
     error::{CommerceError, CommerceResult},
 };
+use sea_orm::entity::prelude::DateTimeWithTimeZone;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, FromQueryResult, QueryFilter,
     QueryOrder, QuerySelect,
 };
-use sea_orm::entity::prelude::DateTimeWithTimeZone;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -119,9 +119,7 @@ pub(super) struct TenantLocationProjection {
 }
 
 fn tenant_location_identity_error() -> sea_orm::DbErr {
-    sea_orm::DbErr::Custom(
-        "Inventory level references a missing or foreign tenant location".into(),
-    )
+    sea_orm::DbErr::Custom("Inventory level references a missing or foreign tenant location".into())
 }
 
 fn validate_tenant_location_rows(
@@ -217,8 +215,13 @@ pub async fn check_variant_availability_for_public_channel(
     // The projection input is retained for source compatibility, not authority.
     // Its policy can be stale or supplied by an untrusted caller.
     check_current_variant_availability_for_public_channel(
-        db, tenant_id, variant.variant_id, requested_quantity, public_channel_slug,
-    ).await
+        db,
+        tenant_id,
+        variant.variant_id,
+        requested_quantity,
+        public_channel_slug,
+    )
+    .await
 }
 
 pub(super) async fn check_current_variant_availability_for_public_channel(
@@ -417,8 +420,8 @@ mod tests {
         public_channel_inventory_projection_map, validate_tenant_location_rows,
     };
 
-    use std::collections::{BTreeSet, HashMap};
     use chrono::Utc;
+    use std::collections::{BTreeSet, HashMap};
     use uuid::Uuid;
 
     #[test]
@@ -444,7 +447,11 @@ mod tests {
         };
         let loaded = validate_tenant_location_rows(tenant_id, &expected, vec![archived])
             .expect("an archived same-tenant location remains valid admin identity");
-        assert!(loaded.get(&location_id).is_some_and(|location| location.deleted_at.is_some()));
+        assert!(
+            loaded
+                .get(&location_id)
+                .is_some_and(|location| location.deleted_at.is_some())
+        );
     }
 
     #[test]
@@ -529,17 +536,34 @@ mod tests {
             "channel_visibility": { "allowed_channel_slugs": ["web"] }
         });
 
-        for metadata in [&invalid_values, &noncanonical_values, &wrong_shape, &null_values] {
-            assert!(!is_metadata_visible_for_public_channel(metadata, Some("web")));
+        for metadata in [
+            &invalid_values,
+            &noncanonical_values,
+            &wrong_shape,
+            &null_values,
+        ] {
+            assert!(!is_metadata_visible_for_public_channel(
+                metadata,
+                Some("web")
+            ));
             assert!(!is_metadata_visible_for_public_channel(metadata, None));
         }
-        assert!(is_metadata_visible_for_public_channel(&valid_values, Some("web")));
-        assert!(!is_metadata_visible_for_public_channel(&valid_values, Some("mobile")));
+        assert!(is_metadata_visible_for_public_channel(
+            &valid_values,
+            Some("web")
+        ));
+        assert!(!is_metadata_visible_for_public_channel(
+            &valid_values,
+            Some("mobile")
+        ));
         assert!(is_metadata_visible_for_public_channel(
             &serde_json::json!({ "channel_visibility": { "allowed_channel_slugs": [] } }),
             None,
         ));
-        assert!(is_metadata_visible_for_public_channel(&serde_json::json!({}), Some("web")));
+        assert!(is_metadata_visible_for_public_channel(
+            &serde_json::json!({}),
+            Some("web")
+        ));
     }
 
     #[tokio::test]
@@ -575,7 +599,11 @@ mod tests {
         db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "INSERT INTO product_variants (id, tenant_id, product_id) VALUES (?, ?, ?)",
-            [foreign_variant_id.into(), tenant_id.into(), foreign_product_id.into()],
+            [
+                foreign_variant_id.into(),
+                tenant_id.into(),
+                foreign_product_id.into(),
+            ],
         ))
         .await
         .expect("insert tenant Variant with foreign parent");
@@ -588,7 +616,11 @@ mod tests {
         )
         .await
         .expect_err("foreign Variant must fail before tenantless Inventory lookup");
-        assert!(error.to_string().contains("not all owned by the requested tenant"));
+        assert!(
+            error
+                .to_string()
+                .contains("not all owned by the requested tenant")
+        );
 
         let unscoped_error =
             crate::services::bootstrap::BootstrapService::load_available_quantities(
@@ -598,7 +630,11 @@ mod tests {
             )
             .await
             .expect_err("admin projection must prove the Variant parent tenant too");
-        assert!(unscoped_error.to_string().contains("not all owned by the requested tenant"));
+        assert!(
+            unscoped_error
+                .to_string()
+                .contains("not all owned by the requested tenant")
+        );
     }
 
     #[test]

@@ -143,10 +143,7 @@ impl IdGenerator for UniqueIdGenerator {
         let counter = base36(u128::from(counter));
         let salt = base36(u128::from(self.salt));
         let fixed_length = prefix.len() + timestamp.len() + counter.len() + salt.len() + 4;
-        let hint = normalize_hint(
-            hint,
-            MAX_GENERATED_ID_LENGTH.saturating_sub(fixed_length),
-        );
+        let hint = normalize_hint(hint, MAX_GENERATED_ID_LENGTH.saturating_sub(fixed_length));
 
         format!("{prefix}-{hint}-{timestamp}-{counter}-{salt}")
     }
@@ -180,10 +177,7 @@ impl IdGenerator for SequentialIdGenerator {
         let counter = self.next.to_string();
         self.next = self.next.wrapping_add(1);
         let fixed_length = prefix.len() + counter.len() + 2;
-        let hint = normalize_hint(
-            hint,
-            MAX_GENERATED_ID_LENGTH.saturating_sub(fixed_length),
-        );
+        let hint = normalize_hint(hint, MAX_GENERATED_ID_LENGTH.saturating_sub(fixed_length));
         format!("{prefix}-{hint}-{counter}")
     }
 }
@@ -231,27 +225,24 @@ mod tests {
 
         for id in [unique.next_id(&long), sequential.next_id(&long)] {
             assert!(id.len() <= MAX_GENERATED_ID_LENGTH);
-            validate_identifier(&id).unwrap_or_else(|error| {
-                panic!("generated id {id} must be valid: {error}")
-            });
+            validate_identifier(&id)
+                .unwrap_or_else(|error| panic!("generated id {id} must be valid: {error}"));
         }
     }
 
     #[test]
     fn deserialized_generators_normalize_untrusted_prefixes_before_emitting_ids() {
-        let mut unique: UniqueIdGenerator = serde_json::from_str(
-            r#"{"prefix":" !!! invalid prefix !!! ","salt":1,"next":1}"#,
-        )
-        .expect("unique generator");
+        let mut unique: UniqueIdGenerator =
+            serde_json::from_str(r#"{"prefix":" !!! invalid prefix !!! ","salt":1,"next":1}"#)
+                .expect("unique generator");
         let mut sequential: SequentialIdGenerator =
             serde_json::from_str(r#"{"prefix":" !!! invalid prefix !!! ","next":1}"#)
                 .expect("sequential generator");
 
         for id in [unique.next_id(""), sequential.next_id("")] {
             assert!(id.len() <= MAX_GENERATED_ID_LENGTH);
-            validate_identifier(&id).unwrap_or_else(|error| {
-                panic!("generated id {id} must be valid: {error}")
-            });
+            validate_identifier(&id)
+                .unwrap_or_else(|error| panic!("generated id {id} must be valid: {error}"));
         }
     }
 }

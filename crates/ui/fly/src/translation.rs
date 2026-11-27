@@ -1,3 +1,4 @@
+use crate::runtime_locale::{duplicate_locale_key, invalid_locale_key};
 use crate::{
     FlyError, FlyResult, LOCALIZED_FALLBACK_FIELD, LOCALIZED_VALUES_FIELD, ProjectDocument,
     ProjectLocalePolicy, RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD,
@@ -7,7 +8,6 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
-use crate::runtime_locale::{duplicate_locale_key, invalid_locale_key};
 
 pub const FLY_TRANSLATIONS_FIELD: &str = "flyTranslations";
 pub const RUNTIME_TRANSLATIONS_CONTEXT_FIELD: &str = "translations";
@@ -55,7 +55,10 @@ impl TranslationCatalog {
     }
 
     pub fn get(&self, translation_id: &str) -> Option<&TranslationEntry> {
-        let mut matches = self.entries.iter().filter(|entry| entry.id == translation_id);
+        let mut matches = self
+            .entries
+            .iter()
+            .filter(|entry| entry.id == translation_id);
         let entry = matches.next()?;
         if matches.next().is_some() {
             return None;
@@ -417,7 +420,10 @@ fn write_catalog(document: &mut ProjectDocument, catalog: TranslationCatalog) ->
         .collect::<FlyResult<Vec<_>>>()?;
     entries.extend(catalog.unknown_entries);
     if entries.is_empty() {
-        document.project_mut().extensions.remove(FLY_TRANSLATIONS_FIELD);
+        document
+            .project_mut()
+            .extensions
+            .remove(FLY_TRANSLATIONS_FIELD);
     } else {
         document
             .project_mut()
@@ -529,13 +535,15 @@ mod tests {
         }))
         .unwrap();
         let before_hash = document.hash();
-        assert!(apply_translation_command(
-            &mut document,
-            &TranslationCommand::Upsert {
-                entry: Box::new(entry),
-            },
-        )
-        .is_err());
+        assert!(
+            apply_translation_command(
+                &mut document,
+                &TranslationCommand::Upsert {
+                    entry: Box::new(entry),
+                },
+            )
+            .is_err()
+        );
         assert_eq!(document.hash(), before_hash);
 
         document.project_mut().extensions.insert(
@@ -545,9 +553,11 @@ mod tests {
                 { "id": " hero ", "values": { "en": "Imported" } }
             ]),
         );
-        assert!(validate_translation_definitions(&document).iter().any(|diagnostic| {
-            diagnostic.code == "translation_id_invalid"
-        }));
+        assert!(
+            validate_translation_definitions(&document)
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "translation_id_invalid" })
+        );
         apply_translation_command(
             &mut document,
             &TranslationCommand::Remove {
@@ -565,10 +575,10 @@ mod tests {
     fn malformed_catalog_is_diagnosed_and_never_overwritten_by_commands() {
         let mut document = document();
         let malformed = json!({ "future": { "payload": true } });
-        document.project_mut().extensions.insert(
-            FLY_TRANSLATIONS_FIELD.to_string(),
-            malformed.clone(),
-        );
+        document
+            .project_mut()
+            .extensions
+            .insert(FLY_TRANSLATIONS_FIELD.to_string(), malformed.clone());
         let before_hash = document.hash();
         let entry: TranslationEntry = serde_json::from_value(json!({
             "id": "hero",
@@ -629,7 +639,12 @@ mod tests {
         );
         apply_translation_command(&mut document, &TranslationCommand::ClearLocalePolicy)
             .expect("clear locale policy");
-        assert!(!document.project().extensions.contains_key(FLY_LOCALES_FIELD));
+        assert!(
+            !document
+                .project()
+                .extensions
+                .contains_key(FLY_LOCALES_FIELD)
+        );
     }
 
     #[test]
@@ -670,18 +685,25 @@ mod tests {
         });
         let entry: TranslationEntry = serde_json::from_value(raw.clone()).unwrap();
         let before = document.hash();
-        assert!(apply_translation_command(
-            &mut document,
-            &TranslationCommand::Upsert { entry: Box::new(entry) },
-        ).is_err());
-        assert_eq!(document.hash(), before);
-        document.project_mut().extensions.insert(
-            FLY_TRANSLATIONS_FIELD.to_string(),
-            json!([raw]),
+        assert!(
+            apply_translation_command(
+                &mut document,
+                &TranslationCommand::Upsert {
+                    entry: Box::new(entry)
+                },
+            )
+            .is_err()
         );
-        assert!(validate_translation_definitions(&document).iter().any(|diagnostic| {
-            diagnostic.code == "translation_locale_ambiguous"
-        }));
+        assert_eq!(document.hash(), before);
+        document
+            .project_mut()
+            .extensions
+            .insert(FLY_TRANSLATIONS_FIELD.to_string(), json!([raw]));
+        assert!(
+            validate_translation_definitions(&document)
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "translation_locale_ambiguous" })
+        );
         let result = materialize_project_translations(
             &document,
             &json!({ "$locale": "ru-RU", "translations": { "hero": "Stale", "other": "Keep" } }),
@@ -701,9 +723,10 @@ mod tests {
                 { "id": "hero", "values": { "en": second } },
                 { "id": "other", "values": { "en": "Keep" } }
             ]);
-            document.project_mut().extensions.insert(
-                FLY_TRANSLATIONS_FIELD.to_string(), raw.clone(),
-            );
+            document
+                .project_mut()
+                .extensions
+                .insert(FLY_TRANSLATIONS_FIELD.to_string(), raw.clone());
             let catalog = TranslationCatalog::from_document(&document);
             assert!(catalog.get("hero").is_none());
             assert!(catalog.get("other").is_some());
@@ -726,19 +749,30 @@ mod tests {
                 fallback_locale: None,
                 extensions: Map::new(),
             };
-            assert!(apply_translation_command(
-                &mut document,
-                &TranslationCommand::Upsert { entry: Box::new(replacement.clone()) },
-            ).is_err());
+            assert!(
+                apply_translation_command(
+                    &mut document,
+                    &TranslationCommand::Upsert {
+                        entry: Box::new(replacement.clone())
+                    },
+                )
+                .is_err()
+            );
             assert_eq!(document.project().extensions[FLY_TRANSLATIONS_FIELD], raw);
             apply_translation_command(
                 &mut document,
-                &TranslationCommand::Remove { translation_id: "hero".to_string() },
-            ).expect("remove ambiguous identity");
+                &TranslationCommand::Remove {
+                    translation_id: "hero".to_string(),
+                },
+            )
+            .expect("remove ambiguous identity");
             apply_translation_command(
                 &mut document,
-                &TranslationCommand::Upsert { entry: Box::new(replacement) },
-            ).expect("recreate unique identity");
+                &TranslationCommand::Upsert {
+                    entry: Box::new(replacement),
+                },
+            )
+            .expect("recreate unique identity");
             let result = materialize_project_translations(&document, &json!({ "$locale": "en" }));
             assert_eq!(result.context["translations"]["hero"], "Replacement");
             assert_eq!(result.resolved_translations, 2);

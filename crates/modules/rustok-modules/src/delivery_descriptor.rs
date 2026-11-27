@@ -76,7 +76,9 @@ pub(crate) async fn load_admitted_descriptor<C: ConnectionTrait>(
     // A missing admission or its identity is corruption, not a normal
     // inactive status, and must not become a terminal queue decision.
     let status: Option<String> = row.try_get("", "admission_status").map_err(storage_error)?;
-    let admission_digest: Option<String> = row.try_get("", "admission_payload_digest").map_err(storage_error)?;
+    let admission_digest: Option<String> = row
+        .try_get("", "admission_payload_digest")
+        .map_err(storage_error)?;
     let status = status.ok_or(LoadAdmittedDescriptorError::InvalidIdentity)?;
     if admission_digest.is_none() {
         return Err(LoadAdmittedDescriptorError::InvalidIdentity);

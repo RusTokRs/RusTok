@@ -107,7 +107,10 @@ fn document_policy(
 ) -> ForumOperationPolicy {
     let mut policy = ForumOperationPolicy::default();
     for operation in super::selected_operations(document, operation_name) {
-        policy.merge(selection_policy(&operation.node.selection_set.node, document));
+        policy.merge(selection_policy(
+            &operation.node.selection_set.node,
+            document,
+        ));
     }
     policy
 }
@@ -246,16 +249,14 @@ mod tests {
         assert!(policy(r#"mutation { createForumTopicWithQuotes { id } }"#).human_only);
         assert!(policy(r#"mutation { createForumReplyWithQuotes { id } }"#).human_only);
 
-        let update_topic =
-            policy(r#"mutation { updateForumTopicWithQuotes { id } }"#);
+        let update_topic = policy(r#"mutation { updateForumTopicWithQuotes { id } }"#);
         assert!(update_topic.topic_moderation);
         assert!(!update_topic.human_only);
 
         let set_topic_quotes = policy(r#"mutation { setForumTopicQuotes { id } }"#);
         assert!(set_topic_quotes.topic_moderation);
 
-        let update_reply =
-            policy(r#"mutation { updateForumReplyWithQuotes { id } }"#);
+        let update_reply = policy(r#"mutation { updateForumReplyWithQuotes { id } }"#);
         assert!(update_reply.reply_moderation);
         assert!(!update_reply.human_only);
 

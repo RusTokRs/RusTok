@@ -345,7 +345,10 @@ impl InProcessPaymentAdminRefundCommandPort {
             ));
         }
 
-        let provider_result = self.provider_registry.execute_refund(provider_id, request).await;
+        let provider_result = self
+            .provider_registry
+            .execute_refund(provider_id, request)
+            .await;
         let provider_result = match provider_result {
             Ok(result) => result,
             Err(error) => {

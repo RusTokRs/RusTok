@@ -313,7 +313,8 @@ mod tests {
 
     #[tokio::test]
     async fn error_into_response_maps_core_database_record_not_found_to_404() {
-        let db_err = sea_orm::DbErr::RecordNotFound("private core lookup in internal_records".into());
+        let db_err =
+            sea_orm::DbErr::RecordNotFound("private core lookup in internal_records".into());
         let err = Error::Core(rustok_core::Error::Database(db_err));
         let (status, body) = parse_error_response(err.into_response()).await;
         assert_eq!(status, StatusCode::NOT_FOUND);

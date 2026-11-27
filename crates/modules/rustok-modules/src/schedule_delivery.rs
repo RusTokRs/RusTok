@@ -350,24 +350,28 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
                 .try_get("", "schedule_digest")
                 .map_err(storage_error)?;
             let scheduled_for = datetime_from_row(&candidate, "scheduled_for", backend)?;
-            let descriptor =
-                match load_admitted_descriptor(&transaction, backend, tenant_id, installation_id)
-                    .await
-                {
-                    Ok(descriptor) => descriptor,
-                    Err(ArtifactScheduleDeliveryError::InstallationUnavailable) => {
-                        cancel_unavailable(&transaction, backend, tenant_id, delivery_id).await?;
-                        continue;
-                    }
-                    Err(error) => {
-                        transaction.rollback().await.map_err(|rollback_error| {
+            let descriptor = match load_admitted_descriptor(
+                &transaction,
+                backend,
+                tenant_id,
+                installation_id,
+            )
+            .await
+            {
+                Ok(descriptor) => descriptor,
+                Err(ArtifactScheduleDeliveryError::InstallationUnavailable) => {
+                    cancel_unavailable(&transaction, backend, tenant_id, delivery_id).await?;
+                    continue;
+                }
+                Err(error) => {
+                    transaction.rollback().await.map_err(|rollback_error| {
                             storage_error(format!(
                                 "{error}; additionally, rolling back the schedule claim failed: {rollback_error}"
                             ))
                         })?;
-                        return Err(error);
-                    }
-                };
+                    return Err(error);
+                }
+            };
             let schedule_digest = match schedule_digest_for_binding(&descriptor, &binding_id) {
                 Ok(digest) => digest,
                 Err(ArtifactScheduleDeliveryError::BindingUnavailable) => {
@@ -511,9 +515,15 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         if !crate::delivery_lease::lock_for_completion(
-            &transaction, backend, crate::delivery_lease::DeliveryQueue::Schedule,
-            tenant_id, delivery_id,
-        ).await.map_err(storage_error)? {
+            &transaction,
+            backend,
+            crate::delivery_lease::DeliveryQueue::Schedule,
+            tenant_id,
+            delivery_id,
+        )
+        .await
+        .map_err(storage_error)?
+        {
             return Err(ArtifactScheduleDeliveryError::ClaimLost);
         }
         let affected = if held {
@@ -723,21 +733,32 @@ impl ModuleWorkSource for ArtifactScheduleDeliveryWorkAdapter {
         tenant_ids.sort_unstable();
         tenant_ids.dedup();
         if !tenant_ids.is_empty() {
-            let start = self.tenant_cursor.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % tenant_ids.len();
+            let start = self
+                .tenant_cursor
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                % tenant_ids.len();
             tenant_ids.rotate_left(start);
         }
         let mut first_error = None;
         for tenant_id in tenant_ids {
-            if let Err(error) = self.materializer.materialize_tenant(tenant_id, self.queue.infrastructure.now()).await {
+            if let Err(error) = self
+                .materializer
+                .materialize_tenant(tenant_id, self.queue.infrastructure.now())
+                .await
+            {
                 tracing::error!(%tenant_id, %error, "artifact schedule materialization failed");
-                if first_error.is_none() { first_error = Some(error.to_string()); }
+                if first_error.is_none() {
+                    first_error = Some(error.to_string());
+                }
                 continue;
             }
             let item = match self.queue.claim_next(tenant_id, &self.worker_id).await {
                 Ok(item) => item,
                 Err(error) => {
                     tracing::error!(%tenant_id, %error, "artifact schedule delivery claim failed");
-                    if first_error.is_none() { first_error = Some(error.to_string()); }
+                    if first_error.is_none() {
+                        first_error = Some(error.to_string());
+                    }
                     continue;
                 }
             };
@@ -769,8 +790,10 @@ impl ModuleWorkSource for ArtifactScheduleDeliveryWorkAdapter {
             ));
         }
         let payload = Self::payload(item)?;
-        if payload.delivery_id != item.id || payload.tenant_id != item.tenant_id
-            || payload.claim_token.to_string() != item.lease_token {
+        if payload.delivery_id != item.id
+            || payload.tenant_id != item.tenant_id
+            || payload.claim_token.to_string() != item.lease_token
+        {
             return Err(ModuleWorkError::Source(
                 "artifact schedule completion identity does not match its payload".to_string(),
             ));
@@ -832,8 +855,10 @@ impl ModuleWorkHandler for ArtifactScheduleDeliveryWorkAdapter {
             ));
         }
         let payload = Self::payload(&item)?;
-        if payload.delivery_id != item.id || payload.tenant_id != item.tenant_id
-            || payload.claim_token.to_string() != item.lease_token {
+        if payload.delivery_id != item.id
+            || payload.tenant_id != item.tenant_id
+            || payload.claim_token.to_string() != item.lease_token
+        {
             return Err(ModuleWorkError::Handler(
                 "artifact schedule execution identity does not match its payload".to_string(),
             ));
@@ -1171,9 +1196,18 @@ mod lease_clock_tests {
         let db = Database::connect(url).await.unwrap();
         let tx = db.begin().await.unwrap();
         tx.execute_unprepared("SELECT pg_sleep(1.2)").await.unwrap();
-        let row = tx.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres,
-            format!("SELECT {} > clock_timestamp() AS live", lease_expression(SupportedBackend::Postgres, 1)),
-            vec![1_i64.into()])).await.unwrap().unwrap();
+        let row = tx
+            .query_one_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                format!(
+                    "SELECT {} > clock_timestamp() AS live",
+                    lease_expression(SupportedBackend::Postgres, 1)
+                ),
+                vec![1_i64.into()],
+            ))
+            .await
+            .unwrap()
+            .unwrap();
         assert!(row.try_get::<bool>("", "live").unwrap());
         tx.rollback().await.unwrap();
     }

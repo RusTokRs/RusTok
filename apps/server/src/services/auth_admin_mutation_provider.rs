@@ -7,8 +7,8 @@ use rustok_auth::{
     CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,
     UpdateOAuthAppCommand, UserMutationRecord,
 };
-use rustok_core::UserRole;
 use rustok_cache::CacheService;
+use rustok_core::UserRole;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
@@ -21,7 +21,7 @@ use crate::models::{oauth_apps, oauth_consents, oauth_tokens, tenants, users};
 use crate::services::cache_runtime::ensure_cache_service;
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::oauth_app::{self, OAuthAppService};
-use crate::services::rbac_request_scope::{credential_for, permissions_for};
+use crate::services::rbac_request_scope::{bind_admin_context, credential_for_admin, permissions_for};
 use crate::services::auth_lifecycle::AuthLifecycleService;
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -164,10 +164,7 @@ pub struct ServerAuthAdminMutationProvider {
 }
 
 impl ServerAuthAdminMutationProvider {
-    pub fn new(
-        runtime_ctx: &ServerRuntimeContext,
-        auth_config: crate::auth::AuthConfig,
-    ) -> Self {
+    pub fn new(runtime_ctx: &ServerRuntimeContext, auth_config: crate::auth::AuthConfig) -> Self {
         Self {
             db: runtime_ctx.db_clone(),
             auth_config,
@@ -177,7 +174,10 @@ impl ServerAuthAdminMutationProvider {
         }
     }
 
-    pub(crate) fn with_invite_module_registry(mut self, registry: rustok_core::ModuleRegistry) -> Self {
+    pub(crate) fn with_invite_module_registry(
+        mut self,
+        registry: rustok_core::ModuleRegistry,
+    ) -> Self {
         self.invite_registry = Some(registry);
         self
     }
@@ -186,6 +186,7 @@ impl ServerAuthAdminMutationProvider {
         &self,
         context: &AuthAdminMutationContext,
     ) -> Result<Vec<Permission>, AuthAdminMutationError> {
+        credential_for_admin(context)?;
         permissions_for(&context.tenant_id, &context.actor_id).ok_or_else(|| {
             AuthAdminMutationError::Forbidden(
                 "auth administration requires a request-bound effective permission snapshot"
@@ -280,13 +281,20 @@ impl ServerAuthAdminMutationProvider {
         require_delegation_ceiling(&self.request_permissions(context)?, requested_permissions)
     }
 
-    async fn prepare_oauth_admin_transaction(&self, settings_required: bool) -> Result<sea_orm::DatabaseTransaction, AuthAdminMutationError> {
+    // Admit the credential clock and initialize policy before any owner
+    // transaction or row lock, including RBAC-owned transactions.
+    async fn prepare_admin_authority(&self, policy_required: bool) -> Result<(), AuthAdminMutationError> {
         rustok_auth::application_clock::admit_now(&self.db).await.map_err(internal_admin_error)?;
-        if settings_required {
+        if policy_required {
             crate::services::rbac_module_availability::prepare_invite_module_policy(
                 &self.db, self.invite_registry.as_ref(),
             ).await.map_err(internal_admin_error)?;
         }
+        Ok(())
+    }
+
+    async fn prepare_admin_transaction(&self, policy_required: bool) -> Result<sea_orm::DatabaseTransaction, AuthAdminMutationError> {
+        self.prepare_admin_authority(policy_required).await?;
         self.db.begin().await.map_err(internal_admin_error)
     }
 
@@ -296,8 +304,7 @@ impl ServerAuthAdminMutationProvider {
         &self, tx: &sea_orm::DatabaseTransaction, context: &AuthAdminMutationContext,
         app_id: Option<Uuid>, settings_required: bool,
     ) -> Result<LockedOAuthAdminAuthority, AuthAdminMutationError> {
-        let evidence = credential_for(&context.tenant_id, &context.actor_id)
-            .ok_or(AuthAdminMutationError::Unauthorized)?;
+        let evidence = credential_for_admin(context)?;
         if !settings_required {
             require_direct_user_context(context)?;
             if !evidence.as_ref().is_some_and(|e| e.principal_kind == AuthPrincipalKind::DirectUser) {
@@ -350,7 +357,7 @@ impl ServerAuthAdminMutationProvider {
     pub(crate) async fn commit_prepared_oauth_secret_rotation(
         &self, context: &AuthAdminMutationContext, app_id: Uuid, prepared: oauth_app::PreparedOAuthSecret,
     ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
-        let tx = self.prepare_oauth_admin_transaction(true).await?;
+        let tx = self.prepare_admin_transaction(true).await?;
         let authority = self.lock_oauth_admin_authority(&tx, context, Some(app_id), true).await?;
         let app = authority.target()?;
         let grants = app.parsed_granted_permissions().map_err(internal_admin_error)?
@@ -376,14 +383,37 @@ impl ServerAuthAdminMutationProvider {
 /// Host implementation of the RBAC owner's transaction admission port.
 /// Use the same direct credential fence as Auth/OAuth, but let RBAC own
 /// its write transaction and exact destination role locks.
+impl rustok_auth::AuthAdminCredentialResolver for ServerAuthAdminMutationProvider {
+    fn bind(
+        &self,
+        auth: rustok_auth::AdminCredentialRequest<'_>,
+        principal_kind: AuthPrincipalKind,
+        locale: Option<String>,
+    ) -> Result<AuthAdminMutationContext, AuthAdminMutationError> {
+        let context = bind_admin_context(auth.tenant_id, auth.user_id, principal_kind, locale)?;
+        use rustok_auth::CredentialAuthority;
+        let matches = match &context.credential_authority {
+            CredentialAuthority::DirectSession { session_id, .. } =>
+                auth.session_id == *session_id && auth.client_id.is_none() && auth.grant_type == "direct",
+            CredentialAuthority::DelegatedOAuth { registration, .. } =>
+                auth.client_id == Some(registration.client_id) && auth.grant_type == "authorization_code"
+                    && auth.session_id.is_nil() && auth.scopes == registration.scopes.as_slice(),
+            CredentialAuthority::ServiceOAuth { registration, .. } =>
+                auth.user_id == registration.app_id && auth.client_id == Some(registration.client_id)
+                    && auth.grant_type == "client_credentials" && auth.session_id.is_nil() && auth.scopes == registration.scopes.as_slice(),
+            CredentialAuthority::TrustedInternal => false,
+        };
+        if !matches {
+            return Err(AuthAdminMutationError::Unauthorized);
+        }
+        Ok(context)
+    }
+}
+
 #[async_trait]
 impl rustok_rbac::graphql::RbacMutationAuthority for ServerAuthAdminMutationProvider {
     async fn prepare(&self) -> Result<(), rustok_rbac::graphql::RbacGraphqlRoleWriteError> {
-        rustok_auth::application_clock::admit_now(&self.db).await.map_err(internal_admin_error)
-            .map_err(map_rbac_authority_error)?;
-        crate::services::rbac_module_availability::prepare_invite_module_policy(
-            &self.db, self.invite_registry.as_ref(),
-        ).await.map_err(internal_admin_error).map_err(map_rbac_authority_error)
+        self.prepare_admin_authority(true).await.map_err(map_rbac_authority_error)
     }
 
     async fn lock(
@@ -417,13 +447,8 @@ impl ServerAuthAdminMutationProvider {
         &self, tx: &sea_orm::DatabaseTransaction, tenant_id: Uuid, actor_id: Uuid,
         target_role_id: Option<Uuid>, required: &[Permission],
     ) -> Result<rustok_rbac::graphql::RbacLockedMutationAuthority, AuthAdminMutationError> {
-        let context = AuthAdminMutationContext {
-            tenant_id, actor_id, request_id: None, locale: None,
-            principal_kind: Some(AuthPrincipalKind::DirectUser),
-        };
-        let evidence = credential_for(&tenant_id, &actor_id).flatten()
-            .filter(|e| e.principal_kind == AuthPrincipalKind::DirectUser)
-            .ok_or(AuthAdminMutationError::Unauthorized)?;
+        let context = bind_admin_context(tenant_id, actor_id, AuthPrincipalKind::DirectUser, None)?;
+        let evidence = credential_for_admin(&context)?.ok_or(AuthAdminMutationError::Unauthorized)?;
         let request = self.request_permissions(&context)?;
         if !required.iter().any(|p| has_effective_permission(&request, p)) {
             return Err(AuthAdminMutationError::Forbidden("RBAC request authority required".into()));
@@ -515,6 +540,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         limit: u64,
     ) -> Result<Vec<AuthorizedOAuthAppRecord>, AuthAdminMutationError> {
         require_direct_user_context(context)?;
+        credential_for_admin(context)?.ok_or(AuthAdminMutationError::Unauthorized)?;
         let consents = oauth_consents::Entity::find()
             .filter(oauth_consents::Column::UserId.eq(context.actor_id))
             .filter(oauth_consents::Column::TenantId.eq(context.tenant_id))
@@ -550,7 +576,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
             app_type: command.app_type, icon_url: command.icon_url, redirect_uris: command.redirect_uris,
             scopes: command.scopes, grant_types: command.grant_types, granted_permissions: command.granted_permissions,
         }).await.map_err(map_service_error)?;
-        let tx = self.prepare_oauth_admin_transaction(true).await?;
+        let tx = self.prepare_admin_transaction(true).await?;
         let authority = self.lock_oauth_admin_authority(&tx, context, None, true).await?;
         require_delegation_ceiling(&authority.permissions, &requested)?;
         let result = oauth_apps::scope_runtime_copy_locale(
@@ -568,7 +594,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         self.authorize(context).await?;
         self.authorize_delegated_permissions(context, &command.granted_permissions).await?;
         let locale = self.effective_locale(context)?;
-        let tx = self.prepare_oauth_admin_transaction(true).await?;
+        let tx = self.prepare_admin_transaction(true).await?;
         let authority = self.lock_oauth_admin_authority(&tx, context, Some(command.id), true).await?;
         require_delegation_ceiling(&authority.permissions, &command.granted_permissions)?;
         let app = oauth_apps::scope_runtime_copy_locale(
@@ -603,7 +629,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         &self, context: &AuthAdminMutationContext, app_id: Uuid,
     ) -> Result<OAuthAppMutationRecord, AuthAdminMutationError> {
         self.authorize(context).await?;
-        let tx = self.prepare_oauth_admin_transaction(true).await?;
+        let tx = self.prepare_admin_transaction(true).await?;
         let authority = self.lock_oauth_admin_authority(&tx, context, Some(app_id), true).await?;
         let revoked = OAuthAppService::revoke_locked_app(&tx, authority.target()?).await.map_err(map_service_error)?;
         let record = build_oauth_app_record(&tx, context, revoked).await?;
@@ -616,7 +642,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         &self, context: &AuthAdminMutationContext, app_id: Uuid, scopes: Vec<String>,
     ) -> Result<(), AuthAdminMutationError> {
         require_direct_user_context(context)?;
-        let tx = self.prepare_oauth_admin_transaction(false).await?;
+        let tx = self.prepare_admin_transaction(false).await?;
         let authority = self.lock_oauth_admin_authority(&tx, context, Some(app_id), false).await?;
         let actor = authority.actor.as_ref().ok_or(AuthAdminMutationError::Unauthorized)?;
         OAuthAppService::grant_locked_user_consent(&tx, &authority.target()?, actor, scopes)
@@ -630,7 +656,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         &self, context: &AuthAdminMutationContext, app_id: Uuid,
     ) -> Result<(), AuthAdminMutationError> {
         require_direct_user_context(context)?;
-        let tx = self.prepare_oauth_admin_transaction(false).await?;
+        let tx = self.prepare_admin_transaction(false).await?;
         let authority = self.lock_oauth_admin_authority(&tx, context, Some(app_id), false).await?;
         OAuthAppService::revoke_locked_user_consent(&tx, app_id, context.actor_id, context.tenant_id)
             .await.map_err(map_service_error)?;

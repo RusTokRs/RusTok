@@ -1004,7 +1004,9 @@ fn parse_bearer_token(value: &str) -> Option<&str> {
         token
     };
     (!token.is_empty()
-        && token.bytes().all(|byte| byte.is_ascii_graphic() && byte != b'"' && byte != b','))
+        && token
+            .bytes()
+            .all(|byte| byte.is_ascii_graphic() && byte != b'"' && byte != b','))
     .then_some(token)
 }
 

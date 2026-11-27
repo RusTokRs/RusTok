@@ -303,7 +303,10 @@ mod tests {
             pages_admin_section_for_subpath(Some("unknown")),
             PagesAdminSection::Workspace
         );
-        assert_eq!(pages_admin_section_for_subpath(None), PagesAdminSection::Workspace);
+        assert_eq!(
+            pages_admin_section_for_subpath(None),
+            PagesAdminSection::Workspace
+        );
     }
 
     #[test]

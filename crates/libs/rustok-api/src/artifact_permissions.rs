@@ -194,10 +194,7 @@ mod tests {
         };
         assert_ne!(
             compute_canonical_authorization_fingerprint(&[registration("a\nb")]),
-            compute_canonical_authorization_fingerprint(&[
-                registration("a"),
-                registration("b")
-            ]),
+            compute_canonical_authorization_fingerprint(&[registration("a"), registration("b")]),
             "one key containing the separator must not alias two separate keys"
         );
     }

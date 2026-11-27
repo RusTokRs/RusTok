@@ -215,17 +215,26 @@ async fn deletion_rejects_variant_with_cross_tenant_parent_before_inventory_look
     db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO product_variants (id, tenant_id, product_id) VALUES (?, ?, ?)",
-        [variant_id.into(), tenant_id.into(), foreign_product_id.into()],
+        [
+            variant_id.into(),
+            tenant_id.into(),
+            foreign_product_id.into(),
+        ],
     ))
     .await
     .expect("insert Variant with foreign parent");
 
-    let txn = db.begin().await.expect("begin Product deletion identity transaction");
+    let txn = db
+        .begin()
+        .await
+        .expect("begin Product deletion identity transaction");
     assert_rejected(
         DeletionPlan::load(&txn, tenant_id, &[variant_id]).await,
         CatalogDeletionBlocker::IdentityUnavailable,
     );
-    txn.rollback().await.expect("rollback Product deletion identity transaction");
+    txn.rollback()
+        .await
+        .expect("rollback Product deletion identity transaction");
 }
 
 #[test]

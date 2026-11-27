@@ -115,10 +115,13 @@ fn apply_symbol_command_inner(
     use crate::SymbolCommand;
 
     if let Some(block) = document.project().extensions.get(FLY_SYMBOLS_FIELD) {
-        crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH)
-            .map_err(|error| FlyError::InvalidSymbolReference(format!(
-                "symbol catalog exceeds safe JSON depth: {error}"
-            )))?;
+        crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH).map_err(
+            |error| {
+                FlyError::InvalidSymbolReference(format!(
+                    "symbol catalog exceeds safe JSON depth: {error}"
+                ))
+            },
+        )?;
     }
 
     match command {
@@ -414,10 +417,13 @@ pub fn document_has_symbol_instances(document: &ProjectDocument) -> bool {
 
 fn strict_catalog(document: &ProjectDocument) -> FlyResult<BTreeMap<String, SymbolDescriptor>> {
     if let Some(block) = document.project().extensions.get(FLY_SYMBOLS_FIELD) {
-        crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH)
-            .map_err(|error| FlyError::InvalidSymbolReference(format!(
-                "symbol catalog exceeds safe JSON depth: {error}"
-            )))?;
+        crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH).map_err(
+            |error| {
+                FlyError::InvalidSymbolReference(format!(
+                    "symbol catalog exceeds safe JSON depth: {error}"
+                ))
+            },
+        )?;
     }
     if document
         .project()
@@ -1308,7 +1314,6 @@ mod tests {
         assert!(codes.contains(&"symbol_instance_with_children"));
     }
 
-
     #[test]
     fn deeply_nested_symbol_values_are_rejected_before_deserialization() {
         let mut raw = json!({ "id": "deep", "components": [] });
@@ -1317,8 +1322,6 @@ mod tests {
         }
         assert!(SymbolDescriptor::from_value(&raw).is_none());
     }
-
-
 
     #[test]
     fn direct_symbol_commands_invalidate_cached_hashes() {
@@ -1344,10 +1347,7 @@ mod tests {
                 "symbolId": "symbol-a"
             }]
         });
-        let mut document = document_with(
-            object("root", "wrapper", vec![]),
-            vec![existing],
-        );
+        let mut document = document_with(object("root", "wrapper", vec![]), vec![existing]);
         let before = document.clone();
         let before_hash = document.hash();
         let mut symbol = symbol_json(
@@ -1363,11 +1363,8 @@ mod tests {
             "src": "/assets/symbol.png"
         }]);
 
-        let error = apply_symbol_command(
-            &mut document,
-            &SymbolCommand::Upsert { symbol },
-        )
-        .expect_err("cycle must be rejected");
+        let error = apply_symbol_command(&mut document, &SymbolCommand::Upsert { symbol })
+            .expect_err("cycle must be rejected");
         assert!(matches!(error, FlyError::SymbolCycle(_)));
         assert_eq!(document, before);
         assert_eq!(document.hash(), before_hash);

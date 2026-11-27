@@ -795,28 +795,28 @@ impl FulfillmentService {
     ) -> FulfillmentResult<()> {
         let now = Utc::now();
         entities::checkout_identity::Entity::insert(entities::checkout_identity::ActiveModel {
-                tenant_id: Set(tenant_id),
-                checkout_operation_id: Set(identity.operation_id),
-                order_id: Set(order_id),
-                customer_id: Set(customer_id),
-                plan_hash: Set(identity.plan_hash.clone()),
-                created_at: Set(now.into()),
-                updated_at: Set(now.into()),
-            })
-            .on_conflict(
-                OnConflict::columns([
-                    entities::checkout_identity::Column::TenantId,
-                    entities::checkout_identity::Column::CheckoutOperationId,
-                ])
-                .do_nothing_on([
-                    entities::checkout_identity::Column::TenantId,
-                    entities::checkout_identity::Column::CheckoutOperationId,
-                ])
-                .to_owned(),
-            )
-            .try_insert()
-            .exec(txn)
-            .await?;
+            tenant_id: Set(tenant_id),
+            checkout_operation_id: Set(identity.operation_id),
+            order_id: Set(order_id),
+            customer_id: Set(customer_id),
+            plan_hash: Set(identity.plan_hash.clone()),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                entities::checkout_identity::Column::TenantId,
+                entities::checkout_identity::Column::CheckoutOperationId,
+            ])
+            .do_nothing_on([
+                entities::checkout_identity::Column::TenantId,
+                entities::checkout_identity::Column::CheckoutOperationId,
+            ])
+            .to_owned(),
+        )
+        .try_insert()
+        .exec(txn)
+        .await?;
 
         let existing = entities::checkout_identity::Entity::find()
             .filter(entities::checkout_identity::Column::TenantId.eq(tenant_id))
@@ -2263,7 +2263,10 @@ impl FulfillmentService {
         // SQLite adapter does not support those two configuration knobs, but the
         // transaction itself still keeps every read on one SQLite snapshot.
         self.db
-            .begin_with_config(Some(IsolationLevel::RepeatableRead), Some(AccessMode::ReadOnly))
+            .begin_with_config(
+                Some(IsolationLevel::RepeatableRead),
+                Some(AccessMode::ReadOnly),
+            )
             .await
             .map_err(Into::into)
     }
@@ -2359,9 +2362,7 @@ impl FulfillmentService {
                 entities::fulfillment_item::Relation::Fulfillment.def(),
             )
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
-            .filter(
-                entities::fulfillment_item::Column::FulfillmentId.eq(fulfillment.id),
-            )
+            .filter(entities::fulfillment_item::Column::FulfillmentId.eq(fulfillment.id))
             .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
             .order_by_asc(entities::fulfillment_item::Column::Id)
             .limit((crate::MAX_SHIPMENT_STOCK_ITEMS + 1) as u64)
@@ -2407,9 +2408,7 @@ impl FulfillmentService {
                 entities::fulfillment_item::Relation::Fulfillment.def(),
             )
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
-            .filter(
-                entities::fulfillment_item::Column::FulfillmentId.eq(fulfillment_id),
-            )
+            .filter(entities::fulfillment_item::Column::FulfillmentId.eq(fulfillment_id))
             .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
             .order_by_asc(entities::fulfillment_item::Column::Id)
             .limit((crate::MAX_SHIPMENT_STOCK_ITEMS + 1) as u64)
@@ -3520,8 +3519,10 @@ async fn synchronize_translations(
                         Expr::value(name),
                     )
                     .filter(entities::shipping_option_translation::Column::Id.eq(current.id))
-                    .filter(entities::shipping_option_translation::Column::ShippingOptionId
-                        .eq(shipping_option_id))
+                    .filter(
+                        entities::shipping_option_translation::Column::ShippingOptionId
+                            .eq(shipping_option_id),
+                    )
                     .filter(shipping_option_tenant_exists(tenant_id, shipping_option_id))
                     .exec(db)
                     .await?;
@@ -3533,8 +3534,10 @@ async fn synchronize_translations(
             None => {
                 let delete_result = entities::shipping_option_translation::Entity::delete_many()
                     .filter(entities::shipping_option_translation::Column::Id.eq(current.id))
-                    .filter(entities::shipping_option_translation::Column::ShippingOptionId
-                        .eq(shipping_option_id))
+                    .filter(
+                        entities::shipping_option_translation::Column::ShippingOptionId
+                            .eq(shipping_option_id),
+                    )
                     .filter(shipping_option_tenant_exists(tenant_id, shipping_option_id))
                     .exec(db)
                     .await?;

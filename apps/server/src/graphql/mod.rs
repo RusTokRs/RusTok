@@ -1,5 +1,7 @@
 use async_graphql::Positioned;
-use async_graphql::parser::types::{ExecutableDocument, Field, OperationDefinition, Selection, SelectionSet};
+use async_graphql::parser::types::{
+    ExecutableDocument, Field, OperationDefinition, Selection, SelectionSet,
+};
 use std::{collections::BTreeSet, ops::ControlFlow};
 
 /// Return only the GraphQL operation selected by the request.
@@ -122,7 +124,10 @@ mod selection_walk_tests {
     fn long_fragment_chain_is_classified_without_recursive_stack_growth() {
         let mut query = String::from("query Protected { ...F0 }");
         for index in 0..4096 {
-            query.push_str(&format!(" fragment F{index} on Query {{ ...F{} }}", index + 1));
+            query.push_str(&format!(
+                " fragment F{index} on Query {{ ...F{} }}",
+                index + 1
+            ));
         }
         query.push_str(" fragment F4096 on Query { protectedField }");
         let document = async_graphql::parser::parse_query(&query).expect("document parses");
@@ -232,10 +237,8 @@ mod operation_selection_tests {
 mod parsed_document_policy_tests {
     use super::{
         forum_principal_security::ForumPrincipalPolicy,
-        legacy_disable_user::LegacyDisableUserPolicy,
-        module_security::GraphqlModuleSecurityPolicy,
-        security::GraphqlSecurityPolicy,
-        storefront_principal_security::StorefrontPrincipalPolicy,
+        legacy_disable_user::LegacyDisableUserPolicy, module_security::GraphqlModuleSecurityPolicy,
+        security::GraphqlSecurityPolicy, storefront_principal_security::StorefrontPrincipalPolicy,
         tenant_security::GraphqlTenantPolicy,
     };
     use async_graphql::{EmptyMutation, EmptySubscription, Object, Request, Schema};
@@ -317,7 +320,13 @@ mod parsed_document_policy_tests {
         ] {
             let response = schema.execute(parsed_request(query)).await;
             assert_eq!(response.errors.len(), 1, "{query}: {response:?}");
-            assert!(schema.execute(parsed_request("{ ping }")).await.errors.is_empty());
+            assert!(
+                schema
+                    .execute(parsed_request("{ ping }"))
+                    .await
+                    .errors
+                    .is_empty()
+            );
         }
 
         let tenant_id = Uuid::new_v4();
@@ -335,11 +344,17 @@ mod parsed_document_policy_tests {
             .finish();
         let foreign = Uuid::new_v4();
         let denied = tenant_schema
-            .execute(parsed_request(&format!("{{ echoTenant(tenantId: \"{foreign}\") }}")).data(tenant.clone()))
+            .execute(
+                parsed_request(&format!("{{ echoTenant(tenantId: \"{foreign}\") }}"))
+                    .data(tenant.clone()),
+            )
             .await;
         assert_eq!(denied.errors.len(), 1);
         let allowed = tenant_schema
-            .execute(parsed_request(&format!("{{ echoTenant(tenantId: \"{tenant_id}\") }}")).data(tenant))
+            .execute(
+                parsed_request(&format!("{{ echoTenant(tenantId: \"{tenant_id}\") }}"))
+                    .data(tenant),
+            )
             .await;
         assert!(allowed.errors.is_empty());
 
@@ -361,7 +376,13 @@ mod parsed_document_policy_tests {
                 .execute(parsed_request(query).data(service_auth(tenant_id)))
                 .await;
             assert_eq!(response.errors.len(), 1, "{query}: {response:?}");
-            assert!(schema.execute(parsed_request("{ ping }")).await.errors.is_empty());
+            assert!(
+                schema
+                    .execute(parsed_request("{ ping }"))
+                    .await
+                    .errors
+                    .is_empty()
+            );
         }
     }
 }

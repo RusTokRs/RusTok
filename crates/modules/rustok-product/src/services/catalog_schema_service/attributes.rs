@@ -644,7 +644,13 @@ mod tests {
             db.execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Sqlite,
                 "INSERT INTO product_attribute_options VALUES ($1, $2, $3, $4, 0, $5)",
-                vec![id.into(), owner.into(), attribute.into(), code.into(), archived_at.map(str::to_owned).into()],
+                vec![
+                    id.into(),
+                    owner.into(),
+                    attribute.into(),
+                    code.into(),
+                    archived_at.map(str::to_owned).into(),
+                ],
             ))
             .await
             .unwrap();
@@ -654,7 +660,10 @@ mod tests {
             .list_attribute_options(tenant, &[color, archived_parent, foreign_parent], "en")
             .await
             .unwrap();
-        assert_eq!(options.iter().map(|option| option.id).collect::<Vec<_>>(), vec![red]);
+        assert_eq!(
+            options.iter().map(|option| option.id).collect::<Vec<_>>(),
+            vec![red]
+        );
 
         for (selector, expected) in [
             ("red".to_owned(), Some(red)),
@@ -667,17 +676,30 @@ mod tests {
             (Uuid::new_v4().to_string(), None),
             (Uuid::nil().to_string(), None),
         ] {
-            let resolved = service.resolve_storefront_attribute_filter_terms(
-                tenant, "en", "en",
-                &[ProductAttributeFilter { code: "color".to_owned(), value: selector }],
-            ).await.unwrap();
+            let resolved = service
+                .resolve_storefront_attribute_filter_terms(
+                    tenant,
+                    "en",
+                    "en",
+                    &[ProductAttributeFilter {
+                        code: "color".to_owned(),
+                        value: selector,
+                    }],
+                )
+                .await
+                .unwrap();
             assert_eq!(resolved.len(), 1);
             match expected {
                 Some(id) => assert_eq!(
                     resolved[0].predicate,
-                    ProductAttributeTermExpr::Term(super::product_attribute_option_term(color, id).unwrap()),
+                    ProductAttributeTermExpr::Term(
+                        super::product_attribute_option_term(color, id).unwrap()
+                    ),
                 ),
-                None => assert!(matches!(&resolved[0].predicate, ProductAttributeTermExpr::Never)),
+                None => assert!(matches!(
+                    &resolved[0].predicate,
+                    ProductAttributeTermExpr::Never
+                )),
             }
         }
     }

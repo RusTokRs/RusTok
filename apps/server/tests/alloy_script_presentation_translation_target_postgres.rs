@@ -649,7 +649,10 @@ async fn verify_legacy_und_and_change_state_backfill(
     Ok(())
 }
 
-fn registered_provider(db: DatabaseConnection, auth_config: AuthConfig) -> TestResult<Arc<dyn TranslationTargetProvider>> {
+fn registered_provider(
+    db: DatabaseConnection,
+    auth_config: AuthConfig,
+) -> TestResult<Arc<dyn TranslationTargetProvider>> {
     let registry = ModuleRegistry::new().register(AlloyModule);
     let settings = RustokSettings::default();
     let runtime_ctx = ServerRuntimeContext::new(db, settings.clone());

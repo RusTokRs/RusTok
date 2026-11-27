@@ -10,11 +10,11 @@ use rustok_modules::translation::{
     StaticSettingsTranslationIdentity, StaticSettingsTranslationPrepareResult,
 };
 use rustok_modules::{
-    ModuleCommandContext, ModuleSettingSpec, StaticSettingsLocalizationError,
+    ConflictFenceSet, ModuleCommandContext, ModuleSettingSpec, ModuleTransitionState,
+    StaticLocalizedSettingApplyCommand, StaticSettingsLocalizationError,
     StaticSettingsLocalizationRegistry, StaticSettingsLocalizationService,
-    StaticSettingsSourceLocaleAssignCommand, StaticSettingsSourceLocaleError, StaticSettingsSourceLocaleService,
-    StaticLocalizedSettingApplyCommand, ModuleTransitionState, ConflictFenceSet,
-    StaticTenantLifecycleStore,
+    StaticSettingsSourceLocaleAssignCommand, StaticSettingsSourceLocaleError,
+    StaticSettingsSourceLocaleService, StaticTenantLifecycleStore,
     static_settings_translation_read::{
         StaticSettingsChangeReadRequest, StaticSettingsExactLocaleSnapshot,
         StaticSettingsTranslationReadService,
@@ -355,7 +355,14 @@ async fn seed_tenant(database: &DatabaseConnection, tenant_id: Uuid) -> TestResu
 
 async fn seed_source_settings(database: &DatabaseConnection, tenant_id: Uuid) -> TestResult<()> {
     let idempotency_key = Uuid::new_v4();
-    StaticTenantLifecycleStore::claim_for_test(database, tenant_id, MODULE_SLUG, 0, idempotency_key).await?;
+    StaticTenantLifecycleStore::claim_for_test(
+        database,
+        tenant_id,
+        MODULE_SLUG,
+        0,
+        idempotency_key,
+    )
+    .await?;
 
     let write_result = database
         .execute_raw(Statement::from_sql_and_values(
@@ -371,16 +378,26 @@ async fn seed_source_settings(database: &DatabaseConnection, tenant_id: Uuid) ->
         ))
         .await;
     if let Err(error) = write_result {
-        let _ =
-            StaticTenantLifecycleStore::release_for_test(database, tenant_id, MODULE_SLUG, idempotency_key)
-                .await;
+        let _ = StaticTenantLifecycleStore::release_for_test(
+            database,
+            tenant_id,
+            MODULE_SLUG,
+            idempotency_key,
+        )
+        .await;
         return Err(error.into());
     }
 
-    let revision =
-        StaticTenantLifecycleStore::advance_for_test(database, tenant_id, MODULE_SLUG, 0, idempotency_key)
-            .await?;
-    StaticTenantLifecycleStore::release_for_test(database, tenant_id, MODULE_SLUG, idempotency_key).await?;
+    let revision = StaticTenantLifecycleStore::advance_for_test(
+        database,
+        tenant_id,
+        MODULE_SLUG,
+        0,
+        idempotency_key,
+    )
+    .await?;
+    StaticTenantLifecycleStore::release_for_test(database, tenant_id, MODULE_SLUG, idempotency_key)
+        .await?;
     if revision != 1 {
         return Err(format!("unexpected seeded Settings owner revision: {revision}").into());
     }

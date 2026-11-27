@@ -8,7 +8,8 @@
 
 use async_trait::async_trait;
 use rustok_cache::{
-    CacheSettingsAdminError, CacheSettingsAdminPort, CacheSettingsSnapshot, SharedCacheSettingsAdmin,
+    CacheSettingsAdminError, CacheSettingsAdminPort, CacheSettingsSnapshot,
+    SharedCacheSettingsAdmin,
 };
 use uuid::Uuid;
 
@@ -34,7 +35,10 @@ impl ServerCacheSettingsAdmin {
 
 #[async_trait]
 impl CacheSettingsAdminPort for ServerCacheSettingsAdmin {
-    async fn read(&self, tenant_id: Uuid) -> Result<CacheSettingsSnapshot, CacheSettingsAdminError> {
+    async fn read(
+        &self,
+        tenant_id: Uuid,
+    ) -> Result<CacheSettingsSnapshot, CacheSettingsAdminError> {
         let snapshot = SettingsService::get_snapshot(&self.ctx, tenant_id, category::CACHE)
             .await
             .map_err(|error| CacheSettingsAdminError(error.to_string()))?;

@@ -60,7 +60,9 @@ mod tests {
             RateLimitConfig::new(1, 30),
             "auth-graphql-adapter-test",
         ));
-        let adapter = ServerAuthGraphqlRateLimiter { limiter: limiter.clone() };
+        let adapter = ServerAuthGraphqlRateLimiter {
+            limiter: limiter.clone(),
+        };
         let key = "ip:203.0.113.7";
 
         // A REST middleware charge against the shared limiter must exhaust

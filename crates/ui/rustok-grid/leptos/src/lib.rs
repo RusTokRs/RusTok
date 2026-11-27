@@ -93,7 +93,6 @@ pub mod prelude {
         SortState,
     };
 
-    pub use crate::{GridLocale, provide_grid_locale, use_grid_locale};
     pub use crate::filter_inputs::GridFilterCell;
     pub use crate::grid::DataGrid;
     pub use crate::header::GridHeader;
@@ -101,6 +100,7 @@ pub mod prelude {
     pub use crate::resize_handle::ColumnResizeHandle;
     pub use crate::row::GridRow;
     pub use crate::toolbar::GridToolbar;
+    pub use crate::{GridLocale, provide_grid_locale, use_grid_locale};
 }
 
 #[cfg(test)]

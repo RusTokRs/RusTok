@@ -201,8 +201,7 @@ impl SeoEntityForm {
         let locale = if self.locale.trim().is_empty() {
             return Err(SeoPanelError::MissingHostLocale);
         } else {
-            normalize_locale_tag(self.locale.as_str())
-                .ok_or(SeoPanelError::InvalidHostLocale)?
+            normalize_locale_tag(self.locale.as_str()).ok_or(SeoPanelError::InvalidHostLocale)?
         };
 
         Ok(SeoMetaMutationInput {
@@ -622,7 +621,9 @@ pub enum SeoPanelError {
     InvalidHostLocale,
     #[error("Invalid structured data payload JSON: {0}")]
     InvalidJson(String),
-    #[error("Structured data payload must contain at least one non-empty @type when schema type is empty.")]
+    #[error(
+        "Structured data payload must contain at least one non-empty @type when schema type is empty."
+    )]
     MissingJsonLdType,
     #[error("Structured data payload @type must match schema type field.")]
     MismatchedSchemaType,

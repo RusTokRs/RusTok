@@ -131,7 +131,9 @@ mod tests {
                 ["enabled"],
             true
         );
-        assert!(document.project().pages[0].extensions[FLY_PAGE_METADATA_FIELD]["title"].is_object());
+        assert!(
+            document.project().pages[0].extensions[FLY_PAGE_METADATA_FIELD]["title"].is_object()
+        );
         assert_eq!(materialized.localized_pages, 1);
         assert_eq!(materialized.resolved_values, 2);
     }

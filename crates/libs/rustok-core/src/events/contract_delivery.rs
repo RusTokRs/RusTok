@@ -100,9 +100,7 @@ impl ContractListenerSet {
                 let _handler_permit = Arc::clone(&self.handler_capacity)
                     .acquire_owned()
                     .await
-                    .map_err(|_| {
-                        Error::External("root handler capacity is closed".to_owned())
-                    })?;
+                    .map_err(|_| Error::External("root handler capacity is closed".to_owned()))?;
                 self.require_active()?;
                 handle_root_handler(handler, envelope.clone(), &self.config).await?;
             }
@@ -114,12 +112,9 @@ impl ContractListenerSet {
                 let config = self.config.clone();
                 let envelope = envelope.clone();
                 tasks.spawn(async move {
-                    let _handler_permit = handler_capacity
-                        .acquire_owned()
-                        .await
-                        .map_err(|_| {
-                            Error::External("root handler capacity is closed".to_owned())
-                        })?;
+                    let _handler_permit = handler_capacity.acquire_owned().await.map_err(|_| {
+                        Error::External("root handler capacity is closed".to_owned())
+                    })?;
                     listener_set.require_active()?;
                     handle_root_handler(handler, envelope, &config).await
                 });
@@ -270,9 +265,7 @@ impl EventBus {
             .as_ref()
             .and_then(Weak::upgrade)
             .ok_or_else(|| {
-                Error::External(
-                    "module listeners are not bound to the delivery bus".to_owned(),
-                )
+                Error::External("module listeners are not bound to the delivery bus".to_owned())
             })
     }
 
@@ -321,9 +314,7 @@ fn invalid_envelope(error: rustok_events::EventContractEnvelopeError) -> Error {
 }
 
 fn poisoned_registry() -> Error {
-    Error::External(
-        "module listener registry is unavailable; restart the runtime".to_owned(),
-    )
+    Error::External("module listener registry is unavailable; restart the runtime".to_owned())
 }
 
 #[cfg(test)]

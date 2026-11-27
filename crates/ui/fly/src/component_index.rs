@@ -343,8 +343,10 @@ mod tests {
         let before_hash = document.hash();
         assert!(document.component_index().contains("title"));
 
-        index.get_component_mut(&mut document, "title").expect("title").id =
-            Some("renamed-title".to_string());
+        index
+            .get_component_mut(&mut document, "title")
+            .expect("title")
+            .id = Some("renamed-title".to_string());
 
         assert_ne!(document.hash(), before_hash);
         assert!(document.component_location("title").is_none());

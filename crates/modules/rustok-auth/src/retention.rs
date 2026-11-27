@@ -10,9 +10,14 @@
 //! Authentication artifact retention shared by the host worker and operator CLI.
 //! Destructive expiry decisions need corroborated time, not signing authority.
 use chrono::{DateTime, Duration, Utc};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr, Statement, TransactionTrait};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr, Statement,
+    TransactionTrait,
+};
 
-use crate::application_clock::{admit_with_clock, application_clock, clock_unavailable, observe_with_floor};
+use crate::application_clock::{
+    admit_with_clock, application_clock, clock_unavailable, observe_with_floor,
+};
 use crate::jwt_clock::ClockGuard;
 
 pub const AUTH_ARTIFACT_RETENTION_DAYS: i64 = 30;
@@ -41,19 +46,27 @@ fn parameter(backend: DbBackend) -> Result<&'static str, DbErr> {
     }
 }
 
-async fn verified_now(tx: &DatabaseTransaction, clock: &ClockGuard) -> Result<DateTime<Utc>, DbErr> {
+async fn verified_now(
+    tx: &DatabaseTransaction,
+    clock: &ClockGuard,
+) -> Result<DateTime<Utc>, DbErr> {
     let sample = observe_with_floor(tx, clock).await?;
     conservative_now(sample.host_before, sample.database_now)
 }
 
-fn conservative_now(host_before: DateTime<Utc>, db_now: DateTime<Utc>) -> Result<DateTime<Utc>, DbErr> {
-    host_before.min(db_now)
+fn conservative_now(
+    host_before: DateTime<Utc>,
+    db_now: DateTime<Utc>,
+) -> Result<DateTime<Utc>, DbErr> {
+    host_before
+        .min(db_now)
         .checked_sub_signed(Duration::milliseconds(RETENTION_CLOCK_MARGIN_MS))
         .ok_or_else(clock_unavailable)
 }
 
 fn cutoff(now: DateTime<Utc>, days: i64) -> Result<DateTime<Utc>, DbErr> {
-    now.checked_sub_signed(Duration::days(days)).ok_or_else(clock_unavailable)
+    now.checked_sub_signed(Duration::days(days))
+        .ok_or_else(clock_unavailable)
 }
 
 async fn delete_before(
@@ -66,15 +79,20 @@ async fn delete_before(
     let param = parameter(backend)?;
     let comparison = if inclusive { "<=" } else { "<" };
     // Table identifiers are fixed owner constants, never user input.
-    Ok(tx.execute_raw(Statement::from_sql_and_values(
-        backend,
-        format!("DELETE FROM {table} WHERE expires_at {comparison} {param}"),
-        [now.into()],
-    )).await?.rows_affected())
+    Ok(tx
+        .execute_raw(Statement::from_sql_and_values(
+            backend,
+            format!("DELETE FROM {table} WHERE expires_at {comparison} {param}"),
+            [now.into()],
+        ))
+        .await?
+        .rows_affected())
 }
 
 async fn delete_artifacts(
-    tx: &DatabaseTransaction, now: DateTime<Utc>, sessions_only: bool,
+    tx: &DatabaseTransaction,
+    now: DateTime<Utc>,
+    sessions_only: bool,
 ) -> Result<AuthRetentionPurge, DbErr> {
     let common_cutoff = cutoff(now, AUTH_ARTIFACT_RETENTION_DAYS)?;
     let mut report = AuthRetentionPurge {
@@ -84,9 +102,11 @@ async fn delete_artifacts(
     if sessions_only {
         return Ok(report);
     }
-    report.invite_consumptions = delete_before(tx, "auth_invite_consumptions", common_cutoff, false).await?;
+    report.invite_consumptions =
+        delete_before(tx, "auth_invite_consumptions", common_cutoff, false).await?;
     report.invites = delete_before(tx, "auth_invites", common_cutoff, false).await?;
-    report.email_change_requests = delete_before(tx, "auth_email_change_requests", now, true).await?;
+    report.email_change_requests =
+        delete_before(tx, "auth_email_change_requests", now, true).await?;
 
     // Retain the complete lineage until its latest member is past retention.
     // Descendants first for the SQLite immediate root guard.
@@ -129,7 +149,11 @@ async fn finish_purge(
     }
 }
 
-async fn purge(db: &DatabaseConnection, clock: &ClockGuard, sessions_only: bool) -> Result<AuthRetentionPurge, DbErr> {
+async fn purge(
+    db: &DatabaseConnection,
+    clock: &ClockGuard,
+    sessions_only: bool,
+) -> Result<AuthRetentionPurge, DbErr> {
     admit_with_clock(db, clock).await?;
     let tx = db.begin().await?;
     let result = async {
@@ -143,12 +167,15 @@ async fn purge(db: &DatabaseConnection, clock: &ClockGuard, sessions_only: bool)
             return Err(clock_unavailable());
         }
         Ok(report)
-    }.await;
+    }
+    .await;
     finish_purge(tx, result).await
 }
 
 /// Complete transactional worker sweep, with a process-lifetime clock latch.
-pub async fn purge_expired_auth_artifacts(db: &DatabaseConnection) -> Result<AuthRetentionPurge, DbErr> {
+pub async fn purge_expired_auth_artifacts(
+    db: &DatabaseConnection,
+) -> Result<AuthRetentionPurge, DbErr> {
     purge(db, application_clock(), false).await
 }
 
@@ -174,23 +201,42 @@ mod tests {
     #[tokio::test]
     async fn session_cleanup_preserves_recent_expiry_and_rolls_back_fault() {
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
-        db.execute_unprepared("CREATE TABLE sessions (id INTEGER PRIMARY KEY, expires_at TEXT NOT NULL)").await.unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE sessions (id INTEGER PRIMARY KEY, expires_at TEXT NOT NULL)",
+        )
+        .await
+        .unwrap();
         db.execute_unprepared("CREATE TABLE auth_application_clock (id INTEGER PRIMARY KEY, host_ms BIGINT NOT NULL, database_ms BIGINT NOT NULL)").await.unwrap();
-        db.execute_unprepared("INSERT INTO auth_application_clock VALUES (1, 0, 0)").await.unwrap();
+        db.execute_unprepared("INSERT INTO auth_application_clock VALUES (1, 0, 0)")
+            .await
+            .unwrap();
         let now = Utc::now();
         for (id, expiry) in [
-            (1_i32, now - Duration::days(AUTH_ARTIFACT_RETENTION_DAYS + 1)),
+            (
+                1_i32,
+                now - Duration::days(AUTH_ARTIFACT_RETENTION_DAYS + 1),
+            ),
             (2_i32, now - Duration::days(1)),
             (3_i32, now + Duration::days(1)),
         ] {
             db.execute_raw(Statement::from_sql_and_values(
-                DbBackend::Sqlite, "INSERT INTO sessions (id, expires_at) VALUES (?, ?)",
+                DbBackend::Sqlite,
+                "INSERT INTO sessions (id, expires_at) VALUES (?, ?)",
                 [id.into(), expiry.into()],
-            )).await.unwrap();
+            ))
+            .await
+            .unwrap();
         }
         let count = || async {
-            db.query_one_raw(Statement::from_string(DbBackend::Sqlite, "SELECT COUNT(*) AS count FROM sessions".to_string()))
-                .await.unwrap().unwrap().try_get::<i64>("", "count").unwrap()
+            db.query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM sessions".to_string(),
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get::<i64>("", "count")
+            .unwrap()
         };
         let clock = ClockGuard::new();
         let tx = db.begin().await.unwrap();

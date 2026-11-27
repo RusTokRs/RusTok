@@ -428,15 +428,12 @@ fn response(status: StatusCode, code: &str, message: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use axum::{
-        body::to_bytes,
-        http::StatusCode,
-    };
+    use axum::{body::to_bytes, http::StatusCode};
     use rustok_modules::ModuleGovernanceError;
 
     use super::{
-        CLAIM_PATH, MAX_RUNNER_BODY_BYTES, RegistryRemoteTransitionError,
-        RunnerRoute, claim_error_response, publish_route_requires_policy, runner_route,
+        CLAIM_PATH, MAX_RUNNER_BODY_BYTES, RegistryRemoteTransitionError, RunnerRoute,
+        claim_error_response, publish_route_requires_policy, runner_route,
         transition_error_response,
     };
     use rustok_modules::ModuleGovernanceErrorCategory;

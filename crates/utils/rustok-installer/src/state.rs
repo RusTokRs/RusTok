@@ -176,7 +176,9 @@ mod tests {
             );
         }
         assert!(!InstallState::Completed.can_transition_to(InstallState::RecoveryRequired));
-        assert!(!InstallState::FreshInstallCleaned.can_transition_to(InstallState::RecoveryRequired));
+        assert!(
+            !InstallState::FreshInstallCleaned.can_transition_to(InstallState::RecoveryRequired)
+        );
     }
 
     #[test]

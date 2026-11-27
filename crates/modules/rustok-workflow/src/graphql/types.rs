@@ -340,8 +340,12 @@ impl From<GqlCronReconciliationDecision> for crate::services::CronReconciliation
     fn from(decision: GqlCronReconciliationDecision) -> Self {
         match decision {
             GqlCronReconciliationDecision::ConfirmTerminal => Self::ConfirmTerminal,
-            GqlCronReconciliationDecision::RequeueConfirmedUnstarted => Self::RequeueConfirmedUnstarted,
-            GqlCronReconciliationDecision::ConfirmExternalCompleted => Self::ConfirmExternalCompleted,
+            GqlCronReconciliationDecision::RequeueConfirmedUnstarted => {
+                Self::RequeueConfirmedUnstarted
+            }
+            GqlCronReconciliationDecision::ConfirmExternalCompleted => {
+                Self::ConfirmExternalCompleted
+            }
             GqlCronReconciliationDecision::ConfirmExternalFailed => Self::ConfirmExternalFailed,
         }
     }

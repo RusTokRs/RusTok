@@ -88,10 +88,8 @@ mod tests {
 
     #[test]
     fn probe_identity_is_unique_per_runtime_and_shared_by_clones() {
-        let first_context = ServerRuntimeContext::new(
-            DatabaseConnection::default(),
-            RustokSettings::default(),
-        );
+        let first_context =
+            ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
         let first = storage_health_probe_state(&first_context);
         let first_clone = storage_health_probe_state(&first_context.clone());
 
@@ -102,10 +100,8 @@ mod tests {
             &first_clone.operation_lock
         ));
 
-        let second_context = ServerRuntimeContext::new(
-            DatabaseConnection::default(),
-            RustokSettings::default(),
-        );
+        let second_context =
+            ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
         let second = storage_health_probe_state(&second_context);
         assert_ne!(first.object_id, second.object_id);
         assert_ne!(

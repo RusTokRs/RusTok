@@ -97,7 +97,9 @@ pub async fn enforce(
         }
         RegistryOperation::ArtifactDownload => {
             if runner_token_valid {
-                request.extensions_mut().insert(VerifiedRegistryRunnerAccess);
+                request
+                    .extensions_mut()
+                    .insert(VerifiedRegistryRunnerAccess);
             } else if let Err(response) =
                 authorize_user_access(&ctx, auth.as_ref(), request_id, PublishAccess::Manage).await
             {
@@ -194,9 +196,8 @@ async fn authorize_user_access(
     let auth_extension = auth_extension
         .ok_or_else(|| unauthorized("Registry publish request access requires authentication"))?;
     let auth = &auth_extension.0;
-    let authority = RegistryAuthority::from_session(auth).ok_or_else(|| {
-        forbidden("Registry publish request access requires a user session")
-    })?;
+    let authority = RegistryAuthority::from_session(auth)
+        .ok_or_else(|| forbidden("Registry publish request access requires a user session"))?;
     let snapshot = RegistryGovernanceService::new(ctx.db_clone())
         .publish_request_status_snapshot_for_authority(request_id, Some(&authority))
         .await
@@ -443,8 +444,8 @@ mod tests {
     async fn invalid_session_is_rejected_before_registry_database_access() {
         use crate::common::settings::RustokSettings;
         use crate::services::server_runtime_context::ServerRuntimeContext;
-        use rustok_api::context::{AuthContext, AuthContextExtension};
         use rustok_api::Permission;
+        use rustok_api::context::{AuthContext, AuthContextExtension};
         use uuid::Uuid;
 
         let ctx = ServerRuntimeContext::new(
@@ -461,13 +462,20 @@ mod tests {
             grant_type: "direct".to_string(),
         });
         let denied = super::authorize_user_access(
-            &ctx, Some(&auth), "rpr_test", super::PublishAccess::Manage,
-        ).await.expect_err("nil session must be denied without a database");
+            &ctx,
+            Some(&auth),
+            "rpr_test",
+            super::PublishAccess::Manage,
+        )
+        .await
+        .expect_err("nil session must be denied without a database");
         assert_eq!(denied.status(), axum::http::StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
     async fn artifact_download_passes_verified_runner_context_without_forwarding_secret() {
+        use crate::common::settings::RustokSettings;
+        use crate::services::server_runtime_context::ServerRuntimeContext;
         use axum::{
             Extension, Router,
             body::Body,
@@ -475,8 +483,6 @@ mod tests {
             middleware::from_fn_with_state,
             routing::get,
         };
-        use crate::common::settings::RustokSettings;
-        use crate::services::server_runtime_context::ServerRuntimeContext;
         use sea_orm::DatabaseConnection;
         use tower::ServiceExt;
 

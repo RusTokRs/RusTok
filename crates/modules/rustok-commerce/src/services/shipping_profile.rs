@@ -70,8 +70,7 @@ impl ShippingProfileService {
             .transaction::<_, _, CommerceError>(|txn| {
                 Box::pin(async move {
                     let requested_slug = slug.clone();
-                    Self::ensure_slug_available(txn, tenant_id, slug.clone(), None)
-                        .await?;
+                    Self::ensure_slug_available(txn, tenant_id, slug.clone(), None).await?;
 
                     let now = Utc::now();
                     let active_profile = shipping_profile::ActiveModel {
@@ -86,7 +85,9 @@ impl ShippingProfileService {
                     match insert_shipping_profile_row(txn, active_profile).await {
                         Ok(_) => {}
                         Err(error) if is_shipping_profile_slug_conflict(&error) => {
-                            return Err(CommerceError::DuplicateShippingProfileSlug(requested_slug));
+                            return Err(CommerceError::DuplicateShippingProfileSlug(
+                                requested_slug,
+                            ));
                         }
                         Err(error) => return Err(error.into()),
                     }
@@ -204,13 +205,19 @@ impl ShippingProfileService {
         self.db
             .transaction::<_, _, CommerceError>(|txn| {
                 Box::pin(async move {
-                    let row = Self::load_shipping_profile(txn, tenant_id, shipping_profile_id).await?;
+                    let row =
+                        Self::load_shipping_profile(txn, tenant_id, shipping_profile_id).await?;
                     let mut active: shipping_profile::ActiveModel = row.into();
                     let requested_slug = normalized_slug.clone();
 
                     if let Some(slug) = normalized_slug {
-                        Self::ensure_slug_available(txn, tenant_id, slug.clone(), Some(shipping_profile_id))
-                            .await?;
+                        Self::ensure_slug_available(
+                            txn,
+                            tenant_id,
+                            slug.clone(),
+                            Some(shipping_profile_id),
+                        )
+                        .await?;
                         active.slug = Set(slug);
                     }
                     if let Some(metadata) = metadata {

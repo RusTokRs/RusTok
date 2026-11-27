@@ -150,7 +150,9 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261116_000043_order_product_index_refresh_ledger_commits::Migration),
         Box::new(m20261117_000044_order_product_channel_convergence_commits::Migration),
         Box::new(m20261125_000045_fix_variant_attribute_translation_delete_revision::Migration),
-        Box::new(m20261125_000046_fix_product_attribute_value_translation_delete_revision::Migration),
+        Box::new(
+            m20261125_000046_fix_product_attribute_value_translation_delete_revision::Migration,
+        ),
         Box::new(m20261126_000047_add_product_variant_revision::Migration),
         Box::new(m20261126_000048_bump_product_revision_for_variant_membership::Migration),
         Box::new(m20261126_000049_fix_variant_combination_identity_revision_updates::Migration),

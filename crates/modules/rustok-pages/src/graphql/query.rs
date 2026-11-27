@@ -82,7 +82,6 @@ impl PagesQuery {
         Ok(Some(page.into()))
     }
 
-
     /// Resolve a lost save acknowledgement without submitting a second write.
     /// A missing receipt means unknown, not "the request definitely failed".
     async fn page_document_save_receipt(

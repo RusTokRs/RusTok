@@ -150,9 +150,12 @@ impl ProductInventoryPort for InventoryProductInventoryPortAdapter {
             return Ok(());
         }
         // Admit every identity before creating a location or any inventory rows.
-        if tenant_id.is_nil() || actor_id.is_nil()
+        if tenant_id.is_nil()
+            || actor_id.is_nil()
             || items.len() > rustok_product::dto::MAX_PRODUCT_VARIANTS
-            || items.iter().any(|item| item.variant_id.is_nil() || item.available_quantity < 0)
+            || items
+                .iter()
+                .any(|item| item.variant_id.is_nil() || item.available_quantity < 0)
         {
             return Err(CommerceError::InventoryQuantityBlocked(
                 ProductInventoryQuantityBlocker::InvalidRequest,
@@ -203,7 +206,12 @@ impl ProductInventoryPort for InventoryProductInventoryPortAdapter {
         expected_quantity: i32,
     ) -> Result<(), CommerceError> {
         BootstrapService::update_initial_quantity_in_tx(
-            txn, tenant_id, actor_id, variant_id, quantity, expected_quantity,
+            txn,
+            tenant_id,
+            actor_id,
+            variant_id,
+            quantity,
+            expected_quantity,
         )
         .await
         .map_err(map_quantity_write_error)
@@ -217,11 +225,9 @@ impl ProductInventoryPort for InventoryProductInventoryPortAdapter {
         variant_id: Uuid,
         sku: Option<String>,
     ) -> Result<(), CommerceError> {
-        BootstrapService::sync_variant_sku_in_tx(
-            txn, tenant_id, actor_id, variant_id, sku,
-        )
-        .await
-        .map_err(map_quantity_write_error)
+        BootstrapService::sync_variant_sku_in_tx(txn, tenant_id, actor_id, variant_id, sku)
+            .await
+            .map_err(map_quantity_write_error)
     }
 
     async fn delete_records_for_variants_in_tx(

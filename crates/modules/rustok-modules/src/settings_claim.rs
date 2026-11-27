@@ -7,7 +7,9 @@
 
 use rustok_api::PortError;
 use rustok_outbox::idempotency::{self, Lease};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
+};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -33,7 +35,9 @@ pub(crate) async fn lock_receipt(
     transaction: &DatabaseTransaction,
     lease: Lease,
 ) -> Result<(), SettingsClaimError> {
-    idempotency::lock_current(transaction, lease).await.map_err(SettingsClaimError::Receipt)
+    idempotency::lock_current(transaction, lease)
+        .await
+        .map_err(SettingsClaimError::Receipt)
 }
 
 pub(crate) async fn claim(
@@ -111,7 +115,11 @@ pub(crate) async fn claim(
     match result {
         Ok(()) => tx.commit().await.map_err(db_error),
         Err(error) => {
-            tx.rollback().await.map_err(|rollback| db_error(format!("{error}; additionally, settings claim rollback failed: {rollback}")))?;
+            tx.rollback().await.map_err(|rollback| {
+                db_error(format!(
+                    "{error}; additionally, settings claim rollback failed: {rollback}"
+                ))
+            })?;
             Err(error)
         }
     }
@@ -127,7 +135,8 @@ pub(crate) async fn release_in_transaction(
 ) -> Result<(), SettingsClaimError> {
     let backend = SupportedBackend::new(tx.get_database_backend()).map_err(db_error)?;
     StaticTenantLifecycleStore::release_settings(tx, tenant, slug, lease.token)
-        .await.map_err(SettingsClaimError::Owner)?;
+        .await
+        .map_err(SettingsClaimError::Owner)?;
     let removed = tx.execute_raw(Statement::from_sql_and_values(
         backend.db_backend(),
         format!("DELETE FROM module_static_settings_claim_fences WHERE receipt_id = {} AND tenant_id = {} AND module_slug = {} AND claim_token = {}",
@@ -135,7 +144,9 @@ pub(crate) async fn release_in_transaction(
         vec![backend.uuid_value(lease.operation_id), backend.uuid_value(tenant), slug.to_string().into(), backend.uuid_value(lease.token)],
     )).await.map_err(db_error)?;
     if removed.rows_affected() != 1 {
-        return Err(SettingsClaimError::Database("settings claim fence is missing or changed".to_string()));
+        return Err(SettingsClaimError::Database(
+            "settings claim fence is missing or changed".to_string(),
+        ));
     }
     Ok(())
 }
@@ -148,14 +159,21 @@ pub(crate) async fn abandon(
 ) -> Result<(), SettingsClaimError> {
     let tx = db.begin().await.map_err(db_error)?;
     let result = async {
-        configure_tenant_scope(&tx, tenant).await.map_err(db_error)?;
+        configure_tenant_scope(&tx, tenant)
+            .await
+            .map_err(db_error)?;
         lock_receipt(&tx, lease).await?;
         release_in_transaction(&tx, tenant, slug, lease).await
-    }.await;
+    }
+    .await;
     match result {
         Ok(()) => tx.commit().await.map_err(db_error),
         Err(error) => {
-            tx.rollback().await.map_err(|rollback| db_error(format!("{error}; additionally, settings claim cleanup rollback failed: {rollback}")))?;
+            tx.rollback().await.map_err(|rollback| {
+                db_error(format!(
+                    "{error}; additionally, settings claim cleanup rollback failed: {rollback}"
+                ))
+            })?;
             Err(error)
         }
     }
@@ -175,16 +193,36 @@ mod tests {
         db.execute_unprepared("CREATE TABLE tenants (id TEXT PRIMARY KEY NOT NULL); CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants").await.unwrap();
         db.execute_unprepared("CREATE TABLE module_static_tenant_lifecycle (tenant_id TEXT NOT NULL, module_slug TEXT NOT NULL, revision INTEGER NOT NULL, active_idempotency_key TEXT, active_claimed_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (tenant_id, module_slug))").await.unwrap();
         let manager = SchemaManager::new(&db);
-        rustok_outbox::migration::create_owner_operation_receipts_table(&manager).await.unwrap();
-        crate::migrations::m20261117_000093_settings_claim_fences::Migration.up(&manager).await.unwrap();
+        rustok_outbox::migration::create_owner_operation_receipts_table(&manager)
+            .await
+            .unwrap();
+        crate::migrations::m20261117_000093_settings_claim_fences::Migration
+            .up(&manager)
+            .await
+            .unwrap();
         let tenant = Uuid::new_v4();
-        db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
-            "INSERT INTO tenants VALUES (?1)", vec![tenant.to_string().into()])).await.unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO tenants VALUES (?1)",
+            vec![tenant.to_string().into()],
+        ))
+        .await
+        .unwrap();
         (db, tenant)
     }
 
     async fn admit(db: &DatabaseConnection, tenant: Uuid, owner: &str, key: &str) -> Lease {
-        match idempotency::admit(db, OwnerOperationScope::Tenant(tenant), owner, key, "update", &serde_json::json!({"value": 1})).await.unwrap() {
+        match idempotency::admit(
+            db,
+            OwnerOperationScope::Tenant(tenant),
+            owner,
+            key,
+            "update",
+            &serde_json::json!({"value": 1}),
+        )
+        .await
+        .unwrap()
+        {
             Admission::Run(lease) => lease,
             _ => panic!("expected processing receipt"),
         }
@@ -204,18 +242,45 @@ mod tests {
         assert_eq!(old.operation_id, current.operation_id);
         assert_ne!(old.token, current.token);
         claim(&db, tenant, "forum", 0, current).await.unwrap();
-        assert!(matches!(abandon(&db, tenant, "forum", old).await, Err(SettingsClaimError::Receipt(_))));
-        assert_eq!(StaticTenantLifecycleStore::snapshot(&db, tenant, "forum").await.unwrap().active_idempotency_key, Some(current.token));
+        assert!(matches!(
+            abandon(&db, tenant, "forum", old).await,
+            Err(SettingsClaimError::Receipt(_))
+        ));
+        assert_eq!(
+            StaticTenantLifecycleStore::snapshot(&db, tenant, "forum")
+                .await
+                .unwrap()
+                .active_idempotency_key,
+            Some(current.token)
+        );
         let tx = db.begin().await.unwrap();
-        assert!(matches!(lock_receipt(&tx, old).await, Err(SettingsClaimError::Receipt(_))));
+        assert!(matches!(
+            lock_receipt(&tx, old).await,
+            Err(SettingsClaimError::Receipt(_))
+        ));
         tx.rollback().await.unwrap();
         let tx = db.begin().await.unwrap();
         lock_receipt(&tx, current).await.unwrap();
-        assert_eq!(StaticTenantLifecycleStore::advance_settings(&tx, tenant, "forum", 0, current.token).await.unwrap(), 1);
-        release_in_transaction(&tx, tenant, "forum", current).await.unwrap();
-        idempotency::complete(&tx, current, &serde_json::json!({"ok": true})).await.unwrap();
+        assert_eq!(
+            StaticTenantLifecycleStore::advance_settings(&tx, tenant, "forum", 0, current.token)
+                .await
+                .unwrap(),
+            1
+        );
+        release_in_transaction(&tx, tenant, "forum", current)
+            .await
+            .unwrap();
+        idempotency::complete(&tx, current, &serde_json::json!({"ok": true}))
+            .await
+            .unwrap();
         tx.commit().await.unwrap();
-        assert_eq!(StaticTenantLifecycleStore::snapshot(&db, tenant, "forum").await.unwrap().revision, 1);
+        assert_eq!(
+            StaticTenantLifecycleStore::snapshot(&db, tenant, "forum")
+                .await
+                .unwrap()
+                .revision,
+            1
+        );
     }
 
     #[tokio::test]
@@ -225,8 +290,17 @@ mod tests {
         age_receipts(&db).await;
         let current = admit(&db, tenant, "settings", "same").await;
         claim(&db, tenant, "forum", 0, current).await.unwrap();
-        assert!(matches!(claim(&db, tenant, "forum", 0, old).await, Err(SettingsClaimError::Receipt(_))));
-        assert_eq!(StaticTenantLifecycleStore::snapshot(&db, tenant, "forum").await.unwrap().active_idempotency_key, Some(current.token));
+        assert!(matches!(
+            claim(&db, tenant, "forum", 0, old).await,
+            Err(SettingsClaimError::Receipt(_))
+        ));
+        assert_eq!(
+            StaticTenantLifecycleStore::snapshot(&db, tenant, "forum")
+                .await
+                .unwrap()
+                .active_idempotency_key,
+            Some(current.token)
+        );
     }
 
     #[tokio::test]
@@ -235,18 +309,41 @@ mod tests {
         let first = admit(&db, tenant, "localization", "same-caller-key").await;
         let second = admit(&db, tenant, "base-settings", "same-caller-key").await;
         claim(&db, tenant, "forum", 0, first).await.unwrap();
-        assert!(matches!(claim(&db, tenant, "forum", 0, first).await,
-            Err(SettingsClaimError::Owner(StaticTenantLifecycleStoreError::OperationInProgress { .. }))));
-        assert!(matches!(claim(&db, tenant, "forum", 0, second).await,
-            Err(SettingsClaimError::Owner(StaticTenantLifecycleStoreError::OperationInProgress { .. }))));
-        assert!(matches!(abandon(&db, tenant, "forum", second).await, Err(SettingsClaimError::Owner(_))));
+        assert!(matches!(
+            claim(&db, tenant, "forum", 0, first).await,
+            Err(SettingsClaimError::Owner(
+                StaticTenantLifecycleStoreError::OperationInProgress { .. }
+            ))
+        ));
+        assert!(matches!(
+            claim(&db, tenant, "forum", 0, second).await,
+            Err(SettingsClaimError::Owner(
+                StaticTenantLifecycleStoreError::OperationInProgress { .. }
+            ))
+        ));
+        assert!(matches!(
+            abandon(&db, tenant, "forum", second).await,
+            Err(SettingsClaimError::Owner(_))
+        ));
         abandon(&db, tenant, "forum", first).await.unwrap();
         let journal_key = Uuid::new_v4();
-        StaticTenantLifecycleStore::claim(&db, tenant, "forum", 0, journal_key).await.unwrap();
+        StaticTenantLifecycleStore::claim(&db, tenant, "forum", 0, journal_key)
+            .await
+            .unwrap();
         db.execute_unprepared("UPDATE module_static_tenant_lifecycle SET active_claimed_at = '2000-01-01T00:00:00+00:00'").await.unwrap();
-        assert!(matches!(claim(&db, tenant, "forum", 0, second).await,
-            Err(SettingsClaimError::Owner(StaticTenantLifecycleStoreError::OperationInProgress { .. }))));
-        assert_eq!(StaticTenantLifecycleStore::snapshot(&db, tenant, "forum").await.unwrap().active_idempotency_key, Some(journal_key));
+        assert!(matches!(
+            claim(&db, tenant, "forum", 0, second).await,
+            Err(SettingsClaimError::Owner(
+                StaticTenantLifecycleStoreError::OperationInProgress { .. }
+            ))
+        ));
+        assert_eq!(
+            StaticTenantLifecycleStore::snapshot(&db, tenant, "forum")
+                .await
+                .unwrap()
+                .active_idempotency_key,
+            Some(journal_key)
+        );
     }
 
     #[tokio::test]
@@ -254,12 +351,32 @@ mod tests {
         let (db, tenant) = fixture().await;
         let settings = admit(&db, tenant, "settings", "same").await;
         claim(&db, tenant, "forum", 0, settings).await.unwrap();
-        assert!(matches!(StaticTenantLifecycleStore::claim(&db, tenant, "forum", 0, settings.token).await,
-            Err(StaticTenantLifecycleStoreError::OperationInProgress { .. })));
-        assert!(!StaticTenantLifecycleStore::heartbeat(&db, tenant, "forum", 0, settings.token).await.unwrap());
-        assert!(StaticTenantLifecycleStore::advance(&db, tenant, "forum", 0, settings.token).await.is_err());
-        assert!(StaticTenantLifecycleStore::release(&db, tenant, "forum", settings.token).await.is_err());
-        assert_eq!(StaticTenantLifecycleStore::snapshot(&db, tenant, "forum").await.unwrap().active_idempotency_key, Some(settings.token));
+        assert!(matches!(
+            StaticTenantLifecycleStore::claim(&db, tenant, "forum", 0, settings.token).await,
+            Err(StaticTenantLifecycleStoreError::OperationInProgress { .. })
+        ));
+        assert!(
+            !StaticTenantLifecycleStore::heartbeat(&db, tenant, "forum", 0, settings.token)
+                .await
+                .unwrap()
+        );
+        assert!(
+            StaticTenantLifecycleStore::advance(&db, tenant, "forum", 0, settings.token)
+                .await
+                .is_err()
+        );
+        assert!(
+            StaticTenantLifecycleStore::release(&db, tenant, "forum", settings.token)
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            StaticTenantLifecycleStore::snapshot(&db, tenant, "forum")
+                .await
+                .unwrap()
+                .active_idempotency_key,
+            Some(settings.token)
+        );
         abandon(&db, tenant, "forum", settings).await.unwrap();
     }
 
@@ -269,14 +386,34 @@ mod tests {
         let old = admit(&db, tenant, "settings", "same").await;
         claim(&db, tenant, "forum", 0, old).await.unwrap();
         // Simulate corrupt ownership while retaining the old settings marker.
-        db.execute_unprepared("UPDATE module_static_tenant_lifecycle SET claim_owner = 'journal'").await.unwrap();
+        db.execute_unprepared("UPDATE module_static_tenant_lifecycle SET claim_owner = 'journal'")
+            .await
+            .unwrap();
         age_receipts(&db).await;
         let current = admit(&db, tenant, "settings", "same").await;
-        assert!(matches!(claim(&db, tenant, "forum", 0, current).await, Err(SettingsClaimError::Database(_))));
-        assert_eq!(StaticTenantLifecycleStore::snapshot(&db, tenant, "forum").await.unwrap().active_idempotency_key, Some(old.token));
-        let row = db.query_one_raw(Statement::from_string(DbBackend::Sqlite,
-            "SELECT claim_token FROM module_static_settings_claim_fences".to_string())).await.unwrap().unwrap();
-        assert_eq!(row.try_get::<String>("", "claim_token").unwrap(), old.token.to_string());
+        assert!(matches!(
+            claim(&db, tenant, "forum", 0, current).await,
+            Err(SettingsClaimError::Database(_))
+        ));
+        assert_eq!(
+            StaticTenantLifecycleStore::snapshot(&db, tenant, "forum")
+                .await
+                .unwrap()
+                .active_idempotency_key,
+            Some(old.token)
+        );
+        let row = db
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT claim_token FROM module_static_settings_claim_fences".to_string(),
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            row.try_get::<String>("", "claim_token").unwrap(),
+            old.token.to_string()
+        );
     }
 
     #[tokio::test]
@@ -286,23 +423,63 @@ mod tests {
         claim(&db, tenant, "forum", 0, settings).await.unwrap();
         db.execute_unprepared("UPDATE module_static_tenant_lifecycle SET active_claimed_at = '2000-01-01T00:00:00+00:00'").await.unwrap();
         let journal = Uuid::new_v4();
-        assert!(matches!(StaticTenantLifecycleStore::claim(&db, tenant, "forum", 0, journal).await,
-            Err(StaticTenantLifecycleStoreError::OperationInProgress { .. })));
-        assert_eq!(StaticTenantLifecycleStore::snapshot(&db, tenant, "forum").await.unwrap().active_idempotency_key, Some(settings.token));
+        assert!(matches!(
+            StaticTenantLifecycleStore::claim(&db, tenant, "forum", 0, journal).await,
+            Err(StaticTenantLifecycleStoreError::OperationInProgress { .. })
+        ));
+        assert_eq!(
+            StaticTenantLifecycleStore::snapshot(&db, tenant, "forum")
+                .await
+                .unwrap()
+                .active_idempotency_key,
+            Some(settings.token)
+        );
     }
 
     #[tokio::test]
     async fn migration_rejects_unreconciled_legacy_claims() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
-        db.execute_unprepared("CREATE TABLE module_static_tenant_lifecycle (active_idempotency_key TEXT)").await.unwrap();
-        db.execute_unprepared("INSERT INTO module_static_tenant_lifecycle VALUES ('legacy')").await.unwrap();
-        assert!(crate::migrations::m20261117_000093_settings_claim_fences::Migration.up(&SchemaManager::new(&db)).await.is_err());
-        db.execute_unprepared("DELETE FROM module_static_tenant_lifecycle").await.unwrap();
-        crate::migrations::m20261117_000093_settings_claim_fences::Migration.up(&SchemaManager::new(&db)).await.unwrap();
-        db.execute_unprepared("INSERT INTO module_static_tenant_lifecycle (active_idempotency_key) VALUES (NULL)").await.unwrap();
-        let row = db.query_one_raw(Statement::from_string(DbBackend::Sqlite,
-            "SELECT claim_owner FROM module_static_tenant_lifecycle".to_string())).await.unwrap().unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE module_static_tenant_lifecycle (active_idempotency_key TEXT)",
+        )
+        .await
+        .unwrap();
+        db.execute_unprepared("INSERT INTO module_static_tenant_lifecycle VALUES ('legacy')")
+            .await
+            .unwrap();
+        assert!(
+            crate::migrations::m20261117_000093_settings_claim_fences::Migration
+                .up(&SchemaManager::new(&db))
+                .await
+                .is_err()
+        );
+        db.execute_unprepared("DELETE FROM module_static_tenant_lifecycle")
+            .await
+            .unwrap();
+        crate::migrations::m20261117_000093_settings_claim_fences::Migration
+            .up(&SchemaManager::new(&db))
+            .await
+            .unwrap();
+        db.execute_unprepared(
+            "INSERT INTO module_static_tenant_lifecycle (active_idempotency_key) VALUES (NULL)",
+        )
+        .await
+        .unwrap();
+        let row = db
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT claim_owner FROM module_static_tenant_lifecycle".to_string(),
+            ))
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(row.try_get::<String>("", "claim_owner").unwrap(), "journal");
-        assert!(db.execute_unprepared("UPDATE module_static_tenant_lifecycle SET claim_owner = 'unknown'").await.is_err());
+        assert!(
+            db.execute_unprepared(
+                "UPDATE module_static_tenant_lifecycle SET claim_owner = 'unknown'"
+            )
+            .await
+            .is_err()
+        );
     }
 }

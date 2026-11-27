@@ -75,11 +75,21 @@ impl ProjectDocument {
             return false;
         };
         match parent_id {
-            Some(id) => index.paths.get(id).is_some_and(|(parent_page, target_path)| {
-                parent_page == page && target_path.as_slice() == parent_path
-            }),
-            None => parent_path.is_empty()
-                && self.project().pages.iter().position(|page| page.component.is_some()) == Some(*page),
+            Some(id) => index
+                .paths
+                .get(id)
+                .is_some_and(|(parent_page, target_path)| {
+                    parent_page == page && target_path.as_slice() == parent_path
+                }),
+            None => {
+                parent_path.is_empty()
+                    && self
+                        .project()
+                        .pages
+                        .iter()
+                        .position(|page| page.component.is_some())
+                        == Some(*page)
+            }
         }
     }
 
@@ -402,26 +412,62 @@ mod tests {
         let registries = RegistrySet::with_builtins();
 
         let forged = registries.evaluate_placement(
-            &document, Some("moving-text"), "list_item", Some("destination-list"), 0,
+            &document,
+            Some("moving-text"),
+            "list_item",
+            Some("destination-list"),
+            0,
         );
         assert!(!forged.legal);
-        assert!(forged.reason.unwrap_or_default().contains("does not match proposed type"));
+        assert!(
+            forged
+                .reason
+                .unwrap_or_default()
+                .contains("does not match proposed type")
+        );
 
         let actual = registries.evaluate_placement(
-            &document, Some("moving-text"), "text", Some("destination-list"), 0,
+            &document,
+            Some("moving-text"),
+            "text",
+            Some("destination-list"),
+            0,
         );
         assert!(!actual.legal);
-        assert!(actual.reason.unwrap_or_default().contains("does not accept"));
+        assert!(
+            actual
+                .reason
+                .unwrap_or_default()
+                .contains("does not accept")
+        );
 
-        assert!(registries.evaluate_placement(
-            &document, Some("moving-item"), "list_item", Some("destination-list"), 0,
-        ).legal);
-        assert!(registries.evaluate_placement(
-            &document, None, "list_item", Some("destination-list"), 0,
-        ).legal);
-        assert!(!registries.evaluate_placement(
-            &document, Some("moving-item"), "text", Some("source-root"), 0,
-        ).legal);
+        assert!(
+            registries
+                .evaluate_placement(
+                    &document,
+                    Some("moving-item"),
+                    "list_item",
+                    Some("destination-list"),
+                    0,
+                )
+                .legal
+        );
+        assert!(
+            registries
+                .evaluate_placement(&document, None, "list_item", Some("destination-list"), 0,)
+                .legal
+        );
+        assert!(
+            !registries
+                .evaluate_placement(
+                    &document,
+                    Some("moving-item"),
+                    "text",
+                    Some("source-root"),
+                    0,
+                )
+                .legal
+        );
     }
 
     #[test]

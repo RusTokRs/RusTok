@@ -270,6 +270,13 @@ close the component.
 - [x] Add sealed assignment event v1 with exact immutable definition identity.
 - [x] Keep validation, idempotency, mutation, and publication in one owner transaction.
 - [x] Emit no event for exact retry or durable no-op.
+- [x] Source-fence actual artifact grant changes with the existing durable RBAC
+  generation in the receipt/event transaction; never heal a negative generation.
+  Protect the PostgreSQL actor FK before role locks and the exact immutable
+  permission parent before receipt lookup. SQLite already holds its writer fence.
+  Regression coverage for generation advance, no-op, rollback and missing state
+  is authored, unrun; PostgreSQL contention and complete runtime entitlement
+  remain open.
 - [x] Roll back mutation and receipt when required publication fails.
 - [x] Separate language-neutral definitions from canonical localized translations.
 - [x] Normalize locale tags, use safe locale width, and reject semantic duplicates.

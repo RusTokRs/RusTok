@@ -986,7 +986,7 @@ impl RootQuery {
         crate::graphql::mutations::user_mutation_runtime(ctx)?
             .port()
             .list_user_invites(
-                &crate::graphql::mutations::user_mutation_context(auth, tenant, locale),
+                &crate::graphql::mutations::user_mutation_context(ctx, auth, tenant, locale)?,
                 limit.clamp(1, 100) as u64,
             )
             .await

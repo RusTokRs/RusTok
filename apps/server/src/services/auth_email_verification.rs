@@ -41,9 +41,15 @@ impl AuthLifecycleService {
             .one(ctx.db())
             .await
             .map_err(AuthLifecycleError::from)?
-            .filter(|record| record.is_active() && record.matches_recovery_identity(
-                tenant_id, claims.user_id, &claims.sub, claims.recovery_revision,
-            ))
+            .filter(|record| {
+                record.is_active()
+                    && record.matches_recovery_identity(
+                        tenant_id,
+                        claims.user_id,
+                        &claims.sub,
+                        claims.recovery_revision,
+                    )
+            })
             .ok_or(AuthLifecycleError::InvalidVerificationToken)?;
 
         // Do not short-circuit an already-verified preflight read. An email
@@ -51,16 +57,20 @@ impl AuthLifecycleService {
         // and in-transaction check below must decide whether this token is
         // still valid for the current address.
         let tx = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
-        let (current, verified_at) = Self::lock_user_for_recovery(
-            &tx, tenant_id, user.id, claims.expires_at,
-        )
-        .await
-        .map_err(AuthLifecycleError::from)?
-        .ok_or(AuthLifecycleError::InvalidVerificationToken)?;
+        let (current, verified_at) =
+            Self::lock_user_for_recovery(&tx, tenant_id, user.id, claims.expires_at)
+                .await
+                .map_err(AuthLifecycleError::from)?
+                .ok_or(AuthLifecycleError::InvalidVerificationToken)?;
         if decode_email_verification_token(config, token).is_err()
-            || !current.is_active() || !current.matches_recovery_identity(
-            tenant_id, claims.user_id, &claims.sub, claims.recovery_revision,
-        ) {
+            || !current.is_active()
+            || !current.matches_recovery_identity(
+                tenant_id,
+                claims.user_id,
+                &claims.sub,
+                claims.recovery_revision,
+            )
+        {
             return Err(AuthLifecycleError::InvalidVerificationToken);
         }
         let updated = verify_unchanged_email(
@@ -91,9 +101,14 @@ impl AuthLifecycleService {
                 .await
                 .map_err(AuthLifecycleError::from)?;
             if !current.is_some_and(|record| {
-                record.is_active() && record.matches_recovery_identity(
-                    tenant_id, claims.user_id, &claims.sub, claims.recovery_revision,
-                ) && record.email_verified_at.is_some()
+                record.is_active()
+                    && record.matches_recovery_identity(
+                        tenant_id,
+                        claims.user_id,
+                        &claims.sub,
+                        claims.recovery_revision,
+                    )
+                    && record.email_verified_at.is_some()
             }) {
                 return Err(AuthLifecycleError::InvalidVerificationToken);
             }
@@ -122,7 +137,10 @@ async fn verify_unchanged_email<C: ConnectionTrait>(
     verified_at: chrono::DateTime<Utc>,
 ) -> Result<bool, AuthLifecycleError> {
     let updated = users::Entity::update_many()
-        .col_expr(users::Column::EmailVerifiedAt, Expr::value(verified_at.clone()))
+        .col_expr(
+            users::Column::EmailVerifiedAt,
+            Expr::value(verified_at.clone()),
+        )
         .col_expr(users::Column::UpdatedAt, Expr::value(verified_at))
         .filter(users::Column::Id.eq(user_id))
         .filter(users::Column::TenantId.eq(tenant_id))
@@ -158,12 +176,10 @@ mod tests {
 
         let tx = db.begin().await.expect("transaction");
         assert!(
-            AuthLifecycleService::lock_user_for_recovery(
-                &tx, tenant.id, user.id, Utc::now(),
-            )
-            .await
-            .expect("expired recovery fence")
-            .is_none()
+            AuthLifecycleService::lock_user_for_recovery(&tx, tenant.id, user.id, Utc::now(),)
+                .await
+                .expect("expired recovery fence")
+                .is_none()
         );
         tx.rollback().await.expect("rollback");
         let stored = Users::find_by_id(user.id)
@@ -176,12 +192,11 @@ mod tests {
 
         let tx = db.begin().await.expect("transaction");
         let deadline = Utc::now() + chrono::Duration::minutes(5);
-        let (locked, admitted_at) = AuthLifecycleService::lock_user_for_recovery(
-            &tx, tenant.id, user.id, deadline,
-        )
-        .await
-        .expect("live recovery fence")
-        .expect("live user");
+        let (locked, admitted_at) =
+            AuthLifecycleService::lock_user_for_recovery(&tx, tenant.id, user.id, deadline)
+                .await
+                .expect("live recovery fence")
+                .expect("live user");
         assert_eq!(locked.id, user.id);
         assert!(admitted_at < deadline);
         tx.rollback().await.expect("rollback");
@@ -219,9 +234,16 @@ mod tests {
         let verified_at = chrono::DateTime::<Utc>::from_timestamp(1_800_000_000, 0)
             .expect("fixed verification timestamp");
         assert!(
-            !verify_unchanged_email(&db, tenant.id, user.id, &user.email, user.recovery_revision, verified_at.clone())
-                .await
-                .expect("compare and swap")
+            !verify_unchanged_email(
+                &db,
+                tenant.id,
+                user.id,
+                &user.email,
+                user.recovery_revision,
+                verified_at.clone()
+            )
+            .await
+            .expect("compare and swap")
         );
         let current = Users::find_by_id(user.id)
             .one(&db)
@@ -231,9 +253,16 @@ mod tests {
         assert_eq!(current.email, "new@example.com");
         assert!(current.email_verified_at.is_none());
         assert!(
-            verify_unchanged_email(&db, tenant.id, user.id, &current.email, current.recovery_revision, verified_at.clone())
-                .await
-                .expect("verify current address")
+            verify_unchanged_email(
+                &db,
+                tenant.id,
+                user.id,
+                &current.email,
+                current.recovery_revision,
+                verified_at.clone()
+            )
+            .await
+            .expect("verify current address")
         );
         let verified = Users::find_by_id(user.id).one(&db).await.unwrap().unwrap();
         assert_eq!(verified.recovery_revision, current.recovery_revision);
@@ -244,9 +273,16 @@ mod tests {
             "email verification and user update timestamps must be identical"
         );
         assert!(
-            !verify_unchanged_email(&db, tenant.id, user.id, &current.email, current.recovery_revision, verified_at + chrono::Duration::seconds(1))
-                .await
-                .expect("already verified")
+            !verify_unchanged_email(
+                &db,
+                tenant.id,
+                user.id,
+                &current.email,
+                current.recovery_revision,
+                verified_at + chrono::Duration::seconds(1)
+            )
+            .await
+            .expect("already verified")
         );
         let replayed = Users::find_by_id(user.id).one(&db).await.unwrap().unwrap();
         assert_eq!(replayed.email_verified_at, verified.email_verified_at);

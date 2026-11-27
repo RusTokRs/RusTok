@@ -1,7 +1,7 @@
 use crate::error::{Error, Result};
 use std::future::Future;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::task::{JoinError, JoinHandle, JoinSet};
 
@@ -12,9 +12,9 @@ use crate::services::event_transport_factory::{
 };
 use crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle;
 use crate::services::outbox_retention_worker::spawn_outbox_retention_worker;
-use crate::services::server_runtime_context::{ServerRuntimeContext, published_worker_running};
 #[cfg(feature = "mod-seo")]
 use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
+use crate::services::server_runtime_context::{ServerRuntimeContext, published_worker_running};
 use rustok_modules::ModuleControlPlane;
 #[cfg(feature = "mod-seo")]
 use rustok_seo::{SeoApplicationServices, SeoWorkerAuthorization};
@@ -284,9 +284,7 @@ impl SocialGraphObserverInitializationLock {
 /// Product Index, Social Graph Index, Comments TCP listener, and Comments
 /// durable audit handoff workers.
 #[derive(Clone, Default)]
-pub(crate) struct DirectWorkerRegistrationLock(
-    pub(crate) std::sync::Arc<std::sync::Mutex<()>>,
-);
+pub(crate) struct DirectWorkerRegistrationLock(pub(crate) std::sync::Arc<std::sync::Mutex<()>>);
 
 impl DirectWorkerRegistrationLock {
     pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
@@ -314,9 +312,7 @@ where
 /// check-then-insert sequence; this host-level fence makes that sequence
 /// single-owner for one ServerRuntimeContext.
 #[derive(Clone, Default)]
-pub(crate) struct ServerBootstrapInitializationLock(
-    std::sync::Arc<tokio::sync::Mutex<()>>,
-);
+pub(crate) struct ServerBootstrapInitializationLock(std::sync::Arc<tokio::sync::Mutex<()>>);
 
 impl ServerBootstrapInitializationLock {
     pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
@@ -437,19 +433,28 @@ pub(crate) fn runtime_worker_snapshots(ctx: &ServerRuntimeContext) -> Vec<Runtim
         RuntimeWorkerSnapshot {
             name: "outbox_relay",
             required: local
-                && event_runtime.as_ref().is_some_and(|runtime| runtime.relay_config.is_some()),
-            finished: ctx.shared_map::<OutboxRelayWorkerHandle, _>(OutboxRelayWorkerHandle::is_finished),
+                && event_runtime
+                    .as_ref()
+                    .is_some_and(|runtime| runtime.relay_config.is_some()),
+            finished: ctx
+                .shared_map::<OutboxRelayWorkerHandle, _>(OutboxRelayWorkerHandle::is_finished),
         },
         RuntimeWorkerSnapshot {
             name: "outbox_retention",
             required: local
-                && event_runtime.as_ref().is_some_and(|runtime| runtime.outbox_retention.is_some()),
-            finished: ctx.shared_map::<OutboxRetentionWorkerHandle, _>(OutboxRetentionWorkerHandle::is_finished),
+                && event_runtime
+                    .as_ref()
+                    .is_some_and(|runtime| runtime.outbox_retention.is_some()),
+            finished: ctx.shared_map::<OutboxRetentionWorkerHandle, _>(
+                OutboxRetentionWorkerHandle::is_finished,
+            ),
         },
         RuntimeWorkerSnapshot {
             name: "remote_executor_reaper",
             required: local && settings.registry.remote_executor.enabled,
-            finished: ctx.shared_map::<RemoteExecutorReaperHandle, _>(RemoteExecutorReaperHandle::is_finished),
+            finished: ctx.shared_map::<RemoteExecutorReaperHandle, _>(
+                RemoteExecutorReaperHandle::is_finished,
+            ),
         },
     ];
     snapshots.extend(additional_runtime_worker_snapshots(ctx));
@@ -459,6 +464,15 @@ pub(crate) fn runtime_worker_snapshots(ctx: &ServerRuntimeContext) -> Vec<Runtim
 pub(crate) fn additional_runtime_worker_snapshots(
     ctx: &ServerRuntimeContext,
 ) -> Vec<RuntimeWorkerSnapshot> {
+    #[cfg(feature = "mod-comments")]
+    use crate::services::comments_provider_runtime::{
+        CommentsTcpDelegationScheduleAuditHandoffWorkerHandle, CommentsTcpListenerTask,
+    };
+    use crate::services::event_bus::EventForwarderHandle;
+    #[cfg(feature = "mod-forum")]
+    use crate::services::forum_search_inbox_worker::{
+        ForumSearchContractConsumerWorkerHandle, ForumSearchInboxWorkerHandle,
+    };
     #[cfg(feature = "commerce-marketplace-financial")]
     use crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle;
     use crate::services::module_artifact_maintenance::ModuleArtifactMaintenanceHandle;
@@ -466,31 +480,22 @@ pub(crate) fn additional_runtime_worker_snapshots(
         ModuleEventDispatcherHandle, ModuleEventDispatcherRequirement,
     };
     use crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle;
-    use crate::services::event_bus::EventForwarderHandle;
-    #[cfg(feature = "mod-commerce")]
-    use crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle;
-    #[cfg(feature = "mod-payment")]
-    use crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle;
-    #[cfg(feature = "mod-product")]
-    use crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle;
-    #[cfg(feature = "mod-forum")]
-    use crate::services::forum_search_inbox_worker::{
-        ForumSearchContractConsumerWorkerHandle, ForumSearchInboxWorkerHandle,
-    };
-    #[cfg(feature = "mod-product")]
-    use crate::services::product_index_refresh_worker::ProductIndexRefreshWorkerHandle;
-    #[cfg(feature = "mod-social_graph")]
-    use crate::services::social_graph_index_worker::SocialGraphIndexWorkerHandle;
     #[cfg(feature = "mod-notifications")]
     use crate::services::notification_candidate_worker::NotificationCandidateWorkerHandle;
     #[cfg(feature = "mod-notifications")]
     use crate::services::notification_fanout_worker::NotificationFanoutWorkerHandle;
     #[cfg(feature = "mod-notifications")]
     use crate::services::notification_outbox_intake_worker::NotificationOutboxIntakeWorkerHandle;
-    #[cfg(feature = "mod-comments")]
-    use crate::services::comments_provider_runtime::{
-        CommentsTcpDelegationScheduleAuditHandoffWorkerHandle, CommentsTcpListenerTask,
-    };
+    #[cfg(feature = "mod-commerce")]
+    use crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle;
+    #[cfg(feature = "mod-payment")]
+    use crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle;
+    #[cfg(feature = "mod-product")]
+    use crate::services::product_index_refresh_worker::ProductIndexRefreshWorkerHandle;
+    #[cfg(feature = "mod-product")]
+    use crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle;
+    #[cfg(feature = "mod-social_graph")]
+    use crate::services::social_graph_index_worker::SocialGraphIndexWorkerHandle;
 
     let local = ctx.settings().runtime.runs_background_workers();
     let listeners_required = ctx
@@ -523,8 +528,7 @@ pub(crate) fn additional_runtime_worker_snapshots(
         },
         RuntimeWorkerSnapshot {
             name: "event_forwarder",
-            required: local
-                && ctx.shared_contains::<crate::services::event_bus::SharedEventBus>(),
+            required: local && ctx.shared_contains::<crate::services::event_bus::SharedEventBus>(),
             finished: ctx.shared_map::<EventForwarderHandle, _>(|worker| !worker.is_running()),
         },
         RuntimeWorkerSnapshot {
@@ -548,11 +552,9 @@ pub(crate) fn additional_runtime_worker_snapshots(
         #[cfg(feature = "mod-product")]
         RuntimeWorkerSnapshot {
             name: "product_index_refresh",
-            required: local
-                && ctx.shared_contains::<ProductIndexRefreshWorkerHandle>(),
-            finished: ctx.shared_map::<ProductIndexRefreshWorkerHandle, _>(|worker| {
-                !worker.is_ready()
-            }),
+            required: local && ctx.shared_contains::<ProductIndexRefreshWorkerHandle>(),
+            finished: ctx
+                .shared_map::<ProductIndexRefreshWorkerHandle, _>(|worker| !worker.is_ready()),
         },
         #[cfg(feature = "mod-social_graph")]
         RuntimeWorkerSnapshot {
@@ -573,11 +575,10 @@ pub(crate) fn additional_runtime_worker_snapshots(
         #[cfg(feature = "mod-forum")]
         RuntimeWorkerSnapshot {
             name: "forum_search_contract_consumer",
-            required: local
-                && ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>(),
-            finished: ctx.shared_map::<ForumSearchContractConsumerWorkerHandle, _>(
-                |worker| worker.is_finished(),
-            ),
+            required: local && ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>(),
+            finished: ctx.shared_map::<ForumSearchContractConsumerWorkerHandle, _>(|worker| {
+                worker.is_finished()
+            }),
         },
         #[cfg(feature = "mod-comments")]
         RuntimeWorkerSnapshot {
@@ -597,8 +598,7 @@ pub(crate) fn additional_runtime_worker_snapshots(
         #[cfg(feature = "mod-notifications")]
         RuntimeWorkerSnapshot {
             name: "notification_outbox_intake",
-            required: local
-                && ctx.shared_contains::<NotificationOutboxIntakeWorkerHandle>(),
+            required: local && ctx.shared_contains::<NotificationOutboxIntakeWorkerHandle>(),
             finished: ctx.shared_map::<NotificationOutboxIntakeWorkerHandle, _>(
                 NotificationOutboxIntakeWorkerHandle::is_finished,
             ),
@@ -797,11 +797,13 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
 
     #[cfg(feature = "mod-seo")]
-    if seo_worker_enabled && !published_worker_running::<SeoBulkWorkerHandle>(
-        &runtime_ctx,
-        "SEO bulk worker",
-        SeoBulkWorkerHandle::is_finished,
-    )? {
+    if seo_worker_enabled
+        && !published_worker_running::<SeoBulkWorkerHandle>(
+            &runtime_ctx,
+            "SEO bulk worker",
+            SeoBulkWorkerHandle::is_finished,
+        )?
+    {
         let authorization = SeoWorkerAuthorization::from_runtime_config(
             settings.runtime.runs_background_workers(),
             seo_worker_enabled,
@@ -1030,7 +1032,9 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     // Direct event-runtime construction can bypass router bootstrap. Give its
     // publication owner the same bounded window before taking worker snapshots.
     let event_initialization =
-        crate::services::event_transport_factory::EventRuntimeInitializationLock::ensure(runtime_ctx);
+        crate::services::event_transport_factory::EventRuntimeInitializationLock::ensure(
+            runtime_ctx,
+        );
     match tokio::time::timeout_at(startup_deadline, event_initialization.lock()).await {
         Ok(guard) => drop(guard),
         Err(_) => tracing::warn!(
@@ -1184,7 +1188,9 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     let module_event_dispatcher_drain = async {
         if let Some(worker) =
-            crate::services::module_event_dispatcher::take_module_dispatcher_for_shutdown(runtime_ctx)
+            crate::services::module_event_dispatcher::take_module_dispatcher_for_shutdown(
+                runtime_ctx,
+            )
         {
             // Request a cooperative drain first; the bounded helper aborts and
             // joins the dispatcher if an in-flight handler exceeds the deadline.
@@ -1219,7 +1225,8 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     let comments_tcp_drain = async {
         if let Some(listener_task) = take_direct_worker_for_shutdown::<
             crate::services::comments_provider_runtime::CommentsTcpListenerTask,
-        >(runtime_ctx) {
+        >(runtime_ctx)
+        {
             await_runtime_worker_shutdown_with_timeout(
                 "Comments TCP listener",
                 Some(listener_task.task),
@@ -1251,7 +1258,11 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-commerce")]
     let paid_order_label_drain = async {
-        if let Some(worker) = crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle>(runtime_ctx) {
+        if let Some(worker) =
+            crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<
+                crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle,
+            >(runtime_ctx)
+        {
             await_module_worker_shutdown("Paid-order label", worker.into_task()).await;
         }
     };
@@ -1260,7 +1271,11 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "commerce-marketplace-financial")]
     let marketplace_financial_drain = async {
-        if let Some(worker) = crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle>(runtime_ctx) {
+        if let Some(worker) =
+            crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<
+                crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle,
+            >(runtime_ctx)
+        {
             await_module_worker_shutdown("Marketplace financial", worker.into_task()).await;
         }
     };
@@ -1269,7 +1284,11 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-payment")]
     let payment_provider_drain = async {
-        if let Some(worker) = crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle>(runtime_ctx) {
+        if let Some(worker) =
+            crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<
+                crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+            >(runtime_ctx)
+        {
             await_module_worker_shutdown("Payment provider event", worker.into_task()).await;
         }
     };
@@ -1278,7 +1297,11 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-product")]
     let product_media_drain = async {
-        if let Some(worker) = crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle>(runtime_ctx) {
+        if let Some(worker) =
+            crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<
+                crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle,
+            >(runtime_ctx)
+        {
             await_module_worker_shutdown("Product media release", worker.into_task()).await;
         }
     };
@@ -1434,13 +1457,11 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     #[cfg(feature = "mod-product")]
     let product_index_refresh_drain = async {
         #[cfg(feature = "mod-product")]
-        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::product_index_refresh_worker::ProductIndexRefreshWorkerHandle>(runtime_ctx)
+        if let Some(worker) = take_direct_worker_for_shutdown::<
+            crate::services::product_index_refresh_worker::ProductIndexRefreshWorkerHandle,
+        >(runtime_ctx)
         {
-            await_runtime_worker_shutdown(
-                "Product index refresh",
-                Some(worker.into_task()),
-            )
-            .await;
+            await_runtime_worker_shutdown("Product index refresh", Some(worker.into_task())).await;
         }
     };
     #[cfg(not(feature = "mod-product"))]
@@ -1449,13 +1470,12 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     #[cfg(feature = "mod-social_graph")]
     let social_graph_index_drain = async {
         #[cfg(feature = "mod-social_graph")]
-        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::social_graph_index_worker::SocialGraphIndexWorkerHandle>(runtime_ctx)
+        if let Some(worker) = take_direct_worker_for_shutdown::<
+            crate::services::social_graph_index_worker::SocialGraphIndexWorkerHandle,
+        >(runtime_ctx)
         {
-            await_runtime_worker_shutdown(
-                "Social Graph Index consumer",
-                Some(worker.into_task()),
-            )
-            .await;
+            await_runtime_worker_shutdown("Social Graph Index consumer", Some(worker.into_task()))
+                .await;
         }
     };
     #[cfg(not(feature = "mod-social_graph"))]
@@ -1504,7 +1524,10 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-notifications")]
     let notification_candidate_drain = async {
-        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::notification_candidate_worker::NotificationCandidateWorkerHandle>(runtime_ctx) {
+        if let Some(worker) = take_direct_worker_for_shutdown::<
+            crate::services::notification_candidate_worker::NotificationCandidateWorkerHandle,
+        >(runtime_ctx)
+        {
             await_module_worker_shutdown("Notification candidate", worker.into_task()).await;
         }
     };
@@ -1513,7 +1536,10 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-notifications")]
     let notification_fanout_drain = async {
-        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::notification_fanout_worker::NotificationFanoutWorkerHandle>(runtime_ctx) {
+        if let Some(worker) = take_direct_worker_for_shutdown::<
+            crate::services::notification_fanout_worker::NotificationFanoutWorkerHandle,
+        >(runtime_ctx)
+        {
             await_module_worker_shutdown("Notification fanout", worker.into_task()).await;
         }
     };
@@ -1522,7 +1548,10 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-forum")]
     let forum_search_drain = async {
-        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::forum_search_inbox_worker::ForumSearchInboxWorkerHandle>(runtime_ctx) {
+        if let Some(worker) = take_direct_worker_for_shutdown::<
+            crate::services::forum_search_inbox_worker::ForumSearchInboxWorkerHandle,
+        >(runtime_ctx)
+        {
             await_module_worker_shutdown("Forum search inbox", worker.into_task()).await;
         }
     };
@@ -1531,8 +1560,12 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-forum")]
     let forum_search_contract_consumer_drain = async {
-        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::forum_search_inbox_worker::ForumSearchContractConsumerWorkerHandle>(runtime_ctx) {
-            await_module_worker_shutdown("Forum Search contract consumer", worker.into_task()).await;
+        if let Some(worker) = take_direct_worker_for_shutdown::<
+            crate::services::forum_search_inbox_worker::ForumSearchContractConsumerWorkerHandle,
+        >(runtime_ctx)
+        {
+            await_module_worker_shutdown("Forum Search contract consumer", worker.into_task())
+                .await;
         }
     };
     #[cfg(not(feature = "mod-forum"))]
@@ -1683,12 +1716,7 @@ async fn abort_and_join_shutdown_handle_with_timeout(
     abort_join_grace: Duration,
 ) {
     task.abort();
-    join_shutdown_handle_until(
-        worker,
-        task,
-        tokio::time::Instant::now() + abort_join_grace,
-    )
-    .await;
+    join_shutdown_handle_until(worker, task, tokio::time::Instant::now() + abort_join_grace).await;
 }
 
 fn await_runtime_worker_shutdown_until(
@@ -1899,7 +1927,8 @@ async fn auth_retention_loop(
             return;
         }
 
-        let failed = match crate::services::auth_retention::purge_expired_auth_artifacts(&db).await {
+        let failed = match crate::services::auth_retention::purge_expired_auth_artifacts(&db).await
+        {
             Ok(purge) if auth_retention_removed_artifacts(&purge) => {
                 tracing::info!(
                     sessions = purge.sessions,
@@ -2188,8 +2217,14 @@ mod tests {
 
     #[test]
     fn auth_retention_failure_retries_without_waiting_a_full_day() {
-        assert_eq!(super::auth_retention_next_delay(false), Duration::from_secs(86_400));
-        assert_eq!(super::auth_retention_next_delay(true), Duration::from_secs(900));
+        assert_eq!(
+            super::auth_retention_next_delay(false),
+            Duration::from_secs(86_400)
+        );
+        assert_eq!(
+            super::auth_retention_next_delay(true),
+            Duration::from_secs(900)
+        );
         assert!(
             super::auth_retention_next_delay(true) < super::auth_retention_next_delay(false),
             "a transient storage failure must not use the daily success interval"
@@ -2227,7 +2262,10 @@ mod tests {
         })
         .await
         .expect("shutdown signalled");
-        assert!(!shutdown.is_finished(), "host should await the pending email");
+        assert!(
+            !shutdown.is_finished(),
+            "host should await the pending email"
+        );
 
         finish_tx.send(()).expect("release send");
         shutdown.await.expect("shutdown finishes after email");
@@ -2294,9 +2332,8 @@ mod tests {
         let shutdown_ctx = ctx.clone();
         let taker = std::thread::spawn(move || {
             ready_tx.send(()).expect("shutdown taker begins");
-            let listener = super::take_direct_worker_for_shutdown::<CommentsTcpListenerTask>(
-                &shutdown_ctx,
-            );
+            let listener =
+                super::take_direct_worker_for_shutdown::<CommentsTcpListenerTask>(&shutdown_ctx);
             let handoff = super::take_direct_worker_for_shutdown::<
                 CommentsTcpDelegationScheduleAuditHandoffWorkerHandle,
             >(&shutdown_ctx);
@@ -2496,7 +2533,8 @@ mod tests {
                 let required = match worker.name {
                     "field_definition_cache_generation" => true,
                     "seo_redirect_cache_reconciliation" => !matches!(
-                        mode, RuntimeHostMode::RegistryOnly | RuntimeHostMode::Worker
+                        mode,
+                        RuntimeHostMode::RegistryOnly | RuntimeHostMode::Worker
                     ),
                     _ => expected && !opt_in_consumer,
                 };
@@ -2548,9 +2586,17 @@ mod tests {
         stopped_rx
             .await
             .expect("cleanup worker must be dropped by shutdown");
-        assert!(registry.with_open::<()>(|_| panic!("closed registry admitted work")).is_err());
+        assert!(
+            registry
+                .with_open::<()>(|_| panic!("closed registry admitted work"))
+                .is_err()
+        );
         let retained = ctx.shared_get::<RateLimitCleanupTaskRegistry>().unwrap();
-        assert!(retained.with_open::<()>(|_| panic!("shutdown replaced registry")).is_err());
+        assert!(
+            retained
+                .with_open::<()>(|_| panic!("shutdown replaced registry"))
+                .is_err()
+        );
         assert!(retained.close_and_take_tasks().is_empty());
     }
 
@@ -2565,7 +2611,11 @@ mod tests {
         super::shutdown_runtime_workers(&ctx).await;
 
         let registry = ctx.shared_get_or_insert_with(RateLimitCleanupTaskRegistry::default);
-        assert!(registry.with_open::<()>(|_| panic!("late startup admitted work")).is_err());
+        assert!(
+            registry
+                .with_open::<()>(|_| panic!("late startup admitted work"))
+                .is_err()
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -2626,7 +2676,6 @@ mod tests {
         );
     }
 
-
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn runtime_worker_abort_join_grace_bounds_non_cancellable_blocking_task() {
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
@@ -2636,7 +2685,9 @@ mod tests {
             std::thread::sleep(Duration::from_millis(250));
             let _ = finished_tx.send(());
         });
-        started_rx.await.expect("blocking worker must start before abort");
+        started_rx
+            .await
+            .expect("blocking worker must start before abort");
 
         super::abort_and_join_shutdown_handle_with_timeout(
             "test non-cancellable worker",
@@ -3088,11 +3139,11 @@ mod tests {
 
     #[tokio::test]
     async fn shutdown_aborts_invalidation_and_event_supervisors_even_with_live_clones() {
+        use crate::common::settings::RuntimeHostMode;
         use crate::services::channel_cache_invalidation::ChannelCacheInvalidationListenerHandle;
         use crate::services::event_bus::EventForwarderHandle;
         use crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle;
         use crate::services::rbac_invalidation_generation::RbacInvalidationGenerationWatchdogHandle;
-        use crate::common::settings::RuntimeHostMode;
 
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         let mut settings = RustokSettings::default();
@@ -3139,18 +3190,15 @@ mod tests {
     #[cfg(feature = "mod-comments")]
     #[tokio::test]
     async fn comments_listener_and_audit_handoff_workers_are_required_when_started() {
+        use super::additional_runtime_worker_snapshots;
         use crate::common::settings::RuntimeHostMode;
         use crate::services::comments_provider_runtime::{
             CommentsTcpDelegationScheduleAuditHandoffWorkerHandle, CommentsTcpListenerTask,
         };
-        use super::additional_runtime_worker_snapshots;
 
         let mut settings = RustokSettings::default();
         settings.runtime.host_mode = RuntimeHostMode::Worker;
-        let ctx = ServerRuntimeContext::new(
-            sea_orm::DatabaseConnection::default(),
-            settings,
-        );
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
         let stop = super::StopHandle::ensure(&ctx);
 
         let mut listener_stop = stop.subscribe();
@@ -3166,9 +3214,9 @@ mod tests {
         let handoff_task = tokio::spawn(async move {
             let _ = handoff_stop.changed().await;
         });
-        ctx.shared_insert(CommentsTcpDelegationScheduleAuditHandoffWorkerHandle::for_test(
-            handoff_task,
-        ));
+        ctx.shared_insert(
+            CommentsTcpDelegationScheduleAuditHandoffWorkerHandle::for_test(handoff_task),
+        );
 
         let snapshots = additional_runtime_worker_snapshots(&ctx);
         for name in ["comments_tcp_listener", "comments_schedule_audit_handoff"] {
@@ -3255,12 +3303,9 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod installer_job_task_registry_tests {
-    use super::{
-        drain_installer_job_tasks, spawn_installer_job_task, InstallerJobTaskRegistry,
-    };
+    use super::{InstallerJobTaskRegistry, drain_installer_job_tasks, spawn_installer_job_task};
     use std::time::Duration;
 
     #[tokio::test]
@@ -3286,7 +3331,10 @@ mod installer_job_task_registry_tests {
             drain_installer_job_tasks(&drain_ctx).await;
         });
         tokio::task::yield_now().await;
-        assert!(!drain.is_finished(), "shutdown must join accepted installer work");
+        assert!(
+            !drain.is_finished(),
+            "shutdown must join accepted installer work"
+        );
 
         release_tx.send(()).expect("release installer task");
         tokio::time::timeout(Duration::from_secs(2), drain)
@@ -3302,8 +3350,8 @@ mod installer_job_task_registry_tests {
 
     #[tokio::test]
     async fn stuck_installer_job_tasks_are_aborted_after_the_grace_timeout() {
-        use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
 
         struct DropFlag(Arc<AtomicBool>);
         impl Drop for DropFlag {

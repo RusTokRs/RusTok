@@ -4,8 +4,8 @@ use chrono::{Duration, Utc};
 use rustok_api::PortError;
 use rustok_core::generate_id;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait,
-    QueryFilter, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbErr,
+    EntityTrait, QueryFilter, QuerySelect, Set,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -206,7 +206,10 @@ pub async fn admit<T: Serialize>(
 /// and aggregate ownership are coordinated. The row lock remains held until
 /// transaction end; a reclaimed or terminal receipt cannot acquire it. This
 /// does not itself extend the receipt lease or fence external side effects.
-pub async fn lock_current(transaction: &DatabaseTransaction, lease: Lease) -> Result<(), PortError> {
+pub async fn lock_current(
+    transaction: &DatabaseTransaction,
+    lease: Lease,
+) -> Result<(), PortError> {
     if lease.operation_id.is_nil() || lease.token.is_nil() {
         return Err(PortError::validation(
             "outbox.operation_receipt_lease_invalid",
@@ -214,7 +217,10 @@ pub async fn lock_current(transaction: &DatabaseTransaction, lease: Lease) -> Re
         ));
     }
     let update = entity::Entity::update_many()
-        .col_expr(entity::Column::LeaseToken, sea_orm::sea_query::Expr::value(lease.token))
+        .col_expr(
+            entity::Column::LeaseToken,
+            sea_orm::sea_query::Expr::value(lease.token),
+        )
         .filter(entity::Column::Id.eq(lease.operation_id))
         .filter(entity::Column::LeaseToken.eq(lease.token))
         .filter(entity::Column::Status.eq(STATUS_PROCESSING))
@@ -846,9 +852,7 @@ mod tests {
         entity::Entity::update_many()
             .col_expr(
                 entity::Column::CompletedAt,
-                sea_orm::sea_query::Expr::value(
-                    (Utc::now() - Duration::days(120)).fixed_offset(),
-                ),
+                sea_orm::sea_query::Expr::value((Utc::now() - Duration::days(120)).fixed_offset()),
             )
             .filter(entity::Column::Id.eq(lease.operation_id))
             .exec(&database)

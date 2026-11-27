@@ -27,16 +27,10 @@ mod tests {
         let session_id = Uuid::from_u128(1);
         let first_attempt = Uuid::from_u128(2);
         let second_attempt = Uuid::from_u128(3);
-        let first = build_install_lock_owner(
-            Some("operator/worker 1"),
-            Some(session_id),
-            first_attempt,
-        );
-        let second = build_install_lock_owner(
-            Some("operator/worker 1"),
-            Some(session_id),
-            second_attempt,
-        );
+        let first =
+            build_install_lock_owner(Some("operator/worker 1"), Some(session_id), first_attempt);
+        let second =
+            build_install_lock_owner(Some("operator/worker 1"), Some(session_id), second_attempt);
 
         assert_ne!(first, second);
         assert!(first.starts_with("operatorworker1:"));
@@ -60,11 +54,15 @@ mod tests {
 
         assert_eq!(DEFAULT_INSTALL_LOCK_TTL_SECS, 900);
         assert!(is_valid_install_lock_ttl_secs(1));
-        assert!(is_valid_install_lock_ttl_secs(DEFAULT_INSTALL_LOCK_TTL_SECS));
+        assert!(is_valid_install_lock_ttl_secs(
+            DEFAULT_INSTALL_LOCK_TTL_SECS
+        ));
         assert!(is_valid_install_lock_ttl_secs(MAX_INSTALL_LOCK_TTL_SECS));
         assert!(!is_valid_install_lock_ttl_secs(0));
         assert!(!is_valid_install_lock_ttl_secs(-1));
-        assert!(!is_valid_install_lock_ttl_secs(MAX_INSTALL_LOCK_TTL_SECS + 1));
+        assert!(!is_valid_install_lock_ttl_secs(
+            MAX_INSTALL_LOCK_TTL_SECS + 1
+        ));
     }
 
     #[test]

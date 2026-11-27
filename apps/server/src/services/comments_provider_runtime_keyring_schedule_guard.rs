@@ -31,7 +31,8 @@ pub(super) async fn start_comments_tcp_listener_if_enabled(
                     .cloned()
             })
         });
-    validate_schedule_runtime_policy(handle.as_ref()).map_err(|err| Error::BadRequest(err.to_string()))?;
+    validate_schedule_runtime_policy(handle.as_ref())
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
     keyring_schedule::start_comments_tcp_listener_if_enabled(runtime_ctx).await
 }
 

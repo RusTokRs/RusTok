@@ -327,8 +327,7 @@ pub async fn start_rbac_invalidation_generation_watchdog(ctx: &ServerRuntimeCont
     // Do not queue another watchdog initializer behind a holder when stop
     // has been broadcast; the actual spawn/publish remains under the mutex.
     let stop = StopHandle::ensure(ctx);
-    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await
-    else {
+    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await else {
         return Ok(());
     };
 
@@ -358,8 +357,7 @@ pub async fn start_rbac_invalidation_generation_watchdog(ctx: &ServerRuntimeCont
     }
 
     let state = ensure_rbac_invalidation_generation_state(ctx);
-    let task =
-        spawn_rbac_invalidation_generation_watchdog(ctx.db_clone(), state, stop.subscribe());
+    let task = spawn_rbac_invalidation_generation_watchdog(ctx.db_clone(), state, stop.subscribe());
     ctx.shared_insert(RbacInvalidationGenerationWatchdogHandle::new(task));
     Ok(())
 }
@@ -465,9 +463,10 @@ mod tests {
             ctx.shared_get_or_insert_with(RbacInvalidationGenerationWatchdogStartLock::default);
         let held = start_lock.0.lock().await;
         let starter_ctx = ctx.clone();
-        let starter = tokio::spawn(async move {
-            start_rbac_invalidation_generation_watchdog(&starter_ctx).await
-        });
+        let starter =
+            tokio::spawn(
+                async move { start_rbac_invalidation_generation_watchdog(&starter_ctx).await },
+            );
 
         // The start call has to contend for the lock; shutdown's signal
         // must release its pending admission rather than waiting for us.

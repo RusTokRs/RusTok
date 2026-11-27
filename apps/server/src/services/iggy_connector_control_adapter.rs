@@ -21,7 +21,9 @@ impl ServerIggyConnectorControl {
 
 #[async_trait]
 impl IggyConnectorControl for ServerIggyConnectorControl {
-    async fn configuration(&self) -> Result<IggyConnectorConfigurationSnapshot, IggyConnectorControlError> {
+    async fn configuration(
+        &self,
+    ) -> Result<IggyConnectorConfigurationSnapshot, IggyConnectorControlError> {
         IggyConnectorSettingsService::configuration(&self.runtime)
             .await
             .map_err(|error| IggyConnectorControlError(error.to_string()))

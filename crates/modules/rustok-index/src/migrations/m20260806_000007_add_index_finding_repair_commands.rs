@@ -237,7 +237,9 @@ async fn install_completion_guard(manager: &SchemaManager<'_>) -> Result<(), DbE
                 .await?;
             Ok(())
         }
-        _ => Err(DbErr::Custom("unsupported backend was rejected".to_string())),
+        _ => Err(DbErr::Custom(
+            "unsupported backend was rejected".to_string(),
+        )),
     }
 }
 
@@ -263,7 +265,9 @@ async fn remove_completion_guard(manager: &SchemaManager<'_>) -> Result<(), DbEr
                 .await?;
             Ok(())
         }
-        _ => Err(DbErr::Custom("unsupported backend was rejected".to_string())),
+        _ => Err(DbErr::Custom(
+            "unsupported backend was rejected".to_string(),
+        )),
     }
 }
 

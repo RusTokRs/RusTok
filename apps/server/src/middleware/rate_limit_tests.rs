@@ -415,7 +415,12 @@ async fn redis_connection_timeout_includes_waiting_for_initializer() {
     )
     .await;
     initializer.abort();
-    assert!(initializer.await.expect_err("initializer cancelled").is_cancelled());
+    assert!(
+        initializer
+            .await
+            .expect_err("initializer cancelled")
+            .is_cancelled()
+    );
 
     let Err(error) = result.expect("waiting for initializer must also be bounded") else {
         panic!("stalled initialization cannot succeed");
@@ -428,7 +433,10 @@ async fn redis_connection_timeout_includes_waiting_for_initializer() {
 fn redis_window_millis_saturate_at_i64_max() {
     assert_eq!(bounded_redis_window_millis(Duration::MAX), i64::MAX);
     assert_eq!(bounded_redis_window_millis(Duration::ZERO), 1);
-    assert_eq!(bounded_redis_window_millis(Duration::from_millis(1500)), 1500);
+    assert_eq!(
+        bounded_redis_window_millis(Duration::from_millis(1500)),
+        1500
+    );
 }
 
 #[test]
@@ -446,8 +454,7 @@ fn redis_rate_limit_result_rejects_invalid_counters_and_expiry() {
 #[tokio::test]
 #[ignore = "requires an isolated Redis instance via RUSTOK_CACHE_REAL_REDIS_URL"]
 async fn real_redis_rate_limit_preserves_precision_and_rejects_corrupt_counters() {
-    let url = std::env::var("RUSTOK_CACHE_REAL_REDIS_URL")
-        .expect("isolated Redis URL");
+    let url = std::env::var("RUSTOK_CACHE_REAL_REDIS_URL").expect("isolated Redis URL");
     let client = redis::Client::open(url).expect("Redis client");
     let mut connection = client.get_multiplexed_async_connection().await.unwrap();
     let prefix = format!("rate-limit-regression:{}", Uuid::new_v4());
@@ -470,11 +477,7 @@ async fn real_redis_rate_limit_preserves_precision_and_rejects_corrupt_counters(
         .query_async(&mut connection)
         .await
         .unwrap();
-    let limiter = RateLimiter::with_redis(
-        RateLimitConfig::new(5, 60),
-        client,
-        prefix,
-    );
+    let limiter = RateLimiter::with_redis(RateLimitConfig::new(5, 60), client, prefix);
     for _ in 0..2 {
         assert!(matches!(
             limiter.check_rate_limit("client").await,
@@ -563,12 +566,17 @@ async fn rate_limited_response_includes_contract_headers() {
     assert_eq!(response.headers()["x-ratelimit-remaining"], "0");
     assert_eq!(response.headers()["x-ratelimit-reset"], "42");
     assert_eq!(response.headers()["content-type"], "application/json");
-    let body = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), 4096)
+        .await
+        .unwrap();
     let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(body, serde_json::json!({
-        "code": "rate_limit_exceeded",
-        "message": "Rate limit exceeded"
-    }));
+    assert_eq!(
+        body,
+        serde_json::json!({
+            "code": "rate_limit_exceeded",
+            "message": "Rate limit exceeded"
+        })
+    );
 }
 
 #[tokio::test]

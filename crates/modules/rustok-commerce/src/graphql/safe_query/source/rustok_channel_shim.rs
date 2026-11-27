@@ -15,11 +15,7 @@ impl std::fmt::Debug for ChannelQueryDiagnosticError {
 }
 
 fn uuid_shape(value: &::uuid::Uuid) -> &'static str {
-    if value.is_nil() {
-        "nil"
-    } else {
-        "non_nil"
-    }
+    if value.is_nil() { "nil" } else { "non_nil" }
 }
 
 /// Bounded owner detail projection: shape plus length only, never the payload itself.
@@ -36,7 +32,10 @@ fn owner_detail(error: &ChannelError) -> (&'static str, usize) {
         }
         ChannelError::TargetAlreadyExists(target_type, value) => (
             "target_already_exists",
-            target_type.chars().count().saturating_add(value.chars().count()),
+            target_type
+                .chars()
+                .count()
+                .saturating_add(value.chars().count()),
         ),
         ChannelError::PolicySetSlugAlreadyExists(value) => {
             ("policy_set_slug_already_exists", value.chars().count())

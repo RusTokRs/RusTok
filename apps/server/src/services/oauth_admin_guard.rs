@@ -74,7 +74,6 @@ impl GuardedOAuthAdminProvider {
         }
         Ok(())
     }
-
 }
 
 fn require_direct_user_consent(
@@ -188,7 +187,9 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         // Consent is the user's own decision, not authority delegated to an
         // OAuth client. Enforce this at the outer provider boundary.
         require_direct_user_consent(context)?;
-        self.inner.grant_oauth_app_consent(context, app_id, scopes).await
+        self.inner
+            .grant_oauth_app_consent(context, app_id, scopes)
+            .await
     }
 
     async fn revoke_oauth_app_consent(
@@ -206,8 +207,8 @@ mod tests {
     use std::sync::Arc;
 
     use super::{
-        GuardedOAuthAdminProvider, clamp_oauth_guard_list_limit,
-        require_direct_user_consent, validate_grant_dependencies,
+        GuardedOAuthAdminProvider, clamp_oauth_guard_list_limit, require_direct_user_consent,
+        validate_grant_dependencies,
     };
     use crate::models::oauth_apps::scope_runtime_copy_locale;
     use crate::models::{oauth_apps, tenants};
@@ -235,26 +236,31 @@ mod tests {
         .insert(&db)
         .await
         .expect("insert tenant");
-        let created = scope_runtime_copy_locale("en".to_string(), OAuthAppService::create_app(
-            &db,
-            tenant.id,
-            CreateOAuthAppInput {
-                name: "Consent target".to_string(),
-                slug: "consent-target".to_string(),
-                description: None,
-                app_type: "third_party".to_string(),
-                icon_url: None,
-                redirect_uris: vec!["https://client.example/callback".to_string()],
-                scopes: vec!["profile".to_string()],
-                grant_types: vec!["authorization_code".to_string()],
-                granted_permissions: Vec::new(),
-            },
-        ))
+        let created = scope_runtime_copy_locale(
+            "en".to_string(),
+            OAuthAppService::create_app(
+                &db,
+                tenant.id,
+                CreateOAuthAppInput {
+                    name: "Consent target".to_string(),
+                    slug: "consent-target".to_string(),
+                    description: None,
+                    app_type: "third_party".to_string(),
+                    icon_url: None,
+                    redirect_uris: vec!["https://client.example/callback".to_string()],
+                    scopes: vec!["profile".to_string()],
+                    grant_types: vec!["authorization_code".to_string()],
+                    granted_permissions: Vec::new(),
+                },
+            ),
+        )
         .await
         .expect("create OAuth app");
         let inner = Arc::new(ServerAuthAdminMutationProvider::new(
             &ServerRuntimeContext::new(db.clone(), Default::default()),
-            crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            crate::auth::test_auth_config(
+                "test-secret-key-for-unit-tests-only-32bytes!".to_string(),
+            ),
         ));
         let guarded = GuardedOAuthAdminProvider::new(db.clone(), inner);
 
@@ -271,6 +277,7 @@ mod tests {
                 request_id: None,
                 locale: Some("en".to_string()),
                 principal_kind,
+                credential_authority: rustok_auth::CredentialAuthority::TrustedInternal,
             };
             let grant_result = guarded
                 .grant_oauth_app_consent(&context, created.app.id, vec!["profile".to_string()])
@@ -308,19 +315,28 @@ mod tests {
         .await
         .expect("insert tenant");
         let mut actor = crate::models::users::ActiveModel::new(
-            tenant.id, "oauth-rotation-admin@example.test", "hash",
+            tenant.id,
+            "oauth-rotation-admin@example.test",
+            "hash",
         );
         actor.status = sea_orm::Set(rustok_core::UserStatus::Active);
         let actor = actor.insert(&db).await.unwrap();
         let actor_id = actor.id;
-        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(&db, tenant.id, actor_id, UserRole::SuperAdmin)
-            .await.unwrap();
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db,
+            tenant.id,
+            actor_id,
+            UserRole::SuperAdmin,
+        )
+        .await
+        .unwrap();
         let context = AuthAdminMutationContext {
             actor_id,
             tenant_id: tenant.id,
             request_id: None,
             locale: Some("en".to_string()),
             principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
+            credential_authority: rustok_auth::CredentialAuthority::TrustedInternal,
         };
         let created = scope_runtime_copy_locale(
             "en".to_string(),
@@ -346,7 +362,9 @@ mod tests {
         let app_id = created.app.id;
         let inner = Arc::new(ServerAuthAdminMutationProvider::new(
             &ServerRuntimeContext::new(db.clone(), Default::default()),
-            crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            crate::auth::test_auth_config(
+                "test-secret-key-for-unit-tests-only-32bytes!".to_string(),
+            ),
         ));
         let guarded = GuardedOAuthAdminProvider::new(db.clone(), inner);
 
@@ -493,23 +511,34 @@ mod tests {
         .expect("create OAuth app");
         let app_id = created.app.id;
         let mut actor = crate::models::users::ActiveModel::new(
-            tenant.id, "oauth-rotation-admin@example.test", "hash",
+            tenant.id,
+            "oauth-rotation-admin@example.test",
+            "hash",
         );
         actor.status = sea_orm::Set(rustok_core::UserStatus::Active);
         let actor = actor.insert(&db).await.unwrap();
         let actor_id = actor.id;
-        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(&db, tenant.id, actor_id, UserRole::SuperAdmin)
-            .await.unwrap();
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db,
+            tenant.id,
+            actor_id,
+            UserRole::SuperAdmin,
+        )
+        .await
+        .unwrap();
         let context = AuthAdminMutationContext {
             actor_id,
             tenant_id: tenant.id,
             request_id: None,
             locale: Some("en".to_string()),
             principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
+            credential_authority: rustok_auth::CredentialAuthority::TrustedInternal,
         };
         let provider = ServerAuthAdminMutationProvider::new(
             &ServerRuntimeContext::new(db.clone(), Default::default()),
-            crate::auth::test_auth_config("test-secret-key-for-oauth-rotation-race-at-least-32-bytes".to_string()),
+            crate::auth::test_auth_config(
+                "test-secret-key-for-oauth-rotation-race-at-least-32-bytes".to_string(),
+            ),
         );
         let authority = vec![Permission::SETTINGS_MANAGE, Permission::MODULES_MANAGE];
 
@@ -530,8 +559,11 @@ mod tests {
 
         let scope = RbacRequestScope::new(tenant.id, actor_id, authority, UserRole::SuperAdmin);
         let error = match with_rbac_request_scope(
-            Some(scope), provider.commit_prepared_oauth_secret_rotation(&context, app_id, prepared),
-        ).await {
+            Some(scope),
+            provider.commit_prepared_oauth_secret_rotation(&context, app_id, prepared),
+        )
+        .await
+        {
             Ok(_) => panic!("stale prepared secret must never overwrite new secret"),
             Err(error) => error,
         };
@@ -545,7 +577,10 @@ mod tests {
             .await
             .expect("reload app")
             .expect("app still exists");
-        assert_eq!(current.client_secret_hash.as_deref(), Some(competing_hash.as_str()));
+        assert_eq!(
+            current.client_secret_hash.as_deref(),
+            Some(competing_hash.as_str())
+        );
     }
 
     #[test]
@@ -556,13 +591,12 @@ mod tests {
             request_id: None,
             locale: Some("en".to_string()),
             principal_kind,
+            credential_authority: rustok_auth::CredentialAuthority::TrustedInternal,
         };
 
         assert!(
-            require_direct_user_consent(&context(Some(
-                rustok_api::AuthPrincipalKind::DirectUser
-            )))
-            .is_ok()
+            require_direct_user_consent(&context(Some(rustok_api::AuthPrincipalKind::DirectUser)))
+                .is_ok()
         );
         for principal_kind in [
             Some(rustok_api::AuthPrincipalKind::DelegatedUser),

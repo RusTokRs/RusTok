@@ -345,9 +345,9 @@ impl GroupsService {
         let mut query = group::Entity::find().filter(group::Column::TenantId.eq(tenant_id));
         query = match (request.group_id, request.handle) {
             (Some(group_id), _) => query.filter(group::Column::Id.eq(group_id)),
-            (None, Some(handle)) => query.filter(
-                group::Column::Handle.eq(normalize_group_handle(&handle)?),
-            ),
+            (None, Some(handle)) => {
+                query.filter(group::Column::Handle.eq(normalize_group_handle(&handle)?))
+            }
             (None, None) => {
                 return Err(GroupsError::Validation(
                     "group id or handle is required".to_string(),

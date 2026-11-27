@@ -389,9 +389,11 @@ fn normalize_addresses(addresses: Vec<String>) -> Result<Vec<String>, IggyConnec
 
 fn addresses_from_model(model: &Model) -> Result<Vec<String>, IggyConnectorSettingsError> {
     let addresses = serde_json::from_value::<Vec<String>>(model.external_addresses.clone())
-        .map_err(|_| IggyConnectorSettingsError::InvalidConfiguration(
-            "stored external Iggy addresses are invalid".to_string(),
-        ))?;
+        .map_err(|_| {
+            IggyConnectorSettingsError::InvalidConfiguration(
+                "stored external Iggy addresses are invalid".to_string(),
+            )
+        })?;
     normalize_addresses(addresses)
 }
 
@@ -533,7 +535,10 @@ mod tests {
             " ".to_string(),
         ];
         let resolved = resolved_deployment_config(&config).expect("valid deployment");
-        assert_eq!(resolved.external.addresses, vec!["z.example:8090", "a.example:8090"]);
+        assert_eq!(
+            resolved.external.addresses,
+            vec!["z.example:8090", "a.example:8090"]
+        );
         assert_eq!(config.external.addresses.len(), 4);
     }
 

@@ -106,7 +106,9 @@ pub use module_lifecycle::{
     StaticModuleSettingsSnapshot, StaticTenantModuleView,
 };
 #[cfg(feature = "server")]
-pub use module_lifecycle::{SharedStaticModuleSettingsAdminReader, StaticModuleSettingsAdminReader};
+pub use module_lifecycle::{
+    SharedStaticModuleSettingsAdminReader, StaticModuleSettingsAdminReader,
+};
 pub use module_marketplace::{
     MarketplaceModule, MarketplaceModuleVersion, MarketplaceRegistryFreshness,
     MarketplaceRegistryStatus, ModuleSettingField, RegistryAutomatedCheckLifecycle,

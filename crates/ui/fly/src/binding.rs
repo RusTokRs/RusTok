@@ -38,7 +38,11 @@ pub struct RuntimeBinding {
     pub path: String,
     #[serde(flatten)]
     pub target: BindingTarget,
-    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_binding_fallback")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_binding_fallback"
+    )]
     pub fallback: Option<Value>,
     #[serde(default)]
     pub transform: BindingTransform,
@@ -47,7 +51,9 @@ pub struct RuntimeBinding {
 }
 
 // Missing fallback and an explicit JSON null fallback are different contracts.
-fn deserialize_binding_fallback<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<Value>, D::Error> {
+fn deserialize_binding_fallback<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Value>, D::Error> {
     Value::deserialize(deserializer).map(Some)
 }
 
@@ -67,8 +73,10 @@ pub struct BindingCatalog {
 impl BindingCatalog {
     pub fn from_document(document: &ProjectDocument) -> Self {
         let mut catalog = Self::default();
-        let Some(Value::Array(entries)) =
-            document.project().extensions.get(FLY_RUNTIME_BINDINGS_FIELD)
+        let Some(Value::Array(entries)) = document
+            .project()
+            .extensions
+            .get(FLY_RUNTIME_BINDINGS_FIELD)
         else {
             return catalog;
         };
@@ -108,14 +116,24 @@ pub fn apply_binding_command(
     match command {
         BindingCommand::Upsert { binding } => {
             validate_binding_identity(document, binding)?;
-            if catalog.bindings.iter().filter(|candidate| candidate.id == binding.id).count() > 1 {
-                return Err(FlyError::Decode(format!("runtime binding id `{}` is ambiguous", binding.id)));
+            if catalog
+                .bindings
+                .iter()
+                .filter(|candidate| candidate.id == binding.id)
+                .count()
+                > 1
+            {
+                return Err(FlyError::Decode(format!(
+                    "runtime binding id `{}` is ambiguous",
+                    binding.id
+                )));
             }
             if catalog.bindings.iter().any(|candidate| {
                 candidate.id != binding.id && binding_slot(candidate) == binding_slot(binding)
             }) {
                 return Err(FlyError::Decode(format!(
-                    "runtime binding `{}` targets a slot owned by another binding", binding.id
+                    "runtime binding `{}` targets a slot owned by another binding",
+                    binding.id
                 )));
             }
             if let Some(index) = catalog
@@ -169,14 +187,22 @@ pub(crate) fn prepare_scoped_bindings(
         if let Err(reason) = validate_scoped_binding_target(&binding.target) {
             scoped.unresolved += 1;
             scoped.diagnostics.push(binding_diagnostic(
-                ValidationSeverity::Error, "runtime_scoped_binding_target_invalid",
+                ValidationSeverity::Error,
+                "runtime_scoped_binding_target_invalid",
                 format!("binding `{}`: {reason}", binding.id),
             ));
             continue;
         }
-        scoped.definitions.entry(binding.component_id.clone()).or_default().push(binding.clone());
+        scoped
+            .definitions
+            .entry(binding.component_id.clone())
+            .or_default()
+            .push(binding.clone());
     }
-    (materialize_global_bindings(document, context, &catalog, &excluded), scoped)
+    (
+        materialize_global_bindings(document, context, &catalog, &excluded),
+        scoped,
+    )
 }
 
 fn materialize_global_bindings(
@@ -258,29 +284,49 @@ fn materialize_global_bindings(
     }
 }
 
-fn resolve_binding_value(binding: &RuntimeBinding, context: &Value) -> Result<(Value, bool), ValidationDiagnostic> {
+fn resolve_binding_value(
+    binding: &RuntimeBinding,
+    context: &Value,
+) -> Result<(Value, bool), ValidationDiagnostic> {
     let resolved = resolve_context_path(context, &binding.path).cloned();
     let (source, used_fallback) = match resolved {
         Some(value) => (Some(value), false),
         None => (binding.fallback.clone(), binding.fallback.is_some()),
     };
-    let source = source.ok_or_else(|| binding_diagnostic(
-        ValidationSeverity::Info, "runtime_binding_unresolved",
-        format!("binding `{}` path `{}` did not resolve and has no fallback", binding.id, binding.path),
-    ))?;
-    let value = transform_value(source, binding.transform).ok_or_else(|| binding_diagnostic(
-        ValidationSeverity::Warning, "runtime_binding_transform_failed",
-        format!("binding `{}` could not apply transform `{:?}`", binding.id, binding.transform),
-    ))?;
+    let source = source.ok_or_else(|| {
+        binding_diagnostic(
+            ValidationSeverity::Info,
+            "runtime_binding_unresolved",
+            format!(
+                "binding `{}` path `{}` did not resolve and has no fallback",
+                binding.id, binding.path
+            ),
+        )
+    })?;
+    let value = transform_value(source, binding.transform).ok_or_else(|| {
+        binding_diagnostic(
+            ValidationSeverity::Warning,
+            "runtime_binding_transform_failed",
+            format!(
+                "binding `{}` could not apply transform `{:?}`",
+                binding.id, binding.transform
+            ),
+        )
+    })?;
     Ok((value, used_fallback))
 }
 
-fn is_scoped_binding(binding: &RuntimeBinding, scopes: &BTreeMap<String, BTreeSet<String>>) -> bool {
+fn is_scoped_binding(
+    binding: &RuntimeBinding,
+    scopes: &BTreeMap<String, BTreeSet<String>>,
+) -> bool {
     let path = binding.path.trim();
     let path = path.strip_prefix('$').unwrap_or(path);
     let path = path.strip_prefix('.').unwrap_or(path);
     let alias = path.split(['.', '[']).next().unwrap_or_default();
-    scopes.get(&binding.component_id).is_some_and(|aliases| aliases.contains(alias))
+    scopes
+        .get(&binding.component_id)
+        .is_some_and(|aliases| aliases.contains(alias))
 }
 
 /// Identity and interaction contracts are proved/remapped before scoped
@@ -327,7 +373,9 @@ impl ScopedBindings {
             match resolve_binding_value(binding, context) {
                 Ok((value, fallback)) => {
                     if matches!(&binding.target, BindingTarget::Attribute {name} if name.eq_ignore_ascii_case("href"))
-                        && value.as_str().is_some_and(|value| value.trim_start().starts_with('#'))
+                        && value
+                            .as_str()
+                            .is_some_and(|value| value.trim_start().starts_with('#'))
                     {
                         self.unresolved += 1;
                         self.diagnostics.push(binding_diagnostic(
@@ -336,7 +384,10 @@ impl ScopedBindings {
                         ));
                         continue;
                     }
-                    self.writes.entry(instance_id.to_string()).or_default().push((binding.target.clone(), value, fallback));
+                    self.writes
+                        .entry(instance_id.to_string())
+                        .or_default()
+                        .push((binding.target.clone(), value, fallback));
                 }
                 Err(diagnostic) => {
                     self.unresolved += 1;
@@ -346,13 +397,27 @@ impl ScopedBindings {
         }
     }
 
-    pub(crate) fn finish(mut self, document: &mut ProjectDocument, global: &mut BindingMaterialization) {
+    pub(crate) fn finish(
+        mut self,
+        document: &mut ProjectDocument,
+        global: &mut BindingMaterialization,
+    ) {
         // One mutable walk, not one index rebuild for every generated binding.
-        let mut pending = document.project_mut().pages.iter_mut()
-            .filter_map(|page| page.component.as_mut()).collect::<Vec<_>>();
+        let mut pending = document
+            .project_mut()
+            .pages
+            .iter_mut()
+            .filter_map(|page| page.component.as_mut())
+            .collect::<Vec<_>>();
         while let Some(node) = pending.pop() {
-            let Some(component) = node.as_object_mut() else { continue; };
-            if let Some(writes) = component.id.as_deref().and_then(|id| self.writes.remove(id)) {
+            let Some(component) = node.as_object_mut() else {
+                continue;
+            };
+            if let Some(writes) = component
+                .id
+                .as_deref()
+                .and_then(|id| self.writes.remove(id))
+            {
                 for (target, value, fallback) in writes {
                     apply_value(component, &target, value);
                     self.applied += 1;
@@ -366,7 +431,8 @@ impl ScopedBindings {
         for (id, writes) in self.writes {
             self.unresolved += writes.len();
             self.diagnostics.push(binding_diagnostic(
-                ValidationSeverity::Error, "runtime_binding_target_missing",
+                ValidationSeverity::Error,
+                "runtime_binding_target_missing",
                 format!("scoped binding instance `{id}` disappeared before application"),
             ));
         }
@@ -458,14 +524,19 @@ fn binding_conflicts(catalog: &BindingCatalog) -> (BTreeSet<usize>, Vec<Validati
     for indices in ids.values().filter(|indices| indices.len() > 1) {
         conflicts.extend(indices.iter().copied());
         diagnostics.push(binding_diagnostic(
-            ValidationSeverity::Error, "duplicate_runtime_binding_id",
-            format!("runtime binding id `{}` is ambiguous", catalog.bindings[indices[0]].id),
+            ValidationSeverity::Error,
+            "duplicate_runtime_binding_id",
+            format!(
+                "runtime binding id `{}` is ambiguous",
+                catalog.bindings[indices[0]].id
+            ),
         ));
     }
     for ((component, _, name), indices) in slots.iter().filter(|(_, indices)| indices.len() > 1) {
         conflicts.extend(indices.iter().copied());
         diagnostics.push(binding_diagnostic(
-            ValidationSeverity::Error, "runtime_binding_target_conflict",
+            ValidationSeverity::Error,
+            "runtime_binding_target_conflict",
             format!("multiple bindings target component `{component}` slot `{name}`"),
         ));
     }
@@ -515,7 +586,9 @@ fn apply_value(component: &mut ComponentObject, target: &BindingTarget, value: V
     match target {
         BindingTarget::Attribute { name } => {
             let name = name.to_ascii_lowercase();
-            component.attributes.retain(|key, _| !key.eq_ignore_ascii_case(&name));
+            component
+                .attributes
+                .retain(|key, _| !key.eq_ignore_ascii_case(&name));
             component.attributes.insert(name, value);
         }
         BindingTarget::Field { name } => {
@@ -561,7 +634,13 @@ fn validate_binding_target(target: &BindingTarget) -> Result<(), String> {
             }
             if matches!(
                 name.as_str(),
-                "id" | "type" | "provider" | "symbolId" | "components" | "attributes" | "style" | "traits"
+                "id" | "type"
+                    | "provider"
+                    | "symbolId"
+                    | "components"
+                    | "attributes"
+                    | "style"
+                    | "traits"
             ) {
                 return Err(format!(
                     "field `{name}` is owned by the component structure and cannot be runtime-bound"
@@ -680,19 +759,42 @@ mod tests {
             "flyRuntimeRepeaters": [{"id": "items", "component_id": "title", "path": "items"}],
             "flyRuntimeBindings": [{"id": "invalid", "component_id": "title",
                 "path": "item.[0]", "target": "field", "name": "content", "fallback": "Wrong"}]
-        })).expect("source");
-        let result = crate::materialize_project_with_runtime_context(&source, &json!({"items": [1, 2]}));
+        }))
+        .expect("source");
+        let result =
+            crate::materialize_project_with_runtime_context(&source, &json!({"items": [1, 2]}));
         assert_eq!(result.applied_bindings, 0);
         assert_eq!(result.fallback_bindings, 0);
         assert_eq!(result.unresolved_bindings, 1);
-        assert!(result.diagnostics.iter().any(|d| d.code == "runtime_binding_path_invalid" && d.severity == ValidationSeverity::Error));
-        assert_eq!(result.document.component("title--items-0").unwrap().extensions["content"], "Original");
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|d| d.code == "runtime_binding_path_invalid"
+                    && d.severity == ValidationSeverity::Error)
+        );
+        assert_eq!(
+            result
+                .document
+                .component("title--items-0")
+                .unwrap()
+                .extensions["content"],
+            "Original"
+        );
     }
 
     #[test]
     fn number_transform_preserves_integer_identity_and_rejects_non_numbers() {
-        for value in [json!(u64::MAX), json!(i64::MIN), json!(9007199254740993_u64), json!(1.25)] {
-            assert_eq!(transform_value(value.clone(), BindingTransform::Number), Some(value));
+        for value in [
+            json!(u64::MAX),
+            json!(i64::MIN),
+            json!(9007199254740993_u64),
+            json!(1.25),
+        ] {
+            assert_eq!(
+                transform_value(value.clone(), BindingTransform::Number),
+                Some(value)
+            );
         }
         assert!(transform_value(json!("42"), BindingTransform::Number).is_none());
     }
@@ -705,10 +807,23 @@ mod tests {
         ]));
         let catalog = BindingCatalog::from_document(&source);
         assert_eq!(catalog.bindings[0].fallback, Some(Value::Null));
-        assert!(serde_json::to_value(&catalog.bindings[0]).expect("serialize").get("fallback").is_some());
+        assert!(
+            serde_json::to_value(&catalog.bindings[0])
+                .expect("serialize")
+                .get("fallback")
+                .is_some()
+        );
         let result = materialize_bindings(&source, &json!({}));
         assert_eq!(result.fallback_bindings, 1);
-        assert_eq!(result.document.component("title").expect("title").extensions.get("content"), Some(&Value::Null));
+        assert_eq!(
+            result
+                .document
+                .component("title")
+                .expect("title")
+                .extensions
+                .get("content"),
+            Some(&Value::Null)
+        );
         let result = materialize_bindings(&source, &json!({"missing": null}));
         assert_eq!(result.applied_bindings, 1);
         assert_eq!(result.fallback_bindings, 0);
@@ -722,15 +837,35 @@ mod tests {
         ];
         for entries in [bindings.clone(), bindings.into_iter().rev().collect()] {
             let mut source = document();
-            source.project_mut().extensions.insert(FLY_RUNTIME_BINDINGS_FIELD.to_string(), json!(entries));
+            source
+                .project_mut()
+                .extensions
+                .insert(FLY_RUNTIME_BINDINGS_FIELD.to_string(), json!(entries));
             let result = materialize_bindings(&source, &json!({"first": "/one", "second": "/two"}));
             assert_eq!(result.document, source);
             assert_eq!(result.applied_bindings, 0);
             assert_eq!(result.unresolved_bindings, 2);
-            assert!(result.diagnostics.iter().any(|d| d.code == "runtime_binding_target_conflict"));
-            assert!(validate_binding_definitions(&source).iter().any(|d| d.code == "runtime_binding_target_conflict"));
+            assert!(
+                result
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.code == "runtime_binding_target_conflict")
+            );
+            assert!(
+                validate_binding_definitions(&source)
+                    .iter()
+                    .any(|d| d.code == "runtime_binding_target_conflict")
+            );
             let binding = BindingCatalog::from_document(&source).bindings.remove(0);
-            assert!(apply_binding_command(&mut source, &BindingCommand::Upsert { binding: Box::new(binding) }).is_err());
+            assert!(
+                apply_binding_command(
+                    &mut source,
+                    &BindingCommand::Upsert {
+                        binding: Box::new(binding)
+                    }
+                )
+                .is_err()
+            );
         }
     }
 
@@ -746,9 +881,17 @@ mod tests {
         ]));
         let result = materialize_bindings(&source, &json!({"title": "new", "color": "blue"}));
         let title = result.document.component("title").expect("title");
-        assert_eq!(title.attributes, json!({"title": "new"}).as_object().unwrap().clone());
+        assert_eq!(
+            title.attributes,
+            json!({"title": "new"}).as_object().unwrap().clone()
+        );
         assert_eq!(title.style, Some(json!({"color": "blue"})));
-        assert!(validate_binding_target(&BindingTarget::Field {name: "symbolId".to_string()}).is_err());
+        assert!(
+            validate_binding_target(&BindingTarget::Field {
+                name: "symbolId".to_string()
+            })
+            .is_err()
+        );
     }
 
     #[test]

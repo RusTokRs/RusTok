@@ -52,7 +52,9 @@ impl Model {
     /// Returns true if variant allows backorders when out of stock.
     #[inline]
     pub fn allows_backorders(&self) -> bool {
-        self.inventory_policy.trim().eq_ignore_ascii_case("continue")
+        self.inventory_policy
+            .trim()
+            .eq_ignore_ascii_case("continue")
     }
 
     /// Returns true if inventory is tracked by the platform.

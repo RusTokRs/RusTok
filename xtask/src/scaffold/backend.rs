@@ -100,7 +100,8 @@ default = []
     });
     let admin_manifest = if opts.mounts_record_admin() {
         let route = opts.kebab_name();
-        format!(r#"
+        format!(
+            r#"
 [provides.admin_ui]
 leptos_crate = "{crate_name}-admin"
 next_package = "@rustok/{route}-admin"
@@ -129,7 +130,8 @@ subpath = "settings/records"
 title = "Record settings"
 nav_label = "Record settings"
 nav_label_key = "settings-records-nav"
-"#)
+"#
+        )
     } else {
         String::new()
     };

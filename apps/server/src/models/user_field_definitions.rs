@@ -13,10 +13,7 @@ pub const MAX_FIELDS_PER_TENANT: usize = 50;
 
 impl Entity {
     /// Load all active definitions for a tenant, ordered by position.
-    pub async fn find_active_by_tenant<C>(
-        db: &C,
-        tenant_id: Uuid,
-    ) -> Result<Vec<Model>, DbErr>
+    pub async fn find_active_by_tenant<C>(db: &C, tenant_id: Uuid) -> Result<Vec<Model>, DbErr>
     where
         C: ConnectionTrait,
     {

@@ -707,9 +707,8 @@ fn facet_products_condition(
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        condition = condition.add(
-            Expr::col((Alias::new("products"), Alias::new("vendor"))).eq(vendor),
-        );
+        condition =
+            condition.add(Expr::col((Alias::new("products"), Alias::new("vendor"))).eq(vendor));
     }
     if let Some(search) = filters
         .search

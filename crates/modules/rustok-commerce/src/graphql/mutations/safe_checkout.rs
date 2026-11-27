@@ -1,6 +1,6 @@
 mod checkout_boundary {
-    use async_graphql::{Error, ErrorExtensions};
     use ::rustok_api::{PortContext, PortError, PortErrorKind};
+    use async_graphql::{Error, ErrorExtensions};
 
     use crate::CommerceError;
 

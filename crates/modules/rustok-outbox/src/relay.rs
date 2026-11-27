@@ -266,9 +266,8 @@ impl OutboxRelay {
 
     async fn claim_batch(&self, batch_size: u64) -> Result<Vec<entity::Model>> {
         let now = Utc::now();
-        let claim_ttl = chrono::Duration::from_std(self.config.claim_ttl).map_err(|_| {
-            Error::Validation("outbox relay claim_ttl is out of range".to_string())
-        })?;
+        let claim_ttl = chrono::Duration::from_std(self.config.claim_ttl)
+            .map_err(|_| Error::Validation("outbox relay claim_ttl is out of range".to_string()))?;
         let stale_before = now - claim_ttl;
         // Fencing owner for this claim pass: unique per pass, so two relay
         // processes configured with the same worker_id (and two passes of
@@ -376,7 +375,11 @@ impl OutboxRelay {
                     "Outbox event payload is invalid"
                 );
                 self.mark_failed_attempt(model, error, true).await?;
-                self.record_processed(&model.event_type, started.elapsed().as_millis() as u64, false);
+                self.record_processed(
+                    &model.event_type,
+                    started.elapsed().as_millis() as u64,
+                    false,
+                );
                 return Ok(());
             }
         };
@@ -387,8 +390,7 @@ impl OutboxRelay {
                 tokio::time::timeout(publish_timeout, self.target.publish(envelope)).await
             }
             RelayEnvelope::Contract(envelope) => {
-                tokio::time::timeout(publish_timeout, self.target.publish_contract(envelope))
-                    .await
+                tokio::time::timeout(publish_timeout, self.target.publish_contract(envelope)).await
             }
         };
         let publish_result = match publish_result {
@@ -517,15 +519,16 @@ impl OutboxRelay {
         terminal: bool,
     ) -> Result<()> {
         let retry_count = model.retry_count.saturating_add(1);
-        let (status, next_attempt_at, moved_to_dlq) = if terminal || retry_count >= self.config.max_attempts {
-            (SysEventStatus::Failed, None, true)
-        } else {
-            (
-                SysEventStatus::Pending,
-                Some(Utc::now() + self.backoff_duration(retry_count)),
-                false,
-            )
-        };
+        let (status, next_attempt_at, moved_to_dlq) =
+            if terminal || retry_count >= self.config.max_attempts {
+                (SysEventStatus::Failed, None, true)
+            } else {
+                (
+                    SysEventStatus::Pending,
+                    Some(Utc::now() + self.backoff_duration(retry_count)),
+                    false,
+                )
+            };
 
         let error_str = error.to_string();
         let last_error = if error_str.chars().count() > 2048 {
@@ -687,9 +690,9 @@ mod tests {
         assert!(OutboxRelay::is_terminal_dispatch_error(
             &Error::Serialization(serde_json::from_str::<serde_json::Value>("x").unwrap_err())
         ));
-        assert!(!OutboxRelay::is_terminal_dispatch_error(
-            &Error::External("broker unavailable".to_string())
-        ));
+        assert!(!OutboxRelay::is_terminal_dispatch_error(&Error::External(
+            "broker unavailable".to_string()
+        )));
     }
 
     #[tokio::test]

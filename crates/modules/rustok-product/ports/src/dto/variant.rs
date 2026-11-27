@@ -1,5 +1,6 @@
 use rust_decimal::Decimal;
 use rustok_api::Patch;
+use super::product::ProductAttributeValueBatch;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -23,6 +24,9 @@ pub struct CreateVariantInput {
     #[validate(length(max = 32, message = "A variant can have at most 32 axis assignments"))]
     #[validate(nested)]
     pub axis_values: Vec<VariantAxisValueInput>,
+    /// Typed EAV values applied atomically with the new Variant.
+    #[serde(default)]
+    pub attribute_values: Vec<ProductAttributeValueBatch>,
     // Keep this literal aligned with MAX_VARIANT_PRICE_ROWS in dto/mod.rs.
     #[validate(length(max = 64, message = "A variant can have at most 64 price rows"))]
     #[validate(nested)]
@@ -54,11 +58,7 @@ pub struct PriceInput {
     ))]
     pub currency_code: String,
     pub channel_id: Option<Uuid>,
-    #[validate(length(
-        min = 1,
-        max = 100,
-        message = "Channel slug must be 1-100 characters"
-    ))]
+    #[validate(length(min = 1, max = 100, message = "Channel slug must be 1-100 characters"))]
     pub channel_slug: Option<String>,
     pub amount: Decimal,
     pub compare_at_amount: Option<Decimal>,
@@ -102,6 +102,9 @@ pub struct UpdateVariantInput {
     #[validate(length(max = 32, message = "A variant can have at most 32 axis assignments"))]
     #[validate(nested)]
     pub axis_values: Option<Vec<VariantAxisValueInput>>,
+    /// Typed EAV values applied atomically with the Variant update.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attribute_values: Vec<ProductAttributeValueBatch>,
 }
 
 impl UpdateVariantInput {
@@ -118,6 +121,7 @@ impl UpdateVariantInput {
             || self.weight.is_changed()
             || self.weight_unit.is_changed()
             || self.axis_values.is_some()
+            || self.attribute_values.iter().any(|batch| !batch.patches.is_empty())
     }
 
     /// Whether the caller supplied any owner mutation rather than an empty keep-all patch.
@@ -165,8 +169,8 @@ pub struct AdjustInventoryInput {
 
 #[cfg(test)]
 mod patch_tests {
-    use super::*;
     use super::super::{MAX_VARIANT_AXES, MAX_VARIANT_PRICE_ROWS};
+    use super::*;
 
     fn valid_variant_prices(count: usize) -> Vec<PriceInput> {
         (0..count)
@@ -196,6 +200,7 @@ mod patch_tests {
             barcode: None,
             shipping_profile_slug: None,
             axis_values,
+            attribute_values: Vec::new(),
             prices: Vec::new(),
             inventory_quantity: 0,
             inventory_policy: "deny".to_owned(),
@@ -239,6 +244,7 @@ mod patch_tests {
             barcode: None,
             shipping_profile_slug: None,
             axis_values: Vec::new(),
+            attribute_values: Vec::new(),
             prices,
             inventory_quantity: 0,
             inventory_policy: "deny".to_owned(),
@@ -354,6 +360,25 @@ mod patch_tests {
 
         assert!(input.has_changes());
         assert!(input.has_catalog_changes());
+    }
+
+    #[test]
+    fn variant_attribute_value_batches_are_catalog_changes() {
+        let input = UpdateVariantInput {
+            attribute_values: vec![ProductAttributeValueBatch {
+                locale: "en".to_owned(),
+                patches: vec![super::product::ProductAttributeValuePatch {
+                    attribute_id: Uuid::from_u128(1),
+                    value: super::product::ProductAttributeValuePatchValue::Text(
+                        "Blue".to_owned(),
+                    ),
+                }],
+            }],
+            ..Default::default()
+        };
+
+        assert!(input.has_catalog_changes());
+        assert!(input.has_changes());
     }
 
     #[test]

@@ -484,7 +484,10 @@ impl StructuredAccounting {
             .map_err(|_| accounting_unavailable())?;
         if updated.rows_affected != 1 {
             if let Err(rollback_err) = transaction.rollback().await {
-                tracing::warn!(?rollback_err, "failed to rollback structured budget transaction");
+                tracing::warn!(
+                    ?rollback_err,
+                    "failed to rollback structured budget transaction"
+                );
             }
             return Err(PortError::new(
                 rustok_api::PortErrorKind::Unavailable,
@@ -944,7 +947,10 @@ impl StructuredAccounting {
                 .map_err(|_| accounting_unavailable())?;
             if acquired.rows_affected != 1 {
                 if let Err(rollback_err) = transaction.rollback().await {
-                    tracing::warn!(?rollback_err, "failed to rollback orphaned lease claim transaction");
+                    tracing::warn!(
+                        ?rollback_err,
+                        "failed to rollback orphaned lease claim transaction"
+                    );
                 }
                 continue;
             }

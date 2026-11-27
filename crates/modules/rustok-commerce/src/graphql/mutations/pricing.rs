@@ -458,8 +458,11 @@ impl CommercePricingMutation {
             "Permission denied: products:update required",
         )?;
 
-        let tenant_id =
-            current_tenant_scope(ctx, Some(tenant_id), "update_admin_pricing_price_list_scope")?;
+        let tenant_id = current_tenant_scope(
+            ctx,
+            Some(tenant_id),
+            "update_admin_pricing_price_list_scope",
+        )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let port_context = pricing_write_port_context(

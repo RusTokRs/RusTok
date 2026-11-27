@@ -448,7 +448,9 @@ impl SeaOrmModuleTransitionService {
                     coordinator.advance_to_prestaging(&security_registry)?;
                     self.save_governed_checkpoint(
                         coordinator.checkpoint(),
-                        predecessor.as_ref().map(|artifact| artifact.installation_id),
+                        predecessor
+                            .as_ref()
+                            .map(|artifact| artifact.installation_id),
                     )
                     .await?;
                 }
@@ -475,7 +477,9 @@ impl SeaOrmModuleTransitionService {
                 coordinator.advance_to_prestaging(&security_registry)?;
                 self.save_governed_checkpoint(
                     coordinator.checkpoint(),
-                    predecessor.as_ref().map(|artifact| artifact.installation_id),
+                    predecessor
+                        .as_ref()
+                        .map(|artifact| artifact.installation_id),
                 )
                 .await?;
                 coordinator
@@ -688,7 +692,9 @@ impl SeaOrmModuleTransitionService {
             None => ModuleInstallationScope::Platform,
         };
         if crate::lifecycle_transition_fence::has_journal_claim(
-            &transaction, &scope, &checkpoint.module_slug,
+            &transaction,
+            &scope,
+            &checkpoint.module_slug,
         )
         .await
         .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?
@@ -699,15 +705,27 @@ impl SeaOrmModuleTransitionService {
             )));
         }
         let conflicts = match checkpoint.tenant_id {
-            Some(tenant_id) => TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(
-                &transaction, &checkpoint.module_slug, tenant_id,
-            ).await,
-            None => TransitionCheckpointStore::list_active_checkpoints_for_slug(
-                &transaction, &checkpoint.module_slug,
-            ).await,
+            Some(tenant_id) => {
+                TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(
+                    &transaction,
+                    &checkpoint.module_slug,
+                    tenant_id,
+                )
+                .await
+            }
+            None => {
+                TransitionCheckpointStore::list_active_checkpoints_for_slug(
+                    &transaction,
+                    &checkpoint.module_slug,
+                )
+                .await
+            }
         }
         .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?;
-        if let Some(other) = conflicts.iter().find(|other| other.operation_id != checkpoint.operation_id) {
+        if let Some(other) = conflicts
+            .iter()
+            .find(|other| other.operation_id != checkpoint.operation_id)
+        {
             return Err(GovernedArtifactTransitionError::Conflict(format!(
                 "unresolved governed transition `{}` already owns module `{}` in an overlapping scope",
                 other.operation_id, checkpoint.module_slug,
@@ -716,7 +734,10 @@ impl SeaOrmModuleTransitionService {
         let backend = SupportedBackend::new(transaction.get_database_backend())
             .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?;
         let current_predecessor = crate::installation::active_predecessor_installation(
-            &transaction, &scope, &checkpoint.module_slug, backend,
+            &transaction,
+            &scope,
+            &checkpoint.module_slug,
+            backend,
         )
         .await
         .map_err(|error| GovernedArtifactTransitionError::Installation(error.to_string()))?;
@@ -1427,7 +1448,9 @@ mod preflight_tests {
         options.max_connections(1).min_connections(1);
         let db = Database::connect(options).await.unwrap();
         crate::migrations::m20260902_000046_module_transition_and_retention_tables::Migration
-            .up(&SchemaManager::new(&db)).await.unwrap();
+            .up(&SchemaManager::new(&db))
+            .await
+            .unwrap();
         for sql in [
             "CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, PRIMARY KEY(scope_kind, scope_tenant_key, slug))",
             "CREATE TABLE module_static_tenant_lifecycle (tenant_id BLOB NOT NULL, module_slug TEXT NOT NULL, active_idempotency_key BLOB, active_claimed_at TEXT, claim_owner TEXT NOT NULL DEFAULT 'journal')",
@@ -1438,61 +1461,104 @@ mod preflight_tests {
             db.execute_unprepared(sql).await.unwrap();
         }
         let service = SeaOrmModuleTransitionService::with_infrastructure(
-            db.clone(), ControlPlaneInfrastructure::default(),
+            db.clone(),
+            ControlPlaneInfrastructure::default(),
         );
         let tenant_a = Uuid::new_v4();
         let tenant_b = Uuid::new_v4();
         let now = Utc::now();
         let make = |tenant_id| ModuleTransitionCheckpoint {
-            operation_id: Uuid::new_v4(), revision: 1, module_slug: "sample_module".into(),
-            tenant_id, predecessor_digest: None, candidate_digest: "candidate".into(),
+            operation_id: Uuid::new_v4(),
+            revision: 1,
+            module_slug: "sample_module".into(),
+            tenant_id,
+            predecessor_digest: None,
+            candidate_digest: "candidate".into(),
             state: ModuleTransitionState::PreStaging,
             security_epoch: crate::GlobalSecurityEpoch::INITIAL,
-            fences: crate::ConflictFenceSet::new(vec![]), recovery_attempt_count: 0,
-            created_at: now, updated_at: now,
+            fences: crate::ConflictFenceSet::new(vec![]),
+            recovery_attempt_count: 0,
+            created_at: now,
+            updated_at: now,
         };
         let first = make(Some(tenant_a));
-        service.save_governed_checkpoint(&first, None).await.unwrap();
+        service
+            .save_governed_checkpoint(&first, None)
+            .await
+            .unwrap();
         let duplicate = make(Some(tenant_a));
-        assert!(matches!(service.save_governed_checkpoint(&duplicate, None).await,
-            Err(GovernedArtifactTransitionError::Conflict(_))));
+        assert!(matches!(
+            service.save_governed_checkpoint(&duplicate, None).await,
+            Err(GovernedArtifactTransitionError::Conflict(_))
+        ));
         let other_tenant = make(Some(tenant_b));
-        service.save_governed_checkpoint(&other_tenant, None).await.unwrap();
+        service
+            .save_governed_checkpoint(&other_tenant, None)
+            .await
+            .unwrap();
         let platform = make(None);
-        assert!(matches!(service.save_governed_checkpoint(&platform, None).await,
-            Err(GovernedArtifactTransitionError::Conflict(_))));
-        assert!(TransitionCheckpointStore::load_checkpoint(&db, platform.operation_id)
-            .await.unwrap().is_none());
+        assert!(matches!(
+            service.save_governed_checkpoint(&platform, None).await,
+            Err(GovernedArtifactTransitionError::Conflict(_))
+        ));
+        assert!(
+            TransitionCheckpointStore::load_checkpoint(&db, platform.operation_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
 
         let mut other_slug = make(None);
         other_slug.module_slug = "other".into();
-        assert!(matches!(service.save_governed_checkpoint(&other_slug, Some(Uuid::new_v4())).await,
-            Err(GovernedArtifactTransitionError::Conflict(_))));
-        assert!(TransitionCheckpointStore::load_checkpoint(&db, other_slug.operation_id)
-            .await.unwrap().is_none());
+        assert!(matches!(
+            service
+                .save_governed_checkpoint(&other_slug, Some(Uuid::new_v4()))
+                .await,
+            Err(GovernedArtifactTransitionError::Conflict(_))
+        ));
+        assert!(
+            TransitionCheckpointStore::load_checkpoint(&db, other_slug.operation_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
         let predecessor = Uuid::new_v4();
         db.execute_raw(Statement::from_sql_and_values(
             sea_orm::DbBackend::Sqlite,
             "INSERT INTO module_artifact_installations VALUES (?1, 'platform', NULL, 'other')",
             vec![predecessor.to_string().into()],
-        )).await.unwrap();
+        ))
+        .await
+        .unwrap();
         db.execute_raw(Statement::from_sql_and_values(
             sea_orm::DbBackend::Sqlite,
             "INSERT INTO module_artifact_admissions VALUES (?1, 'active')",
             vec![predecessor.to_string().into()],
-        )).await.unwrap();
+        ))
+        .await
+        .unwrap();
         other_slug.predecessor_digest = Some("predecessor".into());
-        assert!(matches!(service.save_governed_checkpoint(&other_slug, None).await,
-            Err(GovernedArtifactTransitionError::Conflict(_))));
-        service.save_governed_checkpoint(&other_slug, Some(predecessor)).await.unwrap();
+        assert!(matches!(
+            service.save_governed_checkpoint(&other_slug, None).await,
+            Err(GovernedArtifactTransitionError::Conflict(_))
+        ));
+        service
+            .save_governed_checkpoint(&other_slug, Some(predecessor))
+            .await
+            .unwrap();
 
         let mut platform_first = make(None);
         platform_first.module_slug = "third".into();
-        service.save_governed_checkpoint(&platform_first, None).await.unwrap();
+        service
+            .save_governed_checkpoint(&platform_first, None)
+            .await
+            .unwrap();
         let mut tenant_after = make(Some(tenant_b));
         tenant_after.module_slug = "third".into();
-        assert!(matches!(service.save_governed_checkpoint(&tenant_after, None).await,
-            Err(GovernedArtifactTransitionError::Conflict(_))));
+        assert!(matches!(
+            service.save_governed_checkpoint(&tenant_after, None).await,
+            Err(GovernedArtifactTransitionError::Conflict(_))
+        ));
 
         // A journal claim is durable evidence even after its lease has expired.
         // A platform transition overlaps it, while a different tenant does not.
@@ -1502,23 +1568,41 @@ mod preflight_tests {
              (tenant_id, module_slug, active_idempotency_key, active_claimed_at, claim_owner) \
              VALUES (?1, 'claimed', ?2, '2000-01-01T00:00:00Z', 'journal')",
             vec![tenant_a.into(), Uuid::new_v4().into()],
-        )).await.unwrap();
+        ))
+        .await
+        .unwrap();
         let mut same_tenant = make(Some(tenant_a));
         same_tenant.module_slug = "claimed".into();
-        assert!(matches!(service.save_governed_checkpoint(&same_tenant, None).await,
-            Err(GovernedArtifactTransitionError::Conflict(_))));
-        assert!(TransitionCheckpointStore::load_checkpoint(&db, same_tenant.operation_id)
-            .await.unwrap().is_none());
+        assert!(matches!(
+            service.save_governed_checkpoint(&same_tenant, None).await,
+            Err(GovernedArtifactTransitionError::Conflict(_))
+        ));
+        assert!(
+            TransitionCheckpointStore::load_checkpoint(&db, same_tenant.operation_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
         let mut platform_claimed = make(None);
         platform_claimed.module_slug = "claimed".into();
-        assert!(matches!(service.save_governed_checkpoint(&platform_claimed, None).await,
-            Err(GovernedArtifactTransitionError::Conflict(_))));
+        assert!(matches!(
+            service
+                .save_governed_checkpoint(&platform_claimed, None)
+                .await,
+            Err(GovernedArtifactTransitionError::Conflict(_))
+        ));
         let mut different_tenant = make(Some(tenant_b));
         different_tenant.module_slug = "claimed".into();
-        service.save_governed_checkpoint(&different_tenant, None).await.unwrap();
+        service
+            .save_governed_checkpoint(&different_tenant, None)
+            .await
+            .unwrap();
         db.execute_unprepared("UPDATE module_static_tenant_lifecycle SET active_idempotency_key = NULL WHERE module_slug = 'claimed'")
             .await.unwrap();
-        service.save_governed_checkpoint(&same_tenant, None).await.unwrap();
+        service
+            .save_governed_checkpoint(&same_tenant, None)
+            .await
+            .unwrap();
     }
 
     #[test]

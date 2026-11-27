@@ -6,8 +6,7 @@ use thiserror::Error;
 
 use crate::{
     DomainError, IndexMutationEventError, IndexSourceAbsenceError, IndexSourceCatalog,
-    IndexSourceError, SharedIndexMutationEventRegistry,
-    materialize_index_mutation_event_registry,
+    IndexSourceError, SharedIndexMutationEventRegistry, materialize_index_mutation_event_registry,
 };
 
 const MAX_FACTORY_ID_BYTES: usize = 128;

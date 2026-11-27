@@ -50,7 +50,11 @@ pub(crate) fn select_projection_rows(rows: Vec<QueryResult>) -> Result<Projectio
         let tenant_scoped = match row.try_get::<String>("", "scope_kind")?.as_str() {
             "tenant" => true,
             "platform" => false,
-            _ => return Err(DbErr::Custom("active artifact has an invalid scope".to_string())),
+            _ => {
+                return Err(DbErr::Custom(
+                    "active artifact has an invalid scope".to_string(),
+                ));
+            }
         };
         selection.observe(slug, tenant_scoped, row);
     }
@@ -138,7 +142,11 @@ mod tests {
 
     #[test]
     fn tenant_wins_over_duplicate_platform_in_every_order() {
-        let rows = [(false, "platform-1"), (false, "platform-2"), (true, "tenant")];
+        let rows = [
+            (false, "platform-1"),
+            (false, "platform-2"),
+            (true, "tenant"),
+        ];
         for order in permutations(&rows) {
             let mut selection = EffectiveInstallationSelection::new();
             for (tenant, id) in order {
@@ -208,7 +216,8 @@ pub(crate) mod test_support {
     }
 
     fn descriptor(slug: &str) -> String {
-        let schema = json!({"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"});
+        let schema =
+            json!({"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"});
         let digest = canonical_schema_digest(&schema);
         let permission = format!("{slug}.deliver");
         let binding = |id: &str, kind, event_topics, schedule| ModuleRuntimeBinding {
@@ -238,14 +247,24 @@ pub(crate) mod test_support {
             entrypoint: "main".to_string(),
             capabilities: Vec::new(),
             bindings: vec![
-                binding("event_handler", ModuleRuntimeBindingKind::Event, vec!["sample.event".into()], None),
-                binding("schedule_handler", ModuleRuntimeBindingKind::Schedule, Vec::new(), Some(ModuleScheduleBinding {
-                    cron: "*/10 * * * *".to_string(),
-                    timezone: "UTC".to_string(),
-                    misfire: ModuleScheduleMisfirePolicy::Skip,
-                    overlap: ModuleScheduleOverlapPolicy::Queue,
-                    deduplication: ModuleScheduleDeduplication::PerSlot,
-                })),
+                binding(
+                    "event_handler",
+                    ModuleRuntimeBindingKind::Event,
+                    vec!["sample.event".into()],
+                    None,
+                ),
+                binding(
+                    "schedule_handler",
+                    ModuleRuntimeBindingKind::Schedule,
+                    Vec::new(),
+                    Some(ModuleScheduleBinding {
+                        cron: "*/10 * * * *".to_string(),
+                        timezone: "UTC".to_string(),
+                        misfire: ModuleScheduleMisfirePolicy::Skip,
+                        overlap: ModuleScheduleOverlapPolicy::Queue,
+                        deduplication: ModuleScheduleDeduplication::PerSlot,
+                    }),
+                ),
             ],
             dependencies: Vec::new(),
             permissions: vec![ArtifactPermissionDescriptor {
@@ -256,7 +275,10 @@ pub(crate) mod test_support {
                     description: "Deliver work".into(),
                 }],
             }],
-            schema_documents: vec![ArtifactSchemaDocument { digest: digest.clone(), document: schema }],
+            schema_documents: vec![ArtifactSchemaDocument {
+                digest: digest.clone(),
+                document: schema,
+            }],
             settings_schema_digest: None,
             data_schema_digest: None,
             localization_catalogs: Vec::new(),
@@ -276,7 +298,9 @@ pub(crate) mod test_support {
                 "CREATE TABLE module_artifact_tenant_lifecycle (installation_id TEXT, tenant_id TEXT, enabled INTEGER)",
                 "CREATE TABLE module_artifact_uninstall_operations (installation_id TEXT)",
             ] {
-                db.execute_raw(Statement::from_string(DbBackend::Sqlite, sql.to_string())).await.unwrap();
+                db.execute_raw(Statement::from_string(DbBackend::Sqlite, sql.to_string()))
+                    .await
+                    .unwrap();
             }
             let fixture = Self {
                 db,
@@ -290,11 +314,41 @@ pub(crate) mod test_support {
             // Insert duplicates before the tenant row to expose the previous
             // order-dependent exclusion bug.
             for (id, slug, tenant_scoped, value, status) in [
-                (fixture.platform, "sample_module", false, descriptor("sample_module"), "active"),
-                (fixture.platform_duplicate, "sample_module", false, descriptor("sample_module"), "active"),
-                (fixture.tenant_winner, "sample_module", true, "broken JSON".to_string(), "active"),
-                (fixture.tenant_duplicate, "sample_module", true, descriptor("sample_module"), "inactive"),
-                (fixture.other, "other_module", false, descriptor("other_module"), "active"),
+                (
+                    fixture.platform,
+                    "sample_module",
+                    false,
+                    descriptor("sample_module"),
+                    "active",
+                ),
+                (
+                    fixture.platform_duplicate,
+                    "sample_module",
+                    false,
+                    descriptor("sample_module"),
+                    "active",
+                ),
+                (
+                    fixture.tenant_winner,
+                    "sample_module",
+                    true,
+                    "broken JSON".to_string(),
+                    "active",
+                ),
+                (
+                    fixture.tenant_duplicate,
+                    "sample_module",
+                    true,
+                    descriptor("sample_module"),
+                    "inactive",
+                ),
+                (
+                    fixture.other,
+                    "other_module",
+                    false,
+                    descriptor("other_module"),
+                    "active",
+                ),
             ] {
                 fixture.db.execute_raw(Statement::from_sql_and_values(
                     DbBackend::Sqlite,
@@ -351,11 +405,17 @@ pub(crate) mod test_support {
         }
 
         pub(crate) async fn set_active(&self, id: Uuid, active: bool) {
-            self.db.execute_raw(Statement::from_sql_and_values(
-                DbBackend::Sqlite,
-                "UPDATE module_artifact_admissions SET status = ?1 WHERE installation_id = ?2",
-                vec![if active { "active" } else { "inactive" }.into(), id.to_string().into()],
-            )).await.unwrap();
+            self.db
+                .execute_raw(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    "UPDATE module_artifact_admissions SET status = ?1 WHERE installation_id = ?2",
+                    vec![
+                        if active { "active" } else { "inactive" }.into(),
+                        id.to_string().into(),
+                    ],
+                ))
+                .await
+                .unwrap();
         }
     }
 }

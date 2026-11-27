@@ -10,7 +10,9 @@ use crate::model::{VariantCreateOutcome, VariantDraft};
 use leptos::prelude::*;
 
 #[cfg(feature = "ssr")]
-use super::native_server_adapter::{catalog_update_scope, parse_uuid, write_context};
+use super::native_server_adapter::{
+    catalog_update_scope, parse_attribute_value_batches, parse_uuid, write_context,
+};
 
 #[cfg(feature = "ssr")]
 fn owner_input(
@@ -25,6 +27,7 @@ fn owner_input(
         sku: input.sku,
         barcode: input.barcode,
         shipping_profile_slug: input.shipping_profile_slug,
+        attribute_values: parse_attribute_value_batches(input.attribute_values)?,
         axis_values: input
             .axis_values
             .into_iter()
@@ -130,6 +133,7 @@ mod tests {
         let input: VariantDraft = serde_json::from_value(serde_json::json!({
             "sku": "SKU", "barcode": "123", "shippingProfileSlug": "parcel",
             "axisValues": [{ "attributeId": "00000000-0000-4000-8000-000000000001", "optionId": "00000000-0000-4000-8000-000000000002" }],
+            "attributeValues": [{ "locale": "en", "patches": [{ "attributeId": "00000000-0000-4000-8000-000000000003", "kind": "text", "text": "Blue" }] }],
             "prices": [{ "currencyCode": "USD", "amount": "12.000001", "compareAtAmount": "15" }],
             "inventoryQuantity": 17, "inventoryPolicy": "continue"
         })).unwrap();
@@ -147,6 +151,16 @@ mod tests {
         assert_eq!(
             domain.axis_values[0].option_id.to_string(),
             input.axis_values[0].option_id
+        );
+        assert_eq!(domain.attribute_values.len(), 1);
+        assert_eq!(domain.attribute_values[0].locale, "en");
+        assert_eq!(
+            domain.attribute_values[0].patches[0].attribute_id.to_string(),
+            "00000000-0000-4000-8000-000000000003"
+        );
+        assert_eq!(
+            domain.attribute_values[0].patches[0].value,
+            rustok_product::services::ProductAttributeValuePatchValue::Text("Blue".to_owned())
         );
         assert_eq!(domain.prices[0].amount.to_string(), "12.000001");
         assert_eq!(

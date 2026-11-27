@@ -301,7 +301,9 @@ impl From<rustok_api::PortError> for BlogError {
             PortErrorKind::Timeout => ErrorKind::Timeout,
             PortErrorKind::InvariantViolation => ErrorKind::Internal,
         };
-        Self::Rich(Box::new(RichError::new(kind, error.message).with_error_code(error.code)))
+        Self::Rich(Box::new(
+            RichError::new(kind, error.message).with_error_code(error.code),
+        ))
     }
 }
 

@@ -19,9 +19,7 @@ use crate::model::{
     AiRunDecisionTrace, ChatMessageRole, ExecutionMode, ExecutionOverride, ProviderCapability,
     ProviderUsagePolicy, ToolCall, ToolTrace,
 };
-use crate::{
-    AiError, AiResult, AiTaskDataClassification, ProviderSlug, ProviderTargetId,
-};
+use crate::{AiError, AiResult, AiTaskDataClassification, ProviderSlug, ProviderTargetId};
 
 type AiRunCancellationSenders = HashMap<Uuid, watch::Sender<()>>;
 type SharedAiRunCancellations = Arc<Mutex<AiRunCancellationSenders>>;
@@ -89,24 +87,36 @@ pub fn ai_host_runtime_from_context(
 ) -> AiResult<AiHostRuntime> {
     let event_bus = context
         .shared_get::<TransactionalEventBus>()
-        .ok_or_else(|| AiError::InvalidConfig("AI requires TransactionalEventBus in HostRuntimeContext".to_string()))?;
-    let module_registry = context
-        .shared_get::<ModuleRegistry>()
-        .ok_or_else(|| AiError::InvalidConfig("AI requires ModuleRegistry in HostRuntimeContext".to_string()))?;
+        .ok_or_else(|| {
+            AiError::InvalidConfig(
+                "AI requires TransactionalEventBus in HostRuntimeContext".to_string(),
+            )
+        })?;
+    let module_registry = context.shared_get::<ModuleRegistry>().ok_or_else(|| {
+        AiError::InvalidConfig("AI requires ModuleRegistry in HostRuntimeContext".to_string())
+    })?;
     let secret_registry = context
         .shared_get::<SharedAiSecretResolverRegistry>()
         .ok_or_else(|| {
-            AiError::InvalidConfig("AI requires SharedAiSecretResolverRegistry in HostRuntimeContext".to_string())
+            AiError::InvalidConfig(
+                "AI requires SharedAiSecretResolverRegistry in HostRuntimeContext".to_string(),
+            )
         })?
         .0;
     let egress_policy = context
         .shared_get::<SharedAiEgressPolicy>()
-        .ok_or_else(|| AiError::InvalidConfig("AI requires SharedAiEgressPolicy in HostRuntimeContext".to_string()))?
+        .ok_or_else(|| {
+            AiError::InvalidConfig(
+                "AI requires SharedAiEgressPolicy in HostRuntimeContext".to_string(),
+            )
+        })?
         .0;
     let provider_targets = context
         .shared_get::<SharedAiProviderTargetCatalog>()
         .ok_or_else(|| {
-            AiError::InvalidConfig("AI requires SharedAiProviderTargetCatalog in HostRuntimeContext".to_string())
+            AiError::InvalidConfig(
+                "AI requires SharedAiProviderTargetCatalog in HostRuntimeContext".to_string(),
+            )
         })?
         .0;
     let order_status_port = context

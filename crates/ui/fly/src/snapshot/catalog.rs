@@ -35,11 +35,13 @@ impl SnapshotCatalog {
     ) -> FlyResult<&ProjectSnapshot> {
         let label = label.into();
         let sequence = self.next_sequence;
-        let next_sequence = sequence.checked_add(1).ok_or_else(|| {
-            FlyError::Encode("snapshot sequence exhausted".to_string())
-        })?;
+        let next_sequence = sequence
+            .checked_add(1)
+            .ok_or_else(|| FlyError::Encode("snapshot sequence exhausted".to_string()))?;
         if self.maximum_snapshots == 0 {
-            return Err(FlyError::Encode("snapshot catalog has zero capacity".to_string()));
+            return Err(FlyError::Encode(
+                "snapshot catalog has zero capacity".to_string(),
+            ));
         }
         // Hash the actual canonical payload, not a possibly stale document cache.
         // Validate that the payload can be decoded before committing the capture.

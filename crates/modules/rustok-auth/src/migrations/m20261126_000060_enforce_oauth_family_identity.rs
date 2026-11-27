@@ -53,26 +53,41 @@ impl MigrationTrait for Migration {
         match backend {
             DatabaseBackend::Postgres => {
                 // The platform migrator executes DDL transactionally.
-                db.execute_unprepared("LOCK TABLE oauth_tokens IN ACCESS EXCLUSIVE MODE").await?;
+                db.execute_unprepared("LOCK TABLE oauth_tokens IN ACCESS EXCLUSIVE MODE")
+                    .await?;
             }
             DatabaseBackend::Sqlite => {
                 // Acquire the SQLite writer before inspecting the old lineage.
-                db.execute_unprepared("UPDATE oauth_tokens SET family_id = family_id WHERE 0").await?;
+                db.execute_unprepared("UPDATE oauth_tokens SET family_id = family_id WHERE 0")
+                    .await?;
             }
             _ => return Err(DbErr::Custom("Unsupported OAuth lineage database".into())),
         }
         for (sql, message) in [
-            (INVALID_FAMILY, "OAuth family migration found a missing or inconsistent root"),
-            (FORKED_FAMILY, "OAuth family migration found multiple unrevoked refresh branches"),
+            (
+                INVALID_FAMILY,
+                "OAuth family migration found a missing or inconsistent root",
+            ),
+            (
+                FORKED_FAMILY,
+                "OAuth family migration found multiple unrevoked refresh branches",
+            ),
         ] {
-            if db.query_one_raw(Statement::from_string(backend, sql.to_owned())).await?.is_some() {
+            if db
+                .query_one_raw(Statement::from_string(backend, sql.to_owned()))
+                .await?
+                .is_some()
+            {
                 return Err(DbErr::Custom(message.into()));
             }
         }
-        db.execute_unprepared("UPDATE oauth_tokens SET family_id = id WHERE family_id IS NULL").await?;
+        db.execute_unprepared("UPDATE oauth_tokens SET family_id = id WHERE family_id IS NULL")
+            .await?;
         db.execute_unprepared(ONE_REFRESH).await?;
         match backend {
-            DatabaseBackend::Postgres => { db.execute_unprepared(POSTGRES_UP).await?; }
+            DatabaseBackend::Postgres => {
+                db.execute_unprepared(POSTGRES_UP).await?;
+            }
             DatabaseBackend::Sqlite => {
                 for sql in [SQLITE_INSERT, SQLITE_UPDATE, SQLITE_DELETE] {
                     db.execute_unprepared(sql).await?;
@@ -87,23 +102,32 @@ impl MigrationTrait for Migration {
         let db = manager.get_connection();
         match db.get_database_backend() {
             DatabaseBackend::Postgres => {
-                db.execute_unprepared(r#"
+                db.execute_unprepared(
+                    r#"
 DROP TRIGGER trg_oauth_family_identity ON oauth_tokens;
 DROP FUNCTION rustok_guard_oauth_family_identity();
 ALTER TABLE oauth_tokens DROP CONSTRAINT fk_oauth_tokens_family_root;
 ALTER TABLE oauth_tokens DROP CONSTRAINT ck_oauth_tokens_family_non_nil;
 ALTER TABLE oauth_tokens ALTER COLUMN family_id DROP NOT NULL;
-"#).await?;
+"#,
+                )
+                .await?;
             }
             DatabaseBackend::Sqlite => {
-                for trigger in ["trg_oauth_family_insert", "trg_oauth_family_update", "trg_oauth_family_delete"] {
-                    db.execute_unprepared(&format!("DROP TRIGGER {trigger}")).await?;
+                for trigger in [
+                    "trg_oauth_family_insert",
+                    "trg_oauth_family_update",
+                    "trg_oauth_family_delete",
+                ] {
+                    db.execute_unprepared(&format!("DROP TRIGGER {trigger}"))
+                        .await?;
                 }
             }
             _ => return Err(DbErr::Custom("Unsupported OAuth lineage database".into())),
         }
         // The truthful backfill is not reversed into ambiguous NULLs.
-        db.execute_unprepared("DROP INDEX uq_oauth_tokens_unrevoked_refresh_family").await?;
+        db.execute_unprepared("DROP INDEX uq_oauth_tokens_unrevoked_refresh_family")
+            .await?;
         Ok(())
     }
 }
@@ -197,7 +221,8 @@ mod tests {
 
     async fn fixture() -> sea_orm_migration::sea_orm::DatabaseConnection {
         let db = Database::connect("sqlite::memory:").await.unwrap();
-        db.execute_unprepared(r#"
+        db.execute_unprepared(
+            r#"
 CREATE TABLE tenants (id TEXT PRIMARY KEY);
 CREATE TABLE oauth_apps (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL);
 CREATE TABLE oauth_tokens (
@@ -210,7 +235,10 @@ CREATE TABLE oauth_tokens (
 INSERT INTO tenants VALUES ('tenant');
 INSERT INTO oauth_apps VALUES ('app', 'tenant');
 INSERT INTO oauth_tokens (id, tenant_id, app_id, user_id) VALUES ('root', 'tenant', 'app', 'user');
-"#).await.unwrap();
+"#,
+        )
+        .await
+        .unwrap();
         db
     }
 
@@ -218,8 +246,14 @@ INSERT INTO oauth_tokens (id, tenant_id, app_id, user_id) VALUES ('root', 'tenan
     async fn canonical_family_backfill_and_guards() {
         let db = fixture().await;
         Migration.up(&SchemaManager::new(&db)).await.unwrap();
-        let root = db.query_one_raw(Statement::from_string(DatabaseBackend::Sqlite,
-            "SELECT family_id FROM oauth_tokens WHERE id = 'root'".to_owned())).await.unwrap().unwrap();
+        let root = db
+            .query_one_raw(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "SELECT family_id FROM oauth_tokens WHERE id = 'root'".to_owned(),
+            ))
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(root.try_get::<String>("", "family_id").unwrap(), "root");
         for sql in [
             "INSERT INTO oauth_tokens (id, tenant_id, app_id) VALUES ('null', 'tenant', 'app')",
@@ -233,12 +267,28 @@ INSERT INTO oauth_tokens (id, tenant_id, app_id, user_id) VALUES ('root', 'tenan
         assert!(db.execute_unprepared(&format!(
             "INSERT INTO oauth_tokens (id, family_id, tenant_id, app_id) VALUES ('{NIL}', '{NIL}', 'tenant', 'app')"
         )).await.is_err());
-        db.execute_unprepared("UPDATE oauth_tokens SET revoked_at = '2026-01-02' WHERE id = 'root'").await.unwrap();
+        db.execute_unprepared(
+            "UPDATE oauth_tokens SET revoked_at = '2026-01-02' WHERE id = 'root'",
+        )
+        .await
+        .unwrap();
         db.execute_unprepared("INSERT INTO oauth_tokens (id, family_id, tenant_id, app_id, user_id) VALUES ('child', 'root', 'tenant', 'app', 'user')").await.unwrap();
-        assert!(db.execute_unprepared("UPDATE oauth_tokens SET user_id = 'other' WHERE id = 'root'").await.is_err());
-        assert!(db.execute_unprepared("DELETE FROM oauth_tokens WHERE id = 'root'").await.is_err());
-        db.execute_unprepared("DELETE FROM oauth_tokens WHERE id = 'child'").await.unwrap();
-        db.execute_unprepared("DELETE FROM oauth_tokens WHERE id = 'root'").await.unwrap();
+        assert!(
+            db.execute_unprepared("UPDATE oauth_tokens SET user_id = 'other' WHERE id = 'root'")
+                .await
+                .is_err()
+        );
+        assert!(
+            db.execute_unprepared("DELETE FROM oauth_tokens WHERE id = 'root'")
+                .await
+                .is_err()
+        );
+        db.execute_unprepared("DELETE FROM oauth_tokens WHERE id = 'child'")
+            .await
+            .unwrap();
+        db.execute_unprepared("DELETE FROM oauth_tokens WHERE id = 'root'")
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -246,8 +296,17 @@ INSERT INTO oauth_tokens (id, tenant_id, app_id, user_id) VALUES ('root', 'tenan
         let db = fixture().await;
         db.execute_unprepared("INSERT INTO oauth_tokens (id, family_id, tenant_id, app_id, user_id) VALUES ('fork', 'root', 'tenant', 'app', 'user')").await.unwrap();
         assert!(Migration.up(&SchemaManager::new(&db)).await.is_err());
-        let row = db.query_one_raw(Statement::from_string(DatabaseBackend::Sqlite,
-            "SELECT family_id FROM oauth_tokens WHERE id = 'root'".to_owned())).await.unwrap().unwrap();
-        assert_eq!(row.try_get::<Option<String>>("", "family_id").unwrap(), None);
+        let row = db
+            .query_one_raw(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "SELECT family_id FROM oauth_tokens WHERE id = 'root'".to_owned(),
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            row.try_get::<Option<String>>("", "family_id").unwrap(),
+            None
+        );
     }
 }

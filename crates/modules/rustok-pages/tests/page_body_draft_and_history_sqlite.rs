@@ -16,8 +16,9 @@ use rustok_pages::entities::{
     page, page_body, page_body_draft, page_body_revision, page_translation,
 };
 use rustok_pages::{
-    CreatePageInput, PageBodyInput, PageBodyRevisionSource, PageBodyState, PageService, PagesError,
-    PagesModule, PageTranslationInput, RestorePageBodyRevisionInput, SavePageDocumentInput,
+    CreatePageInput, PageBodyInput, PageBodyRevisionSource, PageBodyState, PageService,
+    PageTranslationInput, PagesError, PagesModule, RestorePageBodyRevisionInput,
+    SavePageDocumentInput,
 };
 use rustok_test_utils::mock_transactional_event_bus;
 use sea_orm::{
@@ -99,7 +100,10 @@ async fn save_and_restore_revision_tokens_advance_after_clock_rollback() -> Test
     let mut active: page_body::ActiveModel = current_body(&db, tenant_id, page_id).await?.into();
     active.updated_at = Set(ahead.into());
     active.update(&db).await?;
-    let initial = current_body(&db, tenant_id, page_id).await?.updated_at.to_string();
+    let initial = current_body(&db, tenant_id, page_id)
+        .await?
+        .updated_at
+        .to_string();
 
     let saved = service
         .save_document(
@@ -114,7 +118,13 @@ async fn save_and_restore_revision_tokens_advance_after_clock_rollback() -> Test
         .await?;
     let saved = saved.body.expect("saved draft");
     assert!(saved.updated_at > initial, "save must advance the token");
-    assert_eq!(draft_body(&db, tenant_id, page_id).await?.updated_at.to_string(), saved.updated_at);
+    assert_eq!(
+        draft_body(&db, tenant_id, page_id)
+            .await?
+            .updated_at
+            .to_string(),
+        saved.updated_at
+    );
 
     let journal = revisions(&db, tenant_id, page_id).await?;
     let restored = service
@@ -129,8 +139,17 @@ async fn save_and_restore_revision_tokens_advance_after_clock_rollback() -> Test
         )
         .await?;
     let restored = restored.body.expect("restored draft");
-    assert!(restored.updated_at > saved.updated_at, "restore must advance the token");
-    assert_eq!(draft_body(&db, tenant_id, page_id).await?.updated_at.to_string(), restored.updated_at);
+    assert!(
+        restored.updated_at > saved.updated_at,
+        "restore must advance the token"
+    );
+    assert_eq!(
+        draft_body(&db, tenant_id, page_id)
+            .await?
+            .updated_at
+            .to_string(),
+        restored.updated_at
+    );
 
     let error = service
         .save_document(
@@ -144,7 +163,11 @@ async fn save_and_restore_revision_tokens_advance_after_clock_rollback() -> Test
         )
         .await
         .expect_err("stale revision must conflict");
-    assert!(error.to_string().contains("PAGE_DOCUMENT_REVISION_CONFLICT"));
+    assert!(
+        error
+            .to_string()
+            .contains("PAGE_DOCUMENT_REVISION_CONFLICT")
+    );
     Ok(())
 }
 
@@ -160,59 +183,104 @@ async fn save_receipts_replay_the_original_response_after_a_newer_save() -> Test
         expected_revision: revision.clone(),
         body: builder_body("receipt-first"),
     };
-    let first = service.save_document_with_receipt(
-        tenant_id, user.clone(), page_id,
-        first_request.clone(), Some("fly:op-1".to_string()),
-    ).await?;
+    let first = service
+        .save_document_with_receipt(
+            tenant_id,
+            user.clone(),
+            page_id,
+            first_request.clone(),
+            Some("fly:op-1".to_string()),
+        )
+        .await?;
     let original = serde_json::to_value(&first)?;
     let first_token = first.body.expect("first saved body").updated_at;
-    let replay = service.save_document_with_receipt(
-        tenant_id, user.clone(), page_id,
-        first_request.clone(), Some("fly:op-1".to_string()),
-    ).await?;
+    let replay = service
+        .save_document_with_receipt(
+            tenant_id,
+            user.clone(),
+            page_id,
+            first_request.clone(),
+            Some("fly:op-1".to_string()),
+        )
+        .await?;
     assert_eq!(serde_json::to_value(&replay)?, original);
     assert_eq!(revisions(&db, tenant_id, page_id).await?.len(), 1);
 
-    service.save_document_with_receipt(
-        tenant_id, user.clone(), page_id,
-        SavePageDocumentInput {
-            expected_revision: first_token,
-            body: builder_body("receipt-later"),
-        },
-        Some("fly:op-2".to_string()),
-    ).await?;
-    let replay = service.save_document_with_receipt(
-        tenant_id, user.clone(), page_id,
-        first_request.clone(), Some("fly:op-1".to_string()),
-    ).await?;
+    service
+        .save_document_with_receipt(
+            tenant_id,
+            user.clone(),
+            page_id,
+            SavePageDocumentInput {
+                expected_revision: first_token,
+                body: builder_body("receipt-later"),
+            },
+            Some("fly:op-2".to_string()),
+        )
+        .await?;
+    let replay = service
+        .save_document_with_receipt(
+            tenant_id,
+            user.clone(),
+            page_id,
+            first_request.clone(),
+            Some("fly:op-1".to_string()),
+        )
+        .await?;
     assert_eq!(serde_json::to_value(&replay)?, original);
-    let receipt = service.document_save_receipt(
-        tenant_id, user.clone(), page_id, "fly:op-1",
-    ).await?.expect("durable acknowledgement");
+    let receipt = service
+        .document_save_receipt(tenant_id, user.clone(), page_id, "fly:op-1")
+        .await?
+        .expect("durable acknowledgement");
     assert_eq!(serde_json::to_value(&receipt)?, original);
-    assert_eq!(draft_body(&db, tenant_id, page_id).await?.content, builder_content("receipt-later"));
+    assert_eq!(
+        draft_body(&db, tenant_id, page_id).await?.content,
+        builder_content("receipt-later")
+    );
     assert_eq!(revisions(&db, tenant_id, page_id).await?.len(), 2);
 
-    let changed_payload = service.save_document_with_receipt(
-        tenant_id, user.clone(), page_id,
-        SavePageDocumentInput {
-            expected_revision: revision,
-            body: builder_body("different"),
-        }, Some("fly:op-1".to_string()),
-    ).await.expect_err("key reuse for another payload");
-    assert!(changed_payload.to_string().contains("PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT"));
-    let changed_actor = service.save_document_with_receipt(
-        tenant_id, other_user, page_id,
-        first_request, Some("fly:op-1".to_string()),
-    ).await.expect_err("key reuse for another user");
-    assert!(changed_actor.to_string().contains("PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT"));
+    let changed_payload = service
+        .save_document_with_receipt(
+            tenant_id,
+            user.clone(),
+            page_id,
+            SavePageDocumentInput {
+                expected_revision: revision,
+                body: builder_body("different"),
+            },
+            Some("fly:op-1".to_string()),
+        )
+        .await
+        .expect_err("key reuse for another payload");
+    assert!(
+        changed_payload
+            .to_string()
+            .contains("PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT")
+    );
+    let changed_actor = service
+        .save_document_with_receipt(
+            tenant_id,
+            other_user,
+            page_id,
+            first_request,
+            Some("fly:op-1".to_string()),
+        )
+        .await
+        .expect_err("key reuse for another user");
+    assert!(
+        changed_actor
+            .to_string()
+            .contains("PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT")
+    );
     assert_eq!(revisions(&db, tenant_id, page_id).await?.len(), 2);
-    assert!(service.document_save_receipt(
-        tenant_id, user, page_id, "fly:missing",
-    ).await?.is_none());
+    assert!(
+        service
+            .document_save_receipt(tenant_id, user, page_id, "fly:missing",)
+            .await?
+            .is_none()
+    );
     Ok(())
 }
-
 
 #[tokio::test]
 async fn concurrent_identical_saves_on_two_sqlite_connections_have_one_receipt_and_journal()
@@ -226,7 +294,10 @@ async fn concurrent_identical_saves_on_two_sqlite_connections_have_one_receipt_a
     // Independent pools and connections: a clone of a single max(1) pool
     // would serialize the futures and hide inter-connection lock behavior.
     let mut options = ConnectOptions::new(url);
-    options.max_connections(1).min_connections(1).sqlx_logging(false);
+    options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
     let secondary = Database::connect(options).await?;
     let (page_id, revision) = seed_published_page(&primary, tenant_id).await?;
     let security = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -239,34 +310,46 @@ async fn concurrent_identical_saves_on_two_sqlite_connections_have_one_receipt_a
 
     let (left, right) = tokio::join!(
         a.save_document_with_receipt(
-            tenant_id, security.clone(), page_id, request.clone(),
+            tenant_id,
+            security.clone(),
+            page_id,
+            request.clone(),
             Some("two-sockets-identical".to_string()),
         ),
         b.save_document_with_receipt(
-            tenant_id, security.clone(), page_id, request.clone(),
+            tenant_id,
+            security.clone(),
+            page_id,
+            request.clone(),
             Some("two-sockets-identical".to_string()),
         )
     );
     // SQLite may report SQLITE_BUSY/SQLITE_LOCKED for one of the racing
     // transactions. A retry with the same identity must converge to the
     // single committed acknowledgement without appending another journal.
-    let canonical = a.save_document_with_receipt(
-        tenant_id, security, page_id, request,
-        Some("two-sockets-identical".to_string()),
-    ).await?;
+    let canonical = a
+        .save_document_with_receipt(
+            tenant_id,
+            security,
+            page_id,
+            request,
+            Some("two-sockets-identical".to_string()),
+        )
+        .await?;
     let canonical_json = serde_json::to_value(&canonical)?;
     for accepted in [left, right].into_iter().flatten() {
         assert_eq!(serde_json::to_value(accepted)?, canonical_json);
     }
     assert_eq!(revisions(&primary, tenant_id, page_id).await?.len(), 1);
-    assert_eq!(draft_body(&secondary, tenant_id, page_id).await?.content,
-               builder_content("one-request-two-sockets"));
+    assert_eq!(
+        draft_body(&secondary, tenant_id, page_id).await?.content,
+        builder_content("one-request-two-sockets")
+    );
     Ok(())
 }
 
 #[tokio::test]
-async fn competing_distinct_saves_never_both_advance_same_sqlite_revision()
--> TestResult<()> {
+async fn competing_distinct_saves_never_both_advance_same_sqlite_revision() -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let url = format!(
         "sqlite:file:pages_concurrent_distinct_{}?mode=memory&cache=shared",
@@ -274,7 +357,10 @@ async fn competing_distinct_saves_never_both_advance_same_sqlite_revision()
     );
     let primary = setup_db_at_url(url.clone()).await?;
     let mut options = ConnectOptions::new(url);
-    options.max_connections(1).min_connections(1).sqlx_logging(false);
+    options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
     let secondary = Database::connect(options).await?;
     let (page_id, revision) = seed_published_page(&primary, tenant_id).await?;
     let user = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -290,11 +376,17 @@ async fn competing_distinct_saves_never_both_advance_same_sqlite_revision()
     };
     let (left, right) = tokio::join!(
         left_service.save_document_with_receipt(
-            tenant_id, user.clone(), page_id, left_request.clone(),
+            tenant_id,
+            user.clone(),
+            page_id,
+            left_request.clone(),
             Some("two-sockets-left".to_string()),
         ),
         right_service.save_document_with_receipt(
-            tenant_id, user.clone(), page_id, right_request.clone(),
+            tenant_id,
+            user.clone(),
+            page_id,
+            right_request.clone(),
             Some("two-sockets-right".to_string()),
         )
     );
@@ -306,16 +398,20 @@ async fn competing_distinct_saves_never_both_advance_same_sqlite_revision()
     // conflict. Complete one operation if neither succeeded, then retry the
     // other sequentially: stale expected revision must never be accepted.
     if left.is_err() && right.is_err() {
-        left_service.save_document_with_receipt(
-            tenant_id, user.clone(), page_id, left_request.clone(),
-            Some("two-sockets-left".to_string()),
-        ).await?;
+        left_service
+            .save_document_with_receipt(
+                tenant_id,
+                user.clone(),
+                page_id,
+                left_request.clone(),
+                Some("two-sockets-left".to_string()),
+            )
+            .await?;
     }
     let final_body = draft_body(&primary, tenant_id, page_id).await?;
     let latest = final_body.content.clone();
     assert!(
-        latest == builder_content("distinct-left")
-            || latest == builder_content("distinct-right")
+        latest == builder_content("distinct-left") || latest == builder_content("distinct-right")
     );
     assert_eq!(revisions(&primary, tenant_id, page_id).await?.len(), 1);
     let (loser_request, loser_key) = if latest == builder_content("distinct-left") {
@@ -323,11 +419,20 @@ async fn competing_distinct_saves_never_both_advance_same_sqlite_revision()
     } else {
         (left_request, "two-sockets-left")
     };
-    let losing_retry = right_service.save_document_with_receipt(
-        tenant_id, user, page_id, loser_request, Some(loser_key.to_string()),
-    ).await.expect_err("losing stale command must not commit");
+    let losing_retry = right_service
+        .save_document_with_receipt(
+            tenant_id,
+            user,
+            page_id,
+            loser_request,
+            Some(loser_key.to_string()),
+        )
+        .await
+        .expect_err("losing stale command must not commit");
     assert!(
-        losing_retry.to_string().contains("PAGE_DOCUMENT_REVISION_CONFLICT"),
+        losing_retry
+            .to_string()
+            .contains("PAGE_DOCUMENT_REVISION_CONFLICT"),
         "retry after the winner has committed must fail CAS: {losing_retry}"
     );
     assert_eq!(revisions(&secondary, tenant_id, page_id).await?.len(), 1);
@@ -344,31 +449,54 @@ async fn older_receipts_remain_tombstones_after_full_response_expiration() -> Te
     let service = PageService::new(db.clone(), mock_transactional_event_bus());
 
     for index in 0..65 {
-        let response = service.save_document_with_receipt(
-            tenant_id, user.clone(), page_id,
-            SavePageDocumentInput {
-                expected_revision: revision,
-                body: builder_body(&format!("revision-{index}")),
-            },
-            Some(format!("fly:receipt-{index}")),
-        ).await?;
+        let response = service
+            .save_document_with_receipt(
+                tenant_id,
+                user.clone(),
+                page_id,
+                SavePageDocumentInput {
+                    expected_revision: revision,
+                    body: builder_body(&format!("revision-{index}")),
+                },
+                Some(format!("fly:receipt-{index}")),
+            )
+            .await?;
         revision = response.body.expect("saved body").updated_at;
     }
     let revisions_before = revisions(&db, tenant_id, page_id).await?.len();
-    let error = service.save_document_with_receipt(
-        tenant_id, user.clone(), page_id,
-        SavePageDocumentInput {
-            expected_revision: first,
-            body: builder_body("revision-0"),
-        },
-        Some("fly:receipt-0".to_string()),
-    ).await.expect_err("expired acknowledgement must not rerun save");
-    assert!(error.to_string().contains("PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED"));
-    assert_eq!(draft_body(&db, tenant_id, page_id).await?.updated_at.to_string(), revision);
-    assert_eq!(revisions(&db, tenant_id, page_id).await?.len(), revisions_before);
-    let recent = service.document_save_receipt(
-        tenant_id, user, page_id, "fly:receipt-64",
-    ).await?.expect("recent acknowledgement remains replayable");
+    let error = service
+        .save_document_with_receipt(
+            tenant_id,
+            user.clone(),
+            page_id,
+            SavePageDocumentInput {
+                expected_revision: first,
+                body: builder_body("revision-0"),
+            },
+            Some("fly:receipt-0".to_string()),
+        )
+        .await
+        .expect_err("expired acknowledgement must not rerun save");
+    assert!(
+        error
+            .to_string()
+            .contains("PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED")
+    );
+    assert_eq!(
+        draft_body(&db, tenant_id, page_id)
+            .await?
+            .updated_at
+            .to_string(),
+        revision
+    );
+    assert_eq!(
+        revisions(&db, tenant_id, page_id).await?.len(),
+        revisions_before
+    );
+    let recent = service
+        .document_save_receipt(tenant_id, user, page_id, "fly:receipt-64")
+        .await?
+        .expect("recent acknowledgement remains replayable");
     assert_eq!(recent.body.expect("body").updated_at, revision);
     Ok(())
 }
@@ -531,12 +659,7 @@ async fn restore_places_a_journaled_revision_back_into_the_draft() -> TestResult
         revision_id: v2_revision_id,
     };
     let restored = service
-        .restore_body_revision(
-            tenant_id,
-            security.clone(),
-            page_id,
-            restore_input.clone(),
-        )
+        .restore_body_revision(tenant_id, security.clone(), page_id, restore_input.clone())
         .await?;
     let body = restored.body.expect("restored body");
     assert!(matches!(body.state, PageBodyState::Draft));
@@ -584,10 +707,8 @@ async fn restore_places_a_journaled_revision_back_into_the_draft() -> TestResult
 async fn sqlite_duplicate_restores_are_serialized_across_independent_pools() -> TestResult<()> {
     // A file-backed database is required here: two pools must own independent SQLite
     // connections while contending for the same page write reservation.
-    let database_path = std::env::temp_dir().join(format!(
-        "pages_restore_receipt_{}.sqlite",
-        Uuid::new_v4()
-    ));
+    let database_path =
+        std::env::temp_dir().join(format!("pages_restore_receipt_{}.sqlite", Uuid::new_v4()));
     let database_url = format!("sqlite:file:{}?mode=rwc", database_path.display());
     let db = setup_db_at_url(database_url.clone()).await?;
     let mut peer_options = ConnectOptions::new(database_url);
@@ -749,10 +870,8 @@ async fn page_create_receipt_replays_the_original_result_after_later_writes() ->
 
 #[tokio::test]
 async fn concurrent_page_create_replays_across_independent_sqlite_pools() -> TestResult<()> {
-    let database_path = std::env::temp_dir().join(format!(
-        "pages_create_receipt_{}.sqlite",
-        Uuid::new_v4()
-    ));
+    let database_path =
+        std::env::temp_dir().join(format!("pages_create_receipt_{}.sqlite", Uuid::new_v4()));
     let database_url = format!("sqlite:file:{}?mode=rwc", database_path.display());
     let db = setup_db_at_url(database_url.clone()).await?;
     let mut peer_options = ConnectOptions::new(database_url);
@@ -1084,7 +1203,8 @@ async fn setup_db() -> TestResult<DatabaseConnection> {
     setup_db_at_url(format!(
         "sqlite:file:pages_body_draft_history_{}?mode=memory&cache=shared",
         Uuid::new_v4()
-    )).await
+    ))
+    .await
 }
 
 async fn setup_db_at_url(database_url: String) -> TestResult<DatabaseConnection> {

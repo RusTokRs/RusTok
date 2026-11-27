@@ -1,7 +1,7 @@
 use chrono::Utc;
 use rustok_installer::{
     InstallApplyOutput, InstallPlan, InstallReceipt, InstallSessionRecord, InstallState,
-    is_valid_install_lock_ttl_secs, redact_install_plan, MAX_INSTALL_LOCK_TTL_SECS,
+    MAX_INSTALL_LOCK_TTL_SECS, is_valid_install_lock_ttl_secs, redact_install_plan,
 };
 use sea_orm::{
     AccessMode, ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection,
@@ -17,8 +17,7 @@ const HTTP_INSTALL_JOB_SUCCEEDED_STATUS: &str = "succeeded";
 const HTTP_INSTALL_JOB_FAILED_STATUS: &str = "failed";
 const HTTP_INSTALL_JOB_RECOVERY_REQUIRED_STATUS: &str = "recovery_required";
 
-pub const HTTP_INSTALL_JOB_RECOVERY_REQUIRED_MESSAGE: &str =
-    "installer apply requires operator reconciliation; inspect the target database session and receipts before retrying";
+pub const HTTP_INSTALL_JOB_RECOVERY_REQUIRED_MESSAGE: &str = "installer apply requires operator reconciliation; inspect the target database session and receipts before retrying";
 
 #[derive(Clone)]
 pub struct InstallerPersistenceService {
@@ -66,9 +65,7 @@ impl InstallerPersistenceService {
             .await
     }
 
-    pub async fn latest_http_job(
-        &self,
-    ) -> Result<Option<install_http_job::Model>, sea_orm::DbErr> {
+    pub async fn latest_http_job(&self) -> Result<Option<install_http_job::Model>, sea_orm::DbErr> {
         install_http_job::Entity::find()
             .order_by_desc(install_http_job::Column::SubmittedAt)
             .order_by_desc(install_http_job::Column::Id)
@@ -131,9 +128,7 @@ impl InstallerPersistenceService {
                 status: Set(HTTP_INSTALL_JOB_RECOVERY_REQUIRED_STATUS.to_string()),
                 finished_at: Set(None),
                 output: Set(None),
-                error_message: Set(Some(
-                    HTTP_INSTALL_JOB_RECOVERY_REQUIRED_MESSAGE.to_string(),
-                )),
+                error_message: Set(Some(HTTP_INSTALL_JOB_RECOVERY_REQUIRED_MESSAGE.to_string())),
                 updated_at: Set(now),
                 ..Default::default()
             })
@@ -154,9 +149,7 @@ impl InstallerPersistenceService {
                 status: Set(HTTP_INSTALL_JOB_RECOVERY_REQUIRED_STATUS.to_string()),
                 finished_at: Set(None),
                 output: Set(None),
-                error_message: Set(Some(
-                    HTTP_INSTALL_JOB_RECOVERY_REQUIRED_MESSAGE.to_string(),
-                )),
+                error_message: Set(Some(HTTP_INSTALL_JOB_RECOVERY_REQUIRED_MESSAGE.to_string())),
                 updated_at: Set(now),
                 ..Default::default()
             })
@@ -456,9 +449,7 @@ impl InstallerPersistenceService {
             .set(active)
             .filter(install_session::Column::Id.eq(session.id))
             .filter(install_session::Column::LockOwner.eq(owner))
-            .filter(
-                install_session::Column::AttemptGeneration.eq(session.attempt_generation),
-            )
+            .filter(install_session::Column::AttemptGeneration.eq(session.attempt_generation))
             .filter(install_session::Column::Status.eq(current.status))
             .exec(&txn)
             .await?;
@@ -467,10 +458,7 @@ impl InstallerPersistenceService {
             .one(&txn)
             .await?
             .ok_or_else(|| {
-                sea_orm::DbErr::RecordNotFound(format!(
-                    "install session {} not found",
-                    session.id
-                ))
+                sea_orm::DbErr::RecordNotFound(format!("install session {} not found", session.id))
             })?;
         txn.commit().await?;
         Ok(updated)
@@ -496,7 +484,10 @@ impl InstallerPersistenceService {
                 "installer tenant assignment requires schema_applied state, found {current_state:?}"
             )));
         }
-        if current.tenant_id.is_some_and(|existing| existing != tenant_id) {
+        if current
+            .tenant_id
+            .is_some_and(|existing| existing != tenant_id)
+        {
             return Err(sea_orm::DbErr::Custom(format!(
                 "installer session {} already belongs to a different tenant",
                 session.id
@@ -511,9 +502,7 @@ impl InstallerPersistenceService {
             })
             .filter(install_session::Column::Id.eq(session.id))
             .filter(install_session::Column::LockOwner.eq(owner))
-            .filter(
-                install_session::Column::AttemptGeneration.eq(session.attempt_generation),
-            )
+            .filter(install_session::Column::AttemptGeneration.eq(session.attempt_generation))
             .filter(install_session::Column::Status.eq(current.status))
             .filter(
                 sea_orm::Condition::any()
@@ -527,10 +516,7 @@ impl InstallerPersistenceService {
             .one(&txn)
             .await?
             .ok_or_else(|| {
-                sea_orm::DbErr::RecordNotFound(format!(
-                    "install session {} not found",
-                    session.id
-                ))
+                sea_orm::DbErr::RecordNotFound(format!("install session {} not found", session.id))
             })?;
         txn.commit().await?;
         Ok(updated)
@@ -659,9 +645,7 @@ async fn acquire_lock_in_transaction(
             sea_orm::sea_query::Expr::value(next_generation),
         )
         .filter(install_session::Column::Id.eq(session.id))
-        .filter(
-            install_session::Column::AttemptGeneration.eq(session.attempt_generation),
-        )
+        .filter(install_session::Column::AttemptGeneration.eq(session.attempt_generation))
         .filter(install_session::Column::LockOwner.is_null())
         .filter(install_session::Column::Status.eq(install_state_value(InstallState::Draft)))
         .exec(txn)
@@ -761,9 +745,7 @@ async fn lock_session_for_attempt(
         )
         .filter(install_session::Column::Id.eq(session.id))
         .filter(install_session::Column::LockOwner.eq(owner))
-        .filter(
-            install_session::Column::AttemptGeneration.eq(session.attempt_generation),
-        )
+        .filter(install_session::Column::AttemptGeneration.eq(session.attempt_generation))
         .exec(txn)
         .await?;
     ensure_attempt_fence_applied(session, fence.rows_affected)?;
@@ -772,10 +754,7 @@ async fn lock_session_for_attempt(
         .one(txn)
         .await?
         .ok_or_else(|| {
-            sea_orm::DbErr::RecordNotFound(format!(
-                "install session {} not found",
-                session.id
-            ))
+            sea_orm::DbErr::RecordNotFound(format!("install session {} not found", session.id))
         })
 }
 
@@ -978,7 +957,10 @@ mod tests {
             .await
             .expect("quarantine job");
         assert!(
-            !service.heartbeat_http_job(job_id).await.expect("late heartbeat"),
+            !service
+                .heartbeat_http_job(job_id)
+                .await
+                .expect("late heartbeat"),
             "a recovery-required job must not be revived"
         );
         assert!(

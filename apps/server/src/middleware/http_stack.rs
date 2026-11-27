@@ -38,14 +38,13 @@ static STANDALONE_HTTP_TIMEOUTS: Mutex<HttpTimeouts> = Mutex::new(HttpTimeouts {
     upload: Duration::from_secs(DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS),
 });
 
-fn bounded_timeout_seconds(
-    value: u64,
-    default: u64,
-    maximum: u64,
-    setting: &'static str,
-) -> u64 {
+fn bounded_timeout_seconds(value: u64, default: u64, maximum: u64, setting: &'static str) -> u64 {
     if value == 0 {
-        tracing::warn!(setting, default, "HTTP timeout must be positive; using the default");
+        tracing::warn!(
+            setting,
+            default,
+            "HTTP timeout must be positive; using the default"
+        );
         return default;
     }
     if value > maximum {
@@ -330,7 +329,11 @@ pub fn is_upload_request<B>(request: &axum::http::Request<B>) -> bool {
         .and_then(|value| value.to_str().ok());
     let multipart = content_type
         .and_then(|value| value.split(';').next())
-        .is_some_and(|media_type| media_type.trim().eq_ignore_ascii_case("multipart/form-data"));
+        .is_some_and(|media_type| {
+            media_type
+                .trim()
+                .eq_ignore_ascii_case("multipart/form-data")
+        });
 
     // Extended deadlines belong to owner-declared binary upload transports,
     // not to any URL containing `/media` or any client-supplied Content-Type.
@@ -635,18 +638,12 @@ mod tests {
             not_found_metrics_path("/api/unknown/123"),
             "/api/:not_found"
         );
-        assert_eq!(
-            unmatched_metrics_path("/apiary/private"),
-            "/:unmatched"
-        );
+        assert_eq!(unmatched_metrics_path("/apiary/private"), "/:unmatched");
         assert_eq!(
             unmatched_metrics_path("/administrator/private"),
             "/:unmatched"
         );
-        assert_eq!(
-            not_found_metrics_path("/apiary/private"),
-            "/:not_found"
-        );
+        assert_eq!(not_found_metrics_path("/apiary/private"), "/:not_found");
         assert_eq!(
             not_found_metrics_path("/administrator/private"),
             "/:not_found"
@@ -767,11 +764,7 @@ mod tests {
             "/v2/catalog/publish/request//artifact",
             "/v2/catalog/publish/request/artifact/",
         ] {
-            let request = Request::builder()
-                .method("PUT")
-                .uri(path)
-                .body(())
-                .unwrap();
+            let request = Request::builder().method("PUT").uri(path).body(()).unwrap();
             assert!(!is_upload_request(&request), "{path}");
         }
         assert!(path_matches_route_template(
@@ -803,25 +796,33 @@ mod tests {
             )
             .route("/second", get(|| async { "second" }));
         let app = apply_http_edge_stack_with_concurrency_limit(router, false, None, 10, 1);
-        let first = tokio::spawn(app.clone().oneshot(
-            Request::builder().uri("/first").body(Body::empty()).unwrap(),
-        ));
+        let first = tokio::spawn(
+            app.clone().oneshot(
+                Request::builder()
+                    .uri("/first")
+                    .body(Body::empty())
+                    .unwrap(),
+            ),
+        );
         tokio::time::timeout(Duration::from_secs(1), entered.notified())
             .await
             .expect("first handler must hold the only permit");
         let second = app.oneshot(
-            Request::builder().uri("/second").body(Body::empty()).unwrap(),
+            Request::builder()
+                .uri("/second")
+                .body(Body::empty())
+                .unwrap(),
         );
         tokio::pin!(second);
         let early = tokio::time::timeout(Duration::from_millis(50), &mut second).await;
         // Release the first request even if the assertion below fails.
         release.notify_one();
-        assert!(early.is_err(), "a distinct route bypassed the shared permit");
-
-        assert_eq!(
-            first.await.unwrap().unwrap().status(),
-            StatusCode::OK,
+        assert!(
+            early.is_err(),
+            "a distinct route bypassed the shared permit"
         );
+
+        assert_eq!(first.await.unwrap().unwrap().status(), StatusCode::OK,);
         assert_eq!(
             tokio::time::timeout(Duration::from_secs(1), second)
                 .await
@@ -836,49 +837,48 @@ mod tests {
     async fn composed_routers_keep_independent_request_budgets() {
         let release_long = Arc::new(tokio::sync::Notify::new());
         let short = apply_http_edge_stack(
-            Router::new().route("/wait", get(|| async {
-                std::future::pending::<&'static str>().await
-            })),
+            Router::new().route(
+                "/wait",
+                get(|| async { std::future::pending::<&'static str>().await }),
+            ),
             false,
             None,
             1,
         );
         let long = apply_http_edge_stack(
-            Router::new().route("/wait", get({
-                let release_long = Arc::clone(&release_long);
-                move || {
+            Router::new().route(
+                "/wait",
+                get({
                     let release_long = Arc::clone(&release_long);
-                    async move {
-                        release_long.notified().await;
-                        "long"
+                    move || {
+                        let release_long = Arc::clone(&release_long);
+                        async move {
+                            release_long.notified().await;
+                            "long"
+                        }
                     }
-                }
-            })),
+                }),
+            ),
             false,
             None,
             10,
         );
 
-        let short_request = short.oneshot(
-            Request::builder().uri("/wait").body(Body::empty()).unwrap(),
-        );
-        let long_request = long.oneshot(
-            Request::builder().uri("/wait").body(Body::empty()).unwrap(),
-        );
+        let short_request =
+            short.oneshot(Request::builder().uri("/wait").body(Body::empty()).unwrap());
+        let long_request =
+            long.oneshot(Request::builder().uri("/wait").body(Body::empty()).unwrap());
 
-        let (short_response, long_response) = tokio::time::timeout(
-            Duration::from_secs(3),
-            async {
-                tokio::join!(
-                    async {
-                        let response = short_request.await.unwrap();
-                        release_long.notify_one();
-                        response
-                    },
-                    long_request,
-                )
-            },
-        )
+        let (short_response, long_response) = tokio::time::timeout(Duration::from_secs(3), async {
+            tokio::join!(
+                async {
+                    let response = short_request.await.unwrap();
+                    release_long.notify_one();
+                    response
+                },
+                long_request,
+            )
+        })
         .await
         .expect("building the second router must not extend the first deadline");
         assert_eq!(short_response.status(), StatusCode::GATEWAY_TIMEOUT);
@@ -1062,9 +1062,8 @@ mod tests {
         }
         assert_eq!(trace_safe_request_id(None), "-");
 
-        let valid_parent = HeaderValue::from_static(
-            "00-463ac35c9f6413ad48485a3953bb6124-0020000000000001-01"
-        );
+        let valid_parent =
+            HeaderValue::from_static("00-463ac35c9f6413ad48485a3953bb6124-0020000000000001-01");
         assert_eq!(
             trace_safe_traceparent(Some(&valid_parent)),
             valid_parent.to_str().unwrap()

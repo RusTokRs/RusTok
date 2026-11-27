@@ -373,9 +373,9 @@ async fn handle_socket(
                             {
                                 Ok(cursor_output) => {
                                     // Broadcast cursor progress to room peers
-                                    if let Err(err) = room_sender_for_recv.send(
-                                        MessengerServerMessage::CursorAdvanced(cursor_output),
-                                    ) {
+                                    if let Err(err) = room_sender_for_recv
+                                        .send(MessengerServerMessage::CursorAdvanced(cursor_output))
+                                    {
                                         tracing::trace!(%conversation_id, "room broadcast delivered with no peers: {err}");
                                     }
                                 }
@@ -394,12 +394,12 @@ async fn handle_socket(
                             }
                         }
                         Ok(MessengerClientMessage::Typing { is_typing }) => {
-                            if let Err(err) = room_sender_for_recv.send(
-                                MessengerServerMessage::TypingIndicator {
+                            if let Err(err) =
+                                room_sender_for_recv.send(MessengerServerMessage::TypingIndicator {
                                     user_id: actor_id,
                                     is_typing,
-                                },
-                            ) {
+                                })
+                            {
                                 tracing::trace!(%conversation_id, "typing indicator broadcast delivered with no peers: {err}");
                             }
                         }
@@ -443,9 +443,9 @@ async fn handle_socket(
                                 .await
                             {
                                 Ok(_) => {
-                                    if let Err(err) = room_sender_for_recv.send(
-                                        MessengerServerMessage::MessageDeleted { message_id },
-                                    ) {
+                                    if let Err(err) = room_sender_for_recv
+                                        .send(MessengerServerMessage::MessageDeleted { message_id })
+                                    {
                                         tracing::trace!(%conversation_id, "delete message broadcast delivered with no peers: {err}");
                                     }
                                 }

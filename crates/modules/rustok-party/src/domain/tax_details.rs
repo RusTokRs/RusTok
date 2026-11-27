@@ -81,9 +81,7 @@ impl TaxDetails {
 
 /// Validates a 10-digit INN for Russian legal entities using Russian Federal Tax Service checksum formula.
 pub fn validate_inn_10(inn: &str) -> PartyResult<()> {
-    if inn.len() != 10
-        || !inn.chars().all(|c| c.is_ascii_digit())
-        || inn.bytes().all(|b| b == b'0')
+    if inn.len() != 10 || !inn.chars().all(|c| c.is_ascii_digit()) || inn.bytes().all(|b| b == b'0')
     {
         return Err(PartyError::Validation(format!(
             "Legal entity INN must be a valid 10-digit number, got '{inn}'"
@@ -118,9 +116,7 @@ pub fn validate_inn_10(inn: &str) -> PartyResult<()> {
 
 /// Validates a 12-digit INN for individuals and sole proprietors using Russian Federal Tax Service checksum formula.
 pub fn validate_inn_12(inn: &str) -> PartyResult<()> {
-    if inn.len() != 12
-        || !inn.chars().all(|c| c.is_ascii_digit())
-        || inn.bytes().all(|b| b == b'0')
+    if inn.len() != 12 || !inn.chars().all(|c| c.is_ascii_digit()) || inn.bytes().all(|b| b == b'0')
     {
         return Err(PartyError::Validation(format!(
             "Individual/sole proprietor INN must be a valid 12-digit number, got '{inn}'"
@@ -202,7 +198,8 @@ pub fn validate_ogrn_13(ogrn: &str) -> PartyResult<()> {
         .chars()
         .last()
         .and_then(|c| c.to_digit(10))
-        .ok_or_else(|| PartyError::Validation("Invalid OGRN check digit".into()))? as u64;
+        .ok_or_else(|| PartyError::Validation("Invalid OGRN check digit".into()))?
+        as u64;
 
     if actual_last != check_digit {
         return Err(PartyError::Validation(format!(
@@ -232,7 +229,8 @@ pub fn validate_ogrnip_15(ogrnip: &str) -> PartyResult<()> {
         .chars()
         .last()
         .and_then(|c| c.to_digit(10))
-        .ok_or_else(|| PartyError::Validation("Invalid OGRNIP check digit".into()))? as u64;
+        .ok_or_else(|| PartyError::Validation("Invalid OGRNIP check digit".into()))?
+        as u64;
 
     if actual_last != check_digit {
         return Err(PartyError::Validation(format!(

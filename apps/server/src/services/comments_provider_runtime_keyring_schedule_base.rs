@@ -456,7 +456,8 @@ pub(super) async fn start_comments_tcp_listener_if_enabled(
     let Some(schedule_handle) = schedule_handle_from_context(runtime_ctx) else {
         return keyring_reload_guard::start_comments_tcp_listener_if_enabled(runtime_ctx).await;
     };
-    let Some(_) = base::CommentsTcpListenerConfig::from_environment().map_err(|err| Error::BadRequest(err.to_string()))?
+    let Some(_) = base::CommentsTcpListenerConfig::from_environment()
+        .map_err(|err| Error::BadRequest(err.to_string()))?
     else {
         return Ok(());
     };

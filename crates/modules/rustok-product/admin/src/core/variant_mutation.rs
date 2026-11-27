@@ -44,17 +44,15 @@ fn valid_update_request(request: &str) -> bool {
             .is_none_or(|revision| !valid_revision(revision))
         || crate::core::validate_editor_variant_draft(&draft).is_err()
         || draft.inventory_quantity.is_some() != draft.expected_inventory_quantity.is_some()
-        || draft.inventory_quantity.is_some_and(|quantity| quantity < 0)
+        || draft
+            .inventory_quantity
+            .is_some_and(|quantity| quantity < 0)
         || draft
             .expected_inventory_quantity
             .is_some_and(|quantity| quantity < 0)
-        || draft
-            .inventory_policy
-            .as_deref()
-            .is_some_and(|policy| {
-                !policy.eq_ignore_ascii_case("deny")
-                    && !policy.eq_ignore_ascii_case("continue")
-            })
+        || draft.inventory_policy.as_deref().is_some_and(|policy| {
+            !policy.eq_ignore_ascii_case("deny") && !policy.eq_ignore_ascii_case("continue")
+        })
         || draft.prices.len() > MAX_VARIANT_PRICE_ROWS
         || (!draft.prices_changed && !draft.prices.is_empty())
         || (draft.prices_changed
@@ -81,11 +79,7 @@ fn valid_update_request(request: &str) -> bool {
 fn valid_refusal_code(code: &str) -> bool {
     matches!(
         code,
-        "duplicate_sku"
-            | "conflict"
-            | "validation"
-            | "not_found"
-            | "inventory_blocked"
+        "duplicate_sku" | "conflict" | "validation" | "not_found" | "inventory_blocked"
     )
 }
 
@@ -167,7 +161,10 @@ pub(crate) enum VariantMutationPhase {
 
 impl VariantMutationPhase {
     pub fn is_pending(&self) -> bool {
-        matches!(self, Self::PendingUpdate { .. } | Self::PendingDelete { .. })
+        matches!(
+            self,
+            Self::PendingUpdate { .. } | Self::PendingDelete { .. }
+        )
     }
 
     pub fn pending_update(&self) -> Option<(String, String, VariantUpdateDraft)> {
@@ -350,9 +347,7 @@ impl WriteJournal<VariantMutationPhase> {
         variant_id: String,
         expected_revision: String,
     ) -> Result<Self, WriteJournalError> {
-        if !self.state.is_ready()
-            || !valid_uuid(&variant_id)
-            || !valid_revision(&expected_revision)
+        if !self.state.is_ready() || !valid_uuid(&variant_id) || !valid_revision(&expected_revision)
         {
             return Err(WriteJournalError::Changed);
         }
@@ -519,7 +514,11 @@ mod tests {
     #[test]
     fn invalid_or_nonterminal_requests_cannot_be_admitted_or_settled() {
         let ready = WriteJournal::<VariantMutationPhase>::new(scope()).unwrap();
-        assert!(ready.begin_update(id(4), VariantUpdateDraft::default()).is_err());
+        assert!(
+            ready
+                .begin_update(id(4), VariantUpdateDraft::default())
+                .is_err()
+        );
         assert!(ready.begin_delete(id(4), "0".into()).is_err());
 
         let pending = ready.begin_update(id(4), draft()).unwrap();

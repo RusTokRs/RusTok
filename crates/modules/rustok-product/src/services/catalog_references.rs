@@ -105,12 +105,18 @@ pub async fn record_catalog_base_price_change_in_tx(
     let backend = txn.get_database_backend();
     let sql = match backend {
         // PostgreSQL's BEFORE UPDATE triggers independently advance both owner counters.
-        DatabaseBackend::Postgres => "UPDATE product_variants SET index_revision = index_revision WHERE tenant_id = $1 AND product_id = $2 AND id = $3 AND index_revision > 0 AND index_revision < 9223372036854775807 AND revision > 0 AND revision < 9223372036854775807",
+        DatabaseBackend::Postgres => {
+            "UPDATE product_variants SET index_revision = index_revision WHERE tenant_id = $1 AND product_id = $2 AND id = $3 AND index_revision > 0 AND index_revision < 9223372036854775807 AND revision > 0 AND revision < 9223372036854775807"
+        }
         // SQLite has no ProductVariant revision triggers in the co-located test profile.
-        DatabaseBackend::Sqlite => "UPDATE product_variants SET index_revision = index_revision + 1, revision = revision + 1 WHERE tenant_id = ?1 AND product_id = ?2 AND id = ?3 AND index_revision > 0 AND index_revision < 9223372036854775807 AND revision > 0 AND revision < 9223372036854775807",
-        _ => return Err(CommerceError::Core(rustok_core::error::Error::Internal(
-            "Catalog base-price revision requires PostgreSQL or SQLite".into(),
-        ))),
+        DatabaseBackend::Sqlite => {
+            "UPDATE product_variants SET index_revision = index_revision + 1, revision = revision + 1 WHERE tenant_id = ?1 AND product_id = ?2 AND id = ?3 AND index_revision > 0 AND index_revision < 9223372036854775807 AND revision > 0 AND revision < 9223372036854775807"
+        }
+        _ => {
+            return Err(CommerceError::Core(rustok_core::error::Error::Internal(
+                "Catalog base-price revision requires PostgreSQL or SQLite".into(),
+            )));
+        }
     };
     let updated = txn
         .execute_raw(Statement::from_sql_and_values(
@@ -126,7 +132,11 @@ pub async fn record_catalog_base_price_change_in_tx(
     }
 
     super::index_refresh::record_exact_product_variant_refresh_in_tx(
-        txn, tenant_id, product_id, variant_id, price_event_id,
+        txn,
+        tenant_id,
+        product_id,
+        variant_id,
+        price_event_id,
     )
     .await
 }

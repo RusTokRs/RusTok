@@ -125,16 +125,22 @@ deletes or hides roles or their grants — the module's grants become
 
 ## Known Limitations / Pending Implementation
 
-The GraphQL role-assignment adapter forwards its direct-user principal to
-the Auth user-administration port; the host request scope carries admitted
-session identity and credential deadline into that transaction. Role
+The GraphQL role-assignment adapter binds the exact admitted direct-session
+credential to the typed Auth user-administration context. The host
+corroborates it with the valid request scope; grant-only production
+administration is denied. Role
 definition create/update/delete and the host REST artifact grant/revoke
 routes now require the host transaction authority port on the RBAC owner
 transaction. Lock the direct session, current static module policy and
 the actor/target role union before evaluating live grants; require the
 admitted permission ceiling and a final credential deadline before commit.
 Missing host authority denies writes. Artifact operations retain their
-exact registered scope, idempotency receipt and transactional event. This
+exact registered scope, idempotency receipt and transactional event. Every
+actual artifact grant or revoke advances the existing durable RBAC generation
+in the same transaction; exact retries and state no-ops do not. Missing,
+negative or exhausted generation state denies changes. The owner protects
+actor identity before roles on PostgreSQL and retains the exact immutable
+permission definition through commit. This
 does not establish artifact-runtime entitlement or global inter-module
 lock ordering; compile and contention evidence remain pending.
 

@@ -27,10 +27,14 @@ impl MigrationTrait for Migration {
         let lease: i64 = row.try_get("", "lease_until_ms")?;
         let drain: i64 = row.try_get("", "drain_until_ms")?;
         if generation != 0 || lease != 0 || drain != 0 {
-            return Err(DbErr::Custom("Cannot remove an exercised JWT cluster fence".into()));
+            return Err(DbErr::Custom(
+                "Cannot remove an exercised JWT cluster fence".into(),
+            ));
         }
-        db.execute_unprepared("ALTER TABLE auth_jwt_generation_fence DROP COLUMN drain_until_ms").await?;
-        db.execute_unprepared("ALTER TABLE auth_jwt_generation_fence DROP COLUMN lease_until_ms").await?;
+        db.execute_unprepared("ALTER TABLE auth_jwt_generation_fence DROP COLUMN drain_until_ms")
+            .await?;
+        db.execute_unprepared("ALTER TABLE auth_jwt_generation_fence DROP COLUMN lease_until_ms")
+            .await?;
         Ok(())
     }
 }

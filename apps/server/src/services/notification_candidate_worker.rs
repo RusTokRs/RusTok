@@ -17,10 +17,12 @@ use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
-use crate::services::server_runtime_context::published_worker_running;
-use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
-use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
+use crate::services::server_runtime_context::published_worker_running;
+use crate::services::server_runtime_context::{
+    ServerRuntimeContext, ServerRuntimeStartReservation,
+};
+use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 
 const CANDIDATE_POLL_INTERVAL: Duration = Duration::from_millis(500);
 const NOTIFICATIONS_MODULE_SLUG: &str = "notifications";
@@ -170,9 +172,10 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
             "notification candidate worker cannot start during server shutdown".to_string(),
         ));
     }
-    let Some(reservation) =
-        ServerRuntimeStartReservation::try_claim(ctx, NotificationCandidateWorkerStartupReservation)
-    else {
+    let Some(reservation) = ServerRuntimeStartReservation::try_claim(
+        ctx,
+        NotificationCandidateWorkerStartupReservation,
+    ) else {
         // Another caller is still preparing this worker; a successful return
         // would falsely tell bootstrap it is running if that starter fails.
         if published_worker_running::<NotificationCandidateWorkerHandle>(
@@ -247,7 +250,10 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
 }
 
 fn notification_candidate_worker_id(instance_id: u64) -> String {
-    format!("notification-candidate-{instance_id}-{}", uuid::Uuid::new_v4())
+    format!(
+        "notification-candidate-{instance_id}-{}",
+        uuid::Uuid::new_v4()
+    )
 }
 
 async fn notification_candidate_worker_loop(
@@ -287,14 +293,9 @@ async fn notification_candidate_worker_loop(
                 return;
             }
 
-            let observation = candidate_work_policy_observation(
-                &worker,
-                &db,
-                &module_registry,
-                work,
-                &stop_rx,
-            )
-            .await;
+            let observation =
+                candidate_work_policy_observation(&worker, &db, &module_registry, work, &stop_rx)
+                    .await;
             if !may_admit_next_worker_operation(&stop_rx) {
                 tracing::info!(
                     worker_id = worker.worker_id(),
@@ -448,6 +449,9 @@ mod worker_identity_tests {
 
         assert_ne!(first, second);
         assert!(first.starts_with("notification-candidate-1-"));
-        assert!(first.len() <= 191, "owner identity must fit the module contract");
+        assert!(
+            first.len() <= 191,
+            "owner identity must fit the module contract"
+        );
     }
 }

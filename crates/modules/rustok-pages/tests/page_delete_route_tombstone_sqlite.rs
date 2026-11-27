@@ -196,12 +196,7 @@ async fn unpublish_receipt_replays_before_a_later_publish_and_cas_check() {
     let security = SecurityContext::system();
     let draft = create_draft(&service, tenant_id, "Lifecycle", "lifecycle").await;
     let published = service
-        .publish_non_builder_if_current(
-            tenant_id,
-            security.clone(),
-            draft.id,
-            Some(draft.version),
-        )
+        .publish_non_builder_if_current(tenant_id, security.clone(), draft.id, Some(draft.version))
         .await
         .expect("page should publish");
     let unpublish_key = "unpublish-replay-1".to_string();
@@ -216,7 +211,10 @@ async fn unpublish_receipt_replays_before_a_later_publish_and_cas_check() {
         )
         .await
         .expect("first unpublish should commit");
-    assert_eq!(unpublished.status, rustok_content::entities::node::ContentStatus::Draft);
+    assert_eq!(
+        unpublished.status,
+        rustok_content::entities::node::ContentStatus::Draft
+    );
 
     let republished = service
         .publish_non_builder_if_current(
@@ -262,11 +260,23 @@ async fn delete_receipt_survives_page_removal_and_replays_for_the_same_actor() {
     let key = "delete-replay-1".to_string();
 
     service
-        .delete_with_receipt(tenant_id, security.clone(), draft.id, Some(draft.version), key.clone())
+        .delete_with_receipt(
+            tenant_id,
+            security.clone(),
+            draft.id,
+            Some(draft.version),
+            key.clone(),
+        )
         .await
         .expect("first delete should commit");
     service
-        .delete_with_receipt(tenant_id, security.clone(), draft.id, Some(draft.version), key.clone())
+        .delete_with_receipt(
+            tenant_id,
+            security.clone(),
+            draft.id,
+            Some(draft.version),
+            key.clone(),
+        )
         .await
         .expect("retry should replay even though the page row is gone");
 
@@ -320,13 +330,7 @@ async fn archive_receipt_replays_after_a_later_publish() {
     );
 
     let replayed = service
-        .archive_with_receipt(
-            tenant_id,
-            security,
-            draft.id,
-            Some(draft.version),
-            key,
-        )
+        .archive_with_receipt(tenant_id, security, draft.id, Some(draft.version), key)
         .await
         .expect("archive retry should replay before stale CAS");
     assert_eq!(replayed.version, archived.version);

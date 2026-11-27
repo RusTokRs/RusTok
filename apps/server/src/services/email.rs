@@ -2,8 +2,8 @@
 pub use rustok_email::{EmailService, PasswordResetEmail, PasswordResetEmailSender};
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tokio::sync::watch;
@@ -14,11 +14,11 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct SharedSmtpEmailService(pub Arc<rustok_email::SmtpEmailSender>);
 
+use crate::models::users;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rustok_email::{EmailError, RenderedEmail};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-use crate::models::users;
 
 use crate::common::settings::EmailProvider;
 use crate::error::{Error, Result};
@@ -488,7 +488,10 @@ impl AuthEmailTaskRegistry {
     }
 
     fn finish(&self, task_id: Uuid) {
-        let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if state.handles.remove(&task_id).is_some() {
             self.active_tasks.send_replace(state.handles.len());
         }
@@ -502,7 +505,10 @@ impl AuthEmailTaskRegistry {
     }
 
     fn abort_remaining(&self) -> usize {
-        let state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         for handle in state.handles.values() {
             handle.abort();
         }
@@ -546,9 +552,12 @@ pub(crate) async fn drain_auth_email_tasks(ctx: &ServerRuntimeContext) {
     }
 
     tracing::info!(pending, "Waiting for in-flight auth email deliveries");
-    if tokio::time::timeout(Duration::from_secs(5), wait_for_auth_email_idle(&mut active))
-        .await
-        .is_err()
+    if tokio::time::timeout(
+        Duration::from_secs(5),
+        wait_for_auth_email_idle(&mut active),
+    )
+    .await
+    .is_err()
     {
         let aborted = registry.abort_remaining();
         tracing::warn!(
@@ -556,9 +565,12 @@ pub(crate) async fn drain_auth_email_tasks(ctx: &ServerRuntimeContext) {
             error_code = "auth_email_shutdown_timeout",
             "Timed out draining auth email deliveries; cancelling remaining tasks"
         );
-        if tokio::time::timeout(Duration::from_secs(1), wait_for_auth_email_idle(&mut active))
-            .await
-            .is_err()
+        if tokio::time::timeout(
+            Duration::from_secs(1),
+            wait_for_auth_email_idle(&mut active),
+        )
+        .await
+        .is_err()
         {
             tracing::warn!(
                 error_code = "auth_email_shutdown_cancellation_timeout",
@@ -588,10 +600,21 @@ where
 /// revalidated against the current keyring; opaque challenges carry the
 /// committed deadline. Never log the credential.
 enum RecoveryEmailCredential {
-    PasswordReset { config: crate::auth::AuthConfig, token: String, recipient: String },
-    Verification { config: crate::auth::AuthConfig, token: String, recipient: String },
+    PasswordReset {
+        config: crate::auth::AuthConfig,
+        token: String,
+        recipient: String,
+    },
+    Verification {
+        config: crate::auth::AuthConfig,
+        token: String,
+        recipient: String,
+    },
     EmailChange {
-        tenant_id: Uuid, user_id: Uuid, recipient: String, token_hash: String,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        recipient: String,
+        token_hash: String,
         expires_at: DateTime<Utc>,
     },
 }
@@ -614,47 +637,90 @@ async fn recovery_email_admitted(
         return false;
     }
     let window = match &credential {
-        RecoveryEmailCredential::PasswordReset { config, token, recipient } => {
+        RecoveryEmailCredential::PasswordReset {
+            config,
+            token,
+            recipient,
+        } => {
             let Ok(claims) = crate::auth::decode_password_reset_token(config, token) else {
                 return false;
             };
             let Ok(Some(user)) = users::Entity::find_by_id(claims.user_id)
-                .filter(users::Column::TenantId.eq(claims.tenant_id)).one(db).await else {
+                .filter(users::Column::TenantId.eq(claims.tenant_id))
+                .one(db)
+                .await
+            else {
                 return false;
             };
-            if recipient != &claims.sub || !user.is_active()
-                || !user.matches_recovery_identity(claims.tenant_id, claims.user_id, &claims.sub, claims.recovery_revision)
-                || !crate::auth::password_reset_credential_matches(config, &user.password_hash, &claims.credential_fingerprint)
+            if recipient != &claims.sub
+                || !user.is_active()
+                || !user.matches_recovery_identity(
+                    claims.tenant_id,
+                    claims.user_id,
+                    &claims.sub,
+                    claims.recovery_revision,
+                )
+                || !crate::auth::password_reset_credential_matches(
+                    config,
+                    &user.password_hash,
+                    &claims.credential_fingerprint,
+                )
             {
                 return false;
             }
             Some((None, claims.expires_at))
         }
-        RecoveryEmailCredential::Verification { config, token, recipient } => {
+        RecoveryEmailCredential::Verification {
+            config,
+            token,
+            recipient,
+        } => {
             let Ok(claims) = crate::auth::decode_email_verification_token(config, token) else {
                 return false;
             };
             let Ok(Some(user)) = users::Entity::find_by_id(claims.user_id)
-                .filter(users::Column::TenantId.eq(claims.tenant_id)).one(db).await else {
+                .filter(users::Column::TenantId.eq(claims.tenant_id))
+                .one(db)
+                .await
+            else {
                 return false;
             };
-            if recipient != &claims.sub || !user.is_active() || user.is_email_verified()
-                || !user.matches_recovery_identity(claims.tenant_id, claims.user_id, &claims.sub, claims.recovery_revision)
+            if recipient != &claims.sub
+                || !user.is_active()
+                || user.is_email_verified()
+                || !user.matches_recovery_identity(
+                    claims.tenant_id,
+                    claims.user_id,
+                    &claims.sub,
+                    claims.recovery_revision,
+                )
             {
                 return false;
             }
             Some((None, claims.expires_at))
         }
-        RecoveryEmailCredential::EmailChange { tenant_id, user_id, recipient, token_hash, expires_at } => {
+        RecoveryEmailCredential::EmailChange {
+            tenant_id,
+            user_id,
+            recipient,
+            token_hash,
+            expires_at,
+        } => {
             match super::auth_email_change::pending_email_change_window(
                 db, *tenant_id, *user_id, recipient, token_hash,
-            ).await {
-                Ok(Some((created_at, stored))) => Some((Some(created_at), (*expires_at).min(stored))),
+            )
+            .await
+            {
+                Ok(Some((created_at, stored))) => {
+                    Some((Some(created_at), (*expires_at).min(stored)))
+                }
                 _ => None,
             }
         }
     };
-    let Some((not_before, expires_at)) = window else { return false; };
+    let Some((not_before, expires_at)) = window else {
+        return false;
+    };
     // Independently persist the final database-corroborated observation.
     // No domain transaction or business row lock is held during this wait.
     let Ok(verified_at) = rustok_auth::application_clock::admit_now(db).await else {
@@ -666,16 +732,19 @@ async fn recovery_email_admitted(
     // The clock admission itself can wait. Revalidate the live JWT key
     // gate after that last async step and retain the original deadline.
     let still_valid = match &credential {
-        RecoveryEmailCredential::PasswordReset { config, token, .. } =>
+        RecoveryEmailCredential::PasswordReset { config, token, .. } => {
             crate::auth::decode_password_reset_token(config, token)
-                .is_ok_and(|claims| claims.expires_at == expires_at),
-        RecoveryEmailCredential::Verification { config, token, .. } =>
+                .is_ok_and(|claims| claims.expires_at == expires_at)
+        }
+        RecoveryEmailCredential::Verification { config, token, .. } => {
             crate::auth::decode_email_verification_token(config, token)
-                .is_ok_and(|claims| claims.expires_at == expires_at),
+                .is_ok_and(|claims| claims.expires_at == expires_at)
+        }
         RecoveryEmailCredential::EmailChange { .. } => true,
     };
     let observed_at = Utc::now();
-    still_valid && rustok_auth::application_clock::check_local().is_ok()
+    still_valid
+        && rustok_auth::application_clock::check_local().is_ok()
         && recovery_email_deadline_live(verified_at, observed_at, expires_at)
 }
 
@@ -770,16 +839,23 @@ pub fn spawn_password_reset_email(
     token: String,
 ) -> tokio::task::JoinHandle<()> {
     let credential = RecoveryEmailCredential::PasswordReset {
-        config: config.clone(), token, recipient: recipient.clone(),
+        config: config.clone(),
+        token,
+        recipient: recipient.clone(),
     };
-    spawn_email_task(ctx, "send_password_reset", Some(credential), move || async move {
-        email_service
-            .send_password_reset(PasswordResetEmail {
-                to: recipient,
-                reset_url,
-            })
-            .await
-    })
+    spawn_email_task(
+        ctx,
+        "send_password_reset",
+        Some(credential),
+        move || async move {
+            email_service
+                .send_password_reset(PasswordResetEmail {
+                    to: recipient,
+                    reset_url,
+                })
+                .await
+        },
+    )
 }
 
 /// Spawns a monitored background task to deliver an email verification email.
@@ -791,16 +867,23 @@ pub fn spawn_email_verification_send(
     config: &crate::auth::AuthConfig,
 ) -> tokio::task::JoinHandle<()> {
     let credential = RecoveryEmailCredential::Verification {
-        config: config.clone(), token: verification_token.clone(), recipient: recipient.clone(),
+        config: config.clone(),
+        token: verification_token.clone(),
+        recipient: recipient.clone(),
     };
-    spawn_email_task(ctx, "send_email_verification", Some(credential), move || async move {
-        email_service
-            .send_email_verification(EmailVerificationEmail {
-                to: recipient,
-                verification_token,
-            })
-            .await
-    })
+    spawn_email_task(
+        ctx,
+        "send_email_verification",
+        Some(credential),
+        move || async move {
+            email_service
+                .send_email_verification(EmailVerificationEmail {
+                    to: recipient,
+                    verification_token,
+                })
+                .await
+        },
+    )
 }
 
 /// Spawns a monitored email-change confirmation message.
@@ -814,17 +897,25 @@ pub fn spawn_email_change_confirmation_send(
     user_id: Uuid,
 ) -> tokio::task::JoinHandle<()> {
     let credential = RecoveryEmailCredential::EmailChange {
-        tenant_id, user_id, recipient: recipient.clone(),
-        token_hash: crate::auth::hash_refresh_token(&token), expires_at,
+        tenant_id,
+        user_id,
+        recipient: recipient.clone(),
+        token_hash: crate::auth::hash_refresh_token(&token),
+        expires_at,
     };
-    spawn_email_task(ctx, "send_email_change_confirmation", Some(credential), move || async move {
-        email_service
-            .send_email_change_confirmation(EmailChangeConfirmationEmail {
-                to: recipient,
-                token,
-            })
-            .await
-    })
+    spawn_email_task(
+        ctx,
+        "send_email_change_confirmation",
+        Some(credential),
+        move || async move {
+            email_service
+                .send_email_change_confirmation(EmailChangeConfirmationEmail {
+                    to: recipient,
+                    token,
+                })
+                .await
+        },
+    )
 }
 
 /// Spawns a monitored notification to the previously verified mailbox.
@@ -1064,10 +1155,13 @@ mod tests {
 
     #[test]
     fn render_email_change_notification_escapes_html_content() {
-        let rendered =
-            render_email_change_notification("en", "new&<script>@example.test").unwrap();
+        let rendered = render_email_change_notification("en", "new&<script>@example.test").unwrap();
         assert!(rendered.text.contains("new&<script>@example.test"));
-        assert!(rendered.html.contains("new&amp;&lt;script&gt;@example.test"));
+        assert!(
+            rendered
+                .html
+                .contains("new&amp;&lt;script&gt;@example.test")
+        );
         assert!(!rendered.html.contains("<script>"));
         assert!(!rendered.subject.trim().is_empty());
     }
@@ -1119,7 +1213,9 @@ mod tests {
         assert!(recovery_email_deadline_live(verified, verified, expiry));
         assert!(!recovery_email_deadline_live(verified, expiry, expiry));
         assert!(!recovery_email_deadline_live(
-            verified, verified - chrono::Duration::milliseconds(1), expiry,
+            verified,
+            verified - chrono::Duration::milliseconds(1),
+            expiry,
         ));
     }
 
@@ -1133,29 +1229,44 @@ mod tests {
 
         let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
         let tenant = tenants::ActiveModel::new("Email tenant", "email-dispatch")
-            .insert(&db).await.unwrap();
+            .insert(&db)
+            .await
+            .unwrap();
         let user = users::ActiveModel::new(tenant.id, "owner@example.com", "old-hash")
-            .insert(&db).await.unwrap();
+            .insert(&db)
+            .await
+            .unwrap();
         let config = crate::auth::test_auth_config(
             "recovery-email-state-revalidation-test-secret".to_string(),
         );
         let reset = crate::auth::encode_password_reset_token(&config, &user, 900).unwrap();
         let verify = crate::auth::encode_email_verification_token(&config, &user, 900).unwrap();
         let reset_credential = |recipient: &str| RecoveryEmailCredential::PasswordReset {
-            config: config.clone(), token: reset.clone(), recipient: recipient.to_string(),
+            config: config.clone(),
+            token: reset.clone(),
+            recipient: recipient.to_string(),
         };
         let verify_credential = || RecoveryEmailCredential::Verification {
-            config: config.clone(), token: verify.clone(), recipient: user.email.clone(),
+            config: config.clone(),
+            token: verify.clone(),
+            recipient: user.email.clone(),
         };
         let ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
         let dispatch = |credential, expected| {
             let ctx = ctx.clone();
             async move {
                 let (called_tx, mut called_rx) = tokio::sync::mpsc::channel(1);
-                spawn_email_task(&ctx, "test_recovery", Some(credential), move || async move {
-                    called_tx.send(()).await.unwrap();
-                    Ok(())
-                }).await.unwrap();
+                spawn_email_task(
+                    &ctx,
+                    "test_recovery",
+                    Some(credential),
+                    move || async move {
+                        called_tx.send(()).await.unwrap();
+                        Ok(())
+                    },
+                )
+                .await
+                .unwrap();
                 assert_eq!(called_rx.try_recv().is_ok(), expected);
             }
         };
@@ -1168,62 +1279,101 @@ mod tests {
         // the other. Deleting the exact challenge suppresses delivery.
         let now = Utc::now();
         let challenge = auth_email_change_requests::ActiveModel {
-            id: Set(Uuid::new_v4()), tenant_id: Set(tenant.id), user_id: Set(user.id),
-            current_email: Set(user.email.clone()), new_email: Set("new@example.com".to_string()),
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant.id),
+            user_id: Set(user.id),
+            current_email: Set(user.email.clone()),
+            new_email: Set("new@example.com".to_string()),
             password_changed_at: Set(user.password_changed_at),
             recovery_revision: Set(Some(user.recovery_revision)),
             token_hash: Set("a".repeat(64)),
             expires_at: Set((now + chrono::Duration::minutes(5)).into()),
             created_at: Set(now.into()),
-        }.insert(&db).await.unwrap();
+        }
+        .insert(&db)
+        .await
+        .unwrap();
         let opaque = |expires_at| RecoveryEmailCredential::EmailChange {
-            tenant_id: tenant.id, user_id: user.id, recipient: challenge.new_email.clone(),
-            token_hash: challenge.token_hash.clone(), expires_at,
+            tenant_id: tenant.id,
+            user_id: user.id,
+            recipient: challenge.new_email.clone(),
+            token_hash: challenge.token_hash.clone(),
+            expires_at,
         };
         dispatch(opaque(now + chrono::Duration::minutes(10)), true).await;
         dispatch(opaque(now - chrono::Duration::seconds(1)), false).await;
         auth_email_change_requests::ActiveModel {
-            id: Set(challenge.id), created_at: Set((now + chrono::Duration::minutes(1)).into()),
+            id: Set(challenge.id),
+            created_at: Set((now + chrono::Duration::minutes(1)).into()),
             ..Default::default()
-        }.update(&db).await.unwrap();
+        }
+        .update(&db)
+        .await
+        .unwrap();
         dispatch(opaque(now + chrono::Duration::minutes(10)), false).await;
         auth_email_change_requests::ActiveModel {
-            id: Set(challenge.id), created_at: Set(now.into()),
+            id: Set(challenge.id),
+            created_at: Set(now.into()),
             ..Default::default()
-        }.update(&db).await.unwrap();
+        }
+        .update(&db)
+        .await
+        .unwrap();
         auth_email_change_requests::ActiveModel {
-            id: Set(challenge.id), expires_at: Set((now - chrono::Duration::seconds(1)).into()),
+            id: Set(challenge.id),
+            expires_at: Set((now - chrono::Duration::seconds(1)).into()),
             ..Default::default()
-        }.update(&db).await.unwrap();
+        }
+        .update(&db)
+        .await
+        .unwrap();
         dispatch(opaque(now + chrono::Duration::minutes(10)), false).await;
         auth_email_change_requests::Entity::delete_by_id(challenge.id)
-            .exec(&db).await.unwrap();
+            .exec(&db)
+            .await
+            .unwrap();
         dispatch(opaque(now + chrono::Duration::minutes(10)), false).await;
 
         users::ActiveModel {
-            id: Set(user.id), email_verified_at: Set(Some(Utc::now().into())),
+            id: Set(user.id),
+            email_verified_at: Set(Some(Utc::now().into())),
             ..Default::default()
-        }.update(&db).await.unwrap();
+        }
+        .update(&db)
+        .await
+        .unwrap();
         dispatch(verify_credential(), false).await;
         dispatch(reset_credential(&user.email), true).await;
 
         // Restoring the old hash must not resurrect either credential.
         for hash in ["new-hash", "old-hash"] {
             users::ActiveModel {
-                id: Set(user.id), password_hash: Set(hash.to_string()),
+                id: Set(user.id),
+                password_hash: Set(hash.to_string()),
                 ..Default::default()
-            }.update(&db).await.unwrap();
+            }
+            .update(&db)
+            .await
+            .unwrap();
             dispatch(reset_credential(&user.email), false).await;
         }
         // The clock failure fixture must retain a valid account/token;
         // a missing users table or stale revision would mask the clock gate.
-        let current = users::Entity::find_by_id(user.id).one(&db).await.unwrap().unwrap();
+        let current = users::Entity::find_by_id(user.id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
         let fresh = crate::auth::encode_password_reset_token(&config, &current, 900).unwrap();
         let fresh_credential = || RecoveryEmailCredential::PasswordReset {
-            config: config.clone(), token: fresh.clone(), recipient: current.email.clone(),
+            config: config.clone(),
+            token: fresh.clone(),
+            recipient: current.email.clone(),
         };
         dispatch(fresh_credential(), true).await;
-        db.execute_unprepared("DROP TABLE auth_application_clock").await.unwrap();
+        db.execute_unprepared("DROP TABLE auth_application_clock")
+            .await
+            .unwrap();
         dispatch(fresh_credential(), false).await;
     }
 
@@ -1256,11 +1406,15 @@ mod tests {
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
         let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
         // Explicitly discard the returned handle, as real HTTP callers do.
-        drop(spawn_auth_email_task(&ctx, "detached_send", move || async move {
-            started_tx.send(()).expect("notify send started");
-            release_rx.await.expect("release email");
-            Ok(())
-        }));
+        drop(spawn_auth_email_task(
+            &ctx,
+            "detached_send",
+            move || async move {
+                started_tx.send(()).expect("notify send started");
+                release_rx.await.expect("release email");
+                Ok(())
+            },
+        ));
         started_rx.await.expect("email started");
 
         StopHandle::ensure(&ctx).stop().await;
@@ -1278,12 +1432,20 @@ mod tests {
         })
         .await
         .expect("late spawn returns a completed handle");
-        assert!(late_rx.await.is_err(), "a stopped host must reject new sends");
+        assert!(
+            late_rx.await.is_err(),
+            "a stopped host must reject new sends"
+        );
 
         release_tx.send(()).expect("complete existing send");
         drain.await.expect("drain completes");
-        let registry = ctx.shared_get::<Arc<AuthEmailTaskRegistry>>().expect("registry");
-        assert_eq!(registry.state.lock().expect("registry mutex").handles.len(), 0);
+        let registry = ctx
+            .shared_get::<Arc<AuthEmailTaskRegistry>>()
+            .expect("registry");
+        assert_eq!(
+            registry.state.lock().expect("registry mutex").handles.len(),
+            0
+        );
     }
 
     #[tokio::test]
@@ -1299,8 +1461,13 @@ mod tests {
         handle.abort();
         let _ = handle.await;
         drain_auth_email_tasks(&ctx).await;
-        let registry = ctx.shared_get::<Arc<AuthEmailTaskRegistry>>().expect("registry");
-        assert_eq!(registry.state.lock().expect("registry mutex").handles.len(), 0);
+        let registry = ctx
+            .shared_get::<Arc<AuthEmailTaskRegistry>>()
+            .expect("registry");
+        assert_eq!(
+            registry.state.lock().expect("registry mutex").handles.len(),
+            0
+        );
     }
 
     #[tokio::test]
@@ -1317,10 +1484,17 @@ mod tests {
                 panic!("deliberate factory panic");
             },
         );
-        handle.await.expect("factory panic must be caught by the task");
+        handle
+            .await
+            .expect("factory panic must be caught by the task");
         drain_auth_email_tasks(&ctx).await;
-        let registry = ctx.shared_get::<Arc<AuthEmailTaskRegistry>>().expect("registry");
-        assert_eq!(registry.state.lock().expect("registry mutex").handles.len(), 0);
+        let registry = ctx
+            .shared_get::<Arc<AuthEmailTaskRegistry>>()
+            .expect("registry");
+        assert_eq!(
+            registry.state.lock().expect("registry mutex").handles.len(),
+            0
+        );
     }
 
     #[tokio::test]

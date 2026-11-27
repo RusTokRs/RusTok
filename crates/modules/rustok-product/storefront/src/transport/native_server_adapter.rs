@@ -9,12 +9,12 @@ use crate::core::pricing_quote_matches_request;
 #[cfg(feature = "ssr")]
 use crate::core::resolve_requested_locale;
 
+use crate::model::{ProductCatalogSearchOptions, ProductDetail, ProductPricingDetail};
 #[cfg(feature = "ssr")]
 use crate::model::{
     ProductEffectivePrice, ProductImage, ProductPrice, ProductPricingVariant, ProductTranslation,
     ProductVariant,
 };
-use crate::model::{ProductCatalogSearchOptions, ProductDetail, ProductPricingDetail};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {
@@ -661,10 +661,19 @@ mod filterable_search_option_tests {
             name: id.to_owned(),
         };
         let options = structural_category_options([
-            category("root", rustok_product::services::CatalogCategoryKind::Structural),
-            category("smart", rustok_product::services::CatalogCategoryKind::Virtual),
+            category(
+                "root",
+                rustok_product::services::CatalogCategoryKind::Structural,
+            ),
+            category(
+                "smart",
+                rustok_product::services::CatalogCategoryKind::Virtual,
+            ),
         ]);
-        let ids = options.into_iter().map(|option| option.label).collect::<Vec<_>>();
+        let ids = options
+            .into_iter()
+            .map(|option| option.label)
+            .collect::<Vec<_>>();
         assert_eq!(ids, vec!["root".to_owned()]);
     }
 
@@ -676,7 +685,10 @@ mod filterable_search_option_tests {
             attribute("variant_material", "variant", true, false),
             attribute("size", "both", true, true),
         ]);
-        let codes = options.into_iter().map(|option| option.value).collect::<Vec<_>>();
+        let codes = options
+            .into_iter()
+            .map(|option| option.value)
+            .collect::<Vec<_>>();
         assert_eq!(codes, vec!["color", "size"]);
     }
 }

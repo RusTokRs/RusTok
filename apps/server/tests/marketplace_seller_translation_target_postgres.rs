@@ -705,7 +705,10 @@ async fn verify_translation_journal_backfill(
     Ok(())
 }
 
-fn registered_provider(db: DatabaseConnection, auth_config: AuthConfig) -> TestResult<Arc<dyn TranslationTargetProvider>> {
+fn registered_provider(
+    db: DatabaseConnection,
+    auth_config: AuthConfig,
+) -> TestResult<Arc<dyn TranslationTargetProvider>> {
     let registry = ModuleRegistry::new().register(MarketplaceSellerModule);
     let settings = RustokSettings::default();
     let runtime_ctx = ServerRuntimeContext::new(db, settings.clone());

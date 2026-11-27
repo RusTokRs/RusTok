@@ -1056,7 +1056,9 @@ async fn update_role_preserves_dormant_grants_clears_description_and_syncs_syste
 
     // Seed built-in system roles first via `roles` query.
     let list_seed = schema
-        .execute(async_graphql::Request::new("{ roles { slug displayName } }"))
+        .execute(async_graphql::Request::new(
+            "{ roles { slug displayName } }",
+        ))
         .await;
     assert!(list_seed.errors.is_empty(), "{:?}", list_seed.errors);
 
@@ -1097,7 +1099,11 @@ async fn update_role_preserves_dormant_grants_clears_description_and_syncs_syste
     db.execute_raw(Statement::from_sql_and_values(
         sea_orm::DbBackend::Sqlite,
         "INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?)",
-        vec![Uuid::new_v4().into(), role_id.into(), dormant_perm_id.into()],
+        vec![
+            Uuid::new_v4().into(),
+            role_id.into(),
+            dormant_perm_id.into(),
+        ],
     ))
     .await
     .unwrap();
@@ -1127,7 +1133,11 @@ async fn update_role_preserves_dormant_grants_clears_description_and_syncs_syste
             .data(availability.clone()).data(locked_authority.clone()),
         )
         .await;
-    assert!(res.errors.is_empty(), "expected dormant grant retention to succeed: {:?}", res.errors);
+    assert!(
+        res.errors.is_empty(),
+        "expected dormant grant retention to succeed: {:?}",
+        res.errors
+    );
     let data = res.data.into_json().unwrap();
     assert_eq!(data["updateRole"]["role"]["displayName"], "Editorial Lead");
     assert!(data["updateRole"]["role"]["description"].is_null());
@@ -1150,8 +1160,14 @@ async fn update_role_preserves_dormant_grants_clears_description_and_syncs_syste
         .await;
     assert!(keep_desc.errors.is_empty(), "{:?}", keep_desc.errors);
     let keep_json = keep_desc.data.into_json().unwrap();
-    assert_eq!(keep_json["updateRole"]["role"]["displayName"], "Editorial Lead V2");
-    assert_eq!(keep_json["updateRole"]["role"]["description"], "Restored desc");
+    assert_eq!(
+        keep_json["updateRole"]["role"]["displayName"],
+        "Editorial Lead V2"
+    );
+    assert_eq!(
+        keep_json["updateRole"]["role"]["description"],
+        "Restored desc"
+    );
 
     // 3. Clearing via empty string clears back to null.
     let clear_empty = schema
@@ -1171,7 +1187,10 @@ async fn update_role_preserves_dormant_grants_clears_description_and_syncs_syste
             .data(availability.clone()).data(locked_authority.clone()),
         )
         .await;
-    assert!(!new_dormant.errors.is_empty(), "new dormant permission must be rejected");
+    assert!(
+        !new_dormant.errors.is_empty(),
+        "new dormant permission must be rejected"
+    );
 
     let unheld_active = schema
         .execute(
@@ -1181,7 +1200,10 @@ async fn update_role_preserves_dormant_grants_clears_description_and_syncs_syste
             .data(availability).data(locked_authority),
         )
         .await;
-    assert!(!unheld_active.errors.is_empty(), "unheld active permission must be rejected");
+    assert!(
+        !unheld_active.errors.is_empty(),
+        "unheld active permission must be rejected"
+    );
 
     // 5. Updating a system role's display name is reflected by `roles` query.
     let rename_system = schema
@@ -1189,8 +1211,16 @@ async fn update_role_preserves_dormant_grants_clears_description_and_syncs_syste
             r#"mutation { updateRole(input: { slug: "manager", name: "Operations Lead" }) { role { slug displayName } } }"#,
         ))
         .await;
-    assert!(rename_system.errors.is_empty(), "{:?}", rename_system.errors);
-    let list_after = schema.execute(async_graphql::Request::new("{ roles { slug displayName } }")).await;
+    assert!(
+        rename_system.errors.is_empty(),
+        "{:?}",
+        rename_system.errors
+    );
+    let list_after = schema
+        .execute(async_graphql::Request::new(
+            "{ roles { slug displayName } }",
+        ))
+        .await;
     assert!(list_after.errors.is_empty(), "{:?}", list_after.errors);
     let roles_json = list_after.data.into_json().unwrap();
     let manager = roles_json["roles"]
@@ -1266,14 +1296,10 @@ async fn load_tenant_roles_overview_on_resolves_custom_roles_inactive_perms_and_
         std::collections::BTreeMap::from([("blog_posts:read".to_string(), "blog".to_string())]),
         std::collections::BTreeSet::new(),
     );
-    let overview = rustok_rbac::load_tenant_roles_overview_on(
-        &db,
-        tenant_id,
-        Some(&availability),
-        Some("ru"),
-    )
-    .await
-    .unwrap();
+    let overview =
+        rustok_rbac::load_tenant_roles_overview_on(&db, tenant_id, Some(&availability), Some("ru"))
+            .await
+            .unwrap();
 
     assert_eq!(overview.len(), 2);
     let admin = overview.iter().find(|r| r.slug == "admin").unwrap();

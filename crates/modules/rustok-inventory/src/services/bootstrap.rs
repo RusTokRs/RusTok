@@ -4,8 +4,8 @@ pub use deletion::{CatalogDeletionBlocker, CatalogDeletionError, MAX_CATALOG_DEL
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, Set,
-    QuerySelect, Statement,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set, Statement,
 };
 use std::collections::{BTreeSet, HashMap};
 use tracing::instrument;
@@ -144,31 +144,46 @@ impl BootstrapService {
             ));
         }
         if location.tenant_id.is_nil() {
-            return Err(sea_orm::DbErr::Custom("location.tenant_id cannot be nil".into()));
+            return Err(sea_orm::DbErr::Custom(
+                "location.tenant_id cannot be nil".into(),
+            ));
         }
         // INVARIANT: prove and lock the SKU (including its parent tenant) before
         // locking Inventory's location. The supplied model is not ownership proof.
         let variant = crate::product_port::find_variant_info_for_reservation(
-            conn, location.tenant_id, input.variant_id,
+            conn,
+            location.tenant_id,
+            input.variant_id,
         )
         .await?
-        .ok_or_else(|| sea_orm::DbErr::Custom("Initial inventory SKU ownership could not be verified".into()))?;
+        .ok_or_else(|| {
+            sea_orm::DbErr::Custom("Initial inventory SKU ownership could not be verified".into())
+        })?;
         let sku = crate::product_port::verify_variant_sku_snapshot(input.sku, variant.sku)
             .map_err(|()| {
                 sea_orm::DbErr::Custom(
-                    "Initial inventory SKU snapshot does not match the current Product variant".into(),
+                    "Initial inventory SKU snapshot does not match the current Product variant"
+                        .into(),
                 )
             })?;
         let location_query = entities::stock_location::Entity::find_by_id(location.id)
             .filter(entities::stock_location::Column::TenantId.eq(location.tenant_id))
             .filter(entities::stock_location::Column::DeletedAt.is_null());
         let location_query = match conn.get_database_backend() {
-            sea_orm::DatabaseBackend::Postgres | sea_orm::DatabaseBackend::MySql => location_query.lock_exclusive(),
+            sea_orm::DatabaseBackend::Postgres | sea_orm::DatabaseBackend::MySql => {
+                location_query.lock_exclusive()
+            }
             sea_orm::DatabaseBackend::Sqlite => location_query,
-            _ => return Err(sea_orm::DbErr::Custom("Initial inventory isolation is unsupported".into())),
+            _ => {
+                return Err(sea_orm::DbErr::Custom(
+                    "Initial inventory isolation is unsupported".into(),
+                ));
+            }
         };
         let location = location_query.one(conn).await?.ok_or_else(|| {
-            sea_orm::DbErr::Custom("Initial inventory location is missing, foreign or archived".into())
+            sea_orm::DbErr::Custom(
+                "Initial inventory location is missing, foreign or archived".into(),
+            )
         })?;
         let now = Utc::now();
         let inventory_item = entities::inventory_item::ActiveModel {
@@ -337,20 +352,17 @@ mod tests {
         use crate::product_port::verify_variant_sku_snapshot;
 
         assert_eq!(
-            verify_variant_sku_snapshot(
-                Some(" SKU-1 ".to_owned()),
-                Some("SKU-1".to_owned()),
-            ),
+            verify_variant_sku_snapshot(Some(" SKU-1 ".to_owned()), Some("SKU-1".to_owned()),),
             Ok(Some("SKU-1".to_owned()))
         );
         assert_eq!(
             verify_variant_sku_snapshot(Some("  ".to_owned()), None),
             Ok(None)
         );
-        assert!(verify_variant_sku_snapshot(
-            Some("SKU-1".to_owned()),
-            Some("SKU-2".to_owned()),
-        ).is_err());
+        assert!(
+            verify_variant_sku_snapshot(Some("SKU-1".to_owned()), Some("SKU-2".to_owned()),)
+                .is_err()
+        );
         assert!(verify_variant_sku_snapshot(Some("SKU-1".to_owned()), None).is_err());
     }
 
@@ -515,26 +527,22 @@ mod tests {
     #[tokio::test]
     async fn test_bootstrap_service_nil_slice_guards() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
-        let err = BootstrapService::load_available_quantities(
-            &db,
-            Uuid::new_v4(),
-            &[Uuid::nil()],
-        )
-        .await
-        .expect_err("nil variant_id in slice must be rejected");
+        let err = BootstrapService::load_available_quantities(&db, Uuid::new_v4(), &[Uuid::nil()])
+            .await
+            .expect_err("nil variant_id in slice must be rejected");
         assert!(
             err.to_string()
                 .contains("variant_ids must not contain a nil UUID")
         );
 
-        let tenant_error = BootstrapService::load_available_quantities(
-            &db,
-            Uuid::nil(),
-            &[],
-        )
-        .await
-        .expect_err("nil tenant must be rejected even for an empty projection");
-        assert!(tenant_error.to_string().contains("tenant_id must not be a nil UUID"));
+        let tenant_error = BootstrapService::load_available_quantities(&db, Uuid::nil(), &[])
+            .await
+            .expect_err("nil tenant must be rejected even for an empty projection");
+        assert!(
+            tenant_error
+                .to_string()
+                .contains("tenant_id must not be a nil UUID")
+        );
 
         let txn = db.begin().await.unwrap();
         let err = BootstrapService::delete_records_for_variants_in_tx(

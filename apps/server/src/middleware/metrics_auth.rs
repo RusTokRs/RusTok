@@ -118,10 +118,7 @@ fn allow_unauthenticated_without_token(is_production: bool) -> bool {
 }
 
 fn supplied_token(request: &Request<Body>) -> Option<&str> {
-    let mut observability_values = request
-        .headers()
-        .get_all(OBSERVABILITY_TOKEN_HEADER)
-        .iter();
+    let mut observability_values = request.headers().get_all(OBSERVABILITY_TOKEN_HEADER).iter();
     if let Some(first) = observability_values.next() {
         // The dedicated header carries the raw observability secret. Reject
         // duplicates and mixed credential transports rather than selecting
@@ -176,9 +173,10 @@ async fn normalize_readiness_response(response: Response, reveal_details: bool) 
     let normalized_status = readiness_http_status(status);
     // A body is not allowed to turn an HTTP failure into a healthy probe.
     // Only the canonical readiness statuses can carry diagnostic details.
-    if !matches!(parts.status, StatusCode::OK | StatusCode::SERVICE_UNAVAILABLE)
-        || (parts.status == StatusCode::SERVICE_UNAVAILABLE
-            && normalized_status == StatusCode::OK)
+    if !matches!(
+        parts.status,
+        StatusCode::OK | StatusCode::SERVICE_UNAVAILABLE
+    ) || (parts.status == StatusCode::SERVICE_UNAVAILABLE && normalized_status == StatusCode::OK)
     {
         return generic_readiness_response("unhealthy");
     }
@@ -253,9 +251,9 @@ fn constant_time_eq(left: &str, right: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        allow_unauthenticated_without_token, constant_time_eq, is_protected_observability_path,
-        normalize_readiness_response, parse_bearer_token, readiness_http_status, sanitize_token,
-        strip_observability_credentials, supplied_token, OBSERVABILITY_TOKEN_HEADER,
+        OBSERVABILITY_TOKEN_HEADER, allow_unauthenticated_without_token, constant_time_eq,
+        is_protected_observability_path, normalize_readiness_response, parse_bearer_token,
+        readiness_http_status, sanitize_token, strip_observability_credentials, supplied_token,
     };
     use axum::{
         body::Body,
@@ -285,9 +283,18 @@ mod tests {
 
         for reveal_details in [false, true] {
             for (http_status, body) in [
-                (StatusCode::SERVICE_UNAVAILABLE, r#"{"status":"ok","internal":"diagnostic"}"#),
-                (StatusCode::INTERNAL_SERVER_ERROR, r#"{"status":"degraded","internal":"diagnostic"}"#),
-                (StatusCode::OK, r#"{"status":"unknown","internal":"diagnostic"}"#),
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    r#"{"status":"ok","internal":"diagnostic"}"#,
+                ),
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    r#"{"status":"degraded","internal":"diagnostic"}"#,
+                ),
+                (
+                    StatusCode::OK,
+                    r#"{"status":"unknown","internal":"diagnostic"}"#,
+                ),
                 (StatusCode::OK, "not JSON"),
             ] {
                 let response = normalize_readiness_response(

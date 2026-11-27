@@ -405,9 +405,9 @@ impl BrowserIntentEnvelope {
         self.operation_id = normalize_optional(self.operation_id);
         if self.operation_id.as_deref().is_some_and(|id| {
             !(1..=128).contains(&id.len())
-                || !id.bytes().all(|byte| {
-                    byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')
-                })
+                || !id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
         }) {
             return Err(BrowserIntentError::InvalidOperationId);
         }

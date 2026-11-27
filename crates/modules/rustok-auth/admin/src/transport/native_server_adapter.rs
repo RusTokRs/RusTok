@@ -506,6 +506,23 @@ fn invite_from_record(record: rustok_auth::UserInviteRecord) -> crate::model::Us
 }
 
 #[cfg(feature = "ssr")]
+async fn bind_admin_credential(
+    extensions: &rustok_core::ModuleRuntimeExtensions,
+    auth: &rustok_api::AuthContext,
+    locale: Option<String>,
+) -> Result<rustok_auth::AuthAdminMutationContext, ServerFnError> {
+    let principal = leptos_axum::extract::<rustok_api::AuthPrincipalContext>()
+        .await.map_err(|_| server_error("Authenticated principal context is required".to_string()))?;
+    let resolver = extensions.get::<rustok_auth::AuthAdminCredentialResolverHandle>()
+        .ok_or_else(|| server_error("Auth admin credential resolver is unavailable".to_string()))?;
+    resolver.0.bind(rustok_auth::AdminCredentialRequest {
+        tenant_id: auth.tenant_id, user_id: auth.user_id, session_id: auth.session_id,
+        client_id: auth.client_id, grant_type: &auth.grant_type, scopes: &auth.scopes,
+    }, principal.kind, locale)
+        .map_err(|_| server_error("Auth admin credential binding failed".to_string()))
+}
+
+#[cfg(feature = "ssr")]
 async fn user_mutation_context() -> Result<
     (
         rustok_auth::AuthAdminMutationContext,
@@ -539,17 +556,7 @@ async fn user_mutation_context() -> Result<
             )
         })?;
     Ok((
-        rustok_auth::AuthAdminMutationContext {
-            actor_id: auth.user_id,
-            tenant_id: auth.tenant_id,
-            request_id: None,
-            locale,
-            principal_kind: rustok_api::AuthPrincipalKind::from_authenticated_facts(
-                &auth.grant_type,
-                auth.client_id,
-                auth.session_id,
-            ),
-        },
+        bind_admin_credential(&extensions, &auth, locale).await?,
         runtime,
     ))
 }
@@ -955,17 +962,7 @@ async fn oauth_mutation_context() -> Result<
         })?;
 
     Ok((
-        rustok_auth::AuthAdminMutationContext {
-            actor_id: auth.user_id,
-            tenant_id: auth.tenant_id,
-            request_id: None,
-            locale: Some(request_context.locale),
-            principal_kind: rustok_api::AuthPrincipalKind::from_authenticated_facts(
-                &auth.grant_type,
-                auth.client_id,
-                auth.session_id,
-            ),
-        },
+        bind_admin_credential(&extensions, &auth, Some(request_context.locale)).await?,
         runtime,
     ))
 }

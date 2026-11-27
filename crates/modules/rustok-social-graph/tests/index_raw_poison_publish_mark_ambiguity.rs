@@ -244,7 +244,10 @@ async fn exercise_publish_mark_ambiguity(
     ));
 
     let retry_entry = redelivered.to_dlq_entry(2);
-    assert_eq!(retry_entry.broker_message_id(), Some(first_broker_message_id));
+    assert_eq!(
+        retry_entry.broker_message_id(),
+        Some(first_broker_message_id)
+    );
     recovery_transport.move_to_dlq(retry_entry).await?;
     assert_message_count(&observer, &stream, expected_retry_count).await?;
     assert_receipt_state(&store, &identity, ConsumerPoisonReceiptState::Publishing).await?;

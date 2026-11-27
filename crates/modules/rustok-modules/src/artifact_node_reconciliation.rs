@@ -899,14 +899,16 @@ where
         // Serialize with reconciliation changes and validate the current
         // installation identities in the same order as claim_assignment.
         let state = load_state(&transaction, true).await?;
-        let reconciliation_id = state.desired_id
+        let reconciliation_id = state
+            .desired_id
             .ok_or(ModuleArtifactNodeReconciliationError::ClaimConflict)?;
         let reconciliation = load_reconciliation(&transaction, reconciliation_id, true).await?;
         if !reconciliation.status.is_claimable() {
             return Err(ModuleArtifactNodeReconciliationError::ClaimConflict);
         }
         validate_reconciliation_installation_identities(&transaction, &reconciliation).await?;
-        let lease_expires_at = heartbeat_assignment(&transaction, reconciliation_id, &command).await?;
+        let lease_expires_at =
+            heartbeat_assignment(&transaction, reconciliation_id, &command).await?;
         transaction.commit().await.map_err(store_error)?;
         Ok(ModuleArtifactNodeAssignmentHeartbeatReceipt {
             claim_id: command.claim_id,
@@ -2169,14 +2171,20 @@ async fn load_assignment<C: ConnectionTrait>(
 fn assignment_lease_timestamp_is_canonical_sql(backend: SupportedBackend) -> &'static str {
     match backend {
         SupportedBackend::Postgres => "TRUE",
-        SupportedBackend::Sqlite => "strftime('%Y-%m-%dT%H:%M:%f+00:00', claim_expires_at) = claim_expires_at",
+        SupportedBackend::Sqlite => {
+            "strftime('%Y-%m-%dT%H:%M:%f+00:00', claim_expires_at) = claim_expires_at"
+        }
     }
 }
 
 fn assignment_lease_expiry_sql(backend: SupportedBackend) -> String {
     match backend {
-        SupportedBackend::Postgres => format!("clock_timestamp() + interval '{MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS} seconds'"),
-        SupportedBackend::Sqlite => format!("strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now', '+{MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS} seconds')"),
+        SupportedBackend::Postgres => format!(
+            "clock_timestamp() + interval '{MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS} seconds'"
+        ),
+        SupportedBackend::Sqlite => format!(
+            "strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now', '+{MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS} seconds')"
+        ),
     }
 }
 
@@ -2184,12 +2192,21 @@ async fn assignment_lease_database_now(
     transaction: &DatabaseTransaction,
 ) -> Result<DateTime<Utc>, ModuleArtifactNodeReconciliationError> {
     let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
-    let row = transaction.query_one_raw(Statement::from_string(
-        backend.db_backend(), format!("SELECT {} AS lease_now", backend.lease_now_sql()),
-    )).await.map_err(store_error)?.ok_or_else(|| ModuleArtifactNodeReconciliationError::Store(
-        "database lease clock returned no row".to_string(),
-    ))?;
-    backend.datetime_from_row(&row, "lease_now").map_err(store_error)
+    let row = transaction
+        .query_one_raw(Statement::from_string(
+            backend.db_backend(),
+            format!("SELECT {} AS lease_now", backend.lease_now_sql()),
+        ))
+        .await
+        .map_err(store_error)?
+        .ok_or_else(|| {
+            ModuleArtifactNodeReconciliationError::Store(
+                "database lease clock returned no row".to_string(),
+            )
+        })?;
+    backend
+        .datetime_from_row(&row, "lease_now")
+        .map_err(store_error)
 }
 
 fn replayable_assignment_claim(
@@ -2197,8 +2214,14 @@ fn replayable_assignment_claim(
     agent_id: &str,
     now: DateTime<Utc>,
 ) -> Option<(Uuid, DateTime<Utc>)> {
-    match (assignment.active_claim_id, assignment.claimed_by_agent.as_deref(), assignment.claim_expires_at) {
-        (Some(claim_id), Some(owner), Some(expires_at)) if owner == agent_id && expires_at > now => {
+    match (
+        assignment.active_claim_id,
+        assignment.claimed_by_agent.as_deref(),
+        assignment.claim_expires_at,
+    ) {
+        (Some(claim_id), Some(owner), Some(expires_at))
+            if owner == agent_id && expires_at > now =>
+        {
             Some((claim_id, expires_at))
         }
         _ => None,
@@ -2213,7 +2236,11 @@ async fn load_next_assignment_for_node(
     now: &DateTime<Utc>,
 ) -> Result<Option<ModuleArtifactNodeAssignment>, ModuleArtifactNodeReconciliationError> {
     let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
-    let lock = if backend == SupportedBackend::Postgres { " FOR UPDATE SKIP LOCKED" } else { "" };
+    let lock = if backend == SupportedBackend::Postgres {
+        " FOR UPDATE SKIP LOCKED"
+    } else {
+        ""
+    };
     let canonical = assignment_lease_timestamp_is_canonical_sql(backend);
     let row = transaction.query_one_raw(Statement::from_sql_and_values(
         backend.db_backend(),
@@ -2238,7 +2265,8 @@ async fn load_next_assignment_for_node(
         vec![backend.uuid_value(reconciliation_id), backend.uuid_value(node_id), backend.datetime_value(*now),
             agent_id.to_owned().into(), backend.datetime_value(*now), agent_id.to_owned().into(), backend.datetime_value(*now)],
     )).await.map_err(store_error)?;
-    row.map(|row| assignment_from_row(&row, backend)).transpose()
+    row.map(|row| assignment_from_row(&row, backend))
+        .transpose()
 }
 
 async fn claim_assignment(
@@ -2287,7 +2315,9 @@ async fn read_exact_claim_expiry(
     if rows.len() != 1 {
         return Err(ModuleArtifactNodeReconciliationError::ClaimConflict);
     }
-    backend.datetime_from_row(&rows[0], "claim_expires_at").map_err(store_error)
+    backend
+        .datetime_from_row(&rows[0], "claim_expires_at")
+        .map_err(store_error)
 }
 
 async fn heartbeat_assignment(
@@ -2296,7 +2326,11 @@ async fn heartbeat_assignment(
     command: &ModuleArtifactNodeAssignmentHeartbeatCommand,
 ) -> Result<DateTime<Utc>, ModuleArtifactNodeReconciliationError> {
     let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
-    let lock = if backend == SupportedBackend::Postgres { " FOR UPDATE" } else { "" };
+    let lock = if backend == SupportedBackend::Postgres {
+        " FOR UPDATE"
+    } else {
+        ""
+    };
     let canonical = assignment_lease_timestamp_is_canonical_sql(backend);
     // The update clock is evaluated only after the exact claim row is locked.
     let rows = transaction.query_all_raw(Statement::from_sql_and_values(
@@ -2309,19 +2343,37 @@ async fn heartbeat_assignment(
     if rows.len() != 1 {
         return Err(ModuleArtifactNodeReconciliationError::ClaimConflict);
     }
-    let updated = transaction.execute_raw(Statement::from_sql_and_values(
-        backend.db_backend(),
-        format!("UPDATE module_artifact_node_reconciliation_assignments SET claim_expires_at = {} \
+    let updated = transaction
+        .execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            format!(
+                "UPDATE module_artifact_node_reconciliation_assignments SET claim_expires_at = {} \
                  WHERE reconciliation_id = {} AND active_claim_id = {} AND claimed_by_agent = {} \
                    AND {canonical} AND claim_expires_at > {}",
-            assignment_lease_expiry_sql(backend), backend.placeholder(1), backend.placeholder(2),
-            backend.placeholder(3), backend.lease_now_sql()),
-        vec![backend.uuid_value(reconciliation_id), backend.uuid_value(command.claim_id), command.agent_id.clone().into()],
-    )).await.map_err(store_error)?;
+                assignment_lease_expiry_sql(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.lease_now_sql()
+            ),
+            vec![
+                backend.uuid_value(reconciliation_id),
+                backend.uuid_value(command.claim_id),
+                command.agent_id.clone().into(),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
     if updated.rows_affected() != 1 {
         return Err(ModuleArtifactNodeReconciliationError::ClaimConflict);
     }
-    read_exact_claim_expiry(transaction, reconciliation_id, command.claim_id, &command.agent_id).await
+    read_exact_claim_expiry(
+        transaction,
+        reconciliation_id,
+        command.claim_id,
+        &command.agent_id,
+    )
+    .await
 }
 
 fn assignment_from_row(
@@ -3065,55 +3117,172 @@ mod tests {
             node_id,
             agent_id: "node-agent-a".to_string(),
         };
-        let initial = service.claim_assignment(claim.clone()).await.unwrap().unwrap();
+        let initial = service
+            .claim_assignment(claim.clone())
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(initial.assignment.active_claim_id, Some(initial.claim_id));
-        assert_eq!(initial.assignment.claim_expires_at, Some(initial.lease_expires_at));
-        assert_eq!(service.claim_assignment(claim.clone()).await.unwrap().unwrap().claim_id, initial.claim_id);
-        assert!(replayable_assignment_claim(&initial.assignment, "node-agent-a", initial.lease_expires_at).is_none());
-        let heartbeat = ModuleArtifactNodeAssignmentHeartbeatCommand { claim_id: initial.claim_id, agent_id: "node-agent-a".into() };
-        service.heartbeat_assignment(heartbeat.clone()).await.expect("live heartbeat");
-        assert!(service.claim_assignment(ModuleArtifactNodeAssignmentClaimCommand {
-            node_id, agent_id: "different-agent".into(),
-        }).await.unwrap().is_none());
+        assert_eq!(
+            initial.assignment.claim_expires_at,
+            Some(initial.lease_expires_at)
+        );
+        assert_eq!(
+            service
+                .claim_assignment(claim.clone())
+                .await
+                .unwrap()
+                .unwrap()
+                .claim_id,
+            initial.claim_id
+        );
+        assert!(
+            replayable_assignment_claim(
+                &initial.assignment,
+                "node-agent-a",
+                initial.lease_expires_at
+            )
+            .is_none()
+        );
+        let heartbeat = ModuleArtifactNodeAssignmentHeartbeatCommand {
+            claim_id: initial.claim_id,
+            agent_id: "node-agent-a".into(),
+        };
+        service
+            .heartbeat_assignment(heartbeat.clone())
+            .await
+            .expect("live heartbeat");
+        assert!(
+            service
+                .claim_assignment(ModuleArtifactNodeAssignmentClaimCommand {
+                    node_id,
+                    agent_id: "different-agent".into(),
+                })
+                .await
+                .unwrap()
+                .is_none()
+        );
 
         // A legacy SQLite timestamp cannot be safely compared lexically.
         service.db.execute_unprepared("UPDATE module_artifact_node_reconciliation_assignments SET claim_expires_at = '2999-01-01T00:00:00.123456+00:00'").await.unwrap();
-        assert!(service.claim_assignment(claim.clone()).await.unwrap().is_none());
-        assert!(matches!(service.heartbeat_assignment(heartbeat.clone()).await,
-            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
-        assert!(matches!(service.report(report_from_work(&initial, ModuleReconciliationPhase::Prepared,
-            None, None, Uuid::new_v4())).await, Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
+        assert!(
+            service
+                .claim_assignment(claim.clone())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(matches!(
+            service.heartbeat_assignment(heartbeat.clone()).await,
+            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)
+        ));
+        assert!(matches!(
+            service
+                .report(report_from_work(
+                    &initial,
+                    ModuleReconciliationPhase::Prepared,
+                    None,
+                    None,
+                    Uuid::new_v4()
+                ))
+                .await,
+            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)
+        ));
 
         service.db.execute_unprepared("UPDATE module_artifact_node_reconciliation_assignments SET claim_expires_at = '2000-01-01T00:00:00.000+00:00'").await.unwrap();
-        assert!(matches!(service.heartbeat_assignment(heartbeat.clone()).await,
-            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
-        assert!(matches!(service.report(report_from_work(&initial, ModuleReconciliationPhase::Prepared,
-            None, None, Uuid::new_v4())).await, Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
+        assert!(matches!(
+            service.heartbeat_assignment(heartbeat.clone()).await,
+            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)
+        ));
+        assert!(matches!(
+            service
+                .report(report_from_work(
+                    &initial,
+                    ModuleReconciliationPhase::Prepared,
+                    None,
+                    None,
+                    Uuid::new_v4()
+                ))
+                .await,
+            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)
+        ));
         let prepared = service.claim_assignment(claim).await.unwrap().unwrap();
         assert_ne!(prepared.claim_id, initial.claim_id);
-        assert!(matches!(service.heartbeat_assignment(heartbeat.clone()).await,
-            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
-        assert!(matches!(service.report(report_from_work(&initial, ModuleReconciliationPhase::Prepared,
-            None, None, Uuid::new_v4())).await, Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
-        let live_heartbeat = ModuleArtifactNodeAssignmentHeartbeatCommand { claim_id: prepared.claim_id, agent_id: "node-agent-a".into() };
+        assert!(matches!(
+            service.heartbeat_assignment(heartbeat.clone()).await,
+            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)
+        ));
+        assert!(matches!(
+            service
+                .report(report_from_work(
+                    &initial,
+                    ModuleReconciliationPhase::Prepared,
+                    None,
+                    None,
+                    Uuid::new_v4()
+                ))
+                .await,
+            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)
+        ));
+        let live_heartbeat = ModuleArtifactNodeAssignmentHeartbeatCommand {
+            claim_id: prepared.claim_id,
+            agent_id: "node-agent-a".into(),
+        };
 
         service.db.execute_unprepared("UPDATE module_artifact_node_reconciliation_state SET desired_reconciliation_id = NULL").await.unwrap();
-        assert!(matches!(service.heartbeat_assignment(live_heartbeat.clone()).await,
-            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
-        assert!(matches!(service.report(report_from_work(&prepared, ModuleReconciliationPhase::Prepared,
-            None, None, Uuid::new_v4())).await, Err(ModuleArtifactNodeReconciliationError::StaleReconciliation)));
+        assert!(matches!(
+            service.heartbeat_assignment(live_heartbeat.clone()).await,
+            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)
+        ));
+        assert!(matches!(
+            service
+                .report(report_from_work(
+                    &prepared,
+                    ModuleReconciliationPhase::Prepared,
+                    None,
+                    None,
+                    Uuid::new_v4()
+                ))
+                .await,
+            Err(ModuleArtifactNodeReconciliationError::StaleReconciliation)
+        ));
         service.db.execute_unprepared(&format!("UPDATE module_artifact_node_reconciliation_state SET desired_reconciliation_id = '{}'", created.reconciliation_id)).await.unwrap();
         service.db.execute_unprepared("UPDATE module_artifact_node_reconciliations SET status = 'failed', failed_at = CURRENT_TIMESTAMP, failure_code = 'test', failure_detail = 'test' ").await.unwrap();
-        assert!(matches!(service.heartbeat_assignment(live_heartbeat.clone()).await,
-            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
-        assert!(matches!(service.report(report_from_work(&prepared, ModuleReconciliationPhase::Prepared,
-            None, None, Uuid::new_v4())).await, Err(ModuleArtifactNodeReconciliationError::TerminalReconciliation)));
+        assert!(matches!(
+            service.heartbeat_assignment(live_heartbeat.clone()).await,
+            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)
+        ));
+        assert!(matches!(
+            service
+                .report(report_from_work(
+                    &prepared,
+                    ModuleReconciliationPhase::Prepared,
+                    None,
+                    None,
+                    Uuid::new_v4()
+                ))
+                .await,
+            Err(ModuleArtifactNodeReconciliationError::TerminalReconciliation)
+        ));
         service.db.execute_unprepared("UPDATE module_artifact_node_reconciliations SET status = 'preparing', failed_at = NULL, failure_code = NULL, failure_detail = NULL").await.unwrap();
-        service.db.execute_unprepared("UPDATE module_artifact_admissions SET revision = 2").await.unwrap();
-        assert!(matches!(service.heartbeat_assignment(live_heartbeat.clone()).await,
-            Err(ModuleArtifactNodeReconciliationError::StaleReconciliation)));
-        service.db.execute_unprepared("UPDATE module_artifact_admissions SET revision = 1").await.unwrap();
-        service.heartbeat_assignment(live_heartbeat).await.expect("heartbeat after repair");
+        service
+            .db
+            .execute_unprepared("UPDATE module_artifact_admissions SET revision = 2")
+            .await
+            .unwrap();
+        assert!(matches!(
+            service.heartbeat_assignment(live_heartbeat.clone()).await,
+            Err(ModuleArtifactNodeReconciliationError::StaleReconciliation)
+        ));
+        service
+            .db
+            .execute_unprepared("UPDATE module_artifact_admissions SET revision = 1")
+            .await
+            .unwrap();
+        service
+            .heartbeat_assignment(live_heartbeat)
+            .await
+            .expect("heartbeat after repair");
 
         let prepared_receipt = service
             .report(report_from_work(
@@ -3344,7 +3513,10 @@ mod tests {
     async fn postgres_artifact_heartbeat_rechecks_expiry_after_row_lock_wait() {
         async fn connection(url: &str) -> DatabaseConnection {
             let mut options = sea_orm::ConnectOptions::new(url);
-            options.max_connections(1).min_connections(1).sqlx_logging(false);
+            options
+                .max_connections(1)
+                .min_connections(1)
+                .sqlx_logging(false);
             Database::connect(options).await.unwrap()
         }
         let url = std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").expect("test database URL");
@@ -3355,9 +3527,20 @@ mod tests {
         locker.execute_unprepared(&format!("CREATE SCHEMA {schema}; SET search_path TO {schema}; \
             CREATE TABLE module_artifact_node_reconciliation_assignments (reconciliation_id UUID NOT NULL, \
             active_claim_id UUID NOT NULL, claimed_by_agent TEXT NOT NULL, claim_expires_at TIMESTAMPTZ NOT NULL)")).await.unwrap();
-        worker.execute_unprepared(&format!("SET search_path TO {schema}")).await.unwrap();
-        let pid: i32 = worker.query_one_raw(Statement::from_string(DbBackend::Postgres,
-            "SELECT pg_backend_pid() AS pid".to_string())).await.unwrap().unwrap().try_get("", "pid").unwrap();
+        worker
+            .execute_unprepared(&format!("SET search_path TO {schema}"))
+            .await
+            .unwrap();
+        let pid: i32 = worker
+            .query_one_raw(Statement::from_string(
+                DbBackend::Postgres,
+                "SELECT pg_backend_pid() AS pid".to_string(),
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "pid")
+            .unwrap();
         let reconciliation = Uuid::new_v4();
         let claim = Uuid::new_v4();
         locker.execute_raw(Statement::from_sql_and_values(DbBackend::Postgres,
@@ -3369,8 +3552,15 @@ mod tests {
             vec![claim.into()])).await.unwrap();
         let task = tokio::spawn(async move {
             let worker_tx = worker.begin().await.unwrap();
-            let result = heartbeat_assignment(&worker_tx, reconciliation,
-                &ModuleArtifactNodeAssignmentHeartbeatCommand { claim_id: claim, agent_id: "agent-a".into() }).await;
+            let result = heartbeat_assignment(
+                &worker_tx,
+                reconciliation,
+                &ModuleArtifactNodeAssignmentHeartbeatCommand {
+                    claim_id: claim,
+                    agent_id: "agent-a".into(),
+                },
+            )
+            .await;
             worker_tx.rollback().await.unwrap();
             result
         });
@@ -3379,18 +3569,27 @@ mod tests {
             let row = monitor.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres,
                 "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND wait_event_type='Lock') AS blocked",
                 vec![pid.into()])).await.unwrap().unwrap();
-            if row.try_get::<bool>("", "blocked").unwrap() { blocked = true; break; }
+            if row.try_get::<bool>("", "blocked").unwrap() {
+                blocked = true;
+                break;
+            }
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
         assert!(blocked, "heartbeat did not wait for the row lock");
         tokio::time::sleep(std::time::Duration::from_millis(2200)).await;
         tx.commit().await.unwrap();
-        assert!(matches!(task.await.unwrap(), Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
+        assert!(matches!(
+            task.await.unwrap(),
+            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)
+        ));
         let row = locker.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres,
             "SELECT claim_expires_at <= clock_timestamp() AS expired FROM module_artifact_node_reconciliation_assignments WHERE active_claim_id=$1",
             vec![claim.into()])).await.unwrap().unwrap();
         assert!(row.try_get::<bool>("", "expired").unwrap());
-        locker.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+        locker
+            .execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

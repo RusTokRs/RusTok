@@ -639,15 +639,27 @@ mod tests {
     #[test]
     fn publication_guards_against_dead_letter_takeover() {
         let statement = read_for_publish_statement(Uuid::new_v4());
-        assert!(statement.sql.contains("handoff_dead_lettered_at IS NOT NULL AS dead_lettered"));
+        assert!(
+            statement
+                .sql
+                .contains("handoff_dead_lettered_at IS NOT NULL AS dead_lettered")
+        );
         let claim = CommentsTcpDelegationScheduleAuditHandoffClaim {
             request_id: Uuid::new_v4(),
             claim_token: Uuid::new_v4(),
             attempt_count: 1,
         };
         let statement = mark_published_statement(claim);
-        assert!(statement.sql.contains("AND handoff_dead_lettered_at IS NULL"));
-        assert!(statement.sql.contains("AND handoff_claim_expires_at > NOW()"));
+        assert!(
+            statement
+                .sql
+                .contains("AND handoff_dead_lettered_at IS NULL")
+        );
+        assert!(
+            statement
+                .sql
+                .contains("AND handoff_claim_expires_at > NOW()")
+        );
     }
 }
 

@@ -12,13 +12,29 @@ async fn lock_role_grant_rows_on(
 ) -> Result<Vec<(Uuid, String, i64)>, DbErr> {
     let backend = tx.get_database_backend();
     let sql = match backend {
-        DatabaseBackend::Postgres => "SELECT r.id, r.slug, r.grant_revision FROM roles r WHERE r.tenant_id = $1 AND (r.slug = $2 OR EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = $3 AND ur.role_id = r.id)) ORDER BY r.id FOR UPDATE OF r",
-        DatabaseBackend::Sqlite => "SELECT r.id, r.slug, r.grant_revision FROM roles r WHERE r.tenant_id = ? AND (r.slug = ? OR EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = ? AND ur.role_id = r.id)) ORDER BY r.id",
-        _ => return Err(DbErr::Custom("unsupported RBAC grant revision backend".into())),
+        DatabaseBackend::Postgres => {
+            "SELECT r.id, r.slug, r.grant_revision FROM roles r WHERE r.tenant_id = $1 AND (r.slug = $2 OR EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = $3 AND ur.role_id = r.id)) ORDER BY r.id FOR UPDATE OF r"
+        }
+        DatabaseBackend::Sqlite => {
+            "SELECT r.id, r.slug, r.grant_revision FROM roles r WHERE r.tenant_id = ? AND (r.slug = ? OR EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = ? AND ur.role_id = r.id)) ORDER BY r.id"
+        }
+        _ => {
+            return Err(DbErr::Custom(
+                "unsupported RBAC grant revision backend".into(),
+            ));
+        }
     };
-    let rows = tx.query_all_raw(Statement::from_sql_and_values(
-        backend, sql, [tenant_id.into(), target_slug.map(str::to_owned).into(), actor_id.into()],
-    )).await?;
+    let rows = tx
+        .query_all_raw(Statement::from_sql_and_values(
+            backend,
+            sql,
+            [
+                tenant_id.into(),
+                target_slug.map(str::to_owned).into(),
+                actor_id.into(),
+            ],
+        ))
+        .await?;
     let mut locked = Vec::with_capacity(rows.len());
     for row in rows {
         let id: Uuid = row.try_get("", "id")?;
@@ -60,7 +76,9 @@ pub async fn lock_invite_role_grant_binding_on(
         }
         revisions.push((id, revision));
     }
-    let Some(target) = target else { return Ok(None); };
+    let Some(target) = target else {
+        return Ok(None);
+    };
     // Sort decoded UUIDs as well so SQL collation/driver representation does
     // not affect the persisted canonical encoding.
     revisions.sort_unstable();
@@ -73,7 +91,6 @@ pub async fn lock_invite_role_grant_binding_on(
     Ok(Some(binding))
 }
 
- 
 /// A read-only, single-statement static RBAC observation. Membership and
 /// role grant epochs are read from one database snapshot, including users
 /// with no roles. Compare before and after multi-query authority resolution;
@@ -85,19 +102,36 @@ pub struct StaticActorAuthorityRevision {
 }
 
 pub async fn read_static_actor_authority_revision_on(
-    db: &impl ConnectionTrait, tenant_id: Uuid, actor_id: Uuid,
+    db: &impl ConnectionTrait,
+    tenant_id: Uuid,
+    actor_id: Uuid,
 ) -> Result<StaticActorAuthorityRevision, DbErr> {
     let backend = db.get_database_backend();
     let sql = match backend {
-        DatabaseBackend::Postgres => "SELECT u.rbac_membership_revision, r.id AS role_id, r.grant_revision FROM users u LEFT JOIN (user_roles ur JOIN roles r ON r.id = ur.role_id) ON ur.user_id = u.id AND r.tenant_id = u.tenant_id WHERE u.tenant_id = $1 AND u.id = $2 ORDER BY r.id",
-        DatabaseBackend::Sqlite => "SELECT u.rbac_membership_revision, r.id AS role_id, r.grant_revision FROM users u LEFT JOIN (user_roles ur JOIN roles r ON r.id = ur.role_id) ON ur.user_id = u.id AND r.tenant_id = u.tenant_id WHERE u.tenant_id = ?1 AND u.id = ?2 ORDER BY r.id",
-        _ => return Err(DbErr::Custom("unsupported RBAC authority revision backend".into())),
+        DatabaseBackend::Postgres => {
+            "SELECT u.rbac_membership_revision, r.id AS role_id, r.grant_revision FROM users u LEFT JOIN (user_roles ur JOIN roles r ON r.id = ur.role_id) ON ur.user_id = u.id AND r.tenant_id = u.tenant_id WHERE u.tenant_id = $1 AND u.id = $2 ORDER BY r.id"
+        }
+        DatabaseBackend::Sqlite => {
+            "SELECT u.rbac_membership_revision, r.id AS role_id, r.grant_revision FROM users u LEFT JOIN (user_roles ur JOIN roles r ON r.id = ur.role_id) ON ur.user_id = u.id AND r.tenant_id = u.tenant_id WHERE u.tenant_id = ?1 AND u.id = ?2 ORDER BY r.id"
+        }
+        _ => {
+            return Err(DbErr::Custom(
+                "unsupported RBAC authority revision backend".into(),
+            ));
+        }
     };
-    let rows = db.query_all_raw(Statement::from_sql_and_values(
-        backend, sql, [tenant_id.into(), actor_id.into()],
-    )).await?;
+    let rows = db
+        .query_all_raw(Statement::from_sql_and_values(
+            backend,
+            sql,
+            [tenant_id.into(), actor_id.into()],
+        ))
+        .await?;
     let missing = || DbErr::Custom("invalid or missing RBAC authority revision".into());
-    let membership: i64 = rows.first().ok_or_else(missing)?.try_get("", "rbac_membership_revision")?;
+    let membership: i64 = rows
+        .first()
+        .ok_or_else(missing)?
+        .try_get("", "rbac_membership_revision")?;
     if membership < 0 {
         return Err(missing());
     }
@@ -111,7 +145,7 @@ pub async fn read_static_actor_authority_revision_on(
         }
         match (role, grant) {
             (Some(id), Some(epoch)) if !id.is_nil() && epoch >= 0 => grants.push((id, epoch)),
-            (None, None) => {},
+            (None, None) => {}
             _ => return Err(missing()),
         }
     }
@@ -133,14 +167,31 @@ pub async fn lock_user_admin_role_grants_on(
     let backend = tx.get_database_backend();
     let continuity_slug = target_id.map(|_| rustok_core::UserRole::SuperAdmin.to_string());
     let sql = match backend {
-        DatabaseBackend::Postgres => "SELECT r.id, r.slug, r.grant_revision FROM roles r WHERE r.tenant_id = $1 AND (r.slug = $2 OR r.slug = $5 OR EXISTS (SELECT 1 FROM user_roles ur WHERE (ur.user_id = $3 OR ur.user_id = $4) AND ur.role_id = r.id)) ORDER BY r.id FOR UPDATE OF r",
-        DatabaseBackend::Sqlite => "SELECT r.id, r.slug, r.grant_revision FROM roles r WHERE r.tenant_id = ?1 AND (r.slug = ?2 OR r.slug = ?5 OR EXISTS (SELECT 1 FROM user_roles ur WHERE (ur.user_id = ?3 OR ur.user_id = ?4) AND ur.role_id = r.id)) ORDER BY r.id",
-        _ => return Err(DbErr::Custom("unsupported RBAC grant revision backend".into())),
+        DatabaseBackend::Postgres => {
+            "SELECT r.id, r.slug, r.grant_revision FROM roles r WHERE r.tenant_id = $1 AND (r.slug = $2 OR r.slug = $5 OR EXISTS (SELECT 1 FROM user_roles ur WHERE (ur.user_id = $3 OR ur.user_id = $4) AND ur.role_id = r.id)) ORDER BY r.id FOR UPDATE OF r"
+        }
+        DatabaseBackend::Sqlite => {
+            "SELECT r.id, r.slug, r.grant_revision FROM roles r WHERE r.tenant_id = ?1 AND (r.slug = ?2 OR r.slug = ?5 OR EXISTS (SELECT 1 FROM user_roles ur WHERE (ur.user_id = ?3 OR ur.user_id = ?4) AND ur.role_id = r.id)) ORDER BY r.id"
+        }
+        _ => {
+            return Err(DbErr::Custom(
+                "unsupported RBAC grant revision backend".into(),
+            ));
+        }
     };
-    let rows = tx.query_all_raw(Statement::from_sql_and_values(
-        backend, sql, [tenant_id.into(), requested_slug.map(str::to_owned).into(),
-            actor_id.into(), target_id.into(), continuity_slug.into()],
-    )).await?;
+    let rows = tx
+        .query_all_raw(Statement::from_sql_and_values(
+            backend,
+            sql,
+            [
+                tenant_id.into(),
+                requested_slug.map(str::to_owned).into(),
+                actor_id.into(),
+                target_id.into(),
+                continuity_slug.into(),
+            ],
+        ))
+        .await?;
     let mut found_requested = requested_slug.is_none();
     for row in rows {
         let id: Uuid = row.try_get("", "id")?;

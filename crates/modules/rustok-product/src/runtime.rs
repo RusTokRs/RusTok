@@ -3,10 +3,10 @@ use std::sync::Arc;
 use rustok_api::PortError;
 use rustok_core::ModuleRuntimeExtensions;
 use rustok_outbox_storage::TransactionalEventBus;
-use rustok_translation_targets::{
-    register_translation_target_provider, TranslationTargetRegistryError,
-};
 use rustok_product_ports::{ProductAttachedValuesReadPort, ProductAttachedValuesWritePort};
+use rustok_translation_targets::{
+    TranslationTargetRegistryError, register_translation_target_provider,
+};
 use sea_orm::DatabaseConnection;
 
 use crate::{
@@ -546,12 +546,10 @@ mod tests {
             .expect("database should connect");
         let taxonomy: Arc<dyn ProductTaxonomyPort> = Arc::new(NoopProductTaxonomyPort);
 
-        let runtime = ProductCatalogCommandRuntime::in_process(
-            database,
-            mock_transactional_event_bus(),
-        )
-        .with_taxonomy_port(taxonomy.clone())
-        .expect("embedded Taxonomy capability should compose");
+        let runtime =
+            ProductCatalogCommandRuntime::in_process(database, mock_transactional_event_bus())
+                .with_taxonomy_port(taxonomy.clone())
+                .expect("embedded Taxonomy capability should compose");
 
         let schema_service = runtime
             .embedded_schema_write_service

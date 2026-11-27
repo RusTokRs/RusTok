@@ -1,13 +1,15 @@
 #[cfg(target_arch = "wasm32")]
 use crate::editor::decode_canvas_message;
-use crate::editor::{AdminEditorRuntime, CanvasResourceLimit, ResizeHandles, render_canvas_srcdoc_with_context};
+use crate::editor::{
+    AdminEditorRuntime, CanvasResourceLimit, ResizeHandles, render_canvas_srcdoc_with_context,
+};
 #[cfg(target_arch = "wasm32")]
 use crate::editor::{CanvasBridgeMessage, CanvasComponentGeometry, dispatch_shortcut};
-#[cfg(target_arch = "wasm32")]
-use fly_web::BrowserPoint;
 use fly_ui::{CanvasRect, ViewportState};
 #[cfg(target_arch = "wasm32")]
 use fly_ui::{UiIntent, resolve_editor_shortcut};
+#[cfg(target_arch = "wasm32")]
+use fly_web::BrowserPoint;
 use leptos::prelude::*;
 use rustok_ui_core::UiCspNonce;
 #[cfg(target_arch = "wasm32")]

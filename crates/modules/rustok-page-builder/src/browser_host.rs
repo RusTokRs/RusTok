@@ -496,37 +496,47 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod selection_contract_tests {
     use super::PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS;
 
     #[test]
     fn inspector_picker_uses_the_adapter_selection_path() {
-        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
-            .contains("adapter.select(picker.value || null, \"ssr-inspector\");"));
-        assert!(!PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
-            .contains("adapter.selectedId = picker.value || null;"));
+        assert!(
+            PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+                .contains("adapter.select(picker.value || null, \"ssr-inspector\");")
+        );
+        assert!(
+            !PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+                .contains("adapter.selectedId = picker.value || null;")
+        );
     }
 
     #[test]
     fn hydrated_workspace_forms_are_left_to_leptos() {
-        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
-            .contains("form.closest(\"[data-fly-wasm-hydrated='true']\")"));
+        assert!(
+            PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+                .contains("form.closest(\"[data-fly-wasm-hydrated='true']\")")
+        );
     }
 
     #[test]
     fn submitter_name_and_boolean_value_are_included_in_form_payload() {
-        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
-            .contains("__flyFormPayload(form, event.submitter)"));
-        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
-            .contains("payload[submitter.name] = submitter.value === \"true\" ? true : submitter.value"));
+        assert!(
+            PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+                .contains("__flyFormPayload(form, event.submitter)")
+        );
+        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS.contains(
+            "payload[submitter.name] = submitter.value === \"true\" ? true : submitter.value"
+        ));
     }
     #[test]
     fn repeated_checkbox_names_preserve_selected_values_as_a_group() {
         let source = PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS;
         assert!(source.contains("const checkboxGroups = new Map()"));
-        assert!(source.contains("checkboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value)"));
+        assert!(source.contains(
+            "checkboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value)"
+        ));
         assert!(!source.contains("payload[checkbox.name] = checkbox.checked"));
     }
 
@@ -539,7 +549,9 @@ mod selection_contract_tests {
 
     #[test]
     fn native_input_submitters_are_included_in_form_payload() {
-        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
-            .contains("submitter instanceof HTMLInputElement && submitter.type === \"submit\""));
+        assert!(
+            PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+                .contains("submitter instanceof HTMLInputElement && submitter.type === \"submit\"")
+        );
     }
 }

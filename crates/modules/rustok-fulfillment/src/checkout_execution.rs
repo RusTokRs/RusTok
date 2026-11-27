@@ -54,36 +54,36 @@ fn shipping_option_translation_revision_conflict_to_port_error(
         .idempotency_key
         .as_ref()
         .map(|value| value.chars().count());
-            let shipping_option_id_non_nil = !id.is_nil();
-            tracing::warn!(
-                owner = CHECKOUT_FULFILLMENT_OWNER,
-                operation = owner_operation,
-                owner_error_kind = "shipping_option_translation_revision_conflict",
-                correlation_id = %context.correlation_id,
-                tenant_id_length,
-                actor_kind,
-                actor_id_length,
-                claim_count,
-                role_count,
-                channel_present,
-                channel_length = ?channel_length,
-                locale_length,
-                causation_id_present,
-                causation_id_length = ?causation_id_length,
-                traceparent_present,
-                traceparent_length = ?traceparent_length,
-                idempotency_key_present,
-                idempotency_key_length = ?idempotency_key_length,
-                deadline_ms = ?context.deadline_ms,
-                shipping_option_id_non_nil,
-                code = "fulfillment.shipping_option_translation_revision_conflict",
-                boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
-                "checkout fulfillment shipping option translation revision conflicts with the current state"
-            );
-            PortError::conflict(
-                "fulfillment.shipping_option_translation_revision_conflict",
-                "shipping option translation revision conflicts with the current state",
-            )
+    let shipping_option_id_non_nil = !id.is_nil();
+    tracing::warn!(
+        owner = CHECKOUT_FULFILLMENT_OWNER,
+        operation = owner_operation,
+        owner_error_kind = "shipping_option_translation_revision_conflict",
+        correlation_id = %context.correlation_id,
+        tenant_id_length,
+        actor_kind,
+        actor_id_length,
+        claim_count,
+        role_count,
+        channel_present,
+        channel_length = ?channel_length,
+        locale_length,
+        causation_id_present,
+        causation_id_length = ?causation_id_length,
+        traceparent_present,
+        traceparent_length = ?traceparent_length,
+        idempotency_key_present,
+        idempotency_key_length = ?idempotency_key_length,
+        deadline_ms = ?context.deadline_ms,
+        shipping_option_id_non_nil,
+        code = "fulfillment.shipping_option_translation_revision_conflict",
+        boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
+        "checkout fulfillment shipping option translation revision conflicts with the current state"
+    );
+    PortError::conflict(
+        "fulfillment.shipping_option_translation_revision_conflict",
+        "shipping option translation revision conflicts with the current state",
+    )
 }
 
 fn provider_result_invalid_to_port_error(
@@ -118,38 +118,38 @@ fn provider_result_invalid_to_port_error(
         .idempotency_key
         .as_ref()
         .map(|value| value.chars().count());
-            let provider_result_invalid_cause_present = !cause.trim().is_empty();
-            let provider_result_invalid_cause_length = cause.chars().count();
-            tracing::warn!(
-                owner = CHECKOUT_FULFILLMENT_OWNER,
-                operation = owner_operation,
-                owner_error_kind = "provider_result_invalid",
-                correlation_id = %context.correlation_id,
-                tenant_id_length,
-                actor_kind,
-                actor_id_length,
-                claim_count,
-                role_count,
-                channel_present,
-                channel_length = ?channel_length,
-                locale_length,
-                causation_id_present,
-                causation_id_length = ?causation_id_length,
-                traceparent_present,
-                traceparent_length = ?traceparent_length,
-                idempotency_key_present,
-                idempotency_key_length = ?idempotency_key_length,
-                deadline_ms = ?context.deadline_ms,
-                provider_result_invalid_cause_present,
-                provider_result_invalid_cause_length,
-                code = "fulfillment.reconciliation_required",
-                boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
-                "fulfillment provider result requires reconciliation"
-            );
-            PortError::conflict(
-                "fulfillment.reconciliation_required",
-                "fulfillment provider result requires reconciliation",
-            )
+    let provider_result_invalid_cause_present = !cause.trim().is_empty();
+    let provider_result_invalid_cause_length = cause.chars().count();
+    tracing::warn!(
+        owner = CHECKOUT_FULFILLMENT_OWNER,
+        operation = owner_operation,
+        owner_error_kind = "provider_result_invalid",
+        correlation_id = %context.correlation_id,
+        tenant_id_length,
+        actor_kind,
+        actor_id_length,
+        claim_count,
+        role_count,
+        channel_present,
+        channel_length = ?channel_length,
+        locale_length,
+        causation_id_present,
+        causation_id_length = ?causation_id_length,
+        traceparent_present,
+        traceparent_length = ?traceparent_length,
+        idempotency_key_present,
+        idempotency_key_length = ?idempotency_key_length,
+        deadline_ms = ?context.deadline_ms,
+        provider_result_invalid_cause_present,
+        provider_result_invalid_cause_length,
+        code = "fulfillment.reconciliation_required",
+        boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
+        "fulfillment provider result requires reconciliation"
+    );
+    PortError::conflict(
+        "fulfillment.reconciliation_required",
+        "fulfillment provider result requires reconciliation",
+    )
 }
 
 #[async_trait]
@@ -331,11 +331,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
         })?;
 
         let records = self
-            .list_checkout_fulfillments(
-                READ_OPERATION,
-                tenant_id,
-                request.checkout_operation_id,
-            )
+            .list_checkout_fulfillments(READ_OPERATION, tenant_id, request.checkout_operation_id)
             .await
             .map_err(|error| {
                 fulfillment_error_to_port_error(
@@ -1274,7 +1270,11 @@ fn fulfillment_error_to_port_error(
             )
         }
         FulfillmentError::ShippingOptionTranslationRevisionConflict(id) => {
-            shipping_option_translation_revision_conflict_to_port_error(context, owner_operation, id)
+            shipping_option_translation_revision_conflict_to_port_error(
+                context,
+                owner_operation,
+                id,
+            )
         }
         FulfillmentError::ProviderResultInvalid(cause) => {
             provider_result_invalid_to_port_error(context, owner_operation, cause)

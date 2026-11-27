@@ -18,15 +18,23 @@ fn public_bundle_bounds_and_aborts_pending_intents() {
 
 #[test]
 fn strict_receipt_fence_blocks_view_state_intents_before_dom_dispatch() {
-    assert!(contains("requiresOperationReceipts && intent !== \"resolve_operation\""));
+    assert!(contains(
+        "requiresOperationReceipts && intent !== \"resolve_operation\""
+    ));
     assert!(contains(
         "const authoritative = isAuthoritativeIntent(request.intent, this.requiresOperationReceipts)"
     ));
     let source = include_str!("../assets/fly-browser.js");
-    let emit = source.find("emitIntent(intent, payload = {})").expect("emit intent");
+    let emit = source
+        .find("emitIntent(intent, payload = {})")
+        .expect("emit intent");
     let body = &source[emit..];
-    let fence = body.find("this.pendingOperationUnresolved").expect("receipt fence");
-    let dispatch = body.find("new CustomEvent(\"fly:browser-intent\"").expect("DOM dispatch");
+    let fence = body
+        .find("this.pendingOperationUnresolved")
+        .expect("receipt fence");
+    let dispatch = body
+        .find("new CustomEvent(\"fly:browser-intent\"")
+        .expect("DOM dispatch");
     assert!(fence < dispatch);
 }
 
@@ -56,18 +64,24 @@ fn strict_draft_operation_identity_survives_reload_and_is_reconciled_without_aut
 #[test]
 fn strict_mount_uses_server_rendered_draft_identity_not_stale_storage() {
     let source = include_str!("../assets/fly-browser.js");
-    assert!(source.contains(
-        "this.requiresOperationReceipts = root.dataset.flyDraftContract ==="
-    ));
+    assert!(source.contains("this.requiresOperationReceipts = root.dataset.flyDraftContract ==="));
     assert!(source.contains("authoritative: root.dataset.flyDraftBinding ==="));
     assert!(source.contains("readDraftSession(this.pageId, {"));
     assert!(source.contains("token: root.dataset.flyRenderedDraftToken"));
     assert!(source.contains("generation: root.dataset.flyRenderedDraftGeneration"));
-    let rendered = source.find("renderedBinding.required === true").expect("strict binding");
-    let storage = source.find("globalThis.sessionStorage?.getItem(draftStorageKey(pageId))")
+    let rendered = source
+        .find("renderedBinding.required === true")
+        .expect("strict binding");
+    let storage = source
+        .find("globalThis.sessionStorage?.getItem(draftStorageKey(pageId))")
         .expect("legacy storage fallback");
-    assert!(rendered < storage, "strict mounts must not consult stale storage first");
-    assert!(source.contains("this.root.dataset.flyRenderedDraftGeneration = String(this.draftSession.generation)"));
+    assert!(
+        rendered < storage,
+        "strict mounts must not consult stale storage first"
+    );
+    assert!(source.contains(
+        "this.root.dataset.flyRenderedDraftGeneration = String(this.draftSession.generation)"
+    ));
 }
 
 #[test]
@@ -80,9 +94,11 @@ fn strict_requests_require_a_page_id_before_they_can_be_sent() {
 #[test]
 fn committed_receipts_are_bound_to_the_original_page_and_draft() {
     let source = include_str!("../assets/fly-browser.js");
-    let start = source.find("function isCommittedOperationReceipt")
+    let start = source
+        .find("function isCommittedOperationReceipt")
         .expect("committed receipt validator");
-    let end = source[start..].find("\n}\n")
+    let end = source[start..]
+        .find("\n}\n")
         .map(|offset| start + offset)
         .expect("validator end");
     let validator = &source[start..end];

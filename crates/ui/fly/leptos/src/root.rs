@@ -43,20 +43,32 @@ pub use foundation::{
 // the `fly_web::*` glob in `foundation`, so the SSR-first contract is visible in this file: the
 // modules below exist only when the caller opts into `wasm-client`. `scripts/verify/
 // verify-fly-ssr-first.mjs` asserts exactly that shape.
-#[expect(unused_imports, reason = "contracted facade re-export for wasm-client surface")]
+#[expect(
+    unused_imports,
+    reason = "contracted facade re-export for wasm-client surface"
+)]
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 mod browser_interaction;
-#[expect(unused_imports, reason = "contracted facade re-export for wasm-client surface")]
+#[expect(
+    unused_imports,
+    reason = "contracted facade re-export for wasm-client surface"
+)]
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 pub use browser_interaction::{
     BrowserResizeSession, key_stroke_from_event, prevent_editor_shortcut_default,
     shortcut_from_event,
 };
 
-#[expect(unused_imports, reason = "contracted facade re-export for wasm-client surface")]
+#[expect(
+    unused_imports,
+    reason = "contracted facade re-export for wasm-client surface"
+)]
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 mod browser_runtime;
-#[expect(unused_imports, reason = "contracted facade re-export for wasm-client surface")]
+#[expect(
+    unused_imports,
+    reason = "contracted facade re-export for wasm-client surface"
+)]
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 pub use browser_runtime::{
     BrowserRuntimeError, EventListenerHandle, IframeJsonSubscription, IframeMessagePort,

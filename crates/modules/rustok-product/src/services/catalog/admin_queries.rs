@@ -77,10 +77,7 @@ impl CatalogService {
             let subtree = load_category_filter_subtree(&self.db, tenant_id, category_id).await?;
             query = if subtree.is_empty() {
                 // Unknown or deleted category: the filter matches no products.
-                query.filter(
-                    sea_orm::Condition::all()
-                        .add(sea_orm::sea_query::Expr::cust("1 = 0")),
-                )
+                query.filter(sea_orm::Condition::all().add(sea_orm::sea_query::Expr::cust("1 = 0")))
             } else {
                 query.filter(entities::product::Column::PrimaryCategoryId.is_in(subtree))
             };
@@ -219,7 +216,9 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         for backend in [DbBackend::Sqlite, DbBackend::Postgres] {
             let statement = entities::product::Entity::find()
-                .filter(queries::product_title_search_condition(backend, tenant_id, "MiXeD"))
+                .filter(queries::product_title_search_condition(
+                    backend, tenant_id, "MiXeD",
+                ))
                 .build(backend);
             assert!(statement.sql.contains("pt.product_id = products.id"));
             assert!(statement.sql.contains("pt.tenant_id ="));

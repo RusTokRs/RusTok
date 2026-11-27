@@ -21,12 +21,14 @@ use uuid::Uuid;
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
+use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::published_worker_running;
+use crate::services::server_runtime_context::{
+    ServerRuntimeContext, ServerRuntimeStartReservation,
+};
 use crate::services::stop_handle::{
     StopHandle, may_admit_next_worker_operation, wait_for_worker_retry_or_stop,
 };
-use crate::services::event_transport_factory::EventRuntime;
-use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
 const ENABLE_ENV: &str = "RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED";
 const IDLE_POLL_ENV: &str = "RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_IDLE_POLL_MS";

@@ -403,9 +403,7 @@ pub async fn drop_sys_events_superseded_indexes(manager: &SchemaManager<'_>) -> 
 }
 
 /// Creates the generic durable-consumer registration and acknowledgement schema.
-pub async fn create_sys_event_consumer_tables(
-    manager: &SchemaManager<'_>,
-) -> Result<(), DbErr> {
+pub async fn create_sys_event_consumer_tables(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     manager
         .create_table(
             Table::create()
@@ -506,9 +504,7 @@ pub async fn create_sys_event_consumer_tables(
 }
 
 /// Drops the generic durable-consumer schema during rollback.
-pub async fn drop_sys_event_consumer_tables(
-    manager: &SchemaManager<'_>,
-) -> Result<(), DbErr> {
+pub async fn drop_sys_event_consumer_tables(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     manager
         .drop_table(
             Table::drop()

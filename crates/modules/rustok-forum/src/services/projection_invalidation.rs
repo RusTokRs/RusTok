@@ -1,7 +1,7 @@
-use tracing::instrument;
 use rustok_events::{DomainEvent, ForumSearchProjectionEvent, ValidateEvent};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, DbBackend, Statement};
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::error::{ForumError, ForumResult};

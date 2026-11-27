@@ -55,7 +55,9 @@ pub fn clear_refresh_cookie_header(secure: bool) -> String {
 /// parsing helper, not validation.
 pub fn session_id_from_access_token(token: &str) -> Option<String> {
     #[derive(serde::Deserialize)]
-    struct SessionClaim { session_id: String }
+    struct SessionClaim {
+        session_id: String,
+    }
     let claims: SessionClaim = decode_access_claims(token)?;
     (!claims.session_id.is_empty()).then_some(claims.session_id)
 }
@@ -63,10 +65,17 @@ pub fn session_id_from_access_token(token: &str) -> Option<String> {
 #[cfg(feature = "ssr")]
 pub(crate) fn direct_access_matches(token: &str, tenant_id: &str, user_id: &str) -> bool {
     #[derive(serde::Deserialize)]
-    struct Claims { tenant_id: String, sub: String, session_id: String, grant_type: String }
+    struct Claims {
+        tenant_id: String,
+        sub: String,
+        session_id: String,
+        grant_type: String,
+    }
     decode_access_claims::<Claims>(token).is_some_and(|claims| {
-        claims.tenant_id == tenant_id && claims.sub == user_id
-            && claims.grant_type == "direct" && canonical_session_id(&claims.session_id)
+        claims.tenant_id == tenant_id
+            && claims.sub == user_id
+            && claims.grant_type == "direct"
+            && canonical_session_id(&claims.session_id)
     })
 }
 
@@ -86,10 +95,15 @@ pub(crate) const EXPECTED_SESSION_ID_HEADER: &str = "x-rustok-expected-session-i
 
 /// Canonical non-nil UUID comparison metadata, not authenticated claims.
 pub(crate) fn canonical_session_id(value: &str) -> bool {
-    value.len() == 36 && value.bytes().enumerate().all(|(index, byte)| {
-        if matches!(index, 8 | 13 | 18 | 23) { byte == b'-' }
-        else { byte.is_ascii_digit() || matches!(byte, b'a'..=b'f') }
-    }) && value.bytes().any(|byte| byte != b'0' && byte != b'-')
+    value.len() == 36
+        && value.bytes().enumerate().all(|(index, byte)| {
+            if matches!(index, 8 | 13 | 18 | 23) {
+                byte == b'-'
+            } else {
+                byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')
+            }
+        })
+        && value.bytes().any(|byte| byte != b'0' && byte != b'-')
 }
 
 fn base64url_decode(input: &str) -> Option<Vec<u8>> {

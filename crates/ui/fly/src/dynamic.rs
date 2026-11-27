@@ -88,8 +88,12 @@ impl DynamicCatalog {
                 .extensions
                 .get(FLY_RUNTIME_CONDITIONS_FIELD),
         );
-        let (repeaters, unknown_repeater_entries) =
-            decode_entries(document.project().extensions.get(FLY_RUNTIME_REPEATERS_FIELD));
+        let (repeaters, unknown_repeater_entries) = decode_entries(
+            document
+                .project()
+                .extensions
+                .get(FLY_RUNTIME_REPEATERS_FIELD),
+        );
         Self {
             conditions,
             repeaters,
@@ -354,7 +358,9 @@ pub(crate) fn materialize_runtime_with_scoped_bindings(
 
 /// Collect the lexical aliases visible to each template component, including
 /// the repeater root itself. A nested instance can shadow an outer alias.
-pub(crate) fn repeater_binding_scopes(document: &ProjectDocument) -> BTreeMap<String, BTreeSet<String>> {
+pub(crate) fn repeater_binding_scopes(
+    document: &ProjectDocument,
+) -> BTreeMap<String, BTreeSet<String>> {
     let catalog = DynamicCatalog::from_document(document);
     let mut scopes = BTreeMap::<String, BTreeSet<String>>::new();
     for repeater in &catalog.repeaters {
@@ -362,7 +368,10 @@ pub(crate) fn repeater_binding_scopes(document: &ProjectDocument) -> BTreeMap<St
             continue;
         }
         for id in component_subtree_ids(document, &repeater.component_id) {
-            scopes.entry(id).or_default().extend([repeater.item_alias.clone(), repeater.index_alias.clone()]);
+            scopes
+                .entry(id)
+                .or_default()
+                .extend([repeater.item_alias.clone(), repeater.index_alias.clone()]);
         }
     }
     scopes
@@ -1191,12 +1200,20 @@ fn repeater_alias_error(repeater: &RuntimeRepeater) -> Option<(&'static str, &'s
     if aliases.iter().any(|alias| {
         !is_valid_runtime_context_path(alias)
             || alias.starts_with('$')
-            || alias.chars().any(|c| c.is_whitespace() || matches!(c, '.' | '[' | ']'))
+            || alias
+                .chars()
+                .any(|c| c.is_whitespace() || matches!(c, '.' | '[' | ']'))
     }) {
-        return Some(("runtime_repeater_alias_invalid", "aliases must be single context keys"));
+        return Some((
+            "runtime_repeater_alias_invalid",
+            "aliases must be single context keys",
+        ));
     }
     if repeater.item_alias == repeater.index_alias {
-        return Some(("runtime_repeater_alias_conflict", "item and index aliases must differ"));
+        return Some((
+            "runtime_repeater_alias_conflict",
+            "item and index aliases must differ",
+        ));
     }
     None
 }
@@ -2605,7 +2622,8 @@ mod tests {
 
     #[test]
     fn repeater_budget_counts_anonymous_and_identified_descendants_before_cloning() {
-        let children = (0..100).map(|_| json!({"type": "text", "content": "item"}))
+        let children = (0..100)
+            .map(|_| json!({"type": "text", "content": "item"}))
             .collect::<Vec<_>>();
         let source = GrapesJsCodec::decode_value(json!({
             "pages": [{"component": {"id": "root", "type": "wrapper", "components": [
@@ -2617,7 +2635,12 @@ mod tests {
         let result = materialize_runtime(&source, &context);
         assert_eq!(result.repeated_nodes, 0);
         assert_eq!(result.document, source);
-        assert!(result.diagnostics.iter().any(|d| d.code == "runtime_repeater_budget_exceeded"));
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|d| d.code == "runtime_repeater_budget_exceeded")
+        );
     }
 
     #[test]
@@ -2633,13 +2656,26 @@ mod tests {
                 FLY_RUNTIME_REPEATERS_FIELD.to_string(),
                 json!([{"id": "bad", "component_id": "card", "path": "items", "item_alias": item, "index_alias": index}]),
             );
-            assert!(validate_dynamic_definitions(&source).iter().any(|d| d.code == code));
-            let result = materialize_runtime(&source, &json!({"flags": {"banner": true}, "items": [1]}));
+            assert!(
+                validate_dynamic_definitions(&source)
+                    .iter()
+                    .any(|d| d.code == code)
+            );
+            let result =
+                materialize_runtime(&source, &json!({"flags": {"banner": true}, "items": [1]}));
             assert_eq!(result.repeated_nodes, 0);
             assert!(result.document.contains_component("card"));
-            assert!(result.diagnostics.iter().any(|d| d.code == code && d.severity == ValidationSeverity::Error));
+            assert!(
+                result
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.code == code && d.severity == ValidationSeverity::Error)
+            );
             let repeater = DynamicCatalog::from_document(&source).repeaters.remove(0);
-            assert!(apply_dynamic_command(&mut source, &DynamicCommand::UpsertRepeater { repeater }).is_err());
+            assert!(
+                apply_dynamic_command(&mut source, &DynamicCommand::UpsertRepeater { repeater })
+                    .is_err()
+            );
         }
     }
 

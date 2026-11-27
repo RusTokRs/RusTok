@@ -1,14 +1,15 @@
 use fly::{
-    AssetDescriptor, AssetKind, ComponentChildren, ComponentNode, ComponentObject,
-    FLY_EMBED_FIELD, FLY_PAGE_METADATA_FIELD, FLY_RICH_TEXT_FIELD, FLY_SYMBOLS_FIELD,
-    FLY_THEME_FIELD, ProjectDocument, StyleRuleDescriptor, StyleRuleScope,
+    AssetDescriptor, AssetKind, ComponentChildren, ComponentNode, ComponentObject, FLY_EMBED_FIELD,
+    FLY_PAGE_METADATA_FIELD, FLY_RICH_TEXT_FIELD, FLY_SYMBOLS_FIELD, FLY_THEME_FIELD,
+    ProjectDocument, StyleRuleDescriptor, StyleRuleScope,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v14";
+pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str =
+    "page_builder_static_publish_policy_v14";
 
 const ALLOWED_TAGS: &[&str] = &[
     "a",
@@ -346,12 +347,7 @@ fn validate_theme(
             .map(|token| format!("--{}", token.name))
             .collect(),
         Err(error) => {
-            reject(
-                diagnostics,
-                "landing_theme_invalid",
-                FLY_THEME_FIELD,
-                error,
-            );
+            reject(diagnostics, "landing_theme_invalid", FLY_THEME_FIELD, error);
             BTreeSet::new()
         }
     }
@@ -954,8 +950,7 @@ fn validate_css_declarations(
     entries.sort_by(|left, right| left.0.cmp(right.0));
     for (name, value) in entries {
         let declaration_path = format!("{path}.{name}");
-        if name.len() > policy.max_css_property_bytes || !fly::css_property_allowed(name)
-        {
+        if name.len() > policy.max_css_property_bytes || !fly::css_property_allowed(name) {
             reject(
                 diagnostics,
                 "landing_css_property_rejected",
@@ -1122,20 +1117,28 @@ fn validate_url(
         return Err(StaticPublishValidationError("value is empty"));
     }
     if value.len() > policy.max_url_bytes {
-        return Err(StaticPublishValidationError("value exceeds the URL byte limit"));
+        return Err(StaticPublishValidationError(
+            "value exceeds the URL byte limit",
+        ));
     }
     if value.starts_with("//") {
-        return Err(StaticPublishValidationError("protocol-relative URLs are forbidden"));
+        return Err(StaticPublishValidationError(
+            "protocol-relative URLs are forbidden",
+        ));
     }
     if value.contains('\\') {
         return Err(StaticPublishValidationError("backslashes are forbidden"));
     }
     if value.chars().any(char::is_control) {
-        return Err(StaticPublishValidationError("control characters are forbidden"));
+        return Err(StaticPublishValidationError(
+            "control characters are forbidden",
+        ));
     }
 
     if fly::normalized_url_candidate(value).is_none() {
-        return Err(StaticPublishValidationError("URL contains whitespace or exceeds Fly's URL limit"));
+        return Err(StaticPublishValidationError(
+            "URL contains whitespace or exceeds Fly's URL limit",
+        ));
     }
 
     let normalized = value.to_ascii_lowercase();
@@ -1159,16 +1162,20 @@ fn validate_url(
         UrlKind::ResourceImage => relative || https || data_image,
         UrlKind::FormAction => relative,
         UrlKind::Canonical => relative || https,
-        UrlKind::HeadCanonical => (value.starts_with('/') || https)
-            && fly::head_url(value, false).is_some(),
-        UrlKind::HeadImage => (value.starts_with('/') || https || data_image)
-            && fly::head_url(value, true).is_some(),
+        UrlKind::HeadCanonical => {
+            (value.starts_with('/') || https) && fly::head_url(value, false).is_some()
+        }
+        UrlKind::HeadImage => {
+            (value.starts_with('/') || https || data_image) && fly::head_url(value, true).is_some()
+        }
         UrlKind::Fragment => fragment && value.len() > 1,
     };
     if allowed {
         Ok(())
     } else {
-        Err(StaticPublishValidationError("scheme or URL shape is not allowed"))
+        Err(StaticPublishValidationError(
+            "scheme or URL shape is not allowed",
+        ))
     }
 }
 
@@ -1183,7 +1190,9 @@ fn validate_srcset(
     }) {
         Ok(())
     } else {
-        Err(StaticPublishValidationError("candidate URL, descriptor or count is not allowed"))
+        Err(StaticPublishValidationError(
+            "candidate URL, descriptor or count is not allowed",
+        ))
     }
 }
 
@@ -1200,11 +1209,15 @@ fn validate_sizes(
     for raw_part in value.split(',') {
         let part = raw_part.trim();
         if part.is_empty() {
-            return Err(StaticPublishValidationError("value contains an empty entry"));
+            return Err(StaticPublishValidationError(
+                "value contains an empty entry",
+            ));
         }
         entries += 1;
         if entries > policy.max_sizes_entries {
-            return Err(StaticPublishValidationError("value exceeds the entry limit"));
+            return Err(StaticPublishValidationError(
+                "value exceeds the entry limit",
+            ));
         }
         validate_sizes_entry(part, policy)?;
     }
@@ -1224,10 +1237,14 @@ fn validate_sizes_entry(
         None => ("", entry),
     };
     if length.is_empty() {
-        return Err(StaticPublishValidationError("entry is missing its source size"));
+        return Err(StaticPublishValidationError(
+            "entry is missing its source size",
+        ));
     }
     if !is_sizes_length(length) {
-        return Err(StaticPublishValidationError("entry source size must be a number with a length unit"));
+        return Err(StaticPublishValidationError(
+            "entry source size must be a number with a length unit",
+        ));
     }
     validate_sizes_condition(condition, policy)
 }
@@ -1268,21 +1285,29 @@ fn validate_sizes_condition(
         return Ok(());
     }
     if condition.len() > policy.max_media_query_bytes {
-        return Err(StaticPublishValidationError("media condition exceeds the byte limit"));
+        return Err(StaticPublishValidationError(
+            "media condition exceeds the byte limit",
+        ));
     }
     let mut rest = condition.trim();
     if let Some(tail) = rest.strip_prefix("not") {
         if !tail.starts_with(|character: char| character.is_whitespace()) {
-            return Err(StaticPublishValidationError("media condition `not` must be followed by whitespace"));
+            return Err(StaticPublishValidationError(
+                "media condition `not` must be followed by whitespace",
+            ));
         }
         rest = tail.trim_start();
     }
     loop {
         let Some(after_open) = rest.strip_prefix('(') else {
-            return Err(StaticPublishValidationError("media condition groups must be parenthesized"));
+            return Err(StaticPublishValidationError(
+                "media condition groups must be parenthesized",
+            ));
         };
         let Some(close_offset) = after_open.find(')') else {
-            return Err(StaticPublishValidationError("media condition has an unbalanced group"));
+            return Err(StaticPublishValidationError(
+                "media condition has an unbalanced group",
+            ));
         };
         validate_sizes_condition_group(&after_open[..close_offset])?;
         let tail = after_open[close_offset + 1..].trim_start();
@@ -1291,11 +1316,15 @@ fn validate_sizes_condition(
         }
         let (word, after_word) = split_leading_word(tail);
         if word != "and" && word != "or" {
-            return Err(StaticPublishValidationError("media condition groups must be joined by `and` or `or`"));
+            return Err(StaticPublishValidationError(
+                "media condition groups must be joined by `and` or `or`",
+            ));
         }
         rest = after_word.trim_start();
         if rest.is_empty() {
-            return Err(StaticPublishValidationError("media condition must not end with a joiner"));
+            return Err(StaticPublishValidationError(
+                "media condition must not end with a joiner",
+            ));
         }
     }
 }
@@ -1310,7 +1339,9 @@ fn split_leading_word(value: &str) -> (&str, &str) {
 fn validate_sizes_condition_group(inner: &str) -> Result<(), StaticPublishValidationError> {
     let inner = inner.trim();
     if inner.is_empty() {
-        return Err(StaticPublishValidationError("media condition group is empty"));
+        return Err(StaticPublishValidationError(
+            "media condition group is empty",
+        ));
     }
     let (feature, value) = match inner.split_once(':') {
         Some((feature, value)) => (feature.trim(), Some(value.trim())),
@@ -1323,7 +1354,9 @@ fn validate_sizes_condition_group(inner: &str) -> Result<(), StaticPublishValida
             .bytes()
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
     {
-        return Err(StaticPublishValidationError("media condition feature name is not allowed"));
+        return Err(StaticPublishValidationError(
+            "media condition feature name is not allowed",
+        ));
     }
     if let Some(value) = value {
         validate_sizes_condition_value(value)?;
@@ -1334,14 +1367,18 @@ fn validate_sizes_condition_group(inner: &str) -> Result<(), StaticPublishValida
 fn validate_sizes_condition_value(value: &str) -> Result<(), StaticPublishValidationError> {
     const UNITS: &[&str] = &["px", "em", "rem", "%", "vw", "vh", "ch", "dpi"];
     if value.is_empty() {
-        return Err(StaticPublishValidationError("media condition value is empty"));
+        return Err(StaticPublishValidationError(
+            "media condition value is empty",
+        ));
     }
     for unit in UNITS {
         if let Some(rest) = value.strip_suffix(unit) {
             if is_sizes_number(rest) {
                 return Ok(());
             }
-            return Err(StaticPublishValidationError("media condition numeric value is invalid"));
+            return Err(StaticPublishValidationError(
+                "media condition numeric value is invalid",
+            ));
         }
     }
     if value
@@ -1351,7 +1388,9 @@ fn validate_sizes_condition_value(value: &str) -> Result<(), StaticPublishValida
     {
         return Ok(());
     }
-    Err(StaticPublishValidationError("media condition value must be a keyword or a number with a known unit"))
+    Err(StaticPublishValidationError(
+        "media condition value must be a keyword or a number with a known unit",
+    ))
 }
 
 fn safe_css_value(value: &str, policy: &PageBuilderStaticPublishPolicy) -> bool {
@@ -1394,7 +1433,6 @@ fn safe_css_value(value: &str, policy: &PageBuilderStaticPublishPolicy) -> bool 
         && !scanned.contains("/*")
         && !scanned.contains("*/")
 }
-
 
 fn safe_media_query(query: &str, policy: &PageBuilderStaticPublishPolicy) -> bool {
     let normalized = query.trim().to_ascii_lowercase();
@@ -1606,8 +1644,7 @@ mod tests {
         );
         let error = validate_static_publish_document(&document).expect_err("unsafe theme token");
         assert!(error.diagnostics().iter().any(|diagnostic| {
-            diagnostic.code == "landing_theme_invalid"
-                && diagnostic.path == FLY_THEME_FIELD
+            diagnostic.code == "landing_theme_invalid" && diagnostic.path == FLY_THEME_FIELD
         }));
     }
 
@@ -1618,7 +1655,8 @@ mod tests {
             "type": "wrapper",
             "style": {"background-image": "var(--host-url)"}
         }));
-        let error = validate_static_publish_document(&document).expect_err("undeclared CSS variable");
+        let error =
+            validate_static_publish_document(&document).expect_err("undeclared CSS variable");
         assert!(error.diagnostics().iter().any(|diagnostic| {
             diagnostic.code == "landing_css_var_reference_rejected"
                 && diagnostic.path.contains("background-image")
@@ -1639,10 +1677,18 @@ mod tests {
             FLY_THEME_FIELD.to_string(),
             json!({"tokens": {"brand": "#0b5fff"}}),
         );
-        let error = validate_static_publish_document(&document).expect_err("resource property var()");
-        assert_eq!(error.diagnostics().iter().filter(|diagnostic| {
-            diagnostic.code == "landing_css_var_reference_resource_property"
-        }).count(), 2);
+        let error =
+            validate_static_publish_document(&document).expect_err("resource property var()");
+        assert_eq!(
+            error
+                .diagnostics()
+                .iter()
+                .filter(|diagnostic| {
+                    diagnostic.code == "landing_css_var_reference_resource_property"
+                })
+                .count(),
+            2
+        );
     }
 
     #[test]
@@ -1676,8 +1722,7 @@ mod tests {
         }));
         let error = validate_static_publish_document(&document).expect_err("embed extension");
         assert!(error.diagnostics().iter().any(|diagnostic| {
-            diagnostic.code == "landing_embed_forbidden"
-                && diagnostic.path.ends_with(".flyEmbed")
+            diagnostic.code == "landing_embed_forbidden" && diagnostic.path.ends_with(".flyEmbed")
         }));
     }
 
@@ -1709,9 +1754,12 @@ mod tests {
             }]
         }));
         let error = validate_static_publish_document(&document).expect_err("HTTP rich-text link");
-        assert!(error.diagnostics().iter().any(|diagnostic| {
-            diagnostic.code == "landing_rich_text_link_url_rejected"
-        }));
+        assert!(
+            error
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "landing_rich_text_link_url_rejected" })
+        );
     }
 
     #[test]
@@ -1729,9 +1777,12 @@ mod tests {
             }]
         }));
         let error = validate_static_publish_document(&document).expect_err("invalid rich-text");
-        assert!(error.diagnostics().iter().any(|diagnostic| {
-            diagnostic.code == "landing_rich_text_payload_invalid"
-        }));
+        assert!(
+            error
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "landing_rich_text_payload_invalid" })
+        );
     }
 
     #[test]
@@ -1785,12 +1836,18 @@ mod tests {
         );
 
         let error = validate_static_publish_document(&document).expect_err("unsafe symbol content");
-        assert!(error.diagnostics().iter().any(|diagnostic| {
-            diagnostic.code == "landing_embed_forbidden"
-        }));
-        assert!(error.diagnostics().iter().any(|diagnostic| {
-            diagnostic.code == "landing_rich_text_link_url_rejected"
-        }));
+        assert!(
+            error
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "landing_embed_forbidden" })
+        );
+        assert!(
+            error
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "landing_rich_text_link_url_rejected" })
+        );
     }
 
     #[test]
@@ -1866,36 +1923,56 @@ mod tests {
     fn static_policy_rejects_urls_and_descriptors_the_renderer_cannot_emit() {
         let policy = PageBuilderStaticPublishPolicy::default();
         for url in [
-            "https://", "https:///example.test/a", "https://example.test:99999/a",
-            "/has space", "mailto:", "tel:",
+            "https://",
+            "https:///example.test/a",
+            "https://example.test:99999/a",
+            "/has space",
+            "mailto:",
+            "tel:",
         ] {
-            assert!(validate_url(url, UrlKind::Navigation, &policy).is_err(), "{url}");
+            assert!(
+                validate_url(url, UrlKind::Navigation, &policy).is_err(),
+                "{url}"
+            );
         }
         assert!(validate_url("#", UrlKind::Fragment, &policy).is_err());
         assert!(validate_url("relative.png", UrlKind::ResourceImage, &policy).is_ok());
         assert!(validate_url("relative.png", UrlKind::HeadImage, &policy).is_err());
         for value in [
-            "/a 1x, /b 1.0x", "/a 0800w, /b 800w", "/a 0x",
-            "/a 0w", "DATA:image/png;base64,AAAA 2x",
+            "/a 1x, /b 1.0x",
+            "/a 0800w, /b 800w",
+            "/a 0x",
+            "/a 0w",
+            "DATA:image/png;base64,AAAA 2x",
         ] {
             assert!(validate_srcset(value, &policy).is_err(), "{value}");
         }
         assert!(validate_srcset("/a 0.5x, /b 2x", &policy).is_ok());
         assert!(validate_srcset("/a 800w, /b 1600w", &policy).is_ok());
-        assert!(!safe_css_value("url(https://example.test:99999/a)", &policy));
+        assert!(!safe_css_value(
+            "url(https://example.test:99999/a)",
+            &policy
+        ));
     }
 
     #[test]
     fn static_policy_checks_every_localized_twitter_image() {
         let mut document = document(json!({"id": "root", "type": "wrapper"}));
-        document.project_mut().pages[0].extensions
-            .get_mut(FLY_PAGE_METADATA_FIELD).and_then(Value::as_object_mut)
-            .expect("metadata").insert("twitter_image".to_string(), json!({
-                "$localized": {"en": "/valid.png", "fr": "relative.png"}
-            }));
+        document.project_mut().pages[0]
+            .extensions
+            .get_mut(FLY_PAGE_METADATA_FIELD)
+            .and_then(Value::as_object_mut)
+            .expect("metadata")
+            .insert(
+                "twitter_image".to_string(),
+                json!({
+                    "$localized": {"en": "/valid.png", "fr": "relative.png"}
+                }),
+            );
         let error = validate_static_publish_document(&document).expect_err("invalid localized URL");
         assert!(error.diagnostics().iter().any(|d| {
-            d.code == "landing_metadata_url_rejected" && d.path.ends_with("twitter_image.$localized.fr")
+            d.code == "landing_metadata_url_rejected"
+                && d.path.ends_with("twitter_image.$localized.fr")
         }));
     }
 
@@ -1907,9 +1984,13 @@ mod tests {
         }));
         let error = validate_static_publish_document(&document).expect_err("denied CSS names");
         for name in ["behavior", "-ms-behavior", "-moz-binding"] {
-            assert!(error.diagnostics().iter().any(|d| {
-                d.code == "landing_css_property_rejected" && d.path.ends_with(&format!(".{name}"))
-            }), "{name}");
+            assert!(
+                error.diagnostics().iter().any(|d| {
+                    d.code == "landing_css_property_rejected"
+                        && d.path.ends_with(&format!(".{name}"))
+                }),
+                "{name}"
+            );
         }
     }
 
@@ -1978,8 +2059,11 @@ mod tests {
         let oversized = format!("image-set('/{}' 1x)", "url(/long-segment)".repeat(130));
         assert!(!safe_css_value(&oversized, &policy));
         for value in [
-            "url(/a(b))", "url(/a'broken')", "url('/a.png' extra)",
-            "image-set('/a.png' 1x))", "cross-fade(image('/a.png')",
+            "url(/a(b))",
+            "url(/a'broken')",
+            "url('/a.png' extra)",
+            "image-set('/a.png' 1x))",
+            "cross-fade(image('/a.png')",
         ] {
             assert!(!safe_css_value(value, &policy), "{value}");
         }

@@ -160,12 +160,17 @@ mod product_config {
         "RUSTOK_PRODUCT_ATTACHED_VALUES_READ_GRPC_BEARER_TOKEN";
     pub(super) const ATTACHED_VALUES_WRITE_TOKEN_ENV: &str =
         "RUSTOK_PRODUCT_ATTACHED_VALUES_WRITE_GRPC_BEARER_TOKEN";
-    pub(super) const LOCALE_REPLAY_TOKEN_ENV: &str = "RUSTOK_PRODUCT_LOCALE_REPLAY_GRPC_BEARER_TOKEN";
-    pub(super) const VARIANT_REPLAY_TOKEN_ENV: &str = "RUSTOK_PRODUCT_VARIANT_REPLAY_GRPC_BEARER_TOKEN";
-    pub(super) const COMMAND_GRPC_BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN";
+    pub(super) const LOCALE_REPLAY_TOKEN_ENV: &str =
+        "RUSTOK_PRODUCT_LOCALE_REPLAY_GRPC_BEARER_TOKEN";
+    pub(super) const VARIANT_REPLAY_TOKEN_ENV: &str =
+        "RUSTOK_PRODUCT_VARIANT_REPLAY_GRPC_BEARER_TOKEN";
+    pub(super) const COMMAND_GRPC_BEARER_TOKEN_ENV: &str =
+        "RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN";
     pub(super) const TLS_DOMAIN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN";
-    pub(super) const CONNECT_TIMEOUT_MS_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS";
-    pub(super) const ALLOW_INSECURE_LOOPBACK_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK";
+    pub(super) const CONNECT_TIMEOUT_MS_ENV: &str =
+        "RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS";
+    pub(super) const ALLOW_INSECURE_LOOPBACK_ENV: &str =
+        "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK";
     pub(super) const DEFAULT_CONNECT_TIMEOUT_MS: u64 = 5_000;
 
     #[derive(Debug, Clone, Eq, PartialEq)]
@@ -212,7 +217,8 @@ mod product_config {
         pub(super) allow_insecure_loopback: bool,
     }
 
-    pub(super) fn deployment_from_environment() -> std::result::Result<ProductDeploymentConfig, String> {
+    pub(super) fn deployment_from_environment()
+    -> std::result::Result<ProductDeploymentConfig, String> {
         parse_product_deployment_config(
             optional_env(DEPLOYMENT_ENV).as_deref(),
             optional_env(PROVIDER_ENV).as_deref(),
@@ -249,221 +255,228 @@ mod product_config {
     }
 
     pub(super) fn parse_product_deployment_config(
-    deployment: Option<&str>,
-    read_provider: Option<&str>,
-    command_provider: Option<&str>,
-    ProductGrpcEnvironment {
-        endpoint,
-        bearer_token,
-        attached_values_read_token,
-        attached_values_write_token,
-        variant_replay_token,
-        locale_replay_token,
-        command_bearer_token,
-        tls_domain,
-        connect_timeout_ms,
-        allow_insecure_loopback,
-    }: ProductGrpcEnvironment<'_>,
-) -> std::result::Result<ProductDeploymentConfig, String> {
-    let default_remote = uses_grpc(deployment, DEPLOYMENT_ENV)?.unwrap_or(false);
-    let read_remote = uses_grpc(read_provider, PROVIDER_ENV)?.unwrap_or(default_remote);
-    let command_remote =
-        uses_grpc(command_provider, COMMAND_PROVIDER_ENV)?.unwrap_or(default_remote);
-    let endpoint = normalize_optional(endpoint);
-    let bearer_token = bearer_token.filter(|value| !value.is_empty());
-    let command_bearer_token = command_bearer_token.filter(|value| !value.is_empty());
-    let attached_values_read_token = attached_values_read_token.filter(|value| !value.is_empty());
-    let attached_values_write_token = attached_values_write_token.filter(|value| !value.is_empty());
-    if let Some(token) = variant_replay_token {
-        if !read_remote {
-            return Err(format!(
-                "{VARIANT_REPLAY_TOKEN_ENV} requires a grpc read provider"
-            ));
-        }
-        if token.is_empty()
-            || [
-                bearer_token,
-                command_bearer_token,
-                attached_values_read_token,
-                attached_values_write_token,
-            ]
-            .contains(&Some(token))
-        {
-            return Err(format!(
-                "{VARIANT_REPLAY_TOKEN_ENV} must be nonempty and differ from the other Product credentials"
-            ));
-        }
-    }
-    if let Some(token) = locale_replay_token {
-        if !read_remote {
-            return Err(format!(
-                "{LOCALE_REPLAY_TOKEN_ENV} requires a grpc read provider"
-            ));
-        }
-        if token.is_empty()
-            || [
-                bearer_token,
-                command_bearer_token,
-                attached_values_read_token,
-                attached_values_write_token,
-                variant_replay_token,
-            ]
-            .contains(&Some(token))
-        {
-            return Err(format!(
-                "{LOCALE_REPLAY_TOKEN_ENV} must be nonempty and differ from the other Product credentials"
-            ));
-        }
-    }
-    let tls_domain = normalize_optional(tls_domain);
-    let timeout = parse_timeout(connect_timeout_ms)?;
-    let allow_insecure_loopback_is_configured = allow_insecure_loopback
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty());
-    let allow_insecure_loopback =
-        parse_bool(allow_insecure_loopback, ALLOW_INSECURE_LOOPBACK_ENV, false)?;
-
-    if command_bearer_token.is_some() && !command_remote {
-        return Err(format!(
-            "{COMMAND_GRPC_BEARER_TOKEN_ENV} requires a grpc command provider"
-        ));
-    }
-    if let Some(token) = attached_values_read_token {
-        if !read_remote {
-            return Err(format!(
-                "{ATTACHED_VALUES_READ_TOKEN_ENV} requires a grpc read provider"
-            ));
-        }
-        if Some(token) == bearer_token || Some(token) == command_bearer_token {
-            return Err(format!(
-                "{ATTACHED_VALUES_READ_TOKEN_ENV} must differ from the catalog read and command credentials"
-            ));
-        }
-    }
-    if let Some(token) = attached_values_write_token {
-        if !command_remote {
-            return Err(format!(
-                "{ATTACHED_VALUES_WRITE_TOKEN_ENV} requires a grpc command provider"
-            ));
-        }
-        if [
+        deployment: Option<&str>,
+        read_provider: Option<&str>,
+        command_provider: Option<&str>,
+        ProductGrpcEnvironment {
+            endpoint,
             bearer_token,
-            command_bearer_token,
             attached_values_read_token,
-        ]
-        .contains(&Some(token))
-        {
+            attached_values_write_token,
+            variant_replay_token,
+            locale_replay_token,
+            command_bearer_token,
+            tls_domain,
+            connect_timeout_ms,
+            allow_insecure_loopback,
+        }: ProductGrpcEnvironment<'_>,
+    ) -> std::result::Result<ProductDeploymentConfig, String> {
+        let default_remote = uses_grpc(deployment, DEPLOYMENT_ENV)?.unwrap_or(false);
+        let read_remote = uses_grpc(read_provider, PROVIDER_ENV)?.unwrap_or(default_remote);
+        let command_remote =
+            uses_grpc(command_provider, COMMAND_PROVIDER_ENV)?.unwrap_or(default_remote);
+        let endpoint = normalize_optional(endpoint);
+        let bearer_token = bearer_token.filter(|value| !value.is_empty());
+        let command_bearer_token = command_bearer_token.filter(|value| !value.is_empty());
+        let attached_values_read_token =
+            attached_values_read_token.filter(|value| !value.is_empty());
+        let attached_values_write_token =
+            attached_values_write_token.filter(|value| !value.is_empty());
+        if let Some(token) = variant_replay_token {
+            if !read_remote {
+                return Err(format!(
+                    "{VARIANT_REPLAY_TOKEN_ENV} requires a grpc read provider"
+                ));
+            }
+            if token.is_empty()
+                || [
+                    bearer_token,
+                    command_bearer_token,
+                    attached_values_read_token,
+                    attached_values_write_token,
+                ]
+                .contains(&Some(token))
+            {
+                return Err(format!(
+                    "{VARIANT_REPLAY_TOKEN_ENV} must be nonempty and differ from the other Product credentials"
+                ));
+            }
+        }
+        if let Some(token) = locale_replay_token {
+            if !read_remote {
+                return Err(format!(
+                    "{LOCALE_REPLAY_TOKEN_ENV} requires a grpc read provider"
+                ));
+            }
+            if token.is_empty()
+                || [
+                    bearer_token,
+                    command_bearer_token,
+                    attached_values_read_token,
+                    attached_values_write_token,
+                    variant_replay_token,
+                ]
+                .contains(&Some(token))
+            {
+                return Err(format!(
+                    "{LOCALE_REPLAY_TOKEN_ENV} must be nonempty and differ from the other Product credentials"
+                ));
+            }
+        }
+        let tls_domain = normalize_optional(tls_domain);
+        let timeout = parse_timeout(connect_timeout_ms)?;
+        let allow_insecure_loopback_is_configured = allow_insecure_loopback
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty());
+        let allow_insecure_loopback =
+            parse_bool(allow_insecure_loopback, ALLOW_INSECURE_LOOPBACK_ENV, false)?;
+
+        if command_bearer_token.is_some() && !command_remote {
             return Err(format!(
-                "{ATTACHED_VALUES_WRITE_TOKEN_ENV} must differ from the other Product credentials"
+                "{COMMAND_GRPC_BEARER_TOKEN_ENV} requires a grpc command provider"
             ));
         }
-    }
-    if !read_remote && !command_remote {
-        if endpoint.is_some()
-            || bearer_token.is_some()
-            || tls_domain.is_some()
-            || connect_timeout_ms.is_some()
-            || allow_insecure_loopback_is_configured
-        {
-            return Err("remote Product catalog variables require a grpc provider".to_string());
+        if let Some(token) = attached_values_read_token {
+            if !read_remote {
+                return Err(format!(
+                    "{ATTACHED_VALUES_READ_TOKEN_ENV} requires a grpc read provider"
+                ));
+            }
+            if Some(token) == bearer_token || Some(token) == command_bearer_token {
+                return Err(format!(
+                    "{ATTACHED_VALUES_READ_TOKEN_ENV} must differ from the catalog read and command credentials"
+                ));
+            }
         }
-        return Ok(ProductDeploymentConfig {
-            read: ProductCatalogDeployment::Embedded,
-            command: ProductCatalogDeployment::Embedded,
-            attached_values_read_token: None,
-            attached_values_write_token: None,
-            variant_replay_token: None,
-            locale_replay_token: None,
-        });
-    }
-    let endpoint = endpoint.ok_or_else(|| {
-        format!("{GRPC_ENDPOINT_ENV} is required for a grpc Product catalog provider")
-    })?;
-    if bearer_token.is_some() && bearer_token == command_bearer_token {
-        return Err(format!(
-            "{COMMAND_GRPC_BEARER_TOKEN_ENV} must differ from {GRPC_BEARER_TOKEN_ENV}"
-        ));
-    }
-    let configure = |remote: bool,
-                     token: Option<&str>,
-                     token_env: &str|
-     -> std::result::Result<ProductCatalogDeployment, String> {
-        if !remote {
-            return Ok(ProductCatalogDeployment::Embedded);
+        if let Some(token) = attached_values_write_token {
+            if !command_remote {
+                return Err(format!(
+                    "{ATTACHED_VALUES_WRITE_TOKEN_ENV} requires a grpc command provider"
+                ));
+            }
+            if [
+                bearer_token,
+                command_bearer_token,
+                attached_values_read_token,
+            ]
+            .contains(&Some(token))
+            {
+                return Err(format!(
+                    "{ATTACHED_VALUES_WRITE_TOKEN_ENV} must differ from the other Product credentials"
+                ));
+            }
         }
-        let token = token
-            .ok_or_else(|| format!("{token_env} is required for the selected grpc provider"))?;
-        Ok(ProductCatalogDeployment::Grpc(
-            ProductCatalogGrpcDeployment {
-                endpoint: endpoint.clone(),
-                bearer_token: ProductCatalogBearerSecret::new(token),
-                tls_domain: tls_domain.clone(),
-                connect_timeout_ms: timeout,
-                allow_insecure_loopback,
-            },
-        ))
-    };
-    Ok(ProductDeploymentConfig {
-        read: configure(read_remote, bearer_token, GRPC_BEARER_TOKEN_ENV)?,
-        command: configure(
-            command_remote,
-            command_bearer_token,
-            COMMAND_GRPC_BEARER_TOKEN_ENV,
-        )?,
-        attached_values_read_token: attached_values_read_token.map(ProductCatalogBearerSecret::new),
-        attached_values_write_token: attached_values_write_token
-            .map(ProductCatalogBearerSecret::new),
-        variant_replay_token: variant_replay_token.map(ProductCatalogBearerSecret::new),
-        locale_replay_token: locale_replay_token.map(ProductCatalogBearerSecret::new),
-    })
-}
-
-fn uses_grpc(value: Option<&str>, variable: &str) -> std::result::Result<Option<bool>, String> {
-    match value.map(str::trim).filter(|value| !value.is_empty()) {
-        None => Ok(None),
-        Some(mode) if mode.eq_ignore_ascii_case("embedded") => Ok(Some(false)),
-        Some(mode) if mode.eq_ignore_ascii_case("grpc") => Ok(Some(true)),
-        Some(_) => Err(format!("{variable} must be either embedded or grpc")),
+        if !read_remote && !command_remote {
+            if endpoint.is_some()
+                || bearer_token.is_some()
+                || tls_domain.is_some()
+                || connect_timeout_ms.is_some()
+                || allow_insecure_loopback_is_configured
+            {
+                return Err("remote Product catalog variables require a grpc provider".to_string());
+            }
+            return Ok(ProductDeploymentConfig {
+                read: ProductCatalogDeployment::Embedded,
+                command: ProductCatalogDeployment::Embedded,
+                attached_values_read_token: None,
+                attached_values_write_token: None,
+                variant_replay_token: None,
+                locale_replay_token: None,
+            });
+        }
+        let endpoint = endpoint.ok_or_else(|| {
+            format!("{GRPC_ENDPOINT_ENV} is required for a grpc Product catalog provider")
+        })?;
+        if bearer_token.is_some() && bearer_token == command_bearer_token {
+            return Err(format!(
+                "{COMMAND_GRPC_BEARER_TOKEN_ENV} must differ from {GRPC_BEARER_TOKEN_ENV}"
+            ));
+        }
+        let configure = |remote: bool,
+                         token: Option<&str>,
+                         token_env: &str|
+         -> std::result::Result<ProductCatalogDeployment, String> {
+            if !remote {
+                return Ok(ProductCatalogDeployment::Embedded);
+            }
+            let token = token
+                .ok_or_else(|| format!("{token_env} is required for the selected grpc provider"))?;
+            Ok(ProductCatalogDeployment::Grpc(
+                ProductCatalogGrpcDeployment {
+                    endpoint: endpoint.clone(),
+                    bearer_token: ProductCatalogBearerSecret::new(token),
+                    tls_domain: tls_domain.clone(),
+                    connect_timeout_ms: timeout,
+                    allow_insecure_loopback,
+                },
+            ))
+        };
+        Ok(ProductDeploymentConfig {
+            read: configure(read_remote, bearer_token, GRPC_BEARER_TOKEN_ENV)?,
+            command: configure(
+                command_remote,
+                command_bearer_token,
+                COMMAND_GRPC_BEARER_TOKEN_ENV,
+            )?,
+            attached_values_read_token: attached_values_read_token
+                .map(ProductCatalogBearerSecret::new),
+            attached_values_write_token: attached_values_write_token
+                .map(ProductCatalogBearerSecret::new),
+            variant_replay_token: variant_replay_token.map(ProductCatalogBearerSecret::new),
+            locale_replay_token: locale_replay_token.map(ProductCatalogBearerSecret::new),
+        })
     }
-}
 
-fn parse_timeout(value: Option<&str>) -> std::result::Result<u64, String> {
-    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return Ok(DEFAULT_CONNECT_TIMEOUT_MS);
-    };
-    value
-        .parse::<u64>()
-        .map_err(|_| format!("{CONNECT_TIMEOUT_MS_ENV} must be an integer number of milliseconds"))
-}
-
-fn parse_bool(value: Option<&str>, name: &str, default: bool) -> std::result::Result<bool, String> {
-    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return Ok(default);
-    };
-    match value.to_ascii_lowercase().as_str() {
-        "true" | "1" | "yes" | "on" => Ok(true),
-        "false" | "0" | "no" | "off" => Ok(false),
-        _ => Err(format!("{name} must be a boolean")),
+    fn uses_grpc(value: Option<&str>, variable: &str) -> std::result::Result<Option<bool>, String> {
+        match value.map(str::trim).filter(|value| !value.is_empty()) {
+            None => Ok(None),
+            Some(mode) if mode.eq_ignore_ascii_case("embedded") => Ok(Some(false)),
+            Some(mode) if mode.eq_ignore_ascii_case("grpc") => Ok(Some(true)),
+            Some(_) => Err(format!("{variable} must be either embedded or grpc")),
+        }
     }
-}
 
-fn normalize_optional(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-}
+    fn parse_timeout(value: Option<&str>) -> std::result::Result<u64, String> {
+        let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+            return Ok(DEFAULT_CONNECT_TIMEOUT_MS);
+        };
+        value.parse::<u64>().map_err(|_| {
+            format!("{CONNECT_TIMEOUT_MS_ENV} must be an integer number of milliseconds")
+        })
+    }
 
-fn optional_env(name: &str) -> Option<String> {
-    std::env::var(name)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
+    fn parse_bool(
+        value: Option<&str>,
+        name: &str,
+        default: bool,
+    ) -> std::result::Result<bool, String> {
+        let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+            return Ok(default);
+        };
+        match value.to_ascii_lowercase().as_str() {
+            "true" | "1" | "yes" | "on" => Ok(true),
+            "false" | "0" | "no" | "off" => Ok(false),
+            _ => Err(format!("{name} must be a boolean")),
+        }
+    }
 
-fn optional_secret_env(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|value| !value.is_empty())
-}
+    fn normalize_optional(value: Option<&str>) -> Option<String> {
+        value
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    }
+
+    fn optional_env(name: &str) -> Option<String> {
+        std::env::var(name)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    }
+
+    fn optional_secret_env(name: &str) -> Option<String> {
+        std::env::var(name).ok().filter(|value| !value.is_empty())
+    }
 }
 
 #[cfg(test)]

@@ -33,9 +33,9 @@ pub enum PagesAuditHttpError {
 
 impl PagesArtifactAuditHttpRuntime {
     fn from_host(runtime: &HostRuntimeContext) -> Result<Self, PagesAuditHttpError> {
-        let event_bus = runtime
-            .shared_get::<TransactionalEventBus>()
-            .ok_or(PagesAuditHttpError::MissingHostDependency("TransactionalEventBus"))?;
+        let event_bus = runtime.shared_get::<TransactionalEventBus>().ok_or(
+            PagesAuditHttpError::MissingHostDependency("TransactionalEventBus"),
+        )?;
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,

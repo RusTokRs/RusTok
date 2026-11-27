@@ -99,7 +99,9 @@ fn require_host_authority(_ctx: &Context<'_>, required: HostAuthority) -> Result
         return Ok(());
     }
 
-    Err(<FieldError as GraphQLError>::permission_denied("host-global authority required"))
+    Err(<FieldError as GraphQLError>::permission_denied(
+        "host-global authority required",
+    ))
 }
 
 fn graphql_system_internal_error(message: &'static str, _error: impl Display) -> FieldError {
@@ -149,7 +151,8 @@ impl SystemQuery {
                 Some(storage) => {
                     let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
                     let health = crate::services::storage_health_probe::probe_storage_backend(
-                        runtime_ctx, storage,
+                        runtime_ctx,
+                        storage,
                     )
                     .await;
                     rustok_telemetry::metrics::update_storage_health(

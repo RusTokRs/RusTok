@@ -9,8 +9,7 @@ use rustok_outbox::entity::{self, SysEventStatus};
 use rustok_telemetry::metrics;
 use sea_orm::{
     ColumnTrait, Condition, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
-    sea_query::Expr,
+    QueryOrder, QuerySelect, Set, sea_query::Expr,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
@@ -368,7 +367,11 @@ mod tests {
         for backend in [DbBackend::Postgres, DbBackend::Sqlite] {
             let sql = sys_event_tenant_sql(backend);
             assert!(sql.starts_with('('));
-            assert!(sql.ends_with(if backend == DbBackend::Sqlite { " = ?" } else { " = $1" }));
+            assert!(sql.ends_with(if backend == DbBackend::Sqlite {
+                " = ?"
+            } else {
+                " = $1"
+            }));
             assert!(sql.contains("tenant_id"));
             assert!(sql.contains("event"));
         }
@@ -377,13 +380,18 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires a PostgreSQL connection via RUSTOK_MIGRATION_SMOKE_ADMIN_URL"]
     async fn postgres_dlq_scope_uses_independently_typed_binds_and_atomic_requeue() {
-        use sea_orm::{ColumnTrait, ConnectionTrait, PaginatorTrait, QueryFilter, TransactionTrait};
+        use sea_orm::{
+            ColumnTrait, ConnectionTrait, PaginatorTrait, QueryFilter, TransactionTrait,
+        };
 
         let url = std::env::var("RUSTOK_MIGRATION_SMOKE_ADMIN_URL")
             .expect("isolated PostgreSQL test connection");
         rustok_test_utils::assert_postgres_url(&url);
         let db = Database::connect(&url).await.expect("connect PostgreSQL");
-        let txn = db.begin().await.expect("begin isolated fixture transaction");
+        let txn = db
+            .begin()
+            .await
+            .expect("begin isolated fixture transaction");
         // The temporary table shadows any permanent sys_events table on this
         // connection. All reads and writes below use the same transaction.
         txn.execute_unprepared(
@@ -402,10 +410,19 @@ mod tests {
         let mut ids = Vec::new();
         for (tenant_id, payload) in [
             (Some(owner), serde_json::json!({"tenant_id": foreign})),
-            (None, serde_json::json!({"tenant_id": owner, "event": {"tenant_id": foreign}})),
+            (
+                None,
+                serde_json::json!({"tenant_id": owner, "event": {"tenant_id": foreign}}),
+            ),
             (None, serde_json::json!({"event": {"tenant_id": owner}})),
-            (None, serde_json::json!({"tenant_id": null, "event": {"tenant_id": foreign}})),
-            (None, serde_json::json!({"tenant_id": "invalid", "event": {"tenant_id": foreign}})),
+            (
+                None,
+                serde_json::json!({"tenant_id": null, "event": {"tenant_id": foreign}}),
+            ),
+            (
+                None,
+                serde_json::json!({"tenant_id": "invalid", "event": {"tenant_id": foreign}}),
+            ),
         ] {
             let id = Uuid::new_v4();
             entity::ActiveModel {
@@ -432,7 +449,10 @@ mod tests {
         let scoped = |tenant_id| {
             entity::Entity::find()
                 .filter(entity::Column::Status.eq(SysEventStatus::Failed))
-                .filter(super::sys_event_tenant_condition(DbBackend::Postgres, tenant_id))
+                .filter(super::sys_event_tenant_condition(
+                    DbBackend::Postgres,
+                    tenant_id,
+                ))
         };
         assert_eq!(scoped(owner).count(&txn).await.expect("owner count"), 3);
         assert_eq!(scoped(foreign).count(&txn).await.expect("foreign count"), 0);
@@ -444,7 +464,13 @@ mod tests {
                 .await
                 .expect("owner can requeue event");
         }
-        assert_eq!(scoped(owner).count(&txn).await.expect("remaining DLQ count"), 0);
+        assert_eq!(
+            scoped(owner)
+                .count(&txn)
+                .await
+                .expect("remaining DLQ count"),
+            0
+        );
         assert_eq!(
             entity::Entity::find()
                 .filter(entity::Column::Status.eq(SysEventStatus::Pending))

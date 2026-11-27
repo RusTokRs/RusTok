@@ -490,7 +490,9 @@ impl RevisionState {
     /// Start a uniquely numbered local attempt. A content hash is not a request ID.
     pub fn begin_save_with_id(&mut self) -> FlyResult<u64> {
         if self.save_in_progress {
-            return Err(FlyError::InvalidSaveState("save is already in progress".to_string()));
+            return Err(FlyError::InvalidSaveState(
+                "save is already in progress".to_string(),
+            ));
         }
         if self.save_conflict {
             return Err(FlyError::InvalidSaveState(
@@ -569,8 +571,8 @@ impl RevisionState {
             ));
         }
         self.last_acknowledged_revision = Some(revision);
-        self.dirty = self.command_sequence != saving_sequence
-            || self.project_hash != submitted_hash;
+        self.dirty =
+            self.command_sequence != saving_sequence || self.project_hash != submitted_hash;
         self.saving_snapshot = None;
         self.save_in_progress = false;
         self.save_failed = false;

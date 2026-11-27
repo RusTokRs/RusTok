@@ -497,12 +497,18 @@ impl PricingService {
         }
         let currency_code = normalize_resolution_currency(currency_code)?;
         let scope = if price_list_id.is_none() {
-            let variant = rustok_commerce_foundation::entities::product_variant::Entity::find_by_id(variant_id)
+            let variant =
+                rustok_commerce_foundation::entities::product_variant::Entity::find_by_id(
+                    variant_id,
+                )
                 .one(&self.db)
                 .await?
                 .ok_or(CommerceError::VariantNotFound(variant_id))?;
             let channel = super::scope::resolve_channel_identity(
-                &self.db, variant.tenant_id, channel_id, channel_slug,
+                &self.db,
+                variant.tenant_id,
+                channel_id,
+                channel_slug,
             )
             .await?;
             base_price_channel_filter(channel.as_ref())
@@ -527,17 +533,17 @@ impl PricingService {
             return Err(ResolutionError::Ambiguous.into_commerce());
         }
         prices.pop().ok_or_else(|| {
-                CommerceError::InvalidPrice(format!(
-                    "No canonical price found for currency {}{}{}",
-                    currency_code,
-                    price_list_id
-                        .map(|id| format!(" and price_list_id {id}"))
-                        .unwrap_or_default(),
-                    channel_slug
-                        .map(|slug| format!(" and channel_slug {slug}"))
-                        .unwrap_or_default(),
-                ))
-            })
+            CommerceError::InvalidPrice(format!(
+                "No canonical price found for currency {}{}{}",
+                currency_code,
+                price_list_id
+                    .map(|id| format!(" and price_list_id {id}"))
+                    .unwrap_or_default(),
+                channel_slug
+                    .map(|slug| format!(" and channel_slug {slug}"))
+                    .unwrap_or_default(),
+            ))
+        })
     }
 }
 
@@ -548,18 +554,29 @@ pub(super) fn percentage_discount_preview(
 ) -> CommerceResult<PriceAdjustmentPreview> {
     validate_discount_percent(discount_percent)?;
     if price.amount < Decimal::ZERO
-        || price.compare_at_amount.is_some_and(|reference| reference < price.amount)
+        || price
+            .compare_at_amount
+            .is_some_and(|reference| reference < price.amount)
     {
-        return Err(resolution::invalid_data("Stored discount reference is invalid").into_commerce());
+        return Err(
+            resolution::invalid_data("Stored discount reference is invalid").into_commerce(),
+        );
     }
-    validate_price_precision(price.amount, price.compare_at_amount, currency_code)
-        .map_err(|_| resolution::invalid_data("Stored discount reference is not exactly representable").into_commerce())?;
+    validate_price_precision(price.amount, price.compare_at_amount, currency_code).map_err(
+        |_| {
+            resolution::invalid_data("Stored discount reference is not exactly representable")
+                .into_commerce()
+        },
+    )?;
     let base_amount = price.compare_at_amount.unwrap_or(price.amount);
     let adjusted = base_amount
         .checked_mul((Decimal::from(100) - discount_percent) / Decimal::from(100))
-        .ok_or_else(|| resolution::invalid_data("Discount calculation exceeds the money range").into_commerce())?;
-    let adjusted_amount = money::round_to_currency(adjusted, currency_code)
-        .map_err(|_| resolution::invalid_data("Discount cannot be represented in its currency").into_commerce())?;
+        .ok_or_else(|| {
+            resolution::invalid_data("Discount calculation exceeds the money range").into_commerce()
+        })?;
+    let adjusted_amount = money::round_to_currency(adjusted, currency_code).map_err(|_| {
+        resolution::invalid_data("Discount cannot be represented in its currency").into_commerce()
+    })?;
     validate_price_precision(adjusted_amount, Some(base_amount), currency_code)?;
     Ok(PriceAdjustmentPreview {
         kind: PriceAdjustmentKind::PercentageDiscount,
@@ -625,7 +642,10 @@ pub(super) fn exact_price_channel_filter(
 ) -> Condition {
     Condition::all()
         .add(optional_uuid_filter(price::Column::ChannelId, channel_id))
-        .add(optional_string_filter(price::Column::ChannelSlug, channel_slug))
+        .add(optional_string_filter(
+            price::Column::ChannelSlug,
+            channel_slug,
+        ))
 }
 
 pub(crate) fn optional_int_filter(column: price::Column, value: Option<i32>) -> sea_orm::Condition {

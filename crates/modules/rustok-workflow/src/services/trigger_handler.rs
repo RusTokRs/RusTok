@@ -94,9 +94,11 @@ impl EventHandler for WorkflowTriggerHandler {
                 Ok(steps) => steps,
                 Err(error) => {
                     error!(workflow_id = %workflow_id, %error, "Workflow steps unavailable");
-                    first_error.get_or_insert_with(|| rustok_core::Error::External(format!(
-                        "Workflow steps for {workflow_id} could not be loaded: {error}"
-                    )));
+                    first_error.get_or_insert_with(|| {
+                        rustok_core::Error::External(format!(
+                            "Workflow steps for {workflow_id} could not be loaded: {error}"
+                        ))
+                    });
                     continue;
                 }
             };
@@ -104,14 +106,23 @@ impl EventHandler for WorkflowTriggerHandler {
             // workflow executions reach durable terminal states. Unresolved
             // receipts fail closed, while other independent workflows still
             // make progress in this same delivery attempt.
-            if let Err(error) = self.engine
-                .execute(workflow_id, tenant_id, Some(envelope.id), steps, initial_context.clone())
+            if let Err(error) = self
+                .engine
+                .execute(
+                    workflow_id,
+                    tenant_id,
+                    Some(envelope.id),
+                    steps,
+                    initial_context.clone(),
+                )
                 .await
             {
                 error!(workflow_id = %workflow_id, %error, "Workflow execution not acknowledged");
-                first_error.get_or_insert_with(|| rustok_core::Error::External(format!(
-                    "Workflow execution for {workflow_id} was not durably confirmed: {error}"
-                )));
+                first_error.get_or_insert_with(|| {
+                    rustok_core::Error::External(format!(
+                        "Workflow execution for {workflow_id} was not durably confirmed: {error}"
+                    ))
+                });
             }
         }
 

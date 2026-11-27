@@ -206,13 +206,7 @@ pub async fn create_order_change(
             "Order ID must not be nil",
         ));
     }
-    log_admin_post_order_command_entry(
-        "create_order_change",
-        tenant.id,
-        auth.user_id,
-        "order",
-        id,
-    );
+    log_admin_post_order_command_entry("create_order_change", tenant.id, auth.user_id, "order", id);
 
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_post_order_command_context(
@@ -364,13 +358,7 @@ pub async fn create_order_return(
             "Order ID must not be nil",
         ));
     }
-    log_admin_post_order_command_entry(
-        "create_order_return",
-        tenant.id,
-        auth.user_id,
-        "order",
-        id,
-    );
+    log_admin_post_order_command_entry("create_order_return", tenant.id, auth.user_id, "order", id);
 
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_post_order_command_context(

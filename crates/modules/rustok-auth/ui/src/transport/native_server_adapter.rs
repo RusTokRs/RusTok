@@ -6,7 +6,10 @@ use serde_json::json;
 use super::RESET_REQUEST_MESSAGE;
 use super::{NativeAuthPayload, NativeCurrentUserPayload};
 #[cfg(feature = "ssr")]
-use crate::{core::RefreshCredential, model::{AuthError, AuthUser}};
+use crate::{
+    core::RefreshCredential,
+    model::{AuthError, AuthUser},
+};
 
 #[cfg(feature = "ssr")]
 use super::{
@@ -52,7 +55,10 @@ fn set_response_cookie(cookie: String) -> Result<(), ServerFnError> {
         .map_err(|_| ServerFnError::new("Invalid authentication cookie"))?;
     value.set_sensitive(true);
     options.insert_header(axum::http::header::SET_COOKIE, value);
-    options.insert_header(axum::http::header::CACHE_CONTROL, axum::http::HeaderValue::from_static("no-store"));
+    options.insert_header(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
     Ok(())
 }
 
@@ -111,15 +117,24 @@ async fn exchange_refresh_token_at(
     if expected_tenant_id.is_some_and(|id| !crate::core::canonical_session_id(id)) {
         return Err(AuthError::Http(409));
     }
-    let mut proof = HeaderValue::from_str(&credential.retry_key()?).map_err(|_| AuthError::Network)?;
+    let mut proof =
+        HeaderValue::from_str(&credential.retry_key()?).map_err(|_| AuthError::Network)?;
     proof.set_sensitive(true);
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(std::time::Duration::from_secs(10))
-        .build().map_err(|_| AuthError::Network)?;
+        .build()
+        .map_err(|_| AuthError::Network)?;
     for attempt in 0..2 {
-        let mut request = client.post(format!("{}/api/auth/refresh", api_url.trim_end_matches('/')))
-            .header("X-Tenant-ID", expected_tenant_id.unwrap_or(credential.tenant()))
+        let mut request = client
+            .post(format!(
+                "{}/api/auth/refresh",
+                api_url.trim_end_matches('/')
+            ))
+            .header(
+                "X-Tenant-ID",
+                expected_tenant_id.unwrap_or(credential.tenant()),
+            )
             .header("x-rustok-refresh-retry-key", proof.clone())
             .json(&json!({ "refresh_token": credential.token() }));
         if let Some(expected) = expected_session_id {
@@ -149,7 +164,8 @@ async fn exchange_refresh_token_at(
             _ => return Err(AuthError::Network),
         };
         if expected_session_id.is_some_and(|expected| {
-            crate::core::session_id_from_access_token(&payload.access_token).as_deref() != Some(expected)
+            crate::core::session_id_from_access_token(&payload.access_token).as_deref()
+                != Some(expected)
         }) {
             return Err(AuthError::Http(409));
         }
@@ -173,7 +189,8 @@ pub(super) async fn sign_in_native(
     #[cfg(feature = "ssr")]
     {
         let headers = request_headers().await?;
-        let seed = RefreshCredential::generate_seed().map_err(|error| ServerFnError::new(error.to_string()))?;
+        let seed = RefreshCredential::generate_seed()
+            .map_err(|error| ServerFnError::new(error.to_string()))?;
         let response: RestAuthResponse = auth_rest_post(
             "/api/auth/login",
             &json!({
@@ -209,7 +226,8 @@ pub(super) async fn sign_up_native(
     #[cfg(feature = "ssr")]
     {
         let headers = request_headers().await?;
-        let seed = RefreshCredential::generate_seed().map_err(|error| ServerFnError::new(error.to_string()))?;
+        let seed = RefreshCredential::generate_seed()
+            .map_err(|error| ServerFnError::new(error.to_string()))?;
         let response: RestAuthResponse = auth_rest_post(
             "/api/auth/register",
             &json!({
@@ -237,7 +255,10 @@ pub(super) async fn sign_up_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "auth/sign-out")]
-pub(super) async fn sign_out_native(tenant: String, expected_session_id: Option<String>) -> Result<(), ServerFnError> {
+pub(super) async fn sign_out_native(
+    tenant: String,
+    expected_session_id: Option<String>,
+) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         let headers = request_headers().await?;
@@ -250,7 +271,12 @@ pub(super) async fn sign_out_native(tenant: String, expected_session_id: Option<
             // Use the API's idempotent cookie-session logout contract: an already expired
             // or revoked refresh token is a completed logout, while persistence failures
             // remain errors. This Cookie header is server-to-server only, never rendered.
-            auth_rest_cookie_logout(&tenant, &credential.api_cookie_value(), expected_session_id.as_deref()).await?;
+            auth_rest_cookie_logout(
+                &tenant,
+                &credential.api_cookie_value(),
+                expected_session_id.as_deref(),
+            )
+            .await?;
         } else if expected_session_id.is_some() {
             return Err(ServerFnError::new("HTTP error: 409"));
         }
@@ -279,14 +305,22 @@ pub(super) async fn refresh_token_native(
             // foreign, expired or revoked cookies all follow an error path instead.
             return if expected_session_id.is_some() {
                 Err(ServerFnError::new("HTTP error: 409"))
-            } else { Ok(None) };
+            } else {
+                Ok(None)
+            };
         };
         if credential.tenant() != tenant {
             return Err(ServerFnError::new("Authentication tenant mismatch"));
         }
 
-        let (payload, rotated) = exchange_refresh_token_at(&get_api_url(), credential, expected_session_id.as_deref(), None)
-            .await.map_err(|error| ServerFnError::new(error.to_string()))?;
+        let (payload, rotated) = exchange_refresh_token_at(
+            &get_api_url(),
+            credential,
+            expected_session_id.as_deref(),
+            None,
+        )
+        .await
+        .map_err(|error| ServerFnError::new(error.to_string()))?;
         persist_refresh_cookie(&headers, &rotated)?;
         Ok(Some(payload))
     }
@@ -402,9 +436,8 @@ fn api_session_cookie(envelope: &str) -> Result<reqwest::header::HeaderValue, Se
     // Reuse the strict envelope parser before formatting the API cookie.
     RefreshCredential::parse(&format!("logout.{envelope}"))
         .map_err(|_| ServerFnError::new("Invalid authentication cookie"))?;
-    let mut cookie =
-        reqwest::header::HeaderValue::from_str(&format!("rustok-session={envelope}"))
-            .map_err(|_| ServerFnError::new("Invalid authentication cookie"))?;
+    let mut cookie = reqwest::header::HeaderValue::from_str(&format!("rustok-session={envelope}"))
+        .map_err(|_| ServerFnError::new("Invalid authentication cookie"))?;
     cookie.set_sensitive(true);
     Ok(cookie)
 }
@@ -419,7 +452,11 @@ fn confirm_cookie_logout(response: RestStatusResponse) -> Result<(), ServerFnErr
 }
 
 #[cfg(feature = "ssr")]
-async fn auth_rest_cookie_logout(tenant: &str, refresh_token: &str, expected_session_id: Option<&str>) -> Result<(), ServerFnError> {
+async fn auth_rest_cookie_logout(
+    tenant: &str,
+    refresh_token: &str,
+    expected_session_id: Option<&str>,
+) -> Result<(), ServerFnError> {
     auth_rest_cookie_logout_at(&get_api_url(), tenant, refresh_token, expected_session_id).await
 }
 
@@ -448,7 +485,8 @@ async fn auth_rest_cookie_logout_at(
     if let Some(expected) = expected_session_id {
         request = request.header(crate::core::EXPECTED_SESSION_ID_HEADER, expected);
     }
-    let response = request.send()
+    let response = request
+        .send()
         .await
         .map_err(|_| ServerFnError::new("Logout request failed"))?;
     if !response.status().is_success() {
@@ -467,14 +505,18 @@ async fn auth_rest_cookie_logout_at(
 
 #[cfg(feature = "ssr")]
 static HTTP_CLIENT: std::sync::LazyLock<Result<reqwest::Client, reqwest::Error>> =
-    std::sync::LazyLock::new(|| reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(std::time::Duration::from_secs(10))
-        .build());
+    std::sync::LazyLock::new(|| {
+        reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+    });
 
 #[cfg(feature = "ssr")]
 fn http_client() -> Result<&'static reqwest::Client, ServerFnError> {
-    HTTP_CLIENT.as_ref().map_err(|_| ServerFnError::new("Network error"))
+    HTTP_CLIENT
+        .as_ref()
+        .map_err(|_| ServerFnError::new("Network error"))
 }
 
 #[cfg(feature = "ssr")]
@@ -564,8 +606,9 @@ async fn rest_error_message(response: reqwest::Response) -> String {
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
     use super::{
-        RestStatusResponse, api_session_cookie, auth_rest_cookie_logout_at, confirm_cookie_logout,
-        refresh_cookie_from, exchange_refresh_token_at, RefreshCredential, AuthError,
+        AuthError, RefreshCredential, RestStatusResponse, api_session_cookie,
+        auth_rest_cookie_logout_at, confirm_cookie_logout, exchange_refresh_token_at,
+        refresh_cookie_from,
     };
     use axum::http::{HeaderMap, HeaderValue, header::COOKIE};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -597,7 +640,9 @@ mod tests {
 
     // Read the full request, including JSON, before responding; retry must send
     // exactly the original bearer and proof even when the response is lost.
-    async fn mock_refresh_api(replies: Vec<String>) -> (String, tokio::task::JoinHandle<Vec<String>>) {
+    async fn mock_refresh_api(
+        replies: Vec<String>,
+    ) -> (String, tokio::task::JoinHandle<Vec<String>>) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let received = tokio::spawn(async move {
@@ -612,11 +657,14 @@ mod tests {
                     request.extend_from_slice(&buffer[..read]);
                     if let Some(index) = request.windows(4).position(|w| w == b"\r\n\r\n") {
                         let headers = std::str::from_utf8(&request[..index]).unwrap();
-                        let len = headers.lines().find_map(|line| {
-                            let (name, value) = line.split_once(':')?;
-                            name.eq_ignore_ascii_case("content-length")
-                                .then(|| value.trim().parse::<usize>().unwrap())
-                        }).unwrap();
+                        let len = headers
+                            .lines()
+                            .find_map(|line| {
+                                let (name, value) = line.split_once(':')?;
+                                name.eq_ignore_ascii_case("content-length")
+                                    .then(|| value.trim().parse::<usize>().unwrap())
+                            })
+                            .unwrap();
                         break (index + 4, len);
                     }
                 };
@@ -648,15 +696,22 @@ mod tests {
         let (url, requests) = mock_refresh_api(vec![
             http_reply("503 Service Unavailable", "unknown", ""),
             http_reply("200 OK", &body, "content-type: application/json\r\n"),
-        ]).await;
-        let (payload, rotated) = exchange_refresh_token_at(&url, credential, None, None).await.unwrap();
+        ])
+        .await;
+        let (payload, rotated) = exchange_refresh_token_at(&url, credential, None, None)
+            .await
+            .unwrap();
         assert_eq!(payload.session.token, "access");
         assert_eq!(rotated.token(), successor);
         assert_ne!(rotated.retry_key().unwrap(), proof);
         let requests = requests.await.unwrap();
         assert_eq!(requests.len(), 2);
         for request in requests {
-            assert!(request.to_ascii_lowercase().contains(&format!("\r\nx-rustok-refresh-retry-key: {proof}\r\n")));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains(&format!("\r\nx-rustok-refresh-retry-key: {proof}\r\n"))
+            );
             assert!(request.contains(&bearer));
             assert!(!request.contains(&seed));
         }
@@ -664,9 +719,17 @@ mod tests {
 
     #[tokio::test]
     async fn native_refresh_preserves_conflict_without_retry() {
-        let credential = RefreshCredential::parse(&format!("shop.{}.{}", "a1".repeat(32), "b2".repeat(32))).unwrap();
-        let (url, requests) = mock_refresh_api(vec![http_reply("409 Conflict", "conflict", "")]).await;
-        assert_eq!(exchange_refresh_token_at(&url, credential, None, None).await.unwrap_err(), AuthError::Http(409));
+        let credential =
+            RefreshCredential::parse(&format!("shop.{}.{}", "a1".repeat(32), "b2".repeat(32)))
+                .unwrap();
+        let (url, requests) =
+            mock_refresh_api(vec![http_reply("409 Conflict", "conflict", "")]).await;
+        assert_eq!(
+            exchange_refresh_token_at(&url, credential, None, None)
+                .await
+                .unwrap_err(),
+            AuthError::Http(409)
+        );
         assert_eq!(requests.await.unwrap().len(), 1);
     }
 
@@ -678,7 +741,9 @@ mod tests {
     async fn native_logout_preserves_expected_lineage_conflict() {
         let expected = "a1111111-1111-4111-8111-111111111111";
         let (url, received) = mock_logout_api(http_reply("409 Conflict", "", "")).await;
-        let error = auth_rest_cookie_logout_at(&url, "shop", &logout_envelope(), Some(expected)).await.unwrap_err();
+        let error = auth_rest_cookie_logout_at(&url, "shop", &logout_envelope(), Some(expected))
+            .await
+            .unwrap_err();
         assert!(error.to_string().contains("409"));
         let request = received.await.unwrap().to_ascii_lowercase();
         assert!(request.contains(&format!("\r\nx-rustok-expected-session-id: {expected}\r\n")));
@@ -694,7 +759,10 @@ mod tests {
         );
         let request = received.await.unwrap().to_ascii_lowercase();
         assert!(request.starts_with("post /api/auth/session/logout http/1.1\r\n"));
-        assert!(request.contains(&format!("\r\ncookie: rustok-session={}\r\n", logout_envelope())));
+        assert!(request.contains(&format!(
+            "\r\ncookie: rustok-session={}\r\n",
+            logout_envelope()
+        )));
         assert!(request.contains("\r\nx-tenant-id: shop\r\n"));
         assert!(request.contains("\r\nx-rustok-session-request: 1\r\n"));
 
@@ -735,7 +803,10 @@ mod tests {
     fn logout_forwarding_is_sensitive_and_never_accepts_cookie_injection() {
         let cookie = api_session_cookie(&logout_envelope()).unwrap();
         assert!(cookie.is_sensitive());
-        assert_eq!(cookie.to_str().unwrap(), format!("rustok-session={}", logout_envelope()));
+        assert_eq!(
+            cookie.to_str().unwrap(),
+            format!("rustok-session={}", logout_envelope())
+        );
         for invalid in ["", "has space", "x;other=y", "x,y", "x\"y", "x\\y", "x\ny"] {
             assert!(api_session_cookie(invalid).is_err());
         }
@@ -764,9 +835,16 @@ mod tests {
         assert_eq!(refresh_cookie_from(&headers).unwrap(), None);
         headers.append(COOKIE, HeaderValue::from_static("other=value"));
         assert_eq!(refresh_cookie_from(&headers).unwrap(), None);
-        let wire = format!("rustok-admin-refresh-v1=shop.{}.{}", "a1".repeat(32), "b2".repeat(32));
+        let wire = format!(
+            "rustok-admin-refresh-v1=shop.{}.{}",
+            "a1".repeat(32),
+            "b2".repeat(32)
+        );
         headers.append(COOKIE, HeaderValue::from_str(&wire).unwrap());
-        assert_eq!(refresh_cookie_from(&headers).unwrap().unwrap().tenant(), "shop");
+        assert_eq!(
+            refresh_cookie_from(&headers).unwrap().unwrap().tenant(),
+            "shop"
+        );
         headers.append(COOKIE, HeaderValue::from_str(&wire).unwrap());
         assert!(refresh_cookie_from(&headers).is_err());
 

@@ -556,8 +556,7 @@ pub async fn start_channel_cache_invalidation_listener(
             Error::Cache("channel invalidation start lock is unavailable".to_string())
         })?;
     let stop = StopHandle::ensure(ctx);
-    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await
-    else {
+    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await else {
         return Ok(());
     };
 
@@ -582,7 +581,9 @@ pub async fn start_channel_cache_invalidation_listener(
                     }
                 }
             }
-        }).await else {
+        })
+        .await
+        else {
             return Ok(());
         };
     }
@@ -592,8 +593,7 @@ pub async fn start_channel_cache_invalidation_listener(
     let initial_local = cache
         .invalidations()
         .subscribe_local_channel(CHANNEL_RESOLUTION_INVALIDATION_CHANNEL);
-    let Some(recovery) =
-        await_worker_startup_or_stop(&stop, listener.reconcile_generation()).await
+    let Some(recovery) = await_worker_startup_or_stop(&stop, listener.reconcile_generation()).await
     else {
         return Ok(());
     };

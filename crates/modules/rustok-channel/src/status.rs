@@ -89,6 +89,9 @@ mod tests {
     fn status_rejects_the_retired_free_form_values() {
         assert_eq!(ChannelStatus::parse("experimental"), None);
         assert_eq!(ChannelStatus::parse(""), None);
-        assert_eq!(ChannelStatus::parse(" ACTIVE "), Some(ChannelStatus::Active));
+        assert_eq!(
+            ChannelStatus::parse(" ACTIVE "),
+            Some(ChannelStatus::Active)
+        );
     }
 }

@@ -1,9 +1,9 @@
 use chrono::Utc;
-use sha2::{Digest, Sha256};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect,
 };
+use sha2::{Digest, Sha256};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -47,7 +47,8 @@ impl PageService {
         page_id: Uuid,
         input: SavePageDocumentInput,
     ) -> PagesResult<PageResponse> {
-        self.save_document_with_receipt(tenant_id, security, page_id, input, None).await
+        self.save_document_with_receipt(tenant_id, security, page_id, input, None)
+            .await
     }
 
     /// A durable save. Repeating the same explicit key and normalized payload returns the
@@ -78,12 +79,8 @@ impl PageService {
             ));
         }
         body.content = super::layout::strip_layout_nodes(&body.content)?;
-        let request_hash = document_save_request_hash(
-            tenant_id,
-            page_id,
-            &input.expected_revision,
-            &body,
-        )?;
+        let request_hash =
+            document_save_request_hash(tenant_id, page_id, &input.expected_revision, &body)?;
         // Even callers that do not supply an explicit key get retry-safe semantics.
         // The key is deterministic for this actor/page/locale/revision/payload attempt.
         let idempotency_key = match explicit_idempotency_key {
@@ -115,13 +112,8 @@ impl PageService {
 
         // Replays are resolved *before* the current revision check, otherwise a
         // write that committed but lost its HTTP reply would always conflict.
-        if let Some(receipt) = find_document_save_receipt_in_tx(
-            &txn,
-            tenant_id,
-            page_id,
-            &idempotency_key,
-        )
-        .await?
+        if let Some(receipt) =
+            find_document_save_receipt_in_tx(&txn, tenant_id, page_id, &idempotency_key).await?
         {
             verify_document_save_receipt(&receipt, security.user_id, &request_hash)?;
             let result = page_response_from_receipt(&receipt)?;
@@ -261,11 +253,16 @@ impl PageService {
                 Some(PLATFORM_FALLBACK_LOCALE),
             )
             .await?;
-        let result_revision = response.body.as_ref().ok_or_else(|| {
-            PagesError::validation("Accepted document save has no authoring body")
-        })?.updated_at.clone();
+        let result_revision = response
+            .body
+            .as_ref()
+            .ok_or_else(|| PagesError::validation("Accepted document save has no authoring body"))?
+            .updated_at
+            .clone();
         let response_json = serde_json::to_string(&response).map_err(|error| {
-            PagesError::validation(format!("Cannot serialize page document save receipt: {error}"))
+            PagesError::validation(format!(
+                "Cannot serialize page document save receipt: {error}"
+            ))
         })?;
         page_document_save_receipt::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -287,7 +284,6 @@ impl PageService {
         Ok(response)
     }
 
-
     /// Lookup an already committed save by its stable ID without replaying the mutation.
     /// A missing receipt is not proof that an in-flight request failed.
     #[instrument(skip(self, security))]
@@ -300,12 +296,7 @@ impl PageService {
     ) -> PagesResult<Option<PageResponse>> {
         let key = normalize_document_save_key(idempotency_key)?;
         let page = self.find_page(tenant_id, page_id).await?;
-        enforce_owned_scope(
-            &security,
-            Resource::Pages,
-            Action::Update,
-            page.author_id,
-        )?;
+        enforce_owned_scope(&security, Resource::Pages, Action::Update, page.author_id)?;
         let receipt = page_document_save_receipt::Entity::find()
             .filter(page_document_save_receipt::Column::TenantId.eq(tenant_id))
             .filter(page_document_save_receipt::Column::PageId.eq(page_id))
@@ -369,13 +360,8 @@ impl PageService {
         // A restore is a document save. Replay its durable acknowledgement before
         // checking the current revision or requiring new-write policy, so a lost
         // response cannot turn a committed restore into a false CAS conflict.
-        if let Some(receipt) = find_document_save_receipt_in_tx(
-            &txn,
-            tenant_id,
-            page_id,
-            &idempotency_key,
-        )
-        .await?
+        if let Some(receipt) =
+            find_document_save_receipt_in_tx(&txn, tenant_id, page_id, &idempotency_key).await?
         {
             verify_document_save_receipt(&receipt, security.user_id, &request_hash)?;
             let result = page_response_from_receipt(&receipt)?;
@@ -589,12 +575,12 @@ impl PageService {
     }
 }
 
-
 fn normalize_document_save_key(raw: &str) -> PagesResult<String> {
     if raw.is_empty()
         || raw.len() > MAX_SAVE_RECEIPT_KEY_BYTES
-        || !raw.bytes().all(|byte| byte.is_ascii_alphanumeric() ||
-            matches!(byte, b'-' | b'_' | b'.' | b':'))
+        || !raw
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
     {
         return Err(PagesError::validation(
             "Document save idempotency key must be 1..128 ASCII letters, digits, '-' '_' '.' or ':'",
@@ -722,11 +708,10 @@ fn page_response_from_receipt(
             "The document operation is known but its full response has expired; reload the current document",
         )
     })?;
-    let response: PageResponse = serde_json::from_str(encoded).map_err(|_| {
-        PagesError::validation("Persisted page document save receipt is invalid")
-    })?;
-    if response.id != receipt.page_id ||
-        response.body.as_ref().map(|body| body.updated_at.as_str())
+    let response: PageResponse = serde_json::from_str(encoded)
+        .map_err(|_| PagesError::validation("Persisted page document save receipt is invalid"))?;
+    if response.id != receipt.page_id
+        || response.body.as_ref().map(|body| body.updated_at.as_str())
             != Some(receipt.result_revision.as_str())
     {
         return Err(PagesError::validation(
@@ -862,13 +847,8 @@ mod idempotency_key_tests {
         let page_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
         let revision_id = Uuid::new_v4();
-        let request_hash = document_restore_request_hash(
-            tenant_id,
-            page_id,
-            "rev-1",
-            revision_id,
-        )
-        .expect("restore request hash");
+        let request_hash = document_restore_request_hash(tenant_id, page_id, "rev-1", revision_id)
+            .expect("restore request hash");
 
         let first = default_document_restore_idempotency_key(
             tenant_id,
@@ -891,13 +871,9 @@ mod idempotency_key_tests {
             &request_hash,
         )
         .expect("other actor key");
-        let other_revision = document_restore_request_hash(
-            tenant_id,
-            page_id,
-            "rev-1",
-            Uuid::new_v4(),
-        )
-        .expect("other restore request hash");
+        let other_revision =
+            document_restore_request_hash(tenant_id, page_id, "rev-1", Uuid::new_v4())
+                .expect("other restore request hash");
         let other_request = default_document_restore_idempotency_key(
             tenant_id,
             page_id,
@@ -905,13 +881,9 @@ mod idempotency_key_tests {
             &other_revision,
         )
         .expect("other request key");
-        let other_expected_revision = document_restore_request_hash(
-            tenant_id,
-            page_id,
-            "rev-2",
-            revision_id,
-        )
-        .expect("other expected revision hash");
+        let other_expected_revision =
+            document_restore_request_hash(tenant_id, page_id, "rev-2", revision_id)
+                .expect("other expected revision hash");
         let other_expected_request = default_document_restore_idempotency_key(
             tenant_id,
             page_id,
@@ -933,20 +905,12 @@ mod idempotency_key_tests {
         let tenant_id = Uuid::new_v4();
         let page_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
-        let first = default_document_save_idempotency_key(
-            tenant_id,
-            page_id,
-            Some(actor_id),
-            "hash-a",
-        )
-        .expect("first key");
-        let second = default_document_save_idempotency_key(
-            tenant_id,
-            page_id,
-            Some(actor_id),
-            "hash-b",
-        )
-        .expect("second key");
+        let first =
+            default_document_save_idempotency_key(tenant_id, page_id, Some(actor_id), "hash-a")
+                .expect("first key");
+        let second =
+            default_document_save_idempotency_key(tenant_id, page_id, Some(actor_id), "hash-b")
+                .expect("second key");
 
         assert_ne!(first, second);
     }

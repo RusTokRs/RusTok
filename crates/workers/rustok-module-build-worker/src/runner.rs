@@ -1052,10 +1052,7 @@ fn failed_result(
     ModuleBuildResult {
         protocol_version: request.protocol_version,
         request_id: request.request_id,
-        tenant_id: request
-            .context
-            .tenant_id
-            .unwrap_or(uuid::Uuid::nil()),
+        tenant_id: request.context.tenant_id.unwrap_or(uuid::Uuid::nil()),
         attempt: request.attempt,
         outcome: ModuleBuildOutcome::Failed(failure),
         source_digest: request.source.digest.clone(),

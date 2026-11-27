@@ -48,9 +48,14 @@ fn snapshot_capture_fingerprints_the_actual_payload_after_project_mutation() {
     let mut source = document("Before");
     let old_hash = source.hash();
     // The supported mutable accessor invalidates the document hash before the write.
-    source.project_mut().extensions.insert("custom".to_string(), json!("changed"));
+    source
+        .project_mut()
+        .extensions
+        .insert("custom".to_string(), json!("changed"));
     let mut catalog = SnapshotCatalog::default();
-    let snapshot = catalog.capture("Current", &source, Map::new()).expect("capture");
+    let snapshot = catalog
+        .capture("Current", &source, Map::new())
+        .expect("capture");
     assert_ne!(snapshot.project_hash, old_hash.hex());
     assert_eq!(snapshot.restore_verified().expect("restore"), source);
 }
@@ -58,14 +63,20 @@ fn snapshot_capture_fingerprints_the_actual_payload_after_project_mutation() {
 #[test]
 fn snapshot_capture_rejects_exhausted_or_reused_sequence_without_mutation() {
     let mut catalog = SnapshotCatalog::default();
-    catalog.capture("First", &document("Original"), Map::new()).expect("first");
+    catalog
+        .capture("First", &document("Original"), Map::new())
+        .expect("first");
     let serialized = serde_json::to_value(&catalog).expect("serialize");
     for sequence in [1_u64, u64::MAX] {
         let mut invalid = serialized.clone();
         invalid["next_sequence"] = json!(sequence);
         let mut restored: SnapshotCatalog = serde_json::from_value(invalid).expect("catalog");
         let before = restored.clone();
-        assert!(restored.capture("Duplicate", &document("Original"), Map::new()).is_err());
+        assert!(
+            restored
+                .capture("Duplicate", &document("Original"), Map::new())
+                .is_err()
+        );
         assert_eq!(restored, before);
     }
 }
@@ -76,7 +87,11 @@ fn zero_capacity_restored_catalog_cannot_consume_a_sequence() {
     value["maximum_snapshots"] = json!(0);
     let mut catalog: SnapshotCatalog = serde_json::from_value(value).expect("catalog");
     let before = catalog.clone();
-    assert!(catalog.capture("Invalid", &document("Original"), Map::new()).is_err());
+    assert!(
+        catalog
+            .capture("Invalid", &document("Original"), Map::new())
+            .is_err()
+    );
     assert_eq!(catalog, before);
 }
 
@@ -219,11 +234,15 @@ fn snapshot_restore_and_digest_reject_pathological_value_depth() {
         drop_value_iteratively(std::mem::take(&mut snapshot.project_data));
         assert!(matches!(
             digest,
-            Err(FlyError::MaximumDepthExceeded { maximum: MAXIMUM_DECODE_DEPTH })
+            Err(FlyError::MaximumDepthExceeded {
+                maximum: MAXIMUM_DECODE_DEPTH
+            })
         ));
         assert!(matches!(
             restored,
-            Err(FlyError::MaximumDepthExceeded { maximum: MAXIMUM_DECODE_DEPTH })
+            Err(FlyError::MaximumDepthExceeded {
+                maximum: MAXIMUM_DECODE_DEPTH
+            })
         ));
     }
 }
@@ -256,7 +275,8 @@ fn diff_counts_page_and_style_order_changes_after_cached_hash() {
             { "selectors": ["one"], "style": { "color": "red" } },
             { "selectors": ["two"], "style": { "color": "blue" } }
         ]
-    })).expect("document");
+    }))
+    .expect("document");
     let original_hash = before.hash();
     let original = before.clone();
     before.project_mut().pages.swap(0, 1);
@@ -265,7 +285,10 @@ fn diff_counts_page_and_style_order_changes_after_cached_hash() {
     assert_eq!(diff.before_hash, original_hash.hex());
     assert_ne!(diff.after_hash, original_hash.hex());
     assert_eq!(diff.after_hash, before.clone().hash().hex());
-    assert_eq!(diff.changed_pages, vec!["one".to_string(), "two".to_string()]);
+    assert_eq!(
+        diff.changed_pages,
+        vec!["one".to_string(), "two".to_string()]
+    );
     assert_eq!(diff.changed_style_rules.len(), 2);
     assert!(diff.added_pages.is_empty());
     assert!(diff.removed_pages.is_empty());

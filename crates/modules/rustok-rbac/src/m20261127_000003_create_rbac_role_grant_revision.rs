@@ -100,9 +100,15 @@ FOR EACH STATEMENT EXECUTE FUNCTION rbac_reject_grant_truncate();
             }
             DatabaseBackend::Sqlite => {
                 db.execute_unprepared("ALTER TABLE roles ADD COLUMN grant_revision BIGINT NOT NULL DEFAULT 0 CHECK (typeof(grant_revision) = 'integer' AND grant_revision >= 0)").await?;
-                for sql in SQLITE_TRIGGERS { db.execute_unprepared(sql).await?; }
+                for sql in SQLITE_TRIGGERS {
+                    db.execute_unprepared(sql).await?;
+                }
             }
-            _ => return Err(DbErr::Custom("unsupported RBAC grant revision backend".into())),
+            _ => {
+                return Err(DbErr::Custom(
+                    "unsupported RBAC grant revision backend".into(),
+                ));
+            }
         }
         Ok(())
     }
@@ -111,7 +117,8 @@ FOR EACH STATEMENT EXECUTE FUNCTION rbac_reject_grant_truncate();
         let db = manager.get_connection();
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => {
-                db.execute_unprepared(r#"
+                db.execute_unprepared(
+                    r#"
 DROP TRIGGER rbac_grant_no_truncate ON role_permissions;
 DROP TRIGGER rbac_grant_revision_change ON role_permissions;
 DROP TRIGGER rbac_role_revision_guard ON roles;
@@ -120,19 +127,35 @@ DROP FUNCTION rbac_reject_grant_truncate();
 DROP FUNCTION rbac_advance_grant_revision();
 DROP FUNCTION rbac_guard_role_revision();
 DROP FUNCTION rbac_guard_permission_identity();
-"#).await?;
+"#,
+                )
+                .await?;
             }
             DatabaseBackend::Sqlite => {
-                for name in ["rbac_grant_revision_insert", "rbac_grant_revision_delete",
-                    "rbac_grant_revision_update", "rbac_grant_revision_monotonic", "rbac_role_identity_change",
-                    "rbac_role_id_immutable", "rbac_permission_identity_immutable", "rbac_permission_replace_guard",
-                    "rbac_grant_identity_insert", "rbac_grant_identity_update"] {
-                    db.execute_unprepared(&format!("DROP TRIGGER {name}")).await?;
+                for name in [
+                    "rbac_grant_revision_insert",
+                    "rbac_grant_revision_delete",
+                    "rbac_grant_revision_update",
+                    "rbac_grant_revision_monotonic",
+                    "rbac_role_identity_change",
+                    "rbac_role_id_immutable",
+                    "rbac_permission_identity_immutable",
+                    "rbac_permission_replace_guard",
+                    "rbac_grant_identity_insert",
+                    "rbac_grant_identity_update",
+                ] {
+                    db.execute_unprepared(&format!("DROP TRIGGER {name}"))
+                        .await?;
                 }
             }
-            _ => return Err(DbErr::Custom("unsupported RBAC grant revision backend".into())),
+            _ => {
+                return Err(DbErr::Custom(
+                    "unsupported RBAC grant revision backend".into(),
+                ));
+            }
         }
-        db.execute_unprepared("ALTER TABLE roles DROP COLUMN grant_revision").await?;
+        db.execute_unprepared("ALTER TABLE roles DROP COLUMN grant_revision")
+            .await?;
         Ok(())
     }
 }
@@ -144,8 +167,15 @@ mod tests {
 
     async fn revision(db: &impl ConnectionTrait, id: &str) -> i64 {
         db.query_one_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Sqlite, "SELECT grant_revision FROM roles WHERE id = ?", [id.into()],
-        )).await.unwrap().unwrap().try_get("", "grant_revision").unwrap()
+            DatabaseBackend::Sqlite,
+            "SELECT grant_revision FROM roles WHERE id = ?",
+            [id.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "grant_revision")
+        .unwrap()
     }
 
     #[tokio::test]
@@ -158,31 +188,59 @@ mod tests {
             "CREATE TABLE role_permissions (id TEXT PRIMARY KEY, role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE, permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE, UNIQUE(role_id, permission_id))",
             "INSERT INTO roles VALUES ('r','t','admin',TRUE,'Admin'), ('s','t','customer',TRUE,'Customer')",
             "INSERT INTO permissions VALUES ('p','t','users','manage')",
-        ] { db.execute_unprepared(sql).await.unwrap(); }
+        ] {
+            db.execute_unprepared(sql).await.unwrap();
+        }
         let manager = SchemaManager::new(&db);
         Migration.up(&manager).await.unwrap();
-        db.execute_unprepared("INSERT INTO role_permissions VALUES ('a','r','p')").await.unwrap();
+        db.execute_unprepared("INSERT INTO role_permissions VALUES ('a','r','p')")
+            .await
+            .unwrap();
         db.execute_unprepared("INSERT INTO role_permissions VALUES ('b','r','p') ON CONFLICT(role_id,permission_id) DO NOTHING").await.unwrap();
-        db.execute_unprepared("UPDATE role_permissions SET permission_id = permission_id WHERE id = 'a'").await.unwrap();
-        db.execute_unprepared("UPDATE roles SET name = 'New name' WHERE id = 'r'").await.unwrap();
+        db.execute_unprepared(
+            "UPDATE role_permissions SET permission_id = permission_id WHERE id = 'a'",
+        )
+        .await
+        .unwrap();
+        db.execute_unprepared("UPDATE roles SET name = 'New name' WHERE id = 'r'")
+            .await
+            .unwrap();
         assert_eq!(revision(&db, "r").await, 1);
         let tx = db.begin().await.unwrap();
-        tx.execute_unprepared("DELETE FROM role_permissions WHERE id = 'a'").await.unwrap();
+        tx.execute_unprepared("DELETE FROM role_permissions WHERE id = 'a'")
+            .await
+            .unwrap();
         assert_eq!(revision(&tx, "r").await, 2);
         tx.rollback().await.unwrap();
         assert_eq!(revision(&db, "r").await, 1);
-        db.execute_unprepared("DELETE FROM role_permissions WHERE id = 'a'").await.unwrap();
-        db.execute_unprepared("INSERT INTO role_permissions VALUES ('a','r','p')").await.unwrap();
+        db.execute_unprepared("DELETE FROM role_permissions WHERE id = 'a'")
+            .await
+            .unwrap();
+        db.execute_unprepared("INSERT INTO role_permissions VALUES ('a','r','p')")
+            .await
+            .unwrap();
         assert_eq!(revision(&db, "r").await, 3);
         assert_eq!(revision(&db, "s").await, 0);
-        db.execute_unprepared("UPDATE role_permissions SET role_id = 's' WHERE id = 'a'").await.unwrap();
+        db.execute_unprepared("UPDATE role_permissions SET role_id = 's' WHERE id = 'a'")
+            .await
+            .unwrap();
         assert_eq!(revision(&db, "r").await, 4);
         assert_eq!(revision(&db, "s").await, 1);
-        assert!(db.execute_unprepared("UPDATE permissions SET action = 'create' WHERE id = 'p'").await.is_err());
-        db.execute_unprepared("DELETE FROM permissions WHERE id = 'p'").await.unwrap();
+        assert!(
+            db.execute_unprepared("UPDATE permissions SET action = 'create' WHERE id = 'p'")
+                .await
+                .is_err()
+        );
+        db.execute_unprepared("DELETE FROM permissions WHERE id = 'p'")
+            .await
+            .unwrap();
         assert_eq!(revision(&db, "s").await, 2);
-        db.execute_unprepared("UPDATE roles SET slug = 'other' WHERE id = 's'").await.unwrap();
-        db.execute_unprepared("UPDATE roles SET slug = 'customer' WHERE id = 's'").await.unwrap();
+        db.execute_unprepared("UPDATE roles SET slug = 'other' WHERE id = 's'")
+            .await
+            .unwrap();
+        db.execute_unprepared("UPDATE roles SET slug = 'customer' WHERE id = 's'")
+            .await
+            .unwrap();
         assert_eq!(revision(&db, "s").await, 4);
         Migration.down(&manager).await.unwrap();
     }

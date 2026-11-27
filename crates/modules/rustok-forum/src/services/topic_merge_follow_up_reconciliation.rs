@@ -8,9 +8,9 @@
 //! transaction — guarantees those relations follow the replies atomically
 //! instead of depending on a later manual recovery write.
 
-use tracing::instrument;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::error::ForumResult;

@@ -54,10 +54,15 @@ impl ProductCatalogSchemaService {
             None => None,
         };
         let level = match parent.as_ref() {
-            Some(parent) => parent.level.checked_add(1).filter(|level| *level > 0)
-                .ok_or_else(|| CommerceError::Validation(
-                    "parent category level must be nonnegative and representable".into(),
-                ))?,
+            Some(parent) => parent
+                .level
+                .checked_add(1)
+                .filter(|level| *level > 0)
+                .ok_or_else(|| {
+                    CommerceError::Validation(
+                        "parent category level must be nonnegative and representable".into(),
+                    )
+                })?,
             None => 0,
         };
         let path = parent
@@ -511,7 +516,8 @@ fn taxonomy_category_hierarchy_order(
     let sort_siblings = |category_ids: &mut Vec<Uuid>| {
         category_ids.sort_by(|left_id, right_id| {
             match (owners.get(left_id), owners.get(right_id)) {
-                (Some(left), Some(right)) => left.position
+                (Some(left), Some(right)) => left
+                    .position
                     .cmp(&right.position)
                     .then_with(|| left.canonical_key.cmp(&right.canonical_key))
                     .then_with(|| left.id.cmp(&right.id)),

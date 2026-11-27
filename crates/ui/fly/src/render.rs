@@ -470,24 +470,14 @@ pub(crate) fn ensure_render_component_limits(document: &ProjectDocument) -> FlyR
                         pending.extend(children.iter().map(|child| (child, depth + 1)));
                     }
                     crate::ComponentChildren::Opaque(value) => {
-                        count_opaque_component_children(
-                            value,
-                            depth + 1,
-                            limits,
-                            &mut node_count,
-                        )?;
+                        count_opaque_component_children(value, depth + 1, limits, &mut node_count)?;
                     }
                 }
             }
             ComponentNode::Opaque(value) => {
                 crate::codec::ensure_depth_within_limit(value, crate::MAXIMUM_DECODE_DEPTH)?;
                 if let Some(children) = value.get("components") {
-                    count_opaque_component_children(
-                        children,
-                        depth + 1,
-                        limits,
-                        &mut node_count,
-                    )?;
+                    count_opaque_component_children(children, depth + 1, limits, &mut node_count)?;
                 }
             }
         }
@@ -836,7 +826,10 @@ fn render_component(
             continue;
         }
         if let Some(kind) = UrlAttributeKind::for_attribute(&name) {
-            if let Some(value) = value.as_str().filter(|value| url_allowed(value, kind, policy)) {
+            if let Some(value) = value
+                .as_str()
+                .filter(|value| url_allowed(value, kind, policy))
+            {
                 write_attribute(output, &name, value);
             }
             continue;
@@ -879,10 +872,7 @@ fn render_component(
                 let rendered = rich_text
                     .and_then(|renderer| renderer.render_rich_text(&payload))
                     .unwrap_or_else(|| {
-                        crate::rich_text::rich_text_fallback_html_with_policy(
-                            &payload,
-                            &url_policy,
-                        )
+                        crate::rich_text::rich_text_fallback_html_with_policy(&payload, &url_policy)
                     });
                 output.push_str(&rendered);
             }
@@ -1022,10 +1012,11 @@ fn render_embed(
                 .get("url")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            if url_allowed(raw_url, UrlAttributeKind::Navigation, policy) && raw_url
-                .trim_start()
-                .to_ascii_lowercase()
-                .starts_with("https://")
+            if url_allowed(raw_url, UrlAttributeKind::Navigation, policy)
+                && raw_url
+                    .trim_start()
+                    .to_ascii_lowercase()
+                    .starts_with("https://")
             {
                 output.push_str("<a");
                 write_attribute(output, "href", raw_url);
@@ -1065,9 +1056,7 @@ fn render_project_styles(
         let declarations = rule
             .declarations
             .iter()
-            .filter_map(|(name, value)| {
-                safe_style_with_tokens(name, value, policy, theme_tokens)
-            })
+            .filter_map(|(name, value)| safe_style_with_tokens(name, value, policy, theme_tokens))
             .collect::<Vec<_>>()
             .join(";");
         if declarations.is_empty() {
@@ -1141,9 +1130,7 @@ fn append_component_style_rules(
     ) {
         let declarations = style
             .iter()
-            .filter_map(|(name, value)| {
-                safe_style_with_tokens(name, value, policy, theme_tokens)
-            })
+            .filter_map(|(name, value)| safe_style_with_tokens(name, value, policy, theme_tokens))
             .collect::<Vec<_>>()
             .join(";");
         if !declarations.is_empty() {
@@ -1327,7 +1314,9 @@ const DENIED_STYLE_PROPERTIES: &[&str] =
 pub fn css_property_allowed(name: &str) -> bool {
     !name.is_empty()
         && !name.starts_with("--")
-        && name.chars().all(|character| character.is_ascii_alphabetic() || character == '-')
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphabetic() || character == '-')
         && !DENIED_STYLE_PROPERTIES.contains(&name.to_ascii_lowercase().as_str())
 }
 
@@ -1584,7 +1573,9 @@ fn css_identifier_character(character: char) -> bool {
 
 fn skip_css_string(value: &str, start: usize) -> Option<usize> {
     let quote = *value.as_bytes().get(start)?;
-    if !matches!(quote, b'\'' | b'"') { return None; }
+    if !matches!(quote, b'\'' | b'"') {
+        return None;
+    }
     let mut cursor = start + 1;
     while cursor < value.len() {
         match value.as_bytes()[cursor] {
@@ -1605,7 +1596,9 @@ fn skip_css_comment(value: &str, start: usize) -> Option<usize> {
 }
 
 fn css_function_close(value: &str, open: usize) -> Option<usize> {
-    if value.as_bytes().get(open) != Some(&b'(') { return None; }
+    if value.as_bytes().get(open) != Some(&b'(') {
+        return None;
+    }
     let mut depth = 1usize;
     let mut cursor = open + 1;
     while cursor < value.len() {
@@ -1616,10 +1609,15 @@ fn css_function_close(value: &str, open: usize) -> Option<usize> {
         match value.as_bytes()[cursor] {
             b'\'' | b'"' => cursor = skip_css_string(value, cursor)?,
             b'\\' => return None,
-            b'(' => { depth = depth.checked_add(1)?; cursor += 1; }
+            b'(' => {
+                depth = depth.checked_add(1)?;
+                cursor += 1;
+            }
             b')' => {
                 depth -= 1;
-                if depth == 0 { return Some(cursor); }
+                if depth == 0 {
+                    return Some(cursor);
+                }
                 cursor += 1;
             }
             _ => cursor += 1,
@@ -2062,15 +2060,28 @@ mod tests {
                     "components": []
                 }
             }]
-        })).expect("document");
+        }))
+        .expect("document");
         let page = render_page(&document, &PageSelection::First, &RenderPolicy::default())
             .expect("rendered");
 
         assert!(page.css.contains("color:var(--brand)"), "css: {}", page.css);
         assert!(!page.css.contains("var(--host-url)"), "css: {}", page.css);
-        assert!(!page.css.contains("var(--external-url)"), "css: {}", page.css);
-        assert!(!page.css.contains("border-image-source:var(--brand)"), "css: {}", page.css);
-        assert!(!page.css.contains("-webkit-box-reflect:"), "css: {}", page.css);
+        assert!(
+            !page.css.contains("var(--external-url)"),
+            "css: {}",
+            page.css
+        );
+        assert!(
+            !page.css.contains("border-image-source:var(--brand)"),
+            "css: {}",
+            page.css
+        );
+        assert!(
+            !page.css.contains("-webkit-box-reflect:"),
+            "css: {}",
+            page.css
+        );
     }
 
     #[test]
@@ -2442,7 +2453,12 @@ mod tests {
             "image(\"data:image/png;base64,iVBORw0KGgo=\", red)",
         ] {
             assert!(
-                safe_style("background-image", &Value::String(value.to_string()), &policy).is_some(),
+                safe_style(
+                    "background-image",
+                    &Value::String(value.to_string()),
+                    &policy
+                )
+                .is_some(),
                 "rejected safe image-set {value}"
             );
         }
@@ -2454,7 +2470,12 @@ mod tests {
             "src('//attacker.example/hero.png')",
         ] {
             assert!(
-                safe_style("background-image", &Value::String(value.to_string()), &policy).is_none(),
+                safe_style(
+                    "background-image",
+                    &Value::String(value.to_string()),
+                    &policy
+                )
+                .is_none(),
                 "accepted unsafe image-set {value}"
             );
         }
@@ -2467,21 +2488,28 @@ mod tests {
             "image('https://cdn.example/hero.png', red)",
             "src('https://cdn.example/hero.png')",
         ] {
-            assert!(safe_style(
-                "background-image",
-                &Value::String(value.to_string()),
-                &no_https
-            ).is_none(), "accepted HTTPS with allow_https=false: {value}");
+            assert!(
+                safe_style(
+                    "background-image",
+                    &Value::String(value.to_string()),
+                    &no_https
+                )
+                .is_none(),
+                "accepted HTTPS with allow_https=false: {value}"
+            );
         }
         let no_data = RenderPolicy {
             allow_data_images: false,
             ..RenderPolicy::default()
         };
-        assert!(safe_style(
-            "background-image",
-            &Value::String("image('data:image/png;base64,iVBORw0KGgo=', red)".to_string()),
-            &no_data
-        ).is_none());
+        assert!(
+            safe_style(
+                "background-image",
+                &Value::String("image('data:image/png;base64,iVBORw0KGgo=', red)".to_string()),
+                &no_data
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -2491,21 +2519,35 @@ mod tests {
         assert!(safe_style("background-image", &Value::String(oversized), &policy).is_none());
         for value in ["url(/a(b))", "url(/a'broken')", "url('/a.png' extra)"] {
             assert!(
-                safe_style("background-image", &Value::String(value.to_string()), &policy).is_none(),
+                safe_style(
+                    "background-image",
+                    &Value::String(value.to_string()),
+                    &policy
+                )
+                .is_none(),
                 "{value}"
             );
         }
         for value in ["url('/hero(1).png')", "image-set('/url(/hero.png)' 1x)"] {
             assert!(
-                safe_style("background-image", &Value::String(value.to_string()), &policy).is_some(),
+                safe_style(
+                    "background-image",
+                    &Value::String(value.to_string()),
+                    &policy
+                )
+                .is_some(),
                 "{value}"
             );
         }
         let mut seen = Vec::new();
         let scanned = strip_css_resource_references(
             "image-set('/url(/hero.png)' 1x, url('/hero(2).png') 2x)",
-            |url| { seen.push(url.to_string()); true },
-        ).expect("valid CSS");
+            |url| {
+                seen.push(url.to_string());
+                true
+            },
+        )
+        .expect("valid CSS");
         assert_eq!(seen, ["/url(/hero.png)", "/hero(2).png"]);
         assert_eq!(scanned, "image-set('url-ok' 1x, url-ok 2x)");
     }
@@ -2515,21 +2557,28 @@ mod tests {
         let css = "image-set(image('/é.png') 1x, '/second-long.png' 2x)";
         let ranges = css_resource_string_ranges(css).expect("resource ranges");
         assert_eq!(
-            ranges.iter().map(|range| &css[range.clone()]).collect::<Vec<_>>(),
+            ranges
+                .iter()
+                .map(|range| &css[range.clone()])
+                .collect::<Vec<_>>(),
             ["/é.png", "/second-long.png"]
         );
         let mut checked = Vec::new();
         let masked = strip_css_resource_references(css, |url| {
             checked.push(url.to_string());
             true
-        }).expect("nested resources");
+        })
+        .expect("nested resources");
         assert_eq!(checked, ["/é.png", "/second-long.png"]);
         assert_eq!(masked, "image-set(image('url-ok') 1x, 'url-ok' 2x)");
-        assert!(safe_style(
-            "background-image",
-            &Value::String(css.to_string()),
-            &RenderPolicy::default(),
-        ).is_some());
+        assert!(
+            safe_style(
+                "background-image",
+                &Value::String(css.to_string()),
+                &RenderPolicy::default(),
+            )
+            .is_some()
+        );
     }
 
     #[test]
@@ -2539,19 +2588,30 @@ mod tests {
         let masked = strip_css_resource_references(value, |url| {
             checked.push(url.to_string());
             true
-        }).expect("resource tokens");
+        })
+        .expect("resource tokens");
         assert_eq!(checked, ["/first.png", "/second.png", "/third.png"]);
         assert_eq!(
             masked,
             "image-set(/* image('/ignored.png') */ image('url-ok') 1x, url-ok 2x, 'url-ok' 3x)"
         );
-        assert!(safe_style(
-            "background-image",
-            &Value::String(value.to_string()),
-            &RenderPolicy::default(),
-        ).is_none());
-        for malformed in ["image-set('/a.png' 1x))", "cross-fade(image('/a.png')", "url(/a(b))"] {
-            assert!(strip_css_resource_references(malformed, |_| true).is_none(), "{malformed}");
+        assert!(
+            safe_style(
+                "background-image",
+                &Value::String(value.to_string()),
+                &RenderPolicy::default(),
+            )
+            .is_none()
+        );
+        for malformed in [
+            "image-set('/a.png' 1x))",
+            "cross-fade(image('/a.png')",
+            "url(/a(b))",
+        ] {
+            assert!(
+                strip_css_resource_references(malformed, |_| true).is_none(),
+                "{malformed}"
+            );
         }
     }
 
@@ -2559,7 +2619,10 @@ mod tests {
     fn css_resource_string_scanner_ignores_literals_and_finds_nested_functions() {
         let css = r#"content: "image-set('not-a-resource')"; background-image: IMAGE-SET("/hero.png" 1x, url("/hero@2x.png") 2x, type("image/avif")); -webkit-image-set('/webkit.png' 1x); background: image("https://cdn.example/hero.png", red); background: cross-fade(image("/fade.png"), src("/source.png")); font: src("/font.woff2" format("woff2"))"#;
         let ranges = css_resource_string_ranges(css).expect("valid CSS string boundaries");
-        let values = ranges.iter().map(|range| &css[range.clone()]).collect::<Vec<_>>();
+        let values = ranges
+            .iter()
+            .map(|range| &css[range.clone()])
+            .collect::<Vec<_>>();
         assert_eq!(
             values,
             [
@@ -2571,8 +2634,11 @@ mod tests {
                 "/font.woff2"
             ]
         );
-        assert!(css_resource_string_ranges(r#"content: "image-set('/literal.png')""#)
-            .expect("literal CSS string").is_empty());
+        assert!(
+            css_resource_string_ranges(r#"content: "image-set('/literal.png')""#)
+                .expect("literal CSS string")
+                .is_empty()
+        );
         assert!(css_resource_string_ranges(r#"image-set("/unterminated.png" 1x"#).is_none());
         assert!(css_resource_string_ranges(r#"image("/escaped\".png", red)"#).is_none());
     }
@@ -2662,12 +2728,16 @@ mod tests {
 
         assert!(rendered.css.is_empty());
         assert!(
-            rendered.html.contains(r#"style="--brand:#0b5fff;color:var(--brand)""#),
+            rendered
+                .html
+                .contains(r#"style="--brand:#0b5fff;color:var(--brand)""#),
             "{}",
             rendered.html
         );
         assert!(
-            rendered.html.contains(r#"style="border-color:var(--brand)""#),
+            rendered
+                .html
+                .contains(r#"style="border-color:var(--brand)""#),
             "{}",
             rendered.html
         );
@@ -3139,13 +3209,20 @@ mod tests {
                 {"id": "link", "type": "link", "attributes": {"href": true}, "content": "Link"}
             ]}}]
         })).expect("document");
-        let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default()).expect("render");
+        let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("render");
         assert!(!rendered.html.contains(" src"), "{}", rendered.html);
         assert!(!rendered.html.contains(" href"), "{}", rendered.html);
         assert!(rendered.html.contains("alt=\"Image\""));
         let diagnostics = crate::validate_component_public_urls(&document);
         for name in ["src", "srcset", "href"] {
-            assert!(diagnostics.iter().any(|d| d.code == "runtime_public_url_invalid" && d.severity == crate::ValidationSeverity::Error && d.path.ends_with(&format!(".{name}"))));
+            assert!(
+                diagnostics
+                    .iter()
+                    .any(|d| d.code == "runtime_public_url_invalid"
+                        && d.severity == crate::ValidationSeverity::Error
+                        && d.path.ends_with(&format!(".{name}")))
+            );
         }
     }
 
@@ -3186,7 +3263,6 @@ mod tests {
             );
         }
     }
-
 
     #[test]
     fn renderer_uses_the_host_embed_registry_and_rejects_unknown_provider_by_default() {
@@ -3234,7 +3310,11 @@ mod tests {
         )
         .expect("custom render");
         assert!(custom_render.html.contains("<iframe"));
-        assert!(custom_render.html.contains("https://player.example.test/frame/123"));
+        assert!(
+            custom_render
+                .html
+                .contains("https://player.example.test/frame/123")
+        );
     }
 
     #[test]
@@ -3298,7 +3378,8 @@ mod tests {
                     ]
                 }
             }]
-        })).expect("document");
+        }))
+        .expect("document");
 
         let default = render_page(&document, &PageSelection::First, &RenderPolicy::default())
             .expect("default render");
@@ -3314,7 +3395,8 @@ mod tests {
                 allow_https: false,
                 ..RenderPolicy::default()
             },
-        ).expect("restricted render");
+        )
+        .expect("restricted render");
         assert!(!restricted.html.contains("<iframe"));
         assert!(!restricted.html.contains("https://"));
         assert!(restricted.html.contains("Registered video"));
@@ -3364,10 +3446,10 @@ mod tests {
                     }]
                 }
             }]
-        })).expect("document");
-        let trusted_renderer = |payload: &crate::RichTextPayload| {
-            Some(crate::rich_text_fallback_html(payload))
-        };
+        }))
+        .expect("document");
+        let trusted_renderer =
+            |payload: &crate::RichTextPayload| Some(crate::rich_text_fallback_html(payload));
         let policy = RenderPolicy {
             allow_https: false,
             ..RenderPolicy::default()
@@ -3377,7 +3459,8 @@ mod tests {
             &PageSelection::First,
             &policy,
             Some(&trusted_renderer),
-        ).expect("render");
+        )
+        .expect("render");
 
         assert!(!rendered.html.contains("https://"));
         assert!(rendered.html.contains("External link"));
@@ -3431,9 +3514,6 @@ mod tests {
         ));
     }
 
-
-
-
     #[test]
     fn renderer_rejects_deep_raw_project_extensions_before_symbol_resolution() {
         let mut nested = serde_json::Value::Null;
@@ -3457,9 +3537,6 @@ mod tests {
                 if maximum == crate::MAXIMUM_DECODE_DEPTH
         ));
     }
-
-
-
 
     #[test]
     fn renderer_counts_opaque_component_children_toward_node_limit() {
@@ -3507,16 +3584,13 @@ mod tests {
         ));
     }
 
-
-
-
     #[test]
     fn renderer_rejects_excessive_project_collections_before_traversal() {
         let page_items = (0..=crate::DEFAULT_MAXIMUM_PAGES)
             .map(|index| json!({ "id": format!("page-{index}") }))
             .collect::<Vec<_>>();
-        let pages = GrapesJsCodec::decode_value(json!({ "pages": page_items }))
-            .expect("pages document");
+        let pages =
+            GrapesJsCodec::decode_value(json!({ "pages": page_items })).expect("pages document");
         assert!(matches!(
             render_page(&pages, &PageSelection::First, &RenderPolicy::default()),
             Err(FlyError::MaximumPagesExceeded { maximum })
@@ -3557,6 +3631,4 @@ mod tests {
                 if maximum == crate::DEFAULT_MAXIMUM_STYLE_RULES
         ));
     }
-
-
 }

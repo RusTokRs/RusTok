@@ -96,8 +96,7 @@ pub use entities::{
 pub use error::{
     CANNOT_DELETE_PUBLISHED_ERROR_CODE, PAGE_CREATE_IDEMPOTENCY_CONFLICT,
     PAGE_CREATE_OPERATION_INTEGRITY, PAGE_LIFECYCLE_IDEMPOTENCY_CONFLICT,
-    PAGE_LIFECYCLE_OPERATION_INTEGRITY, PagesError,
-    PagesResult,
+    PAGE_LIFECYCLE_OPERATION_INTEGRITY, PagesError, PagesResult,
 };
 pub use graphql::{PagesMutation, PagesQuery};
 pub use module::PagesModule;

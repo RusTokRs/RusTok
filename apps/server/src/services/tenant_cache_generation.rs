@@ -307,8 +307,7 @@ pub(crate) fn invalidate_effective_policy_cache_for_event(
         return true;
     }
 
-    if let Some(tenant_id) =
-        tenant_cache_event_tenant_id(&envelope.event, Some(envelope.tenant_id))
+    if let Some(tenant_id) = tenant_cache_event_tenant_id(&envelope.event, Some(envelope.tenant_id))
     {
         policy_cache.invalidate_tenant(tenant_id);
         return true;
@@ -537,8 +536,7 @@ pub async fn start_tenant_cache_generation_listener(
         .shared_get::<TenantCacheGenerationListenerStartLock>()
         .ok_or_else(|| Error::Cache("tenant listener start lock is unavailable".to_string()))?;
     let stop = StopHandle::ensure(ctx);
-    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await
-    else {
+    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await else {
         return Ok(());
     };
     if let Some(existing) = ctx.shared_get::<TenantCacheGenerationListenerHandle>() {
@@ -650,7 +648,9 @@ pub async fn start_tenant_cache_generation_listener(
                         Ok(_) => local_state.mark_local_healthy().await,
                         Err(_error) => {
                             local_state
-                                .mark_local_degraded("tenant cache generation recovery after local lag failed")
+                                .mark_local_degraded(
+                                    "tenant cache generation recovery after local lag failed",
+                                )
                                 .await;
                             tracing::error!(
                                 error_code = "tenant_cache_generation_local_lag_recovery_failed",
@@ -1196,7 +1196,11 @@ mod tests {
             .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
             .await
             .unwrap();
-        assert_eq!(policies.len(), 2, "missed Pub/Sub does not itself clear policy entries");
+        assert_eq!(
+            policies.len(),
+            2,
+            "missed Pub/Sub does not itself clear policy entries"
+        );
 
         listener.recover_shared_generation().await.unwrap();
         assert!(
@@ -1204,7 +1208,9 @@ mod tests {
             "durable reconciliation must invalidate all tenants, not merely a received key"
         );
         assert_eq!(
-            listener.tracker.last_generation(TENANT_CACHE_GENERATION_CHANNEL),
+            listener
+                .tracker
+                .last_generation(TENANT_CACHE_GENERATION_CHANNEL),
             Some(second.generation)
         );
 
@@ -1235,9 +1241,14 @@ mod tests {
         .to_message()
         .unwrap();
         listener.handle_message(message).await.unwrap();
-        assert!(policies.is_empty(), "gap recovery cannot retain tenant B's stale policy");
+        assert!(
+            policies.is_empty(),
+            "gap recovery cannot retain tenant B's stale policy"
+        );
         assert_eq!(
-            listener.tracker.last_generation(TENANT_CACHE_GENERATION_CHANNEL),
+            listener
+                .tracker
+                .last_generation(TENANT_CACHE_GENERATION_CHANNEL),
             Some(fourth.generation)
         );
     }
@@ -1277,7 +1288,9 @@ mod tests {
             "invalid bounded key cannot silently skip tenant policy invalidation"
         );
         assert_eq!(
-            listener.tracker.last_generation(TENANT_CACHE_GENERATION_CHANNEL),
+            listener
+                .tracker
+                .last_generation(TENANT_CACHE_GENERATION_CHANNEL),
             Some(next.generation)
         );
 
@@ -1298,7 +1311,10 @@ mod tests {
         .to_message()
         .unwrap();
         listener.handle_message(wildcard_message).await.unwrap();
-        assert!(policies.is_empty(), "manual global invalidation clears policies");
+        assert!(
+            policies.is_empty(),
+            "manual global invalidation clears policies"
+        );
 
         // Nil UUIDs are not tenant identifiers. They must conservatively
         // clear, rather than selectively evicting an impossible tenant.
@@ -1317,7 +1333,10 @@ mod tests {
         .to_message()
         .unwrap();
         listener.handle_message(nil_message).await.unwrap();
-        assert!(policies.is_empty(), "nil tenant key cannot skip invalidation");
+        assert!(
+            policies.is_empty(),
+            "nil tenant key cannot skip invalidation"
+        );
     }
 
     #[test]

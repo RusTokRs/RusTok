@@ -53,7 +53,8 @@ impl RbacService {
         tx.commit().await?;
         Self::invalidate_user_rbac_caches(tenant_id, user_id).await;
         if let Err(error) =
-            publish_user_rbac_invalidation(cache_service, tenant_id, user_id, durable_generation).await
+            publish_user_rbac_invalidation(cache_service, tenant_id, user_id, durable_generation)
+                .await
         {
             tracing::warn!(
                 %error,
@@ -92,12 +93,12 @@ fn role_persistence_error(error: rustok_rbac::RbacRolePersistenceError) -> Error
 #[cfg(test)]
 mod tests {
     use super::RbacService;
-    use rustok_cache::CacheService;
     use crate::error::Error;
     use crate::models::{tenants, users};
     use crate::services::rbac_invalidation_generation::read_rbac_invalidation_generation;
     use chrono::Utc;
     use rustok_api::Permission;
+    use rustok_cache::CacheService;
     use rustok_core::{UserRole, UserStatus};
     use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
@@ -172,9 +173,15 @@ mod tests {
         );
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
 
-        RbacService::replace_user_role_committed(&db, &cache_service, &user_id, &tenant_id, UserRole::Customer)
-            .await
-            .expect("committed demotion should succeed");
+        RbacService::replace_user_role_committed(
+            &db,
+            &cache_service,
+            &user_id,
+            &tenant_id,
+            UserRole::Customer,
+        )
+        .await
+        .expect("committed demotion should succeed");
 
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 1);
         assert!(
@@ -203,9 +210,15 @@ mod tests {
             .await
             .unwrap();
 
-        RbacService::replace_user_role_committed(&db, &cache_service, &user_id, &tenant_id, UserRole::Customer)
-            .await
-            .unwrap();
+        RbacService::replace_user_role_committed(
+            &db,
+            &cache_service,
+            &user_id,
+            &tenant_id,
+            UserRole::Customer,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
     }
@@ -227,9 +240,15 @@ mod tests {
             .await
             .unwrap();
 
-        RbacService::replace_user_role_committed(&db, &cache_service, &user_id, &tenant_id, UserRole::Customer)
-            .await
-            .unwrap();
+        RbacService::replace_user_role_committed(
+            &db,
+            &cache_service,
+            &user_id,
+            &tenant_id,
+            UserRole::Customer,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 1);
         assert!(
@@ -260,10 +279,15 @@ mod tests {
         );
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
 
-        let error =
-            RbacService::replace_user_role_committed(&db, &cache_service, &user_id, &tenant_id, UserRole::Customer)
-                .await
-                .expect_err("last active super-admin demotion must be rejected");
+        let error = RbacService::replace_user_role_committed(
+            &db,
+            &cache_service,
+            &user_id,
+            &tenant_id,
+            UserRole::Customer,
+        )
+        .await
+        .expect_err("last active super-admin demotion must be rejected");
         assert!(matches!(error, Error::BadRequest(_)));
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
 

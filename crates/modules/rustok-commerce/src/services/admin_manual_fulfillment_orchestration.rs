@@ -10,9 +10,9 @@ use rustok_fulfillment::{
 };
 use rustok_order::{OrderLineItemResponse, OrderReadPort, ReadOrderProjectionRequest};
 use serde_json::Value;
+use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
-use tracing::instrument;
 
 use crate::storefront_shipping::{
     is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,

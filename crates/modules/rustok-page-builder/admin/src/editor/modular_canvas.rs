@@ -13,8 +13,7 @@ use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
 use crate::{
     AdminCanvasController, ConsumerPropertyEditorRuntime, PageBuilderAdminFacade,
-    PageBuilderCapabilityExecution,
-    PageBuilderAdminProviderStatus, SsrDraftRenderBinding,
+    PageBuilderAdminProviderStatus, PageBuilderCapabilityExecution, SsrDraftRenderBinding,
 };
 use fly::TraitSchemaRegistry;
 use fly_ui::{
@@ -349,10 +348,7 @@ mod browser_draft_binding_tests {
     #[test]
     fn editable_no_session_binding_keeps_strict_contract_fail_closed() {
         assert_eq!(
-            browser_draft_binding_attributes(
-                Some(SsrDraftRenderBinding { session: None }),
-                true,
-            ),
+            browser_draft_binding_attributes(Some(SsrDraftRenderBinding { session: None }), true,),
             (Some("rendered"), Some("rendered"), None, None),
         );
     }
@@ -360,13 +356,13 @@ mod browser_draft_binding_tests {
     #[test]
     fn read_only_no_session_binding_does_not_advertise_strict_receipts() {
         assert_eq!(
-            browser_draft_binding_attributes(
-                Some(SsrDraftRenderBinding { session: None }),
-                false,
-            ),
+            browser_draft_binding_attributes(Some(SsrDraftRenderBinding { session: None }), false,),
             (Some("rendered"), None, None, None),
         );
-        assert_eq!(browser_draft_binding_attributes(None, true), (None, None, None, None));
+        assert_eq!(
+            browser_draft_binding_attributes(None, true),
+            (None, None, None, None)
+        );
     }
 
     #[test]

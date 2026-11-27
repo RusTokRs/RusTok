@@ -31,15 +31,9 @@ const CACHE_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CacheBackendOperationError {
     #[error("{operation} timed out after {timeout_ms} ms")]
-    Timeout {
-        operation: String,
-        timeout_ms: u128,
-    },
+    Timeout { operation: String, timeout_ms: u128 },
     #[error("{operation} failed: {error}")]
-    Execution {
-        operation: String,
-        error: String,
-    },
+    Execution { operation: String, error: String },
 }
 
 impl From<CacheBackendOperationError> for String {

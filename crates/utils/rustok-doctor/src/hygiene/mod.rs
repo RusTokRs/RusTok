@@ -522,7 +522,8 @@ pub fn scan_crate_source(
                 | "testing"
                 | "fixtures"
                 | "mocks"
-        ) || part.ends_with("_tests") || part.ends_with("_test")
+        ) || part.ends_with("_tests")
+            || part.ends_with("_test")
     }) || [
         "_test.rs",
         "_tests.rs",
@@ -1086,9 +1087,9 @@ fn check_rules(
                 format!("Forbidden file-stitching macro '{}'. Use canonical 'mod ...;' and public exports.", &found[0]),
                 format!("Declare mod {module}; and expose only the required items."));
 
-            let has_shadow_shim = scan.lines[..index]
-                .iter()
-                .any(|prev| prev.syntax.contains("_shim") || prev.syntax.contains("macro_rules! format"));
+            let has_shadow_shim = scan.lines[..index].iter().any(|prev| {
+                prev.syntax.contains("_shim") || prev.syntax.contains("macro_rules! format")
+            });
             if has_shadow_shim {
                 scan.add(number, "P-SHADOW-MACRO-HIJACK", "Shadow Macro & Module Include Hijack", Severity::High,
                     format!("Shadow module or macro hijacking before include!('{}'). Local shims or macros used to alter ambient scope.", included),
@@ -1344,7 +1345,8 @@ fn check_rules(
         {
             if re!(r"\.(?:expect|unwrap)\s*\(").is_match(text)
                 && !static_item
-                && !(text.contains("Regex::new") && (text.contains("static") || text.contains("const")))
+                && !(text.contains("Regex::new")
+                    && (text.contains("static") || text.contains("const")))
             {
                 if !scan.has_invariant(index, text) {
                     scan.add(number, "P-ZERO-PANIC-PROD", "Zero Production Panics", Severity::High,
@@ -1398,7 +1400,8 @@ fn check_rules(
         }
 
         if re!(r"\b(?:as_i64|as_u64)\s*\(\s*\)[^;]*\bas\s+f64\b").is_match(text)
-            || re!(r"\blet\s+(?:mut\s+)?\w+\s*:\s*f64\s*=\s*[^;]*\b(?:as_i64|as_u64)\s*\(\s*\)").is_match(text)
+            || re!(r"\blet\s+(?:mut\s+)?\w+\s*:\s*f64\s*=\s*[^;]*\b(?:as_i64|as_u64)\s*\(\s*\)")
+                .is_match(text)
         {
             scan.add(
                 number,
@@ -1443,7 +1446,11 @@ fn check_rules(
                 .map(|line| line.syntax.as_str())
                 .collect::<Vec<_>>()
                 .join("\n");
-            if (window.contains("if ") || window.contains(" < ") || window.contains(" > ") || window.contains(" <= ") || window.contains(" >= "))
+            if (window.contains("if ")
+                || window.contains(" < ")
+                || window.contains(" > ")
+                || window.contains(" <= ")
+                || window.contains(" >= "))
                 && window.contains(".fetch_add(")
                 && !window.contains("compare_exchange")
                 && !window.contains("fetch_update")
@@ -1468,9 +1475,7 @@ fn check_rules(
                 .map(|line| line.syntax.as_str())
                 .collect::<Vec<_>>()
                 .join("\n");
-            if window.contains(".lock_exclusive()")
-                && !scan.has_invariant(index, text)
-            {
+            if window.contains(".lock_exclusive()") && !scan.has_invariant(index, text) {
                 scan.add(
                     number,
                     "P-SQLITE-UNLOCKED-RACE",
@@ -1500,8 +1505,15 @@ fn check_rules(
             && !text.contains("digest")
             && !text.contains("hasher")
             && !scan.has_invariant(index, text)
-            && re!(r"\b(?:bytes|data|slice|payload|buf)\s*\[\s*\d+\s*\.\.\s*\d+\s*\]").is_match(text)
-            && !scan.lines.iter().take(index).rev().take(12).any(|prev| prev.syntax.contains(".len()"))
+            && re!(r"\b(?:bytes|data|slice|payload|buf)\s*\[\s*\d+\s*\.\.\s*\d+\s*\]")
+                .is_match(text)
+            && !scan
+                .lines
+                .iter()
+                .take(index)
+                .rev()
+                .take(12)
+                .any(|prev| prev.syntax.contains(".len()"))
         {
             scan.add(
                 number,
@@ -1673,7 +1685,8 @@ fn check_rules(
         );
         let is_ui = scan.file.contains("/admin/") || scan.file.contains("/storefront/");
         if identity_nil.is_match(text)
-            || (!is_ui && (identity_default.is_match(text) || identity_binding_default.is_match(text)))
+            || (!is_ui
+                && (identity_default.is_match(text) || identity_binding_default.is_match(text)))
         {
             scan.add(
                 number,
@@ -1687,7 +1700,9 @@ fn check_rules(
         if is_ui {
             // UI code
         }
-        if re!(r"\b(?:\*?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?:==|!=)\s*(?:uuid::)?Uuid::nil\(\)").is_match(text) {
+        if re!(r"\b(?:\*?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?:==|!=)\s*(?:uuid::)?Uuid::nil\(\)")
+            .is_match(text)
+        {
             scan.add(
                 number,
                 "P-NIL-UUID-COMPARE",

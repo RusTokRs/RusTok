@@ -681,16 +681,18 @@ mod tests {
                 // Sample the token before the supervisor clears after the
                 // replacement factory returns (the subscription boundary).
                 let before_restart_clear = cache.generation(tenant_id, "user");
-                let ready = if attempt == 0 { None } else { restarted_tx.take() };
+                let ready = if attempt == 0 {
+                    None
+                } else {
+                    restarted_tx.take()
+                };
                 async move {
                     if attempt == 0 {
                         panic!("field definition invalidation regression fixture");
                     }
                     if let Some(ready) = ready {
-                        let _ = ready.send((
-                            before_restart_clear,
-                            cache.generation(tenant_id, "user"),
-                        ));
+                        let _ =
+                            ready.send((before_restart_clear, cache.generation(tenant_id, "user")));
                     }
                     std::future::pending::<()>().await;
                 }
@@ -705,7 +707,10 @@ mod tests {
                 .expect("field definition invalidation supervisor should restart worker")
                 .expect("replacement worker reports its generation");
         assert_ne!(initial, after_failure, "failure must fence old fills");
-        assert_ne!(after_failure, after_resubscribe, "restart must fence gap fills");
+        assert_ne!(
+            after_failure, after_resubscribe,
+            "restart must fence gap fills"
+        );
         cache
             .set_if_generation(tenant_id, "user", vec![mock_view("gap")], after_failure)
             .await;

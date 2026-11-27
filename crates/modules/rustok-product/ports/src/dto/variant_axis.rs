@@ -267,10 +267,12 @@ mod dto_bound_tests {
             ..Default::default()
         };
         assert!(reassignments.validate().is_ok());
-        reassignments.reassignments.push(VariantAxisReassignmentInput {
-            variant_id: Uuid::new_v4(),
-            axis_values: Vec::new(),
-        });
+        reassignments
+            .reassignments
+            .push(VariantAxisReassignmentInput {
+                variant_id: Uuid::new_v4(),
+                axis_values: Vec::new(),
+            });
         assert!(reassignments.validate().is_err());
 
         let mut reassignment = VariantAxisReassignmentInput {

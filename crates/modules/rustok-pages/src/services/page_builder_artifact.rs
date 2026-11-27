@@ -273,8 +273,7 @@ impl PageBuilderArtifactService {
                 }
             }
             if let Some(candidate) = selected_candidate {
-                resolved =
-                    load_bound_artifact_in_tx(&txn, tenant_id, page_id, candidate).await?;
+                resolved = load_bound_artifact_in_tx(&txn, tenant_id, page_id, candidate).await?;
             }
         }
 
@@ -334,7 +333,12 @@ async fn public_landing_locale_candidates_in_tx(
     let page = match txn.get_database_backend() {
         DbBackend::Sqlite => page_query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => page_query().lock_shared().one(txn).await?,
-        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+        backend => {
+            return Err(PagesError::validation(format!(
+                "unsupported SeaORM database backend: {:?}",
+                backend
+            )));
+        }
     };
 
     let is_published = page.is_some_and(|page| page.status == "published");

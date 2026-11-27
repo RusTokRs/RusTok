@@ -3,9 +3,7 @@ use super::{
     resolve_current_user, resolve_current_user_from_access_token,
     resolve_service_token_permissions,
 };
-use crate::auth::{
-    AuthConfig, Claims, encode_access_token, encode_oauth_access_token,
-};
+use crate::auth::{AuthConfig, Claims, encode_access_token, encode_oauth_access_token};
 use crate::common::settings::RustokSettings;
 use crate::models::{oauth_apps, oauth_consents, oauth_tokens, sessions, tenants, users};
 use crate::services::rbac_service::RbacService;
@@ -50,10 +48,8 @@ async fn standalone_auth_extractor_rejects_duplicate_authorization_headers() {
     use axum::http::{Request, StatusCode, header::AUTHORIZATION};
 
     let db = setup_test_db_with_migrations::<Migrator>().await;
-    let runtime = ServerAuthRuntime::without_auth(ServerRuntimeContext::new(
-        db,
-        RustokSettings::default(),
-    ));
+    let runtime =
+        ServerAuthRuntime::without_auth(ServerRuntimeContext::new(db, RustokSettings::default()));
     let (mut parts, _) = Request::builder()
         .header(AUTHORIZATION, "Bearer first")
         .header(AUTHORIZATION, "Bearer first")
@@ -62,8 +58,13 @@ async fn standalone_auth_extractor_rejects_duplicate_authorization_headers() {
         .into_parts();
 
     assert_eq!(
-        resolve_current_user(&mut parts, &runtime).await.unwrap_err(),
-        (StatusCode::BAD_REQUEST, "Multiple Authorization headers are not allowed")
+        resolve_current_user(&mut parts, &runtime)
+            .await
+            .unwrap_err(),
+        (
+            StatusCode::BAD_REQUEST,
+            "Multiple Authorization headers are not allowed"
+        )
     );
 }
 
@@ -148,7 +149,15 @@ async fn insert_oauth_app(
     grant_types: &[&str],
     is_active: bool,
 ) -> oauth_apps::Model {
-    insert_oauth_app_with_scopes(db, tenant_id, app_type, grant_types, is_active, &["forum:*"]).await
+    insert_oauth_app_with_scopes(
+        db,
+        tenant_id,
+        app_type,
+        grant_types,
+        is_active,
+        &["forum:*"],
+    )
+    .await
 }
 
 async fn insert_oauth_app_with_scopes(
@@ -318,24 +327,50 @@ async fn oauth_service_token_rejects_future_registration() {
 
     let db = setup_test_db_with_migrations::<Migrator>().await;
     ensure_oauth_apps_table(&db).await;
-    let tenant = tenants::ActiveModel::new("Future registration tenant", &format!("tenant-{}", Uuid::new_v4()))
-        .insert(&db).await.expect("tenant");
+    let tenant = tenants::ActiveModel::new(
+        "Future registration tenant",
+        &format!("tenant-{}", Uuid::new_v4()),
+    )
+    .insert(&db)
+    .await
+    .expect("tenant");
     let app = insert_oauth_app(&db, tenant.id, "service", &["client_credentials"], true).await;
     let runtime = test_auth_runtime(db.clone());
     let token = registered_service_token(
-        &db, runtime.require_auth_config().unwrap(), &app, &["forum:*".to_string()],
-    ).await;
-    assert!(resolve_current_user_from_access_token(&runtime, tenant.id, &token).await.is_ok());
+        &db,
+        runtime.require_auth_config().unwrap(),
+        &app,
+        &["forum:*".to_string()],
+    )
+    .await;
+    assert!(
+        resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+            .await
+            .is_ok()
+    );
 
     let row = oauth_tokens::Entity::find()
         .filter(oauth_tokens::Column::TokenHash.eq(crate::auth::hash_refresh_token(&token)))
-        .one(&db).await.unwrap().unwrap();
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
     let mut changed: oauth_tokens::ActiveModel = row.into();
     changed.created_at = Set((Utc::now() + Duration::minutes(1)).into());
-    changed.update(&db).await.expect("set future registration creation");
+    changed
+        .update(&db)
+        .await
+        .expect("set future registration creation");
     let error = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
-        .await.expect_err("future registration must not authorize access");
-    assert_eq!(error, (axum::http::StatusCode::UNAUTHORIZED, "OAuth access token revoked or unknown"));
+        .await
+        .expect_err("future registration must not authorize access");
+    assert_eq!(
+        error,
+        (
+            axum::http::StatusCode::UNAUTHORIZED,
+            "OAuth access token revoked or unknown"
+        )
+    );
 }
 
 #[tokio::test]
@@ -360,7 +395,11 @@ async fn oauth_service_token_rejects_corrupt_or_mismatched_registered_scopes() {
         &["forum:*".to_string()],
     )
     .await;
-    assert!(resolve_current_user_from_access_token(&runtime, tenant.id, &token).await.is_ok());
+    assert!(
+        resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+            .await
+            .is_ok()
+    );
 
     let mut row = oauth_tokens::Entity::find()
         .filter(oauth_tokens::Column::TokenHash.eq(crate::auth::hash_refresh_token(&token)))
@@ -370,8 +409,14 @@ async fn oauth_service_token_rejects_corrupt_or_mismatched_registered_scopes() {
         .expect("access row exists");
     for (stored, message) in [
         (serde_json::json!([]), "OAuth access token scopes mismatch"),
-        (serde_json::json!(["forum:*", 42]), "Stored OAuth access token scopes are invalid"),
-        (serde_json::json!(["forum:*", "modules:list"]), "OAuth access token scopes mismatch"),
+        (
+            serde_json::json!(["forum:*", 42]),
+            "Stored OAuth access token scopes are invalid",
+        ),
+        (
+            serde_json::json!(["forum:*", "modules:list"]),
+            "OAuth access token scopes mismatch",
+        ),
     ] {
         let mut changed: oauth_tokens::ActiveModel = row.into();
         changed.scopes = Set(stored);
@@ -435,10 +480,8 @@ async fn oauth_service_token_with_empty_scopes_has_no_effective_permissions() {
     let app = insert_oauth_app(&db, tenant.id, "service", &["client_credentials"], true).await;
 
     let runtime = test_auth_runtime(db.clone());
-    let token = registered_service_token(
-        &db, runtime.require_auth_config().unwrap(), &app, &[],
-    )
-    .await;
+    let token =
+        registered_service_token(&db, runtime.require_auth_config().unwrap(), &app, &[]).await;
     let current = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
         .await
         .expect("resolve service token permissions");
@@ -790,76 +833,169 @@ async fn oauth_access_token_with_stale_consent_epoch_is_rejected() {
 async fn delegated_user_admin_rejects_revoked_registration_and_consent_epoch() {
     use crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider;
     use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
-    use rustok_auth::{AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UserAdminMutationPort};
+    use rustok_auth::{
+        AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UserAdminMutationPort,
+    };
     use sea_orm::EntityTrait;
 
     let db = setup_test_db_with_migrations::<Migrator>().await;
     let runtime = test_auth_runtime(db.clone());
     let tenant = tenants::ActiveModel::new("Admin consent", &format!("tenant-{}", Uuid::new_v4()))
-        .insert(&db).await.unwrap();
+        .insert(&db)
+        .await
+        .unwrap();
     let (actor, _) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
     rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
-        &db, tenant.id, actor.id, UserRole::Admin,
-    ).await.unwrap();
+        &db,
+        tenant.id,
+        actor.id,
+        UserRole::Admin,
+    )
+    .await
+    .unwrap();
     // Include the customer's baseline permissions so the create command can
     // independently authorize the destination role as well as USERS_CREATE.
     let app = insert_oauth_app_with_scopes(
-        &db, tenant.id, "third_party", &["authorization_code"], true, &["*:*"],
-    ).await;
+        &db,
+        tenant.id,
+        "third_party",
+        &["authorization_code"],
+        true,
+        &["*:*"],
+    )
+    .await;
     let now = Utc::now();
     let consent = oauth_consents::ActiveModel {
-        id: Set(Uuid::new_v4()), app_id: Set(app.id), user_id: Set(actor.id),
-        tenant_id: Set(tenant.id), scopes: Set(serde_json::json!(["*:*"])),
-        granted_at: Set(now.into()), revoked_at: Set(None),
-    }.insert(&db).await.unwrap();
+        id: Set(Uuid::new_v4()),
+        app_id: Set(app.id),
+        user_id: Set(actor.id),
+        tenant_id: Set(tenant.id),
+        scopes: Set(serde_json::json!(["*:*"])),
+        granted_at: Set(now.into()),
+        revoked_at: Set(None),
+    }
+    .insert(&db)
+    .await
+    .unwrap();
     let id = Uuid::new_v4();
     let token = encode_oauth_access_token(
-        runtime.require_auth_config().unwrap(), actor.id, tenant.id, UserRole::Admin,
-        app.client_id, &["*:*".to_string()], "authorization_code", 900, id,
-    ).unwrap();
+        runtime.require_auth_config().unwrap(),
+        actor.id,
+        tenant.id,
+        UserRole::Admin,
+        app.client_id,
+        &["*:*".to_string()],
+        "authorization_code",
+        900,
+        id,
+    )
+    .unwrap();
     let registration = oauth_tokens::ActiveModel {
-        id: Set(id), app_id: Set(app.id), user_id: Set(Some(actor.id)),
-        tenant_id: Set(tenant.id), token_hash: Set(crate::auth::hash_refresh_token(&token)),
-        family_id: Set(id), authorization_code_id: Set(None),
+        id: Set(id),
+        app_id: Set(app.id),
+        user_id: Set(Some(actor.id)),
+        tenant_id: Set(tenant.id),
+        token_hash: Set(crate::auth::hash_refresh_token(&token)),
+        family_id: Set(id),
+        authorization_code_id: Set(None),
         grant_type: Set("authorization_code".to_string()),
         token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
         consent_granted_at: Set(Some(consent.granted_at)),
-        scopes: Set(serde_json::json!(["*:*"])), expires_at: Set((now + Duration::minutes(15)).into()),
-        revoked_at: Set(None), last_used_at: Set(None), created_at: Set(now.into()),
+        scopes: Set(serde_json::json!(["*:*"])),
+        expires_at: Set((now + Duration::minutes(15)).into()),
+        revoked_at: Set(None),
+        last_used_at: Set(None),
+        created_at: Set(now.into()),
         updated_at: Set(now.into()),
-    }.insert(&db).await.unwrap();
-    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token).await.unwrap();
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await
+        .unwrap();
     let scope = || RbacRequestScope::authenticated(&admitted, admitted.access_token_expires_at);
-    let provider = ServerAuthAdminMutationProvider::new(runtime.runtime_ctx(), runtime.require_auth_config().unwrap().clone());
+    let provider = ServerAuthAdminMutationProvider::new(
+        runtime.runtime_ctx(),
+        runtime.require_auth_config().unwrap().clone(),
+    );
     let context = AuthAdminMutationContext {
-        actor_id: actor.id, tenant_id: tenant.id, request_id: None,
-        locale: Some("en".into()), principal_kind: Some(AuthPrincipalKind::DelegatedUser),
+        actor_id: actor.id,
+        tenant_id: tenant.id,
+        request_id: None,
+        locale: Some("en".into()),
+        principal_kind: Some(AuthPrincipalKind::DelegatedUser),
+        credential_authority: scope().admin_credential().unwrap(),
     };
     let create = |email: &str| CreateUserCommand {
-        email: email.into(), password: "Password123!Strong".into(), name: None,
-        role: Some("customer".into()), status: None, custom_fields: None,
+        email: email.into(),
+        password: "Password123!Strong".into(),
+        name: None,
+        role: Some("customer".into()),
+        status: None,
+        custom_fields: None,
     };
-    with_rbac_request_scope(Some(scope()), provider.create_user(&context, create("delegated-ok@example.test")))
-        .await.unwrap();
+    with_rbac_request_scope(
+        Some(scope()),
+        provider.create_user(&context, create("delegated-ok@example.test")),
+    )
+    .await
+    .unwrap();
 
     // A changed consent epoch must fail even when a noncooperating writer
     // omitted token revocation. The exact admitted epoch cannot be replaced.
     oauth_consents::ActiveModel {
-        id: Set(consent.id), granted_at: Set((now + Duration::seconds(1)).into()),
+        id: Set(consent.id),
+        granted_at: Set((now + Duration::seconds(1)).into()),
         ..Default::default()
-    }.update(&db).await.unwrap();
-    let denied = with_rbac_request_scope(Some(scope()), provider.create_user(&context, create("delegated-epoch@example.test"))).await;
-    assert!(matches!(denied, Err(AuthAdminMutationError::Unauthorized)), "{denied:?}");
+    }
+    .update(&db)
+    .await
+    .unwrap();
+    let denied = with_rbac_request_scope(
+        Some(scope()),
+        provider.create_user(&context, create("delegated-epoch@example.test")),
+    )
+    .await;
+    assert!(
+        matches!(denied, Err(AuthAdminMutationError::Unauthorized)),
+        "{denied:?}"
+    );
     oauth_consents::ActiveModel {
-        id: Set(consent.id), granted_at: Set(consent.granted_at), ..Default::default()
-    }.update(&db).await.unwrap();
+        id: Set(consent.id),
+        granted_at: Set(consent.granted_at),
+        ..Default::default()
+    }
+    .update(&db)
+    .await
+    .unwrap();
     oauth_tokens::ActiveModel {
-        id: Set(registration.id), revoked_at: Set(Some(Utc::now().into())), ..Default::default()
-    }.update(&db).await.unwrap();
-    let denied = with_rbac_request_scope(Some(scope()), provider.create_user(&context, create("delegated-revoked@example.test"))).await;
-    assert!(matches!(denied, Err(AuthAdminMutationError::Unauthorized)), "{denied:?}");
-    for email in ["delegated-epoch@example.test", "delegated-revoked@example.test"] {
-        assert!(users::Entity::find_by_email(&db, tenant.id, email).await.unwrap().is_none());
+        id: Set(registration.id),
+        revoked_at: Set(Some(Utc::now().into())),
+        ..Default::default()
+    }
+    .update(&db)
+    .await
+    .unwrap();
+    let denied = with_rbac_request_scope(
+        Some(scope()),
+        provider.create_user(&context, create("delegated-revoked@example.test")),
+    )
+    .await;
+    assert!(
+        matches!(denied, Err(AuthAdminMutationError::Unauthorized)),
+        "{denied:?}"
+    );
+    for email in [
+        "delegated-epoch@example.test",
+        "delegated-revoked@example.test",
+    ] {
+        assert!(
+            users::Entity::find_by_email(&db, tenant.id, email)
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 }
 
@@ -867,65 +1003,158 @@ async fn delegated_user_admin_rejects_revoked_registration_and_consent_epoch() {
 async fn oauth_admin_mutations_reject_revoked_direct_session() {
     use crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider;
     use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
-    use rustok_auth::{AuthAdminMutationContext, AuthAdminMutationError, CreateOAuthAppCommand, UpdateOAuthAppCommand, OAuthAdminPort};
+    use rustok_auth::{
+        AuthAdminMutationContext, AuthAdminMutationError, CreateOAuthAppCommand, OAuthAdminPort,
+        UpdateOAuthAppCommand,
+    };
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
     let db = setup_test_db_with_migrations::<Migrator>().await;
     let runtime = test_auth_runtime(db.clone());
-    let tenant = tenants::ActiveModel::new("OAuth admin session", &format!("tenant-{}", Uuid::new_v4()))
-        .insert(&db).await.unwrap();
+    let tenant =
+        tenants::ActiveModel::new("OAuth admin session", &format!("tenant-{}", Uuid::new_v4()))
+            .insert(&db)
+            .await
+            .unwrap();
     let (actor, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
-    rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(&db, tenant.id, actor.id, UserRole::SuperAdmin)
-        .await.unwrap();
-    let token = encode_access_token(runtime.require_auth_config().unwrap(), actor.id, tenant.id, UserRole::SuperAdmin, session_id).unwrap();
-    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token).await.unwrap();
+    rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+        &db,
+        tenant.id,
+        actor.id,
+        UserRole::SuperAdmin,
+    )
+    .await
+    .unwrap();
+    let token = encode_access_token(
+        runtime.require_auth_config().unwrap(),
+        actor.id,
+        tenant.id,
+        UserRole::SuperAdmin,
+        session_id,
+    )
+    .unwrap();
+    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await
+        .unwrap();
     let scope = || RbacRequestScope::authenticated(&admitted, admitted.access_token_expires_at);
-    let provider = ServerAuthAdminMutationProvider::new(runtime.runtime_ctx(), runtime.require_auth_config().unwrap().clone());
+    let provider = ServerAuthAdminMutationProvider::new(
+        runtime.runtime_ctx(),
+        runtime.require_auth_config().unwrap().clone(),
+    );
     let context = AuthAdminMutationContext {
-        actor_id: actor.id, tenant_id: tenant.id, request_id: None,
-        locale: Some("en".into()), principal_kind: Some(AuthPrincipalKind::DirectUser),
+        actor_id: actor.id,
+        tenant_id: tenant.id,
+        request_id: None,
+        locale: Some("en".into()),
+        principal_kind: Some(AuthPrincipalKind::DirectUser),
+        credential_authority: scope().admin_credential().unwrap(),
     };
     let create = |slug: &str| CreateOAuthAppCommand {
-        name: "OAuth target".into(), slug: slug.into(), description: None, app_type: "third_party".into(),
-        icon_url: None, redirect_uris: vec!["https://client.example/callback".into()],
-        scopes: vec!["forum:*".into()], grant_types: vec!["authorization_code".into()],
+        name: "OAuth target".into(),
+        slug: slug.into(),
+        description: None,
+        app_type: "third_party".into(),
+        icon_url: None,
+        redirect_uris: vec!["https://client.example/callback".into()],
+        scopes: vec!["forum:*".into()],
+        grant_types: vec!["authorization_code".into()],
         granted_permissions: Vec::new(),
     };
-    let created = with_rbac_request_scope(Some(scope()), provider.create_oauth_app(&context, create("admin-session-target")))
-        .await.unwrap();
+    let created = with_rbac_request_scope(
+        Some(scope()),
+        provider.create_oauth_app(&context, create("admin-session-target")),
+    )
+    .await
+    .unwrap();
     let app_id = created.app.id;
-    with_rbac_request_scope(Some(scope()), provider.grant_oauth_app_consent(&context, app_id, vec!["forum:*".into()]))
-        .await.unwrap();
+    with_rbac_request_scope(
+        Some(scope()),
+        provider.grant_oauth_app_consent(&context, app_id, vec!["forum:*".into()]),
+    )
+    .await
+    .unwrap();
     sessions::ActiveModel {
-        id: Set(session_id), revoked_at: Set(Some(Utc::now().into())), ..Default::default()
-    }.update(&db).await.unwrap();
+        id: Set(session_id),
+        revoked_at: Set(Some(Utc::now().into())),
+        ..Default::default()
+    }
+    .update(&db)
+    .await
+    .unwrap();
 
-    let denied = with_rbac_request_scope(Some(scope()), provider.create_oauth_app(&context, create("admin-session-denied"))).await;
+    let denied = with_rbac_request_scope(
+        Some(scope()),
+        provider.create_oauth_app(&context, create("admin-session-denied")),
+    )
+    .await;
     assert!(matches!(denied, Err(AuthAdminMutationError::Unauthorized)));
-    let denied = with_rbac_request_scope(Some(scope()), provider.update_oauth_app(&context, UpdateOAuthAppCommand {
-        id: app_id, name: "Unauthorized change".into(), description: None, icon_url: None,
-        redirect_uris: vec!["https://client.example/callback".into()], scopes: vec!["forum:*".into()],
-        grant_types: vec!["authorization_code".into()], granted_permissions: Vec::new(),
-    })).await;
+    let denied = with_rbac_request_scope(
+        Some(scope()),
+        provider.update_oauth_app(
+            &context,
+            UpdateOAuthAppCommand {
+                id: app_id,
+                name: "Unauthorized change".into(),
+                description: None,
+                icon_url: None,
+                redirect_uris: vec!["https://client.example/callback".into()],
+                scopes: vec!["forum:*".into()],
+                grant_types: vec!["authorization_code".into()],
+                granted_permissions: Vec::new(),
+            },
+        ),
+    )
+    .await;
     assert!(matches!(denied, Err(AuthAdminMutationError::Unauthorized)));
-    let denied = with_rbac_request_scope(Some(scope()), provider.rotate_oauth_app_secret(&context, app_id)).await;
+    let denied = with_rbac_request_scope(
+        Some(scope()),
+        provider.rotate_oauth_app_secret(&context, app_id),
+    )
+    .await;
     assert!(matches!(denied, Err(AuthAdminMutationError::Unauthorized)));
-    let denied = with_rbac_request_scope(Some(scope()), provider.revoke_oauth_app(&context, app_id)).await;
+    let denied =
+        with_rbac_request_scope(Some(scope()), provider.revoke_oauth_app(&context, app_id)).await;
     assert!(matches!(denied, Err(AuthAdminMutationError::Unauthorized)));
-    let denied = with_rbac_request_scope(Some(scope()), provider.grant_oauth_app_consent(&context, app_id, vec!["forum:*".into()])).await;
+    let denied = with_rbac_request_scope(
+        Some(scope()),
+        provider.grant_oauth_app_consent(&context, app_id, vec!["forum:*".into()]),
+    )
+    .await;
     assert!(matches!(denied, Err(AuthAdminMutationError::Unauthorized)));
-    let denied = with_rbac_request_scope(Some(scope()), provider.revoke_oauth_app_consent(&context, app_id)).await;
+    let denied = with_rbac_request_scope(
+        Some(scope()),
+        provider.revoke_oauth_app_consent(&context, app_id),
+    )
+    .await;
     assert!(matches!(denied, Err(AuthAdminMutationError::Unauthorized)));
-    assert!(oauth_apps::Entity::find()
-        .filter(oauth_apps::Column::TenantId.eq(tenant.id))
-        .filter(oauth_apps::Column::Slug.eq("admin-session-denied"))
-        .one(&db).await.unwrap().is_none());
-    let persisted = oauth_apps::Entity::find_by_id(app_id).one(&db).await.unwrap().unwrap();
+    assert!(
+        oauth_apps::Entity::find()
+            .filter(oauth_apps::Column::TenantId.eq(tenant.id))
+            .filter(oauth_apps::Column::Slug.eq("admin-session-denied"))
+            .one(&db)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let persisted = oauth_apps::Entity::find_by_id(app_id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
     assert!(persisted.is_active());
-    assert!(crate::services::oauth_app::OAuthAppService::verify_client_secret(
-        &created.client_secret, persisted.client_secret_hash.as_deref().unwrap(),
-    ).unwrap());
-    assert!(oauth_consents::Entity::find_active_consent(&db, app_id, actor.id, tenant.id).await.unwrap().is_some());
+    assert!(
+        crate::services::oauth_app::OAuthAppService::verify_client_secret(
+            &created.client_secret,
+            persisted.client_secret_hash.as_deref().unwrap(),
+        )
+        .unwrap()
+    );
+    assert!(
+        oauth_consents::Entity::find_active_consent(&db, app_id, actor.id, tenant.id)
+            .await
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[tokio::test]
@@ -938,37 +1167,88 @@ async fn oauth_admin_rejects_revoked_service_registration() {
 
     let db = setup_test_db_with_migrations::<Migrator>().await;
     let runtime = test_auth_runtime(db.clone());
-    let tenant = tenants::ActiveModel::new("OAuth service admin", &format!("tenant-{}", Uuid::new_v4()))
-        .insert(&db).await.unwrap();
-    let issuer = oauth_apps::scope_runtime_copy_locale("en".into(), OAuthAppService::create_app(
-        &db, tenant.id, CreateOAuthAppInput {
-            name: "Service administrator".into(), slug: "service-admin".into(), description: None,
-            app_type: "service".into(), icon_url: None, redirect_uris: Vec::new(),
-            scopes: vec!["settings:*".into()], grant_types: vec!["client_credentials".into()],
-            granted_permissions: vec![Permission::SETTINGS_MANAGE.to_string()],
-        },
-    )).await.unwrap().app;
-    let target = insert_oauth_app(&db, tenant.id, "third_party", &["authorization_code"], true).await;
-    let token = registered_service_token(&db, runtime.require_auth_config().unwrap(), &issuer, &["settings:*".into()]).await;
-    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token).await.unwrap();
+    let tenant =
+        tenants::ActiveModel::new("OAuth service admin", &format!("tenant-{}", Uuid::new_v4()))
+            .insert(&db)
+            .await
+            .unwrap();
+    let issuer = oauth_apps::scope_runtime_copy_locale(
+        "en".into(),
+        OAuthAppService::create_app(
+            &db,
+            tenant.id,
+            CreateOAuthAppInput {
+                name: "Service administrator".into(),
+                slug: "service-admin".into(),
+                description: None,
+                app_type: "service".into(),
+                icon_url: None,
+                redirect_uris: Vec::new(),
+                scopes: vec!["settings:*".into()],
+                grant_types: vec!["client_credentials".into()],
+                granted_permissions: vec![Permission::SETTINGS_MANAGE.to_string()],
+            },
+        ),
+    )
+    .await
+    .unwrap()
+    .app;
+    let target =
+        insert_oauth_app(&db, tenant.id, "third_party", &["authorization_code"], true).await;
+    let token = registered_service_token(
+        &db,
+        runtime.require_auth_config().unwrap(),
+        &issuer,
+        &["settings:*".into()],
+    )
+    .await;
+    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await
+        .unwrap();
     let registration_id = admitted.oauth_credential.as_ref().unwrap().registration_id;
     let scope = || RbacRequestScope::authenticated(&admitted, admitted.access_token_expires_at);
     let context = AuthAdminMutationContext {
-        actor_id: issuer.id, tenant_id: tenant.id, request_id: None, locale: Some("en".into()),
+        actor_id: issuer.id,
+        tenant_id: tenant.id,
+        request_id: None,
+        locale: Some("en".into()),
         principal_kind: Some(AuthPrincipalKind::Service),
+        credential_authority: scope().admin_credential().unwrap(),
     };
-    let provider = ServerAuthAdminMutationProvider::new(runtime.runtime_ctx(), runtime.require_auth_config().unwrap().clone());
+    let provider = ServerAuthAdminMutationProvider::new(
+        runtime.runtime_ctx(),
+        runtime.require_auth_config().unwrap().clone(),
+    );
     // Service identity is an app, not a persisted user. A live service
     // credential may administer another app but cannot grant user consent.
-    let first = with_rbac_request_scope(Some(scope()), provider.revoke_oauth_app(&context, target.id)).await.unwrap();
+    let first = with_rbac_request_scope(
+        Some(scope()),
+        provider.revoke_oauth_app(&context, target.id),
+    )
+    .await
+    .unwrap();
     assert!(!first.is_active);
-    let other = insert_oauth_app(&db, tenant.id, "third_party", &["authorization_code"], true).await;
+    let other =
+        insert_oauth_app(&db, tenant.id, "third_party", &["authorization_code"], true).await;
     oauth_tokens::ActiveModel {
-        id: Set(registration_id), revoked_at: Set(Some(Utc::now().into())), ..Default::default()
-    }.update(&db).await.unwrap();
-    let denied = with_rbac_request_scope(Some(scope()), provider.revoke_oauth_app(&context, other.id)).await;
+        id: Set(registration_id),
+        revoked_at: Set(Some(Utc::now().into())),
+        ..Default::default()
+    }
+    .update(&db)
+    .await
+    .unwrap();
+    let denied =
+        with_rbac_request_scope(Some(scope()), provider.revoke_oauth_app(&context, other.id)).await;
     assert!(matches!(denied, Err(AuthAdminMutationError::Unauthorized)));
-    assert!(oauth_apps::Entity::find_by_id(other.id).one(&db).await.unwrap().unwrap().is_active());
+    assert!(
+        oauth_apps::Entity::find_by_id(other.id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap()
+            .is_active()
+    );
 }
 
 #[tokio::test]
@@ -1048,21 +1328,12 @@ async fn access_token_resolver_rejects_unverified_users_when_email_verification_
     .expect("create tenant");
     let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
     let config = test_auth_config();
-    let token = encode_access_token(
-        &config,
-        user.id,
-        tenant.id,
-        UserRole::Customer,
-        session_id,
-    )
-    .expect("encode access token");
+    let token = encode_access_token(&config, user.id, tenant.id, UserRole::Customer, session_id)
+        .expect("encode access token");
 
     let mut settings = RustokSettings::default();
     settings.features.email_verification = true;
-    let auth_runtime = ServerAuthRuntime::new(
-        ServerRuntimeContext::new(db, settings),
-        config,
-    );
+    let auth_runtime = ServerAuthRuntime::new(ServerRuntimeContext::new(db, settings), config);
 
     let error = resolve_current_user_from_access_token(&auth_runtime, tenant.id, &token)
         .await
@@ -1161,19 +1432,40 @@ async fn websocket_lease_revalidates_live_authority_and_fails_closed() {
     assert!(lease.revalidate(&runtime).await.is_ok());
 
     session.absolute_expires_at = Set(Some((deadline - Duration::minutes(1)).into()));
-    session.clone().update(&db).await.expect("further shorten session");
+    session
+        .clone()
+        .update(&db)
+        .await
+        .expect("further shorten session");
     assert_eq!(
         lease.revalidate(&runtime).await,
         Err(WebSocketAuthLeaseError::AuthorityChanged)
     );
     session.absolute_expires_at = Set(Some(deadline.into()));
-    session.update(&db).await.expect("restore original deadline");
+    session
+        .update(&db)
+        .await
+        .expect("restore original deadline");
     assert!(lease.revalidate(&runtime).await.is_ok());
 
     let mut monotonic = lease.clone();
     monotonic.expired = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    assert!(monotonic.remaining_at(deadline - Duration::seconds(1), monotonic.monotonic_deadline).is_zero());
-    assert!(monotonic.remaining_at(deadline - Duration::seconds(2), monotonic.monotonic_deadline - std::time::Duration::from_secs(1)).is_zero());
+    assert!(
+        monotonic
+            .remaining_at(
+                deadline - Duration::seconds(1),
+                monotonic.monotonic_deadline
+            )
+            .is_zero()
+    );
+    assert!(
+        monotonic
+            .remaining_at(
+                deadline - Duration::seconds(2),
+                monotonic.monotonic_deadline - std::time::Duration::from_secs(1)
+            )
+            .is_zero()
+    );
 
     let mut expired = lease.clone();
     expired.expired = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -1220,10 +1512,17 @@ async fn registered_service_access_token_rejects_disabled_tenant() {
     let tenant_id = tenant.id;
     let app = insert_oauth_app(&db, tenant_id, "service", &["client_credentials"], true).await;
     let token = registered_service_token(
-        &db, runtime.require_auth_config().unwrap(), &app, &["forum:*".to_string()],
+        &db,
+        runtime.require_auth_config().unwrap(),
+        &app,
+        &["forum:*".to_string()],
     )
     .await;
-    assert!(resolve_current_user_from_access_token(&runtime, tenant_id, &token).await.is_ok());
+    assert!(
+        resolve_current_user_from_access_token(&runtime, tenant_id, &token)
+            .await
+            .is_ok()
+    );
 
     let mut update = tenant.into_active_model();
     update.is_active = Set(false);
@@ -1231,7 +1530,10 @@ async fn registered_service_access_token_rejects_disabled_tenant() {
     let error = resolve_current_user_from_access_token(&runtime, tenant_id, &token)
         .await
         .expect_err("disabled tenant must reject even a live registered service token");
-    assert_eq!(error, (axum::http::StatusCode::FORBIDDEN, "Tenant is unavailable"));
+    assert_eq!(
+        error,
+        (axum::http::StatusCode::FORBIDDEN, "Tenant is unavailable")
+    );
 }
 
 #[tokio::test]
@@ -1274,7 +1576,10 @@ async fn websocket_lease_rejects_a_disabled_tenant() {
     let error = resolve_current_user_from_access_token(&runtime, tenant_id, &token)
         .await
         .expect_err("disabled tenant must reject a live first-party session");
-    assert_eq!(error, (axum::http::StatusCode::FORBIDDEN, "Tenant is unavailable"));
+    assert_eq!(
+        error,
+        (axum::http::StatusCode::FORBIDDEN, "Tenant is unavailable")
+    );
     assert_eq!(
         lease.revalidate(&runtime).await,
         Err(WebSocketAuthLeaseError::ResolutionFailed)
@@ -1286,36 +1591,77 @@ async fn final_authority_check_rejects_membership_aba_and_revoked_session() {
     use sea_orm::EntityTrait;
     let db = setup_test_db_with_migrations::<Migrator>().await;
     let runtime = test_auth_runtime(db.clone());
-    let tenant = tenants::ActiveModel::new("Final admission", &format!("tenant-{}", Uuid::new_v4()))
-        .insert(&db).await.unwrap();
+    let tenant =
+        tenants::ActiveModel::new("Final admission", &format!("tenant-{}", Uuid::new_v4()))
+            .insert(&db)
+            .await
+            .unwrap();
     let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
     rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
-        &db, tenant.id, user.id, UserRole::Manager,
-    ).await.unwrap();
+        &db,
+        tenant.id,
+        user.id,
+        UserRole::Manager,
+    )
+    .await
+    .unwrap();
     let config = runtime.require_auth_config().unwrap();
-    let token = encode_access_token(config, user.id, tenant.id, UserRole::Manager, session_id).unwrap();
+    let token =
+        encode_access_token(config, user.id, tenant.id, UserRole::Manager, session_id).unwrap();
     let claims = crate::auth::decode_access_token(config, &token).unwrap();
-    let current = resolve_current_user_from_access_token(&runtime, tenant.id, &token).await.unwrap();
-    let session = sessions::Entity::find_by_id(session_id).one(&db).await.unwrap().unwrap();
-    let durable_deadline = session.expires_at.with_timezone(&Utc).min(session.absolute_deadline());
-    let initial = super::read_static_authority_revision(&db, tenant.id, user.id).await.unwrap();
+    let current = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await
+        .unwrap();
+    let session = sessions::Entity::find_by_id(session_id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    let durable_deadline = session
+        .expires_at
+        .with_timezone(&Utc)
+        .min(session.absolute_deadline());
+    let initial = super::read_static_authority_revision(&db, tenant.id, user.id)
+        .await
+        .unwrap();
     macro_rules! revalidate {
         ($revision:expr) => {
             super::revalidate_admitted_authority(
-                &runtime, tenant.id, &claims, &token, &current.user, &current.permissions,
-                &current.inferred_role, AuthPrincipalKind::DirectUser, None, durable_deadline,
-                Utc::now(), Some($revision),
+                &runtime,
+                tenant.id,
+                &claims,
+                &token,
+                &current.user,
+                &current.permissions,
+                &current.inferred_role,
+                AuthPrincipalKind::DirectUser,
+                None,
+                durable_deadline,
+                Utc::now(),
+                Some($revision),
             )
         };
     }
     assert!(revalidate!(&initial).await.is_ok());
     rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(
-        &db, tenant.id, user.id, UserRole::Customer,
-    ).await.unwrap();
+        &db,
+        tenant.id,
+        user.id,
+        UserRole::Customer,
+    )
+    .await
+    .unwrap();
     rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(
-        &db, tenant.id, user.id, UserRole::Manager,
-    ).await.unwrap();
-    let restored = super::read_static_authority_revision(&db, tenant.id, user.id).await.unwrap();
+        &db,
+        tenant.id,
+        user.id,
+        UserRole::Manager,
+    )
+    .await
+    .unwrap();
+    let restored = super::read_static_authority_revision(&db, tenant.id, user.id)
+        .await
+        .unwrap();
     assert_ne!(initial, restored, "membership ABA must retain history");
     assert!(revalidate!(&initial).await.is_err());
     assert!(revalidate!(&restored).await.is_ok());
@@ -1325,54 +1671,113 @@ async fn final_authority_check_rejects_membership_aba_and_revoked_session() {
     assert!(revalidate!(&restored).await.is_err());
 }
 
-
 #[tokio::test]
 async fn rbac_control_plane_transaction_rejects_revoked_session_and_live_grant_loss() {
     use crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider;
     use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
-    use rustok_rbac::graphql::{RbacMutationAuthority, RbacGraphqlRoleWriteError};
+    use rustok_rbac::graphql::{RbacGraphqlRoleWriteError, RbacMutationAuthority};
     use sea_orm::TransactionTrait;
 
     let db = setup_test_db_with_migrations::<Migrator>().await;
     let runtime = test_auth_runtime(db.clone());
     let tenant = tenants::ActiveModel::new("RBAC authority", &format!("tenant-{}", Uuid::new_v4()))
-        .insert(&db).await.unwrap();
+        .insert(&db)
+        .await
+        .unwrap();
     let (actor, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
     rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
-        &db, tenant.id, actor.id, UserRole::SuperAdmin,
-    ).await.unwrap();
-    let token = encode_access_token(runtime.require_auth_config().unwrap(), actor.id, tenant.id, UserRole::SuperAdmin, session_id).unwrap();
-    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token).await.unwrap();
+        &db,
+        tenant.id,
+        actor.id,
+        UserRole::SuperAdmin,
+    )
+    .await
+    .unwrap();
+    let token = encode_access_token(
+        runtime.require_auth_config().unwrap(),
+        actor.id,
+        tenant.id,
+        UserRole::SuperAdmin,
+        session_id,
+    )
+    .unwrap();
+    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await
+        .unwrap();
     let scope = || RbacRequestScope::authenticated(&admitted, admitted.access_token_expires_at);
-    let provider = ServerAuthAdminMutationProvider::new(runtime.runtime_ctx(), runtime.require_auth_config().unwrap().clone());
+    let provider = ServerAuthAdminMutationProvider::new(
+        runtime.runtime_ctx(),
+        runtime.require_auth_config().unwrap().clone(),
+    );
     let required = [Permission::SETTINGS_MANAGE, Permission::USERS_MANAGE];
     provider.prepare().await.unwrap();
     let tx = db.begin().await.unwrap();
-    let authority = with_rbac_request_scope(Some(scope()), provider.lock(&tx, tenant.id, actor.id, None, &required))
-        .await.unwrap();
+    let authority = with_rbac_request_scope(
+        Some(scope()),
+        provider.lock(&tx, tenant.id, actor.id, None, &required),
+    )
+    .await
+    .unwrap();
     provider.ensure_deadline(&tx, &authority).await.unwrap();
     tx.rollback().await.unwrap();
 
     let tx = db.begin().await.unwrap();
-    rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(&tx, tenant.id, actor.id, UserRole::Customer)
-        .await.unwrap();
+    rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(
+        &tx,
+        tenant.id,
+        actor.id,
+        UserRole::Customer,
+    )
+    .await
+    .unwrap();
     tx.commit().await.unwrap();
     provider.prepare().await.unwrap();
     let tx = db.begin().await.unwrap();
-    let denied = with_rbac_request_scope(Some(scope()), provider.lock(&tx, tenant.id, actor.id, None, &required)).await;
-    assert!(matches!(denied, Err(RbacGraphqlRoleWriteError::Forbidden(_))));
+    let denied = with_rbac_request_scope(
+        Some(scope()),
+        provider.lock(&tx, tenant.id, actor.id, None, &required),
+    )
+    .await;
+    assert!(matches!(
+        denied,
+        Err(RbacGraphqlRoleWriteError::Forbidden(_))
+    ));
     tx.rollback().await.unwrap();
 
     let tx = db.begin().await.unwrap();
-    rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(&tx, tenant.id, actor.id, UserRole::SuperAdmin)
-        .await.unwrap();
+    rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(
+        &tx,
+        tenant.id,
+        actor.id,
+        UserRole::SuperAdmin,
+    )
+    .await
+    .unwrap();
     tx.commit().await.unwrap();
     sessions::ActiveModel {
-        id: Set(session_id), revoked_at: Set(Some(Utc::now().into())), ..Default::default()
-    }.update(&db).await.unwrap();
+        id: Set(session_id),
+        revoked_at: Set(Some(Utc::now().into())),
+        ..Default::default()
+    }
+    .update(&db)
+    .await
+    .unwrap();
     provider.prepare().await.unwrap();
     let tx = db.begin().await.unwrap();
-    let denied = with_rbac_request_scope(Some(scope()), provider.lock(&tx, tenant.id, actor.id, None, &[Permission::MODULES_MANAGE])).await;
-    assert!(matches!(denied, Err(RbacGraphqlRoleWriteError::Forbidden(_))));
+    let denied = with_rbac_request_scope(
+        Some(scope()),
+        provider.lock(
+            &tx,
+            tenant.id,
+            actor.id,
+            None,
+            &[Permission::MODULES_MANAGE],
+        ),
+    )
+    .await;
+    assert!(matches!(
+        denied,
+        Err(RbacGraphqlRoleWriteError::Forbidden(_))
+    ));
     tx.rollback().await.unwrap();
 }

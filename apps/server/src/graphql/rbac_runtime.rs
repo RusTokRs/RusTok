@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_auth::{
-    AuthAdminMutationContext, AuthAdminMutationError, UpdateUserCommand, UserAdminMutationRuntime,
+    AuthAdminMutationError, UpdateUserCommand, UserAdminMutationRuntime,
 };
-use rustok_core::{ModuleRuntimeExtensions, UserRole};
 use rustok_cache::CacheService;
+use rustok_core::{ModuleRuntimeExtensions, UserRole};
 use rustok_rbac::graphql::{
     RbacGraphqlRoleWriteError, RbacGraphqlRoleWriter, RbacGraphqlRoleWriterHandle,
 };
@@ -31,15 +31,9 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
         self.runtime
             .port()
             .update_user(
-                &AuthAdminMutationContext {
-                    actor_id: *actor_id,
-                    tenant_id: *tenant_id,
-                    request_id: None,
-                    locale: None,
-                    // The GraphQL control plane admits direct users only.
-                    // The host scope independently binds the actual credential.
-                    principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
-                },
+                &crate::services::rbac_request_scope::bind_admin_context(
+                    *tenant_id, *actor_id, rustok_api::AuthPrincipalKind::DirectUser, None,
+                ).map_err(map_auth_admin_error)?,
                 UpdateUserCommand {
                     id: *user_id,
                     email: None,
@@ -69,15 +63,9 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
         self.runtime
             .port()
             .update_user(
-                &AuthAdminMutationContext {
-                    actor_id: *actor_id,
-                    tenant_id: *tenant_id,
-                    request_id: None,
-                    locale: None,
-                    // The GraphQL control plane admits direct users only.
-                    // The host scope independently binds the actual credential.
-                    principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
-                },
+                &crate::services::rbac_request_scope::bind_admin_context(
+                    *tenant_id, *actor_id, rustok_api::AuthPrincipalKind::DirectUser, None,
+                ).map_err(map_auth_admin_error)?,
                 UpdateUserCommand {
                     id: *user_id,
                     email: None,
@@ -102,9 +90,12 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
         // Clear locally and expire the caller's scope before any fallible fan-out.
         // The committed global watermark remains available to all watchdogs.
         crate::services::rbac_runtime::invalidate_all_user_permissions_cache().await;
-        crate::services::rbac_cache_invalidation::publish_all_rbac_invalidation(&self.cache_service, generation)
-            .await
-            .map_err(|error| RbacGraphqlRoleWriteError::Internal(error.to_string()))
+        crate::services::rbac_cache_invalidation::publish_all_rbac_invalidation(
+            &self.cache_service,
+            generation,
+        )
+        .await
+        .map_err(|error| RbacGraphqlRoleWriteError::Internal(error.to_string()))
     }
 
     async fn invalidate_role_users(
@@ -303,7 +294,9 @@ mod tests {
         let cache_service = CacheService::from_url(None);
         let provider = ServerAuthAdminMutationProvider::new(
             &ServerRuntimeContext::new(db.clone(), Default::default()),
-            crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            crate::auth::test_auth_config(
+                "test-secret-key-for-unit-tests-only-32bytes!".to_string(),
+            ),
         );
         let writer = ServerRbacGraphqlRoleWriter {
             runtime: UserAdminMutationRuntime::new(Arc::new(provider)),
@@ -342,7 +335,9 @@ mod tests {
         let cache_service = CacheService::from_url(None);
         let provider = ServerAuthAdminMutationProvider::new(
             &ServerRuntimeContext::new(db.clone(), Default::default()),
-            crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            crate::auth::test_auth_config(
+                "test-secret-key-for-unit-tests-only-32bytes!".to_string(),
+            ),
         );
         let writer = ServerRbacGraphqlRoleWriter {
             runtime: UserAdminMutationRuntime::new(Arc::new(provider)),

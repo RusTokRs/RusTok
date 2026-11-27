@@ -48,9 +48,9 @@ pub use authoring::{
 };
 pub(crate) use binding_panel::BindingPanel;
 pub(crate) use canvas_document::render_canvas_srcdoc_with_context;
-pub(crate) use canvas_protocol::CanvasResourceLimit;
 #[cfg(target_arch = "wasm32")]
 pub(crate) use canvas_protocol::CanvasBridgeMessage;
+pub(crate) use canvas_protocol::CanvasResourceLimit;
 #[cfg(target_arch = "wasm32")]
 pub(crate) use canvas_protocol::decode_canvas_message;
 pub(crate) use capability_controls::{CapabilityFieldset, CapabilityPolicyPanel};

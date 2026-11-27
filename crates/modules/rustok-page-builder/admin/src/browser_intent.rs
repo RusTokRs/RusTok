@@ -120,12 +120,13 @@ fn dispatch_named_intent(
         }
         "patch_selected" => {
             let patch = serde_json::from_value::<ComponentPatch>(
-                payload.get("patch").cloned().unwrap_or_else(|| payload.clone()),
+                payload
+                    .get("patch")
+                    .cloned()
+                    .unwrap_or_else(|| payload.clone()),
             )
             .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
-            let expected_component_id = payload
-                .get("component_id")
-                .and_then(Value::as_str);
+            let expected_component_id = payload.get("component_id").and_then(Value::as_str);
             let intent = controller
                 .ssr_selected_style_patch_intent(expected_component_id, patch)
                 .map_err(BrowserIntentDispatchError::Authoring)?;
@@ -1167,11 +1168,8 @@ mod tests {
             .dispatch(UiIntent::Select(Some("hero".to_string())))
             .expect("select before arming move");
 
-        dispatch_browser_intent(
-            &mut controller,
-            intent("begin_selected_move", json!({})),
-        )
-        .expect("legacy two-step begin selected move");
+        dispatch_browser_intent(&mut controller, intent("begin_selected_move", json!({})))
+            .expect("legacy two-step begin selected move");
 
         assert!(controller.ui().state.drag.is_some());
         assert_eq!(

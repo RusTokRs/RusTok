@@ -16,24 +16,102 @@ use rustok_api::AuthPrincipalKind;
 use thiserror::Error;
 use uuid::Uuid;
 
+/// Exact persisted OAuth access registration admitted by the host. No raw JWT
+/// or plaintext secret crosses the admin port. Not a transport input DTO.
+#[derive(Clone, PartialEq, Eq)]
+pub struct OAuthAdminCredentialEvidence {
+    pub registration_id: Uuid,
+    pub app_id: Uuid,
+    pub client_id: Uuid,
+    pub token_hash: String,
+    pub issued_at: DateTime<Utc>,
+    pub consent_granted_at: Option<DateTime<chrono::FixedOffset>>,
+    pub scopes: Vec<String>,
+}
+
+impl std::fmt::Debug for OAuthAdminCredentialEvidence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OAuthAdminCredentialEvidence")
+            .field("registration_id", &self.registration_id)
+            .field("app_id", &self.app_id)
+            .field("client_id", &self.client_id)
+            .field("issued_at", &self.issued_at)
+            .field("consent_granted_at", &self.consent_granted_at)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Host-admitted facts; constructing this value alone never grants authority.
+/// The host verifies exact provenance and live owner state on the transaction.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CredentialAuthority {
+    DirectSession {
+        session_id: Uuid,
+        expires_at: DateTime<Utc>,
+        recovery_revision: i64,
+    },
+    DelegatedOAuth {
+        registration: OAuthAdminCredentialEvidence,
+        expires_at: DateTime<Utc>,
+        recovery_revision: i64,
+    },
+    ServiceOAuth {
+        registration: OAuthAdminCredentialEvidence,
+        expires_at: DateTime<Utc>,
+    },
+    /// Explicit non-bearer internal intent. The server's authenticated admin
+    /// ports do not admit it in production; use owner maintenance APIs instead.
+    TrustedInternal,
+}
+
+impl CredentialAuthority {
+    pub fn principal_kind(&self) -> Option<AuthPrincipalKind> {
+        match self {
+            Self::DirectSession { .. } => Some(AuthPrincipalKind::DirectUser),
+            Self::DelegatedOAuth { .. } => Some(AuthPrincipalKind::DelegatedUser),
+            Self::ServiceOAuth { .. } => Some(AuthPrincipalKind::Service),
+            Self::TrustedInternal => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AuthAdminMutationContext {
     pub actor_id: Uuid,
     pub tenant_id: Uuid,
     pub request_id: Option<String>,
     pub locale: Option<String>,
-    /// Trusted principal classification of the caller, when the command
-    /// arrives through an authenticated request boundary.
-    ///
-    /// `None` is reserved for trusted host-internal compositions without
-    /// a request principal. The host request scope independently carries
-    /// admitted credential evidence; classification alone is not a credential. Operations that act on the actor's own behalf —
-    /// above all OAuth consent grant/revoke/list — must require
-    /// `Some(AuthPrincipalKind::DirectUser)` and fail closed for delegated
-    /// (`authorization_code`) and service (`client_credentials`) tokens:
-    /// an application must never consent to applications as the user.
+    /// Mandatory typed credential. Keep the classification for compatibility
+    /// with read/preflight guards; the host rejects disagreement with evidence.
     pub principal_kind: Option<AuthPrincipalKind>,
+    pub credential_authority: CredentialAuthority,
 }
+
+/// Transport-neutral request identity projection. The resolver corroborates
+/// these facts with the host's actual admitted credential; this DTO is not
+/// evidence of admission on its own.
+pub struct AdminCredentialRequest<'a> {
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub session_id: Uuid,
+    pub client_id: Option<Uuid>,
+    pub grant_type: &'a str,
+    pub scopes: &'a [String],
+}
+
+/// Host-only adapter from admitted request facts to a bound owner context.
+/// Missing providers or mismatched/invalidated requests must fail closed.
+pub trait AuthAdminCredentialResolver: Send + Sync {
+    fn bind(
+        &self,
+        auth: AdminCredentialRequest<'_>,
+        principal_kind: AuthPrincipalKind,
+        locale: Option<String>,
+    ) -> Result<AuthAdminMutationContext, AuthAdminMutationError>;
+}
+
+#[derive(Clone)]
+pub struct AuthAdminCredentialResolverHandle(pub Arc<dyn AuthAdminCredentialResolver>);
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct CreateUserCommand {
@@ -357,6 +435,21 @@ impl OAuthAdminRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn credential_debug_never_exposes_registration_digest() {
+        let authority = CredentialAuthority::ServiceOAuth {
+            registration: OAuthAdminCredentialEvidence {
+                registration_id: Uuid::new_v4(), app_id: Uuid::new_v4(), client_id: Uuid::new_v4(),
+                token_hash: "private-registration-digest".into(), issued_at: Utc::now(),
+                consent_granted_at: None, scopes: vec!["settings:manage".into()],
+            },
+            expires_at: Utc::now(),
+        };
+        assert_eq!(authority.principal_kind(), Some(AuthPrincipalKind::Service));
+        assert!(!format!("{authority:?}").contains("private-registration-digest"));
+        assert_eq!(CredentialAuthority::TrustedInternal.principal_kind(), None);
+    }
 
     #[test]
     fn oauth_secret_result_debug_redacts_client_secret() {

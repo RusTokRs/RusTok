@@ -33,12 +33,7 @@ const ADMIN_PAYMENT_OWNER: &str = "rustok_payment.admin_payments";
 const ADMIN_PAYMENT_BOUNDARY: &str = "commerce_admin_payment_http";
 const MAX_REFUND_CREATION_KEY_LENGTH: usize = 191;
 
-type AdminPaymentHttpPolicy = (
-    StatusCode,
-    &'static str,
-    &'static str,
-    &'static str,
-);
+type AdminPaymentHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
 /// Typed admin payment error context: truthful identities, no raw payloads.
 pub struct AdminPaymentErrorContext {
@@ -125,11 +120,7 @@ impl std::fmt::Debug for AdminPaymentDiagnosticError {
 }
 
 fn uuid_shape(value: Uuid) -> &'static str {
-    if value.is_nil() {
-        "nil"
-    } else {
-        "non_nil"
-    }
+    if value.is_nil() { "nil" } else { "non_nil" }
 }
 
 fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
@@ -211,12 +202,14 @@ fn reserved_refund_error_policy(error: &PaymentError) -> AdminPaymentHttpPolicy 
             "Refund remains reserved while the provider outcome is reconciled",
             "reconciliation_required",
         ),
-        PaymentError::ProviderInvalidResponse { .. } | PaymentError::ProviderUnavailable { .. } => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_refund_provider_unavailable",
-            "Refund remains reserved and the provider operation may be retried safely",
-            "refund_reserved_retryable",
-        ),
+        PaymentError::ProviderInvalidResponse { .. } | PaymentError::ProviderUnavailable { .. } => {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "commerce_admin_refund_provider_unavailable",
+                "Refund remains reserved and the provider operation may be retried safely",
+                "refund_reserved_retryable",
+            )
+        }
         error => payment_error_policy(error),
     }
 }

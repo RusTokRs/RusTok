@@ -20,8 +20,7 @@ const PAGE_QUERY: &str = "query PageAdmin($id: UUID!, $locale: String) { page(id
 const PAGE_BUILDER_SCENARIO_BASELINE_QUERY: &str = "query PageBuilderScenarioBaseline($pageId: UUID!) { pageBuilderScenarioBaseline(pageId: $pageId) { baseline } }";
 // Exactly the save response projection, so the recovered result cannot
 // silently omit fields the Page Builder needs to acknowledge a save.
-const PAGE_DOCUMENT_SAVE_RECEIPT_QUERY: &str =
-    "query PageDocumentSaveReceipt($id: UUID!, $idempotencyKey: String!) { pageDocumentSaveReceipt(id: $id, idempotencyKey: $idempotencyKey) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt state } documentReadable } }";
+const PAGE_DOCUMENT_SAVE_RECEIPT_QUERY: &str = "query PageDocumentSaveReceipt($id: UUID!, $idempotencyKey: String!) { pageDocumentSaveReceipt(id: $id, idempotencyKey: $idempotencyKey) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt state } documentReadable } }";
 const PAGE_BODY_REVISIONS_QUERY: &str = "query PageBodyRevisions($id: UUID!, $locale: String!) { pageBodyRevisions(id: $id, locale: $locale) { id locale source bodyRevision createdAt createdBy } }";
 const CREATE_PAGE_MUTATION: &str = "mutation CreatePage($input: CreateGqlPageInput!) { createPage(input: $input) { id version status updatedAt translation { locale title slug } } }";
 const UPDATE_STARTER_METADATA_MUTATION: &str = "mutation UpdatePageStarterMetadata($input: UpdateGqlPageStarterMetadataInput!) { updatePageStarterMetadata(input: $input) }";
@@ -684,8 +683,15 @@ pub async fn save_page_document(
     project_data: Value,
 ) -> Result<PageDetail, ApiError> {
     save_page_document_with_key(
-        token, tenant_slug, id, expected_revision, locale, project_data, None,
-    ).await
+        token,
+        tenant_slug,
+        id,
+        expected_revision,
+        locale,
+        project_data,
+        None,
+    )
+    .await
 }
 
 /// Submit a stable request key for a replayable Pages-owned save receipt.
