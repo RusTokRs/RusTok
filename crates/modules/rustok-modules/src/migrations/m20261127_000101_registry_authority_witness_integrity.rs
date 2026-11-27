@@ -109,16 +109,32 @@ END $$;
 "#;
 
 const SQLITE_GUARDS: &str = r#"
+-- SQLite REPLACE can delete conflicting rows without DELETE triggers even
+-- when the outer statement is an INSERT or UPDATE. Publication uses a plain
+-- INSERT; changes to an existing release use UPDATE, never replacement.
+CREATE TRIGGER registry_release_no_replace
+BEFORE INSERT ON registry_module_releases
+WHEN EXISTS (SELECT 1 FROM registry_module_releases
+             WHERE id = NEW.id OR (slug = NEW.slug AND version = NEW.version)
+                OR rowid = NEW.rowid)
+BEGIN SELECT RAISE(ABORT, 'Registry release cannot be replaced'); END;
+
+CREATE TRIGGER registry_release_rowid_guard
+BEFORE UPDATE ON registry_module_releases
+WHEN NEW.rowid IS NOT OLD.rowid
+BEGIN SELECT RAISE(ABORT, 'Registry release row identity is immutable'); END;
+
 CREATE TRIGGER registry_release_authority_witness_insert
 BEFORE INSERT ON registry_release_authority_revisions
 WHEN typeof(NEW.revision) <> 'integer' OR NEW.revision <> 1
  OR EXISTS (SELECT 1 FROM registry_release_authority_revisions
-             WHERE slug = NEW.slug AND version = NEW.version)
+             WHERE (slug = NEW.slug AND version = NEW.version) OR rowid = NEW.rowid)
 BEGIN SELECT RAISE(ABORT, 'Registry authority witness must begin at one and cannot be replaced'); END;
 
 CREATE TRIGGER registry_release_authority_witness_update
 BEFORE UPDATE ON registry_release_authority_revisions
 WHEN NEW.slug IS NOT OLD.slug OR NEW.version IS NOT OLD.version
+ OR NEW.rowid IS NOT OLD.rowid
  OR typeof(OLD.revision) <> 'integer' OR typeof(NEW.revision) <> 'integer'
  OR OLD.revision = 9223372036854775807 OR NEW.revision <> OLD.revision + 1
 BEGIN SELECT RAISE(ABORT, 'Registry authority witness must advance by one without changing identity'); END;
@@ -235,6 +251,9 @@ mod tests {
             "UPDATE registry_release_authority_revisions SET revision = 2.5",
             "UPDATE registry_release_authority_revisions SET slug = 'another'",
             "INSERT OR REPLACE INTO registry_release_authority_revisions VALUES ('witness_sample', '1.0.0', 1)",
+            "INSERT OR REPLACE INTO registry_release_authority_revisions (rowid, slug, version, revision)
+             SELECT rowid, 'different', '2.0.0', 1 FROM registry_release_authority_revisions",
+            "UPDATE registry_release_authority_revisions SET rowid = rowid + 100, revision = revision + 1",
         ] {
             assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
             assert_eq!(revision(&db).await, 2);
@@ -248,6 +267,58 @@ mod tests {
         assert_eq!(revision(&tx).await, 4);
         tx.rollback().await.unwrap();
         assert_eq!(revision(&db).await, 3);
+    }
+
+    #[tokio::test]
+    async fn sqlite_release_replace_cannot_displace_another_release_or_its_receipts() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        setup(&SchemaManager::new(&db)).await;
+        db.execute_unprepared("PRAGMA recursive_triggers = OFF").await.unwrap();
+        db.execute_unprepared("PRAGMA foreign_keys = ON").await.unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE release_receipts (
+                id TEXT PRIMARY KEY, release_id TEXT NOT NULL
+                REFERENCES registry_module_releases(id) ON DELETE CASCADE);
+             INSERT INTO release_receipts VALUES ('receipt', 'release');
+             INSERT INTO registry_module_releases
+             VALUES ('other', 'other_sample', '2.0.0', 'active', 'other_digest', NULL);"
+        ).await.unwrap();
+
+        for sql in [
+            "INSERT OR REPLACE INTO registry_module_releases
+             VALUES ('release', 'different', '3.0.0', 'active', 'digest', NULL)",
+            "INSERT OR REPLACE INTO registry_module_releases
+             VALUES ('different', 'witness_sample', '1.0.0', 'active', 'digest', NULL)",
+            "INSERT OR REPLACE INTO registry_module_releases
+             VALUES ('release', 'witness_sample', '1.0.0', 'active', 'digest', NULL)",
+            "INSERT OR REPLACE INTO registry_module_releases (rowid, id, slug, version, status, checksum_sha256)
+             SELECT rowid, 'different', 'different', '3.0.0', 'active', 'digest'
+             FROM registry_module_releases WHERE id = 'release'",
+            "UPDATE OR REPLACE registry_module_releases
+             SET rowid = (SELECT rowid FROM registry_module_releases WHERE id = 'other')
+             WHERE id = 'release'",
+        ] {
+            assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+            assert_eq!(revision(&db).await, 1);
+            let row = db.query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT (SELECT COUNT(*) FROM registry_module_releases) AS releases,
+                        (SELECT COUNT(*) FROM release_receipts) AS receipts,
+                        (SELECT COUNT(*) FROM registry_release_authority_revisions) AS witnesses",
+            )).await.unwrap().unwrap();
+            assert_eq!(row.try_get::<i64>("", "releases").unwrap(), 2);
+            assert_eq!(row.try_get::<i64>("", "receipts").unwrap(), 1);
+            assert_eq!(row.try_get::<i64>("", "witnesses").unwrap(), 2);
+        }
+
+        db.execute_unprepared("UPDATE registry_module_releases SET status = 'yanked' WHERE id = 'release'")
+            .await.unwrap();
+        assert_eq!(revision(&db).await, 2);
+        db.execute_unprepared("DELETE FROM registry_module_releases WHERE id = 'release'")
+            .await.unwrap();
+        assert_eq!(revision(&db).await, 3);
+        db.execute_unprepared(RELEASE).await.unwrap();
+        assert_eq!(revision(&db).await, 4);
     }
 
     async fn transaction(db: &DatabaseConnection, schema: &str) -> DatabaseTransaction {

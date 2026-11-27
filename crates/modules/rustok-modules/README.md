@@ -286,7 +286,10 @@ global deadlock freedom is not established.
 
 Registry continuity witness migration 000101 protects permanent identities and
 strict integer successors from direct SQL resets or deletion (including SQLite
-replacement). PostgreSQL release triggers fail rather than wait for contended
+replacement). SQLite also rejects release replacement by primary key,
+slug/version or explicit rowid, and rejects rowid changes on releases and
+witnesses, so implicit deletes cannot bypass the continuity trigger or destroy
+receipts. PostgreSQL release triggers fail rather than wait for contended
 activation/witness relation locks or an existing witness row. This is a DML
 integrity fence, not protection against privileged DDL or database restoration.
 Source regressions are unrun.

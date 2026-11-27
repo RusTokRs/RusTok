@@ -1168,7 +1168,12 @@ a competing late writer fails with SQLSTATE 55P03 and must roll back.
 The AFTER trigger advances only the exact registry witness. Migration 000101
 also makes witness identities permanent and their integer revisions strictly
 successive; deletion, truncation, regression, and SQLite REPLACE of existing
-witnesses fail closed. Direct monotonic witness advancement can only invalidate
+witnesses fail closed. SQLite release INSERT must not conflict with an existing
+primary key, slug/version or rowid; releases and witnesses cannot change their
+rowid. This prevents REPLACE from silently deleting another release or witness
+and cascading receipt deletion without a continuity update, even with recursive
+triggers disabled. Canonical publication uses plain INSERT and later changes use
+UPDATE. Direct monotonic witness advancement can only invalidate
 old evidence; it is not a supported release writer. PostgreSQL raw witness
 writes share the nonblocking slug advisory gate. The release guards also
 acquire their required table locks and existing witness row without waiting.
