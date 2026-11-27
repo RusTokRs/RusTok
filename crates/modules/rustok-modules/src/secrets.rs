@@ -942,7 +942,8 @@ where
             revision: context.revision,
             purpose: context.purpose.to_string(),
         })
-    }}
+    }
+}
 
 /// The `platform.secrets` adapter for one installed artifact scope. It is
 /// injected into the neutral sandbox runtime by the deployment and exposes
