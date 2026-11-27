@@ -11,6 +11,9 @@ use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::artifact_capability_router::{
+    begin_artifact_capability_effect, commit_artifact_capability_effect,
+};
 use crate::backend::SupportedBackend;
 use crate::data::{
     configure_tenant_scope, namespace_lock_clause, optional_revision_value, revision_value,
@@ -625,6 +628,7 @@ where
 pub struct SeaOrmArtifactSecretHandleService<A> {
     db: DatabaseConnection,
     authorizer: A,
+    effect_authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>,
 }
 
 impl<A> SeaOrmArtifactSecretHandleService<A>
@@ -632,22 +636,83 @@ where
     A: ArtifactSecretHandleAuthorizer,
 {
     pub fn new(db: DatabaseConnection, authorizer: A) -> Self {
-        Self { db, authorizer }
+        Self {
+            db,
+            authorizer,
+            effect_authorizer: None,
+        }
+    }
+
+    pub(crate) fn with_sql_effect_authorizer(
+        mut self,
+        authorizer: Arc<dyn crate::ArtifactSqlEffectAuthorizer>,
+    ) -> Self {
+        self.effect_authorizer = Some(authorizer);
+        self
     }
 
     pub async fn acquire_handle(
         &self,
         request: ArtifactSecretHandleRequest,
     ) -> Result<ArtifactSecretHandle, ArtifactSecretError> {
+        self.acquire_handle_inner(request, None).await
+    }
+
+    async fn acquire_handle_for_call(
+        &self,
+        request: ArtifactSecretHandleRequest,
+        call: &CapabilityCall,
+    ) -> Result<ArtifactSecretHandle, ArtifactSecretError> {
+        self.acquire_handle_inner(request, Some(call)).await
+    }
+
+    async fn acquire_handle_inner(
+        &self,
+        request: ArtifactSecretHandleRequest,
+        call: Option<&CapabilityCall>,
+    ) -> Result<ArtifactSecretHandle, ArtifactSecretError> {
         validate_handle_request(&request)?;
         self.authorizer.authorize_secret_handle(&request).await?;
 
-        let transaction = self.db.begin().await.map_err(storage_error)?;
-        configure_tenant_scope(&transaction, request.scope.capability.tenant_id)
-            .await
-            .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
+        let (transaction, guard) = match (self.effect_authorizer.as_ref(), call) {
+            (Some(authorizer), Some(call)) => {
+                let (transaction, guard) = begin_artifact_capability_effect(
+                    &self.db,
+                    call,
+                    authorizer.as_ref(),
+                )
+                .await
+                .map_err(|_| ArtifactSecretError::PolicyDenied)?;
+                (transaction, Some(guard))
+            }
+            _ => (self.db.begin().await.map_err(storage_error)?, None),
+        };
+        if guard.is_none() {
+            configure_tenant_scope(&transaction, request.scope.capability.tenant_id)
+                .await
+                .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
+        }
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        let locked = transaction
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "UPDATE module_artifact_secret_bindings SET revision = revision
+                     WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {}
+                     AND reference_name = {}",
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                ),
+                binding_values_for_scope(&request.scope, &request.reference, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?;
+        if locked.rows_affected() != 1 {
+            return Err(ArtifactSecretError::HandleUnavailable);
+        }
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -664,7 +729,13 @@ where
             ))
             .await
             .map_err(storage_error)?;
-        transaction.commit().await.map_err(storage_error)?;
+        if let Some(guard) = guard {
+            commit_artifact_capability_effect(transaction, guard, &CapabilityName::new("platform.secrets").expect("static capability name"))
+                .await
+                .map_err(|_| ArtifactSecretError::PolicyDenied)?;
+        } else {
+            transaction.commit().await.map_err(storage_error)?;
+        }
         let row = row.ok_or(ArtifactSecretError::HandleUnavailable)?;
         let reference: String = row.try_get("", "reference_name").map_err(storage_error)?;
         let revision: i64 = row.try_get("", "revision").map_err(storage_error)?;
@@ -827,6 +898,14 @@ where
             scope,
         }
     }
+
+    pub(crate) fn with_sql_effect_authorizer(
+        mut self,
+        authorizer: Arc<dyn crate::ArtifactSqlEffectAuthorizer>,
+    ) -> Self {
+        self.handles = self.handles.with_sql_effect_authorizer(authorizer);
+        self
+    }
 }
 
 #[async_trait]
@@ -837,9 +916,12 @@ where
     async fn invoke(
         &self,
         call: &CapabilityCall,
-        _grant: &CapabilityGrant,
+        grant: &CapabilityGrant,
     ) -> SandboxResult<CapabilityResponse> {
-        if call.capability.as_str() != "platform.secrets" || call.operation != "acquire_handle" {
+        if grant.name != call.capability
+            || call.capability.as_str() != "platform.secrets"
+            || call.operation != "acquire_handle"
+        {
             return Err(SandboxError::CapabilityDenied(call.capability.clone()));
         }
         if call.context.tenant_id != Some(self.scope.capability.tenant_id)
@@ -850,7 +932,7 @@ where
         let reference = capability_reference(call)?;
         let handle = self
             .handles
-            .acquire_handle(ArtifactSecretHandleRequest {
+            .acquire_handle_for_call(ArtifactSecretHandleRequest {
                 scope: self.scope.clone(),
                 reference: reference.to_string(),
                 execution_id: call.execution_id,
@@ -858,7 +940,7 @@ where
                 phase: call.context.phase,
                 actor_id: call.context.actor_id.clone(),
                 trace_id: call.context.trace_id.clone(),
-            })
+            }, call)
             .await
             .map_err(|error| secret_capability_error(&call.capability, error))?;
         Ok(CapabilityResponse {
@@ -875,6 +957,7 @@ where
 pub struct SeaOrmArtifactSecretCapabilityBrokerResolver<A> {
     db: DatabaseConnection,
     authorizer: A,
+    effect_authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>,
 }
 
 impl<A> SeaOrmArtifactSecretCapabilityBrokerResolver<A>
@@ -882,7 +965,19 @@ where
     A: ArtifactSecretHandleAuthorizer + Clone,
 {
     pub fn new(db: DatabaseConnection, authorizer: A) -> Self {
-        Self { db, authorizer }
+        Self {
+            db,
+            authorizer,
+            effect_authorizer: None,
+        }
+    }
+
+    pub fn with_sql_effect_authorizer(
+        mut self,
+        authorizer: Arc<dyn crate::ArtifactSqlEffectAuthorizer>,
+    ) -> Self {
+        self.effect_authorizer = Some(authorizer);
+        self
     }
 }
 
@@ -902,11 +997,18 @@ where
         let installation =
             resolve_granted_artifact_capability(&self.db, execution, capability).await?;
         let scope = artifact_secret_scope_for_execution(&installation, execution, capability)?;
-        Ok(Arc::new(SeaOrmArtifactSecretCapabilityBroker::new(
+        let broker = SeaOrmArtifactSecretCapabilityBroker::new(
             self.db.clone(),
             self.authorizer.clone(),
             scope,
-        )))
+        );
+        let broker = match self.effect_authorizer.as_ref() {
+            Some(authorizer) => {
+                broker.with_sql_effect_authorizer(Arc::clone(authorizer))
+            }
+            None => return Err(SandboxError::CapabilityDenied(capability.clone())),
+        };
+        Ok(Arc::new(broker))
     }
 }
 
