@@ -462,3 +462,15 @@ publication, even if the subject would again be absent afterward. Revision
 storage counts toward the cache weight. Exact
 validation is retained because database restore can reproduce counters; no
 warm-hit speedup or commit-time fence is claimed. Source regressions unrun.
+
+### Tenant-bound role labels and administrator continuity
+
+Persisted role membership reads join the subject's tenant and the role's
+tenant, excluding malformed cross-tenant links. The persisted role planner
+distinguishes effective hierarchy rank from actual canonical system
+`super_admin` membership: only the latter participates in last-active-admin
+continuity. Custom-role replacement and status/removal checks use the same
+membership predicate. Existing hierarchy and permission-ceiling checks remain.
+Source regressions cover a malformed foreign membership and the distinction
+between inferred rank and canonical membership; compilation and execution
+remain pending.

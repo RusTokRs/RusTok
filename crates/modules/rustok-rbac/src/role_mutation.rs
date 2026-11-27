@@ -134,6 +134,15 @@ pub enum RbacRoleMutationPolicyError {
 pub fn plan_user_role_mutation(
     facts: RbacRoleMutationFacts,
 ) -> Result<RbacRoleMutationOutcome, RbacRoleMutationPolicyError> {
+    let holds_super_admin = facts.target_role == UserRole::SuperAdmin;
+    plan_user_role_mutation_with_membership(facts, holds_super_admin)
+}
+
+// Effective hierarchy and canonical break-glass membership are distinct.
+fn plan_user_role_mutation_with_membership(
+    facts: RbacRoleMutationFacts,
+    holds_super_admin: bool,
+) -> Result<RbacRoleMutationOutcome, RbacRoleMutationPolicyError> {
     validate_identity("tenant_id", facts.tenant_id)?;
     validate_identity("actor_id", facts.actor_id)?;
     validate_identity("actor_tenant_id", facts.actor_tenant_id)?;
@@ -154,7 +163,7 @@ pub fn plan_user_role_mutation(
         &facts.target_role,
     )?;
 
-    let removes_active_super_admin = facts.target_role == UserRole::SuperAdmin
+    let removes_active_super_admin = holds_super_admin
         && facts.target_status == UserStatus::Active
         && (facts.requested_role != UserRole::SuperAdmin
             || facts.resulting_status != UserStatus::Active);
@@ -390,7 +399,9 @@ pub async fn plan_persisted_user_role_mutation_on(
     let resulting_status = request
         .resulting_status
         .unwrap_or_else(|| target_status.clone());
-    let removes_active_super_admin = target_role == UserRole::SuperAdmin
+    let holds_super_admin =
+        holds_canonical_super_admin_on(db, request.tenant_id, request.target_user_id).await?;
+    let removes_active_super_admin = holds_super_admin
         && target_status == UserStatus::Active
         && (request.requested_role != UserRole::SuperAdmin
             || resulting_status != UserStatus::Active);
@@ -407,20 +418,23 @@ pub async fn plan_persisted_user_role_mutation_on(
         &request.requested_role,
     )
     .await?;
-    Ok(plan_user_role_mutation(RbacRoleMutationFacts {
-        tenant_id: request.tenant_id,
-        actor_id: request.actor_id,
-        actor_tenant_id: request.actor_tenant_id,
-        actor_role: request.actor_role,
-        target_user_id: request.target_user_id,
-        target_tenant_id: request.tenant_id,
-        target_role,
-        target_status,
-        requested_role: request.requested_role,
-        resulting_status,
-        assignment_is_exact,
-        remaining_active_super_admins,
-    })?)
+    Ok(plan_user_role_mutation_with_membership(
+        RbacRoleMutationFacts {
+            tenant_id: request.tenant_id,
+            actor_id: request.actor_id,
+            actor_tenant_id: request.actor_tenant_id,
+            actor_role: request.actor_role,
+            target_user_id: request.target_user_id,
+            target_tenant_id: request.tenant_id,
+            target_role,
+            target_status,
+            requested_role: request.requested_role,
+            resulting_status,
+            assignment_is_exact,
+            remaining_active_super_admins,
+        },
+        holds_super_admin,
+    )?)
 }
 
 async fn lock_target_authority_on(
@@ -500,17 +514,25 @@ pub async fn ensure_user_authority_continuity_on(
     if !active || remains {
         return Ok(());
     }
-    let membership = db.query_one_raw(role_statement(
-        db,
-        "SELECT r.id FROM roles r JOIN user_roles ur ON ur.role_id = r.id WHERE r.tenant_id = ? AND r.slug = ? AND r.is_system = TRUE AND ur.user_id = ?",
-        vec![tenant_id.into(), UserRole::SuperAdmin.to_string().into(), user_id.into()],
-    )?).await?;
-    if membership.is_some()
+    if holds_canonical_super_admin_on(db, tenant_id, user_id).await?
         && count_remaining_active_super_admins_on(db, tenant_id, user_id).await? == 0
     {
         return Err(RbacRoleMutationPolicyError::LastActiveSuperAdmin.into());
     }
     Ok(())
+}
+
+async fn holds_canonical_super_admin_on<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> Result<bool, RbacRolePersistenceError> {
+    let membership = db.query_one_raw(role_statement(
+        db,
+        "SELECT r.id FROM roles r JOIN user_roles ur ON ur.role_id = r.id JOIN users u ON u.id = ur.user_id AND u.tenant_id = r.tenant_id WHERE r.tenant_id = ? AND r.slug = ? AND r.is_system = TRUE AND u.id = ?",
+        vec![tenant_id.into(), UserRole::SuperAdmin.to_string().into(), user_id.into()],
+    )?).await?;
+    Ok(membership.is_some())
 }
 
 /// Replace a persisted role within the caller's transaction. Returns false only
@@ -671,7 +693,7 @@ async fn load_tenant_role_memberships_on<C: sea_orm::ConnectionTrait>(
     let rows = db
         .query_all_raw(role_statement(
             db,
-            "SELECT r.id, r.slug FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND r.tenant_id = ? ORDER BY r.slug",
+            "SELECT r.id, r.slug FROM user_roles ur JOIN roles r ON r.id = ur.role_id JOIN users u ON u.id = ur.user_id AND u.tenant_id = r.tenant_id WHERE u.id = ? AND u.tenant_id = ? ORDER BY r.slug",
             vec![user_id.into(), tenant_id.into()],
         )?)
         .await?;
@@ -930,9 +952,8 @@ pub async fn plan_persisted_custom_role_assignment_on(
     // Continuity: replacing the membership of an active super administrator
     // removes them from the active administrator set by definition here (the
     // requested role is never `super_admin` on this path).
-    let holds_super_admin = memberships
-        .iter()
-        .any(|(_, membership_slug)| membership_slug == &UserRole::SuperAdmin.to_string());
+    let holds_super_admin =
+        holds_canonical_super_admin_on(db, request.tenant_id, request.target_user_id).await?;
     if holds_super_admin
         && target_status == UserStatus::Active
         && count_remaining_active_super_admins_on(db, request.tenant_id, request.target_user_id)
@@ -987,9 +1008,7 @@ pub async fn replace_persisted_user_role_by_slug_on(
     if memberships.len() == 1 && memberships[0].0 == role_id {
         return Ok(false);
     }
-    let holds_super_admin = memberships
-        .iter()
-        .any(|(_, membership_slug)| membership_slug == &UserRole::SuperAdmin.to_string());
+    let holds_super_admin = holds_canonical_super_admin_on(db, tenant_id, user_id).await?;
     if holds_super_admin
         && slug != UserRole::SuperAdmin.to_string()
         && target_status == UserStatus::Active
@@ -1064,6 +1083,34 @@ mod tests {
             .unwrap();
         }
         tx.commit().await.unwrap();
+
+        // A malformed historical relation must not give a foreign user the
+        // local role label or canonical administrator membership.
+        let tx = db.begin().await.unwrap();
+        let local_role = lock_role_row_on(&tx, tenant, "super_admin")
+            .await
+            .unwrap()
+            .unwrap();
+        tx.execute_raw(
+            role_statement(
+                &tx,
+                "INSERT INTO user_roles (id, user_id, role_id) VALUES (?, ?, ?)",
+                vec![Uuid::new_v4().into(), foreign_admin.into(), local_role.into()],
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            resolve_role_hierarchy_on(&tx, tenant, foreign_admin).await.unwrap(),
+            UserRole::Customer
+        );
+        assert_eq!(
+            resolve_persisted_role_slug_on(&tx, tenant, foreign_admin).await.unwrap(),
+            "customer"
+        );
+        assert!(!holds_canonical_super_admin_on(&tx, tenant, foreign_admin).await.unwrap());
+        tx.rollback().await.unwrap();
 
         let tx = db.begin().await.unwrap();
         assert_eq!(
@@ -1341,6 +1388,24 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error, RbacRoleMutationPolicyError::LastActiveSuperAdmin);
+    }
+
+    #[test]
+    fn inferred_super_admin_rank_is_not_break_glass_membership() {
+        let mut request = facts();
+        request.actor_id = request.target_user_id;
+        request.actor_role = UserRole::SuperAdmin;
+        request.target_role = UserRole::SuperAdmin;
+        request.requested_role = UserRole::Customer;
+        request.remaining_active_super_admins = 0;
+        assert!(matches!(
+            plan_user_role_mutation_with_membership(request.clone(), false).unwrap(),
+            RbacRoleMutationOutcome::Apply(_)
+        ));
+        assert_eq!(
+            plan_user_role_mutation_with_membership(request, true).unwrap_err(),
+            RbacRoleMutationPolicyError::LastActiveSuperAdmin
+        );
     }
 
     #[test]
