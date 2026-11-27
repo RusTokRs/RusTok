@@ -618,7 +618,10 @@ impl OutboxRelay {
                 "outbox event {event_id} dispatch lease budget exhausted before publication"
             )));
         }
-        let attempt_id = self.begin_dispatch_attempt(model).await?;
+        let Some(attempt_id) = self.begin_dispatch_attempt(model).await? else {
+            self.release_unpublished_claim(model, None).await?;
+            return Err(Error::External(format!("outbox event {event_id} dispatch lease budget exhausted before intent")));
+        };
         // Journal admission itself consumes time. Do not start the target if
         // the durable intent commit used the remaining monotonic lease budget.
         if started.elapsed() >= self.config.claim_ttl.saturating_sub(publish_timeout).saturating_sub(Duration::from_millis(1)) {
@@ -750,7 +753,7 @@ impl OutboxRelay {
         self.ensure_claim_owned(model.id, result.rows_affected)
     }
 
-    async fn begin_dispatch_attempt(&self, model: &entity::Model) -> Result<Uuid> {
+    async fn begin_dispatch_attempt(&self, model: &entity::Model) -> Result<Option<Uuid>> {
         let txn = self.db.begin().await?;
         self.lock_current_claim(&txn, model).await?;
         let now = rustok_outbox_storage::database_now(&txn).await?;
@@ -759,7 +762,8 @@ impl OutboxRelay {
             self.config.claim_ttl.saturating_sub(self.config.publish_timeout).saturating_sub(Duration::from_millis(1))
         ).map_err(|_| Error::Validation("outbox dispatch budget out of range".into()))?;
         if now < claimed_at || now.signed_duration_since(claimed_at) >= budget {
-            return Err(Error::External("outbox dispatch lease budget exhausted before intent".into()));
+            txn.rollback().await?;
+            return Ok(None);
         }
         let id = Uuid::new_v4();
         attempts::Entity::insert(attempts::ActiveModel {
@@ -771,7 +775,7 @@ impl OutboxRelay {
             state: Set(attempts::OPEN.into()),
         }).exec_without_returning(&txn).await?;
         txn.commit().await?;
-        Ok(id)
+        Ok(Some(id))
     }
 
     async fn finish_dispatch_attempt(
@@ -1236,8 +1240,13 @@ mod tests {
         let renewed = relay.refresh_claim(&queued).await.expect("renew claim");
         assert_ne!(renewed.claimed_by, queued.claimed_by);
         assert!(renewed.claimed_at > queued.claimed_at);
-        let attempt = relay.begin_dispatch_attempt(&renewed).await.expect("intent");
+        let attempt = relay.begin_dispatch_attempt(&renewed).await.expect("admission").expect("intent");
         assert!(relay.mark_dispatched(&queued, attempt).await.is_err());
+        // A missing attempt must roll back the event ACK in the same transaction.
+        assert!(relay.mark_dispatched(&renewed, Uuid::new_v4()).await.is_err());
+        let unchanged = entity::Entity::find_by_id(renewed.id).one(&relay.db).await.unwrap().unwrap();
+        assert_eq!(unchanged.status, SysEventStatus::Pending);
+        assert_eq!(unchanged.claimed_by, renewed.claimed_by);
         relay.mark_dispatched(&renewed, attempt).await.expect("current claim");
         assert_eq!(attempts::Entity::find_by_id(attempt).one(&relay.db).await.unwrap().unwrap().state, attempts::CONFIRMED);
     }
@@ -1257,7 +1266,7 @@ mod tests {
         let horizon = rustok_outbox_storage::observe_database_clock(&db).await.unwrap();
         let claimed = relay.claim_batch(1, horizon, None).await.unwrap().pop().unwrap();
         let renewed = relay.refresh_claim(&claimed).await.unwrap();
-        let attempt = relay.begin_dispatch_attempt(&renewed).await.unwrap();
+        let attempt = relay.begin_dispatch_attempt(&renewed).await.unwrap().expect("intent");
         // Simulate process loss after durable intent, before SQL completion.
         entity::Entity::update_many().filter(entity::Column::Id.eq(id))
             .set(entity::ActiveModel { claimed_at: Set(Some(Utc::now() - chrono::Duration::minutes(2))), ..Default::default() })
@@ -1288,7 +1297,7 @@ mod tests {
         let horizon = rustok_outbox_storage::observe_database_clock(&db).await.unwrap();
         let claimed = relay.claim_batch(1, horizon, None).await.unwrap().pop().unwrap();
         let renewed = relay.refresh_claim(&claimed).await.unwrap();
-        let attempt = relay.begin_dispatch_attempt(&renewed).await.unwrap();
+        let attempt = relay.begin_dispatch_attempt(&renewed).await.unwrap().expect("intent");
         relay.release_unpublished_claim(&renewed, Some(attempt)).await.unwrap();
         let row = entity::Entity::find_by_id(id).one(&db).await.unwrap().unwrap();
         assert_eq!(row.retry_count, 0);

@@ -150,6 +150,7 @@ impl OutboxRetention {
             .filter(entity::Column::DispatchedAt.is_not_null())
             .filter(entity::Column::DispatchedAt.lte(cutoff))
             .filter(required_consumers_acknowledged_predicate())
+            .filter(no_open_dispatch_attempt_predicate())
             .order_by_asc(entity::Column::DispatchedAt)
             .order_by_asc(entity::Column::Id)
             .limit(self.config.batch_size)
@@ -180,6 +181,7 @@ impl OutboxRetention {
             .filter(entity::Column::DispatchedAt.is_not_null())
             .filter(entity::Column::DispatchedAt.lte(cutoff))
             .filter(required_consumers_acknowledged_predicate())
+            .filter(no_open_dispatch_attempt_predicate())
             .exec(&txn)
             .await?
             .rows_affected;
@@ -240,6 +242,7 @@ impl OutboxRetention {
                 .filter(entity::Column::Status.eq(SysEventStatus::Failed))
                 .filter(entity::Column::CreatedAt.lte(cutoff))
                 .filter(required_consumers_acknowledged_predicate())
+            .filter(no_open_dispatch_attempt_predicate())
                 .order_by_asc(entity::Column::CreatedAt)
                 .order_by_asc(entity::Column::Id)
                 .limit(self.config.batch_size)
@@ -259,6 +262,7 @@ impl OutboxRetention {
                     .filter(entity::Column::Status.eq(SysEventStatus::Failed))
                     .filter(entity::Column::CreatedAt.lte(cutoff))
                     .filter(required_consumers_acknowledged_predicate())
+            .filter(no_open_dispatch_attempt_predicate())
                     .exec(&txn)
                     .await?
                     .rows_affected;
@@ -300,6 +304,10 @@ impl OutboxRetention {
 
 /// Returns the correlated predicate shared by the retention candidate scan
 /// and the final delete, so a stale candidate cannot bypass a consumer hold.
+fn no_open_dispatch_attempt_predicate() -> Expr {
+    Expr::cust("NOT EXISTS (SELECT 1 FROM outbox_dispatch_attempts WHERE event_id = sys_events.id AND state = 'open')")
+}
+
 fn required_consumers_acknowledged_predicate() -> Expr {
     Expr::cust(
         r#"

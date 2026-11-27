@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    QueryFilter, Set, sea_query::OnConflict,
+    QueryFilter, Set, sea_query::{Expr, OnConflict},
 };
 use std::any::Any;
 use uuid::Uuid;
@@ -372,6 +372,7 @@ impl EventTransport for OutboxTransport {
             .filter(entity::Column::Status.eq(SysEventStatus::Pending))
             .filter(entity::Column::ClaimedBy.is_null())
             .filter(entity::Column::ClaimedAt.is_null())
+            .filter(Expr::cust("NOT EXISTS (SELECT 1 FROM outbox_dispatch_attempts WHERE event_id = sys_events.id AND state = 'open')"))
             .set(entity::ActiveModel {
                 status: Set(SysEventStatus::Dispatched),
                 dispatched_at: Set(Some(crate::database_now(&self.db).await?)),

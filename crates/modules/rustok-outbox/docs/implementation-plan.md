@@ -401,3 +401,10 @@ success, or protection against arbitrary privileged DML. Stop/drain old relays
 before migrating and do not mix old writers with ledger-aware relays.
 Regression sources are authored; compilation, SQL lifecycle and crash/remote
 effect evidence remain pending.
+
+An unclaimed transport ACK and both retention paths now also reject events with
+an open dispatch intent, even if an external SQL mutation cleared the claim or
+changed status. Closed attempt history still follows event retention. A known
+pre-intent budget exhaustion releases its exact claim without a retry charge.
+PostgreSQL/SQLite integration regression sources check outcome history,
+rollback on a lost journal row, and retention of unresolved evidence; unrun.

@@ -116,23 +116,59 @@ impl EventTransport for AcceptedThenLocalFailure {
 #[tokio::test]
 async fn post_acceptance_validation_failure_retries_original_identity() -> TestResult<()> {
     let db = setup_sqlite_db().await?;
-    let event = seed_event(&db).await?;
+    assert_dispatch_attempt_history(&db).await
+}
+
+#[tokio::test]
+async fn postgres_dispatch_attempt_history_and_retention() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+    let Some(db) = setup_db().await? else { return Ok(()) };
+    if db.get_database_backend() != DatabaseBackend::Postgres { return Ok(()) }
+    assert_dispatch_attempt_history(&db).await
+}
+
+async fn assert_dispatch_attempt_history(db: &DatabaseConnection) -> TestResult<()> {
+    let event = seed_event(db).await?;
     let transport = Arc::new(AcceptedThenLocalFailure { accepted: Mutex::new(Vec::new()) });
     let relay = OutboxRelay::new(db.clone(), transport.clone()).with_config(RelayConfig {
         max_attempts: 3, ..Default::default()
     });
     assert_eq!(relay.process_pending_once(None).await?, 1);
-    let row = entity::Entity::find_by_id(event.id).one(&db).await?.expect("event");
+    let row = entity::Entity::find_by_id(event.id).one(db).await?.expect("event");
     assert_eq!(row.status, SysEventStatus::Pending);
     assert_eq!(row.retry_count, 1);
     assert_eq!(relay.metrics().dlq_total, 0);
     let mut row: entity::ActiveModel = row.into();
     row.next_attempt_at = Set(None);
-    row.update(&db).await?;
+    row.update(db).await?;
     assert_eq!(relay.process_pending_once(None).await?, 1);
-    let row = entity::Entity::find_by_id(event.id).one(&db).await?.expect("event");
+    let row = entity::Entity::find_by_id(event.id).one(db).await?.expect("event");
     assert_eq!(row.status, SysEventStatus::Dispatched);
     assert_eq!(*transport.accepted.lock().await, vec![event.id, event.id]);
+    async fn count_state(db: &DatabaseConnection, state: &str) -> TestResult<i64> {
+        let sql = match state {
+            "confirmed" => "SELECT COUNT(*) AS count FROM outbox_dispatch_attempts WHERE state = 'confirmed'",
+            "uncertain" => "SELECT COUNT(*) AS count FROM outbox_dispatch_attempts WHERE state = 'uncertain'",
+            "open" => "SELECT COUNT(*) AS count FROM outbox_dispatch_attempts WHERE state = 'open'",
+            _ => unreachable!(),
+        };
+        Ok(db.query_one_raw(Statement::from_string(db.get_database_backend(), sql))
+            .await?.expect("attempt count").try_get("", "count")?)
+    }
+    assert_eq!(count_state(db, "confirmed").await?, 1);
+    assert_eq!(count_state(db, "uncertain").await?, 1);
+    assert_eq!(count_state(db, "open").await?, 0);
+    let mut old: entity::ActiveModel = row.into();
+    old.dispatched_at = Set(Some(Utc::now() - chrono::Duration::days(31)));
+    old.update(db).await?;
+    // Model an anomalous external state mutation, not a canonical relay path.
+    // Unresolved intent must prevent retention from erasing evidence.
+    db.execute_unprepared("UPDATE outbox_dispatch_attempts SET state = 'open', finished_at = NULL WHERE state = 'uncertain'").await?;
+    assert_eq!(rustok_outbox::OutboxRetention::new(db.clone()).prune_once().await?.pruned, 0);
+    db.execute_unprepared("UPDATE outbox_dispatch_attempts SET state = 'uncertain', finished_at = started_at WHERE state = 'open'").await?;
+    assert_eq!(rustok_outbox::OutboxRetention::new(db.clone()).prune_once().await?.pruned, 1);
+    assert_eq!(count_state(db, "confirmed").await?, 0);
+    assert_eq!(count_state(db, "uncertain").await?, 0);
     Ok(())
 }
 
