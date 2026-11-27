@@ -44,6 +44,8 @@ pub struct CurrentUser {
     pub access_token_expires_at: chrono::DateTime<chrono::Utc>,
     /// Process-local RBAC epoch sampled before resolving persisted authority.
     pub(crate) rbac_epoch: u64,
+    /// Original coherent membership and role-grant revisions for human principals.
+    pub(crate) static_authority_revision: Option<std::sync::Arc<rustok_rbac::StaticActorAuthorityRevision>>,
     pub(crate) oauth_credential:
         Option<crate::services::rbac_request_scope::OAuthCredentialEvidence>,
 }
@@ -903,6 +905,7 @@ pub async fn resolve_current_user_from_access_token(
         grant_type: claims.grant_type,
         access_token_expires_at: access_token_expires_at.min(durable_credential_expires_at),
         rbac_epoch,
+        static_authority_revision: static_authority_revision.map(std::sync::Arc::new),
         oauth_credential,
     })
 }

@@ -522,6 +522,7 @@ mod tests {
             grant_type: "direct".to_string(),
             access_token_expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
             rbac_epoch: 0, // Permission-extractor fixture, not an admitted request.
+            static_authority_revision: None,
             oauth_credential: None,
         }
     }

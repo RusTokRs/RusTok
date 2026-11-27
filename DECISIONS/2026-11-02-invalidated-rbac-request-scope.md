@@ -89,6 +89,25 @@ cache, subscription, allocation per actor or persistent generation. This
 also observes remote invalidations after local delivery, not at remote
 commit. Source regressions are unrun.
 
+## Durable static authority at asynchronous admission (2026-11-27)
+
+Retain the exact single-statement owner membership/role-grant revision
+observed during JWT admission in CurrentUser and the authenticated scope.
+Scope-aware service decisions, permission/role listing, the request policy
+resolver and GraphQL root admission re-read that revision before consuming the
+original ceiling. A mismatch, missing evidence or failed read invalidates the
+shared scope; the local deadline and epoch are checked again after the read.
+WebSocket revalidation compares the original revision even if the effective
+permissions and role return to their original values. No new grants are loaded
+into the request ceiling, no locks or migrations are introduced.
+
+This closes direct static relation ABA at those asynchronous boundaries without
+depending on Redis delivery. It costs one owner read per successful static
+scope check. Service OAuth has no static membership revision; credential,
+module availability, sync-only snapshot consumers, nested GraphQL fields and
+already admitted effects require their respective authority contracts. An
+ordinary read is not a commit-time fence. Source regressions are unrun.
+
 ## Non-goals
 
 This change does not create an atomic revocation fence, ensure immediate

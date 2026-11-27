@@ -183,10 +183,12 @@ impl Extension for GraphqlSecurityPolicyExtension {
         // so a committed mutation's receipt is not suppressed by this hook.
         if info.path_node.parent.is_none()
             && let Some(auth) = ctx.data_opt::<AuthContext>()
-            && crate::services::rbac_request_scope::ensure_scope_not_invalidated(
+            && crate::services::rbac_request_scope::ensure_scope_authority(
+                ctx.data_opt::<sea_orm::DatabaseConnection>(),
                 &auth.tenant_id,
                 &auth.user_id,
             )
+            .await
             .is_err()
         {
             let mut error = <FieldError as GraphQLError>::internal_error(

@@ -2371,3 +2371,12 @@ invalidation makes matching authenticated scope lookups and captured leases
 fail closed. Stripe collisions can conservatively reject unrelated actors.
 Trusted grant-only scopes remain task-local. Remote delivery lag, raw SQL and
 already admitted effects are not fenced; source regression unrun.
+
+## Durable static RBAC request authority
+
+The common extractor retains its original coherent static actor revision.
+Scope-aware permission and role decisions and GraphQL root admission now
+compare it with the owner read, failing closed on drift or unavailable evidence.
+WebSocket revalidation compares the revision as well as effective grants.
+The original ceiling is never refreshed. Service OAuth, module availability,
+non-scope consumers and in-flight effects are separate; source regressions unrun.

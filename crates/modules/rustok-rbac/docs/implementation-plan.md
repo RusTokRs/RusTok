@@ -556,3 +556,10 @@ exists.
   and retain the original token for captured leases. Authenticated stripe
   collisions are conservative denials. Source regressions unrun; durable
   revocation and unscoped snapshot consumers remain open.
+
+- Durable static request authority: retain the admitted membership/role grant
+  revision in CurrentUser and scope, validate at scope-aware async service and
+  GraphQL root boundaries, compare it on WS revalidation. Source regression
+  covers membership and raw grant ABA, missing evidence and new admission;
+  unrun. Synchronous consumers, service OAuth, module/credential revocation,
+  commit-time fencing and cross-replica runtime evidence remain open.

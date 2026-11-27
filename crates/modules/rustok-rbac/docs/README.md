@@ -394,3 +394,13 @@ the existing invalidation listener/watchdog, prevents stale scope reuse or
 unscoped fallback. Collisions are conservative denials; no per-actor map or new
 persistent generation. Direct SQL without notification, remote commit latency
 and in-flight transaction authority remain separate boundaries. Source tests unrun.
+
+## Durable static request revision checks
+
+The host retains the owner membership and role grant revision from admission.
+Scope-aware service checks and GraphQL root admission compare it through the
+single-statement owner reader. Raw relation changes and ABA cannot pass a
+subsequent matching check merely because no notification arrived. WebSocket
+revalidation also binds the revision. This adds a read, not a transaction
+fence. Service OAuth and synchronous consumers retain their separate contracts.
+Source regressions are unrun.
