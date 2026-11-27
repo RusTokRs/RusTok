@@ -609,39 +609,40 @@ impl<B: CapabilityBroker> CapabilityBroker for FencedCapabilityBroker<B> {
             return Err(denied());
         }
         let response = self.inner.invoke(call, grant).await?;
-        if call.capability.as_str() == "platform.data.objects" {
-            // Object bytes are fetched after the metadata transaction commits.
-            // Revalidate before releasing them (and before acknowledging a
-            // completed external object-store operation). Mutations carry
-            // durable owner receipts so a denied response can be replayed
-            // under a fresh, still-authorized execution.
-            let current = authority.lookup(call)?;
-            if !Arc::ptr_eq(&current, &lease) {
-                return Err(denied());
-            }
-            let current_installation = resolve_granted_artifact_capability(
-                &self.resolver.db,
-                &ArtifactCapabilityExecution {
-                    installation_id: lease.artifact.installation_id,
-                    tenant_id: lease.tenant_id(),
-                    slug: lease.artifact.release.slug.clone(),
-                    version: lease.artifact.release.version.clone(),
-                    digest: lease.artifact.release.digest.clone(),
-                },
-                &call.capability,
-            )
-            .await?;
-            if current_installation != lease.artifact
-                || !check_policy(&self.resolver, &lease).await.unwrap_or(false)
-                || !authority.check_direct(&lease).await
-                || !check_security(&self.resolver, &lease).await
-            {
-                return Err(denied());
-            }
-            let current = authority.lookup(call)?;
-            if !Arc::ptr_eq(&current, &lease) {
-                return Err(denied());
-            }
+
+        // Every owner broker may perform an asynchronous read or an external
+        // service call after its admission check. Revalidate the exact lease,
+        // installation, policy, direct credential and release security before
+        // releasing any successful output. For non-transactional external
+        // calls this does not undo an already-admitted effect: an invalidated
+        // response is deliberately returned as denied and must not be
+        // automatically replayed.
+        let current = authority.lookup(call)?;
+        if !Arc::ptr_eq(&current, &lease) {
+            return Err(denied());
+        }
+        let current_installation = resolve_granted_artifact_capability(
+            &self.resolver.db,
+            &ArtifactCapabilityExecution {
+                installation_id: lease.artifact.installation_id,
+                tenant_id: lease.tenant_id(),
+                slug: lease.artifact.release.slug.clone(),
+                version: lease.artifact.release.version.clone(),
+                digest: lease.artifact.release.digest.clone(),
+            },
+            &call.capability,
+        )
+        .await?;
+        if current_installation != lease.artifact
+            || !check_policy(&self.resolver, &lease).await.unwrap_or(false)
+            || !authority.check_direct(&lease).await
+            || !check_security(&self.resolver, &lease).await
+        {
+            return Err(denied());
+        }
+        let current = authority.lookup(call)?;
+        if !Arc::ptr_eq(&current, &lease) {
+            return Err(denied());
         }
         Ok(response)
     }
