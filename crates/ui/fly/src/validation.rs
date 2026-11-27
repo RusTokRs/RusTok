@@ -1242,7 +1242,7 @@ mod tests {
         let document = GrapesJsCodec::decode_value(json!({
             "assets": [
                 { "id": "", "src": "/blank.png" },
-                { "id": format!("bad{}id", '\\u{0001}'), "src": "/control.png" },
+                { "id": format!("bad{}id", '\u{0001}'), "src": "/control.png" },
                 { "id": "x".repeat(257), "src": "/large.png" }
             ],
             "pages": [{
