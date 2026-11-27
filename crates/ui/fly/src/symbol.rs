@@ -41,6 +41,9 @@ pub struct SymbolDescriptor {
 impl SymbolDescriptor {
     pub fn from_value(raw: &Value) -> Option<Self> {
         crate::codec::ensure_depth_within_limit(raw, crate::MAXIMUM_DECODE_DEPTH).ok()?;
+        if symbol_definition_size_exceeds_limit(raw) {
+            return None;
+        }
         serde_json::from_value(raw.clone())
             .ok()
             .and_then(|descriptor: Self| (!descriptor.id.is_empty()).then_some(descriptor))
@@ -217,6 +220,25 @@ fn apply_symbol_command_inner(
     }
 }
 
+pub(crate) fn symbol_definition_size_exceeds_limit(value: &Value) -> bool {
+    struct Counter(usize);
+    impl std::io::Write for Counter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 = self.0.saturating_add(bytes.len());
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let mut counter = Counter(0);
+    serde_json::to_writer(&mut counter, value)
+        .map(|()| counter.0 > MAX_SYMBOL_DEFINITION_BYTES)
+        .unwrap_or(true)
+}
+
 enum SymbolComponentRef<'a> {
     Typed(&'a ComponentNode),
     Opaque(&'a Value),
@@ -247,7 +269,7 @@ fn push_opaque_symbol_node_children<'a>(
     }
 }
 
-fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()> {
+pub(crate) fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()> {
     let encoded = serde_json::to_vec(descriptor)
         .map_err(|error| FlyError::InvalidSymbolReference(error.to_string()))?;
     if encoded.len() > MAX_SYMBOL_DEFINITION_BYTES {
@@ -1384,6 +1406,18 @@ mod tests {
             error,
             FlyError::InvalidSymbolReference(message) if message.contains("child-free")
         ));
+    }
+
+    #[test]
+    fn symbol_definition_byte_limit_includes_unknown_extensions() {
+        let raw = json!({
+            "id": "large-symbol",
+            "components": [{ "id": "root", "type": "wrapper" }],
+            "unknownExtension": "x".repeat(MAX_SYMBOL_DEFINITION_BYTES + 1)
+        });
+
+        assert!(SymbolDescriptor::from_value(&raw).is_none());
+        assert!(symbol_definition_size_exceeds_limit(&raw));
     }
 
     #[test]
