@@ -16,6 +16,9 @@ pub struct HttpCapabilityConstraints {
     pub hosts: Vec<String>,
     pub methods: Vec<String>,
     pub path_prefixes: Vec<String>,
+    /// Empty means only the scheme's standard port (443 for HTTPS, 80 for HTTP).
+    #[serde(default)]
+    pub ports: Vec<u16>,
     #[serde(default)]
     pub allow_plain_http: bool,
 }
@@ -43,7 +46,8 @@ impl HttpCapabilityConstraints {
             || constraints
                 .methods
                 .iter()
-                .any(|method| method.trim().is_empty())
+                .any(|method| method.trim().is_empty() || method != &method.to_ascii_uppercase())
+            || constraints.ports.contains(&0)
             || constraints
                 .path_prefixes
                 .iter()
@@ -80,6 +84,18 @@ impl HttpCapabilityConstraints {
             return Err(SandboxError::CapabilityConstraintDenied {
                 capability: call.capability.clone(),
                 reason: "HTTP url must not contain userinfo credentials".to_string(),
+            });
+        }
+        let port = url.port_or_known_default().unwrap_or(if scheme == "https" { 443 } else { 80 });
+        let port_allowed = if self.ports.is_empty() {
+            port == if scheme == "https" { 443 } else { 80 }
+        } else {
+            self.ports.contains(&port)
+        };
+        if !port_allowed {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: call.capability.clone(),
+                reason: format!("HTTP port `{port}` is not allowed"),
             });
         }
         Ok(())
