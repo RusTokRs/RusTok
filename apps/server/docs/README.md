@@ -2329,3 +2329,16 @@ permission-resolution checks, tenant/actor binding, global command context, resp
 headers, owner error mapping, GraphQL field classification and OpenAPI auth
 contracts. Tests, compilation and formatting were not run at the maintainer's
 request.
+
+## GraphQL system diagnostics mirror runtime authority (2026-11-27)
+
+The tenant `sessionStats` query uses the verified Auth application clock and
+the same active-session fences as the Auth session listing: tenant ownership,
+non-revocation, creation time not in the future, the original 90-day absolute
+lifetime cap, sliding expiry, and any explicit absolute expiry. Legacy rows
+without an explicit absolute deadline are bounded by `created_at + 90 days`.
+
+The host-global `eventsStatus.iggyMode` field reports the initialized
+`EventRuntime` mode. An initialized Outbox-only runtime reports `inactive`;
+the deployment setting is used only before runtime initialization. This is
+diagnostic state, not proof of broker health or cross-replica readiness.
