@@ -604,6 +604,13 @@ pub(crate) fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()
             descriptor.id
         )));
     }
+    if descriptor.styles.len() > crate::DEFAULT_MAXIMUM_STYLE_RULES {
+        return Err(FlyError::InvalidSymbolReference(format!(
+            "symbol `{}` exceeds {} style rules",
+            descriptor.id,
+            crate::DEFAULT_MAXIMUM_STYLE_RULES
+        )));
+    }
     let mut pending = descriptor
         .components
         .iter()
@@ -2270,6 +2277,25 @@ mod tests {
         assert!(matches!(
             error,
             FlyError::InvalidSymbolReference(message) if message.contains("child-free")
+        ));
+    }
+
+    #[test]
+    fn symbol_definition_respects_the_project_style_rule_budget() {
+        let descriptor = SymbolDescriptor {
+            id: "large-styles".to_string(),
+            name: None,
+            components: Vec::new(),
+            styles: vec![Value::Null; crate::DEFAULT_MAXIMUM_STYLE_RULES + 1],
+            assets: Vec::new(),
+        };
+
+        let error = validate_definition(&descriptor)
+            .expect_err("a single symbol cannot exceed the project style rule budget");
+
+        assert!(matches!(
+            error,
+            FlyError::InvalidSymbolReference(message) if message.contains("style rules")
         ));
     }
 
