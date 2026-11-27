@@ -1436,7 +1436,9 @@ impl FileSsrDraftSessionStore {
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(err) => return Err(SsrDraftSessionError::Io(err.to_string())),
         };
-        for partition in partitions.flatten() {
+        for partition in partitions {
+            let partition =
+                partition.map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
             let name = partition.file_name();
             let Some(name) = name.to_str() else {
                 continue;
@@ -1697,7 +1699,8 @@ impl FileSsrDraftSessionStore {
             Err(err) => return Err(SsrDraftSessionError::Io(err.to_string())),
         };
         let mut owned: Vec<(PathBuf, String, u64, RecordAge, bool)> = Vec::new();
-        for entry in entries.flatten() {
+        for entry in entries {
+            let entry = entry.map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
             let path = entry.path();
             let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
@@ -1916,7 +1919,8 @@ impl FileSsrDraftSessionStore {
             Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
         };
         let mut pruned = 0;
-        for entry in entries.flatten() {
+        for entry in entries {
+            let entry = entry.map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
             let path = entry.path();
             let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
@@ -2304,26 +2308,60 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
             Option<DraftSessionOwner>,
             bool,
         )> = Vec::new();
-        for entry in entries.flatten() {
+        for entry in entries {
+            let entry = entry.map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
             let path = entry.path();
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
-            let is_dir = entry.file_type().is_ok_and(|kind| kind.is_dir());
+            let is_dir = entry
+                .file_type()
+                .map_err(|error| SsrDraftSessionError::Io(error.to_string()))?
+                .is_dir();
             if !is_dir {
-                // Files of the flat layout this store used before tenant
-                // partitions. Nothing reads them any more, so they would
-                // keep tenant content in the storage root forever. A whole
-                // TTL without a write means the session has expired even for
-                // a process still running the old layout: every write there
-                // stamped the record with a fresh TTL, so its expiry is never
-                // later than the file's modification time plus one TTL.
-                if Self::is_legacy_flat_file(name)
-                    && file_is_older_than(&path, self.ttl)
-                    && fs::remove_file(&path).is_ok()
-                    && name.ends_with(".json")
-                {
-                    pruned += 1;
+                if Self::is_legacy_flat_file(name) {
+                    if let Some(token) = name.strip_suffix(".json") {
+                        if matches!(
+                            try_with_legacy_flat_token_lock(&self.dir, token, || {
+                                if !file_is_older_than(&path, self.ttl) {
+                                    return Ok(false);
+                                }
+                                match fs::remove_file(&path) {
+                                    Ok(()) => Ok(true),
+                                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                                        Ok(false)
+                                    }
+                                    Err(error) => {
+                                        Err(SsrDraftSessionError::Io(error.to_string()))
+                                    }
+                                }
+                            })?,
+                            Some(true)
+                        ) {
+                            pruned += 1;
+                        }
+                    } else if let Some((token, temporary_id)) = name.split_once(".tmp.")
+                        && !temporary_id.is_empty()
+                    {
+                        // A stale temporary file may contain a draft. Remove
+                        // it only while the old layout's token lock is held.
+                        match try_with_legacy_flat_token_lock(&self.dir, token, || {
+                            if !file_is_older_than(&path, self.ttl) {
+                                return Ok(false);
+                            }
+                            match fs::remove_file(&path) {
+                                Ok(()) => Ok(true),
+                                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                                    Ok(false)
+                                }
+                                Err(error) => Err(SsrDraftSessionError::Io(error.to_string())),
+                            }
+                        })? {
+                            Some(_) | None => {}
+                        }
+                    }
+                    // Legacy lock files are intentionally retained. Unlinking
+                    // a locked inode can split old writers across two locks.
                 }
                 continue;
             }
@@ -3548,6 +3586,35 @@ fn try_with_token_lock<T>(
     }
 }
 
+/// Runs legacy flat-layout cleanup while holding its stable token lock inode.
+/// The lock file is intentionally never unlinked, so waiters and old writers
+/// continue to coordinate on the same inode.
+#[cfg(not(target_arch = "wasm32"))]
+fn try_with_legacy_flat_token_lock<T>(
+    dir: &Path,
+    token: &str,
+    action: impl FnOnce() -> Result<T, SsrDraftSessionError>,
+) -> Result<Option<T>, SsrDraftSessionError> {
+    FileSsrDraftSessionStore::validate_token(token)?;
+    let lock_path = dir.join(format!("{token}.lock"));
+    let token_lock = match OpenOptions::new().read(true).write(true).open(&lock_path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
+    };
+    match try_lock_file(&token_lock).map_err(|error| SsrDraftSessionError::Io(error.to_string()))? {
+        true => {
+            let result = action();
+            drop(token_lock);
+            result.map(Some)
+        }
+        false => {
+            drop(token_lock);
+            Ok(None)
+        }
+    }
+}
+
 /// Removes idle session and per-owner lock files without racing waiters or active holders.
 ///
 /// Every token-lock opener first takes the directory guard. While pruning
@@ -3561,7 +3628,8 @@ fn prune_token_lock_files(dir: &Path) -> Result<(), SsrDraftSessionError> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
     };
-    for entry in entries.flatten() {
+    for entry in entries {
+            let entry = entry.map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
         let path = entry.path();
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
@@ -7226,13 +7294,14 @@ mod tests {
     }
 
     #[test]
-    fn file_store_prune_collects_expired_files_of_the_flat_layout() {
+    fn file_store_prune_collects_expired_flat_records_and_temps_but_keeps_lock_inodes() {
         let dir = temp_store_dir();
         let store = file_store(&dir);
         let legacy = [
             "tokOLD01.json",
             "tokOLD01.lock",
             "tokOLD02.tmp.0123456789abcdef",
+            "tokOLD02.lock",
         ];
         let foreign = ["README.txt", "notes", "bad token.json", ".hidden.json"];
         for name in legacy.iter().chain(&foreign) {
@@ -7253,15 +7322,48 @@ mod tests {
                 .and_then(|file| file.set_modified(long_ago))
                 .expect("backdate");
         }
-        // Only the record counts as a pruned session; files the store never
-        // wrote are left alone however old they are.
+        // Records and temp payloads are removed under their old token lock.
+        // Lock inodes stay in place so a waiter cannot split onto a new inode.
         assert_eq!(store.prune().expect("prune expired"), 1);
-        for name in legacy {
-            assert!(!dir.join(name).exists(), "{name} must be collected");
-        }
+        assert!(!dir.join("tokOLD01.json").exists());
+        assert!(dir.join("tokOLD01.lock").is_file());
+        assert!(!dir.join("tokOLD02.tmp.0123456789abcdef").exists());
+        assert!(dir.join("tokOLD02.lock").is_file());
         for name in foreign {
             assert!(dir.join(name).is_file(), "{name} is not ours to delete");
         }
+    }
+
+    #[test]
+    fn file_store_prune_does_not_remove_legacy_files_while_the_old_token_lock_is_held() {
+        let dir = temp_store_dir();
+        let store = file_store(&dir);
+        let token = "tokBUSY01";
+        let record = dir.join(format!("{token}.json"));
+        let temporary = dir.join(format!("{token}.tmp.0123456789abcdef"));
+        let lock_path = dir.join(format!("{token}.lock"));
+        fs::write(&record, "{}").expect("record");
+        fs::write(&temporary, "{}").expect("temporary");
+        let long_ago = SystemTime::now() - store.ttl() - Duration::from_secs(5);
+        for path in [&record, &temporary] {
+            fs::File::options()
+                .write(true)
+                .open(path)
+                .and_then(|file| file.set_modified(long_ago))
+                .expect("backdate");
+        }
+
+        let held_lock = open_lock_file(&lock_path).expect("open legacy lock");
+        held_lock.lock().expect("hold legacy lock");
+        assert_eq!(store.prune().expect("prune while busy"), 0);
+        assert!(record.is_file(), "active record must survive");
+        assert!(temporary.is_file(), "active temporary payload must survive");
+
+        drop(held_lock);
+        assert_eq!(store.prune().expect("prune after release"), 1);
+        assert!(!record.exists());
+        assert!(!temporary.exists());
+        assert!(lock_path.is_file(), "stable lock inode must be retained");
     }
 
     #[test]
