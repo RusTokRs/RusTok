@@ -30,7 +30,7 @@ const DEFAULT_JWT_AUDIENCE: &str = "rustok-admin";
 const JWT_KEYRING_FILE_ENV: &str = "RUSTOK_JWT_KEYRING_FILE";
 const JWT_RELOAD_INTERVAL: Duration = Duration::from_secs(2);
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct HostConfig {
     server: ServerConfig,
     database: DatabaseConfig,
@@ -45,7 +45,7 @@ struct ServerConfig {
     port: u16,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct DatabaseConfig {
     uri: String,
     #[serde(default)]
@@ -60,6 +60,31 @@ struct DatabaseConfig {
     min_connections: u32,
     #[serde(default)]
     max_connections: u32,
+}
+
+impl std::fmt::Debug for DatabaseConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DatabaseConfig")
+            .field("uri_configured", &!self.uri.trim().is_empty())
+            .field("auto_migrate", &self.auto_migrate)
+            .field("enable_logging", &self.enable_logging)
+            .field("connect_timeout", &self.connect_timeout)
+            .field("idle_timeout", &self.idle_timeout)
+            .field("min_connections", &self.min_connections)
+            .field("max_connections", &self.max_connections)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for HostConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HostConfig")
+            .field("server", &self.server)
+            .field("database", &self.database)
+            .field("auth", &self.auth)
+            .field("settings_configured", &!self.settings.is_null())
+            .finish()
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -979,6 +1004,43 @@ mod tests {
             required_jwt_keyring_file_path_from(Some("/run/rustok-jwt/jwt.json")).unwrap(),
             std::path::PathBuf::from("/run/rustok-jwt/jwt.json"),
         );
+    }
+
+    #[test]
+    fn host_config_debug_redacts_database_uri_and_raw_settings() {
+        let config = HostConfig {
+            server: super::ServerConfig {
+                binding: "127.0.0.1".to_string(),
+                port: 8080,
+            },
+            database: super::DatabaseConfig {
+                uri: "postgres://db-user:db-password@db.example/rustok".to_string(),
+                auto_migrate: false,
+                enable_logging: false,
+                connect_timeout: 5,
+                idle_timeout: 30,
+                min_connections: 1,
+                max_connections: 10,
+            },
+            auth: super::AuthConfig {
+                jwt: super::JwtConfig {
+                    mac_root: "jwt-secret-value".to_string(),
+                    expiration: 900,
+                },
+            },
+            settings: serde_json::json!({
+                "rustok": {
+                    "cache": {
+                        "redis_url": "redis://:settings-secret@cache.example/0"
+                    }
+                }
+            }),
+        };
+
+        let debug = format!("{config:?}");
+        for secret in ["db-user", "db-password", "jwt-secret-value", "settings-secret"] {
+            assert!(!debug.contains(secret), "Debug output leaked {secret}: {debug}");
+        }
     }
 
     #[test]
