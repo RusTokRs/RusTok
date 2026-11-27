@@ -485,12 +485,23 @@ pub fn FormSearchInput(
     /// Placeholder text. Defaults to "Search...".
     #[prop(optional, into)]
     placeholder: Option<String>,
+    /// Disabled state, including any schema-level constraint.
+    #[prop(optional, into)]
+    disabled: Option<Signal<bool>>,
+    /// Required attribute.
+    #[prop(optional)]
+    required: bool,
     /// Extra CSS classes.
     #[prop(optional, into)]
     class: String,
 ) -> impl IntoView {
     let ph = placeholder.unwrap_or_else(|| "Search...".to_string());
 
+    let field = use_context::<FieldContext>();
+    let is_disabled = Signal::derive(move || {
+        disabled.map(|signal| signal.get()).unwrap_or(false)
+            || field.as_ref().map(|f| f.is_submitting()).unwrap_or(false)
+    });
     let val = value;
     let has_value = Signal::derive(move || !val.get().is_empty());
 
@@ -517,8 +528,8 @@ pub fn FormSearchInput(
                 name,
                 id,
                 placeholder: Some(ph),
-                disabled: None,
-                required: false,
+                disabled: Some(is_disabled),
+                required,
                 readonly: false,
                 autofocus: false,
                 min: None,
@@ -536,6 +547,7 @@ pub fn FormSearchInput(
                 <button
                     type="button"
                     on:click=on_clear_click
+                    disabled=move || is_disabled.get()
                     aria-label="Clear search"
                     class="absolute right-2.5 p-1 text-muted-foreground hover:text-foreground transition rounded"
                 >
@@ -777,9 +789,6 @@ pub fn FormSelect(
     /// Required attribute.
     #[prop(optional)]
     required: bool,
-    /// Multiple selection support.
-    #[prop(optional)]
-    multiple: bool,
     /// Explicit ARIA describedby override.
     #[prop(optional, into)]
     aria_describedby: Option<String>,
@@ -875,7 +884,6 @@ pub fn FormSelect(
             on:blur=on_blur_handler
             disabled=move || is_disabled.get()
             required=required
-            multiple=multiple
             aria-invalid=move || if is_invalid.get() { "true" } else { "false" }
             aria-describedby=aria_describedby_signal
             class=select_class
@@ -969,7 +977,12 @@ pub fn FormCheckbox(
             .unwrap_or(false)
     });
 
-    let id_for_desc = input_id.clone();
+    // Descriptions and errors belong to the enclosing field, even when individual
+    // controls (such as multi-select options) have distinct input IDs.
+    let id_for_desc = field
+        .as_ref()
+        .map(|f| f.id.clone())
+        .or_else(|| input_id.clone());
     let aria_describedby_signal = move || {
         id_for_desc.as_ref().map(|n| {
             if is_invalid.get() {

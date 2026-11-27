@@ -47,7 +47,8 @@ filter or sort change always resets pagination to page 1. Width overrides requir
 definitions before they can be clamped.
 
 `GridState::apply_rows(items, cell_of)` is the client-side path: it filters, sorts and pages in that
-order and returns the rows to render. The order is a contract — paging before sorting would sort one
+order and returns `(rows, pagination)`. The caller must retain the returned pagination, whose total
+and clamped page describe the filtered rows, before rendering navigation. The order is a contract — paging before sorting would sort one
 page, sorting before filtering would sort rows about to be dropped — and the TypeScript twin's
 `applyGridRows` uses the same one.
 

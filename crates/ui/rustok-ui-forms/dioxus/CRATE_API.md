@@ -30,7 +30,7 @@
 - `FormCheckbox`: Accessible checkbox control.
 - `FormSwitch`: Accessible toggle switch control.
 - `FormRadioGroup`: Accessible radio group control.
-- `FormFileInput`: Browser-safe file input control.
+- `FormFileInput`: Browser-safe file input control; `on_change` receives the native `FormEvent` and its `files()` handles.
 - `SubmitButton`: Lifecycle-aware submit button with spinner and double-submit guard.
 - `ResetButton`: Reset button clearing errors and dirty states.
 
