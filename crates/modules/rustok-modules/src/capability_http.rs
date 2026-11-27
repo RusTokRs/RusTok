@@ -90,9 +90,9 @@ fn is_disallowed_ipv4(ipv4: Ipv4Addr) -> bool {
 /// Extracts the IPv4 address embedded in transition/translation formats
 /// whose traffic can be delivered to that IPv4 destination: the NAT64
 /// well-known prefix `64:ff9b::/96`, IPv4-translated
-/// `::ffff:0:0:0/96`, deprecated IPv4-compatible `::/96`, 6to4
-/// `2002::/16`, and ISATAP interface identifiers. The non-global RFC 8215
-/// local-use prefix `64:ff9b:1::/48` is rejected separately.
+/// `::ffff:0:0:0/96` (RFC 2765), deprecated IPv4-compatible `::/96`, 6to4
+/// `2002::/16`, and ISATAP interface identifiers (RFC 5214). The non-global
+/// RFC 8215 local-use prefix `64:ff9b:1::/48` is rejected separately.
 fn embedded_ipv4(ipv6: std::net::Ipv6Addr) -> Option<Ipv4Addr> {
     let segments = ipv6.segments();
     if segments[..6] == [0x0064, 0xff9b, 0, 0, 0, 0]
@@ -618,6 +618,14 @@ mod tests {
         ));
         assert!(is_disallowed_ip(
             "64:ff9b:1::808:808".parse().expect("local-use nat64 public address")
+        ));
+        // IPv4-mapped addresses are also interpreted as IPv4 by dual-stack
+        // clients, so private mapped targets must not bypass the IPv4 rules.
+        assert!(is_disallowed_ip(
+            "::ffff:a9fe:a9fe".parse().expect("ipv4-mapped metadata address")
+        ));
+        assert!(!is_disallowed_ip(
+            "::ffff:808:808".parse().expect("ipv4-mapped public address")
         ));
         // IPv4-translated addresses and ISATAP identifiers also carry an
         // embedded IPv4 destination and must pass the same private-range rules.
