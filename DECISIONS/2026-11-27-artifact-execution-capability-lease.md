@@ -80,10 +80,22 @@ checks the revision and current intent, and retains locks through commit.
 Outstanding lifecycle claims are not treated as committed intent. No effect
 transaction spans guest execution. Settings changes may conservatively
 invalidate leases through the shared lifecycle revision.
-Composition, registry mutation fencing, full effective-policy revision and
-deployment readiness remain open; PostgreSQL cross-owner lock-order and
-runtime evidence remain required. Mixed-closure tenant intent fencing
-requires no additional migration; coordinate override writers and readers.
+Serving policy derivation now retains the exact verified active owner
+composition revision/hash from which defaults and co-requisites were read.
+Reject a changed composition after closure/readiness derivation and compare
+its identity at each capability preflight. After mixed-closure fences, SQL
+admission takes the existing owner shared active-snapshot row lock (SQLite
+already owns its write reservation), revalidates the canonical stored hash
+and compares both revision and hash. Composition CAS writes conflict with
+this lock; restoration of the same manifest cannot renew an old lease.
+Missing composition must not be bootstrapped by revalidation. Unrelated
+composition replacements conservatively invalidate serving leases.
+Lifecycle hooks remain root-only. This does not fence independent compiled
+registry changes, contextual channel/maintenance, registry mutation,
+full effective-policy revision or deployment readiness. PostgreSQL
+cross-owner lock-order and runtime evidence remain required. Mixed-closure
+tenant intent and composition identity fencing require no additional
+migration; coordinate writers and readers.
 
 ## Context, events and migration
 

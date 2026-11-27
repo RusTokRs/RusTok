@@ -1518,8 +1518,21 @@ A concurrent first override cannot bypass the absent-row fence, and
 disable/clear or disable/enable cannot revive the prior lifecycle revision.
 Settings changes conservatively invalidate leases because they advance the
 same owner revision. Active claims alone are not treated as committed
-intent changes; no lock spans guest hooks. Platform composition, registry
-writers and deployment readiness are not transactionally fenced. Each artifact lease also captures
+intent changes; no lock spans guest hooks. The serving policy is now derived
+from one verified owner composition snapshot and carries that snapshot's
+revision/hash into the lease; a final nonlocking check rejects composition
+changes during derivation. Each fresh capability preflight compares the
+composition identity as well as closure evidence. SQL effects acquire the
+existing shared active-composition row lock after the mixed closure fences
+(SQLite already holds a write reservation) and compare both revision and
+hash without bootstrapping missing state. Owner CAS replacement serializes
+with this lock; returning to an identical manifest does not restore the
+old revision. The global composition fence conservatively invalidates a
+serving lease even for unrelated manifest edits. No extra migration is
+needed. This covers composition-derived defaults and co-requisites, not
+changes to an in-process native registry or independent deployment inputs.
+Contextual channel/maintenance inputs, registry writers and deployment
+readiness are not transactionally fenced. Each artifact lease also captures
 both platform and tenant selection generations on the permanent slug fences.
 Successful activation, deactivation, rollback, uninstall and explicit artifact
 tenant enable/disable advance the affected scope in the same transaction as

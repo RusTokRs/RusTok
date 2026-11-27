@@ -3622,3 +3622,16 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   policy denial and override-clear ABA. No new migration. Tests, compilation,
   concurrent PostgreSQL and cross-owner lock-order evidence remain pending;
   active composition, registry mutations and readiness are not fenced.
+
+- Source-wired active composition identity through the host serving policy
+  resolver from the same verified owner manifest (defaults/co-requisites).
+  Recheck the revision/hash after closure and readiness derivation and on
+  fresh capability preflight; SQL effects take the canonical shared active
+  composition row lock after mixed-closure fences. SQLite already has its
+  write reservation. Owner CAS replacement and effect admission serialize;
+  composition ABA and missing/corrupt state fail closed. Existing lifecycle
+  hook admission remains root-only. No additional migration. SQLite owner
+  ABA and opt-in PostgreSQL lock-wait tests in both directions added, unrun.
+  Cross-owner lock ordering, independent registry/readiness mutation fences,
+  contextual channel/maintenance authority, compiled registry consistency
+  and end-to-end runtime evidence remain open.

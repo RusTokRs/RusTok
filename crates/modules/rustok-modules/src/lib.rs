@@ -341,7 +341,7 @@ pub use composition::{
     ACTIVE_MODULE_COMPOSITION_ID, ModuleCompositionBuildAdmission,
     ModuleCompositionBuildEnqueueError, ModuleCompositionBuildEnqueueResult,
     ModuleCompositionBuildEnqueuer, ModuleCompositionBuildLease, ModuleCompositionBuildReceipt,
-    ModuleCompositionError, ModuleCompositionOperation, ModuleCompositionSnapshot,
+    ModuleCompositionError, ModuleCompositionIdentity, ModuleCompositionOperation, ModuleCompositionSnapshot,
     ModuleCompositionUpdate, STATIC_MODULE_REGISTRY_MAX_LIMIT, SeaOrmModuleCompositionService,
     SharedStaticInstalledModuleReader, SharedStaticModuleRegistryReader,
     StaticInstalledModuleReader, StaticInstalledModuleReaderError, StaticModuleRegistryQuery,

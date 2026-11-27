@@ -69,13 +69,19 @@ struct ServerArtifactEffectivePolicyResolver {
     execution_authority: ExecutionAuthority,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ArtifactServingAuthority {
+    closure: rustok_modules::ArtifactServingClosure,
+    composition: rustok_modules::ModuleCompositionIdentity,
+}
+
 impl ServerArtifactEffectivePolicyResolver {
     async fn resolve_with_closure(
         &self,
         tenant_id: uuid::Uuid,
         artifact: &InstalledModuleArtifact,
-    ) -> Result<(ModuleEffectivePolicy, Option<rustok_modules::ArtifactServingClosure>), ArtifactEffectivePolicyResolveError> {
-        let policy =
+    ) -> Result<(ModuleEffectivePolicy, Option<ArtifactServingAuthority>), ArtifactEffectivePolicyResolveError> {
+        let (policy, composition) =
             crate::services::effective_module_policy::EffectiveModulePolicyService::resolve_artifact_serving(
                 &self.db,
                 &self.registry,
@@ -107,7 +113,17 @@ impl ServerArtifactEffectivePolicyResolver {
                 }
                 _ => ArtifactEffectivePolicyResolveError::NodeNotReady(error.to_string()),
             })?;
-        Ok((policy, Some(closure)))
+        // The policy was built from one verified owner manifest. A change
+        // during policy/closure/readiness derivation must not authorize a
+        // mixed snapshot, even if the manifest hash returned to its old value.
+        if !composition.is_current_on(&self.db).await
+            .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?
+        {
+            return Err(ArtifactEffectivePolicyResolveError::Store(
+                "active composition changed during artifact serving admission".into(),
+            ));
+        }
+        Ok((policy, Some(ArtifactServingAuthority { closure, composition })))
     }
 }
 
