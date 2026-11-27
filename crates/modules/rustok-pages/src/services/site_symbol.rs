@@ -246,11 +246,17 @@ impl SiteSymbolService {
             .collect::<Vec<_>>();
         validate_symbol_catalog(catalog)?;
         for row in &catalog_rows {
+            let descriptor = fly::SymbolDescriptor::from_value(&row.content)
+                .ok_or_else(|| PagesError::validation("Stored site symbol is malformed"))?;
+            if descriptor.id != row.symbol_id {
+                return Err(PagesError::validation(format!(
+                    "Stored site symbol identity mismatch for `{}`",
+                    row.symbol_id
+                )));
+            }
             if row.symbol_id == symbol_id {
                 continue;
             }
-            let descriptor = fly::SymbolDescriptor::from_value(&row.content)
-                .ok_or_else(|| PagesError::validation("Stored site symbol is malformed"))?;
             if fly::symbol_references(&descriptor.components)
                 .iter()
                 .any(|reference| reference == &symbol_id)
