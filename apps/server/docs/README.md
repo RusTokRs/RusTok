@@ -2250,3 +2250,19 @@ capabilities do not share this SQL commit fence. PostgreSQL cross-owner lock
 ordering/contention and deployed worker/runtime evidence remain pending. See
 the [execution capability lease ADR](../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md)
 and the server [Known Limitations / Pending Implementation](../README.md#known-limitations--pending-implementation).
+
+## Server follow-up — diagnostic secret redaction and SEO worker startup (2026-11-27)
+
+Runtime settings no longer print configured Redis URLs, SMTP credentials, registry
+runner tokens, Search URLs/API keys, or Iggy external/bundled environment values
+through derived `Debug` output. The affected settings types use explicit
+redacted debug implementations, with a regression test that checks the full
+`RustokSettings` representation. Existing host/database/JWT and storage
+redaction boundaries remain in place.
+
+SEO worker startup now validates `ModuleRuntimeExtensions` before publishing
+any worker handles and passes the validated registry snapshot into the task. A
+missing extension is returned as a startup error instead of causing a panic in
+the spawned worker. Regression tests cover both missing and registered state.
+
+Formatting, compilation and tests remain unrun at the maintainer's request.
