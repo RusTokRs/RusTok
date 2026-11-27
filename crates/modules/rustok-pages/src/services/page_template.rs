@@ -221,7 +221,7 @@ impl PageTemplateService {
                     .ok_or_else(|| PagesError::validation("Stored site symbol is malformed"))
             })
             .collect::<PagesResult<BTreeSet<_>>>()?;
-        if ids != present {
+        if !ids.is_subset(&present) {
             tx.rollback().await?;
             return Err(PagesError::validation(
                 "Template references a missing site symbol in this tenant/locale",
