@@ -29,6 +29,7 @@ struct FakeEnvelopePayload {
     source_revision: Option<u64>,
     permanent_invalid: Option<bool>,
     retryable: Option<bool>,
+    decoded_event_type: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -52,7 +53,7 @@ impl NotificationOutboxEnvelopeDecoder for FakeDecoder {
                 .source_event_id
                 .ok_or(NotificationError::InvalidEvent)?,
             NotificationSourceSlug::new(SOURCE).map_err(|_| NotificationError::InvalidEvent)?,
-            NotificationTypeKey::new(envelope.event_type.clone())
+            NotificationTypeKey::new(payload.decoded_event_type.unwrap_or_else(|| envelope.event_type.clone()))
                 .map_err(|_| NotificationError::InvalidEvent)?,
             payload
                 .source_revision
@@ -172,6 +173,29 @@ async fn terminal_intake_receipt_and_outbox_ack_commit_atomically() {
         0,
         "the notification rejection must not commit without its Outbox acknowledgement"
     );
+}
+
+#[tokio::test]
+async fn decoder_cannot_acknowledge_a_different_event_type() {
+    let db = setup().await;
+    let tenant_id = Uuid::new_v4();
+    insert_tenant(&db, tenant_id).await;
+    let event_id = Uuid::new_v4();
+    insert_outbox_event(&db, event_id, 1, serde_json::json!({
+        "tenant_id": tenant_id, "source_event_id": Uuid::new_v4(),
+        "source_revision": 1, "decoded_event_type": "forum.topic.replied"
+    }), 1).await;
+    let worker = NotificationOutboxIntakeWorker::new(db.clone(), Arc::new(FakeDecoder), 8)
+        .unwrap()
+        .with_receipt_port("test.notifications", Arc::new(TestOutboxReceiptPort { fail: false }))
+        .unwrap();
+    let error = worker.process_outbox_event(event_id).await.unwrap_err();
+    assert_eq!(error.stable_code(), "NOTIFICATION_SOURCE_IDENTITY_CONFLICT");
+    assert_eq!(source_inbox::Entity::find().count(&db).await.unwrap(), 0);
+    for table in ["notification_outbox_intake_receipts", "notification_outbox_intake_rejections", "test_outbox_consumer_receipts"] {
+        let count = db.query_one_raw(sea_orm::Statement::from_string(db.get_database_backend(), format!("SELECT COUNT(*) AS count FROM {table}"))).await.unwrap().unwrap().try_get::<i64>("", "count").unwrap();
+        assert_eq!(count, 0);
+    }
 }
 
 #[tokio::test]

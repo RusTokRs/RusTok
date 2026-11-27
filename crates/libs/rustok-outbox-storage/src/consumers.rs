@@ -211,20 +211,8 @@ impl OutboxConsumer {
         outbox_event_id: Uuid,
         event_type: &str,
     ) -> std::result::Result<(), sea_orm::DbErr> {
-        if consumer_key.trim().is_empty()
-            || consumer_key.trim() != consumer_key
-            || consumer_key.len() > 128
-            || outbox_event_id.is_nil()
-            || event_type.trim().is_empty()
-            || event_type.trim() != event_type
-            || event_type.len() > 255
-        {
-            return Err(sea_orm::DbErr::Custom(
-                "invalid outbox consumer acknowledgement identity".to_string(),
-            ));
-        }
-
-        Self::acknowledge_on(txn, consumer_key, outbox_event_id, Some(event_type)).await.map(|_| ())
+        Self::reserve_effect_in_transaction(txn, consumer_key, outbox_event_id, event_type)
+            .await.map(|_| ())
     }
 
     /// Reserve an exact consumer effect in the caller's SQL transaction.

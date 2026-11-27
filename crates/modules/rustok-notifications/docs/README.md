@@ -435,3 +435,7 @@ does not cover external effects, broker replay after event retention, or
 unregistered consumers. Existing late ACK/backfill semantics remain intact.
 This does not automatically make arbitrary module handlers idempotent.
 SQLite and PostgreSQL regression sources are authored, not executed.
+
+Direct intake also checks the decoder's explicit claimed event types and
+requires a decoded source event type to equal the locked canonical event type.
+A mismatched decoder result is a conflict, never a terminal ACK or rejection.

@@ -407,6 +407,10 @@ impl NotificationOutboxIntakeWorker {
                 "unsupported notification outbox intake database".into(),
             ))),
         }.ok_or(NotificationError::InvalidEvent)?;
+        let claims = self.decoder.accepted_event_types();
+        if !claims.is_empty() && !claims.iter().any(|event_type| event_type == &row.event_type) {
+            return Err(NotificationError::SourceIdentityConflict);
+        }
         let envelope = envelope_record(&row);
         let accepted = intake_receipt::Entity::find_by_id(outbox_event_id).one(&txn).await?;
         let rejected = intake_rejection::Entity::find_by_id(outbox_event_id).one(&txn).await?;
@@ -415,6 +419,9 @@ impl NotificationOutboxIntakeWorker {
             (Some(existing), None) => {
                 let source_event = self.decoder.decode(&envelope)
                     .map_err(|_| NotificationError::SourceIdentityConflict)?;
+                if source_event.event_type().as_str() != row.event_type.as_str() {
+                    return Err(NotificationError::SourceIdentityConflict);
+                }
                 ensure_receipt_identity(&existing, outbox_event_id, &source_event)?;
                 NotificationOutboxIntakeOutcome::Accepted(intake_result(existing, true))
             }
@@ -425,6 +432,12 @@ impl NotificationOutboxIntakeWorker {
             (None, None) => {
                 match self.decoder.decode(&envelope) {
                     Ok(source_event) => {
+                        // A decoder cannot silently acknowledge a different
+                        // event type under the source UUID, even without an
+                        // attached generic receipt port.
+                        if source_event.event_type().as_str() != row.event_type.as_str() {
+                            return Err(NotificationError::SourceIdentityConflict);
+                        }
                         // Preserve the outer source fence if acceptance fails
                         // permanently after a partial owner write.
                         let acceptance = txn.begin().await?;
@@ -608,8 +621,6 @@ impl NotificationOutboxIntakeWorker {
         }
         Ok(())
     }
-
-
 }
 
 fn envelope_record(row: &outbox_event::Model) -> NotificationOutboxEnvelopeRecord {
