@@ -1628,7 +1628,21 @@ impl FileSsrDraftSessionStore {
             };
             let dead = match content {
                 Some(content) => match PersistentDraftSessionRecord::decode_str(&content) {
-                    Ok(record) => record.expires_at_unix_secs <= current_unix_secs(),
+                    Ok(record) => {
+                        record.validate_storage_key(token)?;
+                        let expected_partition = Self::partition_name(record.owner.as_ref())?;
+                        let actual_partition = path
+                            .parent()
+                            .and_then(|parent| parent.file_name())
+                            .and_then(|name| name.to_str());
+                        if actual_partition != Some(expected_partition.as_str()) {
+                            return Err(SsrDraftSessionError::Serialization(
+                                "draft session record is stored in the wrong owner partition"
+                                    .to_string(),
+                            ));
+                        }
+                        record.expires_at_unix_secs <= current_unix_secs()
+                    }
                     // Another build owns this record; only its own expiry can retire it.
                     Err(SsrDraftSessionError::UnsupportedFormat { .. }) => false,
                     Err(_) => file_is_older_than(path, self.ttl),
@@ -1740,6 +1754,13 @@ impl FileSsrDraftSessionStore {
             let content = read_bounded_record(file)?;
             let record = PersistentDraftSessionRecord::decode_str(&content)?;
             record.validate_storage_key(token)?;
+            let expected_partition = Self::partition_name(record.owner.as_ref())?;
+            let actual_partition = partition.file_name().and_then(|name| name.to_str());
+            if actual_partition != Some(expected_partition.as_str()) {
+                return Err(SsrDraftSessionError::Serialization(
+                    "draft session record is stored in the wrong owner partition".to_string(),
+                ));
+            }
             if record.owner.as_ref() == Some(owner) && record.token != keep_token {
                 let Some(age) = record_age(&path, record.expires_at_unix_secs)? else {
                     continue;
@@ -2016,6 +2037,15 @@ impl FileSsrDraftSessionStore {
             };
             match record {
                 Some(record) if record.expires_at_unix_secs > now => {
+                    record.validate_storage_key(token)?;
+                    let expected_partition = Self::partition_name(record.owner.as_ref())?;
+                    let actual_partition = partition.file_name().and_then(|name| name.to_str());
+                    if actual_partition != Some(expected_partition.as_str()) {
+                        return Err(SsrDraftSessionError::Serialization(
+                            "draft session record is stored in the wrong owner partition"
+                                .to_string(),
+                        ));
+                    }
                     let Some(age) = record_age(&path, record.expires_at_unix_secs)? else {
                         continue;
                     };
