@@ -198,16 +198,19 @@ pub struct ModuleArtifactSecurityReceipt {
 pub trait ModuleArtifactSecurityAuthorizer: Send + Sync {
     async fn authorize_quarantine(
         &self,
+        transaction: &DatabaseTransaction,
         command: &ModuleArtifactSecurityCommand,
     ) -> Result<(), ModuleArtifactSecurityError>;
 
     async fn authorize_clear_quarantine(
         &self,
+        transaction: &DatabaseTransaction,
         command: &ModuleArtifactSecurityCommand,
     ) -> Result<(), ModuleArtifactSecurityError>;
 
     async fn authorize_revoke(
         &self,
+        transaction: &DatabaseTransaction,
         command: &ModuleArtifactSecurityCommand,
     ) -> Result<(), ModuleArtifactSecurityError>;
 }
@@ -304,7 +307,6 @@ where
         command: ModuleArtifactSecurityCommand,
     ) -> Result<ModuleArtifactSecurityReceipt, ModuleArtifactSecurityError> {
         validate_command(&command)?;
-        self.authorizer.authorize_quarantine(&command).await?;
         self.transition(SecurityAction::Quarantine, command).await
     }
 
@@ -313,7 +315,6 @@ where
         command: ModuleArtifactSecurityCommand,
     ) -> Result<ModuleArtifactSecurityReceipt, ModuleArtifactSecurityError> {
         validate_command(&command)?;
-        self.authorizer.authorize_clear_quarantine(&command).await?;
         self.transition(SecurityAction::ClearQuarantine, command)
             .await
     }
@@ -323,7 +324,6 @@ where
         command: ModuleArtifactSecurityCommand,
     ) -> Result<ModuleArtifactSecurityReceipt, ModuleArtifactSecurityError> {
         validate_command(&command)?;
-        self.authorizer.authorize_revoke(&command).await?;
         self.transition(SecurityAction::Revoke, command).await
     }
 
@@ -361,18 +361,29 @@ where
             reason_code: &command.reason_code,
         })
         .map_err(digest_error)?;
-        if let Some(receipt) =
-            load_operation(&self.db, &command.context, action, &request_digest).await?
-        {
-            return Ok(receipt);
-        }
-
         let transaction = crate::backend::begin_fenced_transaction(&self.db)
             .await
             .map_err(store_error)?;
         crate::backend::set_platform_scope(&transaction)
             .await
             .map_err(store_error)?;
+        // Authorization runs before idempotency replay and before the platform
+        // slug lock. The host can acquire credential/RBAC row fences first and
+        // retain them through the durable state, receipt and outbox commit.
+        match action {
+            SecurityAction::Quarantine => self
+                .authorizer
+                .authorize_quarantine(&transaction, &command)
+                .await?,
+            SecurityAction::ClearQuarantine => self
+                .authorizer
+                .authorize_clear_quarantine(&transaction, &command)
+                .await?,
+            SecurityAction::Revoke => self
+                .authorizer
+                .authorize_revoke(&transaction, &command)
+                .await?,
+        }
         if let Some(receipt) =
             reserve_operation(&transaction, &command.context, action, &request_digest).await?
         {
@@ -908,6 +919,7 @@ mod tests {
     impl ModuleArtifactSecurityAuthorizer for AllowSecurityTransitions {
         async fn authorize_quarantine(
             &self,
+            _transaction: &sea_orm::DatabaseTransaction,
             _command: &ModuleArtifactSecurityCommand,
         ) -> Result<(), ModuleArtifactSecurityError> {
             Ok(())
@@ -915,6 +927,7 @@ mod tests {
 
         async fn authorize_clear_quarantine(
             &self,
+            _transaction: &sea_orm::DatabaseTransaction,
             _command: &ModuleArtifactSecurityCommand,
         ) -> Result<(), ModuleArtifactSecurityError> {
             Ok(())
@@ -922,9 +935,46 @@ mod tests {
 
         async fn authorize_revoke(
             &self,
+            _transaction: &sea_orm::DatabaseTransaction,
             _command: &ModuleArtifactSecurityCommand,
         ) -> Result<(), ModuleArtifactSecurityError> {
             Ok(())
+        }
+    }
+
+
+    struct DenySecurityTransitions;
+
+    #[async_trait]
+    impl ModuleArtifactSecurityAuthorizer for DenySecurityTransitions {
+        async fn authorize_quarantine(
+            &self,
+            _transaction: &sea_orm::DatabaseTransaction,
+            _command: &ModuleArtifactSecurityCommand,
+        ) -> Result<(), ModuleArtifactSecurityError> {
+            Err(ModuleArtifactSecurityError::AuthorizationDenied(
+                "operator authority was revoked".to_string(),
+            ))
+        }
+
+        async fn authorize_clear_quarantine(
+            &self,
+            _transaction: &sea_orm::DatabaseTransaction,
+            _command: &ModuleArtifactSecurityCommand,
+        ) -> Result<(), ModuleArtifactSecurityError> {
+            Err(ModuleArtifactSecurityError::AuthorizationDenied(
+                "operator authority was revoked".to_string(),
+            ))
+        }
+
+        async fn authorize_revoke(
+            &self,
+            _transaction: &sea_orm::DatabaseTransaction,
+            _command: &ModuleArtifactSecurityCommand,
+        ) -> Result<(), ModuleArtifactSecurityError> {
+            Err(ModuleArtifactSecurityError::AuthorizationDenied(
+                "operator authority was revoked".to_string(),
+            ))
         }
     }
 
@@ -997,6 +1047,19 @@ mod tests {
             .expect("exact quarantine replay");
         assert!(!replay.created);
         assert_eq!(replay.snapshot, initial.snapshot);
+
+        // A completed receipt must not bypass current authorization. Replay
+        // still enters the owner transaction and asks the host to revalidate.
+        let denied_replay_service =
+            SeaOrmModuleArtifactSecurityService::with_infrastructure(
+                database.clone(),
+                DenySecurityTransitions,
+                ControlPlaneInfrastructure::for_database(database.clone()),
+            );
+        assert!(matches!(
+            denied_replay_service.quarantine(command.clone()).await,
+            Err(ModuleArtifactSecurityError::AuthorizationDenied(_))
+        ));
 
         let receipt = database
             .query_one_raw(Statement::from_sql_and_values(

@@ -19,7 +19,8 @@ use crate::{
         artifact_security::{
             ArtifactSecurityAuthorizationError, ArtifactSecurityReceiptView,
             ArtifactSecuritySnapshotView, ServerArtifactSecurityAuthorizer,
-            authorize_artifact_security_operator, build_module_artifact_security_command,
+            artifact_security_authority_provider, authorize_artifact_security_operator,
+            build_module_artifact_security_command,
         },
         server_runtime_context::ServerRuntimeContext,
     },
@@ -195,7 +196,9 @@ async fn execute_security_command(
         )
     })?;
     let db = ctx.db_clone();
-    let authorizer = ServerArtifactSecurityAuthorizer::new(db.clone(), &auth, principal, tenant_id)
+    let provider = artifact_security_authority_provider(&ctx).map_err(map_authorization_error)?;
+    let authorizer = ServerArtifactSecurityAuthorizer::new(provider, &auth, principal, tenant_id)
+        .await
         .map_err(map_authorization_error)?;
     let command = build_module_artifact_security_command(
         ArtifactReleaseRef {
