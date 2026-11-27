@@ -538,6 +538,7 @@ mod outbox_relay_shutdown_tests {
         );
         entity::Entity::insert(entity::ActiveModel {
             id: Set(event.id),
+            tenant_id: Set(Some(tenant_id)),
             event_type: Set(event.event_type.clone()),
             schema_version: Set(i16::try_from(event.schema_version).expect("schema version fits")),
             payload: Set(serde_json::to_value(&event).expect("serialize event")),

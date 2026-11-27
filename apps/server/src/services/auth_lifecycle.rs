@@ -2264,7 +2264,7 @@ mod tests {
         let password_hash = crate::auth::hash_password_async(password.to_string())
             .await
             .expect("password hash");
-        let user = users::ActiveModel::new(tenant.id, "locked-login@example.com", password_hash)
+        let user = users::ActiveModel::new(tenant.id, "locked-login@example.com", &password_hash)
             .insert(&db)
             .await
             .expect("user");
@@ -4480,6 +4480,8 @@ mod tests {
             .await
             .expect("first revoke should succeed");
         let read_sessions = || {
+            use sea_orm::QueryOrder;
+
             sessions::Entity::find()
                 .filter(sessions::Column::TenantId.eq(tenant.id))
                 .filter(sessions::Column::UserId.eq(user.id))

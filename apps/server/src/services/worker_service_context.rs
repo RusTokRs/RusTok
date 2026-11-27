@@ -333,6 +333,7 @@ mod tests {
             scopes: vec!["inventory:read".into()],
             grant_type: "client_credentials".into(),
             access_token_expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
+            oauth_credential: None,
         }
     }
 

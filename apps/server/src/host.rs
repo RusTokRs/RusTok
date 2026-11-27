@@ -984,7 +984,7 @@ async fn wait_for_shutdown_signal() {
 mod tests {
     use super::{
         HostConfig, application_router, required_jwt_keyring_file_path_from, resolve_database_uri,
-        validate_auth_deployment, validate_https_deployment,
+        validate_auth_deployment, validate_https_deployment, validate_oauth_metadata_issuer,
     };
     use crate::auth::test_auth_config;
     use crate::common::settings::RuntimeHostMode;

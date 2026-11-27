@@ -2391,10 +2391,13 @@ mod tests {
                 latency_ms: 12,
                 reason: Some("private schema detail".to_string()),
             }],
-            modules: vec![ModuleHealth {
-                slug: "private-module".to_string(),
-                name: "Private Module".to_string(),
-                status: "unhealthy".to_string(),
+            modules: vec![ReadinessCheck {
+                name: "private-module".to_string(),
+                kind: "module",
+                criticality: DependencyCriticality::NonCritical,
+                status: ReadinessStatus::Unhealthy,
+                latency_ms: 0,
+                reason: Some("private detail".to_string()),
             }],
             degraded_reasons: vec!["private schema detail".to_string()],
         };

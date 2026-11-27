@@ -239,16 +239,17 @@ mod tests {
 
     struct PolicyCacheStampCheckingTransport {
         cache: ModuleEffectivePolicyCache,
-        tenant_id: Uuid,
         before: PolicyCacheReadStamp,
     }
 
     #[async_trait]
     impl EventTransport for PolicyCacheStampCheckingTransport {
         async fn publish(&self, _envelope: EventEnvelope) -> Result<()> {
-            assert_ne!(
-                self.cache.stamp(self.tenant_id),
-                self.before,
+            assert!(
+                !self
+                    .cache
+                    .is_stamp_current(&self.before)
+                    .expect("policy cache lock must be healthy"),
                 "local effective-policy cache must be invalidated before downstream delivery"
             );
             Ok(())
@@ -265,7 +266,6 @@ mod tests {
 
     struct FailOncePolicyCacheStampCheckingTransport {
         cache: ModuleEffectivePolicyCache,
-        tenant_id: Uuid,
         before: PolicyCacheReadStamp,
         attempts: AtomicUsize,
     }
@@ -273,9 +273,11 @@ mod tests {
     #[async_trait]
     impl EventTransport for FailOncePolicyCacheStampCheckingTransport {
         async fn publish(&self, _envelope: EventEnvelope) -> Result<()> {
-            assert_ne!(
-                self.cache.stamp(self.tenant_id),
-                self.before,
+            assert!(
+                !self
+                    .cache
+                    .is_stamp_current(&self.before)
+                    .expect("policy cache lock must be healthy"),
                 "local effective-policy cache must be invalidated before downstream delivery"
             );
             if self.attempts.fetch_add(1, Ordering::SeqCst) == 0 {
@@ -371,11 +373,9 @@ mod tests {
         .await
         .unwrap();
 
-        let tenant_id = Uuid::from_u128(42);
-        let before = policy_cache.stamp(tenant_id);
+        let before = policy_cache.begin_read().unwrap();
         let downstream = Arc::new(PolicyCacheStampCheckingTransport {
             cache: policy_cache,
-            tenant_id,
             before,
         });
         let gate = TenantGenerationDeliveryGate::new(downstream, ctx, cache);
@@ -396,11 +396,9 @@ mod tests {
         .await
         .unwrap();
 
-        let tenant_id = Uuid::from_u128(43);
-        let before = policy_cache.stamp(tenant_id);
+        let before = policy_cache.begin_read().unwrap();
         let downstream = Arc::new(FailOncePolicyCacheStampCheckingTransport {
             cache: policy_cache.clone(),
-            tenant_id,
             before,
             attempts: AtomicUsize::new(0),
         });
@@ -408,9 +406,9 @@ mod tests {
         let envelope = tenant_event(43);
 
         assert!(gate.publish(envelope.clone()).await.is_err());
-        let after_first_attempt = policy_cache.stamp(tenant_id);
+        let after_first_attempt = policy_cache.begin_read().unwrap();
         gate.publish(envelope).await.unwrap();
-        assert_eq!(policy_cache.stamp(tenant_id), after_first_attempt);
+        assert!(policy_cache.is_stamp_current(&after_first_attempt).unwrap());
     }
 
     #[tokio::test]
