@@ -1550,9 +1550,12 @@ impl FileSsrDraftSessionStore {
                 // Corrupt or newer-format records are not eviction candidates.
                 Err(_) => return Ok(false),
             };
+            let Some(current_age) = record_age(path, current.expires_at_unix_secs)? else {
+                return Ok(false);
+            };
             if current.token != token
                 || current.generation != generation
-                || record_age(path, current.expires_at_unix_secs) != expected_age
+                || current_age != expected_age
                 || current.owner.as_ref() != owner
                 || (current.expires_at_unix_secs > current_unix_secs()
                     && has_prepared_save(&current.operation_receipts))
@@ -1709,7 +1712,9 @@ impl FileSsrDraftSessionStore {
                 continue;
             };
             if record.owner.as_ref() == Some(owner) && record.token != keep_token {
-                let age = record_age(&path, record.expires_at_unix_secs);
+                let Some(age) = record_age(&path, record.expires_at_unix_secs)? else {
+                    continue;
+                };
                 let prepared = record.expires_at_unix_secs > current_unix_secs()
                     && has_prepared_save(&record.operation_receipts);
                 owned.push((path, record.token, record.generation, age, prepared));
@@ -1951,7 +1956,9 @@ impl FileSsrDraftSessionStore {
                 .and_then(|content| PersistentDraftSessionRecord::decode_str(&content).ok());
             match record {
                 Some(record) if record.expires_at_unix_secs > now => {
-                    let age = record_age(&path, record.expires_at_unix_secs);
+                    let Some(age) = record_age(&path, record.expires_at_unix_secs)? else {
+                        continue;
+                    };
                     let prepared = has_prepared_save(&record.operation_receipts);
                     surviving.push((
                         path,
@@ -2673,20 +2680,30 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
                     continue;
                 }
             };
-            scanned.insert(key.clone(), record.generation);
-                if record.expires_at_unix_secs <= now_unix_secs {
-                    deletions.insert(key);
-                } else {
-                    let prepared = has_prepared_save(&record.operation_receipts);
-                    if let Some(owner) = record.owner.as_ref() {
-                        per_owner
-                            .entry((owner.tenant_id.clone(), owner.user_id.clone()))
-                            .or_default()
-                            .push((key.clone(), record.expires_at_unix_secs, prepared));
-                    }
-                    surviving.push((key, record.expires_at_unix_secs, prepared));
-                }
+            let Some(token) = key.strip_prefix(&self.prefix) else {
+                continue;
+            };
+            if let Err(error) = record.validate_storage_key(token) {
+                tracing::warn!(
+                    error = %error,
+                    "draft session key did not match its record during prune"
+                );
+                continue;
             }
+            scanned.insert(key.clone(), record.generation);
+            if record.expires_at_unix_secs <= now_unix_secs {
+                deletions.insert(key);
+            } else {
+                let prepared = has_prepared_save(&record.operation_receipts);
+                if let Some(owner) = record.owner.as_ref() {
+                    per_owner
+                        .entry((owner.tenant_id.clone(), owner.user_id.clone()))
+                        .or_default()
+                        .push((key.clone(), record.expires_at_unix_secs, prepared));
+                }
+                surviving.push((key, record.expires_at_unix_secs, prepared));
+            }
+        }
         }
 
         if surviving.len() > max_entries {
@@ -3688,11 +3705,19 @@ fn owner_cap_lock_token(owner: &DraftSessionOwner) -> String {
     format!("owner-cap-{hash:016x}")
 }
 
-fn record_age(path: &Path, expires_at_unix_secs: u64) -> RecordAge {
-    let modified = fs::metadata(path)
-        .and_then(|meta| meta.modified())
-        .unwrap_or(UNIX_EPOCH);
-    (expires_at_unix_secs, modified)
+fn record_age(
+    path: &Path,
+    expires_at_unix_secs: u64,
+) -> Result<Option<RecordAge>, SsrDraftSessionError> {
+    let metadata = match fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
+    };
+    let modified = metadata
+        .modified()
+        .map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
+    Ok(Some((expires_at_unix_secs, modified)))
 }
 
 fn file_is_older_than(path: &Path, age: Duration) -> bool {
@@ -7292,6 +7317,14 @@ mod tests {
     }
 
     #[test]
+    fn missing_record_file_has_no_eviction_age() {
+        let dir = temp_store_dir();
+        let missing = dir.join("missing.json");
+        assert_eq!(record_age(&missing, current_unix_secs()).expect("age lookup"), None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn file_store_prune_candidate_does_not_delete_a_newer_generation() {
         let dir = temp_store_dir();
         let store = file_store(&dir);
@@ -7305,7 +7338,9 @@ mod tests {
             .load_record(&created.token, None)
             .expect("load scanned record")
             .expect("record");
-        let scanned_age = record_age(&path, scanned.expires_at_unix_secs);
+        let scanned_age = record_age(&path, scanned.expires_at_unix_secs)
+            .expect("read record age")
+            .expect("record file exists");
 
         let updated = store
             .commit(
