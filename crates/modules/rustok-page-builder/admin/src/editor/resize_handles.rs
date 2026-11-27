@@ -37,6 +37,21 @@ fn can_start_resize_pointer(listeners_ready: bool, button: i16, is_primary: bool
     listeners_ready && button == 0 && is_primary
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+fn can_resize_by_keyboard(
+    key: &str,
+    alt: bool,
+    control: bool,
+    meta: bool,
+    alt_graph: bool,
+) -> bool {
+    matches!(key, "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown")
+        && !alt
+        && !control
+        && !meta
+        && !alt_graph
+}
+
 #[derive(Debug, Clone, PartialEq)]
 #[cfg(any(target_arch = "wasm32", test))]
 struct ResizeContext {
@@ -167,6 +182,18 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                         on:keydown={
                             let runtime = runtime.clone();
                             move |event: KeyboardEvent| {
+                                // Modified arrow chords belong to browser, OS or editor
+                                // shortcuts. Only plain arrows (with optional Shift for a
+                                // larger step) should be consumed as resize commands.
+                                if !can_resize_by_keyboard(
+                                    &event.key(),
+                                    event.alt_key(),
+                                    event.ctrl_key(),
+                                    event.meta_key(),
+                                    event.get_modifier_state("AltGraph"),
+                                ) {
+                                    return;
+                                }
                                 let Some(context) = runtime
                                     .controller
                                     .with(current_resize_context)
@@ -612,6 +639,18 @@ mod tests {
         let mut changed = captured.clone();
         changed.zoom = 1.0;
         assert!(!resize_context_is_current(&captured, Some(&changed)));
+    }
+
+    #[test]
+    fn modified_arrow_shortcuts_are_not_consumed_by_resize_handles() {
+        assert!(can_resize_by_keyboard("ArrowUp", false, false, false, false));
+        assert!(can_resize_by_keyboard("ArrowDown", false, false, false, false));
+        assert!(!can_resize_by_keyboard("ArrowUp", true, false, false, false));
+        assert!(!can_resize_by_keyboard("ArrowDown", true, false, false, false));
+        assert!(!can_resize_by_keyboard("ArrowLeft", false, true, false, false));
+        assert!(!can_resize_by_keyboard("ArrowRight", false, false, true, false));
+        assert!(!can_resize_by_keyboard("ArrowRight", false, false, false, true));
+        assert!(!can_resize_by_keyboard("Enter", false, false, false, false));
     }
 
     #[test]
