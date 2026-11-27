@@ -382,3 +382,14 @@ generation. Consent-exempt codes remain NULL. Token registration generation
 and transaction-bound token evidence still use their existing timestamp
 contract; this extension covers the code lifecycle only. Source regressions
 unrun. Coordinate schema upgrade and host rollout.
+
+## Token-family consent generation (2026-11-27)
+
+The token family's immutable authorization_code_id links to the original
+consumed code, whose immutable consent_id identifies the grant. Access,
+WebSocket revalidation, locked admin and refresh preflight/commit match that
+code against the exact tenant, client, user and active consent UUID in
+addition to timestamp and scope checks. Legacy unbound families cannot adopt
+the current grant. Existing retention preserves code evidence while token
+registrations survive; missing evidence fails closed. Consent-exempt clients
+retain their prior policy. Source regressions unrun.

@@ -481,6 +481,7 @@ impl ServerAuthAdminMutationProvider {
                 actor.id,
                 &delegated.scopes,
                 row.consent_granted_at,
+                row.authorization_code_id,
             )
             .await
             .map_err(map_oauth_credential_error)?;

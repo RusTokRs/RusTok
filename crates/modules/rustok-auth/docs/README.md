@@ -1266,5 +1266,10 @@ NULL on legacy codes, and is not cleared by consent cleanup. Exchange
 checks the current generation at preflight and again under the existing
 app/subject transaction fences. No timestamp-based backfill is attempted:
 legacy unbound codes for consent-required clients must be reissued; exempt
-clients keep NULL. Token registrations still use timestamp consent binding
-until the next coordinated cutover. Source regressions unrun.
+clients keep NULL. Consent-required tokens inherit the exact UUID through
+their immutable original authorization-code identity; the code must be
+consumed and match tenant, client, subject and live consent. Access,
+WebSocket revalidation, locked admin admission and refresh preflight/commit
+reject missing or mismatched evidence even at equal timestamps. Legacy
+unbound token families require fresh authorization. Existing retention
+preserves codes while their families remain. Source regressions unrun.

@@ -770,3 +770,10 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   for consent-required clients fail closed, without guessed backfill.
   Token registrations, refresh lineage and admin evidence UUID binding
   remain outstanding. Source regressions unrun.
+
+- Consent-required token generation: resolve the immutable original
+  authorization_code_id to the consumed code's consent UUID. Check exact
+  tenant/client/subject and live generation in access, WebSocket, locked
+  admin and refresh preflight/commit. Same-timestamp replacement regressions
+  cover refresh and admin; unbound legacy families fail closed. Source
+  regressions unrun.

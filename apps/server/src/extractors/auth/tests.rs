@@ -889,6 +889,21 @@ async fn delegated_user_admin_rejects_revoked_registration_and_consent_epoch() {
         id,
     )
     .unwrap();
+    let code = crate::models::oauth_authorization_codes::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        app_id: Set(app.id),
+        user_id: Set(actor.id),
+        tenant_id: Set(tenant.id),
+        consent_id: Set(Some(consent.id)),
+        code_hash: Set(format!("admin-generation-{id}")),
+        redirect_uri: Set("https://example.com/callback".into()),
+        scopes: Set(serde_json::json!(["*:*"])),
+        code_challenge: Set("challenge".into()),
+        code_challenge_method: Set("S256".into()),
+        expires_at: Set((now + Duration::minutes(10)).into()),
+        used_at: Set(Some(now.into())),
+        created_at: Set(now.into()),
+    }.insert(&db).await.unwrap();
     let registration = oauth_tokens::ActiveModel {
         id: Set(id),
         app_id: Set(app.id),
@@ -896,7 +911,7 @@ async fn delegated_user_admin_rejects_revoked_registration_and_consent_epoch() {
         tenant_id: Set(tenant.id),
         token_hash: Set(crate::auth::hash_refresh_token(&token)),
         family_id: Set(id),
-        authorization_code_id: Set(None),
+        authorization_code_id: Set(Some(code.id)),
         grant_type: Set("authorization_code".to_string()),
         token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
         consent_granted_at: Set(Some(consent.granted_at)),
@@ -941,16 +956,18 @@ async fn delegated_user_admin_rejects_revoked_registration_and_consent_epoch() {
     .await
     .unwrap();
 
-    // A changed consent epoch must fail even when a noncooperating writer
-    // omitted token revocation. The exact admitted epoch cannot be replaced.
+    // Retire and replace at the identical timestamp without revoking
+    // the token, modelling a noncooperating writer.
     oauth_consents::ActiveModel {
         id: Set(consent.id),
-        granted_at: Set((now + Duration::seconds(1)).into()),
+        revoked_at: Set(Some(now.into())),
         ..Default::default()
-    }
-    .update(&db)
-    .await
-    .unwrap();
+    }.update(&db).await.unwrap();
+    let mut replacement: oauth_consents::ActiveModel = consent.clone().into();
+    replacement.id = Set(Uuid::new_v4());
+    replacement.revoked_at = Set(None);
+    replacement.insert(&db).await.unwrap();
+    assert!(resolve_current_user_from_access_token(&runtime, tenant.id, &token).await.is_err());
     let denied = with_rbac_request_scope(
         Some(scope()),
         provider.create_user(&context, create("delegated-epoch@example.test")),
@@ -960,14 +977,6 @@ async fn delegated_user_admin_rejects_revoked_registration_and_consent_epoch() {
         matches!(denied, Err(AuthAdminMutationError::Unauthorized)),
         "{denied:?}"
     );
-    oauth_consents::ActiveModel {
-        id: Set(consent.id),
-        granted_at: Set(consent.granted_at),
-        ..Default::default()
-    }
-    .update(&db)
-    .await
-    .unwrap();
     oauth_tokens::ActiveModel {
         id: Set(registration.id),
         revoked_at: Set(Some(Utc::now().into())),

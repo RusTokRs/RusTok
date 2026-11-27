@@ -632,19 +632,44 @@ async fn validate_refresh_token(
     })?;
     let scopes = token.scopes_list();
     validate_scope_subset(&app.scopes_list(), &scopes)?;
-    let (user, consent_granted_at, _) =
+    let (user, consent_granted_at, consent_id) =
         validate_active_subject_and_consent(db, app, tenant_id, user_id, &scopes).await?;
     if user.rejects_delegated_token_issued_at(token.created_at.with_timezone(&Utc)) {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Refresh token predates the current credential state",
         ));
     }
-    if app.requires_user_consent() && token.consent_granted_at != consent_granted_at {
+    if token.consent_granted_at != consent_granted_at {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Refresh token predates the current consent epoch",
         ));
     }
+    validate_token_consent_generation(db, &token, consent_id).await?;
     Ok(token)
+}
+
+// The family already preserves its immutable authorization_code_id.
+// Resolve that evidence instead of copying a second generation to descendants.
+async fn validate_token_consent_generation<C: ConnectionTrait>(
+    db: &C,
+    token: &oauth_tokens::Model,
+    consent_id: Option<Uuid>,
+) -> Result<(), OAuthTokenProtocolError> {
+    let Some(consent_id) = consent_id else {
+        return Ok(());
+    };
+    let user_id = token.user_id.ok_or_else(|| {
+        OAuthTokenProtocolError::invalid_grant("Refresh token has no associated user")
+    })?;
+    if !OAuthConsents::matches_consumed_code_generation(
+        db, token.authorization_code_id, consent_id, token.app_id,
+        user_id, token.tenant_id,
+    ).await.map_err(|_| OAuthTokenProtocolError::server_error("Failed to validate consent generation"))? {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Refresh token belongs to a different or unbound consent generation",
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -1743,9 +1768,7 @@ async fn commit_refresh_rotation(
         require_email_verification,
     )
     .await?;
-    // Token registration UUID binding is a separate cutover. This path
-    // still enforces the persisted timestamp epoch until that migration.
-    let _current_consent_id = validate_locked_oauth_consent(
+    let consent_id = validate_locked_oauth_consent(
         &tx,
         &current_app,
         current.tenant_id,
@@ -1754,6 +1777,7 @@ async fn commit_refresh_rotation(
         current.consent_granted_at.clone(),
     )
     .await?;
+    validate_token_consent_generation(&tx, current, consent_id).await?;
 
     if prepared.consent_granted_at != current.consent_granted_at {
         return Err(OAuthTokenProtocolError::invalid_grant(
@@ -2277,6 +2301,8 @@ mod tests {
         db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_tokens::Entity)))
             .await
             .expect("OAuth tokens table");
+        db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_codes::Entity)))
+            .await.expect("OAuth codes table");
 
         let tenant = tenants::ActiveModel::new("Consent lock tenant", "consent-lock")
             .insert(&db)
@@ -2313,6 +2339,21 @@ mod tests {
         .expect("active consent");
 
         let now = Utc::now();
+        let original_code = oauth_codes::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            app_id: Set(client.id),
+            user_id: Set(user.id),
+            tenant_id: Set(tenant.id),
+            code_hash: Set("consent-generation-code".into()),
+            consent_id: Set(Some(consent.id)),
+            redirect_uri: Set("https://example.com/callback".into()),
+            scopes: Set(serde_json::json!(["profile"])),
+            code_challenge: Set("challenge".into()),
+            code_challenge_method: Set("S256".into()),
+            expires_at: Set((now + chrono::Duration::minutes(10)).into()),
+            used_at: Set(Some(now.into())),
+            created_at: Set(now.into()),
+        }.insert(&db).await.expect("consumed original code");
         let current_id = Uuid::new_v4();
         let current = oauth_tokens::ActiveModel {
             id: Set(current_id),
@@ -2321,7 +2362,7 @@ mod tests {
             tenant_id: Set(tenant.id),
             token_hash: Set("consent-bound-refresh-token".to_string()),
             family_id: Set(current_id),
-            authorization_code_id: Set(None),
+            authorization_code_id: Set(Some(original_code.id)),
             grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
             consent_granted_at: Set(Some(granted_at.clone())),
@@ -2344,7 +2385,7 @@ mod tests {
                 tenant_id: Set(tenant.id),
                 token_hash: Set("access-after-consent-change".to_string()),
                 family_id: Set(current_id),
-                authorization_code_id: Set(None),
+                authorization_code_id: Set(Some(original_code.id)),
                 grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
                 token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
                 consent_granted_at: Set(Some(granted_at.clone())),
@@ -2363,7 +2404,7 @@ mod tests {
                 tenant_id: Set(tenant.id),
                 token_hash: Set("replacement-after-consent-change".to_string()),
                 family_id: Set(current_id),
-                authorization_code_id: Set(None),
+                authorization_code_id: Set(Some(original_code.id)),
                 grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
                 token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
                 consent_granted_at: Set(Some(granted_at.clone())),
@@ -2378,24 +2419,26 @@ mod tests {
             expires_in: 900,
         };
 
-        let mut changed_consent: oauth_consents::ActiveModel = consent.clone().into();
-        changed_consent.granted_at =
-            Set((granted_at.clone() + chrono::Duration::seconds(1)).into());
-        let changed_consent = changed_consent
-            .update(&db)
-            .await
-            .expect("change consent epoch without revoking");
-
-        let stale_epoch = super::validate_locked_oauth_consent(
-            &db,
-            &client,
-            tenant.id,
-            user.id,
-            &["profile".to_string()],
+        super::validate_token_consent_generation(&db, &current, Some(consent.id))
+            .await.expect("original consumed code proves generation");
+        let mut unbound = current.clone();
+        unbound.authorization_code_id = None;
+        assert!(super::validate_token_consent_generation(&db, &unbound, Some(consent.id))
+            .await.is_err());
+        let mut retired: oauth_consents::ActiveModel = consent.clone().into();
+        retired.revoked_at = Set(Some(now.into()));
+        retired.update(&db).await.expect("retire old grant");
+        let mut replacement: oauth_consents::ActiveModel = consent.clone().into();
+        replacement.id = Set(Uuid::new_v4());
+        replacement.revoked_at = Set(None);
+        let changed_consent = replacement.insert(&db).await.expect("same-timestamp replacement");
+        let live_id = super::validate_locked_oauth_consent(
+            &db, &client, tenant.id, user.id, &["profile".to_string()],
             Some(granted_at.clone()),
-        )
-        .await
-        .expect_err("a changed consent epoch must reject in-flight issuance");
+        ).await.expect("timestamp alone cannot distinguish grants");
+        assert_eq!(live_id, Some(changed_consent.id));
+        let stale_epoch = super::validate_token_consent_generation(&db, &current, live_id)
+            .await.expect_err("different UUID must reject in-flight issuance");
         assert_eq!(stale_epoch.error, "invalid_grant");
 
         let commit_error = super::commit_refresh_rotation(

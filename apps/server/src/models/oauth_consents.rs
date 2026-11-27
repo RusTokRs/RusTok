@@ -16,6 +16,31 @@ impl Model {
 }
 
 impl Entity {
+    /// Resolve a token family's consumed original code to the exact grant.
+    /// Missing or unbound legacy evidence is never inferred.
+    pub async fn matches_consumed_code_generation<C: ConnectionTrait>(
+        db: &C,
+        code_id: Option<Uuid>,
+        consent_id: Uuid,
+        app_id: Uuid,
+        user_id: Uuid,
+        tenant_id: Uuid,
+    ) -> Result<bool, DbErr> {
+        use super::_entities::oauth_authorization_codes as codes;
+        let Some(code_id) = code_id else {
+            return Ok(false);
+        };
+        Ok(codes::Entity::find_by_id(code_id)
+            .filter(codes::Column::TenantId.eq(tenant_id))
+            .filter(codes::Column::AppId.eq(app_id))
+            .filter(codes::Column::UserId.eq(user_id))
+            .filter(codes::Column::ConsentId.eq(consent_id))
+            .filter(codes::Column::UsedAt.is_not_null())
+            .one(db)
+            .await?
+            .is_some())
+    }
+
     pub async fn find_active_consent<C>(
         db: &C,
         app_id: Uuid,

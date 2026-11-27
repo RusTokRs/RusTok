@@ -247,6 +247,7 @@ pub(crate) async fn validate_active_user_consent(
     user_id: uuid::Uuid,
     token_scopes: &[String],
     token_consent_granted_at: Option<sea_orm::prelude::DateTimeWithTimeZone>,
+    authorization_code_id: Option<uuid::Uuid>,
 ) -> Result<(), (StatusCode, &'static str)> {
     if !app.requires_user_consent() {
         return Ok(());
@@ -256,7 +257,11 @@ pub(crate) async fn validate_active_user_consent(
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
         .ok_or((StatusCode::UNAUTHORIZED, "OAuth consent revoked or missing"))?;
-    if token_consent_granted_at != Some(consent.granted_at) {
+    if token_consent_granted_at != Some(consent.granted_at)
+        || !OAuthConsents::matches_consumed_code_generation(
+            db, authorization_code_id, consent.id, app.id, user_id, tenant_id,
+        ).await.map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+    {
         return Err((
             StatusCode::UNAUTHORIZED,
             "OAuth token predates the current consent epoch",
@@ -656,6 +661,7 @@ pub async fn resolve_current_user_from_access_token(
             claims.sub,
             &claims.scopes,
             access_row.consent_granted_at,
+            access_row.authorization_code_id,
         )
         .await?;
     }
@@ -1033,6 +1039,7 @@ async fn revalidate_admitted_authority(
                     original_user.id,
                     &claims.scopes,
                     row.consent_granted_at,
+                    row.authorization_code_id,
                 )
                 .await?;
             }
