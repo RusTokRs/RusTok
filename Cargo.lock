@@ -15444,7 +15444,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "syn",
+ "syn 3.0.10",
  "tempfile",
 ]
 

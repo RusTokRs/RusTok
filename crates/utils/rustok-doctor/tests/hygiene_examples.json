@@ -855,6 +855,16 @@
     "source": "fn resolve(owner: Option<Uuid>, tenant: Tenant) -> Uuid {\n    let owner_id = owner.unwrap_or_default();\n    let locale = tenant.locale().unwrap_or_default();\n    let tenant_id: Uuid = owner.unwrap_or_else(Uuid::nil);\n    tenant_id\n}\n",
     "findings": [
       {
+        "pattern_id": "P-NIL-IDENTITY-FALLBACK",
+        "rule_name": "Critical Identity Fallback Leakage",
+        "severity": "P0-CRITICAL",
+        "confidence": "high",
+        "line": 2,
+        "content": "let owner_id = owner.unwrap_or_default();",
+        "message": "Defaulting critical identity to Nil/Default UUID. Missing entity authority must fail closed.",
+        "suggested_fix": "entity_id.ok_or(DomainError::IdentityRequired)?"
+      },
+      {
         "pattern_id": "P-TENANT-FALLBACK-LEAK",
         "rule_name": "Tenant Fallback Leakage",
         "severity": "P0-CRITICAL",
@@ -863,6 +873,16 @@
         "content": "let tenant_id: Uuid = owner.unwrap_or_else(Uuid::nil);",
         "message": "Possible default tenant selector. Verify that missing tenant authority fails closed.",
         "suggested_fix": "tenant_id.ok_or(DomainError::TenantNotFound)?"
+      },
+      {
+        "pattern_id": "P-NIL-IDENTITY-FALLBACK",
+        "rule_name": "Critical Identity Fallback Leakage",
+        "severity": "P0-CRITICAL",
+        "confidence": "high",
+        "line": 4,
+        "content": "let tenant_id: Uuid = owner.unwrap_or_else(Uuid::nil);",
+        "message": "Defaulting critical identity to Nil/Default UUID. Missing entity authority must fail closed.",
+        "suggested_fix": "entity_id.ok_or(DomainError::IdentityRequired)?"
       }
     ]
   },

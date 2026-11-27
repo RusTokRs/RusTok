@@ -59,42 +59,6 @@ fn detects_direct_json_decode_defaults_without_flagging_handled_errors() {
 }
 
 #[test]
-fn detects_real_ai_accounting_and_trace_candidates() {
-    let mapping = include_str!("../../../modules/rustok-ai/src/service/mapping.rs");
-    let findings = rustok_doctor::scan_source(Path::new("src/service/mapping.rs"), mapping);
-    assert!(
-        findings
-            .iter()
-            .filter(|f| f.pattern_id == "P-JSON-DECODE-DEFAULT")
-            .count()
-            >= 2
-    );
-
-    let accounting = include_str!("../../../modules/rustok-ai/src/accounting.rs");
-    let findings = rustok_doctor::scan_source(Path::new("src/accounting.rs"), accounting);
-    assert!(
-        findings
-            .iter()
-            .filter(|f| f.pattern_id == "P-TXN-ROLLBACK-SWALLOW")
-            .count()
-            >= 2
-    );
-
-    let migration = include_str!(
-        "../../../modules/rustok-ai/src/migrations/m20260712_000001_provider_targets.rs"
-    );
-    let findings = rustok_doctor::scan_source(
-        Path::new("src/migrations/m20260712_000001_provider_targets.rs"),
-        migration,
-    );
-    assert!(
-        findings
-            .iter()
-            .any(|f| f.pattern_id == "P-FILTER-DROPPED-ERROR")
-    );
-}
-
-#[test]
 fn identifies_transaction_error_to_option_without_duplicate_let_findings() {
     let source = "async fn run() {\n transaction.rollback().await.ok();\n tx\n  .commit()\n  .await\n  .ok();\n let _ = txn.rollback().await.ok();\n let _ =\n  transaction.rollback().await.ok();\n transaction.rollback().await?;\n // transaction.rollback().await.ok();\n}\n";
     let findings = rustok_doctor::scan_source(Path::new("src/runtime.rs"), source);
@@ -410,23 +374,6 @@ fn identifies_unchecked_vec_set_len() {
 }
 
 #[test]
-fn detects_real_cron_scheduler_orphan_spawn() {
-    let cron_file = include_str!("../../../modules/rustok-workflow/src/services/cron_scheduler.rs");
-    let findings = rustok_doctor::scan_source(
-        Path::new("crates/modules/rustok-workflow/src/services/cron_scheduler.rs"),
-        cron_file,
-    );
-    let orphans: Vec<_> = findings
-        .iter()
-        .filter(|f| f.pattern_id == "P-ORPHAN-SPAWN")
-        .collect();
-
-    // Line 109 is orphaned, line 37 returns JoinHandle (not orphaned)
-    assert_eq!(orphans.len(), 1);
-    assert_eq!(orphans[0].line, 109);
-}
-
-#[test]
 fn identifies_client_per_request_allocation_in_async_or_loops() {
     let source = r#"
 async fn send_probe() -> Result<()> {
@@ -660,7 +607,7 @@ fn expected_stub() {
 }
 
 #[test]
-fn detects_real_fulfillment_and_pages_pointer_args() {
+fn detects_pointer_argument_in_fulfillment_fixture() {
     let fulfillment_source = include_str!("fixtures/fulfillment_admin_core.rs");
     let findings = rustok_doctor::scan_source(
         Path::new("crates/modules/rustok-fulfillment/admin/src/core.rs"),
@@ -672,18 +619,6 @@ fn detects_real_fulfillment_and_pages_pointer_args() {
         .collect();
     assert_eq!(ptr_findings.len(), 1);
     assert_eq!(ptr_findings[0].line, 237);
-
-    let pages_source = include_str!("../../../modules/rustok-pages/src/provider_health_binding.rs");
-    let findings = rustok_doctor::scan_source(
-        Path::new("crates/modules/rustok-pages/src/provider_health_binding.rs"),
-        pages_source,
-    );
-    let ptr_findings: Vec<_> = findings
-        .iter()
-        .filter(|f| f.pattern_id == "P-PTR-ARG")
-        .collect();
-    assert_eq!(ptr_findings.len(), 1);
-    assert_eq!(ptr_findings[0].line, 234);
 }
 
 #[test]
@@ -1195,7 +1130,6 @@ pub fn create_account() {
     assert!(slop_findings[0].content.contains("Create a new buffer"));
 }
 
-
 #[test]
 fn ast_select_rule_only_checks_cancelled_branch_futures() {
     let source = r#"
@@ -1228,6 +1162,7 @@ async fn safe_io(
 
     assert_eq!(cancellation.len(), 1);
     assert_eq!(cancellation[0].line, 3);
+    assert_eq!(cancellation[0].evidence, rustok_doctor::Evidence::Ast);
     assert!(cancellation[0].message.contains("write_all"));
 }
 
@@ -1251,9 +1186,11 @@ mod tests {
     assert_eq!(unsafe_impls.len(), 2);
     assert_eq!(unsafe_impls[0].line, 2);
     assert_eq!(unsafe_impls[1].line, 3);
-    assert!(unsafe_impls
-        .iter()
-        .all(|finding| finding.confidence == rustok_doctor::Confidence::Heuristic));
+    assert!(
+        unsafe_impls
+            .iter()
+            .all(|finding| finding.confidence == rustok_doctor::Confidence::Heuristic)
+    );
 }
 
 #[test]

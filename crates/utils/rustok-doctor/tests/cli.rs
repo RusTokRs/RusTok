@@ -9,6 +9,10 @@ fn command(root: &Path, executable: &str, args: &[&str]) -> Output {
     Command::new(executable)
         .current_dir(root)
         .args(args)
+        .env(
+            "GIT_CEILING_DIRECTORIES",
+            root.parent().expect("test directory has a parent"),
+        )
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env(
             "GIT_CONFIG_GLOBAL",
@@ -29,6 +33,225 @@ fn git(root: &Path, args: &[&str]) {
 
 fn doctor(root: &Path, args: &[&str]) -> Output {
     command(root, env!("CARGO_BIN_EXE_rustok-doctor"), args)
+}
+
+fn compiler_message(code: &str, path: &Path, line: usize, column: usize, text: &str) -> Value {
+    serde_json::json!({
+        "reason": "compiler-message",
+        "message": {
+            "code": {"code": code},
+            "level": "warning",
+            "spans": [{
+                "file_name": path,
+                "line_start": line,
+                "line_end": line,
+                "column_start": column,
+                "is_primary": true,
+                "text": [{"text": text}]
+            }]
+        }
+    })
+}
+
+fn write_cargo_capture(path: &Path, messages: &[Value], success: Option<bool>) {
+    let mut lines: Vec<_> = messages.iter().map(Value::to_string).collect();
+    if let Some(success) = success {
+        lines.push(serde_json::json!({"reason":"build-finished", "success":success}).to_string());
+    }
+    fs::write(path, lines.join("\n")).unwrap();
+}
+
+#[test]
+fn cargo_diagnostics_join_selected_sources_and_existing_reports() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    let selected = Path::new("selected.rs");
+    let line = "pub fn check() {}";
+    // CRLF working-tree source and the normalized text in Cargo spans.
+    fs::write(root.join(selected), format!("{line}\r\n")).unwrap();
+    fs::write(root.join("other.rs"), line).unwrap();
+    let mappings = [
+        (
+            "let_underscore_lock",
+            "P-RUST-LET-UNDERSCORE-LOCK",
+            "rustc",
+            "high",
+        ),
+        (
+            "clippy::let_underscore_future",
+            "P-RUST-LET-UNDERSCORE-FUTURE",
+            "clippy",
+            "high",
+        ),
+        (
+            "clippy::unused_io_amount",
+            "P-RUST-UNUSED-IO-AMOUNT",
+            "clippy",
+            "high",
+        ),
+        (
+            "static_mut_refs",
+            "P-RUST-STATIC-MUT-REFERENCE",
+            "rustc",
+            "high",
+        ),
+        (
+            "clippy::await_holding_refcell_ref",
+            "P-RUST-AWAIT-HOLDING-REFCELL",
+            "clippy",
+            "heuristic",
+        ),
+        (
+            "clippy::arc_with_non_send_sync",
+            "P-RUST-ARC-NONSEND-SYNC",
+            "clippy",
+            "heuristic",
+        ),
+    ];
+    let mut messages = vec![serde_json::json!({"reason":"compiler-artifact", "fresh":true})];
+    messages.extend(
+        mappings
+            .iter()
+            .map(|(code, ..)| compiler_message(code, selected, 1, 1, line)),
+    );
+    // Cargo can replay diagnostics for multiple compilation targets.
+    messages.push(compiler_message(
+        mappings[0].0,
+        &root.join(selected),
+        1,
+        1,
+        line,
+    ));
+    messages.push(compiler_message(
+        mappings[0].0,
+        Path::new("other.rs"),
+        1,
+        1,
+        line,
+    ));
+    messages.push(compiler_message("clippy::unmapped", selected, 1, 1, line));
+    let mut secondary = compiler_message(mappings[0].0, selected, 200, 1, line);
+    secondary["message"]["spans"][0]["is_primary"] = Value::Bool(false);
+    messages.push(secondary);
+    write_cargo_capture(&root.join("cargo.jsonl"), &messages, Some(true));
+
+    let output = doctor(
+        root,
+        &[
+            "hygiene",
+            "--path",
+            "selected.rs",
+            "--cargo-diagnostics",
+            "cargo.jsonl",
+            "--fail-on",
+            "P0",
+            "--json",
+            "--csv",
+            "out.csv",
+            "--markdown-report",
+            "out.md",
+            "--patch",
+            "out.patch",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["cargo_diagnostics"]["build_succeeded"], true);
+    let findings = report["findings"].as_array().unwrap();
+    assert_eq!(findings.len(), mappings.len());
+    let mut csv = csv::Reader::from_path(root.join("out.csv")).unwrap();
+    assert_eq!(csv.records().count(), findings.len());
+    let markdown = fs::read_to_string(root.join("out.md")).unwrap();
+    let patch = fs::read_to_string(root.join("out.patch")).unwrap();
+    for (code, id, kind, confidence) in mappings {
+        let finding = findings
+            .iter()
+            .find(|finding| finding["pattern_id"] == id)
+            .unwrap();
+        assert_eq!(finding["file"], "selected.rs");
+        assert_eq!(finding["content"], line);
+        assert_eq!(finding["confidence"], confidence);
+        assert_eq!(
+            finding["evidence"],
+            serde_json::json!({"kind": kind, "code": code, "column": 1})
+        );
+        assert!(markdown.contains(code));
+        assert!(patch.contains(id));
+    }
+    let advisory_only = doctor(
+        root,
+        &[
+            "hygiene",
+            "--path",
+            "selected.rs",
+            "--cargo-diagnostics",
+            "cargo.jsonl",
+            "--strict",
+            "--ignore-rule",
+            "P-RUST-LET-UNDERSCORE-LOCK,P-RUST-LET-UNDERSCORE-FUTURE,P-RUST-UNUSED-IO-AMOUNT,P-RUST-STATIC-MUT-REFERENCE",
+        ],
+    );
+    assert!(advisory_only.status.success(), "{advisory_only:?}");
+}
+
+#[test]
+fn cargo_diagnostics_fail_closed_and_keep_findings_from_failed_builds() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    let source = Path::new("selected.rs");
+    let line = "pub fn check() {}";
+    fs::write(root.join(source), line).unwrap();
+    let capture = root.join("cargo.jsonl");
+    let message = compiler_message("let_underscore_lock", source, 1, 1, line);
+    let args = [
+        "hygiene",
+        "--path",
+        "selected.rs",
+        "--cargo-diagnostics",
+        "cargo.jsonl",
+        "--json",
+    ];
+    write_cargo_capture(&capture, std::slice::from_ref(&message), Some(false));
+    let output = doctor(root, &args);
+    assert_eq!(output.status.code(), Some(2));
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["cargo_diagnostics"]["build_succeeded"], false);
+    assert_eq!(report["total_findings"], 1);
+
+    write_cargo_capture(&capture, std::slice::from_ref(&message), None);
+    let incomplete = fs::read_to_string(&capture).unwrap();
+    let finished = serde_json::json!({"reason":"build-finished", "success":true});
+    for (input, expected_error) in [
+        (incomplete, "missing Cargo build-finished"),
+        ("not json".to_owned(), "cargo.jsonl:1"),
+        (format!("{finished}\n{message}"), "unexpected record after"),
+    ] {
+        fs::write(&capture, input).unwrap();
+        let output = doctor(root, &args);
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&output.stderr).contains(expected_error));
+    }
+
+    write_cargo_capture(&capture, &[message], Some(true));
+    let original = fs::read(&capture).unwrap();
+    let mut overwrite = args.to_vec();
+    overwrite.extend(["--csv", "cargo.jsonl"]);
+    assert_eq!(doctor(root, &overwrite).status.code(), Some(2));
+    assert_eq!(fs::read(&capture).unwrap(), original);
+
+    fs::write(root.join(source), "pub fn changed() {}").unwrap();
+    let stale = doctor(root, &args);
+    assert_eq!(stale.status.code(), Some(2));
+    assert!(stale.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&stale.stderr).contains("does not match selected source"));
+
+    let staged = doctor(
+        root,
+        &["hygiene", "--staged", "--cargo-diagnostics", "cargo.jsonl"],
+    );
+    assert_eq!(staged.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&staged.stderr).contains("working-tree evidence"));
 }
 
 #[test]
@@ -81,6 +304,7 @@ fn markdown_and_csv_include_every_json_finding() {
     let json: Value = serde_json::from_slice(&output.stdout).unwrap();
     let findings = json["findings"].as_array().unwrap();
     assert_eq!(findings.len(), 25);
+    assert_eq!(findings[0]["evidence"]["kind"], "lexical");
     let mut csv = csv::Reader::from_path(dir.path().join("all.csv")).unwrap();
     assert_eq!(csv.records().count(), findings.len());
     let markdown = fs::read_to_string(dir.path().join("all.md")).unwrap();

@@ -34,6 +34,26 @@ pub enum Confidence {
     Heuristic,
 }
 
+/// Identifies the producer and the compiler location when available.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Evidence {
+    Lexical,
+    Ast,
+    Rustc { code: String, column: usize },
+    Clippy { code: String, column: usize },
+}
+
+impl Evidence {
+    pub(crate) fn label(&self) -> &str {
+        match self {
+            Self::Lexical => "lexical",
+            Self::Ast => "AST",
+            Self::Rustc { code, .. } | Self::Clippy { code, .. } => code,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Finding {
     pub pattern_id: &'static str,
@@ -45,6 +65,7 @@ pub struct Finding {
     pub content: String,
     pub message: String,
     pub suggested_fix: Option<String>,
+    pub evidence: Evidence,
 }
 
 struct Scan<'a> {
@@ -96,6 +117,7 @@ impl Scan<'_> {
             content: self.lines[line - 1].code.trim().to_owned(),
             message: message.into(),
             suggested_fix: Some(fix.into()),
+            evidence: Evidence::Lexical,
         });
     }
 
@@ -1018,14 +1040,18 @@ pub fn scan_crate_source(
             if finding.line == 0 || finding.line > scan.lines.len() {
                 continue;
             }
-            scan.add(
-                finding.line,
-                finding.pattern_id,
-                finding.rule_name,
-                finding.severity,
-                finding.message,
-                finding.suggested_fix,
-            );
+            scan.findings.push(Finding {
+                pattern_id: finding.pattern_id,
+                rule_name: finding.rule_name,
+                severity: finding.severity,
+                confidence: Confidence::Heuristic,
+                file: scan.file.clone(),
+                line: finding.line,
+                content: scan.lines[finding.line - 1].code.trim().to_owned(),
+                message: finding.message,
+                suggested_fix: Some(finding.suggested_fix),
+                evidence: Evidence::Ast,
+            });
         }
     }
     scan.findings

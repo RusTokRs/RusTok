@@ -1997,7 +1997,13 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-RUST-POISON-RECOVERY` | State integrity | Mutex poison recovery revalidates or restores protected invariants | Manual: inspect PoisonError recovery and post-panic state |
 | `P-RUST-LOSSY-NUMERIC-CAST` | Numeric integrity | Numeric conversions preserve range, sign and precision | External: Clippy cast lints plus owner-level range review |
 | `P-RUST-SERDE-REQUIRED-DEFAULT` | Serialization contract | Required authority and domain fields cannot silently default when absent | Manual: compare Serde defaults with the owning schema contract |
-| `P-RUST-DROP-BLOCKING` | Resource lifecycle | Destructors do not block, wait indefinitely or attempt async shutdown | Manual: inspect Drop bodies and prefer explicit close/shutdown
+| `P-RUST-DROP-BLOCKING` | Resource lifecycle | Destructors do not block, wait indefinitely or attempt async shutdown | Manual: inspect Drop bodies and prefer explicit close/shutdown |
+| `P-RUST-LET-UNDERSCORE-FUTURE` | Async lifecycle | Required futures are polled or supervised | Clippy `let_underscore_future` |
+| `P-RUST-LET-UNDERSCORE-LOCK` | Concurrency | A named guard spans the critical section | rustc `let_underscore_lock` |
+| `P-RUST-UNUSED-IO-AMOUNT` | I/O integrity | Partial I/O byte counts remain accounted for | Clippy `unused_io_amount` |
+| `P-RUST-STATIC-MUT-REFERENCE` | Memory safety | Shared state has a locally enforced aliasing contract | rustc `static_mut_refs` |
+| `P-RUST-AWAIT-HOLDING-REFCELL` | Async lifecycle | Dynamic borrows end before reentrant work can run | Heuristic: Clippy `await_holding_refcell_ref` and actual borrow lifetime |
+| `P-RUST-ARC-NONSEND-SYNC` | Ownership | Shared state satisfies the sharing contract of its owner | Heuristic: Clippy `arc_with_non_send_sync` and caller intent |
 
 ---
 
@@ -2049,13 +2055,13 @@ npm run test:verify:hygiene
 
 The scanner runs through the `rustok-doctor` library and `xtask`. Git modes require Git.
 Severity (`P0` through `P2`) describes potential impact. The separate `confidence`
-field is `high` for a direct source-level violation or `heuristic` for a candidate
+field is `high` for a direct source or typed diagnostic, or `heuristic` for a candidate
 that needs review. Text, JSON, CSV, and Markdown reports show both. `--severity`
 filters findings by impact. `--strict` is equivalent to `--fail-on P2`: the scanner
-returns `1` only for high-confidence findings at or above the threshold, in text
-and JSON modes. The current high-confidence rule has severity `P1`, so
-`--fail-on P0` does not block on any current rule. A target-selection or
-source-read error returns `2`.
+returns `1` for high-confidence findings at or above the threshold, in text
+and JSON modes. A target-selection, source-read, or diagnostics import
+failure returns `2`. A failed Cargo build also returns `2` and preserves the
+findings emitted before failure.
 
 Git modes select files and scan their full contents. A pre-existing match in a
 selected file can fail a gate even when the matching line was not edited.
@@ -2064,11 +2070,30 @@ The patch keeps flagged Rust statements intact and appends advisory comments wit
 their original line numbers. Check a working-tree patch with `git apply --check`
 and a `--staged` patch with `git apply --cached --check`.
 
-Rules use lexical scope and preserve literal contents for checks that need them.
-They do not resolve Rust types, expand macros, or follow calls between functions.
+The offline pass uses lexical scope and a best-effort Rust AST. It preserves
+literal contents for checks that need them. Type-aware findings come from
+optional rustc and Clippy diagnostics from the caller's Cargo capture.
 The Leptos rule recognizes effect, memo, and `view!` delimiters. An empty report
-means the scanner found no matches in the selected sources; verify behavioral
-invariants with the owner’s tests and runtime evidence.
+indicates zero matches for the selected rules, sources, and available
+diagnostics. Verify behavioral invariants with the owner's tests and runtime
+evidence.
+
+### Rustc and Clippy diagnostics
+
+These rules are general Rust guidance. Their compiler observations were
+reproduced on isolated examples. Severity covers potential impact, and
+confidence reflects which conclusions the diagnostic supports. Use the
+[Doctor capture workflow](../../crates/utils/rustok-doctor/docs/README.md#importing-cargo-diagnostics)
+on the owning package.
+
+| Pattern | Default | Failure and canonical remediation | Diagnostic |
+| --- | --- | --- | --- |
+| `P-RUST-LET-UNDERSCORE-FUTURE` | P1 high | A wildcard discards a future without polling it. Use `operation().await?` for required work or transfer ownership to a supervised task. Use `drop(future)` to make intentional abandonment explicit. | [Clippy `let_underscore_future`](https://rust-lang.github.io/rust-clippy/master/index.html#let_underscore_future) |
+| `P-RUST-LET-UNDERSCORE-LOCK` | P1 high | A wildcard discards the synchronization guard immediately. Keep `let _guard = lock.lock()?` in scope for the critical section. Use `drop(guard)` for explicit release. | [rustc `let_underscore_lock`](https://doc.rust-lang.org/stable/rustc/lints/listing/deny-by-default.html#let-underscore-lock) |
+| `P-RUST-UNUSED-IO-AMOUNT` | P1 high | A successful read or write may transfer fewer bytes than requested. Use the returned count, or use `reader.read_exact(&mut buf)?` or `writer.write_all(buf)?` when the contract requires a complete transfer. | [Clippy `unused_io_amount`](https://rust-lang.github.io/rust-clippy/master/index.html#unused_io_amount) |
+| `P-RUST-STATIC-MUT-REFERENCE` | P0 high | A reference to `static mut` places aliasing requirements across potentially reentrant or concurrent access. Prefer an immutable `static` that holds a suitable atomic, mutex, or one-time initializer. | [Rust 2024 `static_mut_refs`](https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html) |
+| `P-RUST-AWAIT-HOLDING-REFCELL` | P1 heuristic | A dynamic borrow across suspension may conflict with reentrant access. An inner scope can compute an owned value and end the borrow before `.await`. Review explicit drops and the actual borrow lifetime. | [Clippy `await_holding_refcell_ref`](https://rust-lang.github.io/rust-clippy/master/index.html#await_holding_refcell_ref) |
+| `P-RUST-ARC-NONSEND-SYNC` | P2 heuristic | An atomic reference count leaves the inner type's thread-safety requirements in place. Use `Rc` for local ownership where the API permits it, or use an inner type with the required synchronization guarantees. | [Clippy `arc_with_non_send_sync`](https://rust-lang.github.io/rust-clippy/master/index.html#arc_with_non_send_sync) |
 
 ---
 
@@ -2076,17 +2101,14 @@ invariants with the owner’s tests and runtime evidence.
 
 - **Category:** Persisted-data integrity and compatibility.
 - **Logic dimensions:** Preconditions, failure paths, side-effect completeness.
-- **Observed behavior:** The AI run projections currently apply
+- **Historical behavior:** The AI run projections applied
   `serde_json::from_value(model.decision_trace).unwrap_or_default()` in two
   [mapping paths](../../crates/modules/rustok-ai/src/service/mapping.rs). An
-  incompatible stored value is represented as an empty/default trace without
-  exposing the decoding error. Whether a particular historical value is supposed
-  to fall back requires the owner compatibility contract; a malformed row or
-  production incident was not reproduced here.
-  In [MCP policy mapping](../../crates/modules/rustok-mcp/src/persistence/models/mcp_policies.rs), an
-  invalid `denied_tools` value becomes an empty list. A tool present in both
-  the valid allow-list and the intended deny-list may then pass the deny-list
-  check if its other authorization requirements are also satisfied. See
+  incompatible stored value could appear as an empty trace. Both paths now
+  propagate decode errors through `map_err(json_err)?`.
+  In [MCP policy mapping](../../crates/modules/rustok-mcp/src/persistence/models/mcp_policies.rs),
+  a malformed `denied_tools` value could become an empty list. The mapping now
+  parses policy lists through fallible `parse_string_list` calls. See
   [the authorization order](../../crates/modules/rustok-mcp/src/access.rs).
 - **Remediation:** If the owner requires a valid trace, propagate the typed
   decode failure, as the same mapper does for `tool_calls`. For an accepted
@@ -2106,10 +2128,11 @@ it does not infer provenance, validate schemas, or follow intermediate bindings.
 
 - **Category:** Batch completeness and error visibility.
 - **Logic dimensions:** Branch completeness, side-effect completeness.
-- **Observed behavior:** The AI provider-target migration decodes profile slugs
+- **Observed behavior:** The AI provider-target migration previously decoded profile slugs
   using `filter_map(... .ok())` when constructing a blocking error. If a slug
-  cannot be decoded, that slug is omitted from the diagnostic; the migration
-  still fails closed because it checks the original row count. See the
+  could not be decoded, it was omitted from the diagnostic. The migration
+  failed closed because it checked the original row count. It now propagates
+  decoding failures from `String::try_get`. See the
   [migration](../../crates/modules/rustok-ai/src/migrations/m20260712_000001_provider_targets.rs).
   The [SEO projection](../../crates/modules/rustok-seo/src/services/meta.rs)
   similarly drops translations whose JSON cannot be decoded; whether partial
@@ -2656,8 +2679,8 @@ without the creation grant, then verify tag usage after demotion.
 
 - **Category:** Concurrency, task supervision, and lifecycle shutdown.
 - **Logic dimensions:** Side-effect completeness, order/concurrency, branch completeness.
-- **Observed behavior:** Discarding the `JoinHandle` returned by `tokio::spawn` (either directly as a standalone statement `tokio::spawn(async move { ... });` or via `let _ = tokio::spawn(...)`) leaves background execution unmanaged. If a spawned task panics, Tokio silently swallows the panic without propagating it to any caller or supervisor. Furthermore, when the owning runtime or component shuts down, orphan tasks continue running untracked or are abruptly terminated mid-operation, risking partial writes and resource leaks. Observed in workflow task dispatch ([cron_scheduler.rs](../../crates/modules/rustok-workflow/src/services/cron_scheduler.rs), [trigger_handler.rs](../../crates/modules/rustok-workflow/src/services/trigger_handler.rs)) and HTTP request handlers ([auth.rs](../../apps/server/src/controllers/auth.rs)).
-- **Remediation:** Always retain the returned `JoinHandle`. For long-lived background workers, pass ownership to a supervisor struct (e.g. `JoinHandle<()>`), store in a `tokio::task::JoinSet` / `TaskTracker`, or coordinate cooperative cancellation via a `tokio_util::sync::CancellationToken`. For fire-and-forget background jobs, log panics explicitly using `tokio::spawn` with a monitored wrapper or supervisor channel.
+- **Observed behavior:** Discarding a `JoinHandle` detaches the task and removes the caller's opportunity to observe its result through the handle. Detached work can outlive the owner or stop mid-operation during runtime shutdown. This appeared in workflow task dispatch and HTTP request handlers. The [workflow cron scheduler](../../crates/modules/rustok-workflow/src/services/cron_scheduler.rs) now returns the scheduler handle and owns dispatch tasks in a `JoinSet`.
+- **Remediation:** Give the task an owner that can observe completion and coordinate shutdown. Use a retained `JoinHandle` or `tokio::task::JoinSet` when the owner must observe task errors. A task tracker can wait for completion, and a cancellation token can signal cooperative shutdown.
 
 ```rust
 // Vulnerable: unmanaged fire-and-forget task

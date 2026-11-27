@@ -113,7 +113,7 @@ The `rustok-doctor` crate provides offline hygiene scans through
 `cargo xtask doctor hygiene` and `npm run verify:hygiene`. Use
 `cargo xtask doctor hotspots --all --top 20` to rank large Rust files.
 The [Doctor contract](../../crates/utils/rustok-doctor/docs/README.md) describes
-target selection and reports.
+target selection, reports, and optional rustc and Clippy diagnostic import.
 
 Run `npm run test:verify:hygiene` to exercise the scanner and its CLI against
 isolated fixtures. See the [hygiene patterns guide](../../docs/standards/logic-hygiene-patterns.md#4-periodic-domain-hygiene--code-cleanup-utility)
