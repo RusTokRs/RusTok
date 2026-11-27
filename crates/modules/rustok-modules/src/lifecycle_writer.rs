@@ -744,8 +744,14 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                     // committed. Preserve the processing receipt and request hash
                     // until lease recovery: deleting it would let a different
                     // request reuse the same key and inherit an uncertain claim.
-                    if matches!(error, ModuleLifecycleDbWriterError::Database(_) | ModuleLifecycleDbWriterError::OperationReceipt(_)
-                        | ModuleLifecycleDbWriterError::Lifecycle(ModuleLifecycleExecutionError::OperationInProgress { .. })) {
+                    if matches!(
+                        error,
+                        ModuleLifecycleDbWriterError::Database(_)
+                            | ModuleLifecycleDbWriterError::OperationReceipt(_)
+                            | ModuleLifecycleDbWriterError::Lifecycle(
+                                ModuleLifecycleExecutionError::OperationInProgress { .. }
+                            )
+                    ) {
                         return Err(error);
                     }
                     self.fail_static_settings_operation(lease, &error)
@@ -876,7 +882,9 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             // wins; without intent the platform default applies
             // (Core and default-enabled modules). A settings save itself
             // records no intent (see `persist_settings`).
-            crate::settings_claim::lock_receipt(&transaction, lease).await.map_err(map_settings_claim_error)?;
+            crate::settings_claim::lock_receipt(&transaction, lease)
+                .await
+                .map_err(map_settings_claim_error)?;
             crate::settings_transition_fence::lock_and_check(
                 &transaction,
                 command.tenant_id,
@@ -1920,11 +1928,19 @@ fn map_settings_transition_fence_error(
     }
 }
 
-fn map_settings_claim_error(error: crate::settings_claim::SettingsClaimError) -> ModuleLifecycleDbWriterError {
+fn map_settings_claim_error(
+    error: crate::settings_claim::SettingsClaimError,
+) -> ModuleLifecycleDbWriterError {
     match error {
-        crate::settings_claim::SettingsClaimError::Receipt(error) => ModuleLifecycleDbWriterError::OperationReceipt(error),
-        crate::settings_claim::SettingsClaimError::Owner(error) => map_static_lifecycle_settings_error(error),
-        crate::settings_claim::SettingsClaimError::Database(error) => ModuleLifecycleDbWriterError::Database(error),
+        crate::settings_claim::SettingsClaimError::Receipt(error) => {
+            ModuleLifecycleDbWriterError::OperationReceipt(error)
+        }
+        crate::settings_claim::SettingsClaimError::Owner(error) => {
+            map_static_lifecycle_settings_error(error)
+        }
+        crate::settings_claim::SettingsClaimError::Database(error) => {
+            ModuleLifecycleDbWriterError::Database(error)
+        }
     }
 }
 
@@ -2430,7 +2446,9 @@ mod tests {
         .await
         .unwrap();
         crate::migrations::m20261117_000093_settings_claim_fences::Migration
-            .up(&manager).await.unwrap();
+            .up(&manager)
+            .await
+            .unwrap();
         db.execute_unprepared(
             "CREATE TRIGGER fixture_lifecycle_tenant AFTER INSERT ON module_static_tenant_lifecycle BEGIN \
              INSERT OR IGNORE INTO tenants (id) VALUES (NEW.tenant_id); END",
@@ -2467,7 +2485,11 @@ mod tests {
             .await
             .unwrap();
         let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        assert!(crate::settings_transition_fence::lock_and_check(&tx, tenant, "forum").await.is_ok());
+        assert!(
+            crate::settings_transition_fence::lock_and_check(&tx, tenant, "forum")
+                .await
+                .is_ok()
+        );
         assert!(matches!(
             crate::settings_transition_fence::lock_and_check(&tx, other_tenant, "forum").await,
             Err(crate::settings_transition_fence::SettingsTransitionFenceError::TransitionInProgress)
@@ -2533,7 +2555,11 @@ mod tests {
             crate::settings_transition_fence::lock_and_check(&tx, tenant, "forum").await,
             Err(crate::settings_transition_fence::SettingsTransitionFenceError::TransitionInProgress)
         ));
-        assert!(crate::settings_transition_fence::lock_and_check(&tx, tenant, "other").await.is_ok());
+        assert!(
+            crate::settings_transition_fence::lock_and_check(&tx, tenant, "other")
+                .await
+                .is_ok()
+        );
         tx.rollback().await.unwrap();
         assert!(matches!(
             writer
@@ -2555,36 +2581,62 @@ mod tests {
 
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         crate::migrations::m20260902_000046_module_transition_and_retention_tables::Migration
-            .up(&sea_orm_migration::SchemaManager::new(&db)).await.unwrap();
+            .up(&sea_orm_migration::SchemaManager::new(&db))
+            .await
+            .unwrap();
         db.execute_unprepared("CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, PRIMARY KEY (scope_kind, scope_tenant_key, slug))").await.unwrap();
         let registry = ModuleRegistry::new().register(SettingsTestModule);
         let writer = ModuleLifecycleDbWriter::new(db.clone(), &registry, vec![]);
         let tenant = Uuid::new_v4();
-        assert!(writer.reject_unverifiable_rollout_settings_write(&db, tenant, "forum").await.is_ok());
+        assert!(
+            writer
+                .reject_unverifiable_rollout_settings_write(&db, tenant, "forum")
+                .await
+                .is_ok()
+        );
 
         let now = chrono::Utc::now();
         let checkpoint = crate::ModuleTransitionCheckpoint {
-            operation_id: Uuid::new_v4(), revision: 1, module_slug: "forum".into(),
-            tenant_id: None, predecessor_digest: Some("predecessor".into()),
+            operation_id: Uuid::new_v4(),
+            revision: 1,
+            module_slug: "forum".into(),
+            tenant_id: None,
+            predecessor_digest: Some("predecessor".into()),
             candidate_digest: "candidate".into(),
-            state: crate::ModuleTransitionState::InterventionRequired { failure_reason: "operator".into() },
+            state: crate::ModuleTransitionState::InterventionRequired {
+                failure_reason: "operator".into(),
+            },
             security_epoch: crate::GlobalSecurityEpoch::INITIAL,
-            fences: crate::ConflictFenceSet::new(vec![]), recovery_attempt_count: 0,
-            created_at: now, updated_at: now,
+            fences: crate::ConflictFenceSet::new(vec![]),
+            recovery_attempt_count: 0,
+            created_at: now,
+            updated_at: now,
         };
         let creator = db.begin().await.unwrap();
         crate::installation::acquire_artifact_activation_lock(
-            &creator, &crate::ModuleInstallationScope::Platform, "forum",
-        ).await.unwrap();
-        crate::TransitionCheckpointStore::save_checkpoint(&creator, &checkpoint).await.unwrap();
+            &creator,
+            &crate::ModuleInstallationScope::Platform,
+            "forum",
+        )
+        .await
+        .unwrap();
+        crate::TransitionCheckpointStore::save_checkpoint(&creator, &checkpoint)
+            .await
+            .unwrap();
         creator.commit().await.unwrap();
 
         let settings = db.begin().await.unwrap();
         crate::installation::acquire_artifact_activation_lock(
-            &settings, &crate::ModuleInstallationScope::Platform, "forum",
-        ).await.unwrap();
+            &settings,
+            &crate::ModuleInstallationScope::Platform,
+            "forum",
+        )
+        .await
+        .unwrap();
         assert!(matches!(
-            writer.reject_unverifiable_rollout_settings_write(&settings, tenant, "forum").await,
+            writer
+                .reject_unverifiable_rollout_settings_write(&settings, tenant, "forum")
+                .await,
             Err(ModuleLifecycleDbWriterError::InvalidSettingsCommand(_))
         ));
         settings.rollback().await.unwrap();
@@ -2598,30 +2650,53 @@ mod tests {
         let url = std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").unwrap();
         let db = sea_orm::Database::connect(url).await.unwrap();
         let schema = format!("checkpoint_fence_test_{}", Uuid::new_v4().simple());
-        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}"))
+            .await
+            .unwrap();
         let setup = db.begin().await.unwrap();
-        setup.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        setup
+            .execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .unwrap();
         crate::migrations::m20260902_000046_module_transition_and_retention_tables::Migration
-            .up(&sea_orm_migration::SchemaManager::new(&setup)).await.unwrap();
+            .up(&sea_orm_migration::SchemaManager::new(&setup))
+            .await
+            .unwrap();
         setup.execute_unprepared("CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, PRIMARY KEY (scope_kind, scope_tenant_key, slug))").await.unwrap();
         setup.commit().await.unwrap();
 
         let creator = db.begin().await.unwrap();
-        creator.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        creator
+            .execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .unwrap();
         crate::installation::acquire_artifact_activation_lock(
-            &creator, &crate::ModuleInstallationScope::Platform, "forum",
-        ).await.unwrap();
+            &creator,
+            &crate::ModuleInstallationScope::Platform,
+            "forum",
+        )
+        .await
+        .unwrap();
         let now = chrono::Utc::now();
         let checkpoint = crate::ModuleTransitionCheckpoint {
-            operation_id: Uuid::new_v4(), revision: 1, module_slug: "forum".into(),
-            tenant_id: None, predecessor_digest: Some("predecessor".into()),
+            operation_id: Uuid::new_v4(),
+            revision: 1,
+            module_slug: "forum".into(),
+            tenant_id: None,
+            predecessor_digest: Some("predecessor".into()),
             candidate_digest: "candidate".into(),
-            state: crate::ModuleTransitionState::InterventionRequired { failure_reason: "operator".into() },
+            state: crate::ModuleTransitionState::InterventionRequired {
+                failure_reason: "operator".into(),
+            },
             security_epoch: crate::GlobalSecurityEpoch::INITIAL,
-            fences: crate::ConflictFenceSet::new(vec![]), recovery_attempt_count: 0,
-            created_at: now, updated_at: now,
+            fences: crate::ConflictFenceSet::new(vec![]),
+            recovery_attempt_count: 0,
+            created_at: now,
+            updated_at: now,
         };
-        crate::TransitionCheckpointStore::save_checkpoint(&creator, &checkpoint).await.unwrap();
+        crate::TransitionCheckpointStore::save_checkpoint(&creator, &checkpoint)
+            .await
+            .unwrap();
 
         let worker_db = db.clone();
         let worker_schema = schema.clone();
@@ -2629,26 +2704,53 @@ mod tests {
         let mut worker = tokio::spawn(async move {
             let registry = ModuleRegistry::new().register(SettingsTestModule);
             let writer = ModuleLifecycleDbWriter::new(worker_db.clone(), &registry, vec![]);
-            let settings = worker_db.begin_with_config(Some(sea_orm::IsolationLevel::ReadCommitted), None).await.unwrap();
-            settings.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}")).await.unwrap();
+            let settings = worker_db
+                .begin_with_config(Some(sea_orm::IsolationLevel::ReadCommitted), None)
+                .await
+                .unwrap();
+            settings
+                .execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}"))
+                .await
+                .unwrap();
             let tenant = Uuid::new_v4();
-            assert!(writer.reject_unverifiable_rollout_settings_write(&settings, tenant, "forum").await.is_ok());
+            assert!(
+                writer
+                    .reject_unverifiable_rollout_settings_write(&settings, tenant, "forum")
+                    .await
+                    .is_ok()
+            );
             ready_tx.send(()).unwrap();
             crate::installation::acquire_artifact_activation_lock(
-                &settings, &crate::ModuleInstallationScope::Platform, "forum",
-            ).await.unwrap();
+                &settings,
+                &crate::ModuleInstallationScope::Platform,
+                "forum",
+            )
+            .await
+            .unwrap();
             let blocked = matches!(
-                writer.reject_unverifiable_rollout_settings_write(&settings, tenant, "forum").await,
+                writer
+                    .reject_unverifiable_rollout_settings_write(&settings, tenant, "forum")
+                    .await,
                 Err(ModuleLifecycleDbWriterError::InvalidSettingsCommand(_))
             );
             settings.rollback().await.unwrap();
             blocked
         });
         ready_rx.await.unwrap();
-        assert!(tokio::time::timeout(std::time::Duration::from_millis(150), &mut worker).await.is_err(), "settings lock must wait for creator");
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(150), &mut worker)
+                .await
+                .is_err(),
+            "settings lock must wait for creator"
+        );
         creator.commit().await.unwrap();
-        assert!(worker.await.unwrap(), "the post-lock read must see the committed checkpoint");
-        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+        assert!(
+            worker.await.unwrap(),
+            "the post-lock read must see the committed checkpoint"
+        );
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -2741,7 +2843,9 @@ mod tests {
         ));
         db.execute_unprepared(
             "UPDATE owner_operation_receipts SET updated_at = '2000-01-01T00:00:00+00:00'",
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
         assert!(matches!(
             idempotency::admit(
                 &db, scope, STATIC_LIFECYCLE_OWNER_SLUG, "same-key",
@@ -2751,9 +2855,15 @@ mod tests {
         ));
         assert!(matches!(
             idempotency::admit(
-                &db, scope, STATIC_LIFECYCLE_OWNER_SLUG, "same-key",
-                STATIC_LIFECYCLE_SETTINGS_OPERATION, &request,
-            ).await.unwrap(),
+                &db,
+                scope,
+                STATIC_LIFECYCLE_OWNER_SLUG,
+                "same-key",
+                STATIC_LIFECYCLE_SETTINGS_OPERATION,
+                &request,
+            )
+            .await
+            .unwrap(),
             Admission::Run(_)
         ));
     }
@@ -2763,16 +2873,25 @@ mod tests {
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         rustok_outbox::migration::create_owner_operation_receipts_table(
             &sea_orm_migration::SchemaManager::new(&db),
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
         let registry = ModuleRegistry::new();
         let writer = ModuleLifecycleDbWriter::new(db.clone(), &registry, vec![]);
         let tenant = Uuid::new_v4();
         let scope = idempotency::OwnerOperationScope::Tenant(tenant);
         let request = serde_json::json!({"module": "forum"});
         let lease = match idempotency::admit(
-            &db, scope, STATIC_LIFECYCLE_OWNER_SLUG, "cleanup-key",
-            STATIC_LIFECYCLE_SETTINGS_OPERATION, &request,
-        ).await.unwrap() {
+            &db,
+            scope,
+            STATIC_LIFECYCLE_OWNER_SLUG,
+            "cleanup-key",
+            STATIC_LIFECYCLE_SETTINGS_OPERATION,
+            &request,
+        )
+        .await
+        .unwrap()
+        {
             Admission::Run(lease) => lease,
             _ => panic!("first admission must run"),
         };

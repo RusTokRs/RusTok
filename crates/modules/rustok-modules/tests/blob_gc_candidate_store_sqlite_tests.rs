@@ -293,8 +293,8 @@ async fn data_object_gc_tenant_inventory_pages_past_persistent_early_candidates(
         .expect("insert durable data-object GC candidate");
     }
 
-    let gc = ModuleControlPlane::new(db.clone())
-        .artifact_data_object_gc(StorageRuntime::in_memory());
+    let gc =
+        ModuleControlPlane::new(db.clone()).artifact_data_object_gc(StorageRuntime::in_memory());
     let first = gc
         .tenants_with_candidates_after(None, PAGE_SIZE)
         .await

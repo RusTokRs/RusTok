@@ -652,7 +652,10 @@ pub(crate) async fn bind_category_attribute(
     .await
 }
 
-#[expect(dead_code, reason = "Product attribute values transport pending UI editor panel integration")]
+#[expect(
+    dead_code,
+    reason = "Product attribute values transport pending UI editor panel integration"
+)]
 pub(crate) async fn save_product_attribute_values(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -842,7 +845,10 @@ mod filterable_search_option_tests {
             category("root", "structural"),
             category("smart", "virtual"),
         ]);
-        let ids = options.into_iter().map(|option| option.value).collect::<Vec<_>>();
+        let ids = options
+            .into_iter()
+            .map(|option| option.value)
+            .collect::<Vec<_>>();
         assert_eq!(ids, vec!["root".to_owned()]);
     }
 
@@ -854,7 +860,10 @@ mod filterable_search_option_tests {
             attribute("variant_material", "variant", true, false),
             attribute("size", "both", true, true),
         ]);
-        let codes = options.into_iter().map(|option| option.value).collect::<Vec<_>>();
+        let codes = options
+            .into_iter()
+            .map(|option| option.value)
+            .collect::<Vec<_>>();
         assert_eq!(codes, vec!["color", "size"]);
     }
 }

@@ -591,7 +591,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     Ok(())
 }
 
-fn registered_provider(db: DatabaseConnection, auth_config: AuthConfig) -> TestResult<Arc<dyn TranslationTargetProvider>> {
+fn registered_provider(
+    db: DatabaseConnection,
+    auth_config: AuthConfig,
+) -> TestResult<Arc<dyn TranslationTargetProvider>> {
     let registry = ModuleRegistry::new().register(FlexModule);
     let settings = RustokSettings::default();
     let runtime_ctx = ServerRuntimeContext::new(db, settings.clone());

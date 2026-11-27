@@ -244,8 +244,7 @@ mod tests {
 
     #[test]
     fn vendor_filter_is_trimmed_and_blank_values_are_cleared() {
-        let controls = ProductAdminListInput::default()
-            .with_vendor(Some("  Acme  ".to_string()));
+        let controls = ProductAdminListInput::default().with_vendor(Some("  Acme  ".to_string()));
         assert_eq!(controls.vendor.as_deref(), Some("Acme"));
 
         let blank = ProductAdminListInput::default().with_vendor(Some("   ".to_string()));

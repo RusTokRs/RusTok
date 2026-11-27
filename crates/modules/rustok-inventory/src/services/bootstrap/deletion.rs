@@ -215,7 +215,9 @@ impl DeletionPlan {
                 .iter()
                 .zip(variant_ids)
                 .all(|((actual, _), expected)| actual == expected)
-            || variants.iter().any(|(id, product_id)| id.is_nil() || product_id.is_nil())
+            || variants
+                .iter()
+                .any(|(id, product_id)| id.is_nil() || product_id.is_nil())
         {
             return Err(CatalogDeletionBlocker::IdentityUnavailable.into());
         }

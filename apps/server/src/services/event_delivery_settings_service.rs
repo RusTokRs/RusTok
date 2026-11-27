@@ -175,7 +175,10 @@ mod tests {
         let mut settings = RustokSettings::default();
         settings.events.delivery_profile = EventDeliveryProfile::Outbox;
         let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
-        assert_eq!(EventDeliverySettingsService::active_profile(&ctx), EventDeliveryProfile::Outbox);
+        assert_eq!(
+            EventDeliverySettingsService::active_profile(&ctx),
+            EventDeliveryProfile::Outbox
+        );
 
         ctx.shared_insert(Arc::new(EventRuntime {
             delivery_profile: EventDeliveryProfile::OutboxIggy,

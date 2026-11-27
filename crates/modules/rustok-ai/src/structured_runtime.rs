@@ -41,7 +41,10 @@ pub fn structured_task_port_from_context(
     let runtime = crate::ai_host_runtime_from_context(context)?;
     let keyring = StructuredResultKeyring::new(config.0, runtime.secret_registry().clone())
         .map_err(|error| {
-            AiError::InvalidConfig(format!("invalid AI structured result keyring: {}", error.code))
+            AiError::InvalidConfig(format!(
+                "invalid AI structured result keyring: {}",
+                error.code
+            ))
         })?;
     Ok(Some(Arc::new(DurableAiStructuredTaskPort::new(
         runtime, catalog, keyring,

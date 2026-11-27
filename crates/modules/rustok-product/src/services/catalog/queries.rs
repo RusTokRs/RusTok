@@ -141,10 +141,7 @@ impl CatalogService {
             let subtree = load_category_filter_subtree(&self.db, tenant_id, category_id).await?;
             query = if subtree.is_empty() {
                 // Unknown or deleted category: the filter matches no products.
-                query.filter(
-                    sea_orm::Condition::all()
-                        .add(sea_orm::sea_query::Expr::cust("1 = 0")),
-                )
+                query.filter(sea_orm::Condition::all().add(sea_orm::sea_query::Expr::cust("1 = 0")))
             } else {
                 query.filter(entities::product::Column::PrimaryCategoryId.is_in(subtree))
             };
@@ -373,7 +370,13 @@ impl CatalogService {
                 .push(translation);
         }
         let product_tags = self
-            .load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale), Some(context))
+            .load_product_tag_map(
+                tenant_id,
+                &products,
+                locale,
+                Some(fallback_locale),
+                Some(context),
+            )
             .await?;
 
         let items = products

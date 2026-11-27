@@ -712,7 +712,6 @@ COMMIT;
     Ok(())
 }
 
-
 async fn product_revision_pair(
     db: &DatabaseConnection,
     product_id: &str,
@@ -720,9 +719,7 @@ async fn product_revision_pair(
     let row = db
         .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
-            format!(
-                "SELECT revision, index_revision FROM products WHERE id = '{product_id}'"
-            ),
+            format!("SELECT revision, index_revision FROM products WHERE id = '{product_id}'"),
         ))
         .await?
         .ok_or("Product revision row must exist")?;
@@ -777,14 +774,18 @@ async fn assert_variant_membership_revision_contract(
     ))
     .await?;
     if product_revision_pair(db, PRODUCT_A).await? != (2, 2) {
-        return Err("variant insertion must advance the parent Product business and Index revisions once".into());
+        return Err(
+            "variant insertion must advance the parent Product business and Index revisions once"
+                .into(),
+        );
     }
 
     // Simulate the Product write path: it persists the full derived identity before COMMIT.
     // Deferred option-row triggers must not rewrite the Variant after its response snapshot.
     db.execute_unprepared(&format!(
         "INSERT INTO products (id, tenant_id) VALUES ('{PRODUCT_C}', '{TENANT_ID}')"
-    )).await?;
+    ))
+    .await?;
     db.execute_unprepared(&format!(
         "INSERT INTO product_variants (id, product_id, tenant_id, position) VALUES ('{AXIS_VARIANT_ID}', '{PRODUCT_C}', '{TENANT_ID}', 0)"
     )).await?;
@@ -828,7 +829,8 @@ SET combination_identity = '{combination_identity}'
 WHERE tenant_id = '{TENANT_ID}' AND id = '{AXIS_VARIANT_ID}';
 COMMIT;
 "#
-    )).await?;
+    ))
+    .await?;
     let revision_after_axis_assignment =
         product_variant_revision(db, TENANT_ID, AXIS_VARIANT_ID).await?;
     if revision_after_axis_assignment != 2 {
@@ -848,7 +850,9 @@ COMMIT;
     ))
     .await?;
     if product_revision_pair(db, PRODUCT_A).await? != (2, 2) {
-        return Err("non-membership Variant updates must not advance the parent Product revision".into());
+        return Err(
+            "non-membership Variant updates must not advance the parent Product revision".into(),
+        );
     }
 
     db.execute_unprepared(&format!(
@@ -856,7 +860,10 @@ COMMIT;
     ))
     .await?;
     if product_revision_pair(db, PRODUCT_A).await? != (3, 3) {
-        return Err("variant deletion must advance the parent Product business and Index revisions once".into());
+        return Err(
+            "variant deletion must advance the parent Product business and Index revisions once"
+                .into(),
+        );
     }
 
     // Reusing a tombstoned Variant identity is a new membership event too.

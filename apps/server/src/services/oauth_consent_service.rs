@@ -5,8 +5,7 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 
 use super::oauth_app::{
-    GrantConsentAttempt, OAuthAppService, lock_oauth_app_for_mutation,
-    lock_oauth_user_for_mutation,
+    GrantConsentAttempt, OAuthAppService, lock_oauth_app_for_mutation, lock_oauth_user_for_mutation,
 };
 
 impl OAuthAppService {
@@ -61,8 +60,8 @@ impl OAuthAppService {
             }
         }
 
-        let scopes_json = serde_json::to_value(&normalized)
-            .map_err(|_| Error::InternalServerError)?;
+        let scopes_json =
+            serde_json::to_value(&normalized).map_err(|_| Error::InternalServerError)?;
         let now = rustok_auth::application_clock::verified_now(&tx).await?;
         OAuthAppService::grant_consent_in_transaction(
             &tx,

@@ -37,9 +37,9 @@ const MAX_DUPLICATE_SLUG_ATTEMPTS: usize = 50;
 fn normalize_page_create_key(raw: &str) -> PagesResult<String> {
     if raw.is_empty()
         || raw.len() > 128
-        || !raw.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':')
-        })
+        || !raw
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
     {
         return Err(PagesError::validation(
             "Page create idempotency key must be 1..128 ASCII letters, digits, '-' '_' '.' or ':'",
@@ -98,7 +98,8 @@ impl PageService {
         security: SecurityContext,
         input: CreatePageInput,
     ) -> PagesResult<PageResponse> {
-        self.create_inner(tenant_id, security, input, false, None).await
+        self.create_inner(tenant_id, security, input, false, None)
+            .await
     }
 
     /// Create with an exact-locale catalog layout. Legacy `create` retains free-form labels.
@@ -110,7 +111,8 @@ impl PageService {
         security: SecurityContext,
         input: CreatePageInput,
     ) -> PagesResult<PageResponse> {
-        self.create_inner(tenant_id, security, input, true, None).await
+        self.create_inner(tenant_id, security, input, true, None)
+            .await
     }
 
     /// Creates a page and records a durable acknowledgement under a caller-stable key.
@@ -224,11 +226,8 @@ impl PageService {
                 .one(&txn)
                 .await?
         {
-            let response = page_create_response_from_receipt(
-                &receipt,
-                security.user_id,
-                request_hash,
-            )?;
+            let response =
+                page_create_response_from_receipt(&receipt, security.user_id, request_hash)?;
             txn.commit().await?;
             return Ok(response);
         }
@@ -377,7 +376,13 @@ impl PageService {
             .await?;
 
         let response = self
-            .get_page_response_for_authorized_mutation_in_tx(&txn, tenant_id, &security, page_id, &response_locale)
+            .get_page_response_for_authorized_mutation_in_tx(
+                &txn,
+                tenant_id,
+                &security,
+                page_id,
+                &response_locale,
+            )
             .await?;
         if let Some(receipt) = receipt_reservation {
             let response_json = serde_json::to_string(&response).map_err(|error| {

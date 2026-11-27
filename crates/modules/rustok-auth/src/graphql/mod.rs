@@ -164,7 +164,10 @@ fn refresh_retry_key(ctx: &Context<'_>) -> Result<Option<crate::AuthRefreshRetry
         return Ok(None);
     };
     crate::AuthRefreshRetryKey::from_header_values(
-        headers.get_all(crate::REFRESH_RETRY_KEY_HEADER).iter().map(|value| value.as_bytes()),
+        headers
+            .get_all(crate::REFRESH_RETRY_KEY_HEADER)
+            .iter()
+            .map(|value| value.as_bytes()),
     )
     .map_err(|_| <FieldError as GraphQLError>::bad_user_input("Invalid refresh retry key"))
 }
@@ -174,7 +177,10 @@ fn expected_session_id(ctx: &Context<'_>) -> Result<Option<uuid::Uuid>> {
         return Ok(None);
     };
     crate::parse_expected_session_id(
-        headers.get_all(crate::EXPECTED_SESSION_ID_HEADER).iter().map(|value| value.as_bytes()),
+        headers
+            .get_all(crate::EXPECTED_SESSION_ID_HEADER)
+            .iter()
+            .map(|value| value.as_bytes()),
     )
     .map_err(|_| <FieldError as GraphQLError>::bad_user_input("Invalid expected session identity"))
 }

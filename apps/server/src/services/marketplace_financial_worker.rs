@@ -270,13 +270,8 @@ mod tests {
                 }
             }
         };
-        let completed = run_recovery_phases(
-            &stop_rx,
-            make_phase(1),
-            make_phase(2),
-            make_phase(3),
-        )
-        .await;
+        let completed =
+            run_recovery_phases(&stop_rx, make_phase(1), make_phase(2), make_phase(3)).await;
         let recorded = phases.lock().expect("phase recorder lock").clone();
         (completed, recorded)
     }
@@ -310,7 +305,8 @@ mod tests {
             },
             || async { panic!("reversal must not start after stop channel closure") },
             || async { panic!("paid events must not start after stop channel closure") },
-        ).await;
+        )
+        .await;
         assert!(!completed);
     }
 

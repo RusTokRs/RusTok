@@ -125,7 +125,10 @@ async fn preview_rejects_blank_page_id_before_renderer() {
 
     for page_id in ["", " \t\n"] {
         let error = service
-            .preview(&port_context(), PreviewPageBuilderInput::new(page_id, project()))
+            .preview(
+                &port_context(),
+                PreviewPageBuilderInput::new(page_id, project()),
+            )
             .await
             .expect_err("blank page identity must fail");
         assert!(matches!(
@@ -193,7 +196,9 @@ fn preview_runtime_byte_budget_counts_escaped_utf8_and_accepts_exact_limit() {
     let payload = "\n".repeat((MAX_PREVIEW_RUNTIME_CONTEXT_BYTES - 14) / 2);
     let exact = PageBuilderPreviewRuntime::new(json!({ "payload": payload }), None);
     assert_eq!(
-        serde_json::to_vec(&exact.context).expect("compact JSON").len(),
+        serde_json::to_vec(&exact.context)
+            .expect("compact JSON")
+            .len(),
         MAX_PREVIEW_RUNTIME_CONTEXT_BYTES
     );
     exact.validate().expect("exact byte budget");
@@ -201,7 +206,13 @@ fn preview_runtime_byte_budget_counts_escaped_utf8_and_accepts_exact_limit() {
         json!({ "payload": format!("{}é", exact.context["payload"].as_str().unwrap()) }),
         None,
     );
-    assert!(oversized.validate().expect_err("over budget").to_string().contains("exceeds 262144 bytes"));
+    assert!(
+        oversized
+            .validate()
+            .expect_err("over budget")
+            .to_string()
+            .contains("exceeds 262144 bytes")
+    );
 }
 
 #[tokio::test]
@@ -215,7 +226,10 @@ async fn preview_rejects_deep_runtime_before_renderer_and_drops_it_safely() {
         nested = Value::Array(vec![nested]);
     }
     let runtime = PageBuilderPreviewRuntime::new(
-        Value::Object(serde_json::Map::from_iter([("payload".to_string(), nested)])),
+        Value::Object(serde_json::Map::from_iter([(
+            "payload".to_string(),
+            nested,
+        )])),
         None,
     );
     let error = service
@@ -234,7 +248,10 @@ fn deep_object() -> Value {
     for _ in 0..50_000 {
         nested = Value::Array(vec![nested]);
     }
-    Value::Object(serde_json::Map::from_iter([("payload".to_string(), nested)]))
+    Value::Object(serde_json::Map::from_iter([(
+        "payload".to_string(),
+        nested,
+    )]))
 }
 
 #[tokio::test]
@@ -247,16 +264,24 @@ async fn publish_rejects_deep_project_and_preserves_identity_error_precedence() 
         ("", "rev-1", "page_id must not be empty"),
         ("home", "", "revision_id must not be empty"),
     ] {
-        let error = service.publish(
-            &port_context(),
-            PublishPageBuilderInput::new(page, revision, deep_object()),
-        ).await.expect_err("invalid identity");
-        assert!(matches!(error, PageBuilderServiceError::Validation(message) if message == expected));
+        let error = service
+            .publish(
+                &port_context(),
+                PublishPageBuilderInput::new(page, revision, deep_object()),
+            )
+            .await
+            .expect_err("invalid identity");
+        assert!(
+            matches!(error, PageBuilderServiceError::Validation(message) if message == expected)
+        );
     }
-    let error = service.publish(
-        &port_context(),
-        PublishPageBuilderInput::new("home", "rev-1", deep_object()),
-    ).await.expect_err("deep project");
+    let error = service
+        .publish(
+            &port_context(),
+            PublishPageBuilderInput::new("home", "rev-1", deep_object()),
+        )
+        .await
+        .expect_err("deep project");
     assert!(matches!(error, PageBuilderServiceError::Validation(_)));
 }
 
@@ -266,14 +291,17 @@ async fn properties_rejects_missing_page_instead_of_acknowledging_unverified_val
     use rustok_page_builder::service::PageBuilderServiceError;
 
     let service = FlyAdapterBackedPageBuilderService::new(NoopStore, RecordingRenderer::default());
-    let error = service.properties(
-        &port_context(),
-        BuilderNodePropertiesInput {
-            page_id: "missing".into(),
-            node_id: "unverified-node".into(),
-            properties: json!({ "title": "must not be acknowledged" }),
-        },
-    ).await.expect_err("missing page must not produce a successful properties response");
+    let error = service
+        .properties(
+            &port_context(),
+            BuilderNodePropertiesInput {
+                page_id: "missing".into(),
+                node_id: "unverified-node".into(),
+                properties: json!({ "title": "must not be acknowledged" }),
+            },
+        )
+        .await
+        .expect_err("missing page must not produce a successful properties response");
 
     assert!(matches!(
         error,
@@ -288,14 +316,17 @@ async fn properties_rejects_deep_payload() {
     use rustok_page_builder::service::PageBuilderServiceError;
 
     let service = FlyAdapterBackedPageBuilderService::new(NoopStore, RecordingRenderer::default());
-    let error = service.properties(
-        &port_context(),
-        BuilderNodePropertiesInput {
-            page_id: "home".into(),
-            node_id: "root".into(),
-            properties: deep_object(),
-        },
-    ).await.expect_err("deep properties");
+    let error = service
+        .properties(
+            &port_context(),
+            BuilderNodePropertiesInput {
+                page_id: "home".into(),
+                node_id: "root".into(),
+                properties: deep_object(),
+            },
+        )
+        .await
+        .expect_err("deep properties");
     assert!(matches!(error, PageBuilderServiceError::Validation(_)));
 }
 
@@ -327,24 +358,33 @@ async fn tree_and_properties_reject_deep_project_returned_by_store() {
     use rustok_page_builder::dto::{BuilderNodePropertiesInput, BuilderTreeInput};
     use rustok_page_builder::service::PageBuilderServiceError;
 
-    let service = FlyAdapterBackedPageBuilderService::new(
-        DeepProjectStore,
-        RecordingRenderer::default(),
-    );
-    let tree_error = service.tree(
-        &port_context(),
-        BuilderTreeInput { page_id: "home".into() },
-    ).await.expect_err("deep stored project");
+    let service =
+        FlyAdapterBackedPageBuilderService::new(DeepProjectStore, RecordingRenderer::default());
+    let tree_error = service
+        .tree(
+            &port_context(),
+            BuilderTreeInput {
+                page_id: "home".into(),
+            },
+        )
+        .await
+        .expect_err("deep stored project");
     assert!(matches!(tree_error, PageBuilderServiceError::Validation(_)));
-    let properties_error = service.properties(
-        &port_context(),
-        BuilderNodePropertiesInput {
-            page_id: "home".into(),
-            node_id: "root".into(),
-            properties: json!({}),
-        },
-    ).await.expect_err("deep stored project");
-    assert!(matches!(properties_error, PageBuilderServiceError::Validation(_)));
+    let properties_error = service
+        .properties(
+            &port_context(),
+            BuilderNodePropertiesInput {
+                page_id: "home".into(),
+                node_id: "root".into(),
+                properties: json!({}),
+            },
+        )
+        .await
+        .expect_err("deep stored project");
+    assert!(matches!(
+        properties_error,
+        PageBuilderServiceError::Validation(_)
+    ));
 }
 
 #[tokio::test]
@@ -360,21 +400,32 @@ async fn denied_requests_discard_deep_payloads_without_invoking_provider() {
     let calls = Arc::clone(&renderer.calls);
     let provider = FlyAdapterBackedPageBuilderService::new(NoopStore, renderer);
     let guarded = CapabilityGuardedService::new(provider, BuilderToggleProfile::BuilderOff.flags());
-    let disabled = guarded.preview(
-        &port_context(),
-        PreviewPageBuilderInput::new("home", deep_object())
-            .with_runtime(PageBuilderPreviewRuntime::new(deep_object(), None)),
-    ).await.expect_err("disabled preview");
-    assert!(matches!(disabled, PageBuilderServiceError::CapabilityDisabled(_)));
+    let disabled = guarded
+        .preview(
+            &port_context(),
+            PreviewPageBuilderInput::new("home", deep_object())
+                .with_runtime(PageBuilderPreviewRuntime::new(deep_object(), None)),
+        )
+        .await
+        .expect_err("disabled preview");
+    assert!(matches!(
+        disabled,
+        PageBuilderServiceError::CapabilityDisabled(_)
+    ));
 
     let handlers = AuthorizedPageBuilderHandlers::new(guarded);
-    let denied = handlers.handle(
-        &port_context(),
-        &PageBuilderRequestAuth::new(vec![]),
-        PageBuilderCapabilityRequest::Publish(PublishPageBuilderInput::new(
-            "home", "rev-1", deep_object(),
-        )),
-    ).await.expect_err("unauthorized publish");
+    let denied = handlers
+        .handle(
+            &port_context(),
+            &PageBuilderRequestAuth::new(vec![]),
+            PageBuilderCapabilityRequest::Publish(PublishPageBuilderInput::new(
+                "home",
+                "rev-1",
+                deep_object(),
+            )),
+        )
+        .await
+        .expect_err("unauthorized publish");
     assert!(matches!(denied, PageBuilderServiceError::Forbidden(_)));
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 }

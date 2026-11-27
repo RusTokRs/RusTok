@@ -86,9 +86,11 @@ pub async fn bootstrap_app_runtime(
             Error::BadRequest(format!("modules.toml validation failed: {error}"))
         })?
     } else {
-        let Some(manifest_result) =
-            await_worker_startup_or_stop(&stop, PlatformCompositionService::active_manifest(runtime_ctx.db()))
-                .await
+        let Some(manifest_result) = await_worker_startup_or_stop(
+            &stop,
+            PlatformCompositionService::active_manifest(runtime_ctx.db()),
+        )
+        .await
         else {
             return Err(Error::Message(
                 "server shutdown started while loading the active module manifest".to_string(),
@@ -179,7 +181,8 @@ pub async fn bootstrap_app_runtime(
         .await
         else {
             return Err(Error::Message(
-                "server shutdown started while initializing tenant cache infrastructure".to_string(),
+                "server shutdown started while initializing tenant cache infrastructure"
+                    .to_string(),
             ));
         };
         tenant_cache_result?;
@@ -276,8 +279,7 @@ async fn initialize_module_work_runtime(
     // Registration can await, so a check-then-spawn permits competing bootstraps
     // to leave an untracked scheduler running. Cancellation releases this guard.
     let initialization = ModuleWorkSchedulerInitializationLock::ensure(ctx);
-    let Some(_guard) = await_worker_startup_or_stop(&stop, initialization.0.lock()).await
-    else {
+    let Some(_guard) = await_worker_startup_or_stop(&stop, initialization.0.lock()).await else {
         if ctx.shared_contains::<ModuleWorkSchedulerHandle>() {
             published_worker_running::<ModuleWorkSchedulerHandle>(
                 ctx,
@@ -478,10 +480,7 @@ async fn init_alloy_runtime(
 }
 
 #[cfg(feature = "mod-workflow")]
-fn workflow_cron_enabled(
-    settings: &RustokSettings,
-    workflow_module_installed: bool,
-) -> bool {
+fn workflow_cron_enabled(settings: &RustokSettings, workflow_module_installed: bool) -> bool {
     workflow_module_installed
         && settings.runtime.runs_background_workers()
         && settings.runtime.background_workers.workflow_cron_enabled
@@ -498,8 +497,7 @@ async fn init_workflow_runtime(ctx: &ServerRuntimeContext) -> Result<()> {
     // Serialize startup with concurrent bootstraps and shutdown's handle drain.
     let stop = StopHandle::ensure(ctx);
     let initialization = WorkflowCronSchedulerInitializationLock::ensure(ctx);
-    let Some(_guard) = await_worker_startup_or_stop(&stop, initialization.0.lock()).await
-    else {
+    let Some(_guard) = await_worker_startup_or_stop(&stop, initialization.0.lock()).await else {
         // Preserve the retained-task error contract even if shutdown won the
         // mutex wait. Do not take the published handle away from the drain.
         if ctx.shared_contains::<WorkflowCronSchedulerHandle>() {
@@ -541,7 +539,9 @@ async fn init_workflow_runtime(ctx: &ServerRuntimeContext) -> Result<()> {
         return Ok(());
     };
     validation.map_err(|error| {
-        Error::Message(format!("Workflow cron durable storage is not initialized: {error}"))
+        Error::Message(format!(
+            "Workflow cron durable storage is not initialized: {error}"
+        ))
     })?;
     // Schema validation may await migrations during a concurrent shutdown.
     // Recheck the stop signal before publishing the scheduler task handle.
@@ -684,8 +684,12 @@ fn build_namespaced_rate_limiter(
         let existing = match shared_namespace {
             SharedLimiterNamespace::Api => ctx.shared_get::<SharedApiRateLimiter>().map(|v| v.0),
             SharedLimiterNamespace::Auth => ctx.shared_get::<SharedAuthRateLimiter>().map(|v| v.0),
-            SharedLimiterNamespace::Oauth => ctx.shared_get::<SharedOAuthRateLimiter>().map(|v| v.0),
-            SharedLimiterNamespace::Search => ctx.shared_get::<SharedSearchRateLimiter>().map(|v| v.0),
+            SharedLimiterNamespace::Oauth => {
+                ctx.shared_get::<SharedOAuthRateLimiter>().map(|v| v.0)
+            }
+            SharedLimiterNamespace::Search => {
+                ctx.shared_get::<SharedSearchRateLimiter>().map(|v| v.0)
+            }
         };
         if let Some(existing) = existing {
             return Ok(existing);
@@ -710,9 +714,15 @@ fn build_namespaced_rate_limiter(
 
         match shared_namespace {
             SharedLimiterNamespace::Api => ctx.shared_insert(SharedApiRateLimiter(limiter.clone())),
-            SharedLimiterNamespace::Auth => ctx.shared_insert(SharedAuthRateLimiter(limiter.clone())),
-            SharedLimiterNamespace::Oauth => ctx.shared_insert(SharedOAuthRateLimiter(limiter.clone())),
-            SharedLimiterNamespace::Search => ctx.shared_insert(SharedSearchRateLimiter(limiter.clone())),
+            SharedLimiterNamespace::Auth => {
+                ctx.shared_insert(SharedAuthRateLimiter(limiter.clone()))
+            }
+            SharedLimiterNamespace::Oauth => {
+                ctx.shared_insert(SharedOAuthRateLimiter(limiter.clone()))
+            }
+            SharedLimiterNamespace::Search => {
+                ctx.shared_insert(SharedSearchRateLimiter(limiter.clone()))
+            }
         }
 
         if settings.rate_limit.enabled && !limiter.is_distributed() {
@@ -861,8 +871,8 @@ mod tests {
     #[tokio::test]
     async fn finished_module_work_scheduler_cannot_satisfy_repeat_bootstrap() {
         use super::ServerRuntimeContext;
-        use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
         use crate::services::app_lifecycle::ModuleWorkSchedulerHandle;
+        use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
 
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
@@ -887,7 +897,9 @@ mod tests {
         // Preserve the failed worker handle for shutdown accounting, even
         // if bootstrap is called again after the stop signal.
         assert!(ctx.shared_contains::<ModuleWorkSchedulerHandle>());
-        crate::services::app_lifecycle::StopHandle::ensure(&ctx).stop().await;
+        crate::services::app_lifecycle::StopHandle::ensure(&ctx)
+            .stop()
+            .await;
         let stopped_error = super::initialize_module_work_runtime(
             &ctx,
             &ModuleRegistry::new(),
@@ -1123,7 +1135,9 @@ mod tests {
         let initialization = ModuleWorkSchedulerInitializationLock::ensure(&ctx);
         let _held = initialization.0.lock().await;
         let mut startup = Box::pin(super::initialize_module_work_runtime(
-            &ctx, &registry, &extensions,
+            &ctx,
+            &registry,
+            &extensions,
         ));
         assert!(futures_util::poll!(&mut startup).is_pending());
 
@@ -1134,7 +1148,11 @@ mod tests {
             .expect("stopped startup without a task is a no-op");
         assert_eq!(registration.calls.load(Ordering::SeqCst), 0);
         assert!(!ctx.shared_contains::<ModuleWorkSchedulerHandle>());
-        assert!(!ctx.shared_get::<ModuleWorkSchedulerRequirement>().unwrap().0);
+        assert!(
+            !ctx.shared_get::<ModuleWorkSchedulerRequirement>()
+                .unwrap()
+                .0
+        );
     }
 
     #[tokio::test]
@@ -1332,7 +1350,9 @@ mod tests {
             .expect_err("a terminated cron scheduler cannot be treated as initialized");
         assert!(error.to_string().contains("has terminated"));
         assert!(ctx.shared_contains::<WorkflowCronSchedulerHandle>());
-        crate::services::app_lifecycle::StopHandle::ensure(&ctx).stop().await;
+        crate::services::app_lifecycle::StopHandle::ensure(&ctx)
+            .stop()
+            .await;
         let stopped_error = super::init_workflow_runtime(&ctx)
             .await
             .expect_err("a retained cron task must not report startup success during shutdown");

@@ -1,6 +1,6 @@
 use crate::{
-    validate_identifier, ComponentNode, ComponentObject, FlyError, FlyResult, ProjectDocument,
-    ProjectPage, StyleRuleIdentity,
+    ComponentNode, ComponentObject, FlyError, FlyResult, ProjectDocument, ProjectPage,
+    StyleRuleIdentity, validate_identifier,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -135,7 +135,10 @@ pub fn apply_page_command(document: &mut ProjectDocument, command: &PageCommand)
                 });
             }
             ensure_page_id_available(document, page.id.as_deref(), None)?;
-            document.project_mut().pages.insert(*index, page.as_ref().clone());
+            document
+                .project_mut()
+                .pages
+                .insert(*index, page.as_ref().clone());
             Ok(())
         }
         PageCommand::Remove { locator } => {
@@ -172,7 +175,10 @@ pub fn apply_page_command(document: &mut ProjectDocument, command: &PageCommand)
             if proposed_id.is_some() {
                 ensure_page_id_available(document, proposed_id.as_deref(), Some(index))?;
             }
-            let page = document.project_mut().pages.get_mut(index)
+            let page = document
+                .project_mut()
+                .pages
+                .get_mut(index)
                 .ok_or_else(|| FlyError::PageNotFound(index.to_string()))?;
             apply_page_patch(page, patch.clone());
             Ok(())
@@ -563,11 +569,7 @@ mod tests {
 
     #[test]
     fn page_commands_reject_invalid_identifier_syntax_without_mutating_document() {
-        let invalid_ids = [
-            "bad id".to_string(),
-            "bad/id".to_string(),
-            "x".repeat(129),
-        ];
+        let invalid_ids = ["bad id".to_string(), "bad/id".to_string(), "x".repeat(129)];
 
         for invalid_id in invalid_ids {
             let mut added = document();
@@ -590,10 +592,7 @@ mod tests {
                 &PageCommand::Patch {
                     locator: PageLocator::by_id("a"),
                     patch: PagePatch {
-                        fields: Map::from_iter([(
-                            "id".to_string(),
-                            Value::String(invalid_id),
-                        )]),
+                        fields: Map::from_iter([("id".to_string(), Value::String(invalid_id))]),
                         ..PagePatch::default()
                     },
                 },
@@ -603,5 +602,4 @@ mod tests {
             assert_eq!(patched, before_patch);
         }
     }
-
 }

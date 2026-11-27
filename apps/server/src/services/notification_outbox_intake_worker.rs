@@ -14,15 +14,17 @@ use rustok_notifications::{
     NotificationOutboxIntakeOutcome, NotificationOutboxIntakeReceiptPort,
     NotificationOutboxIntakeWorker, NotificationResult,
 };
-use tokio::task::JoinHandle;
 use rustok_outbox::OutboxConsumer;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
 use crate::services::server_runtime_context::published_worker_running;
+use crate::services::server_runtime_context::{
+    ServerRuntimeContext, ServerRuntimeStartReservation,
+};
 use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
-use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
 pub const NOTIFICATION_OUTBOX_INTAKE_ENABLED_ENV: &str =
     "RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED";
@@ -243,7 +245,9 @@ pub async fn start_notification_outbox_intake_if_enabled(ctx: &ServerRuntimeCont
         .register_required_event_types(NOTIFICATION_OUTBOX_CONSUMER_KEY, &accepted_event_types)
         .await
         .map_err(|error| {
-            Error::Message(format!("notification outbox consumer registration failed: {error}"))
+            Error::Message(format!(
+                "notification outbox consumer registration failed: {error}"
+            ))
         })?;
 
     ensure_intake_bootstrap_not_stopping(&stop)?;
@@ -258,7 +262,9 @@ pub async fn start_notification_outbox_intake_if_enabled(ctx: &ServerRuntimeCont
         Arc::new(ServerNotificationOutboxIntakeReceiptPort),
     )
     .map_err(|error| {
-        Error::Message(format!("notification outbox receipt port is invalid: {error}"))
+        Error::Message(format!(
+            "notification outbox receipt port is invalid: {error}"
+        ))
     })?;
 
     // Reconcile terminal receipts created before the generic Outbox consumer
@@ -271,7 +277,9 @@ pub async fn start_notification_outbox_intake_if_enabled(ctx: &ServerRuntimeCont
             .terminal_outbox_event_ids_after(cursor, DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE)
             .await
             .map_err(|error| {
-                Error::Message(format!("notification outbox receipt backfill failed: {error}"))
+                Error::Message(format!(
+                    "notification outbox receipt backfill failed: {error}"
+                ))
             })?;
         ensure_intake_bootstrap_not_stopping(&stop)?;
         if ids.is_empty() {

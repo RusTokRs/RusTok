@@ -624,9 +624,21 @@ impl InProcessPaymentAdminCollectionCommandPort {
         }
 
         let provider_result = match provider_operation {
-            "authorize" => self.provider_registry.execute_authorize(provider_id, request).await,
-            "capture" => self.provider_registry.execute_capture(provider_id, request).await,
-            "cancel" => self.provider_registry.execute_cancel(provider_id, request).await,
+            "authorize" => {
+                self.provider_registry
+                    .execute_authorize(provider_id, request)
+                    .await
+            }
+            "capture" => {
+                self.provider_registry
+                    .execute_capture(provider_id, request)
+                    .await
+            }
+            "cancel" => {
+                self.provider_registry
+                    .execute_cancel(provider_id, request)
+                    .await
+            }
             _ => {
                 return Err(PortError::validation(
                     "payment.provider_operation_invalid",

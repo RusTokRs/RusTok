@@ -15,17 +15,15 @@ use rustok_iggy::IggyTransport;
 use rustok_modules::{
     ArtifactEventDeliveryConfig, ArtifactEventProjectionTransport, ModuleControlPlane,
 };
-use rustok_outbox::{
-    OutboxRelay, OutboxRelayPort, OutboxRelayRunOnceRequest, RelayConfig,
-};
+use rustok_outbox::{OutboxRelay, OutboxRelayPort, OutboxRelayRunOnceRequest, RelayConfig};
 use tokio::task::JoinHandle;
 
 use crate::common::settings::EventDeliveryProfile;
 use crate::services::event_bus::shared_event_transport;
 use crate::services::event_delivery_settings_service::EventDeliverySettingsService;
-use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
 use crate::services::rbac_cache_invalidation::start_rbac_cache_invalidation_listener;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
 use crate::services::tenant_cache_generation::{
     TenantCacheGenerationTransport, start_tenant_cache_generation_listener,
 };
@@ -123,13 +121,11 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
     }
 
     let settings = ctx.settings();
-    let delivery_profile = await_worker_startup_or_stop(
-        &stop,
-        EventDeliverySettingsService::desired_profile(ctx),
-    )
-    .await
-    .ok_or_else(event_runtime_shutdown_error)?
-    .map_err(|error| Error::BadRequest(error.to_string()))?;
+    let delivery_profile =
+        await_worker_startup_or_stop(&stop, EventDeliverySettingsService::desired_profile(ctx))
+            .await
+            .ok_or_else(event_runtime_shutdown_error)?
+            .map_err(|error| Error::BadRequest(error.to_string()))?;
     let channel_capacity = settings.events.channel_capacity;
     let cache = ctx.shared_get::<CacheService>().ok_or_else(|| {
         Error::BadRequest("CacheService must be initialized before the event runtime".to_string())
@@ -168,8 +164,7 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                     let local = MemoryTransport::with_capacity(channel_capacity);
                     let listener_bus = local.event_bus();
                     (
-                        Arc::new(LocalEventDeliveryTransport { local })
-                            as Arc<dyn EventTransport>,
+                        Arc::new(LocalEventDeliveryTransport { local }) as Arc<dyn EventTransport>,
                         listener_bus,
                         None,
                     )
@@ -345,12 +340,10 @@ fn resolve_outbox_retention(
             |_| Error::BadRequest("outbox retention window is out of range".to_string()),
         )?),
         batch_size: settings.batch_size,
-        failed_retention: (settings.failed_retention_days > 0).then(|| {
-            chrono::Duration::days(settings.failed_retention_days as i64)
-        }),
-        receipt_retention: (settings.receipt_retention_days > 0).then(|| {
-            chrono::Duration::days(settings.receipt_retention_days as i64)
-        }),
+        failed_retention: (settings.failed_retention_days > 0)
+            .then(|| chrono::Duration::days(settings.failed_retention_days as i64)),
+        receipt_retention: (settings.receipt_retention_days > 0)
+            .then(|| chrono::Duration::days(settings.receipt_retention_days as i64)),
     };
     retention.validate().map_err(|error| {
         Error::BadRequest(format!(
@@ -509,7 +502,11 @@ mod outbox_relay_shutdown_tests {
             if let Some(started) = started {
                 started.send(()).expect("notify dispatch start");
             }
-            let complete = self.complete.lock().expect("complete lock").take()
+            let complete = self
+                .complete
+                .lock()
+                .expect("complete lock")
+                .take()
                 .expect("one dispatched event");
             complete.await.expect("permit external delivery completion");
             Ok(())
@@ -527,9 +524,7 @@ mod outbox_relay_shutdown_tests {
     #[tokio::test]
     async fn graceful_stop_finishes_outbox_publication_and_acknowledgement() {
         use rustok_outbox::{SysEventsMigration, entity};
-        let db = Database::connect("sqlite::memory:")
-            .await
-            .expect("sqlite");
+        let db = Database::connect("sqlite::memory:").await.expect("sqlite");
         SysEventsMigration
             .up(&SchemaManager::new(&db))
             .await
@@ -654,18 +649,12 @@ impl EventTransport for LocalEventDeliveryTransport {
         Ok(())
     }
 
-    async fn publish_contract(
-        &self,
-        envelope: ContractEventEnvelope,
-    ) -> rustok_core::Result<()> {
+    async fn publish_contract(&self, envelope: ContractEventEnvelope) -> rustok_core::Result<()> {
         let event_id = envelope.id();
         let event_type = envelope.event_type().to_owned();
         if let Err(error) = self.local.publish_contract(envelope).await {
             EVENT_LOCAL_DELIVERY_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
-            rustok_telemetry::metrics::record_event_error(
-                &event_type,
-                "local_contract_delivery",
-            );
+            rustok_telemetry::metrics::record_event_error(&event_type, "local_contract_delivery");
             tracing::error!(
                 %event_id,
                 %event_type,
@@ -703,10 +692,7 @@ impl EventTransport for LocalDeliveryFanoutTransport {
         self.primary.publish(envelope.clone()).await?;
         let event_id = envelope.id;
         let event_type = envelope.event.event_type();
-        if let Err(error) = local_bus
-            .publish_root_envelope_and_wait(envelope)
-            .await
-        {
+        if let Err(error) = local_bus.publish_root_envelope_and_wait(envelope).await {
             EVENT_LOCAL_DELIVERY_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
             rustok_telemetry::metrics::record_event_error(event_type, "local_delivery");
             tracing::error!(
@@ -728,8 +714,7 @@ impl EventTransport for LocalDeliveryFanoutTransport {
         // Validate the explicit registry before the irreversible primary publish,
         // including for root envelopes and remote-only sealed families.
         let has_local_handler = local_bus.has_contract_handler(&envelope)?;
-        let deliver_locally =
-            matches!(payload, ContractEventPayload::Root(_)) || has_local_handler;
+        let deliver_locally = matches!(payload, ContractEventPayload::Root(_)) || has_local_handler;
         if payload.requires_module_delivery() && !deliver_locally {
             return Err(rustok_core::Error::External(
                 "Required sealed module delivery is unavailable; retain the original outbox identity".to_owned(),
@@ -802,9 +787,7 @@ mod tests {
     use super::*;
     use crate::services::event_bus::assert_root_delivery;
     use async_trait::async_trait;
-    use rustok_core::events::{
-        EventDispatcher, EventHandler, HandlerResult, RunningDispatcher,
-    };
+    use rustok_core::events::{EventDispatcher, EventHandler, HandlerResult, RunningDispatcher};
     use rustok_events::{DomainEvent, EventEnvelope};
     use std::sync::{
         Arc, Mutex,
@@ -944,7 +927,11 @@ mod tests {
             Err(error) => error,
             Ok(_) => panic!("retention polling must remain bounded"),
         };
-        assert!(error.to_string().contains("interval_seconds must be between"));
+        assert!(
+            error
+                .to_string()
+                .contains("interval_seconds must be between")
+        );
     }
 
     #[tokio::test]
@@ -1439,7 +1426,9 @@ mod contract_delivery_tests {
             }),
             8,
         );
-        let running = EventDispatcher::new(bus).start_with_contract_delivery().unwrap();
+        let running = EventDispatcher::new(bus)
+            .start_with_contract_delivery()
+            .unwrap();
         let envelope = ContractEventEnvelope::new(
             Uuid::new_v4(),
             None,
@@ -1454,7 +1443,10 @@ mod contract_delivery_tests {
         target.publish_contract(envelope.clone()).await.unwrap();
 
         assert_eq!(*accepted.lock().unwrap(), vec![envelope]);
-        running.stop().await.expect("empty listener dispatcher stop");
+        running
+            .stop()
+            .await
+            .expect("empty listener dispatcher stop");
     }
 
     #[tokio::test]

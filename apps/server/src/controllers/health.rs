@@ -8,8 +8,8 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use chrono::Utc;
 use futures_util::{FutureExt, StreamExt, future::BoxFuture, stream};
-use rustok_core::{HealthStatus, ModuleRegistry};
 use rustok_api::{HostAuthority, HostAuthorityContext};
+use rustok_core::{HealthStatus, ModuleRegistry};
 use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity, SysEventStatus};
 use rustok_web::json_response;
 use sea_orm::{
@@ -453,23 +453,23 @@ async fn collect_readiness(
                     };
                     let name = format!("module:{}", module.slug());
                     let check = run_guarded_check(
-                            &circuits,
-                            &name,
-                            criticality,
-                            "module",
-                            move || async move {
-                                match module.health().await {
-                                    HealthStatus::Healthy => Ok(()),
-                                    HealthStatus::Degraded => {
-                                        Err("module reported degraded".to_string())
-                                    }
-                                    HealthStatus::Unhealthy => {
-                                        Err("module reported unhealthy".to_string())
-                                    }
+                        &circuits,
+                        &name,
+                        criticality,
+                        "module",
+                        move || async move {
+                            match module.health().await {
+                                HealthStatus::Healthy => Ok(()),
+                                HealthStatus::Degraded => {
+                                    Err("module reported degraded".to_string())
                                 }
-                            },
-                        )
-                        .await;
+                                HealthStatus::Unhealthy => {
+                                    Err("module reported unhealthy".to_string())
+                                }
+                            }
+                        },
+                    )
+                    .await;
                     (true, check)
                 }
                 .boxed(),
@@ -665,8 +665,7 @@ async fn check_storage_backend(ctx: &ServerRuntimeContext) -> std::result::Resul
         return Err("storage runtime is not configured".to_string());
     };
 
-    let result =
-        crate::services::storage_health_probe::probe_storage_backend(ctx, &storage).await;
+    let result = crate::services::storage_health_probe::probe_storage_backend(ctx, &storage).await;
     rustok_telemetry::metrics::update_storage_health(storage.kind.as_str(), result.is_ok());
     result
 }
@@ -721,7 +720,9 @@ async fn check_cache_backend(ctx: &ServerRuntimeContext) -> std::result::Result<
     } else if report.is_connected() {
         // Redis answered but recovery is incomplete. The two causes lead to different operator
         // actions, so the readiness payload must not report a transport outage.
-        Err(cache_recovery_readiness_reason(report.redis_recovery_pending))
+        Err(cache_recovery_readiness_reason(
+            report.redis_recovery_pending,
+        ))
     } else {
         Err("cache backend is unhealthy".to_string())
     }
@@ -919,7 +920,11 @@ fn jwt_cluster_lease_check(ctx: &ServerRuntimeContext) -> Option<ReadinessCheck>
         name: "jwt_cluster_lease".to_string(),
         kind: "runtime",
         criticality: DependencyCriticality::Critical,
-        status: if ready { ReadinessStatus::Ok } else { ReadinessStatus::Unhealthy },
+        status: if ready {
+            ReadinessStatus::Ok
+        } else {
+            ReadinessStatus::Unhealthy
+        },
         latency_ms: 0,
         reason: (!ready).then(|| "JWT cluster lease unavailable".to_string()),
     })
@@ -1059,9 +1064,10 @@ fn runtime_worker_check(
         (_, RuntimeWorkerLifecycleState::Stopping) => {
             Some("worker lifecycle state is stopping".to_string())
         }
-        (_, RuntimeWorkerLifecycleState::Failed) => {
-            Some("required worker lifecycle state is failed; task stopped or supervisor is not ready".to_string())
-        }
+        (_, RuntimeWorkerLifecycleState::Failed) => Some(
+            "required worker lifecycle state is failed; task stopped or supervisor is not ready"
+                .to_string(),
+        ),
         (_, RuntimeWorkerLifecycleState::Degraded) => {
             Some("worker lifecycle state is degraded".to_string())
         }
@@ -1239,7 +1245,8 @@ fn status_for_failure(criticality: DependencyCriticality) -> ReadinessStatus {
 }
 
 fn circuit_open_for(circuits: &ReadinessCircuitRegistry, name: &str) -> Option<u128> {
-    let mut state = circuits.0
+    let mut state = circuits
+        .0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let now = Instant::now();
@@ -1259,14 +1266,16 @@ fn circuit_open_for(circuits: &ReadinessCircuitRegistry, name: &str) -> Option<u
 }
 
 fn on_check_success(circuits: &ReadinessCircuitRegistry, name: &str) {
-    let mut state = circuits.0
+    let mut state = circuits
+        .0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     state.remove(name);
 }
 
 fn on_check_failure(circuits: &ReadinessCircuitRegistry, name: &str) {
-    let mut state = circuits.0
+    let mut state = circuits
+        .0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let circuit = state.entry(name.to_string()).or_default();
@@ -1350,8 +1359,8 @@ fn parse_host_port(raw: &str) -> std::result::Result<(String, u16), String> {
     } else {
         format!("http://{raw}")
     };
-    let parsed = url::Url::parse(&candidate)
-        .map_err(|_| "search backend URL is invalid".to_string())?;
+    let parsed =
+        url::Url::parse(&candidate).map_err(|_| "search backend URL is invalid".to_string())?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err("search backend URL has an unsupported scheme".to_string());
     }
@@ -1397,20 +1406,24 @@ mod tests {
         .unwrap();
         ctx.shared_insert(publisher.lease_readiness().unwrap());
         let response = collect_readiness(ctx, ModuleRegistry::new()).await;
-        let lease = response.checks.iter().find(|check| check.name == "jwt_cluster_lease").unwrap();
+        let lease = response
+            .checks
+            .iter()
+            .find(|check| check.name == "jwt_cluster_lease")
+            .unwrap();
         assert_eq!(lease.criticality, DependencyCriticality::Critical);
         assert_eq!(lease.status, ReadinessStatus::Unhealthy);
-        assert_eq!(readiness_http_status(response.status), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            readiness_http_status(response.status),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
     }
 
     #[tokio::test]
     async fn registry_only_readiness_rejects_shutdown_without_background_workers() {
         let mut settings = RustokSettings::default();
         settings.runtime.host_mode = crate::common::settings::RuntimeHostMode::RegistryOnly;
-        let ctx = ServerRuntimeContext::new(
-            sea_orm::DatabaseConnection::default(),
-            settings,
-        );
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
 
         let before = runtime_shutdown_check(&ctx);
         assert_eq!(before.criticality, DependencyCriticality::Critical);
@@ -1425,7 +1438,10 @@ mod tests {
             .expect("all host modes must have a shutdown readiness check");
         assert_eq!(shutdown.status, ReadinessStatus::Unhealthy);
         assert_eq!(response.status, ReadinessStatus::Unhealthy);
-        assert_eq!(readiness_http_status(response.status), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            readiness_http_status(response.status),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
     }
 
     #[test]
@@ -1473,7 +1489,9 @@ mod tests {
                 );
             }
             assert!(
-                !checks.iter().any(|check| check.name == "worker:seo_bulk_worker"),
+                !checks
+                    .iter()
+                    .any(|check| check.name == "worker:seo_bulk_worker"),
                 "SEO readiness must use the configured canonical worker checks"
             );
         }
@@ -1501,7 +1519,10 @@ mod tests {
         ));
 
         let missing_forwarder = check();
-        assert_eq!(missing_forwarder.criticality, DependencyCriticality::Critical);
+        assert_eq!(
+            missing_forwarder.criticality,
+            DependencyCriticality::Critical
+        );
         assert_eq!(missing_forwarder.status, ReadinessStatus::Unhealthy);
         assert!(
             missing_forwarder
@@ -1521,10 +1542,7 @@ mod tests {
         ] {
             let mut settings = RustokSettings::default();
             settings.runtime.host_mode = host_mode;
-            let ctx = ServerRuntimeContext::new(
-                sea_orm::DatabaseConnection::default(),
-                settings,
-            );
+            let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
 
             let checks = check_cache_reconciliation_workers(&ctx);
             let field_cache = checks
@@ -1534,7 +1552,10 @@ mod tests {
             assert_eq!(field_cache.criticality, DependencyCriticality::Critical);
             assert_eq!(field_cache.status, ReadinessStatus::Unhealthy);
             assert!(
-                field_cache.reason.as_deref().is_some_and(|reason| reason.contains("missing")),
+                field_cache
+                    .reason
+                    .as_deref()
+                    .is_some_and(|reason| reason.contains("missing")),
                 "missing field-definition cache reconciler must fail readiness"
             );
 
@@ -1555,10 +1576,7 @@ mod tests {
     fn seo_redirect_cache_reconciliation_is_not_required_on_worker_hosts() {
         let mut settings = RustokSettings::default();
         settings.runtime.host_mode = crate::common::settings::RuntimeHostMode::Worker;
-        let ctx = ServerRuntimeContext::new(
-            sea_orm::DatabaseConnection::default(),
-            settings,
-        );
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
 
         let check = check_cache_reconciliation_workers(&ctx)
             .into_iter()
@@ -1635,7 +1653,10 @@ mod tests {
         }
 
         assert!(
-            response.checks.iter().any(|check| check.name == "worker_host_mode"),
+            response
+                .checks
+                .iter()
+                .any(|check| check.name == "worker_host_mode"),
             "surface hosts must retain the general-worker ownership marker"
         );
     }
@@ -1891,7 +1912,8 @@ mod tests {
                 DependencyCriticality::Critical,
                 "dependency",
                 || async { Err("first runtime's dependency failed".to_string()) },
-            ).await;
+            )
+            .await;
             assert_eq!(failed.status, ReadinessStatus::Unhealthy);
         }
 
@@ -1901,7 +1923,8 @@ mod tests {
             DependencyCriticality::Critical,
             "dependency",
             || async { Ok(()) },
-        ).await;
+        )
+        .await;
         assert_eq!(first_probe.status, ReadinessStatus::Unhealthy);
         assert!(
             first_probe
@@ -1916,7 +1939,8 @@ mod tests {
             DependencyCriticality::Critical,
             "dependency",
             || async { Ok(()) },
-        ).await;
+        )
+        .await;
         assert_eq!(second_probe.status, ReadinessStatus::Ok);
     }
 
@@ -2005,7 +2029,10 @@ mod tests {
             "http://search.example.test:99999",
             "http://2001:db8::1",
         ] {
-            assert!(parse_host_port(invalid).is_err(), "accepted invalid URL: {invalid}");
+            assert!(
+                parse_host_port(invalid).is_err(),
+                "accepted invalid URL: {invalid}"
+            );
         }
     }
 
@@ -2351,7 +2378,7 @@ mod tests {
             "unhealthy"
         );
     }
-    
+
     #[test]
     fn anonymous_readiness_response_exposes_only_the_aggregate_status() {
         let response = ReadinessResponse {
@@ -2388,23 +2415,22 @@ mod tests {
         .await;
         assert!(!anonymous);
 
-        let read_authority = HostAuthorityContext::read(uuid::Uuid::new_v4())
-            .expect("non-nil operator actor");
-        let can_read = crate::host_authority::with_host_authority_scope(
-            Some(read_authority),
-            async { readiness_details_authorized() },
-        )
-        .await;
+        let read_authority =
+            HostAuthorityContext::read(uuid::Uuid::new_v4()).expect("non-nil operator actor");
+        let can_read =
+            crate::host_authority::with_host_authority_scope(Some(read_authority), async {
+                readiness_details_authorized()
+            })
+            .await;
         assert!(can_read);
 
-        let manage_authority = HostAuthorityContext::manage(uuid::Uuid::new_v4())
-            .expect("non-nil operator actor");
-        let can_manage = crate::host_authority::with_host_authority_scope(
-            Some(manage_authority),
-            async { readiness_details_authorized() },
-        )
-        .await;
+        let manage_authority =
+            HostAuthorityContext::manage(uuid::Uuid::new_v4()).expect("non-nil operator actor");
+        let can_manage =
+            crate::host_authority::with_host_authority_scope(Some(manage_authority), async {
+                readiness_details_authorized()
+            })
+            .await;
         assert!(can_manage);
     }
-
 }

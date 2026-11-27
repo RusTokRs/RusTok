@@ -88,8 +88,13 @@ impl PostService {
         self.ensure_slug_unique_in_tx(txn, tenant_id, &slug, None)
             .await?;
         if let Some(category_id) = category_id {
-            CategoryCommandCore::ensure_exists_in_tx(&*self.taxonomy_port, txn, tenant_id, category_id)
-                .await?;
+            CategoryCommandCore::ensure_exists_in_tx(
+                &*self.taxonomy_port,
+                txn,
+                tenant_id,
+                category_id,
+            )
+            .await?;
         }
 
         let post_id = Uuid::new_v4();

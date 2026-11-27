@@ -2,13 +2,16 @@ use crate::{
     ActionMaterialization, BindingMaterialization, ContextMaterialization,
     FormProviderEndpointResolver, InternalLinkMaterialization, LocalePolicyMaterialization,
     LocalizedPageMetadataMaterialization, ProjectDocument, RuntimeMaterialization,
-    TranslationMaterialization, ValidationDiagnostic, extract_runtime_context_contract,
+    TranslationMaterialization, ValidationDiagnostic,
     action::{materialize_component_actions_with_routes, validate_component_actions_with_routes},
+    extract_runtime_context_contract,
     interaction_route::InteractionRouteCatalog,
-    internal_link::{materialize_internal_page_links_with_routes, validate_internal_page_links_with_routes},
-    materialize_context, materialize_localized_page_metadata,
-    materialize_project_locale_context, materialize_project_translations,
-    materialize_runtime_locale_context, validate_component_public_urls,
+    internal_link::{
+        materialize_internal_page_links_with_routes, validate_internal_page_links_with_routes,
+    },
+    materialize_context, materialize_localized_page_metadata, materialize_project_locale_context,
+    materialize_project_translations, materialize_runtime_locale_context,
+    validate_component_public_urls,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -135,7 +138,9 @@ fn materialize_project_with_runtime_context_and_providers(
         hidden_components,
         repeated_nodes,
     } = crate::dynamic::materialize_runtime_with_scoped_bindings(
-        &bindings.document, &effective_context, Some(&mut scoped),
+        &bindings.document,
+        &effective_context,
+        Some(&mut scoped),
     );
     scoped.finish(&mut dynamic_document, &mut bindings);
     let BindingMaterialization {
@@ -153,8 +158,14 @@ fn materialize_project_with_runtime_context_and_providers(
     // Keep authored locale identities: localized metadata is a render projection,
     // not the authority for resolving a public route.
     let routes = InteractionRouteCatalog::from_document(document);
-    diagnostics.extend(validate_internal_page_links_with_routes(&dynamic_document, &routes));
-    diagnostics.extend(validate_component_actions_with_routes(&dynamic_document, &routes));
+    diagnostics.extend(validate_internal_page_links_with_routes(
+        &dynamic_document,
+        &routes,
+    ));
+    diagnostics.extend(validate_component_actions_with_routes(
+        &dynamic_document,
+        &routes,
+    ));
 
     // Resolve navigation and action contracts only after conditions/repeaters. This guarantees
     // that generated nodes receive native href/form/button attributes and hidden nodes do not
@@ -166,7 +177,9 @@ fn materialize_project_with_runtime_context_and_providers(
         fallback_links: fallback_internal_links,
         unresolved_links: unresolved_internal_links,
     } = materialize_internal_page_links_with_routes(
-        &dynamic_document, &localized_input_context, &routes,
+        &dynamic_document,
+        &localized_input_context,
+        &routes,
     );
     diagnostics.extend(link_diagnostics);
 
@@ -179,7 +192,10 @@ fn materialize_project_with_runtime_context_and_providers(
         fallback_actions,
         unresolved_actions,
     } = materialize_component_actions_with_routes(
-        &linked_document, &localized_input_context, providers, &routes,
+        &linked_document,
+        &localized_input_context,
+        providers,
+        &routes,
     );
     diagnostics.extend(action_diagnostics);
     diagnostics.extend(validate_component_public_urls(&document));
@@ -746,10 +762,13 @@ mod tests {
                 {"id": "tag", "component_id": "tag", "path": "item", "target": "field", "name": "content"}
             ]
         })).expect("document");
-        let result = materialize_project_with_runtime_context(&document, &json!({
-            "item": {"name": "Wrong global"},
-            "items": [{"name": "{{item.name}}", "tags": ["A", "B"]}, {"tags": ["C"]}]
-        }));
+        let result = materialize_project_with_runtime_context(
+            &document,
+            &json!({
+                "item": {"name": "Wrong global"},
+                "items": [{"name": "{{item.name}}", "tags": ["A", "B"]}, {"tags": ["C"]}]
+            }),
+        );
         assert_eq!(result.applied_bindings, 7);
         assert_eq!(result.fallback_bindings, 1);
         assert_eq!(result.unresolved_bindings, 0);
@@ -757,9 +776,23 @@ mod tests {
         assert_eq!(first.extensions["content"], "{{item.name}}");
         let second = result.document.component("title--cards-1").expect("second");
         assert_eq!(second.extensions["content"], "Missing");
-        assert_eq!(result.document.component("card--cards-1").unwrap().attributes["title"], 1);
-        for (id, expected) in [("tag--cards-0--tags-0", "A"), ("tag--cards-0--tags-1", "B"), ("tag--cards-1--tags-0", "C")] {
-            assert_eq!(result.document.component(id).expect(id).extensions["content"], expected);
+        assert_eq!(
+            result
+                .document
+                .component("card--cards-1")
+                .unwrap()
+                .attributes["title"],
+            1
+        );
+        for (id, expected) in [
+            ("tag--cards-0--tags-0", "A"),
+            ("tag--cards-0--tags-1", "B"),
+            ("tag--cards-1--tags-0", "C"),
+        ] {
+            assert_eq!(
+                result.document.component(id).expect(id).extensions["content"],
+                expected
+            );
         }
     }
 
@@ -776,15 +809,35 @@ mod tests {
                 {"id": "id", "component_id": "card", "path": "item.name", "target": "attribute", "name": "id"}
             ]
         })).expect("document");
-        assert!(crate::validate_binding_definitions(&document).iter().any(|d| d.code == "runtime_scoped_binding_target_invalid"));
-        let result = materialize_project_with_runtime_context(&document, &json!({
-            "items": [{"name": "Hidden", "visible": false}, {"name": "Shown", "visible": true}]
-        }));
+        assert!(
+            crate::validate_binding_definitions(&document)
+                .iter()
+                .any(|d| d.code == "runtime_scoped_binding_target_invalid")
+        );
+        let result = materialize_project_with_runtime_context(
+            &document,
+            &json!({
+                "items": [{"name": "Hidden", "visible": false}, {"name": "Shown", "visible": true}]
+            }),
+        );
         assert_eq!(result.applied_bindings, 1);
         assert_eq!(result.unresolved_bindings, 1);
         assert!(result.document.component("title--cards-0").is_none());
-        assert_eq!(result.document.component("title--cards-1").unwrap().extensions["content"], "Shown");
-        assert!(result.diagnostics.iter().any(|d| d.code == "runtime_scoped_binding_target_invalid" && d.severity == ValidationSeverity::Error));
+        assert_eq!(
+            result
+                .document
+                .component("title--cards-1")
+                .unwrap()
+                .extensions["content"],
+            "Shown"
+        );
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|d| d.code == "runtime_scoped_binding_target_invalid"
+                    && d.severity == ValidationSeverity::Error)
+        );
     }
 
     #[test]

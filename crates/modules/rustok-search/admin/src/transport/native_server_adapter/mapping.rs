@@ -113,7 +113,9 @@ pub(super) fn map_consistency_issues(
 }
 
 #[cfg(feature = "ssr")]
-pub(super) fn map_analytics_payload(value: rustok_search::SearchAnalyticsSnapshot) -> SearchAnalyticsPayload {
+pub(super) fn map_analytics_payload(
+    value: rustok_search::SearchAnalyticsSnapshot,
+) -> SearchAnalyticsPayload {
     SearchAnalyticsPayload {
         summary: crate::model::SearchAnalyticsSummaryPayload {
             window_days: value.summary.window_days,

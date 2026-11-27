@@ -48,7 +48,11 @@ fn unique_inventory_item(
     variant_id: Uuid,
     mut items: Vec<entities::inventory_item::Model>,
 ) -> CommerceResult<Option<entities::inventory_item::Model>> {
-    if items.len() > 1 || items.iter().any(|item| item.id.is_nil() || item.variant_id != variant_id) {
+    if items.len() > 1
+        || items
+            .iter()
+            .any(|item| item.id.is_nil() || item.variant_id != variant_id)
+    {
         return Err(CommerceError::Validation(
             "Inventory item identity is ambiguous or invalid; reconcile saved state".into(),
         ));
@@ -408,14 +412,15 @@ impl InventoryService {
             channel_slug = ?public_channel_slug,
             "checking variant availability for channel"
         );
-        let available = super::public_channel::check_current_variant_availability_for_public_channel(
-            &self.db,
-            tenant_id,
-            variant_id,
-            requested_quantity,
-            public_channel_slug,
-        )
-        .await?;
+        let available =
+            super::public_channel::check_current_variant_availability_for_public_channel(
+                &self.db,
+                tenant_id,
+                variant_id,
+                requested_quantity,
+                public_channel_slug,
+            )
+            .await?;
 
         Ok(InventoryAvailabilityCheckResult { available })
     }
@@ -478,11 +483,10 @@ impl InventoryService {
         let txn = self.db.begin().await?;
         // Lock Product's current policy before any Inventory item lock. A policy-only
         // Product edit does not necessarily touch the Inventory item.
-        let variant = crate::product_port::find_variant_info_for_reservation(
-            &txn, tenant_id, variant_id,
-        )
-        .await?
-        .ok_or(CommerceError::VariantNotFound(variant_id))?;
+        let variant =
+            crate::product_port::find_variant_info_for_reservation(&txn, tenant_id, variant_id)
+                .await?
+                .ok_or(CommerceError::VariantNotFound(variant_id))?;
 
         if quantity == 0 {
             // INVARIANT: `inventory_item` has no tenant column; the tenant boundary
@@ -515,7 +519,11 @@ impl InventoryService {
         if state.level.stocked_quantity < 0
             || state.level.reserved_quantity < 0
             || state.level.incoming_quantity < 0
-            || state.level.reserved_quantity.checked_add(quantity).is_none()
+            || state
+                .level
+                .reserved_quantity
+                .checked_add(quantity)
+                .is_none()
         {
             txn.rollback().await?;
             return Err(CommerceError::Validation(
@@ -527,9 +535,9 @@ impl InventoryService {
         // The item lock serializes all native allocation writers. A physical
         // counter is not permission to spend units already claimed by another
         // consumer: include every active claim, not just the anonymous pool.
-        let claims = load_active_reservation_claims(
-            &txn, state.inventory_item.id, &[state.location.id],
-        ).await?;
+        let claims =
+            load_active_reservation_claims(&txn, state.inventory_item.id, &[state.location.id])
+                .await?;
         let claimed = claims.get(&state.location.id).copied().unwrap_or(0);
         if claimed > i64::from(state.level.reserved_quantity) {
             txn.rollback().await?;
@@ -553,9 +561,17 @@ impl InventoryService {
             .filter(entities::inventory_level::Column::Id.eq(state.level.id))
             .filter(entities::inventory_level::Column::InventoryItemId.eq(state.inventory_item.id))
             .filter(entities::inventory_level::Column::LocationId.eq(state.location.id))
-            .filter(entities::inventory_level::Column::StockedQuantity.eq(state.level.stocked_quantity))
-            .filter(entities::inventory_level::Column::ReservedQuantity.eq(state.level.reserved_quantity))
-            .filter(entities::inventory_level::Column::IncomingQuantity.eq(state.level.incoming_quantity));
+            .filter(
+                entities::inventory_level::Column::StockedQuantity.eq(state.level.stocked_quantity),
+            )
+            .filter(
+                entities::inventory_level::Column::ReservedQuantity
+                    .eq(state.level.reserved_quantity),
+            )
+            .filter(
+                entities::inventory_level::Column::IncomingQuantity
+                    .eq(state.level.incoming_quantity),
+            );
 
         if !inventory_policy_allows_backorder(&variant.inventory_policy) {
             level_update = level_update.filter(
@@ -656,8 +672,7 @@ impl InventoryService {
         }
 
         // INVARIANT: tenant proof above precedes the shared item lock and every ledger read.
-        let Some(inventory_item) = find_unique_inventory_item(&txn, variant_id, true).await?
-        else {
+        let Some(inventory_item) = find_unique_inventory_item(&txn, variant_id, true).await? else {
             txn.rollback().await?;
             return Err(insufficient_reserved_release_error(quantity, 0));
         };
@@ -784,8 +799,7 @@ impl InventoryService {
     {
         // INVARIANT: `inventory_item` has no tenant column; the tenant boundary is
         // the caller-provided variant, which is loaded tenant-scoped.
-        if let Some(item) = find_unique_inventory_item(conn, variant.variant_id, true).await?
-        {
+        if let Some(item) = find_unique_inventory_item(conn, variant.variant_id, true).await? {
             return Ok(item);
         }
 
@@ -932,7 +946,8 @@ async fn load_active_reservation_claims(
         .is_some()
     {
         return Err(CommerceError::Validation(
-            "Active reservation claims exceed the supported counter range; reconcile saved history".into(),
+            "Active reservation claims exceed the supported counter range; reconcile saved history"
+                .into(),
         ));
     }
     let sum_result = if txn.get_database_backend() == DbBackend::MySql {
@@ -968,12 +983,16 @@ pub(crate) fn checked_available_quantity(
     };
     // Reuse the owner projection arithmetic and identity validation. Here
     // the item UUID is only a local aggregation key, not a Product identity.
-    let binding = std::collections::HashMap::from([(first.inventory_item_id, first.inventory_item_id)]);
+    let binding =
+        std::collections::HashMap::from([(first.inventory_item_id, first.inventory_item_id)]);
     let quantities = super::quantity::available_by_variant(&binding, levels)
         .map_err(|error| CommerceError::Validation(error.to_string()))?;
-    quantities.get(&first.inventory_item_id).copied().ok_or_else(|| {
-        CommerceError::Validation("Inventory availability binding is unverified".into())
-    })
+    quantities
+        .get(&first.inventory_item_id)
+        .copied()
+        .ok_or_else(|| {
+            CommerceError::Validation("Inventory availability binding is unverified".into())
+        })
 }
 
 fn insufficient_reserved_release_error(requested: i32, reserved: i32) -> CommerceError {

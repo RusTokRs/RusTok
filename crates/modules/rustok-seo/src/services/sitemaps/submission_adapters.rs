@@ -27,7 +27,9 @@ pub(in super::super) enum SitemapSubmissionError {
     InvalidUrl(String),
     #[error("sitemap submission URL userinfo is not allowed")]
     UserinfoNotAllowed,
-    #[error("insecure sitemap submission HTTP is disabled; platform operators may opt in with {ALLOW_INSECURE_HTTP_ENV}")]
+    #[error(
+        "insecure sitemap submission HTTP is disabled; platform operators may opt in with {ALLOW_INSECURE_HTTP_ENV}"
+    )]
     InsecureHttpDisabled,
     #[error("unsupported sitemap submission URL scheme `{0}`")]
     UnsupportedScheme(String),
@@ -43,7 +45,9 @@ pub(in super::super) enum SitemapSubmissionError {
     DnsResolutionFailed(String),
     #[error("sitemap submission destination resolved to no addresses")]
     NoAddresses,
-    #[error("sitemap submission destination resolves to a private, local, reserved, or multicast address")]
+    #[error(
+        "sitemap submission destination resolves to a private, local, reserved, or multicast address"
+    )]
     PrivateIpRejected,
     #[error("failed to create secure sitemap submission client for endpoint `{endpoint}`: {error}")]
     ClientBuildFailed { endpoint: String, error: String },
@@ -51,10 +55,18 @@ pub(in super::super) enum SitemapSubmissionError {
     Timeout { endpoint: String, error: String },
     #[error("request failed for endpoint `{endpoint}` with error: {error}")]
     RequestFailed { endpoint: String, error: String },
-    #[error("endpoint `{endpoint}` attempted a redirect with status {status}; redirects are not allowed")]
-    RedirectNotAllowed { endpoint: String, status: reqwest::StatusCode },
+    #[error(
+        "endpoint `{endpoint}` attempted a redirect with status {status}; redirects are not allowed"
+    )]
+    RedirectNotAllowed {
+        endpoint: String,
+        status: reqwest::StatusCode,
+    },
     #[error("endpoint `{endpoint}` responded with status {status}")]
-    HttpStatus { endpoint: String, status: reqwest::StatusCode },
+    HttpStatus {
+        endpoint: String,
+        status: reqwest::StatusCode,
+    },
     #[error("{0}")]
     Custom(String),
 }
@@ -73,7 +85,10 @@ impl From<String> for SitemapSubmissionError {
 
 #[async_trait::async_trait]
 pub(in super::super) trait SitemapSubmissionAdapter: Send + Sync {
-    async fn submit_sitemap_index(&self, endpoint: SitemapSubmitEndpoint) -> Result<(), SitemapSubmissionError>;
+    async fn submit_sitemap_index(
+        &self,
+        endpoint: SitemapSubmitEndpoint,
+    ) -> Result<(), SitemapSubmissionError>;
 }
 
 pub(super) struct HttpSitemapSubmissionAdapter {
@@ -99,7 +114,9 @@ struct ResolvedSitemapSubmitTarget {
 }
 
 impl SitemapSubmissionRuntime {
-    pub(in super::super) fn default_with_timeout(timeout_secs: u64) -> Result<Self, SitemapSubmissionError> {
+    pub(in super::super) fn default_with_timeout(
+        timeout_secs: u64,
+    ) -> Result<Self, SitemapSubmissionError> {
         if timeout_secs == 0 {
             return Err(SitemapSubmissionError::InvalidTimeout);
         }
@@ -117,7 +134,10 @@ impl SitemapSubmissionRuntime {
 
 #[async_trait::async_trait]
 impl SitemapSubmissionAdapter for HttpSitemapSubmissionAdapter {
-    async fn submit_sitemap_index(&self, endpoint: SitemapSubmitEndpoint) -> Result<(), SitemapSubmissionError> {
+    async fn submit_sitemap_index(
+        &self,
+        endpoint: SitemapSubmitEndpoint,
+    ) -> Result<(), SitemapSubmissionError> {
         let target = resolve_sitemap_submit_target(endpoint.request_url.as_str()).await?;
         let client = reqwest::Client::builder()
             .timeout(self.timeout)
@@ -160,7 +180,9 @@ impl SitemapSubmissionAdapter for HttpSitemapSubmissionAdapter {
     }
 }
 
-fn validate_sitemap_submit_target(raw_url: &str) -> Result<ParsedSitemapSubmitTarget, SitemapSubmissionError> {
+fn validate_sitemap_submit_target(
+    raw_url: &str,
+) -> Result<ParsedSitemapSubmitTarget, SitemapSubmissionError> {
     if raw_url.len() > MAX_SITEMAP_SUBMIT_URL_LEN {
         return Err(SitemapSubmissionError::UrlTooLong);
     }
@@ -187,7 +209,9 @@ fn validate_sitemap_submit_target(raw_url: &str) -> Result<ParsedSitemapSubmitTa
             return Err(SitemapSubmissionError::InsecureHttpDisabled);
         }
         scheme => {
-            return Err(SitemapSubmissionError::UnsupportedScheme(scheme.to_string()));
+            return Err(SitemapSubmissionError::UnsupportedScheme(
+                scheme.to_string(),
+            ));
         }
     }
 

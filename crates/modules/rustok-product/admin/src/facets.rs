@@ -180,9 +180,9 @@ pub fn build_product_admin_facet_codes_for_filters(
                 continue;
             }
             let selected = selected_filters.iter().any(|filter| {
-                filter
-                    .split_once('=')
-                    .is_some_and(|(selected_code, _)| selected_code.trim().eq_ignore_ascii_case(code))
+                filter.split_once('=').is_some_and(|(selected_code, _)| {
+                    selected_code.trim().eq_ignore_ascii_case(code)
+                })
             });
             if selected != prefer_selected {
                 continue;
@@ -379,7 +379,9 @@ mod tests {
         let color = &panel.facets[0];
         assert_eq!(
             color.clear_href.as_deref(),
-            Some("/modules/product?category_id=category-1&sort_by=created_at&sort_direction=asc&per_page=20")
+            Some(
+                "/modules/product?category_id=category-1&sort_by=created_at&sort_direction=asc&per_page=20"
+            )
         );
         assert!(color.values[0].selected);
         assert_eq!(color.values[0].marker, "[x]");
@@ -392,7 +394,9 @@ mod tests {
         assert_eq!(panel.facets[1].clear_href, None);
         assert_eq!(
             panel.clear_href.as_deref(),
-            Some("/modules/product?category_id=category-1&sort_by=created_at&sort_direction=asc&per_page=20")
+            Some(
+                "/modules/product?category_id=category-1&sort_by=created_at&sort_direction=asc&per_page=20"
+            )
         );
     }
 
@@ -402,11 +406,7 @@ mod tests {
         controls.vendor = Some("Acme & Sons".to_string());
         controls.per_page = 50;
 
-        let href = build_facet_href(
-            "/modules/product",
-            &controls,
-            vec!["color=red".to_string()],
-        );
+        let href = build_facet_href("/modules/product", &controls, vec!["color=red".to_string()]);
 
         assert!(href.contains("vendor=Acme"));
         assert!(href.contains("per_page=50"));

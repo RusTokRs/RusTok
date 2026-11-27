@@ -121,13 +121,17 @@ impl CustomerReadPort for crate::CustomerService {
         context.require_policy(PortCallPolicy::read())?;
         validate_customer_list_projection_request(&context, owner_operation, &request)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
-        let (items, total) = self.list_customers(tenant_id, ListCustomersInput {
-            search: request.search,
-            page: request.page,
-            per_page: request.per_page,
-        })
-        .await
-        .map_err(|error| customer_error_to_port_error(&context, owner_operation, error))?;
+        let (items, total) = self
+            .list_customers(
+                tenant_id,
+                ListCustomersInput {
+                    search: request.search,
+                    page: request.page,
+                    per_page: request.per_page,
+                },
+            )
+            .await
+            .map_err(|error| customer_error_to_port_error(&context, owner_operation, error))?;
         Ok(CustomerListProjectionResponse { items, total })
     }
 

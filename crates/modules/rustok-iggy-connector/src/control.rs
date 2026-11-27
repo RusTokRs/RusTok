@@ -64,7 +64,9 @@ impl From<IggyConnectorControlError> for String {
 
 #[async_trait]
 pub trait IggyConnectorControl: Send + Sync {
-    async fn configuration(&self) -> Result<IggyConnectorConfigurationSnapshot, IggyConnectorControlError>;
+    async fn configuration(
+        &self,
+    ) -> Result<IggyConnectorConfigurationSnapshot, IggyConnectorControlError>;
 
     async fn update_configuration(
         &self,

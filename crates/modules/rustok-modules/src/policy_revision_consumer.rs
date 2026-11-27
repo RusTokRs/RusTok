@@ -103,8 +103,15 @@ impl SeaOrmModulePolicyRevisionConsumer {
         default_enabled_modules: impl IntoIterator<Item = String>,
     ) -> Result<ModuleEffectivePolicy, ModuleLifecycleDbWriterError> {
         self.lock_and_resolve_static_policy_state_in_transaction(
-            transaction, tenant_id, consumer_key, registry, default_enabled_modules, Vec::new(),
-        ).await.map(|(policy, _state)| policy)
+            transaction,
+            tenant_id,
+            consumer_key,
+            registry,
+            default_enabled_modules,
+            Vec::new(),
+        )
+        .await
+        .map(|(policy, _state)| policy)
     }
 
     /// Resolve static authority and durable transition sequence together under
@@ -117,8 +124,12 @@ impl SeaOrmModulePolicyRevisionConsumer {
         registry: &ModuleRegistry,
         default_enabled_modules: impl IntoIterator<Item = String>,
         co_requisites: impl IntoIterator<Item = crate::ModuleEffectivePolicyCoRequisite>,
-    ) -> Result<(ModuleEffectivePolicy, ModulePolicyRevisionCursorState), ModuleLifecycleDbWriterError> {
-        let state = self.lock_cursor_state_in_transaction(transaction, tenant_id, consumer_key)
+    ) -> Result<
+        (ModuleEffectivePolicy, ModulePolicyRevisionCursorState),
+        ModuleLifecycleDbWriterError,
+    > {
+        let state = self
+            .lock_cursor_state_in_transaction(transaction, tenant_id, consumer_key)
             .await
             .map_err(|error| ModuleLifecycleDbWriterError::PolicyTransition(error.to_string()))?;
 
@@ -592,25 +603,50 @@ mod invite_policy_epoch_tests {
     #[tokio::test]
     async fn lifecycle_sequence_distinguishes_repeated_policy_digest() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
-        db.execute_unprepared("CREATE TABLE module_policy_revision_cursors (
+        db.execute_unprepared(
+            "CREATE TABLE module_policy_revision_cursors (
             tenant_id TEXT NOT NULL, consumer_key TEXT NOT NULL,
             current_revision TEXT NULL, current_sequence INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (tenant_id, consumer_key))").await.unwrap();
+            PRIMARY KEY (tenant_id, consumer_key))",
+        )
+        .await
+        .unwrap();
         let owner = SeaOrmModulePolicyRevisionConsumer::new(db.clone());
         let tenant = Uuid::new_v4();
         let a = format!("sha256:{}", "a".repeat(64));
         let b = format!("sha256:{}", "b".repeat(64));
-        let initial = owner.cursor_state(tenant, "module.lifecycle").await.unwrap();
-        let issued = owner.resync_if_current(tenant, "module.lifecycle", &initial, &a).await.unwrap();
-        let disabled = owner.resync_if_current(tenant, "module.lifecycle", &issued, &b).await.unwrap();
-        let restored = owner.resync_if_current(tenant, "module.lifecycle", &disabled, &a).await.unwrap();
+        let initial = owner
+            .cursor_state(tenant, "module.lifecycle")
+            .await
+            .unwrap();
+        let issued = owner
+            .resync_if_current(tenant, "module.lifecycle", &initial, &a)
+            .await
+            .unwrap();
+        let disabled = owner
+            .resync_if_current(tenant, "module.lifecycle", &issued, &b)
+            .await
+            .unwrap();
+        let restored = owner
+            .resync_if_current(tenant, "module.lifecycle", &disabled, &a)
+            .await
+            .unwrap();
         assert_eq!(issued.current_revision, restored.current_revision);
         assert!(restored.current_sequence > issued.current_sequence);
         let tx = db.begin().await.unwrap();
-        let transient = owner.resync_if_current_in_transaction(&tx, tenant, "module.lifecycle", &restored, &b).await.unwrap();
+        let transient = owner
+            .resync_if_current_in_transaction(&tx, tenant, "module.lifecycle", &restored, &b)
+            .await
+            .unwrap();
         assert!(transient.current_sequence > restored.current_sequence);
         tx.rollback().await.unwrap();
-        assert_eq!(owner.cursor_state(tenant, "module.lifecycle").await.unwrap(), restored);
+        assert_eq!(
+            owner
+                .cursor_state(tenant, "module.lifecycle")
+                .await
+                .unwrap(),
+            restored
+        );
     }
 }

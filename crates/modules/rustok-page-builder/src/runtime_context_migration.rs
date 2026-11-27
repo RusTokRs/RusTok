@@ -57,16 +57,17 @@ mod tests {
                 "id": "quantity", "path": "quantity", "kind": "number", "required": true
             }]
         });
-        let response = migrate_page_builder_runtime_context(PageBuilderRuntimeContextMigrationRequest {
-            source_project_data: project_data.clone(),
-            target_project_data: project_data,
-            context: json!({ "quantity": "not a number" }),
-            policy: RuntimeContextMigrationPolicy {
-                apply_target_defaults: false,
-                ..Default::default()
-            },
-        })
-        .expect("migration report");
+        let response =
+            migrate_page_builder_runtime_context(PageBuilderRuntimeContextMigrationRequest {
+                source_project_data: project_data.clone(),
+                target_project_data: project_data,
+                context: json!({ "quantity": "not a number" }),
+                policy: RuntimeContextMigrationPolicy {
+                    apply_target_defaults: false,
+                    ..Default::default()
+                },
+            })
+            .expect("migration report");
         assert!(!response.migration.is_accepted());
         assert_eq!(response.migration.type_mismatches, 1);
     }

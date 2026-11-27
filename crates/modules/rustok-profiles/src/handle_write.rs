@@ -71,9 +71,7 @@ pub(crate) async fn update_profile_handle_with_event(
         Ok(profile) => profile,
         Err(err) => {
             txn.rollback().await?;
-            return Err(
-                map_profile_handle_write_db_err(db, tenant_id, user_id, handle, err).await,
-            );
+            return Err(map_profile_handle_write_db_err(db, tenant_id, user_id, handle, err).await);
         }
     };
 

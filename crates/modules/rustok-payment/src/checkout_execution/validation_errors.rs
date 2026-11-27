@@ -557,13 +557,13 @@ pub(crate) fn payment_error_to_port_error(
             context,
             owner_operation,
             CheckoutPaymentExecutionReconciliationReason::InvalidSuccessfulProviderResponse,
-            "payment provider returned an invalid successful response"
+            "payment provider returned an invalid successful response",
         ),
         PaymentError::ProviderOutcomeUnknown { .. } => manual_reconciliation(
             context,
             owner_operation,
             CheckoutPaymentExecutionReconciliationReason::UnknownProviderOutcome,
-            "payment provider operation outcome is unknown"
+            "payment provider operation outcome is unknown",
         ),
         PaymentError::ProviderConfiguration { .. } => PortError::invariant_violation(
             "payment.provider_not_configured",

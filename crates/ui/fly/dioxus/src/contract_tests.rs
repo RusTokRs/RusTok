@@ -68,12 +68,8 @@ fn test_fly_canvas_envelope_binds_protocol_instance_and_monotonic_sequence() {
     assert_eq!(decoded.0, 7);
     assert_eq!(decoded.1, encoded);
 
-    assert!(
-        crate::editor::decode_fly_canvas_envelope(&encoded, "another-page", Some(6)).is_none()
-    );
-    assert!(
-        crate::editor::decode_fly_canvas_envelope(&encoded, "page-home", Some(7)).is_none()
-    );
+    assert!(crate::editor::decode_fly_canvas_envelope(&encoded, "another-page", Some(6)).is_none());
+    assert!(crate::editor::decode_fly_canvas_envelope(&encoded, "page-home", Some(7)).is_none());
     let wrong_protocol = serde_json::json!({
         "protocol": "other",
         "instance_id": "page-home",
@@ -85,6 +81,7 @@ fn test_fly_canvas_envelope_binds_protocol_instance_and_monotonic_sequence() {
             &serde_json::to_string(&wrong_protocol).expect("serialize"),
             "page-home",
             Some(7),
-        ).is_none()
+        )
+        .is_none()
     );
 }

@@ -10,9 +10,7 @@
 
 use crate::catalog_transport::{self, VariantMutationOutcome};
 use crate::core::variant_mutation::{self, VariantMutationPhase, VariantMutationRecord};
-use crate::core::write_journal::{
-    JournalState, ProductWriteScope, WriteJournalError,
-};
+use crate::core::write_journal::{JournalState, ProductWriteScope, WriteJournalError};
 use crate::model::{ProductVariant, VariantUpdateDraft};
 use crate::transport::write_journal;
 use leptos::prelude::*;
@@ -33,10 +31,7 @@ fn ready_for_new_operation(
 ) -> Result<VariantMutationRecord, WriteJournalError> {
     let live = write_journal::read::<VariantMutationPhase>(&saved.scope)?;
     let ready = if saved.state.is_terminal() {
-        saved.fresh_from_live(
-            &live,
-            locale.ok_or(WriteJournalError::Invalid)?,
-        )?
+        saved.fresh_from_live(&live, locale.ok_or(WriteJournalError::Invalid)?)?
     } else if saved.state.is_ready() && *saved == live {
         saved.clone()
     } else {
@@ -235,12 +230,10 @@ pub(super) fn ProductVariantMutationSection(
                         .state
                         .pending_delete()
                         .map(|(_, variant_id, _)| variant_id);
-                    let persisted = expected_for_response
-                        .confirm_delete()
-                        .and_then(|settled| {
-                            write_journal::store(&expected_for_response, &settled)?;
-                            Ok(settled)
-                        });
+                    let persisted = expected_for_response.confirm_delete().and_then(|settled| {
+                        write_journal::store(&expected_for_response, &settled)?;
+                        Ok(settled)
+                    });
                     match persisted {
                         Ok(settled) => {
                             record.set(Some(settled));
@@ -253,12 +246,10 @@ pub(super) fn ProductVariantMutationSection(
                     }
                 }
                 VariantMutationOutcome::Rejected { code } => {
-                    let persisted = expected_for_response
-                        .reject(code)
-                        .and_then(|settled| {
-                            write_journal::store(&expected_for_response, &settled)?;
-                            Ok(settled)
-                        });
+                    let persisted = expected_for_response.reject(code).and_then(|settled| {
+                        write_journal::store(&expected_for_response, &settled)?;
+                        Ok(settled)
+                    });
                     match persisted {
                         Ok(settled) => {
                             record.set(Some(settled));
@@ -461,7 +452,7 @@ pub(super) fn ProductVariantMutationSection(
                         </Button>
                     }.into_any(),
                     VariantMutationPhase::ConfirmedUpdate { variant_id, revision, .. } => view! {
-                        <Alert>{text("product-variantMutation-confirmedUpdate")} <code>{variant_id}</code> · {revision}</Alert>
+                        <Alert>{text("product-variantMutation-confirmedUpdate")} <code>{variant_id}</code>{" · "}{revision}</Alert>
                     }.into_any(),
                     VariantMutationPhase::ConfirmedDelete { variant_id, .. } => view! {
                         <Alert>{text("product-variantMutation-confirmedDelete")} <code>{variant_id}</code></Alert>

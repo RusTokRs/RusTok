@@ -1271,7 +1271,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod project_access_tests {
     use super::*;
@@ -1289,7 +1288,8 @@ mod project_access_tests {
                     "components": [{"id": "child", "type": "text"}]
                 }
             }]
-        })).expect("valid document");
+        }))
+        .expect("valid document");
 
         let original_hash = document.hash();
         assert!(document.contains_component("child"));

@@ -9,9 +9,7 @@ use fly::{
     FLY_PAGE_METADATA_FIELD, PageCommand, PageLocator, PageMetadata, PagePatch, RuntimeBinding,
     TranslationCommand, TranslationEntry, blank_page,
 };
-use fly_ui::{
-    MAX_RESIZE_DIMENSION_PX, MIN_RESIZE_HEIGHT_PX, MIN_RESIZE_WIDTH_PX, UiIntent,
-};
+use fly_ui::{MAX_RESIZE_DIMENSION_PX, MIN_RESIZE_HEIGHT_PX, MIN_RESIZE_WIDTH_PX, UiIntent};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -237,12 +235,15 @@ impl AdminCanvasController {
                 .and_then(|value| value.strip_suffix("px"))
                 .and_then(|value| value.parse::<f64>().ok())
                 .filter(|value| {
-                    value.is_finite()
-                        && *value >= minimum
-                        && *value <= MAX_RESIZE_DIMENSION_PX
+                    value.is_finite() && *value >= minimum && *value <= MAX_RESIZE_DIMENSION_PX
                 })
-                .ok_or_else(|| format!("resize property {property} must be a bounded pixel value"))?;
-            normalized.insert(property, Value::String(format!("{}px", (value * 100.0).round() / 100.0)));
+                .ok_or_else(|| {
+                    format!("resize property {property} must be a bounded pixel value")
+                })?;
+            normalized.insert(
+                property,
+                Value::String(format!("{}px", (value * 100.0).round() / 100.0)),
+            );
         }
 
         Ok(UiIntent::execute(EditorCommand::Patch {
@@ -644,21 +645,28 @@ mod selected_resize_tests {
                     }
                 }]
             }),
-        ).expect("controller")
+        )
+        .expect("controller")
     }
 
     #[test]
     fn selected_resize_applies_width_and_height_atomically() {
         let mut controller = controller();
-        controller.dispatch(UiIntent::Select(Some("hero".to_string())))
+        controller
+            .dispatch(UiIntent::Select(Some("hero".to_string())))
             .expect("select");
         let patch = ComponentPatch::default().merge_style(json!({
             "width": "320px",
             "height": "180px"
         }));
-        let intent = controller.ssr_selected_style_patch_intent(None, patch).expect("resize intent");
+        let intent = controller
+            .ssr_selected_style_patch_intent(None, patch)
+            .expect("resize intent");
         controller.dispatch(intent).expect("resize");
-        let style = controller.editor().document().component("hero")
+        let style = controller
+            .editor()
+            .document()
+            .component("hero")
             .and_then(|component| component.style.as_ref())
             .expect("style");
         assert_eq!(style["width"], "320px");
@@ -668,45 +676,77 @@ mod selected_resize_tests {
     #[test]
     fn selected_resize_rejects_general_or_unbounded_component_patches() {
         let mut controller = controller();
-        controller.dispatch(UiIntent::Select(Some("hero".to_string())))
+        controller
+            .dispatch(UiIntent::Select(Some("hero".to_string())))
             .expect("select");
-        assert!(controller.ssr_selected_style_patch_intent(
-            None,
-            ComponentPatch::default().set_attribute("aria-label", json!("not a resize"))
-        ).is_err());
-        assert!(controller.ssr_selected_style_patch_intent(
-            None,
-            ComponentPatch::default().merge_style(json!({"width": "calc(100% - 1px)"}))
-        ).is_err());
-        assert!(controller.ssr_selected_style_patch_intent(
-            None,
-            ComponentPatch::default().merge_style(json!({"position": "absolute"}))
-        ).is_err());
-        assert!(controller.ssr_selected_style_patch_intent(
-            None,
-            ComponentPatch::default().merge_style(json!({
-                "height": format!("{}px", MAX_RESIZE_DIMENSION_PX + 1.0)
-            }))
-        ).is_err());
+        assert!(
+            controller
+                .ssr_selected_style_patch_intent(
+                    None,
+                    ComponentPatch::default().set_attribute("aria-label", json!("not a resize"))
+                )
+                .is_err()
+        );
+        assert!(
+            controller
+                .ssr_selected_style_patch_intent(
+                    None,
+                    ComponentPatch::default().merge_style(json!({"width": "calc(100% - 1px)"}))
+                )
+                .is_err()
+        );
+        assert!(
+            controller
+                .ssr_selected_style_patch_intent(
+                    None,
+                    ComponentPatch::default().merge_style(json!({"position": "absolute"}))
+                )
+                .is_err()
+        );
+        assert!(
+            controller
+                .ssr_selected_style_patch_intent(
+                    None,
+                    ComponentPatch::default().merge_style(json!({
+                        "height": format!("{}px", MAX_RESIZE_DIMENSION_PX + 1.0)
+                    }))
+                )
+                .is_err()
+        );
 
         let mut maximum_controller = self::controller();
-        maximum_controller.dispatch(UiIntent::Select(Some("hero".to_string())))
+        maximum_controller
+            .dispatch(UiIntent::Select(Some("hero".to_string())))
             .expect("select");
-        let maximum_intent = maximum_controller.ssr_selected_style_patch_intent(
-            None,
-            ComponentPatch::default().merge_style(json!({
-                "width": format!("{}px", MAX_RESIZE_DIMENSION_PX)
-            }))
-        ).expect("maximum resize intent");
-        maximum_controller.dispatch(maximum_intent).expect("maximum resize");
-        let maximum_style = maximum_controller.editor().document().component("hero")
+        let maximum_intent = maximum_controller
+            .ssr_selected_style_patch_intent(
+                None,
+                ComponentPatch::default().merge_style(json!({
+                    "width": format!("{}px", MAX_RESIZE_DIMENSION_PX)
+                })),
+            )
+            .expect("maximum resize intent");
+        maximum_controller
+            .dispatch(maximum_intent)
+            .expect("maximum resize");
+        let maximum_style = maximum_controller
+            .editor()
+            .document()
+            .component("hero")
             .and_then(|component| component.style.as_ref())
             .expect("style");
         let expected_width = format!("{}px", MAX_RESIZE_DIMENSION_PX);
-        assert_eq!(maximum_style["width"].as_str(), Some(expected_width.as_str()));
-        assert!(controller.ssr_selected_style_patch_intent(
-            Some("footer"),
-            ComponentPatch::default().merge_style(json!({"width": "320px"}))
-        ).is_err());
+        assert_eq!(
+            maximum_style["width"].as_str(),
+            Some(expected_width.as_str())
+        );
+        assert!(
+            controller
+                .ssr_selected_style_patch_intent(
+                    Some("footer"),
+                    ComponentPatch::default().merge_style(json!({"width": "320px"}))
+                )
+                .is_err()
+        );
     }
 }

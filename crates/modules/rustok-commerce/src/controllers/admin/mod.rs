@@ -3,10 +3,10 @@ pub mod changes;
 pub mod fulfillments;
 #[path = "orders_owner_ports.rs"]
 pub mod orders;
-#[path = "payments.rs"]
-mod payments_legacy;
 #[path = "payments_owner_reads.rs"]
 pub mod payments;
+#[path = "payments.rs"]
+mod payments_legacy;
 pub mod post_order_commands;
 pub mod post_order_reads;
 pub mod product_media;

@@ -1119,7 +1119,10 @@ mod tests {
             forum_admin_section_for_subpath(Some("unknown")),
             ForumAdminSection::Topics
         );
-        assert_eq!(forum_admin_section_for_subpath(None), ForumAdminSection::Topics);
+        assert_eq!(
+            forum_admin_section_for_subpath(None),
+            ForumAdminSection::Topics
+        );
     }
 
     fn category_item(id: &str, name: &str) -> CategoryListItem {

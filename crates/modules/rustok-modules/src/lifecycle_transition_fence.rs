@@ -4,9 +4,7 @@
 //! hook that continues after losing or releasing its claim. In particular,
 //! lease expiry and orphan recovery still need an external-effect fence.
 
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -113,19 +111,30 @@ async fn ensure_artifact_selection_visibility(
     let backend = SupportedBackend::new(tx.get_database_backend())
         .map_err(|error| LifecycleAdmissionError::Database(error.to_string()))?;
     if backend == SupportedBackend::Postgres {
-        let row = tx.query_one_raw(Statement::from_string(backend.db_backend(),
-            "SELECT (row_security_active('module_artifact_installations'::regclass) OR \
+        let row = tx
+            .query_one_raw(Statement::from_string(
+                backend.db_backend(),
+                "SELECT (row_security_active('module_artifact_installations'::regclass) OR \
              row_security_active('module_artifact_admissions'::regclass) OR \
              row_security_active('module_artifact_tenant_lifecycle'::regclass) OR \
              row_security_active('module_artifact_uninstall_operations'::regclass)) AS enforced \
              FROM (SELECT count(*) FROM module_artifact_installations WHERE FALSE) i \
              CROSS JOIN (SELECT count(*) FROM module_artifact_admissions WHERE FALSE) a \
              CROSS JOIN (SELECT count(*) FROM module_artifact_tenant_lifecycle WHERE FALSE) l \
-             CROSS JOIN (SELECT count(*) FROM module_artifact_uninstall_operations WHERE FALSE) u".to_string(),
-        )).await.map_err(|error| LifecycleAdmissionError::Database(error.to_string()))?
-            .ok_or_else(|| LifecycleAdmissionError::Database("could not verify artifact selection row security".to_string()))?;
-        if row.try_get::<bool>("", "enforced")
-            .map_err(|error| LifecycleAdmissionError::Database(error.to_string()))? {
+             CROSS JOIN (SELECT count(*) FROM module_artifact_uninstall_operations WHERE FALSE) u"
+                    .to_string(),
+            ))
+            .await
+            .map_err(|error| LifecycleAdmissionError::Database(error.to_string()))?
+            .ok_or_else(|| {
+                LifecycleAdmissionError::Database(
+                    "could not verify artifact selection row security".to_string(),
+                )
+            })?;
+        if row
+            .try_get::<bool>("", "enforced")
+            .map_err(|error| LifecycleAdmissionError::Database(error.to_string()))?
+        {
             return Err(LifecycleAdmissionError::Database(
                 "artifact lifecycle admission cannot prove complete selection visibility under active RLS".to_string(),
             ));
@@ -173,8 +182,18 @@ pub(crate) async fn has_journal_claim(
             " AND replace(replace(replace(replace(lower(CASE WHEN typeof(tenant_id) = 'blob' THEN hex(tenant_id) ELSE CAST(tenant_id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') = ?2".to_string()
         }
     };
-    let sql = format!("SELECT 1 AS present FROM module_static_tenant_lifecycle WHERE module_slug = {} AND active_idempotency_key IS NOT NULL AND claim_owner = 'journal'{tenant_filter} LIMIT 1", backend.placeholder(1));
-    Ok(tx.query_one_raw(Statement::from_sql_and_values(backend.db_backend(), sql, values)).await?.is_some())
+    let sql = format!(
+        "SELECT 1 AS present FROM module_static_tenant_lifecycle WHERE module_slug = {} AND active_idempotency_key IS NOT NULL AND claim_owner = 'journal'{tenant_filter} LIMIT 1",
+        backend.placeholder(1)
+    );
+    Ok(tx
+        .query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            sql,
+            values,
+        ))
+        .await?
+        .is_some())
 }
 
 #[cfg(test)]
@@ -190,9 +209,14 @@ mod tests {
         let db = sea_orm::Database::connect(url).await.unwrap();
         assert_eq!(db.get_database_backend(), sea_orm::DbBackend::Postgres);
         let schema = format!("lifecycle_fence_test_{}", Uuid::new_v4().simple());
-        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}"))
+            .await
+            .unwrap();
         let setup = db.begin().await.unwrap();
-        setup.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        setup
+            .execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .unwrap();
         setup.execute_unprepared(
             "CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, PRIMARY KEY (scope_kind, scope_tenant_key, slug)); \
              CREATE TABLE module_static_tenant_lifecycle (tenant_id UUID NOT NULL, module_slug TEXT NOT NULL, revision BIGINT NOT NULL, active_idempotency_key UUID, active_claimed_at TIMESTAMPTZ, claim_owner TEXT NOT NULL DEFAULT 'journal', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (tenant_id, module_slug))",
@@ -200,27 +224,62 @@ mod tests {
         setup.commit().await.unwrap();
         let tenant = Uuid::new_v4();
         let claimer = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        claimer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
-        crate::backend::set_tenant_scope(&claimer, tenant).await.unwrap();
-        crate::installation::acquire_artifact_activation_lock(&claimer, &ModuleInstallationScope::Platform, "forum").await.unwrap();
-        StaticTenantLifecycleStore::claim(&claimer, tenant, "forum", 0, Uuid::new_v4()).await.unwrap();
+        claimer
+            .execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .unwrap();
+        crate::backend::set_tenant_scope(&claimer, tenant)
+            .await
+            .unwrap();
+        crate::installation::acquire_artifact_activation_lock(
+            &claimer,
+            &ModuleInstallationScope::Platform,
+            "forum",
+        )
+        .await
+        .unwrap();
+        StaticTenantLifecycleStore::claim(&claimer, tenant, "forum", 0, Uuid::new_v4())
+            .await
+            .unwrap();
         let worker_db = db.clone();
         let worker_schema = schema.clone();
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
         let mut worker = tokio::spawn(async move {
-            let tx = crate::backend::begin_fenced_transaction(&worker_db).await.unwrap();
-            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}")).await.unwrap();
+            let tx = crate::backend::begin_fenced_transaction(&worker_db)
+                .await
+                .unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}"))
+                .await
+                .unwrap();
             crate::backend::set_platform_scope(&tx).await.unwrap();
             ready_tx.send(()).unwrap();
-            crate::installation::acquire_artifact_activation_lock(&tx, &ModuleInstallationScope::Platform, "forum").await.unwrap();
-            let visible = has_journal_claim(&tx, &ModuleInstallationScope::Platform, "forum").await.unwrap();
+            crate::installation::acquire_artifact_activation_lock(
+                &tx,
+                &ModuleInstallationScope::Platform,
+                "forum",
+            )
+            .await
+            .unwrap();
+            let visible = has_journal_claim(&tx, &ModuleInstallationScope::Platform, "forum")
+                .await
+                .unwrap();
             tx.rollback().await.unwrap();
             visible
         });
         ready_rx.await.unwrap();
-        assert!(tokio::time::timeout(Duration::from_millis(150), &mut worker).await.is_err(), "staging must wait for the claim transaction");
+        assert!(
+            tokio::time::timeout(Duration::from_millis(150), &mut worker)
+                .await
+                .is_err(),
+            "staging must wait for the claim transaction"
+        );
         claimer.commit().await.unwrap();
-        assert!(worker.await.unwrap(), "staging must observe the committed claim after the lock wait");
-        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+        assert!(
+            worker.await.unwrap(),
+            "staging must observe the committed claim after the lock wait"
+        );
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
+            .await
+            .unwrap();
     }
 }

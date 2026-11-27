@@ -303,9 +303,11 @@ impl FlyEditor {
                     generator,
                     in_batch,
                 )?;
-                document
-                    .project_mut()
-                    .insert_component(parent_id.as_deref(), *index, component.clone())
+                document.project_mut().insert_component(
+                    parent_id.as_deref(),
+                    *index,
+                    component.clone(),
+                )
             }
             EditorCommand::Remove { component_id } => {
                 document.project_mut().remove_component(component_id)?;
@@ -356,7 +358,9 @@ impl FlyEditor {
             EditorCommand::StyleRule { command } => apply_style_rule_command(document, command),
             // The outer transaction validates the final theme graph. Intermediate
             // batch members may introduce references resolved by later members.
-            EditorCommand::Theme { command } => crate::theme::apply_theme_command_inner(document, command),
+            EditorCommand::Theme { command } => {
+                crate::theme::apply_theme_command_inner(document, command)
+            }
             EditorCommand::Page { command } => apply_page_command(document, command),
             EditorCommand::Dynamic { command } => apply_dynamic_command(document, command),
             EditorCommand::Binding { command } => apply_binding_command(document, command),
@@ -405,7 +409,9 @@ fn discard_snapshot_payloads(command: &mut EditorCommand) {
         match command {
             EditorCommand::RestoreSnapshot { snapshot } => {
                 crate::drop_value_iteratively(std::mem::take(&mut snapshot.project_data));
-                crate::drop_value_iteratively(serde_json::Value::Object(std::mem::take(&mut snapshot.metadata)));
+                crate::drop_value_iteratively(serde_json::Value::Object(std::mem::take(
+                    &mut snapshot.metadata,
+                )));
             }
             EditorCommand::Batch { commands } => pending.extend(commands.iter_mut()),
             _ => {}
@@ -575,7 +581,8 @@ pub fn invert_command(
         }
         EditorCommand::Remove { component_id } => {
             let location = document.component_location(component_id)?;
-            if !document.component_has_parent(component_id, location.parent_component_id.as_deref()) {
+            if !document.component_has_parent(component_id, location.parent_component_id.as_deref())
+            {
                 return None;
             }
             let component = document.component(component_id)?;
@@ -597,7 +604,8 @@ pub fn invert_command(
                 // by a Move command. Snapshot history remains authoritative.
                 return None;
             }
-            let inverse_index = if document.component_has_parent(component_id, new_parent_id.as_deref())
+            let inverse_index = if document
+                .component_has_parent(component_id, new_parent_id.as_deref())
                 && *index < location.index
             {
                 // Move indices describe insertion slots before removal.
@@ -625,8 +633,8 @@ pub fn invert_command(
                         child,
                         crate::ComponentNode::Opaque(
                             serde_json::Value::String(_)
-                            | serde_json::Value::Number(_)
-                            | serde_json::Value::Bool(_)
+                                | serde_json::Value::Number(_)
+                                | serde_json::Value::Bool(_)
                         )
                     )
                 })
@@ -793,7 +801,10 @@ pub fn invert_command(
                 let tokens = current_tokens
                     .iter()
                     .map(|token| {
-                        (token.name.clone(), serde_json::Value::String(token.value.clone()))
+                        (
+                            token.name.clone(),
+                            serde_json::Value::String(token.value.clone()),
+                        )
                     })
                     .collect::<serde_json::Map<String, serde_json::Value>>();
                 Some(serde_json::json!({ "tokens": tokens }))
@@ -828,13 +839,11 @@ pub fn invert_command(
                 // A reverse rename also rewrites references to the new name
                 // which may have existed before the original rename.
                 crate::ThemeCommand::Rename { .. } => None,
-                crate::ThemeCommand::Replace { .. } => {
-                    Some(EditorCommand::Theme {
-                        command: crate::ThemeCommand::Replace {
-                            tokens: current_tokens,
-                        },
-                    })
-                }
+                crate::ThemeCommand::Replace { .. } => Some(EditorCommand::Theme {
+                    command: crate::ThemeCommand::Replace {
+                        tokens: current_tokens,
+                    },
+                }),
             }
         }
         // Inverting every step against the initial document is incorrect:

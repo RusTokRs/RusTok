@@ -1,9 +1,9 @@
 //! Typed input and output contracts for an install-apply executor.
 
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 #[cfg(feature = "host-runtime")]
 use std::future::Future;
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -57,9 +57,7 @@ pub fn build_install_lock_owner(
     let normalized_label = requested_label
         .unwrap_or("installer")
         .chars()
-        .filter(|character| {
-            character.is_ascii_alphanumeric() || matches!(*character, '-' | '_')
-        })
+        .filter(|character| character.is_ascii_alphanumeric() || matches!(*character, '-' | '_'))
         .take(24)
         .collect::<String>();
     let label = if normalized_label.is_empty() {
@@ -362,29 +360,25 @@ where
     {
         Ok(import) => import,
         Err(error) => {
-            return Err(
-                persist_failure_state(
-                    ports,
-                    &database.runtime,
-                    &session,
-                    InstallState::RecoveryRequired,
-                    error,
-                )
-                .await,
-            );
-        }
-    };
-    if let Err(error) = ports.apply_remaining_schema(&database.runtime).await {
-        return Err(
-            persist_failure_state(
+            return Err(persist_failure_state(
                 ports,
                 &database.runtime,
                 &session,
                 InstallState::RecoveryRequired,
                 error,
             )
-            .await,
-        );
+            .await);
+        }
+    };
+    if let Err(error) = ports.apply_remaining_schema(&database.runtime).await {
+        return Err(persist_failure_state(
+            ports,
+            &database.runtime,
+            &session,
+            InstallState::RecoveryRequired,
+            error,
+        )
+        .await);
     }
 
     let preflight = recoverable_stage(
@@ -539,16 +533,14 @@ where
     let password = match crate::resolve_local_secret_value(&plan.admin.password, "admin password") {
         Ok(pw) => pw,
         Err(error) => {
-            return Err(
-                persist_failure_state(
-                    ports,
-                    &database.runtime,
-                    &session,
-                    InstallState::RecoveryRequired,
-                    InstallExecutionError::new(error.to_string()),
-                )
-                .await,
-            );
+            return Err(persist_failure_state(
+                ports,
+                &database.runtime,
+                &session,
+                InstallState::RecoveryRequired,
+                InstallExecutionError::new(error.to_string()),
+            )
+            .await);
         }
     };
     let admin_outcome = match ports
@@ -557,16 +549,14 @@ where
     {
         Ok(outcome) => outcome,
         Err(error) => {
-            return Err(
-                persist_failure_state(
-                    ports,
-                    &database.runtime,
-                    &session,
-                    InstallState::RecoveryRequired,
-                    error,
-                )
-                .await,
-            );
+            return Err(persist_failure_state(
+                ports,
+                &database.runtime,
+                &session,
+                InstallState::RecoveryRequired,
+                error,
+            )
+            .await);
         }
     };
     let admin = recoverable_stage(
@@ -593,11 +583,7 @@ where
         ports,
         &database.runtime,
         &session,
-        ports.set_state(
-            &database.runtime,
-            &session,
-            InstallState::AdminProvisioned,
-        ),
+        ports.set_state(&database.runtime, &session, InstallState::AdminProvisioned),
     )
     .await?;
     let output = match crate::execute_distribution_deployment(
@@ -611,16 +597,14 @@ where
     {
         Ok(out) => out,
         Err(error) => {
-            return Err(
-                persist_failure_state(
-                    ports,
-                    &database.runtime,
-                    &session,
-                    InstallState::RecoveryRequired,
-                    error,
-                )
-                .await,
-            );
+            return Err(persist_failure_state(
+                ports,
+                &database.runtime,
+                &session,
+                InstallState::RecoveryRequired,
+                error,
+            )
+            .await);
         }
     };
     session = output.session;
@@ -631,16 +615,14 @@ where
     {
         Ok(outcome) => outcome,
         Err(error) => {
-            return Err(
-                persist_failure_state(
-                    ports,
-                    &database.runtime,
-                    &session,
-                    InstallState::RecoveryRequired,
-                    error,
-                )
-                .await,
-            );
+            return Err(persist_failure_state(
+                ports,
+                &database.runtime,
+                &session,
+                InstallState::RecoveryRequired,
+                error,
+            )
+            .await);
         }
     };
     let verify = recoverable_stage(
@@ -685,16 +667,14 @@ where
     {
         Ok(fin) => fin,
         Err(error) => {
-            return Err(
-                persist_failure_state(
-                    ports,
-                    &database.runtime,
-                    &session,
-                    InstallState::RecoveryRequired,
-                    error,
-                )
-                .await,
-            );
+            return Err(persist_failure_state(
+                ports,
+                &database.runtime,
+                &session,
+                InstallState::RecoveryRequired,
+                error,
+            )
+            .await);
         }
     };
     session = recoverable_stage(
@@ -767,16 +747,14 @@ where
 {
     match stage.await {
         Ok(value) => Ok(value),
-        Err(error) => Err(
-            persist_failure_state(
-                ports,
-                runtime,
-                session,
-                InstallState::RecoveryRequired,
-                error,
-            )
-            .await,
-        ),
+        Err(error) => Err(persist_failure_state(
+            ports,
+            runtime,
+            session,
+            InstallState::RecoveryRequired,
+            error,
+        )
+        .await),
     }
 }
 
@@ -841,7 +819,9 @@ mod recovery_classification_tests {
                 .mark_recovery_required()
                 .requires_recovery()
         );
-        assert!(InstallExecutionError::requiring_recovery("owner schema outcome is ambiguous")
-            .requires_recovery());
+        assert!(
+            InstallExecutionError::requiring_recovery("owner schema outcome is ambiguous")
+                .requires_recovery()
+        );
     }
 }

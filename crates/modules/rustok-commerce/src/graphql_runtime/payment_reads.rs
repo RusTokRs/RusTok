@@ -64,7 +64,8 @@ pub(crate) struct CommercePaymentReadCallContext {
 
 impl CommercePaymentReadCallContext {
     pub(crate) fn from_extension_context(ctx: &ExtensionContext<'_>) -> Self {
-        let actor = ctx.data_opt::<AuthContext>()
+        let actor = ctx
+            .data_opt::<AuthContext>()
             .map(|auth| PortActor::user(auth.user_id.to_string()))
             .unwrap_or_else(|| PortActor::service("rustok-commerce.graphql-payment-query"));
         let request = ctx.data_opt::<RequestContext>();

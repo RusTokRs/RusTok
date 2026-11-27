@@ -65,8 +65,7 @@ impl OutboxRelayPort for crate::OutboxRelay {
         let run = self.process_pending_once(request.max_batch_hint);
         let claimed_count = match context.deadline_ms {
             Some(deadline_ms) if deadline_ms > 0 => {
-                match tokio::time::timeout(std::time::Duration::from_millis(deadline_ms), run)
-                    .await
+                match tokio::time::timeout(std::time::Duration::from_millis(deadline_ms), run).await
                 {
                     Ok(result) => result.map_err(map_outbox_error)?,
                     Err(_elapsed) => {

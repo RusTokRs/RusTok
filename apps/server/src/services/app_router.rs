@@ -1530,8 +1530,9 @@ mod tests {
             // fixture hermetic.
             runtime_context.shared_insert(rustok_storage::StorageRuntime::in_memory());
 
-            let auth_config =
-                crate::auth::test_auth_config("translation-router-test-secret-with-32-bytes".to_string());
+            let auth_config = crate::auth::test_auth_config(
+                "translation-router-test-secret-with-32-bytes".to_string(),
+            );
             // Mirror production host composition (`app_runtime` bootstrap):
             // build the real shared runtime extensions for the generated
             // registry so optional module routers find the provider

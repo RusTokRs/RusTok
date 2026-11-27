@@ -119,14 +119,8 @@ mod tests {
                 .build(backend)
                 .to_string();
             let order = sql.split("ORDER BY").nth(1).expect("activity ordering");
-            assert!(
-                order.contains("\"created_at\" DESC"),
-                "{sql}"
-            );
-            assert!(
-                order.contains("\"id\" DESC"),
-                "{sql}"
-            );
+            assert!(order.contains("\"created_at\" DESC"), "{sql}");
+            assert!(order.contains("\"id\" DESC"), "{sql}");
             assert!(order.find("created_at") < order.find("\"id\""), "{sql}");
         }
     }

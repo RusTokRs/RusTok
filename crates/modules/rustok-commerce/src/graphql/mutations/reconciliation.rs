@@ -6,7 +6,9 @@ use uuid::Uuid;
 use crate::PaymentOrchestrationError;
 use crate::graphql_runtime::refund_reconciliation_from_context;
 
-use super::super::{MODULE_SLUG, current_tenant_scope, require_commerce_permission, types::GqlRefund};
+use super::super::{
+    MODULE_SLUG, current_tenant_scope, require_commerce_permission, types::GqlRefund,
+};
 
 fn public_reconciliation_graphql_error(
     message: &'static str,

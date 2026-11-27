@@ -149,7 +149,10 @@ fn workflow_error_to_port_error(error: WorkflowError) -> PortError {
             "workflow.invalid_reconciliation_evidence",
             "workflow cron reconciliation evidence is missing or invalid",
         ),
-        WorkflowError::StepTimedOut { step_id, timeout_ms } => PortError::timeout(
+        WorkflowError::StepTimedOut {
+            step_id,
+            timeout_ms,
+        } => PortError::timeout(
             "workflow.step_timed_out",
             format!("workflow step timed out: step_id={step_id}, timeout_ms={timeout_ms}"),
         ),

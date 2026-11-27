@@ -162,11 +162,13 @@ impl ChannelReadPort for crate::ChannelService {
             ChannelReadSelector::Slug(slug) => {
                 within_deadline(budget, self.get_channel_detail_by_slug(tenant_id, &slug)).await?
             }
-            ChannelReadSelector::HostTargetValue(target_value) => within_deadline(
-                budget,
-                self.get_channel_by_host_target_value(tenant_id, &target_value),
-            )
-            .await?,
+            ChannelReadSelector::HostTargetValue(target_value) => {
+                within_deadline(
+                    budget,
+                    self.get_channel_by_host_target_value(tenant_id, &target_value),
+                )
+                .await?
+            }
             ChannelReadSelector::Default => {
                 within_deadline(budget, self.get_default_channel(tenant_id)).await?
             }
@@ -225,10 +227,7 @@ fn deadline_budget(context: &PortContext) -> std::time::Duration {
     std::time::Duration::from_millis(context.deadline_ms.unwrap_or_default())
 }
 
-async fn within_deadline<T, F>(
-    budget: std::time::Duration,
-    future: F,
-) -> Result<T, PortError>
+async fn within_deadline<T, F>(budget: std::time::Duration, future: F) -> Result<T, PortError>
 where
     F: std::future::Future<Output = crate::ChannelResult<T>>,
 {
@@ -326,12 +325,9 @@ pub(crate) fn map_channel_error(error: crate::ChannelError) -> PortError {
         crate::ChannelError::SlugAlreadyExists(message)
         | crate::ChannelError::TargetAlreadyExists(_, message)
         | crate::ChannelError::PolicySetSlugAlreadyExists(message)
-        | crate::ChannelError::Conflict(message) => PortError::new(
-            PortErrorKind::Conflict,
-            "channel.conflict",
-            message,
-            false,
-        ),
+        | crate::ChannelError::Conflict(message) => {
+            PortError::new(PortErrorKind::Conflict, "channel.conflict", message, false)
+        }
         crate::ChannelError::Database(error) => {
             tracing::error!(error = ?error, "channel port storage operation failed");
             PortError::new(

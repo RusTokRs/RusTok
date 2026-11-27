@@ -673,7 +673,9 @@ async fn submit_sitemap_endpoints_whitespace_only_endpoint_is_counted_as_invalid
         )
         .await;
 
-    let message = result.expect_err("whitespace endpoint must be invalid").to_string();
+    let message = result
+        .expect_err("whitespace endpoint must be invalid")
+        .to_string();
     assert!(message.contains("0 success(es) and 1 failure(s)"));
     assert!(message.contains("invalid endpoint:"));
     assert!(adapter.submitted_endpoints().await.is_empty());
@@ -694,7 +696,9 @@ async fn submit_sitemap_endpoints_invalid_endpoint_is_not_submitted() {
         )
         .await;
 
-    let message = result.expect_err("invalid endpoint should fail").to_string();
+    let message = result
+        .expect_err("invalid endpoint should fail")
+        .to_string();
     assert!(message.contains("0 success(es) and 1 failure(s)"));
     assert!(message.contains("invalid endpoint: not a valid url"));
     let submitted = adapter.submitted_endpoints().await;
@@ -781,7 +785,9 @@ async fn submit_sitemap_endpoints_timeout_and_failure_messages_are_bounded() {
         )
         .await;
 
-    let message = result.expect_err("aggregated bounded error expected").to_string();
+    let message = result
+        .expect_err("aggregated bounded error expected")
+        .to_string();
     assert!(message.contains("0 success(es) and 2 failure(s)"));
     assert!(message.contains("errors:"));
     assert!(message.contains("timeouts:"));

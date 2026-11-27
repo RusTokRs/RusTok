@@ -356,7 +356,9 @@ mod tests {
             Some("en-US")
         );
         assert_eq!(
-            resolver.normalize_tag("en-US-u-ca-gregory-x-private").as_deref(),
+            resolver
+                .normalize_tag("en-US-u-ca-gregory-x-private")
+                .as_deref(),
             Some("en-US")
         );
     }

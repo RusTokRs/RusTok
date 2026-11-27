@@ -541,37 +541,37 @@ fn catalog_scope(
         .ok()
         .filter(|tenant_id| !tenant_id.is_nil())
         .ok_or_else(|| {
-        let context_facts = product_port_context_facts(context);
-        tracing::warn!(
-            correlation_id_length = context_facts.correlation_id_length,
-            operation,
-            code = "product.tenant_id_invalid",
-            "product command tenant context is invalid"
-        );
-        PortError::validation(
-            "product.tenant_id_invalid",
-            "product request context is invalid",
-        )
-    })?;
+            let context_facts = product_port_context_facts(context);
+            tracing::warn!(
+                correlation_id_length = context_facts.correlation_id_length,
+                operation,
+                code = "product.tenant_id_invalid",
+                "product command tenant context is invalid"
+            );
+            PortError::validation(
+                "product.tenant_id_invalid",
+                "product request context is invalid",
+            )
+        })?;
     let actor_id = Uuid::parse_str(context.actor.id.as_str())
         .ok()
         .filter(|actor_id| !actor_id.is_nil())
         .ok_or_else(|| {
-        let context_facts = product_port_context_facts(context);
-        tracing::warn!(
-            correlation_id_length = context_facts.correlation_id_length,
-            tenant_id_length = context_facts.tenant_id_length,
-            operation,
-            actor_kind = context_facts.actor_kind,
-            actor_id_length = context_facts.actor_id_length,
-            code = "product.actor_id_invalid",
-            "product command actor context is invalid"
-        );
-        PortError::validation(
-            "product.actor_id_invalid",
-            "product request context is invalid",
-        )
-    })?;
+            let context_facts = product_port_context_facts(context);
+            tracing::warn!(
+                correlation_id_length = context_facts.correlation_id_length,
+                tenant_id_length = context_facts.tenant_id_length,
+                operation,
+                actor_kind = context_facts.actor_kind,
+                actor_id_length = context_facts.actor_id_length,
+                code = "product.actor_id_invalid",
+                "product command actor context is invalid"
+            );
+            PortError::validation(
+                "product.actor_id_invalid",
+                "product request context is invalid",
+            )
+        })?;
 
     Ok((tenant_id, actor_id))
 }
@@ -896,8 +896,8 @@ mod tests {
 
         invalid = context.clone();
         invalid.actor.id = Uuid::nil().to_string();
-        let nil_actor = command_scope(&invalid, "update_product")
-            .expect_err("nil actor UUID must be rejected");
+        let nil_actor =
+            command_scope(&invalid, "update_product").expect_err("nil actor UUID must be rejected");
         assert_eq!(nil_actor.code, "product.actor_id_invalid");
     }
 

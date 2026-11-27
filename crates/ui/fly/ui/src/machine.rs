@@ -1,6 +1,7 @@
 use crate::{
-    CanvasRect, CapabilityState, CommandCapabilityRequirement, DragSource, DragState, EditorCapability, FlyUiState,
-    HitTestCandidate, PanelKind, Presentation, UiError, UiResult, ViewportState, command_for_drop,
+    CanvasRect, CapabilityState, CommandCapabilityRequirement, DragSource, DragState,
+    EditorCapability, FlyUiState, HitTestCandidate, PanelKind, Presentation, UiError, UiResult,
+    ViewportState, command_for_drop,
 };
 use fly::{EditorCommand, ProjectHash, ValidationDiagnostic};
 use serde::{Deserialize, Serialize};
@@ -190,9 +191,10 @@ impl FlyUiStateMachine {
                 vec![UiEffect::Announce("Drag started".to_string())]
             }
             UiIntent::UpdateHitTest(candidates) => {
-                if candidates.iter().any(|candidate| {
-                    !candidate.rect.is_valid() || !candidate.score.is_finite()
-                }) {
+                if candidates
+                    .iter()
+                    .any(|candidate| !candidate.rect.is_valid() || !candidate.score.is_finite())
+                {
                     return Err(UiError::InvalidGeometry("drop candidate".to_string()));
                 }
                 let insertion = {
@@ -280,12 +282,15 @@ impl FlyUiStateMachine {
                     if !self.state.presentation.is_editable() {
                         return Err(UiError::ReadOnly);
                     }
-                    if let Some(capability) = requirement.first_missing(self.effective_capabilities()) {
+                    if let Some(capability) =
+                        requirement.first_missing(self.effective_capabilities())
+                    {
                         return Err(UiError::CapabilityUnavailable(
                             capability.as_str().to_string(),
                         ));
                     }
-                    if !matches!(command.as_ref(), EditorCommand::Batch { commands } if commands.is_empty()) {
+                    if !matches!(command.as_ref(), EditorCommand::Batch { commands } if commands.is_empty())
+                    {
                         self.mark_dirty()?;
                     }
                 }
@@ -320,8 +325,7 @@ impl FlyUiStateMachine {
                     ));
                 }
                 self.state.dirty.save_started_request_id = Some(request_id);
-                self.state.dirty.save_started_sequence =
-                    Some(self.state.dirty.command_sequence);
+                self.state.dirty.save_started_sequence = Some(self.state.dirty.command_sequence);
                 self.state.dirty.save_started_hash = self.state.dirty.project_hash;
                 self.state.dirty.save_in_progress = true;
                 self.state.dirty.save_failed = false;
@@ -341,7 +345,12 @@ impl FlyUiStateMachine {
                         "save response does not match the active request".to_string(),
                     ));
                 }
-                if self.state.dirty.save_started_hash.is_some_and(|hash| hash != project_hash) {
+                if self
+                    .state
+                    .dirty
+                    .save_started_hash
+                    .is_some_and(|hash| hash != project_hash)
+                {
                     return Err(UiError::CapabilityUnavailable(
                         "save response does not match the submitted project hash".to_string(),
                     ));
@@ -362,7 +371,11 @@ impl FlyUiStateMachine {
                     .save_started_sequence
                     .take()
                     .is_some_and(|sequence| sequence != self.state.dirty.command_sequence)
-                    || self.state.dirty.project_hash.is_some_and(|hash| hash != project_hash);
+                    || self
+                        .state
+                        .dirty
+                        .project_hash
+                        .is_some_and(|hash| hash != project_hash);
                 self.state.dirty.dirty = newer_edits;
                 self.state.dirty.save_in_progress = false;
                 self.state.dirty.save_failed = false;
@@ -458,9 +471,7 @@ impl FlyUiStateMachine {
                 "save blocked by unresolved revision conflict".to_string(),
             ));
         }
-        if self.state.dirty.save_in_progress
-            || self.state.dirty.save_started_request_id.is_some()
-        {
+        if self.state.dirty.save_in_progress || self.state.dirty.save_started_request_id.is_some() {
             return Err(UiError::CapabilityUnavailable(
                 "save already in progress".to_string(),
             ));
@@ -469,13 +480,12 @@ impl FlyUiStateMachine {
     }
 
     fn refresh_effective_capabilities(&mut self) {
-        let capabilities = if self.state.presentation.is_editable()
-            && !self.state.dirty.save_conflict
-        {
-            self.editable_capabilities.normalized()
-        } else {
-            CapabilityState::read_only()
-        };
+        let capabilities =
+            if self.state.presentation.is_editable() && !self.state.dirty.save_conflict {
+                self.editable_capabilities.normalized()
+            } else {
+                CapabilityState::read_only()
+            };
         if !capabilities.drag_drop {
             self.state.drag = None;
             self.state.overlays.insertion = None;
@@ -493,7 +503,10 @@ impl FlyUiStateMachine {
         if !self.state.presentation.is_editable() || self.state.dirty.save_conflict {
             return CapabilityState::read_only();
         }
-        self.state.capabilities.intersection(self.editable_capabilities).normalized()
+        self.state
+            .capabilities
+            .intersection(self.editable_capabilities)
+            .normalized()
     }
 
     fn require_edit_capability(&self, capability: EditorCapability) -> UiResult<()> {
@@ -501,7 +514,9 @@ impl FlyUiStateMachine {
             return Err(UiError::ReadOnly);
         }
         if !self.effective_capabilities().allows(capability) {
-            return Err(UiError::CapabilityUnavailable(capability.as_str().to_string()));
+            return Err(UiError::CapabilityUnavailable(
+                capability.as_str().to_string(),
+            ));
         }
         Ok(())
     }
@@ -509,9 +524,14 @@ impl FlyUiStateMachine {
     /// Mirrors `RevisionState::mark_changed`: an edit after a failed save keeps `save_failed`
     /// set, because the changes are still unsaved. `SaveStarted` and `SaveSucceeded` clear it.
     fn mark_dirty(&mut self) -> UiResult<()> {
-        let sequence = self.state.dirty.command_sequence.checked_add(1).ok_or_else(|| {
-            UiError::CapabilityUnavailable("document command sequence is exhausted".to_string())
-        })?;
+        let sequence = self
+            .state
+            .dirty
+            .command_sequence
+            .checked_add(1)
+            .ok_or_else(|| {
+                UiError::CapabilityUnavailable("document command sequence is exhausted".to_string())
+            })?;
         self.state.dirty.dirty = true;
         self.state.dirty.command_sequence = sequence;
         Ok(())

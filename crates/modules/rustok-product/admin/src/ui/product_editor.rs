@@ -505,8 +505,8 @@ pub fn ProductEditorPage(
         }
     };
 
-    let select_variant_editor_target = Callback::new(
-        move |variant: Option<crate::model::ProductVariant>| {
+    let select_variant_editor_target =
+        Callback::new(move |variant: Option<crate::model::ProductVariant>| {
             if let Some(variant) = variant {
                 set_variant_target_id.set(Some(variant.id.clone()));
                 set_sku.set(variant.sku.clone().unwrap_or_default());
@@ -538,8 +538,7 @@ pub fn ProductEditorPage(
                 set_compare_at_amount.set(String::new());
             }
             set_clear_primary_price.set(false);
-        },
-    );
+        });
 
     let variant_reload_locale = locale.clone();
     let select_variant_editor_target_for_refresh = select_variant_editor_target;
@@ -614,11 +613,9 @@ pub fn ProductEditorPage(
     });
     let select_variant_editor_target_for_delete = select_variant_editor_target;
     let refresh_variant_projection_for_delete = refresh_variant_projection;
-    let on_variant_deleted = Callback::new(
-        move |(product_id, deleted_variant_id): (String, String)| {
-            if variant_target_id.get_untracked().as_deref()
-                == Some(deleted_variant_id.as_str())
-            {
+    let on_variant_deleted =
+        Callback::new(move |(product_id, deleted_variant_id): (String, String)| {
+            if variant_target_id.get_untracked().as_deref() == Some(deleted_variant_id.as_str()) {
                 let next_variant = loaded_product.get_untracked().and_then(|product| {
                     product
                         .variants
@@ -629,7 +626,9 @@ pub fn ProductEditorPage(
             }
             set_loaded_product.update(|current| {
                 if let Some(current) = current.as_mut().filter(|current| current.id == product_id) {
-                    current.variants.retain(|variant| variant.id != deleted_variant_id);
+                    current
+                        .variants
+                        .retain(|variant| variant.id != deleted_variant_id);
                     // The Product owner advances the aggregate revision once for this confirmed
                     // membership change. Keep the local editor predecessor aligned; any concurrent
                     // Product write still leaves it stale and will be rejected on the next save.
@@ -641,8 +640,7 @@ pub fn ProductEditorPage(
                 }
             });
             refresh_variant_projection_for_delete.run(product_id);
-        },
-    );
+        });
 
     let on_variant_update_saved = {
         let select_variant_editor_target = select_variant_editor_target.clone();
@@ -650,7 +648,10 @@ pub fn ProductEditorPage(
             let saved_id = saved.id.clone();
             set_loaded_product.update(|product| {
                 if let Some(variant) = product.as_mut().and_then(|product| {
-                    product.variants.iter_mut().find(|variant| variant.id == saved_id)
+                    product
+                        .variants
+                        .iter_mut()
+                        .find(|variant| variant.id == saved_id)
                 }) {
                     *variant = saved.clone();
                 }
@@ -807,9 +808,11 @@ pub fn ProductEditorPage(
             .and_then(|product| product.product_type.as_deref().map(ProductKind::parse));
         if !kind.can_select_for_product(is_editing, original_kind) {
             set_error_msg.set(Some(if is_ru {
-                "Цифровая выдача не поддерживается для новых товаров в текущей конфигурации.".to_string()
+                "Цифровая выдача не поддерживается для новых товаров в текущей конфигурации."
+                    .to_string()
             } else {
-                "Digital products are not available for new products in the current configuration.".to_string()
+                "Digital products are not available for new products in the current configuration."
+                    .to_string()
             }));
             return;
         }
@@ -1035,94 +1038,6 @@ pub fn ProductEditorPage(
         variant_update_request.set(Some((target_id, draft)));
         set_error_msg.set(None);
         set_success_msg.set(None);
-    };
-        let Some(target_variant) = loaded_product.get_untracked().and_then(|product| {
-            product
-                .variants
-                .into_iter()
-                .find(|variant| variant.id == target_id)
-        }) else {
-            set_error_msg.set(Some(
-                "The displayed variant is no longer available. Reload the editor.".to_string(),
-            ));
-            return;
-        };
-        let variant_amount = amount.get_untracked();
-        let variant_compare = compare_at_amount.get_untracked();
-        if variant_amount.trim().is_empty() && !variant_compare.trim().is_empty() {
-            set_error_msg.set(Some(
-                "A compare-at amount requires a base price.".to_string(),
-            ));
-            return;
-        }
-        let draft = crate::model::VariantUpdateDraft::from_editor_state_with_price_clear(
-            &target_variant,
-            sku.get_untracked(),
-            barcode.get_untracked(),
-            variant_shipping_profile_slug.get_untracked(),
-            currency_code.get_untracked(),
-            variant_amount,
-            variant_compare,
-            inventory_quantity.get_untracked(),
-            inventory_policy.get_untracked(),
-            clear_primary_price.get_untracked(),
-        );
-        if !inventory_quantity_valid.get_untracked() {
-            set_error_msg.set(Some(
-                "Inventory must be a non-negative 32-bit integer.".to_string(),
-            ));
-            return;
-        }
-        if !draft.has_changes() {
-            return;
-        }
-        if let Err(message) = validate_editor_variant_draft(&draft) {
-            set_error_msg.set(Some(message));
-            return;
-        }
-        let tok = token.get_untracked();
-        let ten = tenant.get_untracked();
-        set_is_busy.set(true);
-        set_error_msg.set(None);
-        set_success_msg.set(None);
-        spawn_local(async move {
-            let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await
-            else {
-                set_is_busy.set(false);
-                set_error_msg.set(Some("Failed to authenticate bootstrap".to_string()));
-                return;
-            };
-            let result = catalog_transport::update_product_variant(
-                tok,
-                ten,
-                bootstrap.current_tenant.id,
-                bootstrap.me.id,
-                target_id,
-                draft,
-            )
-            .await;
-            set_is_busy.set(false);
-            match result {
-                Ok(saved) => {
-                    set_loaded_product.update(|product| {
-                        if let Some(variant) = product.as_mut().and_then(|p| {
-                            p.variants.iter_mut().find(|variant| variant.id == saved.id)
-                        }) {
-                            *variant = saved;
-                        }
-                    });
-                    set_success_msg.set(Some(
-                        if is_ru {
-                            "Вариант сохранён. Документ товара не отправлялся."
-                        } else {
-                            "Variant saved. The Product document was not submitted."
-                        }
-                        .to_string(),
-                    ));
-                }
-                Err(error) => set_error_msg.set(Some(error.to_string())),
-            }
-        });
     };
 
     let page_title = if is_editing {
@@ -2008,7 +1923,6 @@ pub fn ProductEditorPage(
         </div>
     }
 }
-
 
 #[cfg(test)]
 mod variant_membership_revision_tests {

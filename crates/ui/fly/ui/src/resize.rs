@@ -191,11 +191,9 @@ impl ResizeSession {
                 if !width.is_finite() {
                     return unchanged();
                 }
-                let Some(width) = clamp_dimension(
-                    width,
-                    self.policy.minimum_width,
-                    self.policy.maximum_width,
-                ) else {
+                let Some(width) =
+                    clamp_dimension(width, self.policy.minimum_width, self.policy.maximum_width)
+                else {
                     return unchanged();
                 };
                 rect.width = width;
@@ -285,10 +283,11 @@ impl ResizeSession {
         // persistence boundary so forged or stale results cannot bypass bounds.
         if self.start_rect.is_valid() && result.rect.is_valid() {
             let width_within_bounds = if result.width_changed && self.handle.changes_width() {
-                dimension_bounds(self.policy.minimum_width, self.policy.maximum_width)
-                    .is_some_and(|(minimum, maximum)| {
+                dimension_bounds(self.policy.minimum_width, self.policy.maximum_width).is_some_and(
+                    |(minimum, maximum)| {
                         result.rect.width >= minimum && result.rect.width <= maximum
-                    })
+                    },
+                )
             } else {
                 true
             };
@@ -303,8 +302,10 @@ impl ResizeSession {
             let actual_width_changed = result.rect.width != self.start_rect.width;
             let actual_height_changed = result.rect.height != self.start_rect.height;
             let aspect_ratio_valid = !self.aspect_ratio_locked()
-                || (!result.width_changed && !result.height_changed
-                    && !actual_width_changed && !actual_height_changed)
+                || (!result.width_changed
+                    && !result.height_changed
+                    && !actual_width_changed
+                    && !actual_height_changed)
                 || (result.width_changed
                     && result.height_changed
                     && actual_width_changed
@@ -572,11 +573,17 @@ mod tests {
         let mut resize = session(ResizeHandle::SouthEast);
         resize.policy.preserve_aspect_ratio = true;
         let result = ResizeResult {
-            rect: CanvasRect { height: 100.0 + 1e-10, ..resize.start_rect },
+            rect: CanvasRect {
+                height: 100.0 + 1e-10,
+                ..resize.start_rect
+            },
             width_changed: true,
             height_changed: true,
         };
-        assert_eq!(resize.component_patch(result).style, Some(Value::Object(Map::new())));
+        assert_eq!(
+            resize.component_patch(result).style,
+            Some(Value::Object(Map::new()))
+        );
 
         resize.start_rect.width = f64::from_bits(100);
         resize.start_rect.height = 100.0;
@@ -592,7 +599,10 @@ mod tests {
             height_changed: true,
         };
         // Both quotients round to the same subnormal value, despite ratio drift.
-        assert_eq!(resize.component_patch(result).style, Some(Value::Object(Map::new())));
+        assert_eq!(
+            resize.component_patch(result).style,
+            Some(Value::Object(Map::new()))
+        );
     }
 
     #[test]

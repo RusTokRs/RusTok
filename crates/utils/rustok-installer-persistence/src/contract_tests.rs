@@ -2,8 +2,8 @@ use chrono::Utc;
 use rustok_installer::{
     AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallEnvironment, InstallPlan,
     InstallProfile, InstallReceipt, InstallSessionRecord, InstallState, InstallStep,
-    InstallTopology, InstallTopologyMode, ModuleSelection, ReceiptOutcome, SecretMode, SecretValue,
-    TenantBootstrap, MAX_INSTALL_LOCK_TTL_SECS,
+    InstallTopology, InstallTopologyMode, MAX_INSTALL_LOCK_TTL_SECS, ModuleSelection,
+    ReceiptOutcome, SecretMode, SecretValue, TenantBootstrap,
 };
 use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, DatabaseConnection, Set};
 use uuid::Uuid;
@@ -149,7 +149,11 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         )
         .await
         .expect_err("a session can only be claimed once");
-    assert!(same_session_err.to_string().contains("already has an execution attempt"));
+    assert!(
+        same_session_err
+            .to_string()
+            .contains("already has an execution attempt")
+    );
 
     let session2 = service
         .create_session(&plan, None, None)
@@ -166,8 +170,7 @@ async fn session_persistence_lifecycle_and_state_transitions() {
     assert!(err.to_string().contains("unfinished execution"));
 
     let mut expired_session: install_session::ActiveModel = locked.clone().into();
-    expired_session.lock_expires_at =
-        Set(Some(Utc::now() - chrono::Duration::seconds(1)));
+    expired_session.lock_expires_at = Set(Some(Utc::now() - chrono::Duration::seconds(1)));
     expired_session
         .update(&db)
         .await
@@ -180,7 +183,11 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         )
         .await
         .expect_err("expired lease must still block an unfinished session");
-    assert!(expired_lock_err.to_string().contains("unfinished execution"));
+    assert!(
+        expired_lock_err
+            .to_string()
+            .contains("unfinished execution")
+    );
 
     let mut wrong_owner = session_record(&locked);
     wrong_owner.lock_owner = Some("stale-worker".to_string());
@@ -213,7 +220,10 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .await
         .expect("set database state");
     let schema_applied = service
-        .set_state(&session_record(&database_ready), InstallState::SchemaApplied)
+        .set_state(
+            &session_record(&database_ready),
+            InstallState::SchemaApplied,
+        )
         .await
         .expect("set schema state");
 
@@ -243,14 +253,14 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .await
         .expect("clear owner only as part of the manual-reconciliation fixture");
     let recovery_gate_err = service
-        .acquire_lock(
-            session2,
-            "worker-node-2",
-            chrono::Duration::minutes(5),
-        )
+        .acquire_lock(session2, "worker-node-2", chrono::Duration::minutes(5))
         .await
         .expect_err("recovery-required session must keep the admission gate closed");
-    assert!(recovery_gate_err.to_string().contains("unfinished execution"));
+    assert!(
+        recovery_gate_err
+            .to_string()
+            .contains("unfinished execution")
+    );
     assert!(!service.has_completed_session().await.expect("query"));
 }
 
@@ -264,11 +274,7 @@ async fn completed_session_releases_admission_gate() {
         .await
         .expect("session created");
     let locked = service
-        .acquire_lock(
-            session,
-            "worker-node-1",
-            chrono::Duration::minutes(5),
-        )
+        .acquire_lock(session, "worker-node-1", chrono::Duration::minutes(5))
         .await
         .expect("acquire lock");
 
@@ -285,7 +291,10 @@ async fn completed_session_releases_admission_gate() {
         .await
         .expect("database");
     let schema_applied = service
-        .set_state(&session_record(&database_ready), InstallState::SchemaApplied)
+        .set_state(
+            &session_record(&database_ready),
+            InstallState::SchemaApplied,
+        )
         .await
         .expect("schema");
     let seed_applied = service
@@ -293,7 +302,10 @@ async fn completed_session_releases_admission_gate() {
         .await
         .expect("seed");
     let admin = service
-        .set_state(&session_record(&seed_applied), InstallState::AdminProvisioned)
+        .set_state(
+            &session_record(&seed_applied),
+            InstallState::AdminProvisioned,
+        )
         .await
         .expect("admin");
     let deploying = service
@@ -317,11 +329,7 @@ async fn completed_session_releases_admission_gate() {
         .await
         .expect("next session created");
     let next_lock = service
-        .acquire_lock(
-            next_session,
-            "worker-node-2",
-            chrono::Duration::minutes(5),
-        )
+        .acquire_lock(next_session, "worker-node-2", chrono::Duration::minutes(5))
         .await
         .expect("completed session releases the admission gate");
     assert_eq!(next_lock.lock_owner.as_deref(), Some("worker-node-2"));
@@ -338,11 +346,7 @@ async fn acquire_lock_rejects_out_of_range_ttl_before_claiming_session() {
         .expect("session created");
 
     let zero = service
-        .acquire_lock(
-            session.clone(),
-            "worker",
-            chrono::Duration::seconds(0),
-        )
+        .acquire_lock(session.clone(), "worker", chrono::Duration::seconds(0))
         .await
         .expect_err("zero TTL must be rejected");
     assert!(zero.to_string().contains("between 1 and"));
@@ -394,11 +398,7 @@ async fn receipt_persistence_and_conversion_is_bound_to_the_current_attempt() {
         .await
         .expect("session created");
     let locked = service
-        .acquire_lock(
-            session,
-            "receipt-worker",
-            chrono::Duration::minutes(5),
-        )
+        .acquire_lock(session, "receipt-worker", chrono::Duration::minutes(5))
         .await
         .expect("acquire lock");
 
@@ -489,11 +489,7 @@ async fn unstarted_http_job_cleanup_is_identity_fenced_and_terminal() {
 
     assert!(
         !service
-            .finish_unstarted_http_job_failed(
-                job_id,
-                Uuid::new_v4(),
-                submitted_at.clone(),
-            )
+            .finish_unstarted_http_job_failed(job_id, Uuid::new_v4(), submitted_at.clone(),)
             .await
             .expect("wrong session is a no-op"),
         "a different session must not be finalized"

@@ -36,7 +36,11 @@ fn provider_and_consumers_share_the_same_scope_type_and_wire_cookie() {
     assert!(!ClientAuthScope::new(false).is_ready());
     assert_eq!(ADMIN_REFRESH_COOKIE, "rustok-admin-refresh-v1");
     assert_eq!(inspect_refresh_cookie_headers([]), Ok(None));
-    let header = format!("{ADMIN_REFRESH_COOKIE}=tenant-a.{}.{}", "a1".repeat(32), "b2".repeat(32));
+    let header = format!(
+        "{ADMIN_REFRESH_COOKIE}=tenant-a.{}.{}",
+        "a1".repeat(32),
+        "b2".repeat(32)
+    );
     assert!(inspect_refresh_cookie_headers([header.as_str(), header.as_str()]).is_err());
 }
 

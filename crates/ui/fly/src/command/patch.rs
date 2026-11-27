@@ -95,7 +95,10 @@ impl ComponentPatch {
         // replacement boundary even if a later merge supplies an object:
         // otherwise applying the composed patch resurrects original properties.
         self.replace_style |= !style.is_object()
-            || self.style.as_ref().is_some_and(|pending| !pending.is_object());
+            || self
+                .style
+                .as_ref()
+                .is_some_and(|pending| !pending.is_object());
         match (&mut self.style, style) {
             (Some(Value::Object(current)), Value::Object(patch)) => current.extend(patch),
             (slot, patch) => *slot = Some(patch),
@@ -201,7 +204,11 @@ impl ComponentPatch {
             }
         }
         for field in [COMPONENT_TYPE_FIELD, TAG_NAME_FIELD, PROVIDER_FIELD] {
-            if self.fields.get(field).is_some_and(|value| !value.is_string()) {
+            if self
+                .fields
+                .get(field)
+                .is_some_and(|value| !value.is_string())
+            {
                 return Err(FlyError::InvalidComponentPatch(format!(
                     "field `{field}` must be a string; use remove_field to clear it"
                 )));
@@ -312,9 +319,12 @@ mod tests {
             .remove_style_property("color")
             .apply(&mut component)
             .expect("merge and remove");
-        assert_eq!(component.style, Some(json!({
-            "padding": "1px", "width": "100px", "height": "20px"
-        })));
+        assert_eq!(
+            component.style,
+            Some(json!({
+                "padding": "1px", "width": "100px", "height": "20px"
+            }))
+        );
 
         ComponentPatch::default()
             .remove_style_property("color")
@@ -322,7 +332,10 @@ mod tests {
             .merge_style(json!({"width": "200px"}))
             .apply(&mut component)
             .expect("replace then merge");
-        assert_eq!(component.style, Some(json!({"color": "green", "width": "200px"})));
+        assert_eq!(
+            component.style,
+            Some(json!({"color": "green", "width": "200px"}))
+        );
 
         ComponentPatch::default()
             .clear_style()
@@ -380,8 +393,12 @@ mod tests {
     fn serialized_removals_win_over_conflicting_attribute_and_field_sets() {
         let mut component = component();
         component.provider = Some("provider.original".to_string());
-        component.attributes.insert("title".to_string(), json!("Old"));
-        component.extensions.insert("content".to_string(), json!("Old"));
+        component
+            .attributes
+            .insert("title".to_string(), json!("Old"));
+        component
+            .extensions
+            .insert("content".to_string(), json!("Old"));
         let patch: ComponentPatch = serde_json::from_value(json!({
             "attributes": { "title": "New", "aria-label": "Keep" },
             "remove_attributes": ["title", "absent"],

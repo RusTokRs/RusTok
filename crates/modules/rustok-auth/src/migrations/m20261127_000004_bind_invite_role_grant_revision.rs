@@ -19,9 +19,17 @@ impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let db = manager.get_connection();
         let statement = match manager.get_database_backend() {
-            DatabaseBackend::Postgres => "ALTER TABLE auth_invites ADD COLUMN role_grant_binding TEXT",
-            DatabaseBackend::Sqlite => "ALTER TABLE auth_invites ADD COLUMN role_grant_binding TEXT",
-            _ => return Err(DbErr::Custom("unsupported invitation role grant binding backend".into())),
+            DatabaseBackend::Postgres => {
+                "ALTER TABLE auth_invites ADD COLUMN role_grant_binding TEXT"
+            }
+            DatabaseBackend::Sqlite => {
+                "ALTER TABLE auth_invites ADD COLUMN role_grant_binding TEXT"
+            }
+            _ => {
+                return Err(DbErr::Custom(
+                    "unsupported invitation role grant binding backend".into(),
+                ));
+            }
         };
         db.execute_unprepared(statement).await?;
         db.execute_unprepared(REVOKE_UNCONSUMED).await?;
@@ -31,7 +39,8 @@ impl MigrationTrait for Migration {
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let db = manager.get_connection();
         db.execute_unprepared(REVOKE_UNCONSUMED).await?;
-        db.execute_unprepared("ALTER TABLE auth_invites DROP COLUMN role_grant_binding").await?;
+        db.execute_unprepared("ALTER TABLE auth_invites DROP COLUMN role_grant_binding")
+            .await?;
         Ok(())
     }
 }

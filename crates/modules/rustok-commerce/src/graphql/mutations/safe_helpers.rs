@@ -275,7 +275,11 @@ pub(crate) fn cart_port_error(error: PortError) -> async_graphql::Error {
             "CART_STATE_CONFLICT",
             false,
         ),
-        PortErrorKind::Forbidden => ("Cart operation is not permitted", "CART_ACCESS_DENIED", false),
+        PortErrorKind::Forbidden => (
+            "Cart operation is not permitted",
+            "CART_ACCESS_DENIED",
+            false,
+        ),
         PortErrorKind::Unavailable | PortErrorKind::Timeout => (
             "Cart is temporarily unavailable",
             "CART_TEMPORARILY_UNAVAILABLE",

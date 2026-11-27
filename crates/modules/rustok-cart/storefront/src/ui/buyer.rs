@@ -227,7 +227,12 @@ impl CartOperationGuard {
 
 impl Drop for CartOperationGuard {
     fn drop(&mut self) {
-        if !self.finished && self.state.try_update(|state| state.abandon(self.id)).is_none() {
+        if !self.finished
+            && self
+                .state
+                .try_update(|state| state.abandon(self.id))
+                .is_none()
+        {
             tracing::trace!("state signal disposed during CartOperationGuard::drop");
         }
     }
@@ -396,7 +401,9 @@ impl BuyerCartController {
             tracing::trace!("generation signal disposed during invalidate_external_auth");
         }
         if self.external_auth_changed.try_set(true).is_none() {
-            tracing::trace!("external_auth_changed signal disposed during invalidate_external_auth");
+            tracing::trace!(
+                "external_auth_changed signal disposed during invalidate_external_auth"
+            );
         }
     }
     #[cfg(target_arch = "wasm32")]
@@ -610,7 +617,11 @@ impl BuyerCartController {
         if self.reference.try_set(None).is_none() {
             tracing::trace!("reference signal disposed during reset_reference");
         }
-        if self.state.try_set(BuyerCartSession::restoring(None)).is_none() {
+        if self
+            .state
+            .try_set(BuyerCartSession::restoring(None))
+            .is_none()
+        {
             tracing::trace!("state signal disposed during reset_reference");
         }
         if self.bound_scope.try_set(None).is_none() {

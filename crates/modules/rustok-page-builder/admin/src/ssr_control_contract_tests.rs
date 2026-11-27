@@ -721,23 +721,37 @@ fn page_reorder_ssr_forms_post_numeric_indices_and_respect_page_boundaries() {
         .into_iter()
         .filter(|(intent, _)| *intent == "move_page")
         .collect::<Vec<_>>();
-    assert_eq!(second_forms.len(), 2, "both adjacent moves should be rendered");
+    assert_eq!(
+        second_forms.len(),
+        2,
+        "both adjacent moves should be rendered"
+    );
 
     let second_results = second_forms
         .iter()
         .map(|(_, start)| {
-            let page_index = opening_tag(&second_page_html[*start..], "name=\"page_index\"", "<input");
-            let target_index = opening_tag(&second_page_html[*start..], "name=\"target_index\"", "<input");
+            let page_index =
+                opening_tag(&second_page_html[*start..], "name=\"page_index\"", "<input");
+            let target_index = opening_tag(
+                &second_page_html[*start..],
+                "name=\"target_index\"",
+                "<input",
+            );
             assert_eq!(attribute(page_index, "type"), Some("number"));
             assert_eq!(attribute(page_index, "value"), Some("1"));
             assert_eq!(attribute(target_index, "type"), Some("number"));
             (
-                attribute(target_index, "value").unwrap_or_default().to_string(),
+                attribute(target_index, "value")
+                    .unwrap_or_default()
+                    .to_string(),
                 form_can_be_submitted(&second_page_html, *start),
             )
         })
         .collect::<Vec<_>>();
-    assert_eq!(second_results, [("0".to_string(), true), ("2".to_string(), false)]);
+    assert_eq!(
+        second_results,
+        [("0".to_string(), true), ("2".to_string(), false)]
+    );
 
     let mut first_page = controller_on_the_second_page();
     first_page
@@ -755,18 +769,28 @@ fn page_reorder_ssr_forms_post_numeric_indices_and_respect_page_boundaries() {
     let first_results = first_forms
         .iter()
         .map(|(_, start)| {
-            let page_index = opening_tag(&first_page_html[*start..], "name=\"page_index\"", "<input");
-            let target_index = opening_tag(&first_page_html[*start..], "name=\"target_index\"", "<input");
+            let page_index =
+                opening_tag(&first_page_html[*start..], "name=\"page_index\"", "<input");
+            let target_index = opening_tag(
+                &first_page_html[*start..],
+                "name=\"target_index\"",
+                "<input",
+            );
             assert_eq!(attribute(page_index, "type"), Some("number"));
             assert_eq!(attribute(page_index, "value"), Some("0"));
             assert_eq!(attribute(target_index, "type"), Some("number"));
             (
-                attribute(target_index, "value").unwrap_or_default().to_string(),
+                attribute(target_index, "value")
+                    .unwrap_or_default()
+                    .to_string(),
                 form_can_be_submitted(&first_page_html, *start),
             )
         })
         .collect::<Vec<_>>();
-    assert_eq!(first_results, [("0".to_string(), false), ("2".to_string(), true)]);
+    assert_eq!(
+        first_results,
+        [("0".to_string(), false), ("2".to_string(), true)]
+    );
 }
 
 #[test]

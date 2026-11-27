@@ -406,13 +406,8 @@ async fn audited_requeue_resumes_original_replay_checkpoint_and_rejects_stale_di
         .await.unwrap();
     let actor = Uuid::new_v4();
     let auth = |tenant| {
-        IndexJobOperatorAuthority::authorize(
-            tenant,
-            tenant,
-            actor,
-            &[Permission::MODULES_MANAGE],
-        )
-        .unwrap()
+        IndexJobOperatorAuthority::authorize(tenant, tenant, actor, &[Permission::MODULES_MANAGE])
+            .unwrap()
     };
     let runtime = &fixture.adapter.runtime;
     let reason = "Owner repaired; resume from checkpoint";

@@ -84,7 +84,9 @@ pub(super) async fn find_candidate_application_for_update(
     };
     let model = match transaction.get_database_backend() {
         DbBackend::Sqlite => query().one(transaction).await?,
-        DbBackend::Postgres | DbBackend::MySql | _ => query().lock_exclusive().one(transaction).await?,
+        DbBackend::Postgres | DbBackend::MySql | _ => {
+            query().lock_exclusive().one(transaction).await?
+        }
     };
     Ok(model)
 }

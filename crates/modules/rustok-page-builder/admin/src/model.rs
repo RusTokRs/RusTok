@@ -126,16 +126,12 @@ impl AdminCanvasController {
     pub fn active_page_project(&self) -> fly::FlyResult<Value> {
         let index = self.active_page_index();
         let mut document = self.editor.document().clone();
-        let page =
-            document
-                .project()
-                .pages
-                .get(index)
-                .cloned()
-                .ok_or(fly::FlyError::InvalidPageIndex {
-                    index,
-                    len: document.project().pages.len(),
-                })?;
+        let page = document.project().pages.get(index).cloned().ok_or(
+            fly::FlyError::InvalidPageIndex {
+                index,
+                len: document.project().pages.len(),
+            },
+        )?;
         document.project_mut().pages = vec![page];
         GrapesJsCodec::encode_value(&document)
     }
@@ -175,10 +171,7 @@ impl AdminCanvasController {
 
     /// Apply a locally recovered document as one validated, undoable Fly command.
     /// The server revision is deliberately unchanged; the next save still uses its CAS token.
-    pub fn apply_recovered_merge(
-        &mut self,
-        project_data: Value,
-    ) -> Result<(), AdminCanvasError> {
+    pub fn apply_recovered_merge(&mut self, project_data: Value) -> Result<(), AdminCanvasError> {
         if self.editor.revision().save_conflict {
             fly::drop_value_iteratively(project_data);
             return Err(AdminCanvasError::Authoring(
@@ -230,7 +223,9 @@ impl AdminCanvasController {
         // A late hover from a removed component or a different page is not
         // a valid interaction target in the current canvas.
         let intent = match intent {
-            UiIntent::Hover(Some(id)) if !self.component_on_active_page(&id) => UiIntent::Hover(None),
+            UiIntent::Hover(Some(id)) if !self.component_on_active_page(&id) => {
+                UiIntent::Hover(None)
+            }
             intent => intent,
         };
         let snapshot = self.clone();
@@ -266,7 +261,9 @@ impl AdminCanvasController {
     }
 
     fn component_on_active_page(&self, component_id: &str) -> bool {
-        self.editor.document().component_location(component_id)
+        self.editor
+            .document()
+            .component_location(component_id)
             .is_some_and(|location| location.page_index == self.active_page_index())
     }
 
@@ -279,7 +276,9 @@ impl AdminCanvasController {
         command_sequence: u64,
     ) -> Result<SaveAttempt, AdminCanvasError> {
         let PageBuilderCapabilityRequest::Publish(input) = request else {
-            return Err(AdminCanvasError::Authoring("expected a save request".to_string()));
+            return Err(AdminCanvasError::Authoring(
+                "expected a save request".to_string(),
+            ));
         };
         let revision = self.editor.revision();
         if input.page_id != self.page_id
@@ -735,7 +734,12 @@ impl AdminCanvasController {
             }
         }
         self.ui.state.set_selected_component(selection);
-        if self.ui.state.selection.hovered_component_id.as_deref()
+        if self
+            .ui
+            .state
+            .selection
+            .hovered_component_id
+            .as_deref()
             .is_some_and(|id| !self.component_on_active_page(id))
         {
             self.ui.state.set_hovered_component(None);
@@ -767,15 +771,13 @@ impl AdminCanvasController {
         } else {
             None
         };
-        let index = current_index
-            .or(previous_index)
-            .unwrap_or_else(|| {
-                self.ui
-                    .state
-                    .page
-                    .active_page_index
-                    .min(summaries.len().saturating_sub(1))
-            });
+        let index = current_index.or(previous_index).unwrap_or_else(|| {
+            self.ui
+                .state
+                .page
+                .active_page_index
+                .min(summaries.len().saturating_sub(1))
+        });
         if current_id.is_some() && current_index.is_none() {
             self.previous_active_page_id = None;
         }
@@ -880,29 +882,74 @@ mod tests {
     #[test]
     fn geometry_is_invalidated_on_document_changes_but_not_rejected_commands() {
         let mut controller = controller();
-        let rect = fly_ui::CanvasRect { x: 0.0, y: 0.0, width: 100.0, height: 40.0 };
-        controller.dispatch(UiIntent::Select(Some("hero".into()))).unwrap();
-        controller.dispatch(UiIntent::Hover(Some("copy-me".into()))).unwrap();
-        controller.dispatch(UiIntent::SetSelectedOverlay(Some(rect))).unwrap();
-        controller.dispatch(UiIntent::SetHoveredOverlay(Some(rect))).unwrap();
+        let rect = fly_ui::CanvasRect {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 40.0,
+        };
+        controller
+            .dispatch(UiIntent::Select(Some("hero".into())))
+            .unwrap();
+        controller
+            .dispatch(UiIntent::Hover(Some("copy-me".into())))
+            .unwrap();
+        controller
+            .dispatch(UiIntent::SetSelectedOverlay(Some(rect)))
+            .unwrap();
+        controller
+            .dispatch(UiIntent::SetHoveredOverlay(Some(rect)))
+            .unwrap();
         let before = controller.clone();
-        assert!(controller.dispatch(UiIntent::execute(EditorCommand::Remove {
-            component_id: "missing".into(),
-        })).is_err());
+        assert!(
+            controller
+                .dispatch(UiIntent::execute(EditorCommand::Remove {
+                    component_id: "missing".into(),
+                }))
+                .is_err()
+        );
         assert_eq!(controller, before);
 
-        controller.dispatch(UiIntent::execute(EditorCommand::Remove {
-            component_id: "copy-me".into(),
-        })).unwrap();
-        assert!(controller.ui().state.selection.hovered_component_id.is_none());
-        assert_eq!(controller.ui().state.overlays, fly_ui::OverlayState::default());
-        controller.dispatch(UiIntent::Hover(Some("copy-me".into()))).unwrap();
-        assert!(controller.ui().state.selection.hovered_component_id.is_none());
+        controller
+            .dispatch(UiIntent::execute(EditorCommand::Remove {
+                component_id: "copy-me".into(),
+            }))
+            .unwrap();
+        assert!(
+            controller
+                .ui()
+                .state
+                .selection
+                .hovered_component_id
+                .is_none()
+        );
+        assert_eq!(
+            controller.ui().state.overlays,
+            fly_ui::OverlayState::default()
+        );
+        controller
+            .dispatch(UiIntent::Hover(Some("copy-me".into())))
+            .unwrap();
+        assert!(
+            controller
+                .ui()
+                .state
+                .selection
+                .hovered_component_id
+                .is_none()
+        );
 
-        controller.dispatch(UiIntent::Select(Some("hero".into()))).unwrap();
-        controller.dispatch(UiIntent::SetSelectedOverlay(Some(rect))).unwrap();
+        controller
+            .dispatch(UiIntent::Select(Some("hero".into())))
+            .unwrap();
+        controller
+            .dispatch(UiIntent::SetSelectedOverlay(Some(rect)))
+            .unwrap();
         controller.dispatch(UiIntent::Undo).unwrap();
-        assert_eq!(controller.ui().state.overlays, fly_ui::OverlayState::default());
+        assert_eq!(
+            controller.ui().state.overlays,
+            fly_ui::OverlayState::default()
+        );
     }
 
     #[test]
@@ -922,8 +969,15 @@ mod tests {
     #[test]
     fn save_request_admission_binds_payload_revision_and_sequence() {
         let mut controller = controller();
-        let effects = controller.dispatch(UiIntent::RequestSave).expect("save effect");
-        let AdminCanvasEffect::Request { request, expected_hash, command_sequence } = &effects[0] else {
+        let effects = controller
+            .dispatch(UiIntent::RequestSave)
+            .expect("save effect");
+        let AdminCanvasEffect::Request {
+            request,
+            expected_hash,
+            command_sequence,
+        } = &effects[0]
+        else {
             panic!("expected persistence effect");
         };
         for field in ["page", "revision", "payload", "hash", "sequence"] {
@@ -942,22 +996,36 @@ mod tests {
                 _ => unreachable!(),
             }
             let before = controller.clone();
-            assert!(controller.begin_save_request(&candidate, hash, sequence).is_err(), "{field}");
+            assert!(
+                controller
+                    .begin_save_request(&candidate, hash, sequence)
+                    .is_err(),
+                "{field}"
+            );
             assert_eq!(controller, before);
         }
-        let attempt = controller.begin_save_request(request, *expected_hash, *command_sequence)
+        let attempt = controller
+            .begin_save_request(request, *expected_hash, *command_sequence)
             .expect("current effect");
         assert_eq!(controller.active_save_attempt().as_ref(), Some(&attempt));
-        assert!(controller.mark_save_failed_for_attempt(&attempt).expect("retire"));
+        assert!(
+            controller
+                .mark_save_failed_for_attempt(&attempt)
+                .expect("retire")
+        );
     }
 
     #[test]
     fn generic_dispatch_cannot_mutate_save_lifecycle() {
         let mut controller = controller();
         let before = controller.clone();
-        assert!(controller.dispatch(UiIntent::SaveStarted {
-            request_id: "unbound".into(),
-        }).is_err());
+        assert!(
+            controller
+                .dispatch(UiIntent::SaveStarted {
+                    request_id: "unbound".into(),
+                })
+                .is_err()
+        );
         assert_eq!(controller, before);
 
         let attempt = controller.mark_save_started_with_id().expect("start");
@@ -969,7 +1037,9 @@ mod tests {
                 revision: "rev-2".into(),
                 project_hash: hash,
             },
-            UiIntent::SaveFailed { request_id: Some(attempt.request_id.clone()) },
+            UiIntent::SaveFailed {
+                request_id: Some(attempt.request_id.clone()),
+            },
             UiIntent::SaveConflict {
                 request_id: Some(attempt.request_id.clone()),
                 expected: "rev-1".into(),
@@ -979,9 +1049,14 @@ mod tests {
             assert!(controller.dispatch(intent).is_err());
             assert_eq!(controller, before);
         }
-        assert!(controller.acknowledge_save_for_attempt(hash, &attempt, "").is_err());
+        assert!(
+            controller
+                .acknowledge_save_for_attempt(hash, &attempt, "")
+                .is_err()
+        );
         assert_eq!(controller, before);
-        controller.acknowledge_save_for_attempt(hash, &attempt, "rev-2")
+        controller
+            .acknowledge_save_for_attempt(hash, &attempt, "rev-2")
             .expect("correlated acknowledgement");
         assert_eq!(controller.revision_id(), "rev-2");
         assert!(!controller.ui().state.dirty.save_in_progress);
@@ -992,14 +1067,27 @@ mod tests {
         let mut controller = controller();
         let hash = controller.editor().revision().project_hash;
         let first = controller.mark_save_started_with_id().expect("first save");
-        assert!(controller.mark_save_failed_for_attempt(&first).expect("failed"));
+        assert!(
+            controller
+                .mark_save_failed_for_attempt(&first)
+                .expect("failed")
+        );
         let retry = controller.mark_save_started_with_id().expect("retry");
         assert_ne!(first, retry);
-        assert!(!controller.mark_save_failed_for_attempt(&first).expect("stale failure"));
-        assert!(controller.acknowledge_save_for_attempt(hash, &first, "stale").is_err());
+        assert!(
+            !controller
+                .mark_save_failed_for_attempt(&first)
+                .expect("stale failure")
+        );
+        assert!(
+            controller
+                .acknowledge_save_for_attempt(hash, &first, "stale")
+                .is_err()
+        );
         assert_eq!(controller.active_save_attempt().as_ref(), Some(&retry));
         assert_eq!(controller.revision_id(), "rev-1");
-        controller.acknowledge_save_for_attempt(hash, &retry, "rev-2")
+        controller
+            .acknowledge_save_for_attempt(hash, &retry, "rev-2")
             .expect("current response");
         assert_eq!(controller.revision_id(), "rev-2");
     }
@@ -1022,8 +1110,7 @@ mod tests {
         let recovered_snapshot =
             GrapesJsCodec::encode_value(controller.editor().document()).expect("encode merged");
         assert_eq!(
-            recovered_snapshot["pages"][0]["component"]["components"][0]["components"][0]
-                ["content"],
+            recovered_snapshot["pages"][0]["component"]["components"][0]["components"][0]["content"],
             "Recovered offline edit"
         );
         assert_eq!(controller.revision_id(), "rev-1");
@@ -1047,15 +1134,20 @@ mod tests {
                 ..fly_ui::CapabilityState::full()
             },
         ] {
-            controller.dispatch(UiIntent::SetEditableCapabilities(capabilities))
+            controller
+                .dispatch(UiIntent::SetEditableCapabilities(capabilities))
                 .expect("host capabilities");
             let before = controller.clone();
             assert!(controller.apply_recovered_merge(recovered.clone()).is_err());
             assert_eq!(controller, before);
         }
-        controller.dispatch(UiIntent::SetEditableCapabilities(fly_ui::CapabilityState::full()))
+        controller
+            .dispatch(UiIntent::SetEditableCapabilities(
+                fly_ui::CapabilityState::full(),
+            ))
             .expect("host capabilities");
-        controller.dispatch(UiIntent::SetPresentation(Presentation::Preview))
+        controller
+            .dispatch(UiIntent::SetPresentation(Presentation::Preview))
             .expect("preview presentation");
         let before = controller.clone();
         assert!(controller.apply_recovered_merge(recovered).is_err());
@@ -1073,7 +1165,9 @@ mod tests {
         let input = Value::Object(Map::from_iter([("payload".to_string(), nested)]));
         assert!(matches!(
             controller.apply_recovered_merge(input),
-            Err(AdminCanvasError::Fly(fly::FlyError::MaximumDepthExceeded { .. }))
+            Err(AdminCanvasError::Fly(
+                fly::FlyError::MaximumDepthExceeded { .. }
+            ))
         ));
         assert_eq!(controller, before);
     }
@@ -1096,15 +1190,22 @@ mod tests {
         controller
             .mark_peer_write_conflict("rev-1".into(), "rev-2".into())
             .expect("peer conflict");
-        controller.dispatch(UiIntent::SetEditableCapabilities(fly_ui::CapabilityState::full()))
+        controller
+            .dispatch(UiIntent::SetEditableCapabilities(
+                fly_ui::CapabilityState::full(),
+            ))
             .expect("refresh host permissions");
         assert!(!controller.ui().state.capabilities.edit);
         let before = controller.clone();
-        assert!(controller.dispatch(UiIntent::execute(EditorCommand::Remove {
-            component_id: "hero".into(),
-        })).is_err());
-        let recovered = GrapesJsCodec::encode_value(controller.editor().document())
-            .expect("recovery document");
+        assert!(
+            controller
+                .dispatch(UiIntent::execute(EditorCommand::Remove {
+                    component_id: "hero".into(),
+                }))
+                .is_err()
+        );
+        let recovered =
+            GrapesJsCodec::encode_value(controller.editor().document()).expect("recovery document");
         assert!(controller.apply_recovered_merge(recovered).is_err());
         let mut nested = Value::Null;
         for _ in 0..50_000 {
@@ -1121,7 +1222,9 @@ mod tests {
     fn peer_write_conflict_retires_active_attempt_and_rejects_its_late_success() {
         let mut controller = controller();
         let hash = controller.editor().revision().project_hash;
-        let attempt = controller.mark_save_started_with_id().expect("save started");
+        let attempt = controller
+            .mark_save_started_with_id()
+            .expect("save started");
 
         controller
             .mark_peer_write_conflict("rev-1".into(), "rev-2".into())
@@ -1130,7 +1233,11 @@ mod tests {
         assert_eq!(controller.revision_id(), "rev-1");
         assert!(controller.editor().revision().save_conflict);
         assert!(controller.ui().state.dirty.save_conflict);
-        assert!(controller.acknowledge_save_for_attempt(hash, &attempt, "rev-2").is_err());
+        assert!(
+            controller
+                .acknowledge_save_for_attempt(hash, &attempt, "rev-2")
+                .is_err()
+        );
         assert_eq!(controller.revision_id(), "rev-1");
         assert!(controller.ui().state.dirty.dirty);
     }
@@ -1138,30 +1245,37 @@ mod tests {
     #[test]
     fn controller_acknowledges_only_submitted_snapshot_and_keeps_newer_edits() {
         let mut controller = controller();
-        let patch = |label: &str| UiIntent::execute(EditorCommand::Patch {
-            component_id: "hero".to_string(),
-            patch: ComponentPatch::default()
-                .set_attribute("aria-label", json!(label)),
-        });
+        let patch = |label: &str| {
+            UiIntent::execute(EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: ComponentPatch::default().set_attribute("aria-label", json!(label)),
+            })
+        };
         controller.dispatch(patch("first")).expect("first edit");
         let submitted_hash = controller.editor().revision().project_hash;
         let first_attempt = controller.mark_save_started_with_id().expect("begin");
         assert!(controller.mark_save_started().is_err());
-        controller.dispatch(patch("second")).expect("edit in flight");
+        controller
+            .dispatch(patch("second"))
+            .expect("edit in flight");
         let working_hash = controller.editor().revision().project_hash;
         assert_ne!(submitted_hash, working_hash);
-        controller.acknowledge_save_for_attempt(submitted_hash, &first_attempt, "rev-2")
+        controller
+            .acknowledge_save_for_attempt(submitted_hash, &first_attempt, "rev-2")
             .expect("persisted earlier snapshot");
         assert!(controller.editor().revision().dirty);
         assert!(controller.ui().state.dirty.dirty);
         assert_eq!(controller.revision_id(), "rev-2");
         assert_eq!(controller.editor().revision().project_hash, working_hash);
         assert!(!controller.editor().revision().save_conflict);
-        assert!(controller
-            .acknowledge_save_for_attempt(submitted_hash, &first_attempt, "rev-3")
-            .is_err());
+        assert!(
+            controller
+                .acknowledge_save_for_attempt(submitted_hash, &first_attempt, "rev-3")
+                .is_err()
+        );
         let latest_attempt = controller.mark_save_started_with_id().expect("save newest");
-        controller.acknowledge_save_for_attempt(working_hash, &latest_attempt, "rev-3")
+        controller
+            .acknowledge_save_for_attempt(working_hash, &latest_attempt, "rev-3")
             .expect("persisted current snapshot");
         assert!(!controller.ui().state.dirty.dirty);
     }
@@ -1178,9 +1292,11 @@ mod tests {
         let new_attempt = restored.mark_save_started_with_id().expect("new save");
         assert_eq!(old_attempt.sequence, new_attempt.sequence);
         assert_ne!(old_attempt.request_id, new_attempt.request_id);
-        assert!(restored
-            .acknowledge_save_for_attempt(hash, &old_attempt, "stale-revision")
-            .is_err());
+        assert!(
+            restored
+                .acknowledge_save_for_attempt(hash, &old_attempt, "stale-revision")
+                .is_err()
+        );
         assert_eq!(restored.active_save_attempt().as_ref(), Some(&new_attempt));
         restored
             .acknowledge_save_for_attempt(hash, &new_attempt, "current-revision")
@@ -1195,11 +1311,14 @@ mod tests {
             sequence: 1,
             request_id: "stale-request".to_string(),
         };
-        assert!(controller
-            .acknowledge_save_for_attempt(hash, &stale_attempt, "rev-2")
-            .is_err());
+        assert!(
+            controller
+                .acknowledge_save_for_attempt(hash, &stale_attempt, "rev-2")
+                .is_err()
+        );
         assert_eq!(controller.revision_id(), "rev-1");
-        controller.mark_save_conflict("rev-1".into(), "rev-2".into())
+        controller
+            .mark_save_conflict("rev-1".into(), "rev-2".into())
             .expect("conflict");
         assert!(controller.mark_save_started().is_err());
         assert!(!controller.ui().state.dirty.save_in_progress);
@@ -1241,31 +1360,48 @@ mod tests {
         use fly_ui::{CanvasRect, DragSource, DropPosition, HitTestCandidate};
 
         let mut controller = controller();
-        controller.dispatch(UiIntent::execute(EditorCommand::Patch {
-            component_id: "hero".to_string(),
-            patch: ComponentPatch::default().merge_style(json!({"margin": "12px"})),
-        })).expect("edit");
+        controller
+            .dispatch(UiIntent::execute(EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: ComponentPatch::default().merge_style(json!({"margin": "12px"})),
+            }))
+            .expect("edit");
         for history_intent in [UiIntent::Undo, UiIntent::Redo] {
-            controller.dispatch(UiIntent::BeginDrag(DragSource::ExistingComponent {
-                component_id: "copy-me".to_string(),
-            })).expect("begin drag");
-            controller.dispatch(UiIntent::UpdateHitTest(vec![HitTestCandidate {
-                target_component_id: "hero".to_string(),
-                parent_component_id: Some("root".to_string()),
-                index: 0,
-                position: DropPosition::Inside,
-                rect: CanvasRect { x: 0.0, y: 0.0, width: 10.0, height: 10.0 },
-                score: 1.0,
-                legal: true,
-                reason: None,
-            }])).expect("hit test");
+            controller
+                .dispatch(UiIntent::BeginDrag(DragSource::ExistingComponent {
+                    component_id: "copy-me".to_string(),
+                }))
+                .expect("begin drag");
+            controller
+                .dispatch(UiIntent::UpdateHitTest(vec![HitTestCandidate {
+                    target_component_id: "hero".to_string(),
+                    parent_component_id: Some("root".to_string()),
+                    index: 0,
+                    position: DropPosition::Inside,
+                    rect: CanvasRect {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 10.0,
+                        height: 10.0,
+                    },
+                    score: 1.0,
+                    legal: true,
+                    reason: None,
+                }]))
+                .expect("hit test");
             let before = controller.clone();
-            assert!(controller.dispatch(UiIntent::execute(EditorCommand::Remove {
-                component_id: "missing".to_string(),
-            })).is_err());
+            assert!(
+                controller
+                    .dispatch(UiIntent::execute(EditorCommand::Remove {
+                        component_id: "missing".to_string(),
+                    }))
+                    .is_err()
+            );
             assert_eq!(controller, before);
 
-            controller.dispatch(history_intent).expect("history transition");
+            controller
+                .dispatch(history_intent)
+                .expect("history transition");
             assert!(controller.ui().state.drag.is_none());
             assert!(controller.ui().state.overlays.insertion.is_none());
             let after = controller.clone();
@@ -1336,23 +1472,41 @@ mod tests {
             controller.page_id(),
             controller.active_page_project().expect("home projection"),
         );
-        controller.validate_preview_request(&home, sequence).expect("current home");
-        controller.dispatch(UiIntent::ActivatePage {
-            page_id: Some("about".into()),
-            page_index: 1,
-        }).expect("navigate");
+        controller
+            .validate_preview_request(&home, sequence)
+            .expect("current home");
+        controller
+            .dispatch(UiIntent::ActivatePage {
+                page_id: Some("about".into()),
+                page_index: 1,
+            })
+            .expect("navigate");
         assert_eq!(controller.editor().revision().command_sequence, sequence);
         assert_eq!(controller.editor().revision().project_hash, hash);
-        assert!(controller.validate_preview_request(&home, sequence).is_err());
+        assert!(
+            controller
+                .validate_preview_request(&home, sequence)
+                .is_err()
+        );
 
         let about = PreviewPageBuilderInput::new(
             controller.page_id(),
             controller.active_page_project().expect("about projection"),
         );
-        controller.validate_preview_request(&about, sequence).expect("current about");
-        assert!(controller.validate_preview_request(&about, sequence + 1).is_err());
+        controller
+            .validate_preview_request(&about, sequence)
+            .expect("current about");
+        assert!(
+            controller
+                .validate_preview_request(&about, sequence + 1)
+                .is_err()
+        );
         let foreign = PreviewPageBuilderInput::new("foreign", about.project_data.clone());
-        assert!(controller.validate_preview_request(&foreign, sequence).is_err());
+        assert!(
+            controller
+                .validate_preview_request(&foreign, sequence)
+                .is_err()
+        );
     }
 
     #[test]
@@ -1380,7 +1534,9 @@ mod tests {
             .expect("activate new page");
         assert_eq!(controller.active_page_index(), 3);
 
-        controller.dispatch(UiIntent::Undo).expect("undo page creation");
+        controller
+            .dispatch(UiIntent::Undo)
+            .expect("undo page creation");
 
         assert_eq!(controller.active_page_index(), 0);
         assert_eq!(

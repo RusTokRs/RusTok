@@ -58,7 +58,8 @@ impl RbacService {
             Self::invalidate_user_rbac_caches(&affected.tenant_id, &affected.user_id).await;
         }
         if let Some(durable_generation) = durable_generation
-            && let Err(error) = publish_all_rbac_invalidation(cache_service, durable_generation).await
+            && let Err(error) =
+                publish_all_rbac_invalidation(cache_service, durable_generation).await
         {
             tracing::warn!(
                 %error,
@@ -83,7 +84,6 @@ impl RbacService {
 #[cfg(test)]
 mod tests {
     use super::RbacService;
-    use rustok_cache::CacheService;
     use crate::models::{
         _entities::{permissions, role_permissions, roles, user_roles},
         tenants, users,
@@ -91,6 +91,7 @@ mod tests {
     use crate::services::rbac_invalidation_generation::read_rbac_invalidation_generation;
     use chrono::Utc;
     use rustok_api::Permission;
+    use rustok_cache::CacheService;
     use rustok_core::{UserRole, UserStatus};
     use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
@@ -230,9 +231,10 @@ mod tests {
         );
 
         let cache_service = CacheService::from_url(None);
-        let report = RbacService::repair_system_roles_committed(&db, &cache_service, Some(tenant_id))
-            .await
-            .expect("committed repair should succeed");
+        let report =
+            RbacService::repair_system_roles_committed(&db, &cache_service, Some(tenant_id))
+                .await
+                .expect("committed repair should succeed");
 
         assert!(report.applied);
         assert_eq!(report.roles_created, missing_before);

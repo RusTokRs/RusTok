@@ -26,6 +26,7 @@ pub(crate) mod schema_retry_identity;
 pub mod transport;
 pub mod ui;
 
+pub use catalog_transport::fetch_catalog_search_options;
 pub use core::{ProductKind, product_grid_columns};
 pub use facets::{
     ProductAdminFacetLabels, ProductAdminFacetPanelView, ProductAdminFacetValueView,
@@ -37,6 +38,5 @@ pub use model::{
     ProductCatalogSearchOptions, SetVariantAxesDraft, VariantAxisConfig, VariantAxisDraft,
     VariantAxisValue, VariantAxisValueDraft,
 };
-pub use catalog_transport::fetch_catalog_search_options;
 pub use ui::ProductAdmin;
 pub use ui::{CategoriesPage, ProductEditorPage, ProductGridPage};

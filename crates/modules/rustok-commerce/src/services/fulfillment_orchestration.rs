@@ -3,9 +3,9 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::{sync::Arc, time::Duration};
 use thiserror::Error;
+use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
-use tracing::instrument;
 
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_fulfillment::providers::{

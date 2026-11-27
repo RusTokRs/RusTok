@@ -40,8 +40,7 @@ impl AuthLifecycleService {
         locale: &str,
     ) -> Result<(), AuthLifecycleError> {
         rustok_auth::application_clock::admit_now(ctx.db()).await?;
-        let new_email = normalize_email(requested_email)
-            .map_err(AuthLifecycleError::from)?;
+        let new_email = normalize_email(requested_email).map_err(AuthLifecycleError::from)?;
 
         let initial_user = Users::find_by_id(user_id)
             .filter(users::Column::TenantId.eq(tenant_id))
@@ -181,10 +180,7 @@ impl AuthLifecycleService {
         }
 
         let session = Self::find_current_session_for_password_change_in_tx(
-            &tx,
-            tenant_id,
-            user_id,
-            session_id,
+            &tx, tenant_id, user_id, session_id,
         )
         .await?
         .ok_or(AuthLifecycleError::SessionExpired)?;
@@ -231,7 +227,9 @@ impl AuthLifecycleService {
         let expires_at = now
             .clone()
             .checked_add_signed(Duration::seconds(ttl_seconds))
-            .ok_or(AuthLifecycleError::Internal(crate::error::Error::InternalServerError))?;
+            .ok_or(AuthLifecycleError::Internal(
+                crate::error::Error::InternalServerError,
+            ))?;
         let request = auth_email_change_requests::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
@@ -304,14 +302,10 @@ impl AuthLifecycleService {
         }
 
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
-        let user = Self::lock_user_for_mutation(
-            &tx,
-            tenant_id,
-            observed_request.user_id,
-        )
-        .await
-        .map_err(AuthLifecycleError::from)?
-        .ok_or(AuthLifecycleError::InvalidEmailChangeToken)?;
+        let user = Self::lock_user_for_mutation(&tx, tenant_id, observed_request.user_id)
+            .await
+            .map_err(AuthLifecycleError::from)?
+            .ok_or(AuthLifecycleError::InvalidEmailChangeToken)?;
 
         // Re-evaluate expiry after acquiring the user mutation fence. A
         // request that waited behind another mutation must not be accepted
@@ -335,14 +329,13 @@ impl AuthLifecycleService {
         }
 
         let proving_session = if let Some(session_id) = current_session_id {
-            Some(Self::find_current_session_for_password_change_in_tx(
-                &tx,
-                tenant_id,
-                user.id,
-                session_id,
+            Some(
+                Self::find_current_session_for_password_change_in_tx(
+                    &tx, tenant_id, user.id, session_id,
+                )
+                .await?
+                .ok_or(AuthLifecycleError::SessionExpired)?,
             )
-            .await?
-            .ok_or(AuthLifecycleError::SessionExpired)?)
         } else {
             None
         };
@@ -351,7 +344,10 @@ impl AuthLifecycleService {
         // validation. The unique tenant/email index decides mailbox ownership
         // at the actual write, not at a racy availability preflight.
         let transition_at = rustok_auth::application_clock::verified_now(&tx).await?;
-        if proving_session.as_ref().is_some_and(|session| !session.is_active_at(transition_at)) {
+        if proving_session
+            .as_ref()
+            .is_some_and(|session| !session.is_active_at(transition_at))
+        {
             return Err(AuthLifecycleError::SessionExpired);
         }
         if request.created_at.with_timezone(&Utc) > transition_at {
@@ -377,9 +373,15 @@ impl AuthLifecycleService {
         // among the user's unique columns.
         let mailbox_tx = tx.begin().await.map_err(AuthLifecycleError::from)?;
         match active.update(&mailbox_tx).await {
-            Ok(_) => mailbox_tx.commit().await.map_err(AuthLifecycleError::from)?,
+            Ok(_) => mailbox_tx
+                .commit()
+                .await
+                .map_err(AuthLifecycleError::from)?,
             Err(error) => {
-                mailbox_tx.rollback().await.map_err(AuthLifecycleError::from)?;
+                mailbox_tx
+                    .rollback()
+                    .await
+                    .map_err(AuthLifecycleError::from)?;
                 if !matches!(
                     error.sql_err(),
                     Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
@@ -389,7 +391,10 @@ impl AuthLifecycleService {
                 // The unique-index wait may have outlived either credential.
                 // Do not let an expired proving session consume the challenge.
                 let conflict_now = rustok_auth::application_clock::verified_now(&tx).await?;
-                if proving_session.as_ref().is_some_and(|session| !session.is_active_at(conflict_now)) {
+                if proving_session
+                    .as_ref()
+                    .is_some_and(|session| !session.is_active_at(conflict_now))
+                {
                     return Err(AuthLifecycleError::SessionExpired);
                 }
                 if request.created_at.with_timezone(&Utc) > conflict_now {
@@ -417,7 +422,10 @@ impl AuthLifecycleService {
         .await?;
         let _revoked_oauth_tokens =
             crate::services::oauth_token_service::revoke_user_delegated_tokens_in_tx(
-                &tx, tenant_id, user.id, transition_at,
+                &tx,
+                tenant_id,
+                user.id,
+                transition_at,
             )
             .await
             .map_err(AuthLifecycleError::from)?;
@@ -441,7 +449,10 @@ impl AuthLifecycleService {
             tx.rollback().await.map_err(AuthLifecycleError::from)?;
             return Err(AuthLifecycleError::InvalidEmailChangeToken);
         }
-        if proving_session.as_ref().is_some_and(|session| !session.is_active_at(final_now)) {
+        if proving_session
+            .as_ref()
+            .is_some_and(|session| !session.is_active_at(final_now))
+        {
             tx.rollback().await.map_err(AuthLifecycleError::from)?;
             return Err(AuthLifecycleError::SessionExpired);
         }
@@ -468,10 +479,17 @@ pub(super) async fn pending_email_change_window(
         .filter(auth_email_change_requests::Column::NewEmail.eq(recipient))
         .filter(auth_email_change_requests::Column::TokenHash.eq(token_hash))
         .find_also_related(Users)
-        .one(db).await?;
+        .one(db)
+        .await?;
     Ok(record.and_then(|(request, owner)| {
-        owner.filter(|user| email_change_request_matches_user(&request, user))
-            .map(|_| (request.created_at.with_timezone(&Utc), request.expires_at.with_timezone(&Utc)))
+        owner
+            .filter(|user| email_change_request_matches_user(&request, user))
+            .map(|_| {
+                (
+                    request.created_at.with_timezone(&Utc),
+                    request.expires_at.with_timezone(&Utc),
+                )
+            })
     }))
 }
 
@@ -510,11 +528,9 @@ async fn reclaim_stale_mailbox_reservation(
     };
 
     let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
-    let owner = AuthLifecycleService::lock_user_for_mutation(
-        &tx, tenant_id, observed.user_id,
-    )
-    .await
-    .map_err(AuthLifecycleError::from)?;
+    let owner = AuthLifecycleService::lock_user_for_mutation(&tx, tenant_id, observed.user_id)
+        .await
+        .map_err(AuthLifecycleError::from)?;
 
     // All issuers and confirmers hold the owner fence before changing a
     // challenge. Retention can only delete it, not modify or replace it.
@@ -529,7 +545,9 @@ async fn reclaim_stale_mailbox_reservation(
     if let Some(request) = exact_request {
         let now = rustok_auth::application_clock::verified_now(&tx).await?;
         if request.expires_at.with_timezone(&Utc) <= now
-            || !owner.as_ref().is_some_and(|user| email_change_request_matches_user(&request, user))
+            || !owner
+                .as_ref()
+                .is_some_and(|user| email_change_request_matches_user(&request, user))
         {
             // Retention may already have removed the same row. Zero affected
             // rows is harmless here, unlike one-shot credential consumption.
@@ -697,19 +715,36 @@ mod tests {
         let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
         ensure_email_change_table(&db).await;
         let tenant = tenants::ActiveModel::new("Tenant", "mailbox-reclaim")
-            .insert(&db).await.expect("tenant");
+            .insert(&db)
+            .await
+            .expect("tenant");
         let other_tenant = tenants::ActiveModel::new("Other", "mailbox-reclaim-other")
-            .insert(&db).await.expect("other tenant");
+            .insert(&db)
+            .await
+            .expect("other tenant");
         let owner = users::ActiveModel::new(tenant.id, "owner@example.com", "hash")
-            .insert(&db).await.expect("owner");
+            .insert(&db)
+            .await
+            .expect("owner");
         let requester = users::ActiveModel::new(tenant.id, "requester@example.com", "hash")
-            .insert(&db).await.expect("requester");
+            .insert(&db)
+            .await
+            .expect("requester");
         let other = users::ActiveModel::new(other_tenant.id, "other@example.com", "hash")
-            .insert(&db).await.expect("other tenant owner");
+            .insert(&db)
+            .await
+            .expect("other tenant owner");
         let session = sessions::ActiveModel::new(
-            tenant.id, requester.id, "reclaim-session".to_string(),
-            Utc::now() + Duration::hours(1), None, None,
-        ).insert(&db).await.expect("session");
+            tenant.id,
+            requester.id,
+            "reclaim-session".to_string(),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("session");
         let target = "target@example.com";
         let stale_hash = "a".repeat(64);
         let new_hash = "b".repeat(64);
@@ -718,21 +753,38 @@ mod tests {
         insert_pending_request(&db, tenant.id, &owner, target, &stale_hash).await;
         insert_pending_request(&db, other_tenant.id, &other, target, &other_hash).await;
         insert_pending_request(
-            &db, tenant.id, &requester, "previous@example.com", &previous_hash,
-        ).await;
+            &db,
+            tenant.id,
+            &requester,
+            "previous@example.com",
+            &previous_hash,
+        )
+        .await;
 
         // A live foreign reservation must win. Failed issuance also rolls
         // back deletion of the requester's existing challenge.
         assert!(matches!(
             AuthLifecycleService::create_email_change_request_db(
-                &db, tenant.id, requester.id, session.id, &requester, target, &new_hash,
-            ).await,
+                &db,
+                tenant.id,
+                requester.id,
+                session.id,
+                &requester,
+                target,
+                &new_hash,
+            )
+            .await,
             Err(AuthLifecycleError::EmailAlreadyExists)
         ));
         for hash in [&stale_hash, &other_hash, &previous_hash] {
-            assert!(AuthEmailChangeRequests::find()
-                .filter(auth_email_change_requests::Column::TokenHash.eq(hash.as_str()))
-                .one(&db).await.unwrap().is_some());
+            assert!(
+                AuthEmailChangeRequests::find()
+                    .filter(auth_email_change_requests::Column::TokenHash.eq(hash.as_str()))
+                    .one(&db)
+                    .await
+                    .unwrap()
+                    .is_some()
+            );
         }
 
         // ABA restores the email but not the recovery revision. Reclaim the
@@ -742,29 +794,57 @@ mod tests {
                 id: Set(owner.id),
                 email: Set(email.to_string()),
                 ..Default::default()
-            }.update(&db).await.expect("change owner mailbox");
+            }
+            .update(&db)
+            .await
+            .expect("change owner mailbox");
         }
         AuthLifecycleService::create_email_change_request_db(
-            &db, tenant.id, requester.id, session.id, &requester, target, &new_hash,
-        ).await.expect("reclaim invalid reservation");
+            &db,
+            tenant.id,
+            requester.id,
+            session.id,
+            &requester,
+            target,
+            &new_hash,
+        )
+        .await
+        .expect("reclaim invalid reservation");
         for hash in [&stale_hash, &previous_hash] {
-            assert!(AuthEmailChangeRequests::find()
-                .filter(auth_email_change_requests::Column::TokenHash.eq(hash.as_str()))
-                .one(&db).await.unwrap().is_none());
+            assert!(
+                AuthEmailChangeRequests::find()
+                    .filter(auth_email_change_requests::Column::TokenHash.eq(hash.as_str()))
+                    .one(&db)
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
         }
         let replacement = AuthEmailChangeRequests::find()
             .filter(auth_email_change_requests::Column::TokenHash.eq(&new_hash))
-            .one(&db).await.unwrap().expect("replacement");
+            .one(&db)
+            .await
+            .unwrap()
+            .expect("replacement");
         assert_eq!(replacement.user_id, requester.id);
         assert_eq!(replacement.new_email, target);
-        assert!(AuthEmailChangeRequests::find()
-            .filter(auth_email_change_requests::Column::TokenHash.eq(&other_hash))
-            .one(&db).await.unwrap().is_some());
+        assert!(
+            AuthEmailChangeRequests::find()
+                .filter(auth_email_change_requests::Column::TokenHash.eq(&other_hash))
+                .one(&db)
+                .await
+                .unwrap()
+                .is_some()
+        );
         assert!(matches!(
             AuthLifecycleService::confirm_email_change_db(
                 &ServerRuntimeContext::new(db.clone(), Default::default()),
-                tenant.id, &stale_hash, None, None,
-            ).await,
+                tenant.id,
+                &stale_hash,
+                None,
+                None,
+            )
+            .await,
             Err(AuthLifecycleError::InvalidEmailChangeToken)
         ));
     }
@@ -798,7 +878,13 @@ mod tests {
 
         let before = Utc::now();
         let dispatch_deadline = AuthLifecycleService::create_email_change_request_db(
-            &db, tenant.id, user.id, session.id, &user, "new@example.com", &new_hash,
+            &db,
+            tenant.id,
+            user.id,
+            session.id,
+            &user,
+            "new@example.com",
+            &new_hash,
         )
         .await
         .expect("issue replacement challenge");
@@ -814,14 +900,33 @@ mod tests {
         let request = &requests[0];
         assert_eq!(request.token_hash, new_hash);
         assert!(dispatch_deadline <= request.expires_at.with_timezone(&Utc));
-        assert!(pending_email_change_window(&db, tenant.id, user.id, "previous@example.com", &old_hash)
-            .await.unwrap().is_none());
-        assert_eq!(pending_email_change_window(&db, tenant.id, user.id, "new@example.com", &new_hash)
-            .await.unwrap(), Some((request.created_at.with_timezone(&Utc), request.expires_at.with_timezone(&Utc))));
-        assert!(pending_email_change_window(&db, tenant.id, user.id, "wrong@example.com", &new_hash)
-            .await.unwrap().is_none());
-        assert!(pending_email_change_window(&db, Uuid::new_v4(), user.id, "new@example.com", &new_hash)
-            .await.unwrap().is_none());
+        assert!(
+            pending_email_change_window(&db, tenant.id, user.id, "previous@example.com", &old_hash)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            pending_email_change_window(&db, tenant.id, user.id, "new@example.com", &new_hash)
+                .await
+                .unwrap(),
+            Some((
+                request.created_at.with_timezone(&Utc),
+                request.expires_at.with_timezone(&Utc)
+            ))
+        );
+        assert!(
+            pending_email_change_window(&db, tenant.id, user.id, "wrong@example.com", &new_hash)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            pending_email_change_window(&db, Uuid::new_v4(), user.id, "new@example.com", &new_hash)
+                .await
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(request.new_email, "new@example.com");
         assert_eq!(request.recovery_revision, Some(user.recovery_revision));
         assert!(request.created_at.with_timezone(&Utc) >= before - Duration::milliseconds(1));
@@ -833,11 +938,20 @@ mod tests {
         // A mailbox ABA invalidates the retained pending row.
         for email in ["temporary@example.com", "old@example.com"] {
             users::ActiveModel {
-                id: Set(user.id), email: Set(email.to_string()), ..Default::default()
-            }.update(&db).await.unwrap();
+                id: Set(user.id),
+                email: Set(email.to_string()),
+                ..Default::default()
+            }
+            .update(&db)
+            .await
+            .unwrap();
         }
-        assert!(pending_email_change_window(&db, tenant.id, user.id, "new@example.com", &new_hash)
-            .await.unwrap().is_none());
+        assert!(
+            pending_email_change_window(&db, tenant.id, user.id, "new@example.com", &new_hash)
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -845,19 +959,29 @@ mod tests {
         let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
         ensure_email_change_table(&db).await;
         let tenant = tenants::ActiveModel::new("Tenant", "email-change-future")
-            .insert(&db).await.unwrap();
+            .insert(&db)
+            .await
+            .unwrap();
         let user = users::ActiveModel::new(tenant.id, "old@example.com", "hash")
-            .insert(&db).await.unwrap();
+            .insert(&db)
+            .await
+            .unwrap();
         let token_hash = "a".repeat(64);
         insert_pending_request(&db, tenant.id, &user, "new@example.com", &token_hash).await;
         let challenge = AuthEmailChangeRequests::find()
             .filter(auth_email_change_requests::Column::TokenHash.eq(&token_hash))
-            .one(&db).await.unwrap().unwrap();
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
         auth_email_change_requests::ActiveModel {
             id: Set(challenge.id),
             created_at: Set((Utc::now() + Duration::minutes(5)).into()),
             ..Default::default()
-        }.update(&db).await.unwrap();
+        }
+        .update(&db)
+        .await
+        .unwrap();
         let ctx = ServerRuntimeContext::new(db.clone(), Default::default());
         assert!(matches!(AuthLifecycleService::confirm_email_change_db(
             &ctx, tenant.id, &token_hash, None, None,
@@ -865,7 +989,13 @@ mod tests {
         let stored = Users::find_by_id(user.id).one(&db).await.unwrap().unwrap();
         assert_eq!(stored.email, user.email);
         assert_eq!(stored.recovery_revision, user.recovery_revision);
-        assert!(AuthEmailChangeRequests::find_by_id(challenge.id).one(&db).await.unwrap().is_some());
+        assert!(
+            AuthEmailChangeRequests::find_by_id(challenge.id)
+                .one(&db)
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[tokio::test]
@@ -903,14 +1033,7 @@ mod tests {
         .insert(&db)
         .await
         .expect("second session");
-        insert_pending_request(
-            &db,
-            tenant.id,
-            &user,
-            "new@example.com",
-            &token_hash,
-        )
-        .await;
+        insert_pending_request(&db, tenant.id, &user, "new@example.com", &token_hash).await;
 
         let changed = AuthLifecycleService::confirm_email_change_db(
             &ServerRuntimeContext::new(db.clone(), Default::default()),
@@ -939,7 +1062,11 @@ mod tests {
             .await
             .expect("query revoked sessions");
         assert_eq!(remaining_sessions.len(), 2);
-        assert!(remaining_sessions.iter().all(|session| session.revoked_at.is_some()));
+        assert!(
+            remaining_sessions
+                .iter()
+                .all(|session| session.revoked_at.is_some())
+        );
 
         let remaining = AuthEmailChangeRequests::find()
             .filter(auth_email_change_requests::Column::TokenHash.eq(&token_hash))
@@ -974,14 +1101,7 @@ mod tests {
             .await
             .expect("user");
         let token_hash = "d".repeat(64);
-        insert_pending_request(
-            &db,
-            tenant.id,
-            &user,
-            "new@example.com",
-            &token_hash,
-        )
-        .await;
+        insert_pending_request(&db, tenant.id, &user, "new@example.com", &token_hash).await;
 
         for (authenticated_user_id, current_session_id) in [
             (Some(user.id), None),
@@ -1047,14 +1167,7 @@ mod tests {
         .await
         .expect("other session");
         let token_hash = "e".repeat(64);
-        insert_pending_request(
-            &db,
-            tenant.id,
-            &user,
-            "new@example.com",
-            &token_hash,
-        )
-        .await;
+        insert_pending_request(&db, tenant.id, &user, "new@example.com", &token_hash).await;
 
         AuthLifecycleService::confirm_email_change_db(
             &ServerRuntimeContext::new(db.clone(), Default::default()),
@@ -1093,14 +1206,7 @@ mod tests {
             .await
             .expect("user");
         let token_hash = "b".repeat(64);
-        insert_pending_request(
-            &db,
-            tenant.id,
-            &user,
-            "new@example.com",
-            &token_hash,
-        )
-        .await;
+        insert_pending_request(&db, tenant.id, &user, "new@example.com", &token_hash).await;
 
         users::ActiveModel {
             id: Set(user.id),
@@ -1136,9 +1242,13 @@ mod tests {
         let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
         ensure_email_change_table(&db).await;
         let tenant = tenants::ActiveModel::new("Tenant", "email-change-revision")
-            .insert(&db).await.expect("tenant");
+            .insert(&db)
+            .await
+            .expect("tenant");
         let user = users::ActiveModel::new(tenant.id, "old@example.com", "password-hash")
-            .insert(&db).await.expect("user");
+            .insert(&db)
+            .await
+            .expect("user");
         let token_hash = "f".repeat(64);
         insert_pending_request(&db, tenant.id, &user, "new@example.com", &token_hash).await;
         for email in ["temporary@example.com", "old@example.com"] {
@@ -1146,32 +1256,58 @@ mod tests {
                 id: Set(user.id),
                 email: Set(email.to_string()),
                 ..Default::default()
-            }.update(&db).await.expect("change mailbox");
+            }
+            .update(&db)
+            .await
+            .expect("change mailbox");
         }
         let current = Users::find_by_id(user.id).one(&db).await.unwrap().unwrap();
         assert!(current.recovery_revision > user.recovery_revision);
         assert_eq!(current.email, user.email);
         assert_eq!(current.password_changed_at, user.password_changed_at);
         let session = sessions::ActiveModel::new(
-            tenant.id, user.id, "revision-session".to_string(),
-            Utc::now() + Duration::hours(1), None, None,
-        ).insert(&db).await.expect("session");
+            tenant.id,
+            user.id,
+            "revision-session".to_string(),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("session");
         assert!(matches!(
             AuthLifecycleService::create_email_change_request_db(
-                &db, tenant.id, user.id, session.id, &user, "new@example.com", &"e".repeat(64),
-            ).await,
+                &db,
+                tenant.id,
+                user.id,
+                session.id,
+                &user,
+                "new@example.com",
+                &"e".repeat(64),
+            )
+            .await,
             Err(AuthLifecycleError::InvalidCredentials)
         ));
         assert!(matches!(
             AuthLifecycleService::confirm_email_change_db(
                 &ServerRuntimeContext::new(db.clone(), Default::default()),
-                tenant.id, &token_hash, None, None,
-            ).await,
+                tenant.id,
+                &token_hash,
+                None,
+                None,
+            )
+            .await,
             Err(AuthLifecycleError::InvalidEmailChangeToken)
         ));
-        assert!(AuthEmailChangeRequests::find()
-            .filter(auth_email_change_requests::Column::TokenHash.eq(&token_hash))
-            .one(&db).await.unwrap().is_none());
+        assert!(
+            AuthEmailChangeRequests::find()
+                .filter(auth_email_change_requests::Column::TokenHash.eq(&token_hash))
+                .one(&db)
+                .await
+                .unwrap()
+                .is_none()
+        );
         let unchanged = Users::find_by_id(user.id).one(&db).await.unwrap().unwrap();
         assert_eq!(unchanged.email, user.email);
     }
@@ -1193,14 +1329,7 @@ mod tests {
             .await
             .expect("other user");
         let token_hash = "c".repeat(64);
-        insert_pending_request(
-            &db,
-            tenant.id,
-            &user,
-            "taken@example.com",
-            &token_hash,
-        )
-        .await;
+        insert_pending_request(&db, tenant.id, &user, "taken@example.com", &token_hash).await;
 
         assert!(matches!(
             AuthLifecycleService::confirm_email_change_db(
@@ -1226,8 +1355,12 @@ mod tests {
         assert!(matches!(
             AuthLifecycleService::confirm_email_change_db(
                 &ServerRuntimeContext::new(db.clone(), Default::default()),
-                tenant.id, &token_hash, None, None,
-            ).await,
+                tenant.id,
+                &token_hash,
+                None,
+                None,
+            )
+            .await,
             Err(AuthLifecycleError::InvalidEmailChangeToken)
         ));
     }

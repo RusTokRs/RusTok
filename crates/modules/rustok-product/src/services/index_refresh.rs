@@ -452,7 +452,11 @@ pub(crate) async fn record_exact_product_variant_refresh_in_tx(
     root_event_id: Uuid,
 ) -> CommerceResult<()> {
     record_product_variant_refresh_targets_in_tx(
-        txn, tenant_id, product_id, root_event_id, Some(variant_id),
+        txn,
+        tenant_id,
+        product_id,
+        root_event_id,
+        Some(variant_id),
     )
     .await
 }
@@ -474,9 +478,10 @@ async fn record_product_variant_refresh_targets_in_tx(
         "ProductVariant Index refresh",
     )?;
 
-    let inserted = txn.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        r#"
+    let inserted = txn
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"
         WITH live_variants AS (
             SELECT
                 variant.id AS variant_id,
@@ -544,9 +549,14 @@ async fn record_product_variant_refresh_targets_in_tx(
         FROM identified_targets
         ORDER BY variant_id ASC
         "#,
-        vec![tenant_id.into(), product_id.into(), root_event_id.into(), variant_id.into()],
-    ))
-    .await?;
+            vec![
+                tenant_id.into(),
+                product_id.into(),
+                root_event_id.into(),
+                variant_id.into(),
+            ],
+        ))
+        .await?;
     if variant_id.is_some() && inserted.rows_affected() != 1 {
         return Err(CommerceError::Core(rustok_core::error::Error::Internal(
             "Exact ProductVariant Index refresh target was not recorded".into(),

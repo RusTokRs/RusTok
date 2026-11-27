@@ -123,7 +123,11 @@ pub fn EnabledModulesProvider(children: Children) -> impl IntoView {
         },
     );
 
-    provide_context(EnabledModulesContext::new(resource, refresh_generation, auth));
+    provide_context(EnabledModulesContext::new(
+        resource,
+        refresh_generation,
+        auth,
+    ));
 
     children()
 }
@@ -137,8 +141,7 @@ impl EnabledModulesResource {
     /// Takes `&self`: the render closure that calls this re-runs on every source change, and a
     /// by-value receiver would make that closure `FnOnce`.
     pub fn modules(&self) -> Option<HashSet<String>> {
-        (!self.0.is_loading.get() && self.0.error.get().is_none())
-            .then(|| self.0.modules.get())
+        (!self.0.is_loading.get() && self.0.error.get().is_none()).then(|| self.0.modules.get())
     }
 
     /// The failure the request reported, if it failed.

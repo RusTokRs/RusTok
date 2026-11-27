@@ -283,7 +283,12 @@ async fn load_rebuild_operation_in_tx(
     match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
-        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+        backend => {
+            return Err(PagesError::validation(format!(
+                "unsupported SeaORM database backend: {:?}",
+                backend
+            )));
+        }
     }
     .ok_or_else(|| replacement_target_invalid("selected rebuild receipt is unavailable"))
 }
@@ -302,7 +307,12 @@ async fn load_rebuild_source_in_tx(
     match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
-        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+        backend => {
+            return Err(PagesError::validation(format!(
+                "unsupported SeaORM database backend: {:?}",
+                backend
+            )));
+        }
     }
     .ok_or_else(|| replacement_target_invalid("selected rebuild provenance is unavailable"))
 }
@@ -320,12 +330,20 @@ async fn load_rebuild_operations_batch_in_tx(
         page_artifact_rebuild_operation::Entity::find()
             .filter(page_artifact_rebuild_operation::Column::TenantId.eq(tenant_id))
             .filter(page_artifact_rebuild_operation::Column::PageId.eq(page_id))
-            .filter(page_artifact_rebuild_operation::Column::Id.is_in(rebuild_operation_ids.iter().copied()))
+            .filter(
+                page_artifact_rebuild_operation::Column::Id
+                    .is_in(rebuild_operation_ids.iter().copied()),
+            )
     };
     let models = match txn.get_database_backend() {
         DbBackend::Sqlite => query().all(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().all(txn).await?,
-        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+        backend => {
+            return Err(PagesError::validation(format!(
+                "unsupported SeaORM database backend: {:?}",
+                backend
+            )));
+        }
     };
     let mut map = HashMap::with_capacity(models.len());
     for model in models {
@@ -352,7 +370,12 @@ async fn load_rebuild_sources_batch_in_tx(
     let models = match txn.get_database_backend() {
         DbBackend::Sqlite => query().all(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().all(txn).await?,
-        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+        backend => {
+            return Err(PagesError::validation(format!(
+                "unsupported SeaORM database backend: {:?}",
+                backend
+            )));
+        }
     };
     let mut map = HashMap::with_capacity(models.len());
     for model in models {
@@ -376,7 +399,12 @@ async fn load_binding_for_update_in_tx(
     Ok(match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
-        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+        backend => {
+            return Err(PagesError::validation(format!(
+                "unsupported SeaORM database backend: {:?}",
+                backend
+            )));
+        }
     })
 }
 
@@ -399,7 +427,12 @@ async fn ensure_missing_binding_recovery_in_tx(
         DbBackend::Postgres | DbBackend::MySql => {
             source_artifact_query().lock_shared().one(txn).await?
         }
-        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+        backend => {
+            return Err(PagesError::validation(format!(
+                "unsupported SeaORM database backend: {:?}",
+                backend
+            )));
+        }
     };
     if source_artifact.is_some() {
         return Err(replacement_current_conflict(
@@ -416,7 +449,12 @@ async fn ensure_missing_binding_recovery_in_tx(
     let body = match txn.get_database_backend() {
         DbBackend::Sqlite => body_query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => body_query().lock_shared().one(txn).await?,
-        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+        backend => {
+            return Err(PagesError::validation(format!(
+                "unsupported SeaORM database backend: {:?}",
+                backend
+            )));
+        }
     }
     .ok_or_else(|| {
         replacement_current_conflict(
@@ -437,7 +475,12 @@ async fn ensure_missing_binding_recovery_in_tx(
     let publish = match txn.get_database_backend() {
         DbBackend::Sqlite => publish_query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => publish_query().lock_shared().one(txn).await?,
-        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+        backend => {
+            return Err(PagesError::validation(format!(
+                "unsupported SeaORM database backend: {:?}",
+                backend
+            )));
+        }
     }
     .ok_or_else(|| {
         replacement_current_conflict(
@@ -511,7 +554,12 @@ async fn resolve_missing_binding_recovery_anchor_in_tx(
     let rollback = match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
-        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+        backend => {
+            return Err(PagesError::validation(format!(
+                "unsupported SeaORM database backend: {:?}",
+                backend
+            )));
+        }
     };
     let Some(rollback) = rollback else {
         return Ok(publish.result_version);
@@ -603,7 +651,12 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
     let operations = match txn.get_database_backend() {
         DbBackend::Sqlite => query().all(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().all(txn).await?,
-        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+        backend => {
+            return Err(PagesError::validation(format!(
+                "unsupported SeaORM database backend: {:?}",
+                backend
+            )));
+        }
     };
     if operations.len() != version_gap {
         return Err(replacement_current_conflict(
@@ -653,9 +706,9 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
             .get(&operation.rebuild_operation_id)
             .ok_or_else(|| replacement_target_invalid("selected rebuild receipt is unavailable"))?;
         verify_rebuild_receipt(prior_rebuild)?;
-        let prior_source = prior_sources
-            .get(&prior_rebuild.source_id)
-            .ok_or_else(|| replacement_target_invalid("selected rebuild provenance is unavailable"))?;
+        let prior_source = prior_sources.get(&prior_rebuild.source_id).ok_or_else(|| {
+            replacement_target_invalid("selected rebuild provenance is unavailable")
+        })?;
         verify_rebuild_source(prior_source)?;
         ensure_rebuild_matches_source(prior_rebuild, prior_source)?;
         if prior_rebuild.source_publish_operation_id != publish.id
@@ -782,7 +835,12 @@ async fn recovery_artifact_if_present_in_tx(
     Ok(match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
-        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+        backend => {
+            return Err(PagesError::validation(format!(
+                "unsupported SeaORM database backend: {:?}",
+                backend
+            )));
+        }
     })
 }
 
@@ -802,7 +860,12 @@ async fn load_replacement_artifact_in_tx(
     match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
-        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+        backend => {
+            return Err(PagesError::validation(format!(
+                "unsupported SeaORM database backend: {:?}",
+                backend
+            )));
+        }
     }
     .ok_or_else(|| replacement_target_invalid("rebuilt replacement artifact is unavailable"))
 }
@@ -825,7 +888,12 @@ async fn find_operation_in_tx(
     Ok(match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
-        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+        backend => {
+            return Err(PagesError::validation(format!(
+                "unsupported SeaORM database backend: {:?}",
+                backend
+            )));
+        }
     })
 }
 
@@ -847,7 +915,12 @@ async fn find_operation_for_rebuild_in_tx(
     Ok(match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
-        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+        backend => {
+            return Err(PagesError::validation(format!(
+                "unsupported SeaORM database backend: {:?}",
+                backend
+            )));
+        }
     })
 }
 

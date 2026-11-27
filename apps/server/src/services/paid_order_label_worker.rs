@@ -5,7 +5,9 @@ use tokio::task::JoinHandle;
 use tokio::time::{MissedTickBehavior, interval};
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
-use crate::services::stop_handle::{may_admit_next_worker_operation, run_admitted_worker_operation};
+use crate::services::stop_handle::{
+    may_admit_next_worker_operation, run_admitted_worker_operation,
+};
 
 static PAID_ORDER_LABEL_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 const PAID_ORDER_LABEL_SWEEP_INTERVAL: Duration = Duration::from_secs(5);

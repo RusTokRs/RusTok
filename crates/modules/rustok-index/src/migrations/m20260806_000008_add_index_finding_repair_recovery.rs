@@ -222,7 +222,9 @@ async fn install_immutability_guards(manager: &SchemaManager<'_>) -> Result<(), 
                 .await?;
             Ok(())
         }
-        _ => Err(DbErr::Custom("unsupported backend was rejected".to_string())),
+        _ => Err(DbErr::Custom(
+            "unsupported backend was rejected".to_string(),
+        )),
     }
 }
 
@@ -250,7 +252,9 @@ async fn install_completion_guard(manager: &SchemaManager<'_>) -> Result<(), DbE
                 .await?;
             Ok(())
         }
-        _ => Err(DbErr::Custom("unsupported backend was rejected".to_string())),
+        _ => Err(DbErr::Custom(
+            "unsupported backend was rejected".to_string(),
+        )),
     }
 }
 
@@ -278,7 +282,9 @@ async fn remove_completion_guard(manager: &SchemaManager<'_>) -> Result<(), DbEr
                 .await?;
             Ok(())
         }
-        _ => Err(DbErr::Custom("unsupported backend was rejected".to_string())),
+        _ => Err(DbErr::Custom(
+            "unsupported backend was rejected".to_string(),
+        )),
     }
 }
 
@@ -316,7 +322,9 @@ async fn remove_immutability_guards(manager: &SchemaManager<'_>) -> Result<(), D
                 .await?;
             Ok(())
         }
-        _ => Err(DbErr::Custom("unsupported backend was rejected".to_string())),
+        _ => Err(DbErr::Custom(
+            "unsupported backend was rejected".to_string(),
+        )),
     }
 }
 

@@ -16,6 +16,7 @@
 //! user bootstrap/backfill, OAuth application authorization, and user administration.
 
 pub mod admin_mutations;
+pub mod application_clock;
 pub mod backfill;
 pub mod bootstrap;
 pub mod config;
@@ -25,15 +26,14 @@ pub mod error;
 #[cfg(feature = "graphql")]
 pub mod graphql;
 pub mod jwt;
-pub mod jwt_keyring;
-mod jwt_fence;
 mod jwt_clock;
+mod jwt_fence;
+pub mod jwt_keyring;
 pub mod lifecycle;
 pub mod migrations;
 pub mod module;
 pub mod oauth_app_translation;
 pub mod rest;
-pub mod application_clock;
 pub mod retention;
 pub mod validation;
 pub mod worker_context;
@@ -64,21 +64,21 @@ pub use credentials::{
 };
 pub use crypto::{
     AuthMacPurpose, AuthRefreshCookie, AuthRefreshRetryKey, EXPECTED_SESSION_ID_HEADER,
-    REFRESH_RETRY_KEY_HEADER, auth_purpose_mac, parse_expected_session_id,
-    is_canonical_auth_mac_tag,
+    REFRESH_RETRY_KEY_HEADER, auth_purpose_mac, is_canonical_auth_mac_tag,
+    parse_expected_session_id,
 };
 pub use error::AuthError;
-pub use jwt_fence::{
-    JwtAdmission, JwtAuthorityConfig, JwtClusterObservation, JwtGenerationFence, JwtOperationalMetrics,
-    JwtReloadOutcome, JwtRevocationReceipt,
-};
 pub use jwt::{
-    Claims, EmailVerificationClaims, InviteClaims, IssuedAccessToken, IssuedOauthAccessToken, OauthAccessTokenInput,
-    PasswordResetClaims,
-    decode_access_token, decode_email_verification_token, decode_invite_token,
-    decode_password_reset_token, encode_access_token, encode_email_verification_token,
-    encode_invite_token, encode_oauth_access_token, encode_password_reset_token,
-    issue_direct_access_token, issue_oauth_access_token,
+    Claims, EmailVerificationClaims, InviteClaims, IssuedAccessToken, IssuedOauthAccessToken,
+    OauthAccessTokenInput, PasswordResetClaims, decode_access_token,
+    decode_email_verification_token, decode_invite_token, decode_password_reset_token,
+    encode_access_token, encode_email_verification_token, encode_invite_token,
+    encode_oauth_access_token, encode_password_reset_token, issue_direct_access_token,
+    issue_oauth_access_token,
+};
+pub use jwt_fence::{
+    JwtAdmission, JwtAuthorityConfig, JwtClusterObservation, JwtGenerationFence,
+    JwtOperationalMetrics, JwtReloadOutcome, JwtRevocationReceipt,
 };
 pub use lifecycle::{
     AcceptInviteRecord, AuthLifecycleContext, AuthLifecycleMutationError, AuthLifecyclePort,

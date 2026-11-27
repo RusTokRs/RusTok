@@ -1,4 +1,3 @@
-use tracing::instrument;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
@@ -6,6 +5,7 @@ use sea_orm::{
     Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 use utoipa::ToSchema;
 use uuid::Uuid;
 

@@ -4,8 +4,8 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use rustok_auth::{
     AcceptInviteRecord, AuthLifecycleContext, AuthLifecycleMutationError, AuthLifecyclePort,
-    AuthRefreshRetryKey, AuthSessionRecord, AuthTokenRecord, AuthUserBackfillDbReader, AuthUserBackfillReadPort,
-    AuthUserBackfillReadRequest, AuthUserBackfillRecord, AuthUserRecord,
+    AuthRefreshRetryKey, AuthSessionRecord, AuthTokenRecord, AuthUserBackfillDbReader,
+    AuthUserBackfillReadPort, AuthUserBackfillReadRequest, AuthUserBackfillRecord, AuthUserRecord,
 };
 
 use crate::auth::AuthConfig;
@@ -39,8 +39,12 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError 
         AuthLifecycleError::AccountLocked => AuthLifecycleMutationError::AccountLocked,
         AuthLifecycleError::EmailNotVerified => AuthLifecycleMutationError::EmailNotVerified,
         AuthLifecycleError::InvalidRefreshToken => AuthLifecycleMutationError::InvalidRefreshToken,
-        AuthLifecycleError::RefreshAlreadyRotated => AuthLifecycleMutationError::RefreshAlreadyRotated,
-        AuthLifecycleError::SessionLineageMismatch => AuthLifecycleMutationError::SessionLineageMismatch,
+        AuthLifecycleError::RefreshAlreadyRotated => {
+            AuthLifecycleMutationError::RefreshAlreadyRotated
+        }
+        AuthLifecycleError::SessionLineageMismatch => {
+            AuthLifecycleMutationError::SessionLineageMismatch
+        }
         AuthLifecycleError::SessionExpired => AuthLifecycleMutationError::SessionExpired,
         AuthLifecycleError::UserNotFound => AuthLifecycleMutationError::UserNotFound,
         AuthLifecycleError::InvalidResetToken => AuthLifecycleMutationError::InvalidResetToken,
@@ -110,7 +114,9 @@ impl ServerAuthLifecycleProvider {
         // created the session, so a resolution failure aborts the
         // authentication before anything is persisted and no
         // post-issuance compensation is needed here.
-        tokens.revalidate_for_publication(&self.auth_config).map_err(map_lifecycle_error)?;
+        tokens
+            .revalidate_for_publication(&self.auth_config)
+            .map_err(map_lifecycle_error)?;
         Ok(AuthTokenRecord {
             access_token: tokens.access_token,
             refresh_token: tokens.refresh_token,

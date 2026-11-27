@@ -918,7 +918,9 @@ impl RustokSettings {
         }
 
         if std::time::Instant::now()
-            .checked_add(std::time::Duration::from_millis(parsed.events.relay_interval_ms))
+            .checked_add(std::time::Duration::from_millis(
+                parsed.events.relay_interval_ms,
+            ))
             .is_none()
         {
             return Err(serde_json::Error::io(std::io::Error::new(
@@ -1878,7 +1880,11 @@ mod tests {
         });
         let error = RustokSettings::from_settings(&Some(oversized_channel))
             .expect_err("event channel capacity must remain bounded");
-        assert!(error.to_string().contains("channel_capacity must be between"));
+        assert!(
+            error
+                .to_string()
+                .contains("channel_capacity must be between")
+        );
 
         let oversized_batch = serde_json::json!({
             "rustok": {
@@ -1889,7 +1895,11 @@ mod tests {
         });
         let error = RustokSettings::from_settings(&Some(oversized_batch))
             .expect_err("relay batch must remain bounded");
-        assert!(error.to_string().contains("relay_batch_size must be between"));
+        assert!(
+            error
+                .to_string()
+                .contains("relay_batch_size must be between")
+        );
 
         let oversized_concurrency = serde_json::json!({
             "rustok": {
@@ -1900,7 +1910,11 @@ mod tests {
         });
         let error = RustokSettings::from_settings(&Some(oversized_concurrency))
             .expect_err("relay concurrency must remain bounded");
-        assert!(error.to_string().contains("relay_max_concurrency must be between"));
+        assert!(
+            error
+                .to_string()
+                .contains("relay_max_concurrency must be between")
+        );
 
         let oversized_backoff = serde_json::json!({
             "rustok": {
@@ -1925,7 +1939,11 @@ mod tests {
         });
         let error = RustokSettings::from_settings(&Some(oversized_claim))
             .expect_err("claim lease must remain bounded");
-        assert!(error.to_string().contains("relay_claim_ttl_ms must be between"));
+        assert!(
+            error
+                .to_string()
+                .contains("relay_claim_ttl_ms must be between")
+        );
 
         let oversized_interval = serde_json::json!({
             "rustok": {
@@ -1936,7 +1954,11 @@ mod tests {
         });
         let error = RustokSettings::from_settings(&Some(oversized_interval))
             .expect_err("relay polling must remain bounded");
-        assert!(error.to_string().contains("relay_interval_ms must be between"));
+        assert!(
+            error
+                .to_string()
+                .contains("relay_interval_ms must be between")
+        );
     }
 
     #[test]

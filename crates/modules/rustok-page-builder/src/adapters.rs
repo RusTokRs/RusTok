@@ -1,8 +1,8 @@
 use crate::dto::{BuilderTreeNode, PageBuilderCapabilityRequest};
 use crate::transport::{PageBuilderTransportError, PageBuilderTransportSuccess};
 use fly::{
-    ComponentNode, ComponentObject, GrapesJsCodec, ProjectDocument, RegistrySet, ValidationDiagnostic,
-    ValidationLimits, ValidationReport, validate_project,
+    ComponentNode, ComponentObject, GrapesJsCodec, ProjectDocument, RegistrySet,
+    ValidationDiagnostic, ValidationLimits, ValidationReport, validate_project,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -362,12 +362,16 @@ mod tests {
             ]
         });
         let inspection = FlyProjectInspection::decode(&project).expect("decode");
-        inspection.require_valid().expect("anonymous nodes are allowed");
+        inspection
+            .require_valid()
+            .expect("anonymous nodes are allowed");
         let tree = inspection.tree_nodes();
         assert_eq!(tree[0].id, "fly:pages[0].component");
         let section_id = &tree[0].children[0].id;
         assert_eq!(section_id, "fly:pages[0].component.components[1]");
-        let properties = inspection.component_properties(section_id).expect("section");
+        let properties = inspection
+            .component_properties(section_id)
+            .expect("section");
         assert_eq!(properties["attributes"]["class"], "anonymous");
         assert!(properties.get("components").is_none());
         assert!(properties.get("id").is_none());
@@ -377,7 +381,10 @@ mod tests {
                 "wrapper"
             );
         }
-        assert_eq!(inspection.component_properties("title").expect("named")["type"], "text");
+        assert_eq!(
+            inspection.component_properties("title").expect("named")["type"],
+            "text"
+        );
         for invalid in [
             "fly:pages[0].component.components[0]",
             "fly:pages[0].component.components[1].components[0]",
@@ -386,10 +393,13 @@ mod tests {
             "fly:pages[9].component",
             "fly:pages[0].component.extra",
         ] {
-            assert!(matches!(
-                inspection.component_properties(invalid),
-                Err(FlyProjectAdapterError::ComponentNotFound(_))
-            ), "unexpectedly resolved {invalid}");
+            assert!(
+                matches!(
+                    inspection.component_properties(invalid),
+                    Err(FlyProjectAdapterError::ComponentNotFound(_))
+                ),
+                "unexpectedly resolved {invalid}"
+            );
         }
     }
 
@@ -399,9 +409,10 @@ mod tests {
         for _ in 0..256 {
             nested = Value::Array(vec![nested]);
         }
-        let project = Value::Object(serde_json::Map::from_iter([
-            ("payload".to_string(), nested),
-        ]));
+        let project = Value::Object(serde_json::Map::from_iter([(
+            "payload".to_string(),
+            nested,
+        )]));
         assert!(matches!(
             FlyProjectInspection::decode(&project),
             Err(FlyProjectAdapterError::Decode(_))

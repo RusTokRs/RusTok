@@ -1,8 +1,8 @@
 use std::{fs, path::Path};
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 
-use super::{PlannedFile, options::ScaffoldOptions};
+use super::{options::ScaffoldOptions, PlannedFile};
 
 pub(super) const HOST_CONFIG: &str = "apps/next-admin/tsconfig.json";
 pub(super) const HOST_REGISTRY: &str = "apps/next-admin/src/modules/index.ts";

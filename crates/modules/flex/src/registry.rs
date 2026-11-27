@@ -474,7 +474,13 @@ mod persisted_definition_tests {
         source.validation = Some(serde_json::json!({ "min": "not-a-number" }));
         let err = field_definition_from_source(&source)
             .expect_err("invalid validation must not be dropped");
-        assert!(matches!(err, FieldDefinitionError::InvalidValidation { .. }));
-        assert!(err.to_string().contains("persisted field validation is invalid"));
+        assert!(matches!(
+            err,
+            FieldDefinitionError::InvalidValidation { .. }
+        ));
+        assert!(
+            err.to_string()
+                .contains("persisted field validation is invalid")
+        );
     }
 }

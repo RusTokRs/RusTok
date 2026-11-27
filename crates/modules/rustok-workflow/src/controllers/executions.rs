@@ -8,7 +8,10 @@ use rustok_api::{AuthContext, TenantContext, has_any_effective_permission};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
-use crate::{WorkflowCronReconciliationItem, WorkflowUnconfirmedExecutionItem, WorkflowError, WorkflowExecutionResponse, WorkflowService};
+use crate::{
+    WorkflowCronReconciliationItem, WorkflowError, WorkflowExecutionResponse, WorkflowService,
+    WorkflowUnconfirmedExecutionItem,
+};
 
 fn map_workflow_execution_error(
     error: WorkflowError,
@@ -197,11 +200,18 @@ pub async fn list_unconfirmed_executions(
         &[Permission::WORKFLOW_EXECUTIONS_LIST],
         "Permission denied: workflow_executions:list required",
     )?;
-    let items = crate::services::unconfirmed_executions_for_tenant(
-        &runtime.db_clone(), tenant.id, 100,
-    ).await.map_err(|error| map_workflow_execution_error(
-        error, "list_unconfirmed_executions", tenant.id, None, None,
-    ))?;
+    let items =
+        crate::services::unconfirmed_executions_for_tenant(&runtime.db_clone(), tenant.id, 100)
+            .await
+            .map_err(|error| {
+                map_workflow_execution_error(
+                    error,
+                    "list_unconfirmed_executions",
+                    tenant.id,
+                    None,
+                    None,
+                )
+            })?;
     Ok(Json(items.into_iter().map(Into::into).collect()))
 }
 
@@ -217,13 +227,18 @@ pub async fn list_cron_reconciliation(
         "Permission denied: workflow_executions:list required",
     )?;
 
-    let items = crate::services::reconciliation_required_for_tenant(
-        &runtime.db_clone(), tenant.id, 100,
-    )
-    .await
-    .map_err(|error| map_workflow_execution_error(
-        error, "list_cron_reconciliation", tenant.id, None, None,
-    ))?;
+    let items =
+        crate::services::reconciliation_required_for_tenant(&runtime.db_clone(), tenant.id, 100)
+            .await
+            .map_err(|error| {
+                map_workflow_execution_error(
+                    error,
+                    "list_cron_reconciliation",
+                    tenant.id,
+                    None,
+                    None,
+                )
+            })?;
     Ok(Json(items.into_iter().map(Into::into).collect()))
 }
 
@@ -251,10 +266,12 @@ pub async fn reconcile_cron_firing(
         &[Permission::WORKFLOWS_MANAGE],
         "Permission denied: workflows:manage required",
     )?;
-    let actor_id = auth.human_user_id().ok_or_else(|| HttpError::forbidden(
-        "workflow_reconciliation_actor_required",
-        "An authenticated human operator is required".to_string(),
-    ))?;
+    let actor_id = auth.human_user_id().ok_or_else(|| {
+        HttpError::forbidden(
+            "workflow_reconciliation_actor_required",
+            "An authenticated human operator is required".to_string(),
+        )
+    })?;
     let outcome = crate::services::reconcile_firing(
         &runtime.db_clone(),
         tenant.id,
@@ -263,9 +280,17 @@ pub async fn reconcile_cron_firing(
         request.decision,
         &request.evidence,
         request.prior_worker_fenced,
-    ).await.map_err(|error| map_workflow_execution_error(
-        error, "reconcile_cron_firing", tenant.id, None, Some(firing_id),
-    ))?;
+    )
+    .await
+    .map_err(|error| {
+        map_workflow_execution_error(
+            error,
+            "reconcile_cron_firing",
+            tenant.id,
+            None,
+            Some(firing_id),
+        )
+    })?;
     Ok(Json(outcome.into()))
 }
 

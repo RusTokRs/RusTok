@@ -244,41 +244,51 @@ mod tests {
             UserRole::Customer
         );
 
-        assert!(finish_superadmin_creation(
-            &ctx,
-            other.id,
-            "other-tenant",
-            &winner.email,
-            Err(AuthLifecycleError::EmailAlreadyExists),
-        )
-        .await
-        .is_err());
-        assert!(finish_superadmin_creation(
-            &ctx,
-            tenant.id,
-            "race-tenant",
-            &winner.email,
-            Err(AuthLifecycleError::Internal(crate::error::Error::InternalServerError)),
-        )
-        .await
-        .is_err());
+        assert!(
+            finish_superadmin_creation(
+                &ctx,
+                other.id,
+                "other-tenant",
+                &winner.email,
+                Err(AuthLifecycleError::EmailAlreadyExists),
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            finish_superadmin_creation(
+                &ctx,
+                tenant.id,
+                "race-tenant",
+                &winner.email,
+                Err(AuthLifecycleError::Internal(
+                    crate::error::Error::InternalServerError
+                )),
+            )
+            .await
+            .is_err()
+        );
     }
 
     #[tokio::test]
     async fn invalid_email_does_not_provision_a_tenant() {
         let ctx = test_context().await;
-        assert!(ensure_configured_superadmin(
-            &ctx,
-            "not-an-email",
-            "OriginalPassword123!",
-            "Invalid tenant",
-            "invalid-seed-tenant",
-        )
-        .await
-        .is_err());
-        assert!(tenants::find_by_slug(ctx.db(), "invalid-seed-tenant")
+        assert!(
+            ensure_configured_superadmin(
+                &ctx,
+                "not-an-email",
+                "OriginalPassword123!",
+                "Invalid tenant",
+                "invalid-seed-tenant",
+            )
             .await
-            .expect("tenant lookup")
-            .is_none());
+            .is_err()
+        );
+        assert!(
+            tenants::find_by_slug(ctx.db(), "invalid-seed-tenant")
+                .await
+                .expect("tenant lookup")
+                .is_none()
+        );
     }
 }

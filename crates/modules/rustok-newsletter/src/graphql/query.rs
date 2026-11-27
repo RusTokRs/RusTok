@@ -20,7 +20,11 @@ impl NewsletterQuery {
         tenant_id: Option<Uuid>,
     ) -> Result<GqlSubscriber> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
-        let tenant_id = super::require_newsletter_admin(ctx, tenant_id, &[rustok_api::Permission::NEWSLETTER_READ])?;
+        let tenant_id = super::require_newsletter_admin(
+            ctx,
+            tenant_id,
+            &[rustok_api::Permission::NEWSLETTER_READ],
+        )?;
         if id.is_nil() {
             return Err(Error::new("id must not be nil"));
         }
@@ -45,7 +49,11 @@ impl NewsletterQuery {
         search: Option<String>,
     ) -> Result<GqlSubscriberList> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
-        let tenant_id = super::require_newsletter_admin(ctx, tenant_id, &[rustok_api::Permission::NEWSLETTER_LIST])?;
+        let tenant_id = super::require_newsletter_admin(
+            ctx,
+            tenant_id,
+            &[rustok_api::Permission::NEWSLETTER_LIST],
+        )?;
 
         let query = SubscriberListQuery {
             page: page.filter(|&p| p > 0).map(|p| p as u64),
@@ -76,7 +84,11 @@ impl NewsletterQuery {
         tenant_id: Option<Uuid>,
     ) -> Result<GqlCampaign> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
-        let tenant_id = super::require_newsletter_admin(ctx, tenant_id, &[rustok_api::Permission::NEWSLETTER_READ])?;
+        let tenant_id = super::require_newsletter_admin(
+            ctx,
+            tenant_id,
+            &[rustok_api::Permission::NEWSLETTER_READ],
+        )?;
         if id.is_nil() {
             return Err(Error::new("id must not be nil"));
         }
@@ -100,7 +112,11 @@ impl NewsletterQuery {
         status: Option<GqlCampaignStatus>,
     ) -> Result<GqlCampaignList> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
-        let tenant_id = super::require_newsletter_admin(ctx, tenant_id, &[rustok_api::Permission::NEWSLETTER_LIST])?;
+        let tenant_id = super::require_newsletter_admin(
+            ctx,
+            tenant_id,
+            &[rustok_api::Permission::NEWSLETTER_LIST],
+        )?;
 
         let query = CampaignListQuery {
             page: page.filter(|&p| p > 0).map(|p| p as u64),

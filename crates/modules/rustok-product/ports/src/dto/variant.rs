@@ -54,11 +54,7 @@ pub struct PriceInput {
     ))]
     pub currency_code: String,
     pub channel_id: Option<Uuid>,
-    #[validate(length(
-        min = 1,
-        max = 100,
-        message = "Channel slug must be 1-100 characters"
-    ))]
+    #[validate(length(min = 1, max = 100, message = "Channel slug must be 1-100 characters"))]
     pub channel_slug: Option<String>,
     pub amount: Decimal,
     pub compare_at_amount: Option<Decimal>,
@@ -157,8 +153,8 @@ pub struct AdjustInventoryInput {
 
 #[cfg(test)]
 mod patch_tests {
-    use super::*;
     use super::super::{MAX_VARIANT_AXES, MAX_VARIANT_PRICE_ROWS};
+    use super::*;
 
     fn valid_variant_prices(count: usize) -> Vec<PriceInput> {
         (0..count)

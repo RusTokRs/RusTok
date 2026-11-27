@@ -159,18 +159,19 @@ impl ProductStorefrontIndexBudgetedProjectionExecutor {
     ) -> Result<ProductStorefrontIndexBudgetedExecution, ProductStorefrontIndexBudgetedStartError>
     {
         let decision = params.decision;
-        let (index_execution_budget_ms, tag_hydration_budget_ms, safety_margin_ms) = match decision {
-                ProductStorefrontIndexServingBudgetDecision::Eligible {
-                    index_execution_ms,
-                    tag_hydration_ms,
-                    safety_margin_ms,
-                } => (index_execution_ms, tag_hydration_ms, safety_margin_ms),
-                other => {
-                    return Err(ProductStorefrontIndexBudgetedStartError::BudgetNotEligible(
-                        other,
-                    ));
-                }
-            };
+        let (index_execution_budget_ms, tag_hydration_budget_ms, safety_margin_ms) = match decision
+        {
+            ProductStorefrontIndexServingBudgetDecision::Eligible {
+                index_execution_ms,
+                tag_hydration_ms,
+                safety_margin_ms,
+            } => (index_execution_ms, tag_hydration_ms, safety_margin_ms),
+            other => {
+                return Err(ProductStorefrontIndexBudgetedStartError::BudgetNotEligible(
+                    other,
+                ));
+            }
+        };
 
         let fallback_locale = params.fallback_locale.clone();
         let mut index_context = params.context.clone();
@@ -206,7 +207,8 @@ impl ProductStorefrontIndexBudgetedProjectionExecutor {
                 Some(
                     match timeout(
                         Duration::from_millis(tag_hydration_budget_ms),
-                        self.phases.hydrate_projected_tags(tag_context, fallback_locale, projected),
+                        self.phases
+                            .hydrate_projected_tags(tag_context, fallback_locale, projected),
                     )
                     .await
                     {

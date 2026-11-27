@@ -115,10 +115,12 @@ fn validate_attribute_value_batches(
         let option_count = validate_attribute_value_patch_batch(&batch.patches)?;
         total_patches = total_patches
             .checked_add(batch.patches.len())
-            .ok_or_else(|| CommerceError::Validation("attribute patch count overflow".to_owned()))?;
-        total_option_ids = total_option_ids
-            .checked_add(option_count)
-            .ok_or_else(|| CommerceError::Validation("attribute option count overflow".to_owned()))?;
+            .ok_or_else(|| {
+                CommerceError::Validation("attribute patch count overflow".to_owned())
+            })?;
+        total_option_ids = total_option_ids.checked_add(option_count).ok_or_else(|| {
+            CommerceError::Validation("attribute option count overflow".to_owned())
+        })?;
 
         if total_patches > MAX_ATTRIBUTE_VALUE_PATCHES_PER_COMMAND {
             return Err(CommerceError::Validation(format!(
@@ -189,8 +191,8 @@ where
         )
     })?;
 
-    let value_type =
-        AttributeValueType::from_storage(&definition.value_type).map_err(map_schema_resolution_error)?;
+    let value_type = AttributeValueType::from_storage(&definition.value_type)
+        .map_err(map_schema_resolution_error)?;
     if !definition.is_localized
         || !matches!(
             value_type,
@@ -461,8 +463,7 @@ impl ProductCatalogSchemaService {
                         .insert(binding.attribute_id, rules.required_locales.clone());
                 }
                 if attribute_scope_includes_variant(scope) {
-                    required_variant_locales
-                        .insert(binding.attribute_id, rules.required_locales);
+                    required_variant_locales.insert(binding.attribute_id, rules.required_locales);
                 }
             }
         }
@@ -477,8 +478,8 @@ impl ProductCatalogSchemaService {
                 uuid_filter_values(tenant_id, &required_product_attribute_ids);
             let product_placeholder = format!("${}", values.len() + 1);
             values.push(product_id.into());
-            let rows = ProductPublishRequirementRow::find_by_statement(
-                Statement::from_sql_and_values(
+            let rows =
+                ProductPublishRequirementRow::find_by_statement(Statement::from_sql_and_values(
                     conn.get_database_backend(),
                     format!(
                         r#"
@@ -516,10 +517,9 @@ impl ProductCatalogSchemaService {
                         "#
                     ),
                     values,
-                ),
-            )
-            .all(conn)
-            .await?;
+                ))
+                .all(conn)
+                .await?;
 
             let present_rows = rows
                 .iter()
@@ -815,8 +815,7 @@ impl ProductCatalogSchemaService {
         )
         .await?;
         if product.status == crate::entities::product::ProductStatus::Active {
-            Self::validate_product_publish_requirements_in(&txn, tenant_id, product_id)
-                .await?;
+            Self::validate_product_publish_requirements_in(&txn, tenant_id, product_id).await?;
         }
         if !patches.is_empty() {
             advance_product_value_revision_in_tx(&txn, &product).await?;
@@ -962,8 +961,8 @@ where
         let (placeholders, mut values) = uuid_filter_values(tenant_id, required_attribute_ids);
         let product_placeholder = format!("${}", values.len() + 1);
         values.push(product_id.into());
-        let missing = MissingVariantAttributeRow::find_by_statement(
-            Statement::from_sql_and_values(
+        let missing =
+            MissingVariantAttributeRow::find_by_statement(Statement::from_sql_and_values(
                 conn.get_database_backend(),
                 format!(
                     r#"
@@ -1016,10 +1015,9 @@ where
                     "#
                 ),
                 values,
-            ),
-        )
-        .one(conn)
-        .await?;
+            ))
+            .one(conn)
+            .await?;
         if let Some(row) = missing {
             return Err(CommerceError::Validation(format!(
                 "required variant attribute `{}` is missing for variant `{}`",
@@ -1036,9 +1034,7 @@ where
                 .map(move |locale| (*attribute_id, locale.clone()))
         })
         .collect::<Vec<_>>();
-    required_pairs.sort_by(|left, right| {
-        left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1))
-    });
+    required_pairs.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
     required_pairs.dedup();
 
     if !required_pairs.is_empty() {
@@ -1062,8 +1058,8 @@ where
             required_rows.push(format!("({attribute_placeholder}, {locale_placeholder})"));
         }
 
-        let missing = MissingVariantRequiredLocaleRow::find_by_statement(
-            Statement::from_sql_and_values(
+        let missing =
+            MissingVariantRequiredLocaleRow::find_by_statement(Statement::from_sql_and_values(
                 backend,
                 format!(
                     r#"
@@ -1099,10 +1095,9 @@ where
                     required_rows.join(", ")
                 ),
                 values,
-            ),
-        )
-        .one(conn)
-        .await?;
+            ))
+            .one(conn)
+            .await?;
         if let Some(row) = missing {
             return Err(CommerceError::Validation(format!(
                 "required variant attribute `{}` is missing locale `{}` for variant `{}`",
@@ -1191,7 +1186,6 @@ where
     Ok(None)
 }
 
-
 #[cfg(test)]
 mod variant_publish_requirement_tests {
     use super::*;
@@ -1268,8 +1262,14 @@ mod variant_publish_requirement_tests {
         let first_variant_id = Uuid::new_v4();
         let second_variant_id = Uuid::new_v4();
         let attribute_id = Uuid::new_v4();
-        insert_two_variants(&db, tenant_id, product_id, first_variant_id, second_variant_id)
-            .await;
+        insert_two_variants(
+            &db,
+            tenant_id,
+            product_id,
+            first_variant_id,
+            second_variant_id,
+        )
+        .await;
         db.execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Sqlite,
             "INSERT INTO product_attributes (id, tenant_id, code, value_type, is_localized, archived_at, position) VALUES (?, ?, 'material', 'text', 0, NULL, 0)",
@@ -1313,8 +1313,14 @@ mod variant_publish_requirement_tests {
         let attribute_id = Uuid::new_v4();
         let first_value_id = Uuid::new_v4();
         let second_value_id = Uuid::new_v4();
-        insert_two_variants(&db, tenant_id, product_id, first_variant_id, second_variant_id)
-            .await;
+        insert_two_variants(
+            &db,
+            tenant_id,
+            product_id,
+            first_variant_id,
+            second_variant_id,
+        )
+        .await;
         db.execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Sqlite,
             "INSERT INTO product_attributes (id, tenant_id, code, value_type, is_localized, archived_at, position) VALUES (?, ?, 'care', 'text', 1, NULL, 0)",
@@ -1350,10 +1356,8 @@ mod variant_publish_requirement_tests {
         .await
         .unwrap();
 
-        let required_locales = HashMap::from([(
-            attribute_id,
-            vec!["en".to_owned(), "fr".to_owned()],
-        )]);
+        let required_locales =
+            HashMap::from([(attribute_id, vec!["en".to_owned(), "fr".to_owned()])]);
         let error = validate_variant_publish_requirements_in(
             &db,
             tenant_id,
@@ -1422,11 +1426,7 @@ mod localized_clear_tests {
         (db, tenant_id, product_id, attribute_id, value_id)
     }
 
-    async fn count_rows(
-        db: &DatabaseConnection,
-        sql: &str,
-        values: Vec<sea_orm::Value>,
-    ) -> i64 {
+    async fn count_rows(db: &DatabaseConnection, sql: &str, values: Vec<sea_orm::Value>) -> i64 {
         db.query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             sql.to_owned(),
@@ -1489,16 +1489,9 @@ mod localized_clear_tests {
             value: ProductAttributeValuePatchValue::Clear,
         };
 
-        write_product_value_patch(
-            &db,
-            tenant_id,
-            product_id,
-            "ru-RU",
-            &definition,
-            &patch,
-        )
-        .await
-        .unwrap();
+        write_product_value_patch(&db, tenant_id, product_id, "ru-RU", &definition, &patch)
+            .await
+            .unwrap();
 
         assert_eq!(
             count_rows(
@@ -1539,16 +1532,9 @@ mod localized_clear_tests {
             value: ProductAttributeValuePatchValue::Clear,
         };
 
-        write_product_value_patch(
-            &db,
-            tenant_id,
-            product_id,
-            "ru-RU",
-            &definition,
-            &patch,
-        )
-        .await
-        .unwrap();
+        write_product_value_patch(&db, tenant_id, product_id, "ru-RU", &definition, &patch)
+            .await
+            .unwrap();
 
         assert_eq!(
             count_rows(

@@ -19,9 +19,17 @@ impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let db = manager.get_connection();
         let statement = match manager.get_database_backend() {
-            DatabaseBackend::Postgres => "ALTER TABLE auth_invites ADD COLUMN issuer_membership_revision BIGINT CHECK (issuer_membership_revision >= 0)",
-            DatabaseBackend::Sqlite => "ALTER TABLE auth_invites ADD COLUMN issuer_membership_revision BIGINT CHECK (issuer_membership_revision IS NULL OR (typeof(issuer_membership_revision) = 'integer' AND issuer_membership_revision >= 0))",
-            _ => return Err(DbErr::Custom("unsupported invitation membership revision backend".into())),
+            DatabaseBackend::Postgres => {
+                "ALTER TABLE auth_invites ADD COLUMN issuer_membership_revision BIGINT CHECK (issuer_membership_revision >= 0)"
+            }
+            DatabaseBackend::Sqlite => {
+                "ALTER TABLE auth_invites ADD COLUMN issuer_membership_revision BIGINT CHECK (issuer_membership_revision IS NULL OR (typeof(issuer_membership_revision) = 'integer' AND issuer_membership_revision >= 0))"
+            }
+            _ => {
+                return Err(DbErr::Custom(
+                    "unsupported invitation membership revision backend".into(),
+                ));
+            }
         };
         db.execute_unprepared(statement).await?;
         db.execute_unprepared(REVOKE_UNCONSUMED).await?;
@@ -31,7 +39,8 @@ impl MigrationTrait for Migration {
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let db = manager.get_connection();
         db.execute_unprepared(REVOKE_UNCONSUMED).await?;
-        db.execute_unprepared("ALTER TABLE auth_invites DROP COLUMN issuer_membership_revision").await?;
+        db.execute_unprepared("ALTER TABLE auth_invites DROP COLUMN issuer_membership_revision")
+            .await?;
         Ok(())
     }
 }

@@ -509,7 +509,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     Ok(())
 }
 
-fn registered_provider(db: DatabaseConnection, auth_config: AuthConfig) -> Arc<dyn TranslationTargetProvider> {
+fn registered_provider(
+    db: DatabaseConnection,
+    auth_config: AuthConfig,
+) -> Arc<dyn TranslationTargetProvider> {
     let registry = ModuleRegistry::new()
         .register(ContentModule)
         .register(SeoModule);

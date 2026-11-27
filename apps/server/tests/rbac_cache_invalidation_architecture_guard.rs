@@ -178,13 +178,12 @@ fn rbac_invalidation_uses_one_transactionally_reserved_generation_sequence() {
         );
     }
 
-    assert!(
-        committed
-            .contains("publish_user_rbac_invalidation(cache_service, tenant_id, user_id, durable_generation)")
-    );
-    assert!(
-        admin.contains("publish_user_rbac_invalidation(cache_service, &tenant_id, &user_id, durable_generation)")
-    );
+    assert!(committed.contains(
+        "publish_user_rbac_invalidation(cache_service, tenant_id, user_id, durable_generation)"
+    ));
+    assert!(admin.contains(
+        "publish_user_rbac_invalidation(cache_service, &tenant_id, &user_id, durable_generation)"
+    ));
     assert!(repair.contains("publish_all_rbac_invalidation(cache_service, durable_generation)"));
     assert!(!repair.contains("publish_user_rbac_invalidation"));
 

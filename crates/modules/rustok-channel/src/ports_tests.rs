@@ -517,11 +517,9 @@ async fn a_lookup_that_exceeds_the_budget_fails_with_a_typed_timeout() {
 
 #[tokio::test]
 async fn a_lookup_inside_the_budget_keeps_the_owner_result() {
-    let value = super::within_deadline::<u8, _>(
-        std::time::Duration::from_secs(1),
-        async { Ok(7_u8) },
-    )
-    .await
-    .expect("an in-budget read must keep the owner result");
+    let value =
+        super::within_deadline::<u8, _>(std::time::Duration::from_secs(1), async { Ok(7_u8) })
+            .await
+            .expect("an in-budget read must keep the owner result");
     assert_eq!(value, 7);
 }

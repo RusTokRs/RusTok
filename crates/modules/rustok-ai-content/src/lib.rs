@@ -191,9 +191,7 @@ impl From<ModerationDecisionError> for String {
     }
 }
 
-pub fn normalize_moderation_decision(
-    decision: &str,
-) -> Result<String, ModerationDecisionError> {
+pub fn normalize_moderation_decision(decision: &str) -> Result<String, ModerationDecisionError> {
     let decision_slug = decision.trim().to_ascii_lowercase();
     if !matches!(decision_slug.as_str(), "allow" | "review" | "block") {
         return Err(ModerationDecisionError::InvalidDecision);

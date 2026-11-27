@@ -75,10 +75,7 @@ impl OutboxConsumer {
 
         let mut normalized = BTreeSet::new();
         for event_type in event_types {
-            if event_type.trim() != event_type
-                || event_type.is_empty()
-                || event_type.len() > 255
-            {
+            if event_type.trim() != event_type || event_type.is_empty() || event_type.len() > 255 {
                 return Err(Error::Validation(
                     "outbox consumer event type must contain 1 to 255 unpadded bytes".to_string(),
                 ));
@@ -257,12 +254,9 @@ impl OutboxConsumer {
             acknowledged_at: Set(Utc::now()),
         })
         .on_conflict(
-            OnConflict::columns([
-                receipt::Column::OutboxEventId,
-                receipt::Column::ConsumerKey,
-            ])
-            .do_nothing()
-            .to_owned(),
+            OnConflict::columns([receipt::Column::OutboxEventId, receipt::Column::ConsumerKey])
+                .do_nothing()
+                .to_owned(),
         )
         .exec_without_returning(txn)
         .await?;
@@ -345,11 +339,8 @@ mod tests {
             .expect("re-register");
 
         let tenant_id = Uuid::new_v4();
-        let envelope = EventEnvelope::new(
-            tenant_id,
-            None,
-            DomainEvent::TenantUpdated { tenant_id },
-        );
+        let envelope =
+            EventEnvelope::new(tenant_id, None, DomainEvent::TenantUpdated { tenant_id });
         OutboxTransport::new(db.clone())
             .publish(envelope.clone())
             .await
@@ -385,11 +376,8 @@ mod tests {
     async fn acknowledgement_requires_registered_event_type() {
         let db = test_db().await;
         let tenant_id = Uuid::new_v4();
-        let envelope = EventEnvelope::new(
-            tenant_id,
-            None,
-            DomainEvent::TenantUpdated { tenant_id },
-        );
+        let envelope =
+            EventEnvelope::new(tenant_id, None, DomainEvent::TenantUpdated { tenant_id });
         OutboxTransport::new(db.clone())
             .publish(envelope.clone())
             .await
@@ -415,19 +403,13 @@ mod tests {
         let consumer = OutboxConsumer::new(db.clone());
         let event_type = "tenant.updated".to_string();
         consumer
-            .register_required_event_types(
-                "consumer.retiring",
-                std::slice::from_ref(&event_type),
-            )
+            .register_required_event_types("consumer.retiring", std::slice::from_ref(&event_type))
             .await
             .expect("register consumer");
 
         let tenant_id = Uuid::new_v4();
-        let envelope = EventEnvelope::new(
-            tenant_id,
-            None,
-            DomainEvent::TenantUpdated { tenant_id },
-        );
+        let envelope =
+            EventEnvelope::new(tenant_id, None, DomainEvent::TenantUpdated { tenant_id });
         OutboxTransport::new(db.clone())
             .publish(envelope.clone())
             .await
@@ -467,10 +449,7 @@ mod tests {
         );
         assert!(
             consumer
-                .register_required_event_types(
-                    "valid.consumer",
-                    &[" tenant.updated".to_string()],
-                )
+                .register_required_event_types("valid.consumer", &[" tenant.updated".to_string()],)
                 .await
                 .is_err()
         );

@@ -352,8 +352,18 @@ mod tests {
                 "en",
                 "moderation-read-tenant-check",
             );
-            assert!(service.read_report(context.clone(), Uuid::nil()).await.is_err());
-            assert!(service.read_case(context.clone(), Uuid::nil()).await.is_err());
+            assert!(
+                service
+                    .read_report(context.clone(), Uuid::nil())
+                    .await
+                    .is_err()
+            );
+            assert!(
+                service
+                    .read_case(context.clone(), Uuid::nil())
+                    .await
+                    .is_err()
+            );
             assert!(service.read_decision(context, Uuid::nil()).await.is_err());
         }
     }

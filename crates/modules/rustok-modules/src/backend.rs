@@ -32,9 +32,10 @@ pub(crate) async fn begin_fenced_transaction(
     db: &DatabaseConnection,
 ) -> Result<DatabaseTransaction, DbErr> {
     match SupportedBackend::new(db.get_database_backend()).map_err(DbErr::from)? {
-        SupportedBackend::Postgres => db
-            .begin_with_config(Some(IsolationLevel::ReadCommitted), None)
-            .await,
+        SupportedBackend::Postgres => {
+            db.begin_with_config(Some(IsolationLevel::ReadCommitted), None)
+                .await
+        }
         SupportedBackend::Sqlite => db.begin().await,
     }
 }

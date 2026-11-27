@@ -11,9 +11,7 @@ use tokio::task::JoinHandle;
 
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
-use crate::services::app_lifecycle::{
-    EventDlqObserverInitializationLock, StopHandle,
-};
+use crate::services::app_lifecycle::{EventDlqObserverInitializationLock, StopHandle};
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::stop_handle::run_until_stopped;
@@ -610,7 +608,12 @@ mod tests {
         stop.stop().await;
         tokio::time::timeout(
             Duration::from_secs(1),
-            observer_loop(rustok_iggy::IggyConfig::default(), config, publisher, receiver),
+            observer_loop(
+                rustok_iggy::IggyConfig::default(),
+                config,
+                publisher,
+                receiver,
+            ),
         )
         .await
         .expect("stopped observer exits without broker access");

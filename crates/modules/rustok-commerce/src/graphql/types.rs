@@ -2125,7 +2125,11 @@ impl From<dto::ProductResponse> for GqlProduct {
                 .map(GqlVariantAxisConfig::from)
                 .collect(),
             variants: product.variants.into_iter().map(GqlVariant::from).collect(),
-            brands: product.brands.into_iter().map(GqlProductBrand::from).collect(),
+            brands: product
+                .brands
+                .into_iter()
+                .map(GqlProductBrand::from)
+                .collect(),
             images: product
                 .images
                 .into_iter()

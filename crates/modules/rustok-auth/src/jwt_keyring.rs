@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 
 use crate::config::{JwtKeyInputs, mac_root_is_valid, validate_rs256_key_pair};
 use crate::error::{AuthError, Result};
-use crate::jwt_fence::{KeyMetadata, RingMetadata, RS256_ALGORITHM_MARKER};
+use crate::jwt_fence::{KeyMetadata, RS256_ALGORITHM_MARKER, RingMetadata};
 
 const MAX_VERIFICATION_KEYS: usize = 16;
 
@@ -42,14 +42,14 @@ pub(crate) fn invalid_config() -> AuthError {
 pub(crate) fn valid_kid(kid: &str) -> bool {
     !kid.is_empty()
         && kid.len() <= 64
-        && kid.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        && kid
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 impl JwtKeyring {
     pub(crate) fn validate(&self, active_material: &str) -> Result<()> {
-        if !valid_kid(&self.active_kid)
-            || self.verification_keys.len() > MAX_VERIFICATION_KEYS
-        {
+        if !valid_kid(&self.active_kid) || self.verification_keys.len() > MAX_VERIFICATION_KEYS {
             return Err(invalid_config());
         }
         verification_key(active_material)?;
@@ -58,9 +58,9 @@ impl JwtKeyring {
                 || key.kid == self.active_kid
                 || key.verify_until <= 0
                 || key.material == active_material
-                || self.verification_keys[..index].iter().any(|other| {
-                    other.kid == key.kid || other.material == key.material
-                })
+                || self.verification_keys[..index]
+                    .iter()
+                    .any(|other| other.kid == key.kid || other.material == key.material)
             {
                 return Err(invalid_config());
             }
@@ -80,7 +80,12 @@ pub(crate) enum JwtPurpose {
 }
 
 impl JwtPurpose {
-    const ALL: [Self; 4] = [Self::Access, Self::PasswordReset, Self::EmailVerification, Self::Invite];
+    const ALL: [Self; 4] = [
+        Self::Access,
+        Self::PasswordReset,
+        Self::EmailVerification,
+        Self::Invite,
+    ];
 
     pub(crate) fn typ(self) -> &'static str {
         match self {
@@ -135,13 +140,25 @@ impl<'a> PurposeKeyringRef<'a> {
             },
             JwtPurpose::PasswordReset => Self {
                 ring: &inputs.special_jwt_keyrings.password_reset.keyring,
-                rsa_private: &inputs.special_jwt_keyrings.password_reset.rsa_private_key_pem,
-                rsa_public: &inputs.special_jwt_keyrings.password_reset.rsa_public_key_pem,
+                rsa_private: &inputs
+                    .special_jwt_keyrings
+                    .password_reset
+                    .rsa_private_key_pem,
+                rsa_public: &inputs
+                    .special_jwt_keyrings
+                    .password_reset
+                    .rsa_public_key_pem,
             },
             JwtPurpose::EmailVerification => Self {
                 ring: &inputs.special_jwt_keyrings.email_verification.keyring,
-                rsa_private: &inputs.special_jwt_keyrings.email_verification.rsa_private_key_pem,
-                rsa_public: &inputs.special_jwt_keyrings.email_verification.rsa_public_key_pem,
+                rsa_private: &inputs
+                    .special_jwt_keyrings
+                    .email_verification
+                    .rsa_private_key_pem,
+                rsa_public: &inputs
+                    .special_jwt_keyrings
+                    .email_verification
+                    .rsa_public_key_pem,
             },
             JwtPurpose::Invite => Self {
                 ring: &inputs.special_jwt_keyrings.invite.keyring,
@@ -251,9 +268,18 @@ impl ValidatedJwtKeyring {
             }
             let key = verification_key(&previous.material)?;
             let verification_identity = verification_identity(&key)?;
-            if history.insert(previous.kid.clone(), PreparedVerificationKey {
-                key, identity, verification_identity, verify_until: previous.verify_until,
-            }).is_some() {
+            if history
+                .insert(
+                    previous.kid.clone(),
+                    PreparedVerificationKey {
+                        key,
+                        identity,
+                        verification_identity,
+                        verify_until: previous.verify_until,
+                    },
+                )
+                .is_some()
+            {
                 return Err(invalid_config());
             }
         }
@@ -301,24 +327,33 @@ impl ValidatedJwtKeyrings {
         for purpose in JwtPurpose::ALL {
             let ring = self.for_purpose(purpose);
             let mut keys = BTreeMap::new();
-            keys.insert(ring.active_kid.clone(), KeyMetadata {
-                identity: fingerprint(&ring.active_identity)?,
-                verification_identity: fingerprint(&ring.active_verification_identity)?,
-                verify_until: None,
-                algorithm: RS256_ALGORITHM_MARKER.to_string(),
-            });
-            for (kid, history) in &ring.history {
-                keys.insert(kid.clone(), KeyMetadata {
-                    identity: fingerprint(&history.identity)?,
-                    verification_identity: fingerprint(&history.verification_identity)?,
-                    verify_until: Some(history.verify_until),
+            keys.insert(
+                ring.active_kid.clone(),
+                KeyMetadata {
+                    identity: fingerprint(&ring.active_identity)?,
+                    verification_identity: fingerprint(&ring.active_verification_identity)?,
+                    verify_until: None,
                     algorithm: RS256_ALGORITHM_MARKER.to_string(),
-                });
+                },
+            );
+            for (kid, history) in &ring.history {
+                keys.insert(
+                    kid.clone(),
+                    KeyMetadata {
+                        identity: fingerprint(&history.identity)?,
+                        verification_identity: fingerprint(&history.verification_identity)?,
+                        verify_until: Some(history.verify_until),
+                        algorithm: RS256_ALGORITHM_MARKER.to_string(),
+                    },
+                );
             }
-            result.insert(purpose.typ().to_string(), RingMetadata {
-                algorithm: RS256_ALGORITHM_MARKER.to_string(),
-                keys,
-            });
+            result.insert(
+                purpose.typ().to_string(),
+                RingMetadata {
+                    algorithm: RS256_ALGORITHM_MARKER.to_string(),
+                    keys,
+                },
+            );
         }
         Ok(result)
     }
@@ -337,10 +372,15 @@ impl ValidatedJwtKeyrings {
 /// AWS-LC returns the unsigned big-endian RSA components.
 fn rsa_public_components(key: &DecodingKey) -> Result<(Vec<u8>, Vec<u8>)> {
     let der = key.try_get_as_bytes().map_err(|_| invalid_config())?;
-    let (modulus, exponent) = (DEFAULT_PROVIDER.key_utils.rsa_pub_components_from_public_key)(der)
-        .map_err(|_| invalid_config())?;
+    let (modulus, exponent) = (DEFAULT_PROVIDER
+        .key_utils
+        .rsa_pub_components_from_public_key)(der)
+    .map_err(|_| invalid_config())?;
     let first = modulus.first().copied().ok_or_else(invalid_config)?;
-    let bits = modulus.len().saturating_mul(8).saturating_sub(first.leading_zeros() as usize);
+    let bits = modulus
+        .len()
+        .saturating_mul(8)
+        .saturating_sub(first.leading_zeros() as usize);
     if first == 0 || bits < 2048 || exponent.is_empty() {
         return Err(invalid_config());
     }
@@ -359,9 +399,10 @@ pub(crate) fn rsa_signing_key(private_pem: &str, public_pem: &str) -> Result<Enc
     let encoding = EncodingKey::from_rsa_pem(pem.as_bytes()).map_err(|_| invalid_config())?;
     let decoding = verification_key(public_pem)?;
     let public = rsa_public_components(&decoding)?;
-    let from_private = (DEFAULT_PROVIDER.key_utils.rsa_pub_components_from_private_key)(
-        encoding.as_bytes(),
-    ).map_err(|_| invalid_config())?;
+    let from_private = (DEFAULT_PROVIDER
+        .key_utils
+        .rsa_pub_components_from_private_key)(encoding.as_bytes())
+    .map_err(|_| invalid_config())?;
     if from_private != public {
         return Err(invalid_config());
     }
@@ -390,26 +431,41 @@ mod tests {
     fn retirement_cutoff_is_exclusive() {
         let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
         let old = rustok_test_utils::jwt::RsaKeyPairFixture::generate().unwrap();
-        let doc = fixture.document_with_access(
-            1, "next", &fixture.access, Some(("old", &old, 200)),
-        );
+        let doc =
+            fixture.document_with_access(1, "next", &fixture.access, Some(("old", &old, 200)));
         let config = crate::build_auth_config_from_document(
-            "root-test-material-with-at-least-32-bytes".into(), 900,
-            Default::default(), doc.to_string().as_bytes(),
-        ).unwrap().1;
-        let ring = config.prepared_jwt().unwrap().for_purpose(JwtPurpose::Access);
-        assert_eq!(ring.select("old", 199).map(|(_, cutoff)| cutoff), Some(Some(200)));
+            "root-test-material-with-at-least-32-bytes".into(),
+            900,
+            Default::default(),
+            doc.to_string().as_bytes(),
+        )
+        .unwrap()
+        .1;
+        let ring = config
+            .prepared_jwt()
+            .unwrap()
+            .for_purpose(JwtPurpose::Access);
+        assert_eq!(
+            ring.select("old", 199).map(|(_, cutoff)| cutoff),
+            Some(Some(200))
+        );
         assert!(ring.select("old", 200).is_none());
         assert!(ring.select("", 149).is_none());
         assert!(ring.select("unknown", 149).is_none());
-        assert_eq!(ring.select("next", 200).map(|(_, cutoff)| cutoff), Some(None));
+        assert_eq!(
+            ring.select("next", 200).map(|(_, cutoff)| cutoff),
+            Some(None)
+        );
     }
 
     #[test]
     fn rsa_identity_uses_canonical_modulus_not_pem_formatting() {
         let pair = rustok_test_utils::jwt::RsaKeyPairFixture::generate().unwrap();
         let padded = format!(" \n{}\n", pair.public_pem());
-        assert_eq!(key_identity(pair.public_pem()).unwrap(), key_identity(&padded).unwrap());
+        assert_eq!(
+            key_identity(pair.public_pem()).unwrap(),
+            key_identity(&padded).unwrap()
+        );
     }
 
     #[test]

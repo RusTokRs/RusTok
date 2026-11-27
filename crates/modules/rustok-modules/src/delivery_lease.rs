@@ -42,15 +42,20 @@ pub(crate) async fn lock_for_completion(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sea_orm::{ConnectOptions, Database, DbBackend, TransactionTrait};
-    use crate::{ArtifactEventDeliveryCompletion, ArtifactEventDeliveryConfig,
-        ArtifactEventDeliveryError, ArtifactEventDeliveryOutcome, ArtifactScheduleDeliveryConfig,
+    use crate::{
+        ArtifactEventDeliveryCompletion, ArtifactEventDeliveryConfig, ArtifactEventDeliveryError,
+        ArtifactEventDeliveryOutcome, ArtifactScheduleDeliveryConfig,
         ArtifactScheduleDeliveryError, ArtifactScheduleDeliveryOutcome,
-        SeaOrmArtifactEventDeliveryQueue, SeaOrmArtifactScheduleDeliveryQueue};
+        SeaOrmArtifactEventDeliveryQueue, SeaOrmArtifactScheduleDeliveryQueue,
+    };
+    use sea_orm::{ConnectOptions, Database, DbBackend, TransactionTrait};
 
     async fn connection(url: &str) -> sea_orm::DatabaseConnection {
         let mut options = ConnectOptions::new(url);
-        options.max_connections(1).min_connections(1).sqlx_logging(false);
+        options
+            .max_connections(1)
+            .min_connections(1)
+            .sqlx_logging(false);
         Database::connect(options).await.unwrap()
     }
 
@@ -70,13 +75,35 @@ mod tests {
              CREATE TABLE module_artifact_event_deliveries (delivery_id UUID PRIMARY KEY, tenant_id UUID, status TEXT, attempt INTEGER, claimed_by TEXT, claimed_until TIMESTAMPTZ, claim_token UUID, available_at TIMESTAMPTZ, last_error_code TEXT, completed_at TIMESTAMPTZ, dead_lettered_at TIMESTAMPTZ, cancelled_at TIMESTAMPTZ); \
              CREATE TABLE module_artifact_schedule_deliveries (LIKE module_artifact_event_deliveries INCLUDING ALL)"
         )).await.unwrap();
-        worker.execute_unprepared(&format!("SET search_path TO {schema}")).await.unwrap();
-        let pid: i32 = worker.query_one_raw(Statement::from_string(DbBackend::Postgres,
-            "SELECT pg_backend_pid() AS pid".to_string())).await.unwrap().unwrap().try_get("", "pid").unwrap();
-        let event_queue = SeaOrmArtifactEventDeliveryQueue::new(worker.clone(), ArtifactEventDeliveryConfig::default()).unwrap();
-        let schedule_queue = SeaOrmArtifactScheduleDeliveryQueue::new(worker.clone(), ArtifactScheduleDeliveryConfig::default()).unwrap();
+        worker
+            .execute_unprepared(&format!("SET search_path TO {schema}"))
+            .await
+            .unwrap();
+        let pid: i32 = worker
+            .query_one_raw(Statement::from_string(
+                DbBackend::Postgres,
+                "SELECT pg_backend_pid() AS pid".to_string(),
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "pid")
+            .unwrap();
+        let event_queue = SeaOrmArtifactEventDeliveryQueue::new(
+            worker.clone(),
+            ArtifactEventDeliveryConfig::default(),
+        )
+        .unwrap();
+        let schedule_queue = SeaOrmArtifactScheduleDeliveryQueue::new(
+            worker.clone(),
+            ArtifactScheduleDeliveryConfig::default(),
+        )
+        .unwrap();
         for kind in [DeliveryQueue::Event, DeliveryQueue::Schedule] {
-            let table = match kind { DeliveryQueue::Event => "module_artifact_event_deliveries", DeliveryQueue::Schedule => "module_artifact_schedule_deliveries" };
+            let table = match kind {
+                DeliveryQueue::Event => "module_artifact_event_deliveries",
+                DeliveryQueue::Schedule => "module_artifact_schedule_deliveries",
+            };
             let tenant = Uuid::new_v4();
             let delivery = Uuid::new_v4();
             let token = Uuid::new_v4();
@@ -84,23 +111,52 @@ mod tests {
                 format!("INSERT INTO {table} (tenant_id,delivery_id,status,attempt,claimed_by,claimed_until,claim_token,available_at) VALUES ($1,$2,'running',1,'worker',clock_timestamp() + interval '2 seconds',$3,clock_timestamp())"),
                 vec![tenant.into(), delivery.into(), token.into()])).await.unwrap();
             let tx = locker.begin().await.unwrap();
-            tx.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres,
-                format!("SELECT delivery_id FROM {table} WHERE delivery_id=$1 FOR UPDATE"), vec![delivery.into()])).await.unwrap();
+            tx.query_one_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                format!("SELECT delivery_id FROM {table} WHERE delivery_id=$1 FOR UPDATE"),
+                vec![delivery.into()],
+            ))
+            .await
+            .unwrap();
             let event = event_queue.clone();
             let schedule = schedule_queue.clone();
             let task = tokio::spawn(async move {
                 match kind {
                     DeliveryQueue::Event => {
-                        let result = event.complete(tenant, "worker", ArtifactEventDeliveryCompletion {
-                            delivery_id: delivery, attempt: 1, claim_token: token,
-                            outcome: ArtifactEventDeliveryOutcome::Succeeded,
-                        }).await;
-                        (matches!(&result, Err(ArtifactEventDeliveryError::ClaimLost)), format!("{result:?}"))
+                        let result = event
+                            .complete(
+                                tenant,
+                                "worker",
+                                ArtifactEventDeliveryCompletion {
+                                    delivery_id: delivery,
+                                    attempt: 1,
+                                    claim_token: token,
+                                    outcome: ArtifactEventDeliveryOutcome::Succeeded,
+                                },
+                            )
+                            .await;
+                        (
+                            matches!(&result, Err(ArtifactEventDeliveryError::ClaimLost)),
+                            format!("{result:?}"),
+                        )
                     }
                     DeliveryQueue::Schedule => {
-                        let result = schedule.complete(tenant, "worker", delivery, 1, token,
-                            ArtifactScheduleDeliveryOutcome::Held { error_code: "policy_denied".into() }).await;
-                        (matches!(&result, Err(ArtifactScheduleDeliveryError::ClaimLost)), format!("{result:?}"))
+                        let result = schedule
+                            .complete(
+                                tenant,
+                                "worker",
+                                delivery,
+                                1,
+                                token,
+                                ArtifactScheduleDeliveryOutcome::Held {
+                                    error_code: "policy_denied".into(),
+                                },
+                            )
+                            .await;
+                        (
+                            matches!(&result, Err(ArtifactScheduleDeliveryError::ClaimLost)),
+                            format!("{result:?}"),
+                        )
                     }
                 }
             });
@@ -108,7 +164,10 @@ mod tests {
             for _ in 0..100 {
                 let row = monitor.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres,
                     "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND wait_event_type='Lock') AS blocked", vec![pid.into()])).await.unwrap().unwrap();
-                if row.try_get::<bool>("", "blocked").unwrap() { blocked = true; break; }
+                if row.try_get::<bool>("", "blocked").unwrap() {
+                    blocked = true;
+                    break;
+                }
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             }
             assert!(blocked, "completion did not wait for the row lock");
@@ -116,12 +175,22 @@ mod tests {
             tx.commit().await.unwrap();
             let (lost, result) = task.await.unwrap();
             assert!(lost, "expired completion unexpectedly returned {result}");
-            let row = locker.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres,
-                format!("SELECT status,attempt,claim_token FROM {table} WHERE delivery_id=$1"), vec![delivery.into()])).await.unwrap().unwrap();
+            let row = locker
+                .query_one_raw(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    format!("SELECT status,attempt,claim_token FROM {table} WHERE delivery_id=$1"),
+                    vec![delivery.into()],
+                ))
+                .await
+                .unwrap()
+                .unwrap();
             assert_eq!(row.try_get::<String>("", "status").unwrap(), "running");
             assert_eq!(row.try_get::<i32>("", "attempt").unwrap(), 1);
             assert_eq!(row.try_get::<Uuid>("", "claim_token").unwrap(), token);
         }
-        locker.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+        locker
+            .execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
+            .await
+            .unwrap();
     }
 }

@@ -66,7 +66,9 @@ pub async fn resolve(request: Request<Body>, next: Next) -> Response {
     response
 }
 
-fn extract_presented_token(headers: &HeaderMap) -> Result<Option<String>, GuestCartTokenExtractionError> {
+fn extract_presented_token(
+    headers: &HeaderMap,
+) -> Result<Option<String>, GuestCartTokenExtractionError> {
     let header_token = extract_header_token(headers)?;
     let cookie_token = extract_cookie_token(headers)?;
 
@@ -80,7 +82,9 @@ fn extract_presented_token(headers: &HeaderMap) -> Result<Option<String>, GuestC
     }
 }
 
-fn extract_header_token(headers: &HeaderMap) -> Result<Option<String>, GuestCartTokenExtractionError> {
+fn extract_header_token(
+    headers: &HeaderMap,
+) -> Result<Option<String>, GuestCartTokenExtractionError> {
     let values = headers.get_all(crate::GUEST_CART_TOKEN_HEADER);
     let mut token = None;
 
@@ -100,7 +104,9 @@ fn extract_header_token(headers: &HeaderMap) -> Result<Option<String>, GuestCart
     Ok(token)
 }
 
-fn extract_cookie_token(headers: &HeaderMap) -> Result<Option<String>, GuestCartTokenExtractionError> {
+fn extract_cookie_token(
+    headers: &HeaderMap,
+) -> Result<Option<String>, GuestCartTokenExtractionError> {
     let mut token = None;
 
     for raw_header in headers.get_all(COOKIE).iter() {

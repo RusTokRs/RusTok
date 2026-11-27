@@ -226,13 +226,18 @@ mod tests {
             "en",
             "tag-names-test",
         );
-        let result = NoopProductTaxonomyPort.read_term_names(
-            context,
-            ReadTaxonomyTermNamesRequest {
-                term_ids: vec![Uuid::new_v4()],
-                fallback_locale: None,
-            },
-        ).await;
-        assert_eq!(result.unwrap_err().kind, rustok_api::PortErrorKind::Unavailable);
+        let result = NoopProductTaxonomyPort
+            .read_term_names(
+                context,
+                ReadTaxonomyTermNamesRequest {
+                    term_ids: vec![Uuid::new_v4()],
+                    fallback_locale: None,
+                },
+            )
+            .await;
+        assert_eq!(
+            result.unwrap_err().kind,
+            rustok_api::PortErrorKind::Unavailable
+        );
     }
 }

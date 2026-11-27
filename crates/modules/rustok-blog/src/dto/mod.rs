@@ -25,8 +25,8 @@ pub use comment::{
 };
 pub use post::{
     AdminPostCursor, ArchivePostInput, BulkOperationFailure, BulkOperationResult, CreatePostInput,
-    PostListQuery, PostListResponse, PostResponse, PostSortField, PostSortOrder, PostStatusCounts, PostSummary,
-    PublicPostPage, PublicPostsPageQuery, PublishedPostCursor, PublishedPostScanPage,
+    PostListQuery, PostListResponse, PostResponse, PostSortField, PostSortOrder, PostStatusCounts,
+    PostSummary, PublicPostPage, PublicPostsPageQuery, PublishedPostCursor, PublishedPostScanPage,
     PublishedSeoPost, UpdatePostInput,
 };
 pub use tag::{CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput};

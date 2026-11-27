@@ -141,7 +141,11 @@ pub fn issue_direct_access_token(
     };
 
     let token = encode_live_token(config, JwtPurpose::Access, &claims, now, expires_at)?;
-    Ok(IssuedAccessToken { token, issued_at: now, expires_at })
+    Ok(IssuedAccessToken {
+        token,
+        issued_at: now,
+        expires_at,
+    })
 }
 
 pub fn encode_oauth_access_token(
@@ -211,7 +215,11 @@ pub fn issue_oauth_access_token(
         return Err(AuthError::TokenEncodingFailed);
     }
     let token = encode_live_token(config, JwtPurpose::Access, &claims, now, expires_at)?;
-    Ok(IssuedAccessToken { token, issued_at: now, expires_at })
+    Ok(IssuedAccessToken {
+        token,
+        issued_at: now,
+        expires_at,
+    })
 }
 
 pub struct OauthAccessTokenInput<'a> {
@@ -301,8 +309,9 @@ pub fn decode_password_reset_token(
         return Err(AuthError::InvalidResetToken);
     }
     tracing::debug!("Decoding password reset token");
-    let claims = decode_for_purpose::<PasswordResetClaims>(config, token, JwtPurpose::PasswordReset)
-        .map_err(|_| AuthError::InvalidResetToken)?;
+    let claims =
+        decode_for_purpose::<PasswordResetClaims>(config, token, JwtPurpose::PasswordReset)
+            .map_err(|_| AuthError::InvalidResetToken)?;
 
     if claims.tenant_id.is_nil()
         || claims.sub.trim().is_empty()
@@ -351,8 +360,9 @@ pub fn decode_email_verification_token(
         return Err(AuthError::InvalidVerificationToken);
     }
     tracing::debug!("Decoding email verification token");
-    let claims = decode_for_purpose::<EmailVerificationClaims>(config, token, JwtPurpose::EmailVerification)
-        .map_err(|_| AuthError::InvalidVerificationToken)?;
+    let claims =
+        decode_for_purpose::<EmailVerificationClaims>(config, token, JwtPurpose::EmailVerification)
+            .map_err(|_| AuthError::InvalidVerificationToken)?;
 
     if claims.tenant_id.is_nil()
         || claims.sub.trim().is_empty()
@@ -440,7 +450,8 @@ fn token_expiration(now: chrono::DateTime<Utc>, ttl_seconds: u64) -> Result<chro
 
     let ttl = Duration::try_seconds(ttl_seconds)
         .ok_or_else(|| AuthError::Internal("Token expiration is out of range".to_string()))?;
-    let exp = now.checked_add_signed(ttl)
+    let exp = now
+        .checked_add_signed(ttl)
         .ok_or_else(|| AuthError::Internal("Token expiration is out of range".to_string()))?;
     // Claims use usize on the wire; prevent truncation on narrow targets.
     usize::try_from(now.timestamp()).map_err(|_| AuthError::TokenEncodingFailed)?;
@@ -483,7 +494,9 @@ fn prepared_header(ring: &ValidatedJwtKeyring, purpose: JwtPurpose) -> Header {
 }
 
 fn encode_for_purpose<T: Serialize>(
-    config: &AuthConfig, purpose: JwtPurpose, claims: &T,
+    config: &AuthConfig,
+    purpose: JwtPurpose,
+    claims: &T,
 ) -> Result<String> {
     config.with_jwt_operation(|prepared| {
         let ring = prepared.for_purpose(purpose);
@@ -519,7 +532,9 @@ fn auth_jwt_header(token: &str) -> Result<AuthJwtHeader> {
     if encoded.len() > 1024 {
         return Err(AuthError::InvalidAccessToken);
     }
-    let bytes = URL_SAFE_NO_PAD.decode(encoded).map_err(|_| AuthError::InvalidAccessToken)?;
+    let bytes = URL_SAFE_NO_PAD
+        .decode(encoded)
+        .map_err(|_| AuthError::InvalidAccessToken)?;
     serde_json::from_slice(&bytes).map_err(|_| AuthError::InvalidAccessToken)
 }
 
@@ -537,11 +552,13 @@ fn decode_for_purpose<T: DeserializeOwned>(
             return Err(AuthError::InvalidAccessToken);
         }
         let kid = header.kid.as_str();
-        let (key, cutoff) = selected.select(kid, Utc::now().timestamp())
+        let (key, cutoff) = selected
+            .select(kid, Utc::now().timestamp())
             .ok_or(AuthError::InvalidAccessToken)?;
         let validation = strict_jwt_validation(config);
         let claims = decode::<T>(token, key, &validation)
-            .map_err(|_| AuthError::InvalidAccessToken)?.claims;
+            .map_err(|_| AuthError::InvalidAccessToken)?
+            .claims;
         if cutoff.is_some_and(|until| Utc::now().timestamp() >= until) {
             return Err(AuthError::InvalidAccessToken);
         }
@@ -588,14 +605,18 @@ mod tests {
 
     fn config_from_document(doc: &serde_json::Value) -> AuthConfig {
         crate::build_auth_config_from_document(
-            ROOT.to_string(), 900, Default::default(), doc.to_string().as_bytes(),
-        ).unwrap().1
+            ROOT.to_string(),
+            900,
+            Default::default(),
+            doc.to_string().as_bytes(),
+        )
+        .unwrap()
+        .1
     }
 
     fn test_config() -> AuthConfig {
         config_from_document(&JwtKeyringFixture::generate().unwrap().document(1))
     }
-
 
     #[test]
     fn jwt_keyring_rotation_selects_one_key_and_enforces_retirement() {
@@ -607,36 +628,54 @@ mod tests {
         let session = Uuid::new_v4();
         let token = encode_access_token(&old, user, tenant, UserRole::Customer, session).unwrap();
         let old_claims = decode_access_token(&old, &token).unwrap();
-        let oauth = encode_oauth_access_token(&old, OauthAccessTokenInput {
-            app_id: user,
-            tenant_id: tenant,
-            role: UserRole::Customer,
-            client_id: Uuid::new_v4(),
-            scopes: &["read".to_string()],
-            grant_type: "client_credentials",
-            expires_in_secs: 900,
-            token_id: Uuid::new_v4(),
-        }).unwrap();
+        let oauth = encode_oauth_access_token(
+            &old,
+            OauthAccessTokenInput {
+                app_id: user,
+                tenant_id: tenant,
+                role: UserRole::Customer,
+                client_id: Uuid::new_v4(),
+                scopes: &["read".to_string()],
+                grant_type: "client_credentials",
+                expires_in_secs: 900,
+                token_id: Uuid::new_v4(),
+            },
+        )
+        .unwrap();
         let mut no_kid = jwt_header(&old, JwtPurpose::Access);
         no_kid.kid = None;
-        let legacy = encode(&no_kid, &old_claims, encoding_key(&old, JwtPurpose::Access).unwrap()).unwrap();
+        let legacy = encode(
+            &no_kid,
+            &old_claims,
+            encoding_key(&old, JwtPurpose::Access).unwrap(),
+        )
+        .unwrap();
         assert!(decode_access_token(&old, &legacy).is_err());
         let now = Utc::now().timestamp();
-        let settings = |until| fixture.document_with_access(
-            2, "next", &next, Some(("access", &fixture.access, until)),
-        );
+        let settings = |until| {
+            fixture.document_with_access(2, "next", &next, Some(("access", &fixture.access, until)))
+        };
         let rotated = config_from_document(&settings(now + 3600));
         assert_eq!(decode_access_token(&rotated, &token).unwrap().sub, user);
-        assert_eq!(decode_access_token(&rotated, &oauth).unwrap().grant_type, "client_credentials");
+        assert_eq!(
+            decode_access_token(&rotated, &oauth).unwrap().grant_type,
+            "client_credentials"
+        );
         assert!(decode_access_token(&rotated, &legacy).is_err());
-        let fresh = encode_access_token(&rotated, user, tenant, UserRole::Customer, session).unwrap();
+        let fresh =
+            encode_access_token(&rotated, user, tenant, UserRole::Customer, session).unwrap();
         assert_eq!(decode_header(&fresh).unwrap().kid.as_deref(), Some("next"));
         assert!(decode_access_token(&rotated, &fresh).is_ok());
         assert!(decode_access_token(&old, &fresh).is_err());
         for kid in ["unknown", "", "access"] {
             let mut header = jwt_header(&rotated, JwtPurpose::Access);
             header.kid = Some(kid.to_string());
-            let forged = encode(&header, &old_claims, encoding_key(&rotated, JwtPurpose::Access).unwrap()).unwrap();
+            let forged = encode(
+                &header,
+                &old_claims,
+                encoding_key(&rotated, JwtPurpose::Access).unwrap(),
+            )
+            .unwrap();
             assert!(decode_access_token(&rotated, &forged).is_err());
         }
         let retired = config_from_document(&settings(now - 1));
@@ -654,8 +693,17 @@ mod tests {
         let tenant = Uuid::new_v4();
         let reset = encode_password_reset_token(&old, tenant, "a@example.com", 900).unwrap();
         let verify = encode_email_verification_token(&old, tenant, "a@example.com", 900).unwrap();
-        let invite = encode_invite_token(&old, tenant, "a@example.com", UserRole::Customer, None, 900).unwrap();
-        let access = encode_access_token(&old, Uuid::new_v4(), tenant, UserRole::Customer, Uuid::new_v4()).unwrap();
+        let invite =
+            encode_invite_token(&old, tenant, "a@example.com", UserRole::Customer, None, 900)
+                .unwrap();
+        let access = encode_access_token(
+            &old,
+            Uuid::new_v4(),
+            tenant,
+            UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .unwrap();
         let reset_claims = decode_password_reset_token(&old, &reset).unwrap();
         let access_claims = decode_access_token(&old, &access).unwrap();
         let settings = |until| {
@@ -676,32 +724,45 @@ mod tests {
         assert!(decode_access_token(&rotated, &access).is_ok());
 
         let fresh = encode_password_reset_token(&rotated, tenant, "a@example.com", 900).unwrap();
-        assert_eq!(decode_header(&fresh).unwrap().kid.as_deref(), Some("reset-next"));
+        assert_eq!(
+            decode_header(&fresh).unwrap().kid.as_deref(),
+            Some("reset-next")
+        );
         assert!(decode_password_reset_token(&old, &fresh).is_err());
         // A forged reset with the correct reset header but an access signature must fail.
         let forged_reset = encode(
             &jwt_header(&rotated, JwtPurpose::PasswordReset),
             &reset_claims,
             encoding_key(&rotated, JwtPurpose::Access).unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
         assert!(decode_password_reset_token(&rotated, &forged_reset).is_err());
         // A forged access token with the correct access header but a reset signature must fail.
         let forged_access = encode(
             &jwt_header(&rotated, JwtPurpose::Access),
             &access_claims,
             encoding_key(&rotated, JwtPurpose::PasswordReset).unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
         assert!(decode_access_token(&rotated, &forged_access).is_err());
         // Even a valid reset signature cannot override the expected typ.
         let mut header = jwt_header(&rotated, JwtPurpose::PasswordReset);
         header.typ = Some("JWT".to_string());
-        let wrong_typ = encode(&header, &reset_claims,
-            encoding_key(&rotated, JwtPurpose::PasswordReset).unwrap()).unwrap();
+        let wrong_typ = encode(
+            &header,
+            &reset_claims,
+            encoding_key(&rotated, JwtPurpose::PasswordReset).unwrap(),
+        )
+        .unwrap();
         assert!(decode_password_reset_token(&rotated, &wrong_typ).is_err());
         header.typ = Some(JwtPurpose::PasswordReset.typ().to_string());
         header.kid = None;
-        let missing_kid = encode(&header, &reset_claims,
-            encoding_key(&rotated, JwtPurpose::PasswordReset).unwrap()).unwrap();
+        let missing_kid = encode(
+            &header,
+            &reset_claims,
+            encoding_key(&rotated, JwtPurpose::PasswordReset).unwrap(),
+        )
+        .unwrap();
         assert!(decode_password_reset_token(&rotated, &missing_kid).is_err());
         let rotated = config_from_document(&settings(now - 1));
         assert!(decode_password_reset_token(&rotated, &reset).is_err());
@@ -716,15 +777,25 @@ mod tests {
         use serde_json::json;
         let old = test_config();
         let tenant = Uuid::new_v4();
-        let access = encode_access_token(&old, Uuid::new_v4(), tenant, UserRole::Customer, Uuid::new_v4()).unwrap();
+        let access = encode_access_token(
+            &old,
+            Uuid::new_v4(),
+            tenant,
+            UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .unwrap();
         let mut segments = access.split('.');
         let _original_header = segments.next().unwrap();
         let payload = segments.next().unwrap();
         let signature = segments.next().unwrap();
         assert!(segments.next().is_none());
-        let forged_header = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&json!({
-            "alg": "HS256", "typ": JwtPurpose::Access.typ(), "kid": "access"
-        })).unwrap());
+        let forged_header = URL_SAFE_NO_PAD.encode(
+            serde_json::to_vec(&json!({
+                "alg": "HS256", "typ": JwtPurpose::Access.typ(), "kid": "access"
+            }))
+            .unwrap(),
+        );
         let forged = format!("{forged_header}.{payload}.{signature}");
         assert!(decode_access_token(&old, &forged).is_err());
 
@@ -734,9 +805,15 @@ mod tests {
             "kid": "mac-root", "material": old.secret(),
             "verify_until": Utc::now().timestamp() + 3600
         }]);
-        assert!(crate::build_auth_config_from_document(
-            old.secret().to_string(), 900, Default::default(), document.to_string().as_bytes(),
-        ).is_err());
+        assert!(
+            crate::build_auth_config_from_document(
+                old.secret().to_string(),
+                900,
+                Default::default(),
+                document.to_string().as_bytes(),
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -745,14 +822,29 @@ mod tests {
         let mut doc = fixture.document(1);
         let tenant = Uuid::new_v4();
         let config = config_from_document(&doc);
-        let token = encode_access_token(&config, Uuid::new_v4(), tenant,
-            UserRole::Customer, Uuid::new_v4()).unwrap();
+        let token = encode_access_token(
+            &config,
+            Uuid::new_v4(),
+            tenant,
+            UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .unwrap();
         doc["invite"] = fixture.access.ring("invite-next");
-        let invalid = AuthConfig::from_test_document_unvalidated(ROOT.into(),
-            doc.to_string().as_bytes());
+        let invalid =
+            AuthConfig::from_test_document_unvalidated(ROOT.into(), doc.to_string().as_bytes());
         assert!(decode_access_token(&invalid, &token).is_err());
-        assert!(encode_invite_token(&invalid, tenant, "a@example.com",
-            UserRole::Customer, None, 900).is_err());
+        assert!(
+            encode_invite_token(
+                &invalid,
+                tenant,
+                "a@example.com",
+                UserRole::Customer,
+                None,
+                900
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -768,26 +860,41 @@ mod tests {
             encode_access_token(config, user, tenant, UserRole::Customer, session).unwrap()
         };
         let old_token = issue(&old);
-        let old_oauth = encode_oauth_access_token(&old, OauthAccessTokenInput {
-            app_id: user,
-            tenant_id: tenant,
-            role: UserRole::Customer,
-            client_id: Uuid::new_v4(),
-            scopes: &["catalog:read".to_string()],
-            grant_type: "client_credentials",
-            expires_in_secs: 900,
-            token_id: Uuid::new_v4(),
-        }).unwrap();
+        let old_oauth = encode_oauth_access_token(
+            &old,
+            OauthAccessTokenInput {
+                app_id: user,
+                tenant_id: tenant,
+                role: UserRole::Customer,
+                client_id: Uuid::new_v4(),
+                scopes: &["catalog:read".to_string()],
+                grant_type: "client_credentials",
+                expires_in_secs: 900,
+                token_id: Uuid::new_v4(),
+            },
+        )
+        .unwrap();
         let reset = encode_password_reset_token(&old, tenant, "a@example.com", 900).unwrap();
 
         let staged = config_from_document(&fixture.document_with_access(
-            2, "access", &fixture.access, Some(("rsa-next", &next, now + 3600)),
+            2,
+            "access",
+            &fixture.access,
+            Some(("rsa-next", &next, now + 3600)),
         ));
-        assert_eq!(decode_header(&issue(&staged)).unwrap().kid.as_deref(), Some("access"));
-
-        let history = |until| fixture.document_with_access(
-            3, "rsa-next", &next, Some(("access", &fixture.access, until)),
+        assert_eq!(
+            decode_header(&issue(&staged)).unwrap().kid.as_deref(),
+            Some("access")
         );
+
+        let history = |until| {
+            fixture.document_with_access(
+                3,
+                "rsa-next",
+                &next,
+                Some(("access", &fixture.access, until)),
+            )
+        };
         let promoted = config_from_document(&history(now + 3600));
         let fresh = issue(&promoted);
         let header = decode_header(&fresh).unwrap();
@@ -801,12 +908,22 @@ mod tests {
         let claims = decode_access_token(&old, &old_token).unwrap();
         let mut legacy_header = jwt_header(&old, JwtPurpose::Access);
         legacy_header.kid = None;
-        let legacy = encode(&legacy_header, &claims, encoding_key(&old, JwtPurpose::Access).unwrap()).unwrap();
+        let legacy = encode(
+            &legacy_header,
+            &claims,
+            encoding_key(&old, JwtPurpose::Access).unwrap(),
+        )
+        .unwrap();
         assert!(decode_access_token(&promoted, &legacy).is_err());
         for wrong_id in ["rsa-next", "unknown"] {
             let mut wrong_header = jwt_header(&old, JwtPurpose::Access);
             wrong_header.kid = Some(wrong_id.to_string());
-            let wrong = encode(&wrong_header, &claims, encoding_key(&old, JwtPurpose::Access).unwrap()).unwrap();
+            let wrong = encode(
+                &wrong_header,
+                &claims,
+                encoding_key(&old, JwtPurpose::Access).unwrap(),
+            )
+            .unwrap();
             assert!(decode_access_token(&promoted, &wrong).is_err());
         }
         assert!(decode_password_reset_token(&promoted, &reset).is_ok());
@@ -827,21 +944,40 @@ mod tests {
         let next = RsaKeyPairFixture::generate().unwrap();
         let original = config_from_document(&fixture.document(1));
         let tenant = Uuid::new_v4();
-        let access = encode_access_token(&original, Uuid::new_v4(), tenant,
-            UserRole::Customer, Uuid::new_v4()).unwrap();
+        let access = encode_access_token(
+            &original,
+            Uuid::new_v4(),
+            tenant,
+            UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .unwrap();
         let mut doc = fixture.document(2);
         doc["invite"] = next.ring("invite-rsa");
         let config = config_from_document(&doc);
-        let invite = encode_invite_token(&config, tenant, "a@example.com",
-            UserRole::Customer, None, 900).unwrap();
+        let invite = encode_invite_token(
+            &config,
+            tenant,
+            "a@example.com",
+            UserRole::Customer,
+            None,
+            900,
+        )
+        .unwrap();
         assert_eq!(decode_header(&invite).unwrap().alg, Algorithm::RS256);
         assert!(decode_invite_token(&config, &invite).is_ok());
         assert!(decode_access_token(&config, &access).is_ok());
         assert!(decode_invite_token(&original, &invite).is_err());
         doc["access"] = next.ring("duplicate");
-        assert!(crate::build_auth_config_from_document(
-            ROOT.into(), 900, Default::default(), doc.to_string().as_bytes(),
-        ).is_err());
+        assert!(
+            crate::build_auth_config_from_document(
+                ROOT.into(),
+                900,
+                Default::default(),
+                doc.to_string().as_bytes(),
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -851,7 +987,8 @@ mod tests {
         let fixture = JwtKeyringFixture::generate().unwrap();
         let doc = fixture.document(1);
         let weak = AuthConfig::from_test_document_unvalidated(
-            "short-secret".into(), doc.to_string().as_bytes(),
+            "short-secret".into(),
+            doc.to_string().as_bytes(),
         );
         let encode = encode_access_token(
             &weak,
@@ -891,7 +1028,9 @@ mod tests {
             Uuid::new_v4(),
         );
         assert!(encode.is_err());
-        assert!(!crate::config::symmetric_secret_has_min_length(padded.secret()));
+        assert!(!crate::config::symmetric_secret_has_min_length(
+            padded.secret()
+        ));
         assert!(crate::config::symmetric_secret_has_min_length(
             &"a".repeat(32)
         ));
@@ -960,13 +1099,19 @@ mod tests {
 
         let password_token =
             encode_password_reset_token(&config, tenant_id, "USER@example.com", 900).unwrap();
-        assert_eq!(decode_header(&password_token).unwrap().alg, Algorithm::RS256);
+        assert_eq!(
+            decode_header(&password_token).unwrap().alg,
+            Algorithm::RS256
+        );
         let password_claims = decode_password_reset_token(&config, &password_token).unwrap();
         assert_eq!(password_claims.sub, "user@example.com");
 
         let verification_token =
             encode_email_verification_token(&config, tenant_id, "USER@example.com", 900).unwrap();
-        assert_eq!(decode_header(&verification_token).unwrap().alg, Algorithm::RS256);
+        assert_eq!(
+            decode_header(&verification_token).unwrap().alg,
+            Algorithm::RS256
+        );
         let verification_claims =
             decode_email_verification_token(&config, &verification_token).unwrap();
         assert_eq!(verification_claims.sub, "user@example.com");
@@ -1000,16 +1145,22 @@ mod tests {
             expires_in_secs: 900,
             token_id: Uuid::new_v4(),
         };
-        let cap = chrono::DateTime::<Utc>::from_timestamp(Utc::now().timestamp() + 60, 123_000_000).unwrap();
-        let issued = issue_oauth_access_token(&config, input("authorization_code"), Some(cap)).unwrap();
+        let cap = chrono::DateTime::<Utc>::from_timestamp(Utc::now().timestamp() + 60, 123_000_000)
+            .unwrap();
+        let issued =
+            issue_oauth_access_token(&config, input("authorization_code"), Some(cap)).unwrap();
         let claims = decode_access_token(&config, &issued.token).unwrap();
         assert_eq!(claims.iat, issued.issued_at.timestamp() as usize);
         assert_eq!(claims.exp, issued.expires_at.timestamp() as usize);
         assert_eq!(issued.expires_at.timestamp_subsec_nanos(), 0);
         assert_eq!(issued.expires_at.timestamp(), cap.timestamp());
         assert!(issued.expires_at <= cap);
-        assert!(issue_oauth_access_token(&config, input("authorization_code"), Some(Utc::now())).is_err());
-        let uncapped = issue_oauth_access_token(&config, input("client_credentials"), None).unwrap();
+        assert!(
+            issue_oauth_access_token(&config, input("authorization_code"), Some(Utc::now()))
+                .is_err()
+        );
+        let uncapped =
+            issue_oauth_access_token(&config, input("client_credentials"), None).unwrap();
         assert_eq!(
             uncapped.expires_at.timestamp() - uncapped.issued_at.timestamp(),
             900,
@@ -1024,7 +1175,9 @@ mod tests {
         for ttl in [i64::MAX as u64, (i64::MAX / 2) as u64] {
             assert!(token_expiration(Utc::now(), ttl).is_err());
         }
-        let access = config.clone().with_expiration(u64::MAX, config.refresh_expiration);
+        let access = config
+            .clone()
+            .with_expiration(u64::MAX, config.refresh_expiration);
         assert!(
             encode_access_token(
                 &access,
@@ -1094,16 +1247,24 @@ mod tests {
         };
         for issued_at in [now + 60, claims.exp, 0] {
             claims.iat = issued_at;
-            let signed = encode(&jwt_header(&config, JwtPurpose::Access), &claims, encoding_key(&config, JwtPurpose::Access).unwrap())
-                .unwrap();
+            let signed = encode(
+                &jwt_header(&config, JwtPurpose::Access),
+                &claims,
+                encoding_key(&config, JwtPurpose::Access).unwrap(),
+            )
+            .unwrap();
             assert!(decode_access_token(&config, &signed).is_err());
         }
 
         claims.iat = now;
         let mut payload = serde_json::to_value(&claims).unwrap();
         payload["nbf"] = serde_json::json!(now + 60);
-        let signed = encode(&jwt_header(&config, JwtPurpose::Access), &payload, encoding_key(&config, JwtPurpose::Access).unwrap())
-            .unwrap();
+        let signed = encode(
+            &jwt_header(&config, JwtPurpose::Access),
+            &payload,
+            encoding_key(&config, JwtPurpose::Access).unwrap(),
+        )
+        .unwrap();
         assert!(decode_access_token(&config, &signed).is_err());
 
         let reset = PasswordResetClaims {
@@ -1115,8 +1276,12 @@ mod tests {
             exp: now + 600,
             iat: now + 60,
         };
-        let signed = encode(&jwt_header(&config, JwtPurpose::PasswordReset), &reset, encoding_key(&config, JwtPurpose::PasswordReset).unwrap())
-            .unwrap();
+        let signed = encode(
+            &jwt_header(&config, JwtPurpose::PasswordReset),
+            &reset,
+            encoding_key(&config, JwtPurpose::PasswordReset).unwrap(),
+        )
+        .unwrap();
         assert!(decode_password_reset_token(&config, &signed).is_err());
     }
 
@@ -1140,14 +1305,20 @@ mod tests {
             chrono::DateTime::<Utc>::from_timestamp(expiration.timestamp(), 0).unwrap();
         assert!(issuance_is_live(issued, expiration, issued));
         assert!(issuance_is_live(
-            issued, expiration, signed_deadline - Duration::milliseconds(1),
+            issued,
+            expiration,
+            signed_deadline - Duration::milliseconds(1),
         ));
         assert!(!issuance_is_live(issued, expiration, signed_deadline));
         assert!(!issuance_is_live(
-            issued, expiration, signed_deadline + Duration::milliseconds(1),
+            issued,
+            expiration,
+            signed_deadline + Duration::milliseconds(1),
         ));
         assert!(!issuance_is_live(
-            issued, expiration, issued - Duration::milliseconds(1),
+            issued,
+            expiration,
+            issued - Duration::milliseconds(1),
         ));
         let epoch = chrono::DateTime::<Utc>::from_timestamp(0, 0).unwrap();
         assert!(token_expiration(epoch, 900).is_err());
@@ -1158,9 +1329,14 @@ mod tests {
         let config = test_config();
         let cap = Utc::now() + Duration::seconds(30);
         let issued = issue_direct_access_token(
-            &config, Uuid::new_v4(), Uuid::new_v4(), UserRole::Customer,
-            Uuid::new_v4(), Some(cap),
-        ).unwrap();
+            &config,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Customer,
+            Uuid::new_v4(),
+            Some(cap),
+        )
+        .unwrap();
         let claims = decode_access_token(&config, &issued.token).unwrap();
         assert_eq!(claims.exp as i64, issued.expires_at.timestamp());
         assert!(issued.expires_at <= cap);
@@ -1170,21 +1346,51 @@ mod tests {
     #[test]
     fn rfc7519_jwt_expiration_enforced() {
         let config = test_config();
-        let token = encode_access_token(&config, Uuid::new_v4(), Uuid::new_v4(),
-            UserRole::Customer, Uuid::new_v4()).unwrap();
+        let token = encode_access_token(
+            &config,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .unwrap();
         let mut claims = decode_access_token(&config, &token).unwrap();
         let now = Utc::now().timestamp() as usize;
         claims.iat = now - 60;
         claims.exp = now;
-        let expired = encode(&jwt_header(&config, JwtPurpose::Access), &claims,
-            encoding_key(&config, JwtPurpose::Access).unwrap()).unwrap();
+        let expired = encode(
+            &jwt_header(&config, JwtPurpose::Access),
+            &claims,
+            encoding_key(&config, JwtPurpose::Access).unwrap(),
+        )
+        .unwrap();
         assert!(decode_access_token(&config, &expired).is_err());
         let zero = config.with_expiration(0, 900);
-        assert!(encode_access_token(&zero, Uuid::new_v4(), Uuid::new_v4(),
-            UserRole::Customer, Uuid::new_v4()).is_err());
+        assert!(
+            encode_access_token(
+                &zero,
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                UserRole::Customer,
+                Uuid::new_v4()
+            )
+            .is_err()
+        );
         assert!(encode_password_reset_token(&zero, Uuid::new_v4(), "a@example.com", 0).is_err());
-        assert!(encode_email_verification_token(&zero, Uuid::new_v4(), "a@example.com", 0).is_err());
-        assert!(encode_invite_token(&zero, Uuid::new_v4(), "a@example.com", UserRole::Customer, None, 0).is_err());
+        assert!(
+            encode_email_verification_token(&zero, Uuid::new_v4(), "a@example.com", 0).is_err()
+        );
+        assert!(
+            encode_invite_token(
+                &zero,
+                Uuid::new_v4(),
+                "a@example.com",
+                UserRole::Customer,
+                None,
+                0
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -1200,11 +1406,15 @@ mod tests {
             let token = format!("{}.e30.signature", URL_SAFE_NO_PAD.encode(raw));
             assert!(auth_jwt_header(&token).is_err());
         }
-        let omitted = format!("{}.e30.signature", URL_SAFE_NO_PAD.encode(r#"{"alg":"RS256","typ":"JWT"}"#));
+        let omitted = format!(
+            "{}.e30.signature",
+            URL_SAFE_NO_PAD.encode(r#"{"alg":"RS256","typ":"JWT"}"#)
+        );
         assert!(auth_jwt_header(&omitted).is_err());
-        let valid = format!("{}.e30.signature", URL_SAFE_NO_PAD.encode(
-            r#"{"alg":"RS256","typ":"JWT","kid":"a"}"#,
-        ));
+        let valid = format!(
+            "{}.e30.signature",
+            URL_SAFE_NO_PAD.encode(r#"{"alg":"RS256","typ":"JWT","kid":"a"}"#,)
+        );
         let parsed = auth_jwt_header(&valid).unwrap();
         assert_eq!(parsed.kid, "a");
         assert_eq!(parsed.alg, Algorithm::RS256);
@@ -1219,10 +1429,18 @@ mod tests {
         let wrong = RsaKeyPairFixture::generate().unwrap();
         let mut doc = fixture.document(1);
         doc["access"]["rsa_public_key_pem"] = serde_json::json!(wrong.public_pem());
-        let config = AuthConfig::from_test_document_unvalidated(ROOT.into(),
-            doc.to_string().as_bytes());
-        assert!(encode_access_token(&config, Uuid::new_v4(), Uuid::new_v4(),
-            UserRole::Customer, Uuid::new_v4()).is_err());
+        let config =
+            AuthConfig::from_test_document_unvalidated(ROOT.into(), doc.to_string().as_bytes());
+        assert!(
+            encode_access_token(
+                &config,
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                UserRole::Customer,
+                Uuid::new_v4()
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -1318,8 +1536,13 @@ mod tests {
     fn access_jwt_rejects_signed_invalid_principal_facts() {
         let config = test_config();
         let token = encode_access_token(
-            &config, Uuid::new_v4(), Uuid::new_v4(), UserRole::Customer, Uuid::new_v4(),
-        ).unwrap();
+            &config,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .unwrap();
         let signed_invalid = |claims: &Claims| {
             let token = encode_for_purpose(&config, JwtPurpose::Access, claims).unwrap();
             assert!(decode_access_token(&config, &token).is_err());
@@ -1351,16 +1574,22 @@ mod tests {
     fn oauth_encoder_rejects_unsupported_grants() {
         let config = test_config();
         for grant_type in ["", "direct", "refresh_token", "unknown"] {
-            assert!(encode_oauth_access_token(&config, OauthAccessTokenInput {
-                app_id: Uuid::new_v4(),
-                tenant_id: Uuid::new_v4(),
-                role: UserRole::Customer,
-                client_id: Uuid::new_v4(),
-                scopes: &[],
-                grant_type,
-                expires_in_secs: 900,
-                token_id: Uuid::new_v4(),
-            }).is_err());
+            assert!(
+                encode_oauth_access_token(
+                    &config,
+                    OauthAccessTokenInput {
+                        app_id: Uuid::new_v4(),
+                        tenant_id: Uuid::new_v4(),
+                        role: UserRole::Customer,
+                        client_id: Uuid::new_v4(),
+                        scopes: &[],
+                        grant_type,
+                        expires_in_secs: 900,
+                        token_id: Uuid::new_v4(),
+                    }
+                )
+                .is_err()
+            );
         }
     }
 
@@ -1368,9 +1597,17 @@ mod tests {
     fn invite_issuance_requires_a_unique_non_nil_nonce() {
         let config = test_config();
         let tenant = Uuid::new_v4();
-        let issue = || encode_invite_token(
-            &config, tenant, "a@example.com", UserRole::Customer, None, 900,
-        ).unwrap();
+        let issue = || {
+            encode_invite_token(
+                &config,
+                tenant,
+                "a@example.com",
+                UserRole::Customer,
+                None,
+                900,
+            )
+            .unwrap()
+        };
         let first = issue();
         let second = issue();
         assert_ne!(first, second);
@@ -1395,19 +1632,27 @@ mod tests {
     fn access_claims_require_explicit_grant_type_and_scopes() {
         let config = test_config();
         let direct = encode_access_token(
-            &config, Uuid::new_v4(), Uuid::new_v4(),
-            UserRole::Customer, Uuid::new_v4(),
-        ).unwrap();
-        let oauth = encode_oauth_access_token(&config, OauthAccessTokenInput {
-            app_id: Uuid::new_v4(),
-            tenant_id: Uuid::new_v4(),
-            role: UserRole::Customer,
-            client_id: Uuid::new_v4(),
-            scopes: &[],
-            grant_type: "client_credentials",
-            expires_in_secs: 900,
-            token_id: Uuid::new_v4(),
-        }).unwrap();
+            &config,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .unwrap();
+        let oauth = encode_oauth_access_token(
+            &config,
+            OauthAccessTokenInput {
+                app_id: Uuid::new_v4(),
+                tenant_id: Uuid::new_v4(),
+                role: UserRole::Customer,
+                client_id: Uuid::new_v4(),
+                scopes: &[],
+                grant_type: "client_credentials",
+                expires_in_secs: 900,
+                token_id: Uuid::new_v4(),
+            },
+        )
+        .unwrap();
         for token in [direct, oauth] {
             let claims = decode_access_token(&config, &token).unwrap();
             for field in ["grant_type", "scopes"] {
@@ -1431,14 +1676,27 @@ mod tests {
             (UserRole::Customer, "a".repeat(65)),
             (UserRole::Admin, "custom".to_string()),
         ] {
-            assert!(encode_invite_token(
-                &config, tenant, "a@example.com", role, Some(slug), 900,
-            ).is_err());
+            assert!(
+                encode_invite_token(&config, tenant, "a@example.com", role, Some(slug), 900,)
+                    .is_err()
+            );
         }
         let token = encode_invite_token(
-            &config, tenant, "a@example.com", UserRole::Customer, Some("custom".to_string()), 900,
-        ).unwrap();
-        assert_eq!(decode_invite_token(&config, &token).unwrap().custom_role_slug.as_deref(), Some("custom"));
+            &config,
+            tenant,
+            "a@example.com",
+            UserRole::Customer,
+            Some("custom".to_string()),
+            900,
+        )
+        .unwrap();
+        assert_eq!(
+            decode_invite_token(&config, &token)
+                .unwrap()
+                .custom_role_slug
+                .as_deref(),
+            Some("custom")
+        );
     }
 
     #[test]

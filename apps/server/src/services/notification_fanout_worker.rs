@@ -13,10 +13,12 @@ use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
-use crate::services::server_runtime_context::published_worker_running;
-use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
-use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
+use crate::services::server_runtime_context::published_worker_running;
+use crate::services::server_runtime_context::{
+    ServerRuntimeContext, ServerRuntimeStartReservation,
+};
+use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 
 pub const NOTIFICATION_FANOUT_WORKER_ENABLED_ENV: &str =
     "RUSTOK_NOTIFICATIONS_FANOUT_WORKER_ENABLED";
@@ -531,6 +533,9 @@ mod tests {
 
         assert_ne!(first, second);
         assert!(first.starts_with("notification-fanout-1-"));
-        assert!(first.len() <= 191, "owner identity must fit the module contract");
+        assert!(
+            first.len() <= 191,
+            "owner identity must fit the module contract"
+        );
     }
 }

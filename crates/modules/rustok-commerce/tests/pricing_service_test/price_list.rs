@@ -410,13 +410,24 @@ async fn test_scoped_price_list_rule_projection_returns_saved_rule_and_refuses_r
     let channel_id = Uuid::new_v4();
     seed_pricing_channel(&db, tenant_id, channel_id, "web-store").await;
     let price_list_id = create_price_list_with_channel(
-        &db, tenant_id, "active", None, None, Some(channel_id), Some("web-store"),
+        &db,
+        tenant_id,
+        "active",
+        None,
+        None,
+        Some(channel_id),
+        Some("web-store"),
     )
     .await;
 
     let saved = service
         .set_price_list_percentage_rule_projection(
-            tenant_id, actor_id, price_list_id, Some(dec!(12.345678)), "en", Some("en"),
+            tenant_id,
+            actor_id,
+            price_list_id,
+            Some(dec!(12.345678)),
+            "en",
+            Some("en"),
         )
         .await
         .expect("a scoped list must return its committed rule");
@@ -426,17 +437,28 @@ async fn test_scoped_price_list_rule_projection_returns_saved_rule_and_refuses_r
     assert_eq!(saved.adjustment_percent, Some(dec!(12.345678)));
 
     for invalid in [dec!(0.0000001), dec!(12.3456789)] {
-        assert!(service
-            .set_price_list_percentage_rule_projection(
-                tenant_id, actor_id, price_list_id, Some(invalid), "en", Some("en"),
-            )
-            .await
-            .is_err());
+        assert!(
+            service
+                .set_price_list_percentage_rule_projection(
+                    tenant_id,
+                    actor_id,
+                    price_list_id,
+                    Some(invalid),
+                    "en",
+                    Some("en"),
+                )
+                .await
+                .is_err()
+        );
     }
 
     let lists = service
         .list_active_price_lists_for_channel(
-            tenant_id, Some(channel_id), Some("web-store"), Some("en"), Some("en"),
+            tenant_id,
+            Some(channel_id),
+            Some("web-store"),
+            Some("en"),
+            Some("en"),
         )
         .await
         .unwrap();
@@ -444,7 +466,12 @@ async fn test_scoped_price_list_rule_projection_returns_saved_rule_and_refuses_r
     assert_eq!(persisted.adjustment_percent, Some(dec!(12.345678)));
     let cleared = service
         .set_price_list_percentage_rule_projection(
-            tenant_id, actor_id, price_list_id, None, "en", Some("en"),
+            tenant_id,
+            actor_id,
+            price_list_id,
+            None,
+            "en",
+            Some("en"),
         )
         .await
         .unwrap();

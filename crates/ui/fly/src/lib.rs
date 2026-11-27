@@ -128,7 +128,8 @@ pub use dynamic::{
 };
 pub use embed::{
     EMBED_IFRAME_SANDBOX, EmbedProvider, EmbedProviderRegistry, EmbedSpec, FLY_EMBED_FIELD,
-    builtin_embed_providers, decode_embed_spec, decode_embed_spec_with_registry, validate_embed_url,
+    builtin_embed_providers, decode_embed_spec, decode_embed_spec_with_registry,
+    validate_embed_url,
 };
 pub use error::FlyError;
 pub use fragment::{ProjectFragment, ProviderRequirement, RichTextPayload};
@@ -178,12 +179,11 @@ pub use registry::{
 };
 pub use render::{
     AlternateLocaleLink, PageHead, PageSelection, RenderPolicy, RenderedPage,
-    compose_document_html, document_html_stylesheet, document_html_with_style_nonce,
-    css_property_may_load_resource, css_resource_string_ranges, css_var_references,
-    css_property_allowed, escape_css_attribute, strip_css_resource_references,
-    render_page,
-    render_page_with_embed_registry,
-    render_page_with_rich_text, render_page_with_rich_text_and_embed_registry, resolve_page,
+    compose_document_html, css_property_allowed, css_property_may_load_resource,
+    css_resource_string_ranges, css_var_references, document_html_stylesheet,
+    document_html_with_style_nonce, escape_css_attribute, render_page,
+    render_page_with_embed_registry, render_page_with_rich_text,
+    render_page_with_rich_text_and_embed_registry, resolve_page, strip_css_resource_references,
 };
 pub use rich_text::{
     FLY_RICH_TEXT_FIELD, MAXIMUM_RICH_TEXT_BYTES, MAXIMUM_RICH_TEXT_DEPTH, MAXIMUM_RICH_TEXT_NODES,
@@ -240,10 +240,9 @@ pub use translation::{
 };
 pub use validation::{
     DEFAULT_MAXIMUM_ASSETS, DEFAULT_MAXIMUM_DEPTH, DEFAULT_MAXIMUM_NODES, DEFAULT_MAXIMUM_PAGES,
-    DEFAULT_MAXIMUM_STYLE_RULES, MAXIMUM_IDENTIFIER_LENGTH, ValidationDiagnostic,
-    ValidationLimits, ValidationReport, ValidationSeverity, validate_component_public_urls,
-    validate_identifier, validate_patch_incremental,
-    validate_patch_incremental_with_embed_registry, validate_project,
+    DEFAULT_MAXIMUM_STYLE_RULES, MAXIMUM_IDENTIFIER_LENGTH, ValidationDiagnostic, ValidationLimits,
+    ValidationReport, ValidationSeverity, validate_component_public_urls, validate_identifier,
+    validate_patch_incremental, validate_patch_incremental_with_embed_registry, validate_project,
     validate_project_with_embed_registry,
 };
 

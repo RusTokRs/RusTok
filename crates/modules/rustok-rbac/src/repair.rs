@@ -236,7 +236,9 @@ where
             continue;
         }
         role_changed = true;
-        let existing_permission_id = tenant_permissions.get(&(resource.clone(), action.clone())).copied();
+        let existing_permission_id = tenant_permissions
+            .get(&(resource.clone(), action.clone()))
+            .copied();
         if existing_permission_id.is_none()
             && planned_permissions.insert((tenant_id, resource.clone(), action.clone()))
         {
@@ -252,11 +254,11 @@ where
                     let permission_id = find_permission(db, tenant_id, &resource, &action)
                         .await?
                         .ok_or_else(|| {
-                            RbacSystemRoleRepairError::Database(
-                                "permission insert completed without a persisted permission"
-                                    .to_string(),
-                            )
-                        })?;
+                        RbacSystemRoleRepairError::Database(
+                            "permission insert completed without a persisted permission"
+                                .to_string(),
+                        )
+                    })?;
                     tenant_permissions.insert((resource.clone(), action.clone()), permission_id);
                     permission_id
                 }
@@ -327,9 +329,7 @@ where
         DbBackend::Sqlite => {
             "SELECT id, is_system FROM roles WHERE tenant_id = ?1 AND slug = ?2 LIMIT 1"
         }
-        _ => {
-            "SELECT id, is_system FROM roles WHERE tenant_id = $1 AND slug = $2 LIMIT 1"
-        }
+        _ => "SELECT id, is_system FROM roles WHERE tenant_id = $1 AND slug = $2 LIMIT 1",
     };
     db.query_one_raw(Statement::from_sql_and_values(
         backend,
@@ -386,12 +386,8 @@ where
 {
     let backend = db.get_database_backend();
     let sql = match backend {
-        DbBackend::Sqlite => {
-            "SELECT id, resource, action FROM permissions WHERE tenant_id = ?1"
-        }
-        _ => {
-            "SELECT id, resource, action FROM permissions WHERE tenant_id = $1"
-        }
+        DbBackend::Sqlite => "SELECT id, resource, action FROM permissions WHERE tenant_id = ?1",
+        _ => "SELECT id, resource, action FROM permissions WHERE tenant_id = $1",
     };
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
@@ -550,9 +546,7 @@ where
         DbBackend::Sqlite => {
             "DELETE FROM role_permissions WHERE role_id = ?1 AND permission_id = ?2"
         }
-        _ => {
-            "DELETE FROM role_permissions WHERE role_id = $1 AND permission_id = $2"
-        }
+        _ => "DELETE FROM role_permissions WHERE role_id = $1 AND permission_id = $2",
     };
     execute(db, sql, vec![role_id.into(), permission_id.into()]).await
 }

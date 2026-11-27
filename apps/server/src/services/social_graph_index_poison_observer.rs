@@ -9,14 +9,14 @@ use rustok_telemetry::{consumer_poison_metrics, runtime_consumer_metrics};
 use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
-use crate::services::app_lifecycle::{
-    SocialGraphObserverInitializationLock, StopHandle,
-};
+use crate::services::app_lifecycle::{SocialGraphObserverInitializationLock, StopHandle};
 use crate::services::server_runtime_context::{
     ServerRuntimeContext, ServerRuntimeStartReservation, published_worker_running,
 };
 use crate::services::social_graph_index_worker::social_graph_index_consumer_enabled;
-use crate::services::stop_handle::{may_admit_next_worker_operation, wait_for_worker_retry_or_stop};
+use crate::services::stop_handle::{
+    may_admit_next_worker_operation, wait_for_worker_retry_or_stop,
+};
 
 const POLL_ENV: &str = "RUSTOK_SOCIAL_GRAPH_INDEX_POISON_POLL_MS";
 const DEFAULT_POLL_MS: u64 = 5_000;
@@ -75,10 +75,9 @@ pub async fn start_social_graph_index_poison_observer_if_enabled(
             "Social Graph Index poison observer cannot start during shutdown".to_string(),
         ));
     }
-    let Some(reservation) = ServerRuntimeStartReservation::try_claim(
-        ctx,
-        SocialGraphPoisonObserverStartupReservation,
-    ) else {
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, SocialGraphPoisonObserverStartupReservation)
+    else {
         if published_worker_running::<SocialGraphIndexPoisonObserverHandle>(
             ctx,
             "Social Graph Index poison observer",
@@ -260,7 +259,11 @@ mod tests {
         // The failed worker remains registered for host shutdown accounting;
         // a repeated starter must not publish a replacement behind its back.
         assert!(ctx.shared_contains::<SocialGraphIndexPoisonObserverHandle>());
-        assert!(start_social_graph_index_poison_observer_if_enabled(&ctx).await.is_err());
+        assert!(
+            start_social_graph_index_poison_observer_if_enabled(&ctx)
+                .await
+                .is_err()
+        );
     }
 
     #[test]

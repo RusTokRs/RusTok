@@ -486,10 +486,19 @@ mod price_list_percentage_tests {
 
     #[test]
     fn persisted_rule_requires_exact_six_decimal_precision() {
-        for value in [Decimal::new(1, 6), Decimal::new(12345678, 6), Decimal::new(1000000000, 7)] {
+        for value in [
+            Decimal::new(1, 6),
+            Decimal::new(12345678, 6),
+            Decimal::new(1000000000, 7),
+        ] {
             assert!(validate_price_list_percentage(value).is_ok());
         }
-        for value in [Decimal::ZERO, Decimal::new(1, 7), Decimal::new(123456789, 7), Decimal::new(1000000001, 7)] {
+        for value in [
+            Decimal::ZERO,
+            Decimal::new(1, 7),
+            Decimal::new(123456789, 7),
+            Decimal::new(1000000001, 7),
+        ] {
             assert!(validate_price_list_percentage(value).is_err());
         }
         assert!(validate_discount_percent(Decimal::new(1, 7)).is_ok());

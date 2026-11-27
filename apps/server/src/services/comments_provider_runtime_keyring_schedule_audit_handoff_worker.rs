@@ -203,10 +203,12 @@ impl CommentsTcpDelegationScheduleAuditHandoffWorkerHandle {
 
     #[cfg(test)]
     pub(crate) fn for_test(task: JoinHandle<()>) -> Self {
-        Self(Arc::new(CommentsTcpDelegationScheduleAuditHandoffWorkerRuntime {
-            instance_id: 1,
-            task: std::sync::Mutex::new(Some(task)),
-        }))
+        Self(Arc::new(
+            CommentsTcpDelegationScheduleAuditHandoffWorkerRuntime {
+                instance_id: 1,
+                task: std::sync::Mutex::new(Some(task)),
+            },
+        ))
     }
 
     pub(crate) fn take_task(&self) -> Option<JoinHandle<()>> {

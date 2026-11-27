@@ -48,9 +48,9 @@ pub enum PagesRepairHttpError {
 
 impl PagesArtifactRepairHttpRuntime {
     fn from_host(runtime: &HostRuntimeContext) -> Result<Self, PagesRepairHttpError> {
-        let event_bus = runtime
-            .shared_get::<TransactionalEventBus>()
-            .ok_or(PagesRepairHttpError::MissingHostDependency("TransactionalEventBus"))?;
+        let event_bus = runtime.shared_get::<TransactionalEventBus>().ok_or(
+            PagesRepairHttpError::MissingHostDependency("TransactionalEventBus"),
+        )?;
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,

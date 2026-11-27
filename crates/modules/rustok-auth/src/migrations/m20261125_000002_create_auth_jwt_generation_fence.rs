@@ -18,25 +18,37 @@ impl MigrationTrait for Migration {
                 CHECK ((generation = 0 AND payload = '' AND tag = '')
                     OR (generation > 0 AND payload <> '' AND length(tag) = 64))
             )",
-        ).await?;
+        )
+        .await?;
         db.execute_unprepared(
             "INSERT INTO auth_jwt_generation_fence (id, generation, payload, tag)
              VALUES (1, 0, '', '')",
-        ).await?;
+        )
+        .await?;
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let db = manager.get_connection();
-        let row = db.query_one_raw(Statement::from_string(
-            db.get_database_backend(),
-            "SELECT generation FROM auth_jwt_generation_fence WHERE id = 1".to_string(),
-        )).await?.ok_or_else(|| DbErr::Custom("JWT generation fence is missing".into()))?;
+        let row = db
+            .query_one_raw(Statement::from_string(
+                db.get_database_backend(),
+                "SELECT generation FROM auth_jwt_generation_fence WHERE id = 1".to_string(),
+            ))
+            .await?
+            .ok_or_else(|| DbErr::Custom("JWT generation fence is missing".into()))?;
         let generation: i64 = row.try_get("", "generation")?;
         if generation != 0 {
-            return Err(DbErr::Custom("Cannot remove an enrolled JWT generation fence".into()));
+            return Err(DbErr::Custom(
+                "Cannot remove an enrolled JWT generation fence".into(),
+            ));
         }
-        manager.drop_table(Table::drop()
-            .table(Alias::new("auth_jwt_generation_fence")).to_owned()).await
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(Alias::new("auth_jwt_generation_fence"))
+                    .to_owned(),
+            )
+            .await
     }
 }

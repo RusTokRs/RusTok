@@ -434,7 +434,8 @@ impl CustomerService {
         }
         let message = err.to_string();
         if let Some(email) = email
-            && (message.contains("email") || message.contains("ux_customers_tenant_email_canonical"))
+            && (message.contains("email")
+                || message.contains("ux_customers_tenant_email_canonical"))
         {
             return CustomerError::DuplicateEmail(email.to_string());
         }

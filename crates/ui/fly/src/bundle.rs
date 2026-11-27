@@ -1,9 +1,9 @@
+use crate::codec::{MAXIMUM_DECODE_DEPTH, drop_value_iteratively, ensure_depth_within_limit};
 use crate::{
     ContentDigest, FlyError, FlyResult, GrapesJsCodec, PageLocator, ProjectDocument, ProjectHash,
     RegistrySet, ValidationLimits, ValidationReport, audit_page, constant_time_eq,
     validate_project,
 };
-use crate::codec::{MAXIMUM_DECODE_DEPTH, drop_value_iteratively, ensure_depth_within_limit};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -291,14 +291,19 @@ mod tests {
         for wrapped in [false, true] {
             let mut fields = Map::new();
             if wrapped {
-                fields.insert("project_hash".to_string(), Value::String("unused".to_string()));
+                fields.insert(
+                    "project_hash".to_string(),
+                    Value::String("unused".to_string()),
+                );
                 fields.insert("project_data".to_string(), deeply_nested_value());
             } else {
                 fields.insert("payload".to_string(), deeply_nested_value());
             }
             assert!(matches!(
                 decode_project_bundle_value(Value::Object(fields), &BundleDecodePolicy::default()),
-                Err(FlyError::MaximumDepthExceeded { maximum: MAXIMUM_DECODE_DEPTH })
+                Err(FlyError::MaximumDepthExceeded {
+                    maximum: MAXIMUM_DECODE_DEPTH
+                })
             ));
         }
     }
@@ -316,7 +321,9 @@ mod tests {
         drop_value_iteratively(std::mem::take(&mut bundle.project_data));
         assert!(matches!(
             result,
-            Err(FlyError::MaximumDepthExceeded { maximum: MAXIMUM_DECODE_DEPTH })
+            Err(FlyError::MaximumDepthExceeded {
+                maximum: MAXIMUM_DECODE_DEPTH
+            })
         ));
     }
 

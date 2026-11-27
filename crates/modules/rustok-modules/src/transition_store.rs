@@ -347,7 +347,8 @@ async fn ensure_checkpoint_fence_visibility<C: ConnectionTrait>(
         if row.try_get::<bool>("", "enforced")? {
             return Err(sea_orm::DbErr::Custom(
                 "checkpoint RLS visibility cannot be proven for the transition fence".to_string(),
-            ).into());
+            )
+            .into());
         }
     }
     Ok(())
@@ -593,7 +594,10 @@ mod fence_visibility_tests {
         let url = std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").unwrap();
         async fn connect(url: &str) -> sea_orm::DatabaseConnection {
             let mut options = sea_orm::ConnectOptions::new(url);
-            options.min_connections(1).max_connections(1).sqlx_logging(false);
+            options
+                .min_connections(1)
+                .max_connections(1)
+                .sqlx_logging(false);
             Database::connect(options).await.unwrap()
         }
         let owner = connect(&url).await;
@@ -611,14 +615,28 @@ mod fence_visibility_tests {
              ALTER TABLE {schema}.module_transition_checkpoints ENABLE ROW LEVEL SECURITY; \
              CREATE POLICY tenant_only ON {schema}.module_transition_checkpoints USING (tenant_id IS NOT NULL)"
         )).await.unwrap();
-        worker.execute_unprepared(&format!("SET search_path TO {schema}; SET ROLE {role}")).await.unwrap();
-        let visible = worker.query_all_raw(Statement::from_string(DbBackend::Postgres,
-            "SELECT * FROM module_transition_checkpoints".to_string())).await.unwrap();
-        assert!(visible.is_empty(), "the fixture must hide the platform checkpoint");
+        worker
+            .execute_unprepared(&format!("SET search_path TO {schema}; SET ROLE {role}"))
+            .await
+            .unwrap();
+        let visible = worker
+            .query_all_raw(Statement::from_string(
+                DbBackend::Postgres,
+                "SELECT * FROM module_transition_checkpoints".to_string(),
+            ))
+            .await
+            .unwrap();
+        assert!(
+            visible.is_empty(),
+            "the fixture must hide the platform checkpoint"
+        );
         assert!(matches!(
             TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(
-                &worker, "forum", Uuid::new_v4(),
-            ).await,
+                &worker,
+                "forum",
+                Uuid::new_v4(),
+            )
+            .await,
             Err(TransitionStoreError::Database(_))
         ));
         assert!(matches!(
@@ -626,12 +644,27 @@ mod fence_visibility_tests {
             Err(TransitionStoreError::Database(_))
         ));
         worker.execute_unprepared("RESET ROLE").await.unwrap();
-        owner.execute_unprepared(&format!("ALTER TABLE {schema}.module_transition_checkpoints DISABLE ROW LEVEL SECURITY")).await.unwrap();
+        owner
+            .execute_unprepared(&format!(
+                "ALTER TABLE {schema}.module_transition_checkpoints DISABLE ROW LEVEL SECURITY"
+            ))
+            .await
+            .unwrap();
         let tx = owner.begin().await.unwrap();
-        tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .unwrap();
         ensure_checkpoint_fence_visibility(&tx).await.unwrap();
-        let worker_pid: i32 = worker.query_one_raw(Statement::from_string(DbBackend::Postgres,
-            "SELECT pg_backend_pid() AS pid".to_string())).await.unwrap().unwrap().try_get("", "pid").unwrap();
+        let worker_pid: i32 = worker
+            .query_one_raw(Statement::from_string(
+                DbBackend::Postgres,
+                "SELECT pg_backend_pid() AS pid".to_string(),
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "pid")
+            .unwrap();
         let ddl_schema = schema.clone();
         let task = tokio::spawn(async move {
             worker.execute_unprepared(&format!(
@@ -640,15 +673,27 @@ mod fence_visibility_tests {
         });
         let mut blocked = false;
         for _ in 0..200 {
-            let row = monitor.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres,
-                "SELECT cardinality(pg_blocking_pids($1)) > 0 AS blocked", vec![worker_pid.into()]
-            )).await.unwrap().unwrap();
-            if row.try_get::<bool>("", "blocked").unwrap() { blocked = true; break; }
+            let row = monitor
+                .query_one_raw(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    "SELECT cardinality(pg_blocking_pids($1)) > 0 AS blocked",
+                    vec![worker_pid.into()],
+                ))
+                .await
+                .unwrap()
+                .unwrap();
+            if row.try_get::<bool>("", "blocked").unwrap() {
+                blocked = true;
+                break;
+            }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         assert!(blocked, "RLS DDL must wait for the fence transaction");
         tx.commit().await.unwrap();
         task.await.unwrap();
-        owner.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE; DROP ROLE {role}")).await.unwrap();
+        owner
+            .execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE; DROP ROLE {role}"))
+            .await
+            .unwrap();
     }
 }

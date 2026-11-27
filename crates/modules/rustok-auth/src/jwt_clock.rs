@@ -9,7 +9,10 @@
 
 //! Bounded clock observations for the managed JWT lease and credential admission,
 //! not a distributed time service.
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const MAX_DIVERGENCE: Duration = Duration::from_secs(1);
@@ -27,7 +30,10 @@ pub(crate) struct ClockSample {
 
 impl ClockSample {
     pub(crate) fn now() -> Self {
-        Self { mono: Instant::now(), wall: SystemTime::now() }
+        Self {
+            mono: Instant::now(),
+            wall: SystemTime::now(),
+        }
     }
 
     pub(crate) fn checked_add(self, duration: Duration) -> Option<Self> {
@@ -39,7 +45,10 @@ impl ClockSample {
 
     pub(crate) fn utc(self) -> Option<chrono::DateTime<chrono::Utc>> {
         let elapsed = self.wall.duration_since(UNIX_EPOCH).ok()?;
-        chrono::DateTime::from_timestamp(i64::try_from(elapsed.as_secs()).ok()?, elapsed.subsec_nanos())
+        chrono::DateTime::from_timestamp(
+            i64::try_from(elapsed.as_secs()).ok()?,
+            elapsed.subsec_nanos(),
+        )
     }
 
     fn wall_ms(self) -> Option<i64> {
@@ -83,7 +92,9 @@ impl ClockGuard {
         if self.faulted() {
             return false;
         }
-        let consistent = now.mono.checked_duration_since(self.anchor.mono)
+        let consistent = now
+            .mono
+            .checked_duration_since(self.anchor.mono)
             .zip(now.wall.duration_since(self.anchor.wall).ok())
             .is_some_and(|(mono, wall)| mono.abs_diff(wall) <= MAX_DIVERGENCE);
         if !consistent || now.wall_ms().is_none() {
@@ -94,7 +105,10 @@ impl ClockGuard {
 
     /// Credential admission must not reuse an earlier observed wall time,
     /// even within the lease's one-second divergence tolerance.
-    pub(crate) fn credential_sample(&self, sample: impl FnOnce() -> ClockSample) -> Option<ClockSample> {
+    pub(crate) fn credential_sample(
+        &self,
+        sample: impl FnOnce() -> ClockSample,
+    ) -> Option<ClockSample> {
         let Ok(mut previous) = self.credential_high_water.lock() else {
             self.trip();
             return None;
@@ -132,10 +146,14 @@ impl ClockGuard {
         if elapsed > MAX_DB_READ || wall_elapsed > MAX_DB_READ {
             return false;
         }
-        let valid = before.wall_ms().zip(after.wall_ms()).is_some_and(|(low, high)| {
-            db_ms > 0 && db_ms >= low.saturating_sub(MAX_DB_SKEW_MS)
-                && db_ms <= high.saturating_add(MAX_DB_SKEW_MS)
-        });
+        let valid = before
+            .wall_ms()
+            .zip(after.wall_ms())
+            .is_some_and(|(low, high)| {
+                db_ms > 0
+                    && db_ms >= low.saturating_sub(MAX_DB_SKEW_MS)
+                    && db_ms <= high.saturating_add(MAX_DB_SKEW_MS)
+            });
         if !valid {
             self.trip();
         }
@@ -154,8 +172,17 @@ pub(crate) struct LeaseDeadline {
 }
 
 impl LeaseDeadline {
-    pub(crate) fn new(start: ClockSample, duration: Duration, authority: Arc<ClockGuard>) -> Option<Self> {
-        Some(Self { expires: start.checked_add(duration)?, authority, expired: Arc::new(AtomicBool::new(false)), witness_fault: None })
+    pub(crate) fn new(
+        start: ClockSample,
+        duration: Duration,
+        authority: Arc<ClockGuard>,
+    ) -> Option<Self> {
+        Some(Self {
+            expires: start.checked_add(duration)?,
+            authority,
+            expired: Arc::new(AtomicBool::new(false)),
+            witness_fault: None,
+        })
     }
 
     pub(crate) fn with_witness_fault(mut self, fault: Arc<AtomicBool>) -> Self {
@@ -164,20 +191,32 @@ impl LeaseDeadline {
     }
 
     fn witness_healthy(&self) -> bool {
-        self.witness_fault.as_ref().is_none_or(|fault| !fault.load(Ordering::Acquire))
+        self.witness_fault
+            .as_ref()
+            .is_none_or(|fault| !fault.load(Ordering::Acquire))
     }
 
     pub(crate) fn remaining(&self, now: ClockSample) -> Duration {
-        if !self.witness_healthy() || self.expired.load(Ordering::Acquire) || !self.authority.healthy_at(now) {
+        if !self.witness_healthy()
+            || self.expired.load(Ordering::Acquire)
+            || !self.authority.healthy_at(now)
+        {
             return Duration::ZERO;
         }
         let mono = self.expires.mono.saturating_duration_since(now.mono);
-        let wall = self.expires.wall.duration_since(now.wall).unwrap_or(Duration::ZERO);
+        let wall = self
+            .expires
+            .wall
+            .duration_since(now.wall)
+            .unwrap_or(Duration::ZERO);
         let remaining = mono.min(wall);
         if remaining.is_zero() {
             self.expired.store(true, Ordering::Release);
         }
-        if !self.witness_healthy() || self.expired.load(Ordering::Acquire) || self.authority.faulted() {
+        if !self.witness_healthy()
+            || self.expired.load(Ordering::Acquire)
+            || self.authority.faulted()
+        {
             Duration::ZERO
         } else {
             remaining
@@ -203,10 +242,17 @@ mod tests {
             mono: start.mono + Duration::from_millis(600),
             wall: start.wall + Duration::from_millis(400),
         };
-        assert!(guard.healthy_at(rollback), "lease tolerance alone admits this sample");
+        assert!(
+            guard.healthy_at(rollback),
+            "lease tolerance alone admits this sample"
+        );
         assert!(guard.credential_sample(|| rollback).is_none());
         assert!(guard.faulted());
-        assert!(guard.credential_sample(|| start.checked_add(Duration::from_secs(2)).unwrap()).is_none());
+        assert!(
+            guard
+                .credential_sample(|| start.checked_add(Duration::from_secs(2)).unwrap())
+                .is_none()
+        );
     }
 
     #[test]
@@ -276,7 +322,8 @@ mod tests {
             wall: start.wall + Duration::from_millis(9_600),
         };
         assert_eq!(lease.clone().remaining(earlier_wall), Duration::ZERO);
-        let fresh_lease = LeaseDeadline::new(start, Duration::from_secs(10), guard.clone()).unwrap();
+        let fresh_lease =
+            LeaseDeadline::new(start, Duration::from_secs(10), guard.clone()).unwrap();
         assert_eq!(fresh_lease.remaining(mono_first), Duration::ZERO);
         assert!(!guard.faulted());
     }

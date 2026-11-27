@@ -16,26 +16,29 @@ pub mod error;
 #[cfg(feature = "graphql")]
 pub mod graphql;
 mod invalidation_generation;
-mod membership_revision;
-mod role_grant_revision;
-pub(crate) mod m20261127_000003_create_rbac_role_grant_revision;
-pub(crate) mod m20261127_000001_create_rbac_membership_revision;
 pub(crate) mod m20260714_900001_enforce_rbac_relation_tenant_integrity;
 pub(crate) mod m20260714_900002_create_rbac_invalidation_state;
 pub(crate) mod m20260716_000001_artifact_permission_catalog;
 pub(crate) mod m20260717_000001_artifact_role_permissions;
 pub(crate) mod m20260803_000001_canonicalize_artifact_permissions;
 pub(crate) mod m20260914_000001_localized_presentations;
+pub(crate) mod m20261127_000001_create_rbac_membership_revision;
+pub(crate) mod m20261127_000003_create_rbac_role_grant_revision;
+mod membership_revision;
 pub mod module;
 pub mod ports;
 pub mod presentation;
 mod repair;
+mod role_grant_revision;
 mod role_mutation;
 pub mod services;
 
-pub use module::RbacModule;
 pub use membership_revision::read_user_membership_revision_on;
-pub use role_grant_revision::{lock_actor_role_grants_on, lock_invite_role_grant_binding_on, read_static_actor_authority_revision_on, StaticActorAuthorityRevision};
+pub use module::RbacModule;
+pub use role_grant_revision::{
+    StaticActorAuthorityRevision, lock_actor_role_grants_on, lock_invite_role_grant_binding_on,
+    read_static_actor_authority_revision_on,
+};
 
 pub use artifact_permission_assignment::{
     ArtifactPermissionAssignmentError, ArtifactPermissionAssignmentScope,

@@ -1,24 +1,24 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rustok_api::Permission;
-use rustok_cache::CacheService;
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, IssueUserInviteCommand,
     IssuedUserInviteResult, UpdateUserCommand, UserAdminMutationPort, UserInviteRecord,
     UserMutationRecord,
 };
+use rustok_cache::CacheService;
 use rustok_core::{UserRole, UserStatus};
 use rustok_events::DomainEvent;
 use rustok_rbac::{
     RbacCustomRoleAssignmentPlan, RbacCustomRoleAssignmentRequest, RbacRoleMutationOutcome,
     RbacRoleMutationPlan, RbacRoleMutationPolicyError, RbacUserRoleMutationRequest,
     plan_persisted_custom_role_assignment_on, plan_persisted_user_role_mutation_on,
-    replace_persisted_user_role_by_slug_on,
-    validate_custom_role_grant_on, validate_persisted_role_grant_on,
+    replace_persisted_user_role_by_slug_on, validate_custom_role_grant_on,
+    validate_persisted_role_grant_on,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set, TransactionTrait,
 };
 use std::str::FromStr;
 use uuid::Uuid;
@@ -126,10 +126,7 @@ fn parse_user_role(value: &str) -> Result<UserRole, AuthAdminMutationError> {
         .map_err(|error| AuthAdminMutationError::Validation(error.to_string()))
 }
 
-fn email_identity_changed(
-    current_email: &str,
-    requested_email: Option<&str>,
-) -> bool {
+fn email_identity_changed(current_email: &str, requested_email: Option<&str>) -> bool {
     requested_email.is_some_and(|requested_email| requested_email != current_email)
 }
 
@@ -351,7 +348,6 @@ where
         .ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))
 }
 
-
 async fn revoke_active_sessions<C>(
     db: &C,
     tenant_id: Uuid,
@@ -361,11 +357,9 @@ where
     C: ConnectionTrait,
 {
     let now = Utc::now();
-    AuthLifecycleService::revoke_user_sessions_db_with_connection(
-        db, tenant_id, user_id, None,
-    )
-    .await
-    .map_err(map_lifecycle_error)?;
+    AuthLifecycleService::revoke_user_sessions_db_with_connection(db, tenant_id, user_id, None)
+        .await
+        .map_err(map_lifecycle_error)?;
     let _revoked_oauth_tokens =
         crate::services::oauth_token_service::revoke_user_delegated_tokens_in_tx(
             db, tenant_id, user_id, now,
@@ -383,7 +377,8 @@ async fn publish_committed_user_invalidation(
 ) {
     RbacService::invalidate_user_rbac_caches(&tenant_id, &user_id).await;
     if let Err(error) =
-        publish_user_rbac_invalidation(cache_service, &tenant_id, &user_id, durable_generation).await
+        publish_user_rbac_invalidation(cache_service, &tenant_id, &user_id, durable_generation)
+            .await
     {
         tracing::warn!(
             %error,
@@ -468,68 +463,127 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let request_role = if custom_slug.is_some() {
             let actor_role = self.actor_role(context).await?;
             crate::services::rbac_module_availability::prepare_invite_module_policy(
-                &self.db, self.invite_registry.as_ref(),
-            ).await.map_err(super::internal_admin_error)?;
+                &self.db,
+                self.invite_registry.as_ref(),
+            )
+            .await
+            .map_err(super::internal_admin_error)?;
             Some(actor_role)
         } else {
             None
         };
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
         let mut user = if let Some(slug) = custom_slug.as_deref() {
-            let request_role = request_role.ok_or_else(|| AuthAdminMutationError::Forbidden(
-                "user administration requires a request-bound role snapshot".to_string(),
-            ))?;
+            let request_role = request_role.ok_or_else(|| {
+                AuthAdminMutationError::Forbidden(
+                    "user administration requires a request-bound role snapshot".to_string(),
+                )
+            })?;
             // Match invitation issuance's authority lock order. A request
             // snapshot is a ceiling, not permission to create after demotion.
-            AuthLifecycleService::lock_user_for_mutation(
-                &tx, context.tenant_id, context.actor_id,
-            ).await.map_err(super::internal_admin_error)?
+            AuthLifecycleService::lock_user_for_mutation(&tx, context.tenant_id, context.actor_id)
+                .await
+                .map_err(super::internal_admin_error)?
                 .filter(|actor| actor.is_active())
-                .ok_or_else(|| AuthAdminMutationError::Forbidden(
-                    "active user administrator is required".to_string(),
-                ))?;
+                .ok_or_else(|| {
+                    AuthAdminMutationError::Forbidden(
+                        "active user administrator is required".to_string(),
+                    )
+                })?;
             let (_, availability) =
                 crate::services::rbac_module_availability::lock_invite_module_policy(
-                    &self.db, &tx, self.invite_registry.as_ref(), context.tenant_id,
-                ).await.map_err(super::internal_admin_error)?;
+                    &self.db,
+                    &tx,
+                    self.invite_registry.as_ref(),
+                    context.tenant_id,
+                )
+                .await
+                .map_err(super::internal_admin_error)?;
             // Lock actor and target role grants in the RBAC owner's order.
             // No epoch is persisted for this immediate operation.
             rustok_rbac::lock_invite_role_grant_binding_on(
-                &tx, context.tenant_id, context.actor_id, slug,
-            ).await.map_err(super::internal_admin_error)?
-                .ok_or_else(|| AuthAdminMutationError::NotFound(format!("role '{slug}'")))?;
+                &tx,
+                context.tenant_id,
+                context.actor_id,
+                slug,
+            )
+            .await
+            .map_err(super::internal_admin_error)?
+            .ok_or_else(|| AuthAdminMutationError::NotFound(format!("role '{slug}'")))?;
             let mut current_permissions = RbacService::get_user_permissions_authoritative(
-                &tx, &context.tenant_id, &context.actor_id,
-            ).await.map_err(super::internal_admin_error)?;
+                &tx,
+                &context.tenant_id,
+                &context.actor_id,
+            )
+            .await
+            .map_err(super::internal_admin_error)?;
             if let Some(availability) = availability {
                 current_permissions = availability.active_permissions(&current_permissions);
             }
-            if !rustok_rbac::has_effective_permission_in_set(&current_permissions, &Permission::USERS_MANAGE) {
-                return Err(AuthAdminMutationError::Forbidden("current users:manage required".to_string()));
+            if !rustok_rbac::has_effective_permission_in_set(
+                &current_permissions,
+                &Permission::USERS_MANAGE,
+            ) {
+                return Err(AuthAdminMutationError::Forbidden(
+                    "current users:manage required".to_string(),
+                ));
             }
             let current_role = RbacService::get_user_role_authoritative(
-                &tx, &context.tenant_id, &context.actor_id,
-            ).await.map_err(super::internal_admin_error)?;
+                &tx,
+                &context.tenant_id,
+                &context.actor_id,
+            )
+            .await
+            .map_err(super::internal_admin_error)?;
             // A new account has no prior membership or administrator
             // continuity to preserve. Validate delegation as for a new invite,
             // independently against both authority views, before any insert.
             validate_custom_role_grant_on(
-                &tx, context.tenant_id, &request_role, &actor_permissions, slug,
-            ).await.map_err(super::super_admin_guard::persistence_error)?;
+                &tx,
+                context.tenant_id,
+                &request_role,
+                &actor_permissions,
+                slug,
+            )
+            .await
+            .map_err(super::super_admin_guard::persistence_error)?;
             let target_slug = validate_custom_role_grant_on(
-                &tx, context.tenant_id, &current_role, &current_permissions, slug,
-            ).await.map_err(super::super_admin_guard::persistence_error)?;
+                &tx,
+                context.tenant_id,
+                &current_role,
+                &current_permissions,
+                slug,
+            )
+            .await
+            .map_err(super::super_admin_guard::persistence_error)?;
             AuthLifecycleService::create_user_with_custom_role_in_tx(
-                &tx, context.tenant_id, prepared_user, &target_slug, status.clone(),
-            ).await.map_err(map_lifecycle_error)?
+                &tx,
+                context.tenant_id,
+                prepared_user,
+                &target_slug,
+                status.clone(),
+            )
+            .await
+            .map_err(map_lifecycle_error)?
         } else {
             // Keep the existing built-in provisioning contract.
             validate_persisted_role_grant_on(
-                &tx, context.tenant_id, &actor_permissions, &role.to_string(),
-            ).await.map_err(super::super_admin_guard::persistence_error)?;
+                &tx,
+                context.tenant_id,
+                &actor_permissions,
+                &role.to_string(),
+            )
+            .await
+            .map_err(super::super_admin_guard::persistence_error)?;
             AuthLifecycleService::create_user_in_tx(
-                &tx, context.tenant_id, prepared_user, role.clone(), status.clone(),
-            ).await.map_err(map_lifecycle_error)?
+                &tx,
+                context.tenant_id,
+                prepared_user,
+                role.clone(),
+                status.clone(),
+            )
+            .await
+            .map_err(map_lifecycle_error)?
         };
 
         if let Some(metadata) = prepared.metadata {
@@ -673,10 +727,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
 
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
         let locked_user = lock_user_for_mutation(&tx, context.tenant_id, command.id).await?;
-        let email_changed = email_identity_changed(
-            &locked_user.email,
-            normalized_email.as_deref(),
-        );
+        let email_changed = email_identity_changed(&locked_user.email, normalized_email.as_deref());
         let current_role = self
             .user_role(&tx, context.tenant_id, locked_user.id)
             .await?;
@@ -958,8 +1009,13 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         };
         tx.commit().await.map_err(super::internal_admin_error)?;
         if let Some(durable_generation) = durable_generation {
-            publish_committed_user_invalidation(&self.cache_service, context.tenant_id, user.id, durable_generation)
-                .await;
+            publish_committed_user_invalidation(
+                &self.cache_service,
+                context.tenant_id,
+                user.id,
+                durable_generation,
+            )
+            .await;
         }
         Ok(ServerAuthAdminMutationProvider::user_record(
             user,
@@ -1031,7 +1087,13 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             ));
         }
         tx.commit().await.map_err(super::internal_admin_error)?;
-        publish_committed_user_invalidation(&self.cache_service, context.tenant_id, user.id, durable_generation).await;
+        publish_committed_user_invalidation(
+            &self.cache_service,
+            context.tenant_id,
+            user.id,
+            durable_generation,
+        )
+        .await;
         Ok(())
     }
 
@@ -1055,54 +1117,75 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let email = rustok_auth::normalize_email(&command.email)
             .map_err(|error| AuthAdminMutationError::Validation(error.to_string()))?;
 
-        rustok_auth::application_clock::admit_now(&self.db).await
+        rustok_auth::application_clock::admit_now(&self.db)
+            .await
             .map_err(super::internal_admin_error)?;
         crate::services::rbac_module_availability::prepare_invite_module_policy(
-            &self.db, self.invite_registry.as_ref(),
-        ).await.map_err(super::internal_admin_error)?;
+            &self.db,
+            self.invite_registry.as_ref(),
+        )
+        .await
+        .map_err(super::internal_admin_error)?;
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
         // Membership and account-status writers serialize on this user
         // fence. Do not issue a durable invitation for a removed, disabled
         // or demoted actor based solely on a stale request snapshot.
-        let issuer = AuthLifecycleService::lock_user_for_mutation(
-            &tx, context.tenant_id, context.actor_id,
-        )
-        .await
-        .map_err(super::internal_admin_error)?
-        .filter(|user| user.is_active() && user.recovery_revision >= 0)
-        .ok_or_else(|| AuthAdminMutationError::Forbidden(
-            "active invitation issuer is required".to_string(),
-        ))?;
+        let issuer =
+            AuthLifecycleService::lock_user_for_mutation(&tx, context.tenant_id, context.actor_id)
+                .await
+                .map_err(super::internal_admin_error)?
+                .filter(|user| user.is_active() && user.recovery_revision >= 0)
+                .ok_or_else(|| {
+                    AuthAdminMutationError::Forbidden(
+                        "active invitation issuer is required".to_string(),
+                    )
+                })?;
         let (module_policy_binding, availability) =
             crate::services::rbac_module_availability::lock_invite_module_policy(
-                &self.db, &tx, self.invite_registry.as_ref(), context.tenant_id,
-            ).await.map_err(super::internal_admin_error)?;
-        let membership_revision = rustok_rbac::read_user_membership_revision_on(
-            &tx, context.tenant_id, context.actor_id,
-        ).await.map_err(super::internal_admin_error)?;
+                &self.db,
+                &tx,
+                self.invite_registry.as_ref(),
+                context.tenant_id,
+            )
+            .await
+            .map_err(super::internal_admin_error)?;
+        let membership_revision =
+            rustok_rbac::read_user_membership_revision_on(&tx, context.tenant_id, context.actor_id)
+                .await
+                .map_err(super::internal_admin_error)?;
         if custom_slug.is_none() {
             rustok_rbac::RbacRoleAssignmentDbWriter::ensure_builtin_role_definition_on(
-                &tx, context.tenant_id, &role,
-            ).await.map_err(super::internal_admin_error)?;
+                &tx,
+                context.tenant_id,
+                &role,
+            )
+            .await
+            .map_err(super::internal_admin_error)?;
         }
         let target_slug = custom_slug.clone().unwrap_or_else(|| role.to_string());
         let role_binding = rustok_rbac::lock_invite_role_grant_binding_on(
-            &tx, context.tenant_id, context.actor_id, &target_slug,
-        ).await.map_err(super::internal_admin_error)?
-            .ok_or_else(|| AuthAdminMutationError::NotFound("invitation role".to_string()))?;
+            &tx,
+            context.tenant_id,
+            context.actor_id,
+            &target_slug,
+        )
+        .await
+        .map_err(super::internal_admin_error)?
+        .ok_or_else(|| AuthAdminMutationError::NotFound("invitation role".to_string()))?;
         let mut persisted_permissions = RbacService::get_user_permissions_authoritative(
-            &tx, &context.tenant_id, &context.actor_id,
+            &tx,
+            &context.tenant_id,
+            &context.actor_id,
         )
         .await
         .map_err(super::internal_admin_error)?;
         if let Some(availability) = availability {
             persisted_permissions = availability.active_permissions(&persisted_permissions);
         }
-        let persisted_role = RbacService::get_user_role_authoritative(
-            &tx, &context.tenant_id, &context.actor_id,
-        )
-        .await
-        .map_err(super::internal_admin_error)?;
+        let persisted_role =
+            RbacService::get_user_role_authoritative(&tx, &context.tenant_id, &context.actor_id)
+                .await
+                .map_err(super::internal_admin_error)?;
         if !issuer_may_issue_invite(&persisted_permissions, &role, custom_slug.is_some()) {
             return Err(AuthAdminMutationError::Forbidden(
                 "current invitation permission is required".to_string(),
@@ -1113,20 +1196,29 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         // A newly granted permission must not expand an older request and
         // an older request must not retain a permission already removed.
         validate_invite_role_grant_on(
-            &tx, context.tenant_id, &request_role, &request_permissions,
-            &role, custom_slug.as_deref(),
+            &tx,
+            context.tenant_id,
+            &request_role,
+            &request_permissions,
+            &role,
+            custom_slug.as_deref(),
         )
         .await
         .map_err(super::super_admin_guard::persistence_error)?;
         let ledger_role = validate_invite_role_grant_on(
-            &tx, context.tenant_id, &persisted_role, &persisted_permissions,
-            &role, custom_slug.as_deref(),
+            &tx,
+            context.tenant_id,
+            &persisted_role,
+            &persisted_permissions,
+            &role,
+            custom_slug.as_deref(),
         )
         .await
         .map_err(super::super_admin_guard::persistence_error)?;
 
         // Start the signed lifetime after account and delegation checks.
-        let now = rustok_auth::application_clock::verified_now(&tx).await
+        let now = rustok_auth::application_clock::verified_now(&tx)
+            .await
             .map_err(super::internal_admin_error)?;
         let token = crate::auth::encode_invite_token(
             &self.auth_config,
@@ -1167,11 +1259,14 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             },
         )
         .await?;
-        let final_now = rustok_auth::application_clock::verified_now(&tx).await
+        let final_now = rustok_auth::application_clock::verified_now(&tx)
+            .await
             .map_err(super::internal_admin_error)?;
         if final_now >= expires_at {
             tx.rollback().await.map_err(super::internal_admin_error)?;
-            return Err(AuthAdminMutationError::Validation("Invite expired before issuance".to_string()));
+            return Err(AuthAdminMutationError::Validation(
+                "Invite expired before issuance".to_string(),
+            ));
         }
         // Do not publish an invitation signed by a key that became unusable
         // while the ledger and outbox writes were waiting.
@@ -1220,40 +1315,50 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         .await?;
 
         crate::services::rbac_module_availability::prepare_invite_module_policy(
-            &self.db, self.invite_registry.as_ref(),
-        ).await.map_err(super::internal_admin_error)?;
+            &self.db,
+            self.invite_registry.as_ref(),
+        )
+        .await
+        .map_err(super::internal_admin_error)?;
         // Match acceptance's order: actor user -> invite -> module policy
         // -> ordered role grants. Revoking an invite does not require its
         // original issuer or destination role to remain valid.
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
-        AuthLifecycleService::lock_user_for_mutation(
-            &tx, context.tenant_id, context.actor_id,
-        ).await.map_err(super::internal_admin_error)?
+        AuthLifecycleService::lock_user_for_mutation(&tx, context.tenant_id, context.actor_id)
+            .await
+            .map_err(super::internal_admin_error)?
             .filter(|actor| actor.is_active())
-            .ok_or_else(|| AuthAdminMutationError::Forbidden(
-                "active invitation administrator is required".to_string(),
-            ))?;
-        let invite = lock_invite_for_mutation(
-            &tx,
-            context.tenant_id,
-            InviteLookup::Id(invite_id),
-        )
-        .await
-        .map_err(super::internal_admin_error)?;
+            .ok_or_else(|| {
+                AuthAdminMutationError::Forbidden(
+                    "active invitation administrator is required".to_string(),
+                )
+            })?;
+        let invite = lock_invite_for_mutation(&tx, context.tenant_id, InviteLookup::Id(invite_id))
+            .await
+            .map_err(super::internal_admin_error)?;
 
         // The request ceiling was checked above. Independently re-read
         // live persisted authority under the mutation fences, including
         // for idempotent retries and accepted-invite conflicts.
         let (_, availability) =
             crate::services::rbac_module_availability::lock_invite_module_policy(
-                &self.db, &tx, self.invite_registry.as_ref(), context.tenant_id,
-            ).await.map_err(super::internal_admin_error)?;
-        rustok_rbac::lock_actor_role_grants_on(
-            &tx, context.tenant_id, context.actor_id,
-        ).await.map_err(super::internal_admin_error)?;
+                &self.db,
+                &tx,
+                self.invite_registry.as_ref(),
+                context.tenant_id,
+            )
+            .await
+            .map_err(super::internal_admin_error)?;
+        rustok_rbac::lock_actor_role_grants_on(&tx, context.tenant_id, context.actor_id)
+            .await
+            .map_err(super::internal_admin_error)?;
         let mut permissions = RbacService::get_user_permissions_authoritative(
-            &tx, &context.tenant_id, &context.actor_id,
-        ).await.map_err(super::internal_admin_error)?;
+            &tx,
+            &context.tenant_id,
+            &context.actor_id,
+        )
+        .await
+        .map_err(super::internal_admin_error)?;
         if let Some(availability) = availability {
             permissions = availability.active_permissions(&permissions);
         }
@@ -1265,7 +1370,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
 
         // Do not disclose whether the invite exists to an actor whose
         // current permission was removed after request admission.
-        let invite = invite.ok_or_else(|| AuthAdminMutationError::NotFound("user invite".to_string()))?;
+        let invite =
+            invite.ok_or_else(|| AuthAdminMutationError::NotFound("user invite".to_string()))?;
 
         // The same ledger lock serializes with acceptance: a committed
         // revocation prevents acceptance, and an accepted invite cannot
@@ -1313,9 +1419,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
 #[cfg(test)]
 mod tests {
     use super::{
-        ensure_custom_field_snapshot_is_current, invite_expiration_from_token,
-        map_role_mutation_policy_error, parse_user_role, parse_user_status,
-        email_identity_changed, status_change_requested, INVITE_TOKEN_TTL_SECS,
+        INVITE_TOKEN_TTL_SECS, email_identity_changed, ensure_custom_field_snapshot_is_current,
+        invite_expiration_from_token, map_role_mutation_policy_error, parse_user_role,
+        parse_user_status, status_change_requested,
     };
     use rustok_auth::AuthAdminMutationError;
     use rustok_core::{UserRole, UserStatus};
@@ -1323,83 +1429,144 @@ mod tests {
 
     #[tokio::test]
     async fn custom_role_provisioning_requires_live_actor_and_assigns_only_target() {
-        use crate::models::{tenants, users};
         use crate::models::_entities::{roles, user_roles};
+        use crate::models::{tenants, users};
         use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
         use crate::services::server_runtime_context::ServerRuntimeContext;
         use rustok_api::Permission;
         use rustok_auth::{AuthAdminMutationContext, CreateUserCommand, UserAdminMutationPort};
         use rustok_migrations::SqliteTestMigrator;
         use rustok_test_utils::db::setup_test_db_with_migrations;
-        use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
+        use sea_orm::{
+            ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait,
+        };
         use uuid::Uuid;
 
         let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
         let tenant = tenants::ActiveModel::new("Tenant", "custom-admin-provisioning")
-            .insert(&db).await.unwrap();
+            .insert(&db)
+            .await
+            .unwrap();
         let actor = users::ActiveModel::new(tenant.id, "admin@example.test", "hash")
-            .insert(&db).await.unwrap();
+            .insert(&db)
+            .await
+            .unwrap();
         let target_role = roles::ActiveModel {
-            id: Set(Uuid::new_v4()), tenant_id: Set(tenant.id),
-            name: Set("Content editor".to_string()), slug: Set("content_editor".to_string()),
-            description: Set(None), is_system: Set(false),
-            created_at: Set(chrono::Utc::now().into()), updated_at: Set(chrono::Utc::now().into()),
-        }.insert(&db).await.unwrap();
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant.id),
+            name: Set("Content editor".to_string()),
+            slug: Set("content_editor".to_string()),
+            description: Set(None),
+            is_system: Set(false),
+            created_at: Set(chrono::Utc::now().into()),
+            updated_at: Set(chrono::Utc::now().into()),
+        }
+        .insert(&db)
+        .await
+        .unwrap();
         let runtime = ServerRuntimeContext::new(db.clone(), Default::default());
         let provider = super::ServerAuthAdminMutationProvider::new(
-            &runtime, crate::auth::test_auth_config("aB3!zY7@qW8#eR2$".repeat(4)),
+            &runtime,
+            crate::auth::test_auth_config("aB3!zY7@qW8#eR2$".repeat(4)),
         );
         let context = AuthAdminMutationContext {
-            actor_id: actor.id, tenant_id: tenant.id, request_id: None,
+            actor_id: actor.id,
+            tenant_id: tenant.id,
+            request_id: None,
             locale: Some("en".to_string()),
             principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
         };
-        let scope = || RbacRequestScope::new(
-            tenant.id, actor.id, vec![Permission::USERS_MANAGE], UserRole::Admin,
-        );
+        let scope = || {
+            RbacRequestScope::new(
+                tenant.id,
+                actor.id,
+                vec![Permission::USERS_MANAGE],
+                UserRole::Admin,
+            )
+        };
         let command = || CreateUserCommand {
-            email: "editor@example.test".to_string(), password: "Password123!Strong".to_string(),
-            name: None, role: Some(target_role.slug.clone()), status: None, custom_fields: None,
+            email: "editor@example.test".to_string(),
+            password: "Password123!Strong".to_string(),
+            name: None,
+            role: Some(target_role.slug.clone()),
+            status: None,
+            custom_fields: None,
         };
         // A stale request with users:manage cannot replace persisted grants.
         let denied = with_rbac_request_scope(Some(scope()), async {
             provider.create_user(&context, command()).await
-        }).await;
+        })
+        .await;
         assert!(matches!(denied, Err(AuthAdminMutationError::Forbidden(_))));
-        assert!(users::Entity::find_by_email(&db, tenant.id, "editor@example.test")
-            .await.unwrap().is_none());
+        assert!(
+            users::Entity::find_by_email(&db, tenant.id, "editor@example.test")
+                .await
+                .unwrap()
+                .is_none()
+        );
 
         let tx = db.begin().await.unwrap();
         rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
-            &tx, tenant.id, actor.id, UserRole::Admin,
-        ).await.unwrap();
+            &tx,
+            tenant.id,
+            actor.id,
+            UserRole::Admin,
+        )
+        .await
+        .unwrap();
         tx.commit().await.unwrap();
         let created = with_rbac_request_scope(Some(scope()), async {
             provider.create_user(&context, command()).await
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         assert_eq!(created.role, target_role.slug);
         let memberships = user_roles::Entity::find()
-            .filter(user_roles::Column::UserId.eq(created.id)).all(&db).await.unwrap();
+            .filter(user_roles::Column::UserId.eq(created.id))
+            .all(&db)
+            .await
+            .unwrap();
         assert_eq!(memberships.len(), 1);
         assert_eq!(memberships[0].role_id, target_role.id);
-        assert!(roles::Entity::find().filter(roles::Column::TenantId.eq(tenant.id))
-            .filter(roles::Column::Slug.eq("customer")).one(&db).await.unwrap().is_none());
+        assert!(
+            roles::Entity::find()
+                .filter(roles::Column::TenantId.eq(tenant.id))
+                .filter(roles::Column::Slug.eq("customer"))
+                .one(&db)
+                .await
+                .unwrap()
+                .is_none()
+        );
         let tx = db.begin().await.unwrap();
-        assert_eq!(rustok_rbac::read_user_membership_revision_on(&tx, tenant.id, created.id)
-            .await.unwrap(), 1);
+        assert_eq!(
+            rustok_rbac::read_user_membership_revision_on(&tx, tenant.id, created.id)
+                .await
+                .unwrap(),
+            1
+        );
         tx.rollback().await.unwrap();
 
         users::ActiveModel {
-            id: Set(actor.id), status: Set(UserStatus::Inactive), ..Default::default()
-        }.update(&db).await.unwrap();
+            id: Set(actor.id),
+            status: Set(UserStatus::Inactive),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .unwrap();
         let denied = with_rbac_request_scope(Some(scope()), async {
             let mut command = command();
             command.email = "inactive-actor@example.test".to_string();
             provider.create_user(&context, command).await
-        }).await;
+        })
+        .await;
         assert!(matches!(denied, Err(AuthAdminMutationError::Forbidden(_))));
-        assert!(users::Entity::find_by_email(&db, tenant.id, "inactive-actor@example.test")
-            .await.unwrap().is_none());
+        assert!(
+            users::Entity::find_by_email(&db, tenant.id, "inactive-actor@example.test")
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -1408,7 +1575,9 @@ mod tests {
         use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
         use crate::services::server_runtime_context::ServerRuntimeContext;
         use rustok_api::Permission;
-        use rustok_auth::{AuthAdminMutationContext, IssueUserInviteCommand, UserAdminMutationPort};
+        use rustok_auth::{
+            AuthAdminMutationContext, IssueUserInviteCommand, UserAdminMutationPort,
+        };
         use rustok_migrations::SqliteTestMigrator;
         use rustok_test_utils::db::setup_test_db_with_migrations;
         use sea_orm::{ActiveModelTrait, EntityTrait, Set};
@@ -1416,12 +1585,16 @@ mod tests {
 
         let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
         let tenant = tenants::ActiveModel::new("Tenant", "invite-stale-authority")
-            .insert(&db).await.expect("tenant");
+            .insert(&db)
+            .await
+            .expect("tenant");
         let mut inactive = users::ActiveModel::new(tenant.id, "inactive@example.test", "hash");
         inactive.status = Set(UserStatus::Inactive);
         let inactive = inactive.insert(&db).await.expect("inactive actor");
         let active = users::ActiveModel::new(tenant.id, "active@example.test", "hash")
-            .insert(&db).await.expect("actor without grants");
+            .insert(&db)
+            .await
+            .expect("actor without grants");
         let runtime = ServerRuntimeContext::new(db.clone(), Default::default());
         let provider = super::ServerAuthAdminMutationProvider::new(
             &runtime,
@@ -1437,17 +1610,32 @@ mod tests {
                 principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
             };
             let scope = RbacRequestScope::new(
-                tenant.id, actor_id, vec![Permission::USERS_MANAGE], UserRole::Admin,
+                tenant.id,
+                actor_id,
+                vec![Permission::USERS_MANAGE],
+                UserRole::Admin,
             );
             let result = with_rbac_request_scope(Some(scope), async {
-                provider.issue_user_invite(&context, IssueUserInviteCommand {
-                    email: "invitee@example.test".to_string(),
-                    role: Some("customer".to_string()),
-                }).await
-            }).await;
+                provider
+                    .issue_user_invite(
+                        &context,
+                        IssueUserInviteCommand {
+                            email: "invitee@example.test".to_string(),
+                            role: Some("customer".to_string()),
+                        },
+                    )
+                    .await
+            })
+            .await;
             assert!(matches!(result, Err(AuthAdminMutationError::Forbidden(_))));
         }
-        assert!(auth_invites::Entity::find().all(&db).await.unwrap().is_empty());
+        assert!(
+            auth_invites::Entity::find()
+                .all(&db)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]
@@ -1462,7 +1650,10 @@ mod tests {
         use rustok_migrations::SqliteTestMigrator;
         use rustok_test_utils::db::setup_test_db_with_migrations;
         use sea_orm::{ActiveModelTrait, EntityTrait, Set, TransactionTrait};
-        use std::sync::{Arc, atomic::{AtomicBool, AtomicUsize, Ordering}};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, AtomicUsize, Ordering},
+        };
         use uuid::Uuid;
 
         struct FailingTransport(AtomicUsize, AtomicBool);
@@ -1484,7 +1675,9 @@ mod tests {
             ) -> rustok_core::Result<()> {
                 self.0.fetch_add(1, Ordering::SeqCst);
                 if self.1.load(Ordering::SeqCst) {
-                    Err(rustok_core::Error::Validation("injected outbox failure".to_string()))
+                    Err(rustok_core::Error::Validation(
+                        "injected outbox failure".to_string(),
+                    ))
                 } else {
                     Ok(())
                 }
@@ -1505,7 +1698,9 @@ mod tests {
             .await
             .expect("tenant");
         let actor = users::ActiveModel::new(tenant.id, "revoker@example.test", "hash")
-            .insert(&db).await.unwrap();
+            .insert(&db)
+            .await
+            .unwrap();
         let actor_id = actor.id;
         let invite_id = Uuid::new_v4();
         let now = chrono::Utc::now();
@@ -1541,23 +1736,35 @@ mod tests {
             locale: Some("en".to_string()),
             principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
         };
-        let scope = || RbacRequestScope::new(
-            tenant.id, actor_id, vec![Permission::USERS_MANAGE], UserRole::Admin,
-        );
+        let scope = || {
+            RbacRequestScope::new(
+                tenant.id,
+                actor_id,
+                vec![Permission::USERS_MANAGE],
+                UserRole::Admin,
+            )
+        };
 
         let denied = with_rbac_request_scope(Some(scope()), async {
             provider.revoke_user_invite(&context, invite_id).await
-        }).await;
+        })
+        .await;
         assert!(matches!(denied, Err(AuthAdminMutationError::Forbidden(_))));
         assert_eq!(failing.0.load(Ordering::SeqCst), 0);
         let missing = with_rbac_request_scope(Some(scope()), async {
             provider.revoke_user_invite(&context, Uuid::new_v4()).await
-        }).await;
+        })
+        .await;
         assert!(matches!(missing, Err(AuthAdminMutationError::Forbidden(_))));
         let tx = db.begin().await.unwrap();
         rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
-            &tx, tenant.id, actor_id, UserRole::Admin,
-        ).await.unwrap();
+            &tx,
+            tenant.id,
+            actor_id,
+            UserRole::Admin,
+        )
+        .await
+        .unwrap();
         tx.commit().await.unwrap();
 
         let result = with_rbac_request_scope(Some(scope()), async {
@@ -1579,44 +1786,72 @@ mod tests {
         failing.1.store(false, Ordering::SeqCst);
         let revoked = with_rbac_request_scope(Some(scope()), async {
             provider.revoke_user_invite(&context, invite_id).await
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         assert!(revoked.revoked_at.is_some());
         let retry = with_rbac_request_scope(Some(scope()), async {
             provider.revoke_user_invite(&context, invite_id).await
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         assert_eq!(retry.revoked_at, revoked.revoked_at);
         assert_eq!(failing.0.load(Ordering::SeqCst), 2);
 
         // A committed acceptance receipt is terminal under the same fence.
         let consumed_invite = auth_invites::ActiveModel {
-            id: Set(Uuid::new_v4()), tenant_id: Set(tenant.id),
-            token_hash: Set("b".repeat(64)), email: Set("accepted@example.test".to_string()),
-            role: Set("customer".to_string()), issued_by: Set(None),
-            issuer_recovery_revision: Set(None), issuer_membership_revision: Set(None),
-            role_grant_binding: Set(None), module_policy_binding: Set(None),
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant.id),
+            token_hash: Set("b".repeat(64)),
+            email: Set("accepted@example.test".to_string()),
+            role: Set("customer".to_string()),
+            issued_by: Set(None),
+            issuer_recovery_revision: Set(None),
+            issuer_membership_revision: Set(None),
+            role_grant_binding: Set(None),
+            module_policy_binding: Set(None),
             expires_at: Set((now + chrono::Duration::hours(1)).into()),
-            revoked_at: Set(None), created_at: Set(now.into()),
-        }.insert(&db).await.unwrap();
+            revoked_at: Set(None),
+            created_at: Set(now.into()),
+        }
+        .insert(&db)
+        .await
+        .unwrap();
         auth_invite_consumptions::ActiveModel {
-            id: Set(Uuid::new_v4()), tenant_id: Set(tenant.id),
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant.id),
             token_hash: Set(consumed_invite.token_hash.clone()),
-            email: Set(consumed_invite.email.clone()), role: Set(consumed_invite.role.clone()),
-            user_id: Set(None), expires_at: Set(consumed_invite.expires_at),
+            email: Set(consumed_invite.email.clone()),
+            role: Set(consumed_invite.role.clone()),
+            user_id: Set(None),
+            expires_at: Set(consumed_invite.expires_at),
             consumed_at: Set(now.into()),
-        }.insert(&db).await.unwrap();
+        }
+        .insert(&db)
+        .await
+        .unwrap();
         let result = with_rbac_request_scope(Some(scope()), async {
-            provider.revoke_user_invite(&context, consumed_invite.id).await
-        }).await;
+            provider
+                .revoke_user_invite(&context, consumed_invite.id)
+                .await
+        })
+        .await;
         assert!(matches!(result, Err(AuthAdminMutationError::Conflict(_))));
         assert_eq!(failing.0.load(Ordering::SeqCst), 2);
 
         // Losing the account fence also denies a previously idempotent retry.
         users::ActiveModel {
-            id: Set(actor_id), status: Set(UserStatus::Inactive), ..Default::default()
-        }.update(&db).await.unwrap();
+            id: Set(actor_id),
+            status: Set(UserStatus::Inactive),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .unwrap();
         let denied = with_rbac_request_scope(Some(scope()), async {
             provider.revoke_user_invite(&context, invite_id).await
-        }).await;
+        })
+        .await;
         assert!(matches!(denied, Err(AuthAdminMutationError::Forbidden(_))));
         assert_eq!(failing.0.load(Ordering::SeqCst), 2);
     }
@@ -1664,10 +1899,7 @@ mod tests {
             "new@example.test",
             Some("new@example.test"),
         ));
-        assert!(!email_identity_changed(
-            "new@example.test",
-            None,
-        ));
+        assert!(!email_identity_changed("new@example.test", None,));
     }
 
     #[test]

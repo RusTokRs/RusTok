@@ -30,9 +30,7 @@ use rustok_test_utils::{
     connect_postgres, create_postgres_database, drop_postgres_database_if_exists,
     postgres_database_url, unique_postgres_database_name,
 };
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, sea_query::Value,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, sea_query::Value};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
@@ -214,11 +212,7 @@ async fn verify_up_invariants(db: &DatabaseConnection) -> TestResult {
         db,
         "INSERT INTO channel_targets (id, channel_id, tenant_id, target_type, value)
          VALUES ($1, $2, $3, 'web_domain', 'cross-tenant.example.test')",
-        vec![
-            Uuid::new_v4().into(),
-            first.id.into(),
-            other_tenant.into(),
-        ],
+        vec![Uuid::new_v4().into(), first.id.into(), other_tenant.into()],
     )
     .await;
     assert!(
@@ -231,22 +225,14 @@ async fn verify_up_invariants(db: &DatabaseConnection) -> TestResult {
         db,
         "INSERT INTO channel_targets (id, channel_id, tenant_id, target_type, value, is_primary)
          VALUES ($1, $2, $3, 'web_domain', 'shop.example.test', true)",
-        vec![
-            Uuid::new_v4().into(),
-            first.id.into(),
-            tenant.into(),
-        ],
+        vec![Uuid::new_v4().into(), first.id.into(), tenant.into()],
     )
     .await?;
     let message = expect_rejected(
         db,
         "INSERT INTO channel_targets (id, channel_id, tenant_id, target_type, value)
          VALUES ($1, $2, $3, 'web_domain', 'shop.example.test', false)",
-        vec![
-            Uuid::new_v4().into(),
-            second.id.into(),
-            tenant.into(),
-        ],
+        vec![Uuid::new_v4().into(), second.id.into(), tenant.into()],
     )
     .await;
     assert!(
@@ -270,11 +256,7 @@ async fn verify_up_invariants(db: &DatabaseConnection) -> TestResult {
         db,
         "INSERT INTO channel_targets (id, channel_id, tenant_id, target_type, value, is_primary)
          VALUES ($1, $2, $3, 'mobile_app', 'com.example.app', true)",
-        vec![
-            Uuid::new_v4().into(),
-            first.id.into(),
-            tenant.into(),
-        ],
+        vec![Uuid::new_v4().into(), first.id.into(), tenant.into()],
     )
     .await;
     assert!(

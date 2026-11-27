@@ -15,10 +15,10 @@ pub async fn purge_expired_auth_artifacts(db: &DatabaseConnection) -> Result<Aut
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{auth_email_change_requests, sessions};
     use crate::models::{oauth_apps, oauth_authorization_codes, tenants, users};
     use crate::services::oauth_app::{CreateOAuthAppInput, OAuthAppService};
     use chrono::{Duration, Utc};
-    use crate::models::{auth_email_change_requests, sessions};
     use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
@@ -115,7 +115,9 @@ mod tests {
                 .expect("lookup after purge");
             assert_eq!(remaining.is_some(), index == 2);
         }
-        let second = purge_expired_auth_artifacts(&db).await.expect("repeat purge");
+        let second = purge_expired_auth_artifacts(&db)
+            .await
+            .expect("repeat purge");
         assert_eq!(second.email_change_requests, 0);
     }
 
@@ -196,7 +198,10 @@ mod tests {
                 last_used_at: Set(revoked_at.map(Into::into)),
                 created_at: Set((old_cutoff - Duration::days(2)).into()),
                 updated_at: Set(rotated_at.into()),
-            }.insert(&db).await.expect("retention family member");
+            }
+            .insert(&db)
+            .await
+            .expect("retention family member");
         }
 
         let recent = oauth_authorization_codes::ActiveModel {
@@ -221,15 +226,29 @@ mod tests {
         assert_eq!(purge.oauth_authorization_codes, 0);
         assert_eq!(purge.oauth_tokens, 0);
         for id in [root_id, child_id] {
-            assert!(crate::models::oauth_tokens::Entity::find_by_id(id)
-                .one(&db).await.unwrap().is_some());
+            assert!(
+                crate::models::oauth_tokens::Entity::find_by_id(id)
+                    .one(&db)
+                    .await
+                    .unwrap()
+                    .is_some()
+            );
         }
         let mut child: crate::models::oauth_tokens::ActiveModel =
             crate::models::oauth_tokens::Entity::find_by_id(child_id)
-                .one(&db).await.unwrap().unwrap().into();
+                .one(&db)
+                .await
+                .unwrap()
+                .unwrap()
+                .into();
         child.expires_at = Set((old_cutoff - Duration::minutes(1)).into());
-        child.update(&db).await.expect("age remaining family member");
-        let purge = purge_expired_auth_artifacts(&db).await.expect("purge whole family");
+        child
+            .update(&db)
+            .await
+            .expect("age remaining family member");
+        let purge = purge_expired_auth_artifacts(&db)
+            .await
+            .expect("purge whole family");
         assert_eq!(purge.oauth_tokens, 2);
         assert_eq!(purge.oauth_authorization_codes, 1);
 

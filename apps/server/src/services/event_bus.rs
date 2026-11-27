@@ -234,7 +234,9 @@ async fn supervise_event_forwarder(
                 .catch_unwind()
                 .await;
                 if drain_outcome.is_err() {
-                    tracing::error!("Event forwarder panicked again while draining during shutdown");
+                    tracing::error!(
+                        "Event forwarder panicked again while draining during shutdown"
+                    );
                 }
             }
             return;
@@ -268,10 +270,7 @@ async fn supervise_event_forwarder(
 
 /// Wait through restart backoff without dropping the supervisor-owned receiver.
 /// Returns false when shutdown is signaled or the stop channel is closed.
-async fn wait_for_forwarder_restart(
-    stop_rx: &mut watch::Receiver<bool>,
-    delay: Duration,
-) -> bool {
+async fn wait_for_forwarder_restart(stop_rx: &mut watch::Receiver<bool>, delay: Duration) -> bool {
     !wait_for_worker_retry_or_stop(delay, stop_rx).await
 }
 
@@ -335,15 +334,11 @@ impl EventForwarderReceiver {
         }
     }
 
-    async fn recv(
-        &mut self,
-    ) -> std::result::Result<EventEnvelope, broadcast::error::RecvError> {
+    async fn recv(&mut self) -> std::result::Result<EventEnvelope, broadcast::error::RecvError> {
         self.receiver.recv().await
     }
 
-    fn try_recv(
-        &mut self,
-    ) -> std::result::Result<EventEnvelope, broadcast::error::TryRecvError> {
+    fn try_recv(&mut self) -> std::result::Result<EventEnvelope, broadcast::error::TryRecvError> {
         self.receiver.try_recv()
     }
 }
@@ -457,8 +452,7 @@ async fn run_event_forwarder_with_receiver(
                     );
                 }
                 Err(
-                    broadcast::error::TryRecvError::Empty
-                    | broadcast::error::TryRecvError::Closed,
+                    broadcast::error::TryRecvError::Empty | broadcast::error::TryRecvError::Closed,
                 ) => {
                     consumer_runtime.closed();
                     return;
@@ -527,41 +521,42 @@ fn build_event_bus(ctx: &ServerRuntimeContext, settings: Option<&RustokSettings>
         .max(1);
 
     let backpressure = settings.map(|settings| &settings.events.backpressure);
-    let (max_queue_depth, warning_threshold, critical_threshold) =
-        match backpressure.filter(|config| config.enabled) {
-            Some(config) => {
-                let configured_max_depth = config.max_queue_depth.max(1);
-                let max_queue_depth = configured_max_depth.min(channel_capacity);
-                if configured_max_depth > channel_capacity {
-                    tracing::warn!(
-                        configured_max_depth,
-                        channel_capacity,
-                        "Clamping EventBus backpressure depth to broadcast capacity to prevent lagged event loss"
-                    );
-                }
-                (
-                    max_queue_depth,
-                    config.warning_threshold,
-                    config.critical_threshold,
-                )
-            }
-            None => {
-                if settings.is_none() {
-                    tracing::warn!(
-                        capacity = channel_capacity,
-                        "Rustok settings unavailable while creating EventBus; enforcing the broadcast hard-capacity guard"
-                    );
-                }
-                // Disabling configurable backpressure must not disable the hard
-                // admission bound: otherwise a slow/unavailable outbox writer can
-                // let Tokio overwrite events before the forwarder persists them.
-                (
+    let (max_queue_depth, warning_threshold, critical_threshold) = match backpressure
+        .filter(|config| config.enabled)
+    {
+        Some(config) => {
+            let configured_max_depth = config.max_queue_depth.max(1);
+            let max_queue_depth = configured_max_depth.min(channel_capacity);
+            if configured_max_depth > channel_capacity {
+                tracing::warn!(
+                    configured_max_depth,
                     channel_capacity,
-                    DEFAULT_WARNING_THRESHOLD,
-                    HARD_CAPACITY_THRESHOLD,
-                )
+                    "Clamping EventBus backpressure depth to broadcast capacity to prevent lagged event loss"
+                );
             }
-        };
+            (
+                max_queue_depth,
+                config.warning_threshold,
+                config.critical_threshold,
+            )
+        }
+        None => {
+            if settings.is_none() {
+                tracing::warn!(
+                    capacity = channel_capacity,
+                    "Rustok settings unavailable while creating EventBus; enforcing the broadcast hard-capacity guard"
+                );
+            }
+            // Disabling configurable backpressure must not disable the hard
+            // admission bound: otherwise a slow/unavailable outbox writer can
+            // let Tokio overwrite events before the forwarder persists them.
+            (
+                channel_capacity,
+                DEFAULT_WARNING_THRESHOLD,
+                HARD_CAPACITY_THRESHOLD,
+            )
+        }
+    };
 
     tracing::debug!(
         capacity = channel_capacity,
@@ -614,8 +609,7 @@ mod tests {
     #[tokio::test]
     async fn event_forwarder_handle_reports_terminal_task() {
         let (stop_tx, _stop_rx) = watch::channel(false);
-        let handle =
-            EventForwarderHandle::new(tokio::spawn(std::future::pending()), stop_tx);
+        let handle = EventForwarderHandle::new(tokio::spawn(std::future::pending()), stop_tx);
         assert!(handle.is_running());
 
         handle.abort();
@@ -667,25 +661,17 @@ mod tests {
 
         let backpressure = BackpressureController::new(BackpressureConfig::new(8, 0.5, 0.75));
         let bus = EventBus::with_backpressure(8, backpressure);
-        let receiver =
-            EventForwarderReceiver::new(bus.subscribe(), bus.backpressure());
+        let receiver = EventForwarderReceiver::new(bus.subscribe(), bus.backpressure());
         let transport = Arc::new(FlakyTransport {
             attempts: AtomicUsize::new(0),
             accepted: Mutex::new(vec![]),
         });
         let (stop_tx, stop_rx) = watch::channel(false);
-        let task = tokio::spawn(run_event_forwarder(
-            receiver,
-            transport.clone(),
-            stop_rx,
-        ));
+        let task = tokio::spawn(run_event_forwarder(receiver, transport.clone(), stop_rx));
 
         let tenant_id = Uuid::new_v4();
-        let envelope = EventEnvelope::new(
-            tenant_id,
-            None,
-            DomainEvent::TenantUpdated { tenant_id },
-        );
+        let envelope =
+            EventEnvelope::new(tenant_id, None, DomainEvent::TenantUpdated { tenant_id });
         bus.publish_envelope(envelope.clone())
             .expect("event should enter the in-memory bus");
 
@@ -700,7 +686,9 @@ mod tests {
         assert_eq!(transport.attempts.load(Ordering::SeqCst), 2);
         assert_root_delivery(&transport.accepted.lock().unwrap(), &[&envelope]);
         assert_eq!(
-            bus.backpressure().expect("backpressure enabled").current_depth(),
+            bus.backpressure()
+                .expect("backpressure enabled")
+                .current_depth(),
             0
         );
     }
@@ -807,11 +795,8 @@ mod tests {
         let producer = tokio::spawn(async move {
             producer_stop_rx.changed().await.unwrap();
             let tenant_id = Uuid::new_v4();
-            let envelope = EventEnvelope::new(
-                tenant_id,
-                None,
-                DomainEvent::TenantUpdated { tenant_id },
-            );
+            let envelope =
+                EventEnvelope::new(tenant_id, None, DomainEvent::TenantUpdated { tenant_id });
             producer_bus.publish_envelope(envelope.clone()).unwrap();
             envelope
         });
@@ -826,7 +811,9 @@ mod tests {
 
         assert_root_delivery(&transport.accepted.lock().unwrap(), &[&envelope]);
         assert_eq!(
-            bus.backpressure().expect("hard capacity guard").current_depth(),
+            bus.backpressure()
+                .expect("hard capacity guard")
+                .current_depth(),
             0
         );
     }
@@ -861,11 +848,8 @@ mod tests {
         let bus = Arc::new(EventBus::with_backpressure(8, backpressure));
         let initial_receiver = EventForwarderReceiver::new(bus.subscribe(), bus.backpressure());
         let tenant_id = Uuid::new_v4();
-        let envelope = EventEnvelope::new(
-            tenant_id,
-            None,
-            DomainEvent::TenantUpdated { tenant_id },
-        );
+        let envelope =
+            EventEnvelope::new(tenant_id, None, DomainEvent::TenantUpdated { tenant_id });
         bus.publish_envelope(envelope.clone())
             .expect("the pre-subscribed receiver accepts the event");
 
@@ -886,7 +870,9 @@ mod tests {
             .expect("supervisor task should join");
         assert_root_delivery(&transport.accepted.lock().unwrap(), &[&envelope]);
         assert_eq!(
-            bus.backpressure().expect("hard capacity guard").current_depth(),
+            bus.backpressure()
+                .expect("hard capacity guard")
+                .current_depth(),
             0
         );
         drop(stop_tx);
@@ -922,8 +908,7 @@ mod tests {
             8,
             BackpressureController::new(BackpressureConfig::new(8, 0.7, 1.0)),
         ));
-        let mut receiver =
-            super::EventForwarderReceiver::new(bus.subscribe(), bus.backpressure());
+        let mut receiver = super::EventForwarderReceiver::new(bus.subscribe(), bus.backpressure());
         let (stop_tx, mut stop_rx) = watch::channel(false);
         let mut restart = Box::pin(super::wait_for_forwarder_restart(
             &mut stop_rx,
@@ -939,11 +924,8 @@ mod tests {
         }
 
         let tenant_id = Uuid::new_v4();
-        let envelope = EventEnvelope::new(
-            tenant_id,
-            None,
-            DomainEvent::TenantUpdated { tenant_id },
-        );
+        let envelope =
+            EventEnvelope::new(tenant_id, None, DomainEvent::TenantUpdated { tenant_id });
         bus.publish_envelope(envelope.clone())
             .expect("restart backoff must retain a bounded receiver");
         stop_tx.send_replace(true);
@@ -954,14 +936,20 @@ mod tests {
         });
         tokio::time::timeout(
             Duration::from_secs(3),
-            super::run_event_forwarder_with_receiver(&mut receiver, transport.clone(), stop_rx.clone()),
+            super::run_event_forwarder_with_receiver(
+                &mut receiver,
+                transport.clone(),
+                stop_rx.clone(),
+            ),
         )
         .await
         .expect("shutdown iteration should drain the restart receiver");
 
         assert_root_delivery(&transport.accepted.lock().unwrap(), &[&envelope]);
         assert_eq!(
-            bus.backpressure().expect("hard capacity guard").current_depth(),
+            bus.backpressure()
+                .expect("hard capacity guard")
+                .current_depth(),
             0
         );
     }
@@ -1045,11 +1033,8 @@ mod tests {
 
         let bus = event_bus_from_context(&ctx);
         let tenant_id = Uuid::new_v4();
-        let envelope = EventEnvelope::new(
-            tenant_id,
-            None,
-            DomainEvent::TenantUpdated { tenant_id },
-        );
+        let envelope =
+            EventEnvelope::new(tenant_id, None, DomainEvent::TenantUpdated { tenant_id });
         bus.publish_envelope(envelope.clone())
             .expect("forwarder receiver must be installed before the bus is returned");
 
@@ -1064,8 +1049,8 @@ mod tests {
         .await
         .expect("forwarder should persist the first event");
 
-        let task = super::take_forwarder_task_for_shutdown(&ctx)
-            .expect("forwarder should be registered");
+        let task =
+            super::take_forwarder_task_for_shutdown(&ctx).expect("forwarder should be registered");
         tokio::time::timeout(Duration::from_secs(3), task)
             .await
             .expect("forwarder should drain and stop")

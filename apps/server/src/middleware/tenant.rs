@@ -885,7 +885,10 @@ pub async fn resolve(
     mut req: Request<Body>,
     next: Next,
 ) -> Response {
-    tracing::debug!(path_group = super::http_stack::trace_path_family(req.uri().path()), "tenant::resolve entry");
+    tracing::debug!(
+        path_group = super::http_stack::trace_path_family(req.uri().path()),
+        "tenant::resolve entry"
+    );
     match tenant_route_scope(req.uri().path()) {
         TenantRouteScope::TenantBound => {}
         TenantRouteScope::GlobalOperator | TenantRouteScope::SelfResolvingHandshake => {

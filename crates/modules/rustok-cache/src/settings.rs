@@ -349,13 +349,15 @@ impl CacheSettings {
         }
         let mut url = url::Url::parse("redis://localhost")
             .map_err(|error| RedisUrlError::BaseUrlError(error.to_string()))?;
-        url.set_host(Some(host)).map_err(|error| RedisUrlError::InvalidHost {
-            host: host.to_string(),
-            error: error.to_string(),
-        })?;
-        url.set_port(Some(self.redis_port)).map_err(|()| RedisUrlError::InvalidPort {
-            port: self.redis_port,
-        })?;
+        url.set_host(Some(host))
+            .map_err(|error| RedisUrlError::InvalidHost {
+                host: host.to_string(),
+                error: error.to_string(),
+            })?;
+        url.set_port(Some(self.redis_port))
+            .map_err(|()| RedisUrlError::InvalidPort {
+                port: self.redis_port,
+            })?;
         url.set_path(&format!("/{}", self.redis_db));
         if !self.redis_password.is_empty() {
             url.set_password(Some(self.redis_password.as_str()))

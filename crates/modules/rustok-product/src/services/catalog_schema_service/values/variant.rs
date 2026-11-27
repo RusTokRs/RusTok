@@ -234,8 +234,7 @@ impl ProductCatalogSchemaService {
             )
             .await?;
         }
-        if !patches.is_empty()
-            && product.status == crate::entities::product::ProductStatus::Active
+        if !patches.is_empty() && product.status == crate::entities::product::ProductStatus::Active
         {
             // Variant EAV writes must preserve the same publish invariants as Product EAV writes.
             // Validate the whole Product while its owner row remains locked, so clearing a required
@@ -611,9 +610,7 @@ async fn write_variant_value_patch<C>(
 where
     C: ConnectionTrait,
 {
-    if matches!(&patch.value, ProductAttributeValuePatchValue::Clear)
-        && definition.is_localized
-    {
+    if matches!(&patch.value, ProductAttributeValuePatchValue::Clear) && definition.is_localized {
         let Some(value) = IdRow::find_by_statement(Statement::from_sql_and_values(
             conn.get_database_backend(),
             "SELECT id FROM product_variant_attribute_values WHERE tenant_id = $1 AND variant_id = $2 AND attribute_id = $3",
@@ -768,7 +765,6 @@ fn canonical_variant_value_locale(locale: &str) -> CommerceResult<String> {
         .map_err(|error| CommerceError::Validation(error.to_string()))
 }
 
-
 #[cfg(test)]
 mod localized_clear_tests {
     use super::*;
@@ -823,11 +819,7 @@ mod localized_clear_tests {
         (db, tenant_id, variant_id, attribute_id, value_id)
     }
 
-    async fn count_rows(
-        db: &DatabaseConnection,
-        sql: &str,
-        values: Vec<sea_orm::Value>,
-    ) -> i64 {
+    async fn count_rows(db: &DatabaseConnection, sql: &str, values: Vec<sea_orm::Value>) -> i64 {
         db.query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             sql.to_owned(),
@@ -859,16 +851,9 @@ mod localized_clear_tests {
             value: ProductAttributeValuePatchValue::Clear,
         };
 
-        write_variant_value_patch(
-            &db,
-            tenant_id,
-            variant_id,
-            "ru-RU",
-            &definition,
-            &patch,
-        )
-        .await
-        .unwrap();
+        write_variant_value_patch(&db, tenant_id, variant_id, "ru-RU", &definition, &patch)
+            .await
+            .unwrap();
 
         assert_eq!(
             count_rows(
@@ -909,16 +894,9 @@ mod localized_clear_tests {
             value: ProductAttributeValuePatchValue::Clear,
         };
 
-        write_variant_value_patch(
-            &db,
-            tenant_id,
-            variant_id,
-            "ru-RU",
-            &definition,
-            &patch,
-        )
-        .await
-        .unwrap();
+        write_variant_value_patch(&db, tenant_id, variant_id, "ru-RU", &definition, &patch)
+            .await
+            .unwrap();
 
         assert_eq!(
             count_rows(

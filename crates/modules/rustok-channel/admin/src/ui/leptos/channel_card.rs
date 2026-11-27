@@ -74,29 +74,53 @@ pub(super) fn ChannelCard(
     );
     let targets_summary_locale = ui_locale.clone();
     let targets_type_label = t(ui_locale.as_deref(), "channel.targets.type", "Target type");
-    let targets_value_label = t(ui_locale.as_deref(), "channel.targets.value", "Target value");
+    let targets_value_label = t(
+        ui_locale.as_deref(),
+        "channel.targets.value",
+        "Target value",
+    );
     // One descriptor list feeds both the dropdown and the rendered summary, so a
     // wire token ("web_domain") never reaches the operator and the two cannot drift.
     let target_type_options = StoredValue::new(vec![
         (
             "web_domain".to_string(),
-            t(ui_locale.as_deref(), "channel.targets.typeWebDomain", "Web domain"),
+            t(
+                ui_locale.as_deref(),
+                "channel.targets.typeWebDomain",
+                "Web domain",
+            ),
         ),
         (
             "mobile_app".to_string(),
-            t(ui_locale.as_deref(), "channel.targets.typeMobileApp", "Mobile app"),
+            t(
+                ui_locale.as_deref(),
+                "channel.targets.typeMobileApp",
+                "Mobile app",
+            ),
         ),
         (
             "api_client".to_string(),
-            t(ui_locale.as_deref(), "channel.targets.typeApiClient", "API client"),
+            t(
+                ui_locale.as_deref(),
+                "channel.targets.typeApiClient",
+                "API client",
+            ),
         ),
         (
             "embedded".to_string(),
-            t(ui_locale.as_deref(), "channel.targets.typeEmbedded", "Embedded"),
+            t(
+                ui_locale.as_deref(),
+                "channel.targets.typeEmbedded",
+                "Embedded",
+            ),
         ),
         (
             "external".to_string(),
-            t(ui_locale.as_deref(), "channel.targets.typeExternal", "External"),
+            t(
+                ui_locale.as_deref(),
+                "channel.targets.typeExternal",
+                "External",
+            ),
         ),
     ]);
     let target_removed_locale = ui_locale.clone();
@@ -171,7 +195,11 @@ pub(super) fn ChannelCard(
         "channel.oauth.rolePlaceholder",
         "role (optional)",
     );
-    let oauth_role_label = t(ui_locale.as_deref(), "channel.oauth.roleLabel", "OAuth role");
+    let oauth_role_label = t(
+        ui_locale.as_deref(),
+        "channel.oauth.roleLabel",
+        "OAuth role",
+    );
     let oauth_update_label = t(
         ui_locale.as_deref(),
         "channel.oauth.update",
@@ -746,13 +774,24 @@ pub(super) fn ChannelCard(
         lifecycle_toggle.label_fallback,
     );
     let lifecycle_rename_label = t(ui_locale.as_deref(), "channel.card.rename", "Rename");
-    let rename_field_label = t(ui_locale.as_deref(), "channel.card.nameLabel", "Channel name");
+    let rename_field_label = t(
+        ui_locale.as_deref(),
+        "channel.card.nameLabel",
+        "Channel name",
+    );
     let lifecycle_save_label = t(ui_locale.as_deref(), "channel.card.saveName", "Save name");
     let lifecycle_cancel_label = t(ui_locale.as_deref(), "common.cancel", "Cancel");
     let lifecycle_cancel_label_confirm = lifecycle_cancel_label.clone();
-    let lifecycle_delete_label = t(ui_locale.as_deref(), "channel.card.delete", "Delete channel");
-    let lifecycle_delete_confirm_label =
-        t(ui_locale.as_deref(), "channel.card.confirmDelete", "Confirm delete");
+    let lifecycle_delete_label = t(
+        ui_locale.as_deref(),
+        "channel.card.delete",
+        "Delete channel",
+    );
+    let lifecycle_delete_confirm_label = t(
+        ui_locale.as_deref(),
+        "channel.card.confirmDelete",
+        "Confirm delete",
+    );
     let lifecycle_delete_hint = t(
         ui_locale.as_deref(),
         "channel.card.deleteHint",

@@ -210,9 +210,7 @@ pub fn machine_translation_port_from_context(
     let catalog = rustok_ai::AiStructuredTaskCatalog::default();
     catalog
         .register(machine_translation_task_descriptor())
-        .map_err(|error| {
-            AiTranslationError::TaskDescriptor(error.code.to_string())
-        })?;
+        .map_err(|error| AiTranslationError::TaskDescriptor(error.code.to_string()))?;
     let Some(ai) = rustok_ai::structured_task_port_from_context(context, catalog)? else {
         return Ok(None);
     };

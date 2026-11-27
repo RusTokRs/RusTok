@@ -198,7 +198,10 @@ pub(crate) async fn bind_category_attribute(
         .map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))
 }
 
-#[expect(dead_code, reason = "Product attribute values transport pending UI editor panel integration")]
+#[expect(
+    dead_code,
+    reason = "Product attribute values transport pending UI editor panel integration"
+)]
 pub(crate) async fn save_product_attribute_values(
     token: Option<String>,
     tenant_slug: Option<String>,

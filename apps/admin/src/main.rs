@@ -24,7 +24,8 @@ async fn main() {
     use rustok_admin::app::{
         App, DRAFT_SESSION_PRUNE_INTERVAL, admin_security_headers,
         auth_ssr::{
-            bearer_tenant_slug_from_headers, bearer_token_from_headers, single_header_value, verify_auth_snapshot,
+            bearer_tenant_slug_from_headers, bearer_token_from_headers, single_header_value,
+            verify_auth_snapshot,
         },
         request_auth_snapshot, request_csp_nonce, shell, spawn_draft_session_prune,
         validate_admin_security_profile,
@@ -69,42 +70,39 @@ async fn main() {
             })?;
             (token, tenant_slug)
         } else {
-                let session = auth.session.as_ref().ok_or_else(|| {
-                    auth_error(
-                        StatusCode::UNAUTHORIZED,
-                        "Page Builder access token is missing",
-                    )
-                })?;
-                let csrf_header = single_header_value(&headers, FLY_CSRF_HEADER_NAME);
-                // The CSRF secret is the session id: stable across refresh-token rotation
-                // (unlike the access token), unguessable, and only ever embedded into pages this
-                // host renders for the authenticated browser. The page that embeds it derives it
-                // with the same helper, so the two sides cannot drift apart.
-                let csrf_secret =
-                    csrf_secret_from_access_token(&session.token).ok_or_else(|| {
-                        auth_error(
-                            StatusCode::FORBIDDEN,
-                            "Page Builder session has no session id to verify a CSRF token against",
-                        )
-                    })?;
-                match csrf_header {
-                    Some(client_csrf) if verify_csrf_token(&csrf_secret, &client_csrf) => {
-                        (session.token.clone(), session.tenant.clone())
-                    }
-                    Some(_) => {
-                        return Err(auth_error(
-                            StatusCode::FORBIDDEN,
-                            "Page Builder CSRF token is invalid",
-                        ));
-                    }
-                    None => {
-                        return Err(auth_error(
-                            StatusCode::FORBIDDEN,
-                            "Page Builder intent requires a valid CSRF token",
-                        ));
-                    }
+            let session = auth.session.as_ref().ok_or_else(|| {
+                auth_error(
+                    StatusCode::UNAUTHORIZED,
+                    "Page Builder access token is missing",
+                )
+            })?;
+            let csrf_header = single_header_value(&headers, FLY_CSRF_HEADER_NAME);
+            // The CSRF secret is the session id: stable across refresh-token rotation
+            // (unlike the access token), unguessable, and only ever embedded into pages this
+            // host renders for the authenticated browser. The page that embeds it derives it
+            // with the same helper, so the two sides cannot drift apart.
+            let csrf_secret = csrf_secret_from_access_token(&session.token).ok_or_else(|| {
+                auth_error(
+                    StatusCode::FORBIDDEN,
+                    "Page Builder session has no session id to verify a CSRF token against",
+                )
+            })?;
+            match csrf_header {
+                Some(client_csrf) if verify_csrf_token(&csrf_secret, &client_csrf) => {
+                    (session.token.clone(), session.tenant.clone())
                 }
-            }
+                Some(_) => {
+                    return Err(auth_error(
+                        StatusCode::FORBIDDEN,
+                        "Page Builder CSRF token is invalid",
+                    ));
+                }
+                None => {
+                    return Err(auth_error(
+                        StatusCode::FORBIDDEN,
+                        "Page Builder intent requires a valid CSRF token",
+                    ));
+                }
         };
         let verified_user =
             rustok_auth_ui::transport::fetch_current_user(token.clone(), tenant_slug.clone())

@@ -369,9 +369,13 @@ mod tests {
         telemetry.record_runtime_call(&first);
         telemetry.record_runtime_call(&second);
         let pending_ids = || {
-            telemetry.pending.lock()
+            telemetry
+                .pending
+                .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .iter().map(|call| call.call_id).collect::<Vec<_>>()
+                .iter()
+                .map(|call| call.call_id)
+                .collect::<Vec<_>>()
         };
         assert_eq!(pending_ids(), vec![first.call_id(), second.call_id()]);
         // Re-delivery of a start must preserve the existing entry.

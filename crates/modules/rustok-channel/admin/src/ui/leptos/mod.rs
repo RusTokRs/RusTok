@@ -96,8 +96,16 @@ pub fn ChannelAdmin() -> impl IntoView {
         "Creating...",
     );
     let create_label = t(ui_locale.as_deref(), "channel.create.submit", "Create");
-    let slug_label = t(ui_locale.as_deref(), "channel.create.slugLabel", "Channel slug");
-    let name_label = t(ui_locale.as_deref(), "channel.create.nameLabel", "Channel name");
+    let slug_label = t(
+        ui_locale.as_deref(),
+        "channel.create.slugLabel",
+        "Channel slug",
+    );
+    let name_label = t(
+        ui_locale.as_deref(),
+        "channel.create.nameLabel",
+        "Channel name",
+    );
     let empty_channels_label = t(
         ui_locale.as_deref(),
         "channel.empty.channels",

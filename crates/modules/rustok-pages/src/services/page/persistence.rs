@@ -31,9 +31,7 @@ impl PageService {
     /// acquires the write reservation before the first aggregate read. Every page-aggregate
     /// writer that reads before mutating must use this helper; plain `db.begin()` is not
     /// equivalent on SQLite.
-    pub(crate) async fn begin_page_write_transaction(
-        &self,
-    ) -> PagesResult<DatabaseTransaction> {
+    pub(crate) async fn begin_page_write_transaction(&self) -> PagesResult<DatabaseTransaction> {
         Ok(self
             .db
             .begin_with_options(TransactionOptions {
@@ -57,7 +55,12 @@ impl PageService {
         let page = match txn.get_database_backend() {
             DbBackend::Sqlite => query().one(txn).await?,
             DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
-            backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+            backend => {
+                return Err(PagesError::validation(format!(
+                    "unsupported SeaORM database backend: {:?}",
+                    backend
+                )));
+            }
         };
         page.ok_or_else(|| PagesError::page_not_found(page_id))
     }
@@ -214,7 +217,12 @@ impl PageService {
         let existing = match txn.get_database_backend() {
             DbBackend::Sqlite => query().one(txn).await?,
             DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
-            backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+            backend => {
+                return Err(PagesError::validation(format!(
+                    "unsupported SeaORM database backend: {:?}",
+                    backend
+                )));
+            }
         };
         let model = match existing {
             Some(existing) => {
@@ -259,7 +267,12 @@ impl PageService {
         Ok(match txn.get_database_backend() {
             DbBackend::Sqlite => query().one(txn).await?,
             DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
-            backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+            backend => {
+                return Err(PagesError::validation(format!(
+                    "unsupported SeaORM database backend: {:?}",
+                    backend
+                )));
+            }
         })
     }
 
@@ -279,7 +292,12 @@ impl PageService {
         Ok(match txn.get_database_backend() {
             DbBackend::Sqlite => query().one(txn).await?,
             DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
-            backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+            backend => {
+                return Err(PagesError::validation(format!(
+                    "unsupported SeaORM database backend: {:?}",
+                    backend
+                )));
+            }
         })
     }
 
@@ -311,7 +329,12 @@ impl PageService {
                 bodies_query().lock_exclusive().all(txn).await?,
                 drafts_query().lock_exclusive().all(txn).await?,
             ),
-            backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+            backend => {
+                return Err(PagesError::validation(format!(
+                    "unsupported SeaORM database backend: {:?}",
+                    backend
+                )));
+            }
         };
         Ok(merge_working_bodies(&bodies, &drafts))
     }
@@ -342,8 +365,7 @@ impl PageService {
             .into_tuple::<DateTimeWithTimeZone>()
             .one(txn)
             .await?;
-        let now =
-            next_body_revision_timestamp(Utc::now(), previous_created_at.as_ref())?;
+        let now = next_body_revision_timestamp(Utc::now(), previous_created_at.as_ref())?;
         let model = page_body_revision::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
@@ -412,7 +434,12 @@ impl PageService {
         let drafts = match txn.get_database_backend() {
             DbBackend::Sqlite => query().all(txn).await?,
             DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().all(txn).await?,
-            backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+            backend => {
+                return Err(PagesError::validation(format!(
+                    "unsupported SeaORM database backend: {:?}",
+                    backend
+                )));
+            }
         };
         let locales = drafts.iter().map(|d| d.locale.clone()).collect::<Vec<_>>();
         let existing_bodies = if locales.is_empty() {
@@ -430,7 +457,12 @@ impl PageService {
                 DbBackend::Postgres | DbBackend::MySql => {
                     body_query().lock_exclusive().all(txn).await?
                 }
-                backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+                backend => {
+                    return Err(PagesError::validation(format!(
+                        "unsupported SeaORM database backend: {:?}",
+                        backend
+                    )));
+                }
             }
         };
         let mut existing_by_locale: std::collections::HashMap<String, page_body::Model> =

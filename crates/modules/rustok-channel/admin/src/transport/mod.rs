@@ -95,7 +95,11 @@ impl From<ServerFnError> for ApiError {
 /// There is deliberately no cross-transport fallback: a failed mutation must not be
 /// replayed on another path. `surface` is only used for diagnostics so a failed
 /// admin action can be traced to the call that produced it.
-async fn dispatch<T, N, NFut, R, RFut>(surface: &'static str, native: N, rest: R) -> Result<T, ApiError>
+async fn dispatch<T, N, NFut, R, RFut>(
+    surface: &'static str,
+    native: N,
+    rest: R,
+) -> Result<T, ApiError>
 where
     N: FnOnce() -> NFut,
     NFut: Future<Output = Result<T, ServerFnError>>,
@@ -143,14 +147,7 @@ pub async fn create_channel(
     dispatch(
         "channel.admin.create_channel",
         || native_server_adapter::channel_create_native(payload.clone()),
-        || {
-            rest_adapter::post_json(
-                "/api/channels/",
-                payload,
-                rest_token,
-                rest_tenant,
-            )
-        },
+        || rest_adapter::post_json("/api/channels/", payload, rest_token, rest_tenant),
     )
     .await
 }
@@ -190,12 +187,7 @@ pub async fn set_channel_active(
     let rest_tenant = tenant_slug.clone();
     dispatch(
         "channel.admin.set_channel_active",
-        || {
-            native_server_adapter::channel_set_active_native(
-                channel_id.to_string(),
-                is_active,
-            )
-        },
+        || native_server_adapter::channel_set_active_native(channel_id.to_string(), is_active),
         || {
             rest_adapter::post_json(
                 &format!("/api/channels/{channel_id}/active"),
@@ -501,7 +493,12 @@ pub async fn bind_module(
     let rest_tenant = tenant_slug.clone();
     dispatch(
         "channel.admin.bind_module",
-        || native_server_adapter::channel_bind_module_native(channel_id.to_string(), payload.clone()),
+        || {
+            native_server_adapter::channel_bind_module_native(
+                channel_id.to_string(),
+                payload.clone(),
+            )
+        },
         || {
             rest_adapter::post_json(
                 &format!("/api/channels/{channel_id}/modules"),

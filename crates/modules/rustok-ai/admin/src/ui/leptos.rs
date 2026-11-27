@@ -692,7 +692,9 @@ pub fn AiAdmin() -> impl IntoView {
                 match message {
                     AiSessionSubscriptionEnvelope::ConnectionAck => {
                         if let Err(error) = ws_for_message.send_with_str(&subscribe_message) {
-                            leptos::logging::warn!("failed to send websocket subscribe message: {error:?}");
+                            leptos::logging::warn!(
+                                "failed to send websocket subscribe message: {error:?}"
+                            );
                         }
                         set_live_stream.update(|state| {
                             if let Some(state) = state.as_mut() {

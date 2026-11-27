@@ -18,7 +18,9 @@ async fn sanitized_project_hash_survives_postgres_jsonb_roundtrip() -> TestResul
         return Ok(());
     };
     if !database_url.starts_with("postgres://") && !database_url.starts_with("postgresql://") {
-        tracing::info!("{DATABASE_ENV} is not a PostgreSQL URL; skipping JSONB roundtrip regression");
+        tracing::info!(
+            "{DATABASE_ENV} is not a PostgreSQL URL; skipping JSONB roundtrip regression"
+        );
         return Ok(());
     }
 

@@ -1647,12 +1647,9 @@ fn PagesFlyBuilder(
             )
         }
         None => {
-            let controller = builder::controller_from_project(
-                &page.id,
-                &revision_id,
-                &seed.project_data_text,
-            )
-            .map_err(crate::browser_intent::PagesBrowserIntentError::from);
+            let controller =
+                builder::controller_from_project(&page.id, &revision_id, &seed.project_data_text)
+                    .map_err(crate::browser_intent::PagesBrowserIntentError::from);
             if can_edit {
                 match controller {
                     Ok(controller) => {

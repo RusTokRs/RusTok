@@ -82,7 +82,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
 
     verify_translation_journal_backfill(&seed_connection, backfill_tenant_id).await?;
 
-    let owner_runtime = ServerRuntimeContext::new(seed_connection.clone(), RustokSettings::default());
+    let owner_runtime =
+        ServerRuntimeContext::new(seed_connection.clone(), RustokSettings::default());
     let owner = ServerAuthAdminMutationProvider::new(&owner_runtime, auth_config.clone());
     let created = create_app(
         &owner,
@@ -668,7 +669,10 @@ async fn verify_translation_journal_backfill(
     Ok(())
 }
 
-fn registered_provider(db: DatabaseConnection, auth_config: AuthConfig) -> TestResult<Arc<dyn TranslationTargetProvider>> {
+fn registered_provider(
+    db: DatabaseConnection,
+    auth_config: AuthConfig,
+) -> TestResult<Arc<dyn TranslationTargetProvider>> {
     let registry = ModuleRegistry::new().register(AuthModule);
     let settings = RustokSettings::default();
     let runtime_ctx = ServerRuntimeContext::new(db, settings.clone());

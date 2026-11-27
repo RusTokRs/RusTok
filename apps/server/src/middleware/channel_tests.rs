@@ -1,14 +1,14 @@
 use super::{
-    build_request_facts_for_context, resolve_channel_context_for_facts,
     CachedChannelResolution, ChannelResolutionCache, ChannelResolutionOutcome,
     ChannelResolutionStage, bounded_cache_component,
-    build_request_facts as try_build_request_facts,
+    build_request_facts as try_build_request_facts, build_request_facts_for_context,
     channel_cache_entry_weight, channel_cache_key_from_facts, channel_id_from_header,
-    channel_slug_from_header, channel_slug_from_query, resolved_detail_source_and_trace,
+    channel_slug_from_header, channel_slug_from_query, resolve_channel_context_for_facts,
+    resolved_detail_source_and_trace,
 };
 use crate::common::RustokSettings;
-use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::context::{ChannelContext, ChannelResolutionSource};
+use crate::services::server_runtime_context::ServerRuntimeContext;
 use axum::http::{Extensions, HeaderMap, header::HOST};
 use rustok_api::{
     context::{AuthContext, AuthContextExtension},
@@ -326,7 +326,9 @@ fn parses_channel_slug_from_header_and_query() {
     headers.insert("X-Channel-Slug", "mobile-app".parse().expect("header"));
 
     assert_eq!(
-        channel_slug_from_header(&headers).expect("valid channel slug").as_deref(),
+        channel_slug_from_header(&headers)
+            .expect("valid channel slug")
+            .as_deref(),
         Some("mobile-app")
     );
     assert_eq!(
@@ -402,15 +404,8 @@ fn request_facts_reject_malformed_and_ambiguous_channel_selectors() {
     let mut malformed_id = HeaderMap::new();
     malformed_id.insert("X-Channel-ID", "not-a-uuid".parse().expect("header"));
     assert!(
-        try_build_request_facts(
-            tenant_id,
-            &malformed_id,
-            None,
-            None,
-            &settings,
-            &extensions,
-        )
-        .is_err()
+        try_build_request_facts(tenant_id, &malformed_id, None, None, &settings, &extensions,)
+            .is_err()
     );
 
     let mut nil_id = HeaderMap::new();
@@ -419,15 +414,7 @@ fn request_facts_reject_malformed_and_ambiguous_channel_selectors() {
         Uuid::nil().to_string().parse().expect("header"),
     );
     assert!(
-        try_build_request_facts(
-            tenant_id,
-            &nil_id,
-            None,
-            None,
-            &settings,
-            &extensions,
-        )
-        .is_err()
+        try_build_request_facts(tenant_id, &nil_id, None, None, &settings, &extensions,).is_err()
     );
 
     let mut conflicting_ids = HeaderMap::new();
@@ -900,9 +887,7 @@ fn channel_slug_from_header_rejects_conflicting_duplicates() {
 
 #[test]
 fn channel_slug_from_query_rejects_conflicting_duplicates() {
-    assert!(
-        channel_slug_from_query(Some("channel=channel-a&channel=channel-b")).is_err()
-    );
+    assert!(channel_slug_from_query(Some("channel=channel-a&channel=channel-b")).is_err());
     assert_eq!(
         channel_slug_from_query(Some("channel=channel-a&channel=channel-a")),
         Ok(Some("channel-a".to_string()))

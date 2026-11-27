@@ -149,8 +149,9 @@ impl ListScriptsQuery {
         self.status
             .as_deref()
             .map(|status| {
-                ScriptStatus::parse(status)
-                    .ok_or_else(|| ScriptStatusFilterError { status: status.to_string() })
+                ScriptStatus::parse(status).ok_or_else(|| ScriptStatusFilterError {
+                    status: status.to_string(),
+                })
             })
             .transpose()
     }
@@ -585,7 +586,9 @@ mod tests {
 
         assert_eq!(
             invalid.status_filter(),
-            Err(ScriptStatusFilterError { status: "retired".to_string() })
+            Err(ScriptStatusFilterError {
+                status: "retired".to_string()
+            })
         );
     }
 

@@ -241,7 +241,9 @@ async fn product_admin_catalog_list_native(
         }
         let request_context = require_request_context("admin_catalog_list").await?;
         if request_context.tenant_id != tenant.id {
-            return Err(ServerFnError::new("Product admin request could not be completed"));
+            return Err(ServerFnError::new(
+                "Product admin request could not be completed",
+            ));
         }
         crate::transport::native_server_adapter::ensure_product_module_enabled(
             &runtime_ctx,
@@ -409,7 +411,9 @@ async fn product_admin_catalog_facets_native(
         }
         let request_context = require_request_context("admin_catalog_facets").await?;
         if request_context.tenant_id != tenant.id {
-            return Err(ServerFnError::new("Product admin request could not be completed"));
+            return Err(ServerFnError::new(
+                "Product admin request could not be completed",
+            ));
         }
         crate::transport::native_server_adapter::ensure_product_module_enabled(
             &runtime_ctx,
@@ -459,7 +463,9 @@ async fn product_admin_catalog_facets_native(
                 },
             )
             .await
-            .map_err(|error| map_product_port_error(&port_context, error, "admin_catalog_facets"))?;
+            .map_err(|error| {
+                map_product_port_error(&port_context, error, "admin_catalog_facets")
+            })?;
         Ok(map_admin_catalog_facets(facets))
     }
     #[cfg(not(feature = "ssr"))]

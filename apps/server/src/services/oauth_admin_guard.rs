@@ -432,7 +432,9 @@ mod tests {
         .expect("create OAuth app");
         let inner = Arc::new(ServerAuthAdminMutationProvider::new(
             &ServerRuntimeContext::new(db.clone(), Default::default()),
-            crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            crate::auth::test_auth_config(
+                "test-secret-key-for-unit-tests-only-32bytes!".to_string(),
+            ),
         ));
         let guarded = GuardedOAuthAdminProvider::new(db.clone(), inner);
 
@@ -517,7 +519,9 @@ mod tests {
         let app_id = created.app.id;
         let inner = Arc::new(ServerAuthAdminMutationProvider::new(
             &ServerRuntimeContext::new(db.clone(), Default::default()),
-            crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            crate::auth::test_auth_config(
+                "test-secret-key-for-unit-tests-only-32bytes!".to_string(),
+            ),
         ));
         let guarded = GuardedOAuthAdminProvider::new(db.clone(), inner);
 
@@ -675,7 +679,9 @@ mod tests {
             db.clone(),
             Arc::new(ServerAuthAdminMutationProvider::new(
                 &ServerRuntimeContext::new(db.clone(), Default::default()),
-                crate::auth::test_auth_config("test-secret-key-for-oauth-rotation-race-at-least-32-bytes".to_string()),
+                crate::auth::test_auth_config(
+                    "test-secret-key-for-oauth-rotation-race-at-least-32-bytes".to_string(),
+                ),
             )),
         );
         let authority = vec![Permission::SETTINGS_MANAGE, Permission::MODULES_MANAGE];
@@ -713,7 +719,10 @@ mod tests {
             .await
             .expect("reload app")
             .expect("app still exists");
-        assert_eq!(current.client_secret_hash.as_deref(), Some(competing_hash.as_str()));
+        assert_eq!(
+            current.client_secret_hash.as_deref(),
+            Some(competing_hash.as_str())
+        );
     }
 
     #[test]
@@ -727,10 +736,8 @@ mod tests {
         };
 
         assert!(
-            require_direct_user_consent(&context(Some(
-                rustok_api::AuthPrincipalKind::DirectUser
-            )))
-            .is_ok()
+            require_direct_user_consent(&context(Some(rustok_api::AuthPrincipalKind::DirectUser)))
+                .is_ok()
         );
         for principal_kind in [
             Some(rustok_api::AuthPrincipalKind::DelegatedUser),

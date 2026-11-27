@@ -692,25 +692,35 @@ async fn anonymous_reserve_refuses_underreported_or_unrepresentable_live_claims(
         active.reserved_quantity = Set(5);
         let before = active.update(&stock.db).await.unwrap();
         let saved_before = allocation(&stock, saved.id).await;
-        let error = stock.service.reserve(
-            &inventory_port_context(stock.tenant, "native-quantity-reserve", true),
-            stock.variant, 1,
-        ).await.expect_err("existing claims must be covered before a new allocation");
+        let error = stock
+            .service
+            .reserve(
+                &inventory_port_context(stock.tenant, "native-quantity-reserve", true),
+                stock.variant,
+                1,
+            )
+            .await
+            .expect_err("existing claims must be covered before a new allocation");
         let CommerceError::Validation(message) = error else {
             panic!("expected validation refusal");
         };
-        assert!(message.contains(if overflow {
-            "supported counter range"
-        } else {
-            "exceed the saved reserved counter"
-        }), "{message}");
+        assert!(
+            message.contains(if overflow {
+                "supported counter range"
+            } else {
+                "exceed the saved reserved counter"
+            }),
+            "{message}"
+        );
         assert_eq!(level(&stock, stock.default_location).await, before);
         assert_eq!(allocation(&stock, saved.id).await, saved_before);
         assert_eq!(allocation(&stock, anonymous.id).await, anonymous);
         assert_eq!(
             entities::reservation_item::Entity::find()
                 .filter(entities::reservation_item::Column::InventoryItemId.eq(stock.item))
-                .count(&stock.db).await.unwrap(),
+                .count(&stock.db)
+                .await
+                .unwrap(),
             2
         );
     }

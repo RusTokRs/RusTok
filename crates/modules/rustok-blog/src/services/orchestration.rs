@@ -21,7 +21,7 @@ use super::{
         CATEGORY_DESCRIPTION_MAX_CHARS, CATEGORY_NAME_MAX_CHARS, CATEGORY_SLUG_MAX_CHARS,
         record_category_copy_change_in_tx,
     },
-    post::{MAX_TAG_NAME_CHARS, storage_to_status, status_to_storage, validate_tags},
+    post::{MAX_TAG_NAME_CHARS, status_to_storage, storage_to_status, validate_tags},
     rbac::enforce_scope,
     tag::{
         TAG_SLUG_MAX_CHARS, publish_blog_reindex_in_tx, remove_post_tag_links_with_port_in_tx,

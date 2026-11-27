@@ -10,14 +10,14 @@ use rustok_telemetry::runtime_consumer_metrics;
 use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
-use crate::services::app_lifecycle::{
-    SocialGraphObserverInitializationLock, StopHandle,
-};
+use crate::services::app_lifecycle::{SocialGraphObserverInitializationLock, StopHandle};
 use crate::services::server_runtime_context::{
     ServerRuntimeContext, ServerRuntimeStartReservation, published_worker_running,
 };
 use crate::services::social_graph_index_worker::social_graph_index_consumer_enabled;
-use crate::services::stop_handle::{may_admit_next_worker_operation, wait_for_worker_retry_or_stop};
+use crate::services::stop_handle::{
+    may_admit_next_worker_operation, wait_for_worker_retry_or_stop,
+};
 
 const POLL_ENV: &str = "RUSTOK_SOCIAL_GRAPH_INDEX_POSITION_POLL_MS";
 const DEFAULT_POLL_MS: u64 = 5_000;
@@ -87,7 +87,8 @@ pub async fn start_social_graph_index_position_observer_if_enabled(
             return Ok(());
         }
         return Err(Error::Message(
-            "Social Graph Index position observer startup is already in progress; retry".to_string(),
+            "Social Graph Index position observer startup is already in progress; retry"
+                .to_string(),
         ));
     };
     if published_worker_running::<SocialGraphIndexPositionObserverHandle>(
@@ -305,7 +306,11 @@ mod tests {
         // The failed worker remains registered for host shutdown accounting;
         // a repeated starter must not publish a replacement behind its back.
         assert!(ctx.shared_contains::<SocialGraphIndexPositionObserverHandle>());
-        assert!(start_social_graph_index_position_observer_if_enabled(&ctx).await.is_err());
+        assert!(
+            start_social_graph_index_position_observer_if_enabled(&ctx)
+                .await
+                .is_err()
+        );
     }
 
     #[test]

@@ -1,11 +1,9 @@
 //! Heartbeat dispatch loop for module lifecycle hook execution.
 
-use std::time::Duration;
 use sea_orm::DatabaseConnection;
+use std::time::Duration;
 
-use crate::{
-    ModuleExecutionDispatcher, ModuleLifecycleHookPhase, StaticTenantLifecycleStore,
-};
+use crate::{ModuleExecutionDispatcher, ModuleLifecycleHookPhase, StaticTenantLifecycleStore};
 
 /// Claim leases last 300 seconds; renewing every minute leaves several
 /// missed-heartbeat opportunities before a claim becomes uncertain. Expiry
@@ -32,7 +30,9 @@ async fn renew_lifecycle_claim(
         module_slug,
         expected_revision,
         idempotency_key,
-    ).await {
+    )
+    .await
+    {
         Ok(true) => Ok(()),
         Ok(false) => Err(ClaimHeartbeatDispatchError::ClaimLost {
             module_slug: module_slug.to_string(),
@@ -53,7 +53,14 @@ async fn lifecycle_claim_heartbeat_tick(
     idempotency_key: uuid::Uuid,
 ) -> Result<(), ClaimHeartbeatDispatchError> {
     tokio::time::sleep(LIFECYCLE_CLAIM_HEARTBEAT_INTERVAL).await;
-    renew_lifecycle_claim(db, tenant_id, module_slug, expected_revision, idempotency_key).await
+    renew_lifecycle_claim(
+        db,
+        tenant_id,
+        module_slug,
+        expected_revision,
+        idempotency_key,
+    )
+    .await
 }
 
 /// Dispatches one lifecycle hook while renewing the exact aggregate claim.
@@ -72,7 +79,14 @@ pub(crate) async fn dispatch_lifecycle_with_claim_heartbeat(
 ) -> Result<(), ClaimHeartbeatDispatchError> {
     // Do not start another external hook using a claim already lost while
     // preparing its inputs. This check is not a lock over external effects.
-    renew_lifecycle_claim(db, tenant_id, module_slug, expected_revision, idempotency_key).await?;
+    renew_lifecycle_claim(
+        db,
+        tenant_id,
+        module_slug,
+        expected_revision,
+        idempotency_key,
+    )
+    .await?;
     let dispatch = dispatcher.dispatch_lifecycle(db, tenant_id, module_slug, settings, phase);
     tokio::pin!(dispatch);
     // Poll the heartbeat as an independent future rather than awaiting it

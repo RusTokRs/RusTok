@@ -26,7 +26,10 @@ fn test_refresh_cookie_helpers_contract() {
     assert!(RefreshCredential::parse("tenant.token").is_err());
 
     let raw_header = format!("other=1; {ADMIN_REFRESH_COOKIE}={cookie_val}; session=abc");
-    assert_eq!(inspect_refresh_cookie_headers([raw_header.as_str()]), Ok(Some(credential.clone())));
+    assert_eq!(
+        inspect_refresh_cookie_headers([raw_header.as_str()]),
+        Ok(Some(credential.clone()))
+    );
     assert_eq!(inspect_refresh_cookie_headers([]), Ok(None));
     assert!(inspect_refresh_cookie_headers([raw_header.as_str(), raw_header.as_str()]).is_err());
 

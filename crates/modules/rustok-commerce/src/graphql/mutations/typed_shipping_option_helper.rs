@@ -516,9 +516,7 @@ pub(crate) async fn validate_selected_shipping_option(
         let required_profile = crate::storefront_shipping::normalize_shipping_profile_slug(
             selection.shipping_profile_slug.as_str(),
         )
-        .unwrap_or_else(|| {
-            crate::storefront_shipping::DEFAULT_SHIPPING_PROFILE_SLUG.to_string()
-        });
+        .unwrap_or_else(|| crate::storefront_shipping::DEFAULT_SHIPPING_PROFILE_SLUG.to_string());
         let required_profiles = std::collections::BTreeSet::from([required_profile]);
         if !crate::storefront_shipping::is_shipping_option_compatible_with_profiles(
             &option,

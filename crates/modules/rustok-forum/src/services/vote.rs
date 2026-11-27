@@ -21,9 +21,7 @@ use crate::services::category_audience::lock_category_tree_in_tx;
 use crate::services::engagement_mode::{ForumEngagementMode, ForumSettingsProviders};
 use crate::services::projection_invalidation::publish_forum_topic_projection_direct_in_tx;
 use crate::services::rbac::enforce_scope;
-use crate::services::topic_engagement_guard::{
-    TopicEngagementKind, enforce_topic_engagement,
-};
+use crate::services::topic_engagement_guard::{TopicEngagementKind, enforce_topic_engagement};
 use crate::services::topic_vote_lock::{
     lock_active_topic_vote_write_in_tx, lock_topic_vote_scopes_in_tx,
 };

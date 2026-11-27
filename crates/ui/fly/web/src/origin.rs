@@ -58,7 +58,9 @@ pub fn normalize_expected_origin(origin: &str) -> Option<String> {
     let authority = rest.strip_suffix('/').unwrap_or(rest);
     if authority.is_empty()
         || authority.contains(['/', '\\', '?', '#', '@'])
-        || authority.chars().any(|c| c.is_control() || c.is_whitespace())
+        || authority
+            .chars()
+            .any(|c| c.is_control() || c.is_whitespace())
     {
         return None;
     }
@@ -136,7 +138,10 @@ mod tests {
     fn opaque_inbound_subscription_requires_a_bound_source_window() {
         for origin in ["null", " null ", "\tnull\n"] {
             assert!(normalize_subscription_origin(origin, false).is_none());
-            assert_eq!(normalize_subscription_origin(origin, true).as_deref(), Some("null"));
+            assert_eq!(
+                normalize_subscription_origin(origin, true).as_deref(),
+                Some("null")
+            );
         }
         for has_source in [false, true] {
             assert_eq!(
@@ -191,7 +196,6 @@ mod tests {
         assert_eq!(once, twice);
     }
 
-
     #[test]
     fn concrete_origins_are_canonicalized_and_non_origins_are_rejected() {
         assert_eq!(
@@ -225,6 +229,4 @@ mod tests {
             assert_eq!(normalize_expected_origin(origin), None, "accepted {origin}");
         }
     }
-
-
 }

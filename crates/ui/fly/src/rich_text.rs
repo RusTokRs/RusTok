@@ -82,10 +82,7 @@ fn collect_rich_text_link_hrefs(node: &Value, hrefs: &mut Vec<String>) {
 /// Remove link marks that do not satisfy the enclosing page's navigation URL policy.
 /// This runs before either the host HTML renderer or Fly's fallback sees the payload, so a
 /// trusted host renderer cannot accidentally re-enable a link disabled by RenderPolicy.
-pub(crate) fn filter_rich_text_links_for_policy(
-    payload: &mut RichTextPayload,
-    policy: &UrlPolicy,
-) {
+pub(crate) fn filter_rich_text_links_for_policy(payload: &mut RichTextPayload, policy: &UrlPolicy) {
     filter_rich_text_node_links(&mut payload.payload, policy);
 }
 
@@ -461,7 +458,10 @@ mod tests {
         });
         assert_eq!(
             validated_rich_text_link_hrefs(&raw).expect("valid rich-text extension"),
-            vec!["https://example.test/page".to_string(), "/local".to_string()]
+            vec![
+                "https://example.test/page".to_string(),
+                "/local".to_string()
+            ]
         );
     }
 
@@ -488,7 +488,6 @@ mod tests {
         assert!(validate_rich_text_payload(&valid).is_ok());
     }
 
-
     #[test]
     fn deeply_nested_rich_text_is_rejected_before_deserialization() {
         let mut nested = json!({ "type": "doc", "content": [] });
@@ -501,6 +500,4 @@ mod tests {
         });
         assert!(decode_rich_text_payload(&raw).is_err());
     }
-
-
 }

@@ -265,8 +265,8 @@ async fn changed_policy_refuses_new_backorders_without_invalidating_existing_ide
     // is not an assertion about the Product admin transition command.
     set_policy(&stock, "continue").await;
     let port = in_process_inventory_reservation_identity_port(stock.db.clone());
-    let context = inventory_port_context(stock.tenant_id, "changed-policy", true)
-        .with_channel("web");
+    let context =
+        inventory_port_context(stock.tenant_id, "changed-policy", true).with_channel("web");
     let command = request(stock.variant_id, 7);
     let first = port
         .reserve_inventory_by_identity(context.clone(), command.clone())
@@ -285,8 +285,7 @@ async fn changed_policy_refuses_new_backorders_without_invalidating_existing_ide
 
     let error = port
         .reserve_inventory_by_identity(
-            inventory_port_context(stock.tenant_id, "new-after-deny", true)
-                .with_channel("web"),
+            inventory_port_context(stock.tenant_id, "new-after-deny", true).with_channel("web"),
             request(stock.variant_id, 1),
         )
         .await
@@ -350,8 +349,7 @@ async fn backorder_does_not_authorize_a_hidden_location() {
 #[tokio::test]
 async fn public_availability_uses_current_owned_policy_not_caller_snapshot() {
     use rustok_inventory::{
-        check_variant_availability_for_public_channel,
-        PublicChannelInventoryVariantProjectionInput,
+        PublicChannelInventoryVariantProjectionInput, check_variant_availability_for_public_channel,
     };
     let stock = channel_stock().await;
     let claimed = PublicChannelInventoryVariantProjectionInput {
@@ -359,40 +357,93 @@ async fn public_availability_uses_current_owned_policy_not_caller_snapshot() {
         inventory_policy: "continue",
     };
     // Five visible units; a forged or stale backorder policy cannot admit six.
-    assert!(!check_variant_availability_for_public_channel(
-        &stock.db, stock.tenant_id, claimed, 6, Some("web"),
-    ).await.unwrap());
-    assert!(check_variant_availability_for_public_channel(
-        &stock.db, stock.tenant_id, claimed, 5, Some("web"),
-    ).await.unwrap());
+    assert!(
+        !check_variant_availability_for_public_channel(
+            &stock.db,
+            stock.tenant_id,
+            claimed,
+            6,
+            Some("web"),
+        )
+        .await
+        .unwrap()
+    );
+    assert!(
+        check_variant_availability_for_public_channel(
+            &stock.db,
+            stock.tenant_id,
+            claimed,
+            5,
+            Some("web"),
+        )
+        .await
+        .unwrap()
+    );
     for (tenant_id, variant_id) in [
         (Uuid::new_v4(), stock.variant_id),
         (stock.tenant_id, Uuid::new_v4()),
     ] {
         let error = check_variant_availability_for_public_channel(
-            &stock.db, tenant_id, PublicChannelInventoryVariantProjectionInput {
-                variant_id, inventory_policy: "continue",
-            }, 1, Some("web"),
-        ).await.unwrap_err();
+            &stock.db,
+            tenant_id,
+            PublicChannelInventoryVariantProjectionInput {
+                variant_id,
+                inventory_policy: "continue",
+            },
+            1,
+            Some("web"),
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(error, CommerceError::VariantNotFound(id) if id == variant_id));
     }
 
     let mut variant: rustok_product::entities::product_variant::ActiveModel =
         rustok_product::entities::product_variant::Entity::find_by_id(stock.variant_id)
-            .one(&stock.db).await.unwrap().unwrap().into();
+            .one(&stock.db)
+            .await
+            .unwrap()
+            .unwrap()
+            .into();
     variant.inventory_policy = Set("continue".into());
     variant.update(&stock.db).await.unwrap();
     let stale_deny = PublicChannelInventoryVariantProjectionInput {
         variant_id: stock.variant_id,
         inventory_policy: "deny",
     };
-    assert!(check_variant_availability_for_public_channel(
-        &stock.db, stock.tenant_id, stale_deny, 6, Some("web"),
-    ).await.unwrap());
-    assert!(stock.service.check_variant_availability_for_channel(
-        stock.tenant_id, stock.variant_id, 6, Some("web"),
-    ).await.unwrap().available);
-    assert!(check_variant_availability_for_public_channel(
-        &stock.db, stock.tenant_id, claimed, -1, Some("web"),
-    ).await.is_err());
+    assert!(
+        check_variant_availability_for_public_channel(
+            &stock.db,
+            stock.tenant_id,
+            stale_deny,
+            6,
+            Some("web"),
+        )
+        .await
+        .unwrap()
+    );
+    assert!(
+        stock
+            .service
+            .check_variant_availability_for_channel(
+                stock.tenant_id,
+                stock.variant_id,
+                6,
+                Some("web"),
+            )
+            .await
+            .unwrap()
+            .available
+    );
+    assert!(
+        check_variant_availability_for_public_channel(
+            &stock.db,
+            stock.tenant_id,
+            claimed,
+            -1,
+            Some("web"),
+        )
+        .await
+        .is_err()
+    );
 }

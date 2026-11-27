@@ -1,6 +1,8 @@
 //! Restart-safe delivery of Product-owned committed Media removals.
 use crate::services::server_runtime_context::ServerRuntimeContext;
-use crate::services::stop_handle::{may_admit_next_worker_operation, run_admitted_worker_operation};
+use crate::services::stop_handle::{
+    may_admit_next_worker_operation, run_admitted_worker_operation,
+};
 use std::time::Duration;
 use tokio::{
     task::JoinHandle,

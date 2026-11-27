@@ -85,7 +85,8 @@ impl WebSocketAuthLease {
     pub(crate) fn new(access_token: String, current_user: &CurrentUser) -> Self {
         let started = std::time::Instant::now();
         let remaining = (current_user.access_token_expires_at - chrono::Utc::now())
-            .to_std().unwrap_or_default();
+            .to_std()
+            .unwrap_or_default();
         Self {
             tenant_id: current_user.user.tenant_id,
             access_token,
@@ -104,28 +105,45 @@ impl WebSocketAuthLease {
     /// Time remaining until expiry; zero means no further data may be sent.
     pub(crate) fn remaining(&self) -> std::time::Duration {
         if rustok_auth::application_clock::check_local().is_err() {
-            self.expired.store(true, std::sync::atomic::Ordering::Release);
+            self.expired
+                .store(true, std::sync::atomic::Ordering::Release);
             return std::time::Duration::ZERO;
         }
         self.remaining_at(chrono::Utc::now(), std::time::Instant::now())
     }
 
-    fn remaining_at(&self, wall: chrono::DateTime<chrono::Utc>, mono: std::time::Instant) -> std::time::Duration {
+    fn remaining_at(
+        &self,
+        wall: chrono::DateTime<chrono::Utc>,
+        mono: std::time::Instant,
+    ) -> std::time::Duration {
         use std::sync::atomic::Ordering;
-        let remaining = (self.expires_at - wall).to_std().unwrap_or_default()
+        let remaining = (self.expires_at - wall)
+            .to_std()
+            .unwrap_or_default()
             .min(self.monotonic_deadline.saturating_duration_since(mono));
         if remaining.is_zero() {
             self.expired.store(true, Ordering::Release);
         }
-        if self.expired.load(Ordering::Acquire) { std::time::Duration::ZERO } else { remaining }
+        if self.expired.load(Ordering::Acquire) {
+            std::time::Duration::ZERO
+        } else {
+            remaining
+        }
     }
 
-    pub(crate) fn ensure_local_authority(&self, auth_runtime: &ServerAuthRuntime) -> Result<(), WebSocketAuthLeaseError> {
+    pub(crate) fn ensure_local_authority(
+        &self,
+        auth_runtime: &ServerAuthRuntime,
+    ) -> Result<(), WebSocketAuthLeaseError> {
         if self.remaining().is_zero() {
             return Err(WebSocketAuthLeaseError::Expired);
         }
-        let config = auth_runtime.auth_config().ok_or(WebSocketAuthLeaseError::ResolutionFailed)?;
-        decode_access_token(config, &self.access_token).map_err(|_| WebSocketAuthLeaseError::ResolutionFailed)?;
+        let config = auth_runtime
+            .auth_config()
+            .ok_or(WebSocketAuthLeaseError::ResolutionFailed)?;
+        decode_access_token(config, &self.access_token)
+            .map_err(|_| WebSocketAuthLeaseError::ResolutionFailed)?;
         if self.remaining().is_zero() {
             return Err(WebSocketAuthLeaseError::Expired);
         }
@@ -196,7 +214,10 @@ fn validate_oauth_token_scopes(
     token_scopes: &[String],
 ) -> Result<(), (StatusCode, &'static str)> {
     let allowed_scopes = app.decoded_scopes().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, "Stored OAuth app scopes are invalid")
+        (
+            StatusCode::UNAUTHORIZED,
+            "Stored OAuth app scopes are invalid",
+        )
     })?;
     if token_scopes
         .iter()
@@ -234,7 +255,10 @@ async fn validate_active_user_consent(
         ));
     }
     let consent_scopes = consent.scopes_list().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, "Stored OAuth consent scopes are invalid")
+        (
+            StatusCode::UNAUTHORIZED,
+            "Stored OAuth consent scopes are invalid",
+        )
     })?;
     if token_scopes
         .iter()
@@ -269,8 +293,14 @@ async fn validate_oauth_access_token_registration(
         "OAuth access token is not registered",
     ))?;
     let token_hash = crate::auth::hash_refresh_token(access_token);
-    let now = rustok_auth::application_clock::admit_now(db).await
-        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
+    let now = rustok_auth::application_clock::admit_now(db)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Application database clock unavailable",
+            )
+        })?;
     let row = OAuthTokens::find_by_id(jti)
         .filter(oauth_tokens::Column::TokenHash.eq(token_hash))
         .filter(oauth_tokens::Column::AppId.eq(app_id))
@@ -294,7 +324,10 @@ async fn validate_oauth_access_token_registration(
         ));
     }
     let registered_scopes = row.decoded_scopes().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, "Stored OAuth access token scopes are invalid")
+        (
+            StatusCode::UNAUTHORIZED,
+            "Stored OAuth access token scopes are invalid",
+        )
     })?;
     if registered_scopes.as_slice() != expected_scopes {
         return Err((
@@ -346,20 +379,22 @@ async fn active_permissions_for_tenant(
     permissions: Vec<Permission>,
 ) -> Result<Vec<Permission>, (StatusCode, &'static str)> {
     let availability =
-        crate::services::rbac_module_availability::authoritative_permission_availability_for(ctx, tenant_id)
-            .await
-            .map_err(|error| {
-                tracing::error!(
-                    %error,
-                    tenant_id = %tenant_id,
-                    principal_id = %principal_id,
-                    "RBAC module availability resolution failed"
-                );
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Module policy unavailable",
-                )
-            })?;
+        crate::services::rbac_module_availability::authoritative_permission_availability_for(
+            ctx, tenant_id,
+        )
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                %error,
+                tenant_id = %tenant_id,
+                principal_id = %principal_id,
+                "RBAC module availability resolution failed"
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Module policy unavailable",
+            )
+        })?;
     Ok(filter_available_permissions(permissions, availability))
 }
 
@@ -372,7 +407,8 @@ async fn resolve_service_token_permissions(
     token_scopes: &[String],
     access_token: &str,
     jti: Option<uuid::Uuid>,
-) -> Result<(Vec<Permission>, UserRole, chrono::DateTime<chrono::Utc>), (StatusCode, &'static str)> {
+) -> Result<(Vec<Permission>, UserRole, chrono::DateTime<chrono::Utc>), (StatusCode, &'static str)>
+{
     let db = ctx.db();
     let app = resolve_active_oauth_app(
         db,
@@ -478,10 +514,20 @@ pub async fn resolve_current_user_from_access_token(
     ))?;
     let db = ctx.runtime_ctx().db();
 
-    rustok_auth::application_clock::admit_now(db).await
-        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
-    auth_config.credential_now()
-        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Credential authority unavailable"))?;
+    rustok_auth::application_clock::admit_now(db)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Application database clock unavailable",
+            )
+        })?;
+    auth_config.credential_now().map_err(|_| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Credential authority unavailable",
+        )
+    })?;
     let claims = decode_access_token(auth_config, access_token)
         .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))?;
     let expiry_seconds = i64::try_from(claims.exp)
@@ -525,8 +571,14 @@ pub async fn resolve_current_user_from_access_token(
         }
 
         // INVARIANT: In-memory check validating session activity and confirming database-scoped tenant identity.
-        let now = rustok_auth::application_clock::admit_now(db).await
-            .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
+        let now = rustok_auth::application_clock::admit_now(db)
+            .await
+            .map_err(|_| {
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Application database clock unavailable",
+                )
+            })?;
         if session.tenant_id != tenant_id || !session.is_active_at(now) {
             return Err((StatusCode::UNAUTHORIZED, "Session expired"));
         }
@@ -561,8 +613,7 @@ pub async fn resolve_current_user_from_access_token(
         // The durable registration row retains subsecond issuance time;
         // JWT NumericDate is whole seconds and can misorder a same-second
         // password change and token issuance.
-        delegated_credential_issued_at =
-            Some(access_row.created_at.with_timezone(&chrono::Utc));
+        delegated_credential_issued_at = Some(access_row.created_at.with_timezone(&chrono::Utc));
         durable_credential_expires_at = access_row.expires_at.with_timezone(&chrono::Utc);
         validate_active_user_consent(
             db,
@@ -592,12 +643,7 @@ pub async fn resolve_current_user_from_access_token(
             if !user.is_active() {
                 return Err((StatusCode::FORBIDDEN, "User is inactive"));
             }
-            if ctx
-                .runtime_ctx()
-                .settings()
-                .features
-                .email_verification
-                && !user.is_email_verified()
+            if ctx.runtime_ctx().settings().features.email_verification && !user.is_email_verified()
             {
                 return Err((StatusCode::FORBIDDEN, "Email verification required"));
             }
@@ -615,7 +661,8 @@ pub async fn resolve_current_user_from_access_token(
                 }
             }
 
-            static_authority_revision = Some(read_static_authority_revision(db, tenant_id, user.id).await?);
+            static_authority_revision =
+                Some(read_static_authority_revision(db, tenant_id, user.id).await?);
             let granted_permissions =
                 RbacService::get_user_permissions_authoritative(db, &tenant_id, &user.id)
                     .await
@@ -699,12 +746,26 @@ pub async fn resolve_current_user_from_access_token(
     // Storage and policy resolution may outlast either credential fence.
     // The signed JWT cannot extend the observed session (including its
     // absolute cap) or durable OAuth registration deadline.
-    let verified = rustok_auth::application_clock::admit_now(db).await
-        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
-    let live = auth_config.credential_now()
-        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Credential authority unavailable"))?;
-    let decision = rustok_auth::application_clock::decision_time(verified, live)
-        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
+    let verified = rustok_auth::application_clock::admit_now(db)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Application database clock unavailable",
+            )
+        })?;
+    let live = auth_config.credential_now().map_err(|_| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Credential authority unavailable",
+        )
+    })?;
+    let decision = rustok_auth::application_clock::decision_time(verified, live).map_err(|_| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Application database clock unavailable",
+        )
+    })?;
     ensure_access_token_not_expired(
         access_token_expires_at,
         durable_credential_expires_at,
@@ -715,12 +776,25 @@ pub async fn resolve_current_user_from_access_token(
     // it as expiry; an inconclusive observation still denies admission.
     let deadline = access_token_expires_at.min(durable_credential_expires_at);
     if live >= deadline {
-        let crossing = rustok_auth::application_clock::admit_now(db).await
-            .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
+        let crossing = rustok_auth::application_clock::admit_now(db)
+            .await
+            .map_err(|_| {
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Application database clock unavailable",
+                )
+            })?;
         if crossing < deadline {
-            return Err((StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"));
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Application database clock unavailable",
+            ));
         }
-        ensure_access_token_not_expired(access_token_expires_at, durable_credential_expires_at, crossing)?;
+        ensure_access_token_not_expired(
+            access_token_expires_at,
+            durable_credential_expires_at,
+            crossing,
+        )?;
     }
 
     // The initial session, account, registration and policy reads preceded
@@ -728,23 +802,50 @@ pub async fn resolve_current_user_from_access_token(
     // Check the live owner state again; a shortened deadline never extends
     // or silently changes the admitted snapshot.
     revalidate_admitted_authority(
-        ctx, tenant_id, &claims, access_token, &user, &permissions,
-        &inferred_role, principal_kind, delegated_credential_issued_at,
-        durable_credential_expires_at, decision, static_authority_revision.as_ref(),
-    ).await?;
+        ctx,
+        tenant_id,
+        &claims,
+        access_token,
+        &user,
+        &permissions,
+        &inferred_role,
+        principal_kind,
+        delegated_credential_issued_at,
+        durable_credential_expires_at,
+        decision,
+        static_authority_revision.as_ref(),
+    )
+    .await?;
 
     // A healthy replacement keyring need not retain the original key.
     decode_access_token(auth_config, access_token)
         .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))?;
-    rustok_auth::application_clock::check_local()
-        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
-    let final_now = auth_config.credential_now()
-        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Credential authority unavailable"))?;
+    rustok_auth::application_clock::check_local().map_err(|_| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Application database clock unavailable",
+        )
+    })?;
+    let final_now = auth_config.credential_now().map_err(|_| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Credential authority unavailable",
+        )
+    })?;
     if final_now >= deadline {
-        let crossing = rustok_auth::application_clock::admit_now(db).await
-            .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
+        let crossing = rustok_auth::application_clock::admit_now(db)
+            .await
+            .map_err(|_| {
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Application database clock unavailable",
+                )
+            })?;
         if crossing < deadline {
-            return Err((StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"));
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Application database clock unavailable",
+            ));
         }
         return Err((StatusCode::UNAUTHORIZED, "Access token expired"));
     }
@@ -764,9 +865,12 @@ pub async fn resolve_current_user_from_access_token(
 }
 
 async fn read_static_authority_revision(
-    db: &DatabaseConnection, tenant_id: uuid::Uuid, user_id: uuid::Uuid,
+    db: &DatabaseConnection,
+    tenant_id: uuid::Uuid,
+    user_id: uuid::Uuid,
 ) -> Result<rustok_rbac::StaticActorAuthorityRevision, (StatusCode, &'static str)> {
-    rustok_rbac::read_static_actor_authority_revision_on(db, tenant_id, user_id).await
+    rustok_rbac::read_static_actor_authority_revision_on(db, tenant_id, user_id)
+        .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))
 }
 
@@ -786,25 +890,44 @@ async fn revalidate_admitted_authority(
     static_revision: Option<&rustok_rbac::StaticActorAuthorityRevision>,
 ) -> Result<(), (StatusCode, &'static str)> {
     let db = ctx.runtime_ctx().db();
-    let changed = (StatusCode::UNAUTHORIZED, "Credential authority changed during admission");
+    let changed = (
+        StatusCode::UNAUTHORIZED,
+        "Credential authority changed during admission",
+    );
     let database_error = (StatusCode::INTERNAL_SERVER_ERROR, "Database error");
     if principal_kind == AuthPrincipalKind::Service {
         let client_id = claims.client_id.ok_or(changed)?;
-        let (current_permissions, current_role, current_deadline) = resolve_service_token_permissions(
-            ctx.runtime_ctx(), tenant_id, claims.sub, client_id, claims.role.clone(),
-            &claims.scopes, access_token, claims.jti,
-        ).await?;
-        if &current_role != role || current_deadline < durable_deadline
-            || permissions.iter().any(|permission| !current_permissions.contains(permission))
+        let (current_permissions, current_role, current_deadline) =
+            resolve_service_token_permissions(
+                ctx.runtime_ctx(),
+                tenant_id,
+                claims.sub,
+                client_id,
+                claims.role.clone(),
+                &claims.scopes,
+                access_token,
+                claims.jti,
+            )
+            .await?;
+        if &current_role != role
+            || current_deadline < durable_deadline
+            || permissions
+                .iter()
+                .any(|permission| !current_permissions.contains(permission))
         {
             return Err(changed);
         }
     } else {
         let current_user = Users::find_by_id(original_user.id)
             .filter(users::Column::TenantId.eq(tenant_id))
-            .one(db).await.map_err(|_| database_error)?.ok_or(changed)?;
-        if !current_user.is_active() || current_user.recovery_revision != original_user.recovery_revision
-            || (ctx.runtime_ctx().settings().features.email_verification && !current_user.is_email_verified())
+            .one(db)
+            .await
+            .map_err(|_| database_error)?
+            .ok_or(changed)?;
+        if !current_user.is_active()
+            || current_user.recovery_revision != original_user.recovery_revision
+            || (ctx.runtime_ctx().settings().features.email_verification
+                && !current_user.is_email_verified())
         {
             return Err(changed);
         }
@@ -812,9 +935,17 @@ async fn revalidate_admitted_authority(
             AuthPrincipalKind::DirectUser => {
                 let session = Sessions::find_by_id(claims.session_id)
                     .filter(crate::models::sessions::Column::TenantId.eq(tenant_id))
-                    .one(db).await.map_err(|_| database_error)?.ok_or(changed)?;
-                if session.user_id != original_user.id || !session.is_active_at(admitted_at)
-                    || session.expires_at.with_timezone(&chrono::Utc).min(session.absolute_deadline()) < durable_deadline
+                    .one(db)
+                    .await
+                    .map_err(|_| database_error)?
+                    .ok_or(changed)?;
+                if session.user_id != original_user.id
+                    || !session.is_active_at(admitted_at)
+                    || session
+                        .expires_at
+                        .with_timezone(&chrono::Utc)
+                        .min(session.absolute_deadline())
+                        < durable_deadline
                 {
                     return Err(changed);
                 }
@@ -825,31 +956,66 @@ async fn revalidate_admitted_authority(
                     return Err(changed);
                 }
                 let client_id = claims.client_id.ok_or(changed)?;
-                let app = resolve_active_oauth_app(db, tenant_id, client_id, AUTHORIZATION_CODE_GRANT_TYPE, &claims.scopes).await?;
+                let app = resolve_active_oauth_app(
+                    db,
+                    tenant_id,
+                    client_id,
+                    AUTHORIZATION_CODE_GRANT_TYPE,
+                    &claims.scopes,
+                )
+                .await?;
                 let row = validate_oauth_access_token_registration(
-                    db, app.id, tenant_id, AUTHORIZATION_CODE_GRANT_TYPE,
-                    claims.jti, access_token, Some(original_user.id), &claims.scopes,
-                ).await?;
+                    db,
+                    app.id,
+                    tenant_id,
+                    AUTHORIZATION_CODE_GRANT_TYPE,
+                    claims.jti,
+                    access_token,
+                    Some(original_user.id),
+                    &claims.scopes,
+                )
+                .await?;
                 if row.created_at.with_timezone(&chrono::Utc) != issued_at
                     || row.expires_at.with_timezone(&chrono::Utc) < durable_deadline
                 {
                     return Err(changed);
                 }
-                validate_active_user_consent(db, &app, tenant_id, original_user.id, &claims.scopes, row.consent_granted_at).await?;
+                validate_active_user_consent(
+                    db,
+                    &app,
+                    tenant_id,
+                    original_user.id,
+                    &claims.scopes,
+                    row.consent_granted_at,
+                )
+                .await?;
             }
             AuthPrincipalKind::Service => return Err(changed),
         }
-        let active = active_permissions_for_tenant(ctx.runtime_ctx(), tenant_id, original_user.id, permissions.to_vec()).await?;
-        if permissions.iter().any(|permission| !active.contains(permission)) {
+        let active = active_permissions_for_tenant(
+            ctx.runtime_ctx(),
+            tenant_id,
+            original_user.id,
+            permissions.to_vec(),
+        )
+        .await?;
+        if permissions
+            .iter()
+            .any(|permission| !active.contains(permission))
+        {
             return Err(changed);
         }
-        let current_revision = read_static_authority_revision(db, tenant_id, original_user.id).await?;
+        let current_revision =
+            read_static_authority_revision(db, tenant_id, original_user.id).await?;
         if static_revision != Some(&current_revision) {
             return Err(changed);
         }
     }
     let tenant = crate::models::tenants::Entity::find_by_id(tenant_id)
-        .one(db).await.map_err(|_| database_error)?.ok_or(changed)?;
+        .one(db)
+        .await
+        .map_err(|_| database_error)?
+        .ok_or(changed)?;
     if !tenant.is_active {
         return Err((StatusCode::FORBIDDEN, "Tenant is unavailable"));
     }

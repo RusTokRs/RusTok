@@ -1,4 +1,10 @@
-use std::{collections::BTreeMap, env, fs, io::ErrorKind, path::{Path, PathBuf}, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    env, fs,
+    io::ErrorKind,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use rustok_page_builder::health::{ProviderHealthSnapshot, ProviderSloEvaluation};

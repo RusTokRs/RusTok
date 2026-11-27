@@ -380,12 +380,13 @@ fn write_journal(
                 ));
             }
             let bytes = fs::read(&path).map_err(|source| io_error(&path, source))?;
-            let stored: RoleMaterializationReceipt = serde_json::from_slice(&bytes).map_err(|source| {
-                RoleMaterializationError::Receipt {
-                    path: path.display().to_string(),
-                    source,
-                }
-            })?;
+            let stored: RoleMaterializationReceipt =
+                serde_json::from_slice(&bytes).map_err(|source| {
+                    RoleMaterializationError::Receipt {
+                        path: path.display().to_string(),
+                        source,
+                    }
+                })?;
             if stored.operation_id == receipt.operation_id
                 && stored.role == receipt.role
                 && stored.bundle_digest == receipt.bundle_digest
@@ -398,7 +399,9 @@ fn write_journal(
                 path.display().to_string(),
             ))
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => write_new_json(&path, receipt),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            write_new_json(&path, receipt)
+        }
         Err(error) => Err(io_error(&path, error)),
     }
 }

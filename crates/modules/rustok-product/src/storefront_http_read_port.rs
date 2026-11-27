@@ -90,7 +90,10 @@ fn validate_request(
     }
     crate::services::catalog::types::validate_storefront_product_search(request.search.as_deref())
         .map_err(|_| {
-            PortError::validation("product.search_invalid", "published product search is invalid")
+            PortError::validation(
+                "product.search_invalid",
+                "published product search is invalid",
+            )
         })?;
     Ok(())
 }
@@ -108,10 +111,12 @@ fn legacy_storefront_http_products_query(
         .filter(product::Column::TenantId.eq(tenant_id))
         .filter(product::Column::Status.eq(product::ProductStatus::Active))
         .filter(product::Column::PublishedAt.is_not_null())
-        .filter(crate::services::catalog::helpers::product_channel_visibility_condition(
-            backend,
-            public_channel_slug,
-        ));
+        .filter(
+            crate::services::catalog::helpers::product_channel_visibility_condition(
+                backend,
+                public_channel_slug,
+            ),
+        );
     if let Some(vendor) = vendor {
         query = query.filter(product::Column::Vendor.eq(vendor));
     }
@@ -185,7 +190,13 @@ async fn list_legacy_storefront_http_products(
             .push(translation);
     }
     let product_tags = service
-        .load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale), Some(context))
+        .load_product_tag_map(
+            tenant_id,
+            &products,
+            locale,
+            Some(fallback_locale),
+            Some(context),
+        )
         .await?;
 
     let items = products
@@ -442,10 +453,22 @@ mod diagnostic_policy_tests {
         .limit(5)
         .build(DbBackend::Sqlite)
         .sql;
-        assert!(sqlite.contains("json_each"), "SQLite must filter channels in SQL");
-        assert!(sqlite.contains("product_translations"), "search must remain in SQL");
-        assert!(sqlite.contains("LIMIT"), "page size must limit the database query");
-        assert!(sqlite.contains("OFFSET"), "the database must apply page offset");
+        assert!(
+            sqlite.contains("json_each"),
+            "SQLite must filter channels in SQL"
+        );
+        assert!(
+            sqlite.contains("product_translations"),
+            "search must remain in SQL"
+        );
+        assert!(
+            sqlite.contains("LIMIT"),
+            "page size must limit the database query"
+        );
+        assert!(
+            sqlite.contains("OFFSET"),
+            "the database must apply page offset"
+        );
 
         let postgres = legacy_storefront_http_products_query(
             Uuid::new_v4(),
@@ -459,24 +482,28 @@ mod diagnostic_policy_tests {
         .limit(5)
         .build(DbBackend::Postgres)
         .sql;
-        assert!(postgres.contains("channel_visibility"), "PostgreSQL must filter channels");
+        assert!(
+            postgres.contains("channel_visibility"),
+            "PostgreSQL must filter channels"
+        );
         assert!(postgres.contains("LIMIT"));
     }
 
     #[test]
     fn legacy_http_search_is_bounded_by_product_owned_input_policy() {
-        let mut request = LegacyStorefrontHttpProductsRequest {
-            locale: None,
-            fallback_locale: None,
-            public_channel_slug: None,
-            vendor: None,
-            product_type: None,
-            search: Some("x".repeat(
-                crate::services::catalog::types::MAX_STOREFRONT_PRODUCT_SEARCH_BYTES + 1,
-            )),
-            page: 1,
-            per_page: 10,
-        };
+        let mut request =
+            LegacyStorefrontHttpProductsRequest {
+                locale: None,
+                fallback_locale: None,
+                public_channel_slug: None,
+                vendor: None,
+                product_type: None,
+                search: Some("x".repeat(
+                    crate::services::catalog::types::MAX_STOREFRONT_PRODUCT_SEARCH_BYTES + 1,
+                )),
+                page: 1,
+                per_page: 10,
+            };
         let error = validate_request(&context(), &request).expect_err("search must be bounded");
         assert_eq!(error.code, "product.search_invalid");
         assert_eq!(error.kind, PortErrorKind::Validation);

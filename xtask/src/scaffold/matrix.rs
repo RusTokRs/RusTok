@@ -1,7 +1,7 @@
 use super::registration::TempWorkspace;
 use crate::manifest_io::workspace_root;
 use crate::migrations::{copied_source_digest, copy_working_source};
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use std::ffi::OsString;
 use std::fs;
 use std::io::Write;

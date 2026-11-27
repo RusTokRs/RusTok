@@ -1,5 +1,5 @@
-use rustok_api::{AuthPrincipalKind, Permission};
 use rustok_api::context::{AuthContext, has_effective_permission};
+use rustok_api::{AuthPrincipalKind, Permission};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -100,7 +100,9 @@ impl RegistryPrincipalRef {
     fn validate(&self) -> Result<(), &'static str> {
         match self.kind {
             RegistryPrincipalKind::User => {
-                let user_id = self.user_id.filter(|user_id| !user_id.is_nil())
+                let user_id = self
+                    .user_id
+                    .filter(|user_id| !user_id.is_nil())
                     .ok_or("user principal requires a non-nil user_id")?;
                 let expected = format!("user:{user_id}");
                 if self.subject != expected
@@ -114,7 +116,9 @@ impl RegistryPrincipalRef {
                 if self.user_id.is_some() || self.legacy_label.is_some() {
                     return Err("runner principal contains user or legacy fields");
                 }
-                let runner_id = self.subject.strip_prefix("remote-runner:")
+                let runner_id = self
+                    .subject
+                    .strip_prefix("remote-runner:")
                     .ok_or("runner principal has an invalid subject")?;
                 if runner_id.is_empty()
                     || runner_id.len() > 128
@@ -128,7 +132,9 @@ impl RegistryPrincipalRef {
                 if self.user_id.is_some() {
                     return Err("legacy principal contains a user_id");
                 }
-                let label = self.legacy_label.as_deref()
+                let label = self
+                    .legacy_label
+                    .as_deref()
                     .filter(|label| !label.is_empty() && label.trim() == *label)
                     .ok_or("legacy principal requires a normalized legacy_label")?;
                 if self.subject != label || self.display_label != label {
@@ -254,14 +260,17 @@ impl RegistryAuthority {
 mod tests {
     use super::*;
 
-
     #[test]
     fn principal_constructors_reject_nil_or_empty_identities() {
         assert!(RegistryPrincipalRef::user(Uuid::nil()).is_none());
         assert!(RegistryPrincipalRef::runner("").is_none());
         assert!(RegistryPrincipalRef::runner("runner\n01").is_none());
         assert!(RegistryPrincipalRef::legacy("  ").is_none());
-        assert!(RegistryPrincipalRef::user(Uuid::new_v4()).unwrap().is_user());
+        assert!(
+            RegistryPrincipalRef::user(Uuid::new_v4())
+                .unwrap()
+                .is_user()
+        );
     }
 
     #[test]
@@ -283,35 +292,50 @@ mod tests {
         );
 
         assert!(RegistryPrincipalRef::from_json_value(&serde_json::json!("user:legacy")).is_err());
-        assert!(RegistryPrincipalRef::from_json_value(&serde_json::json!({
-            "kind": "user",
-            "user_id": Uuid::nil(),
-            "subject": format!("user:{}", Uuid::nil()),
-            "display_label": format!("user:{}", Uuid::nil())
-        })).is_err());
-        assert!(RegistryPrincipalRef::from_json_value(&serde_json::json!({
-            "kind": "user",
-            "user_id": user.user_id().unwrap(),
-            "subject": "user:someone-else",
-            "display_label": "user:someone-else"
-        })).is_err());
-        assert!(RegistryPrincipalRef::from_json_value(&serde_json::json!({
-            "kind": "runner",
-            "subject": "remote-runner:",
-            "display_label": "remote-runner:"
-        })).is_err());
-        assert!(RegistryPrincipalRef::from_json_value(&serde_json::json!({
-            "kind": "legacy",
-            "subject": "historical publisher",
-            "display_label": "historical publisher"
-        })).is_err());
-        assert!(RegistryPrincipalRef::from_json_value(&serde_json::json!({
-            "kind": "user",
-            "user_id": user.user_id().unwrap(),
-            "subject": format!("user:{}", user.user_id().unwrap()),
-            "display_label": format!("user:{}", user.user_id().unwrap()),
-            "unexpected": true
-        })).is_err());
+        assert!(
+            RegistryPrincipalRef::from_json_value(&serde_json::json!({
+                "kind": "user",
+                "user_id": Uuid::nil(),
+                "subject": format!("user:{}", Uuid::nil()),
+                "display_label": format!("user:{}", Uuid::nil())
+            }))
+            .is_err()
+        );
+        assert!(
+            RegistryPrincipalRef::from_json_value(&serde_json::json!({
+                "kind": "user",
+                "user_id": user.user_id().unwrap(),
+                "subject": "user:someone-else",
+                "display_label": "user:someone-else"
+            }))
+            .is_err()
+        );
+        assert!(
+            RegistryPrincipalRef::from_json_value(&serde_json::json!({
+                "kind": "runner",
+                "subject": "remote-runner:",
+                "display_label": "remote-runner:"
+            }))
+            .is_err()
+        );
+        assert!(
+            RegistryPrincipalRef::from_json_value(&serde_json::json!({
+                "kind": "legacy",
+                "subject": "historical publisher",
+                "display_label": "historical publisher"
+            }))
+            .is_err()
+        );
+        assert!(
+            RegistryPrincipalRef::from_json_value(&serde_json::json!({
+                "kind": "user",
+                "user_id": user.user_id().unwrap(),
+                "subject": format!("user:{}", user.user_id().unwrap()),
+                "display_label": format!("user:{}", user.user_id().unwrap()),
+                "unexpected": true
+            }))
+            .is_err()
+        );
     }
 
     #[test]
@@ -325,9 +349,17 @@ mod tests {
             scopes: Vec::new(),
             grant_type: "direct".to_string(),
         };
-        assert!(RegistryAuthority::from_session(&auth).unwrap().can_manage_modules);
+        assert!(
+            RegistryAuthority::from_session(&auth)
+                .unwrap()
+                .can_manage_modules
+        );
         auth.permissions.clear();
-        assert!(!RegistryAuthority::from_session(&auth).unwrap().can_manage_modules);
+        assert!(
+            !RegistryAuthority::from_session(&auth)
+                .unwrap()
+                .can_manage_modules
+        );
 
         let valid = auth.clone();
         for (grant, client, session) in [

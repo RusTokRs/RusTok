@@ -443,9 +443,11 @@ mod tests {
         let tenant = uuid::Uuid::new_v4();
         let expected = sample_policy('a');
         let stamp = cache.begin_read().unwrap();
-        assert!(cache
-            .insert_if_current(&stamp, tenant, expected.clone())
-            .unwrap());
+        assert!(
+            cache
+                .insert_if_current(&stamp, tenant, expected.clone())
+                .unwrap()
+        );
         let calls = Cell::new(0);
         let actual = resolve_policy_with_cache(tenant, &cache, || {
             calls.set(calls.get() + 1);
@@ -534,9 +536,11 @@ mod tests {
             let cache = cache_ref;
             async move {
                 let competing_stamp = cache.begin_read().unwrap();
-                assert!(cache
-                    .insert_if_current(&competing_stamp, tenant, sample_policy('b'))
-                    .unwrap());
+                assert!(
+                    cache
+                        .insert_if_current(&competing_stamp, tenant, sample_policy('b'))
+                        .unwrap()
+                );
                 Ok(sample_policy('a'))
             }
         })
@@ -575,7 +579,9 @@ mod tests {
         let cache = ModuleEffectivePolicyCache::new();
         let tenant = uuid::Uuid::new_v4();
         let result = resolve_policy_with_cache(tenant, &cache, || async {
-            Err(PlatformCompositionError::EffectivePolicy("owner failed".into()))
+            Err(PlatformCompositionError::EffectivePolicy(
+                "owner failed".into(),
+            ))
         })
         .await;
         assert!(matches!(

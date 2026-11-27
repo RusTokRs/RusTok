@@ -32,7 +32,9 @@ fn authorize_scaffold_workspace_with_config(
     let requested_root = requested_root.trim();
     let configured_root = configured_root.trim();
     if requested_root.is_empty() {
-        return Err(AlloyScaffoldError::Workspace("workspace_root is required for MCP scaffold apply".to_string()));
+        return Err(AlloyScaffoldError::Workspace(
+            "workspace_root is required for MCP scaffold apply".to_string(),
+        ));
     }
     if configured_root.is_empty() {
         return Err(AlloyScaffoldError::Workspace(format!(
@@ -43,7 +45,9 @@ fn authorize_scaffold_workspace_with_config(
     let configured = canonical_workspace_root(Path::new(configured_root), "configured")?;
     let requested = canonical_workspace_root(Path::new(requested_root), "requested")?;
     if requested != configured {
-        return Err(AlloyScaffoldError::Workspace("Requested MCP scaffold workspace is not authorized by the host".to_string()));
+        return Err(AlloyScaffoldError::Workspace(
+            "Requested MCP scaffold workspace is not authorized by the host".to_string(),
+        ));
     }
 
     Ok(configured.to_string_lossy().into_owned())

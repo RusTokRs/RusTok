@@ -5,9 +5,7 @@ use leptos_router::params::Params;
 
 use crate::app::modules::{AdminPageLookup, lookup_page_for_route_segment};
 use crate::app::page_builder_contributions::PageBuilderContributionScope;
-use crate::app::providers::enabled_modules::{
-    ModulePolicyReadError, use_enabled_modules_resource,
-};
+use crate::app::providers::enabled_modules::{ModulePolicyReadError, use_enabled_modules_resource};
 use crate::shared::context::module_request::ModuleRequestProvider;
 use crate::use_admin_locale;
 

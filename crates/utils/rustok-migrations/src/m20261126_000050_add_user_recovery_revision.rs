@@ -11,7 +11,8 @@ impl MigrationTrait for Migration {
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => {
                 db.execute_unprepared("ALTER TABLE users ADD COLUMN recovery_revision BIGINT NOT NULL DEFAULT 0 CHECK (recovery_revision >= 0)").await?;
-                db.execute_unprepared(r#"
+                db.execute_unprepared(
+                    r#"
                     CREATE FUNCTION auth_bump_recovery_revision() RETURNS trigger
                     LANGUAGE plpgsql AS $$
                     BEGIN
@@ -28,7 +29,9 @@ impl MigrationTrait for Migration {
                         END IF;
                         RETURN NEW;
                     END;
-                    $$"#).await?;
+                    $$"#,
+                )
+                .await?;
                 db.execute_unprepared("CREATE TRIGGER auth_user_recovery_revision BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION auth_bump_recovery_revision()").await?;
             }
             DatabaseBackend::Sqlite => {
@@ -44,15 +47,22 @@ impl MigrationTrait for Migration {
                             THEN RAISE(ABORT, 'recovery revision exhausted') END;
                         UPDATE users SET recovery_revision = OLD.recovery_revision + 1 WHERE id = NEW.id;
                     END"#).await?;
-                db.execute_unprepared(r#"
+                db.execute_unprepared(
+                    r#"
                     CREATE TRIGGER auth_user_recovery_revision_monotonic
                     BEFORE UPDATE OF recovery_revision ON users
                     WHEN NEW.recovery_revision < OLD.recovery_revision
                     BEGIN
                         SELECT RAISE(ABORT, 'recovery revision cannot decrease');
-                    END"#).await?;
+                    END"#,
+                )
+                .await?;
             }
-            _ => return Err(DbErr::Custom("unsupported user recovery revision backend".into())),
+            _ => {
+                return Err(DbErr::Custom(
+                    "unsupported user recovery revision backend".into(),
+                ));
+            }
         }
         Ok(())
     }
@@ -61,16 +71,25 @@ impl MigrationTrait for Migration {
         let db = manager.get_connection();
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => {
-                db.execute_unprepared("DROP TRIGGER auth_user_recovery_revision ON users").await?;
-                db.execute_unprepared("DROP FUNCTION auth_bump_recovery_revision()").await?;
+                db.execute_unprepared("DROP TRIGGER auth_user_recovery_revision ON users")
+                    .await?;
+                db.execute_unprepared("DROP FUNCTION auth_bump_recovery_revision()")
+                    .await?;
             }
             DatabaseBackend::Sqlite => {
-                db.execute_unprepared("DROP TRIGGER auth_user_recovery_revision").await?;
-                db.execute_unprepared("DROP TRIGGER auth_user_recovery_revision_monotonic").await?;
+                db.execute_unprepared("DROP TRIGGER auth_user_recovery_revision")
+                    .await?;
+                db.execute_unprepared("DROP TRIGGER auth_user_recovery_revision_monotonic")
+                    .await?;
             }
-            _ => return Err(DbErr::Custom("unsupported user recovery revision backend".into())),
+            _ => {
+                return Err(DbErr::Custom(
+                    "unsupported user recovery revision backend".into(),
+                ));
+            }
         }
-        db.execute_unprepared("ALTER TABLE users DROP COLUMN recovery_revision").await?;
+        db.execute_unprepared("ALTER TABLE users DROP COLUMN recovery_revision")
+            .await?;
         Ok(())
     }
 }

@@ -106,7 +106,10 @@ mod retry_ready_tests {
         assert_eq!(validated_max_attempts(1), Ok(1));
         let policy_cap = super::super::super::keyring_schedule_audit_source_retry_postgres::
             COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_SOURCE_MAX_ATTEMPTS;
-        assert_eq!(validated_max_attempts(policy_cap), Ok(i64::from(policy_cap)));
+        assert_eq!(
+            validated_max_attempts(policy_cap),
+            Ok(i64::from(policy_cap))
+        );
         assert!(validated_max_attempts(policy_cap + 1).is_err());
         assert!(validated_max_attempts(u32::MAX).is_err());
     }

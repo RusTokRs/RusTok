@@ -245,7 +245,8 @@ mod tests {
                 <EnabledModulesProvider initial_modules=Vec::new() locale="en".to_string()>
                     <span>"composition-ready"</span>
                 </EnabledModulesProvider>
-            }.to_html()
+            }
+            .to_html()
         });
         assert!(ready.contains("composition-ready"));
         assert!(!ready.contains("Checking module availability"));
@@ -266,7 +267,9 @@ mod tests {
         assert!(validate_graphql_projection(Vec::new()).is_ok());
         assert!(validate_graphql_projection(vec![" ".to_string()]).is_err());
         assert!(validate_graphql_projection(vec!["forum?".to_string()]).is_err());
-        assert!(validate_graphql_projection(vec!["forum".to_string(), "forum".to_string()]).is_err());
+        assert!(
+            validate_graphql_projection(vec!["forum".to_string(), "forum".to_string()]).is_err()
+        );
         let modules: Vec<String> = (0..101).map(|i| format!("module_{i}")).collect();
         assert!(validate_graphql_projection(modules[..99].to_vec()).is_ok());
         assert!(validate_graphql_projection(modules[..100].to_vec()).is_err());

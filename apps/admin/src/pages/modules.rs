@@ -53,11 +53,17 @@ pub fn Modules() -> impl IntoView {
     let modules_resource = Resource::new(
         move || {
             let scope = source_auth.client_scope();
-            (token.get(), tenant.get(), scope.generation, scope.is_ready())
+            (
+                token.get(),
+                tenant.get(),
+                scope.generation,
+                scope.is_ready(),
+            )
         },
         move |(token_value, tenant_value, generation, ready)| async move {
             let result = async {
-                if !ready || token_value.as_deref().is_none_or(str::is_empty)
+                if !ready
+                    || token_value.as_deref().is_none_or(str::is_empty)
                     || tenant_value.as_deref().is_none_or(str::is_empty)
                 {
                     return Err(ApiError::Unauthorized);
@@ -80,12 +86,13 @@ pub fn Modules() -> impl IntoView {
                 )
                 .await
                 .unwrap_or_default();
-                let marketplace_registry_freshness = transport::fetch_marketplace_registry_freshness(
-                    token_value.clone(),
-                    tenant_value.clone(),
-                )
-                .await
-                .unwrap_or_default();
+                let marketplace_registry_freshness =
+                    transport::fetch_marketplace_registry_freshness(
+                        token_value.clone(),
+                        tenant_value.clone(),
+                    )
+                    .await
+                    .unwrap_or_default();
                 let composition_snapshot = transport::fetch_module_composition_snapshot(
                     token_value.clone(),
                     tenant_value.clone(),
@@ -99,15 +106,17 @@ pub fn Modules() -> impl IntoView {
                 // An unavailable or capped tenant projection cannot establish that
                 // a missing module has no override; never substitute an empty list.
                 let tenant_modules = validated_tenant_modules(
-                    transport::fetch_tenant_modules(token_value.clone(), tenant_value.clone()).await,
+                    transport::fetch_tenant_modules(token_value.clone(), tenant_value.clone())
+                        .await,
                 )?;
                 let active_build =
                     transport::fetch_active_build(token_value.clone(), tenant_value.clone())
                         .await
                         .unwrap_or_default();
-                let build_history = transport::fetch_build_history(token_value, tenant_value, 10, 0)
-                    .await
-                    .unwrap_or_default();
+                let build_history =
+                    transport::fetch_build_history(token_value, tenant_value, 10, 0)
+                        .await
+                        .unwrap_or_default();
 
                 Ok::<ModulesPageData, _>(ModulesPageData {
                     modules,

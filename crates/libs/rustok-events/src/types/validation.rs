@@ -1917,9 +1917,7 @@ impl ValidateEvent for DomainEvent {
                 if payload_bytes.len() > MAX_GUEST_PAYLOAD_BYTES {
                     return Err(EventValidationError::InvalidValue(
                         "payload",
-                        format!(
-                            "guest payload exceeds the {MAX_GUEST_PAYLOAD_BYTES}-byte limit"
-                        ),
+                        format!("guest payload exceeds the {MAX_GUEST_PAYLOAD_BYTES}-byte limit"),
                     ));
                 }
                 Ok(())

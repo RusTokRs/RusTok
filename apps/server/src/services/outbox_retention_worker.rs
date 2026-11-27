@@ -191,7 +191,10 @@ mod tests {
     #[test]
     fn failure_uses_bounded_retry_without_changing_success_or_batch_cadence() {
         let daily = Duration::from_secs(86_400);
-        assert_eq!(super::next_prune_delay(daily, super::PruneCycle::Complete), daily);
+        assert_eq!(
+            super::next_prune_delay(daily, super::PruneCycle::Complete),
+            daily
+        );
         assert_eq!(
             super::next_prune_delay(daily, super::PruneCycle::Failed),
             Duration::from_secs(60),

@@ -7,8 +7,8 @@ use uuid::Uuid;
 
 use crate::core::{
     SeoAdminBusyKey, SeoAdminTab, SeoBulkActionForm, SeoBulkFilterForm, SeoIndexReplayForm,
-    SeoRedirectForm, SeoSettingsForm, format_index_repair_replay_result,
-    seo_admin_tab_for_subpath, validate_sitemap_generation_enabled,
+    SeoRedirectForm, SeoSettingsForm, format_index_repair_replay_result, seo_admin_tab_for_subpath,
+    validate_sitemap_generation_enabled,
 };
 use crate::sections::{
     SeoAdminHeader, SeoAdminTabs, SeoBulkPane, SeoBusyFooter, SeoDefaultsPane, SeoDiagnosticsPane,

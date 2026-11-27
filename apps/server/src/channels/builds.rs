@@ -348,9 +348,8 @@ mod tests {
         let session_id = Uuid::new_v4();
         session.id = Set(session_id);
         session.insert(&db).await.expect("session");
-        let config = crate::auth::test_auth_config(
-            "test-secret-key-for-auth-extractor-32b".to_string(),
-        );
+        let config =
+            crate::auth::test_auth_config("test-secret-key-for-auth-extractor-32b".to_string());
         let token = encode_access_token(
             &config,
             user.id,

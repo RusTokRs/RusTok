@@ -194,20 +194,14 @@ impl ProductCatalogSchemaService {
             .values()
             .filter(|category| category.kind == CatalogCategoryKind::Structural)
         {
-            let form = resolve_effective_product_form(
-                category.category_id,
-                &categories,
-                &schemas,
-                &[],
-            )
-            .map_err(map_schema_resolution_error)?;
+            let form =
+                resolve_effective_product_form(category.category_id, &categories, &schemas, &[])
+                    .map_err(map_schema_resolution_error)?;
             category_ids.push(category.category_id);
             forms.push(form);
         }
         super::effective_forms::load_effective_attribute_validation_for_forms(
-            txn,
-            tenant_id,
-            &mut forms,
+            txn, tenant_id, &mut forms,
         )
         .await?;
 
@@ -275,12 +269,15 @@ impl ProductCatalogSchemaService {
                 }
 
                 for product in &products {
-                    let form = next.forms.get(&product.primary_category_id).ok_or_else(|| {
-                        CommerceError::Core(rustok_core::error::Error::Internal(format!(
-                            "Effective Product schema snapshot is missing category {}",
-                            product.primary_category_id
-                        )))
-                    })?;
+                    let form = next
+                        .forms
+                        .get(&product.primary_category_id)
+                        .ok_or_else(|| {
+                            CommerceError::Core(rustok_core::error::Error::Internal(format!(
+                                "Effective Product schema snapshot is missing category {}",
+                                product.primary_category_id
+                            )))
+                        })?;
                     if form.category_id != product.primary_category_id {
                         return Err(CommerceError::Core(rustok_core::error::Error::Internal(
                             "Effective Product schema snapshot category mismatch".to_owned(),
@@ -328,6 +325,9 @@ impl ProductCatalogSchemaService {
     }
 
     pub(super) async fn axis_policy_snapshot_in(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+    ) -> CommerceResult<AxisPolicySnapshot> {
         let categories = Self::load_category_schema_map(txn, tenant_id).await?;
         let schemas = Self::load_attribute_schema_map(txn, tenant_id).await?;
         let mut policies = HashMap::new();
@@ -354,7 +354,6 @@ impl ProductCatalogSchemaService {
         }
         Ok(policies)
     }
-
 
     async fn validate_axis_policy_impacts_in(
         txn: &DatabaseTransaction,
@@ -498,7 +497,8 @@ fn publish_requirements_tightened(
         return false;
     };
     for (attribute_id, next_requirement) in next {
-        let Some(previous_requirement) = previous.and_then(|values| values.get(attribute_id)) else {
+        let Some(previous_requirement) = previous.and_then(|values| values.get(attribute_id))
+        else {
             return true;
         };
         for target in ["product", "variant"] {
@@ -523,7 +523,11 @@ fn publish_requirements_for_form(
     form: &EffectiveProductForm,
 ) -> CommerceResult<PublishRequirementAttributes> {
     let mut requirements = HashMap::new();
-    for binding in form.attributes.iter().filter(|binding| !binding.is_disabled) {
+    for binding in form
+        .attributes
+        .iter()
+        .filter(|binding| !binding.is_disabled)
+    {
         let rules =
             super::attribute_validation::parse_product_attribute_validation(&binding.validation)?;
         let is_required =
@@ -614,45 +618,62 @@ mod tests {
     #[test]
     fn publish_requirement_signature_tracks_requiredness_scope_and_locales() {
         let attribute_id = Uuid::from_u128(77);
-        let binding = |scope: &str, is_required: bool, is_disabled: bool, validation: serde_json::Value| {
-            AttributeBinding {
-                attribute_id,
-                group_code: None,
-                scope: scope.to_owned(),
-                is_required,
-                is_disabled,
-                position: 0,
-                visibility_overrides: Default::default(),
-                validation_overrides: serde_json::json!({}),
-                validation,
-                source: EffectiveAttributeSource::Schema,
-                variant_axis_policy: "forbidden".to_owned(),
-                default_variant_axis: false,
-            }
-        };
+        let binding =
+            |scope: &str, is_required: bool, is_disabled: bool, validation: serde_json::Value| {
+                AttributeBinding {
+                    attribute_id,
+                    group_code: None,
+                    scope: scope.to_owned(),
+                    is_required,
+                    is_disabled,
+                    position: 0,
+                    visibility_overrides: Default::default(),
+                    validation_overrides: serde_json::json!({}),
+                    validation,
+                    source: EffectiveAttributeSource::Schema,
+                    variant_axis_policy: "forbidden".to_owned(),
+                    default_variant_axis: false,
+                }
+            };
         let form = |binding| EffectiveProductForm {
             category_id: Uuid::nil(),
             attributes: vec![binding],
             detached_attribute_ids: Vec::new(),
         };
 
-        assert!(publish_requirements_for_form(&form(binding(
-            "product", false, false, serde_json::json!({})
-        )))
-        .unwrap()
-        .is_empty());
-        assert!(publish_requirements_for_form(&form(binding(
-            "product", true, true, serde_json::json!({})
-        )))
-        .unwrap()
-        .is_empty());
+        assert!(
+            publish_requirements_for_form(&form(binding(
+                "product",
+                false,
+                false,
+                serde_json::json!({})
+            )))
+            .unwrap()
+            .is_empty()
+        );
+        assert!(
+            publish_requirements_for_form(&form(binding(
+                "product",
+                true,
+                true,
+                serde_json::json!({})
+            )))
+            .unwrap()
+            .is_empty()
+        );
 
         let product = publish_requirements_for_form(&form(binding(
-            "product", true, false, serde_json::json!({})
+            "product",
+            true,
+            false,
+            serde_json::json!({}),
         )))
         .unwrap();
         let variant = publish_requirements_for_form(&form(binding(
-            "variant", true, false, serde_json::json!({})
+            "variant",
+            true,
+            false,
+            serde_json::json!({}),
         )))
         .unwrap();
         assert_ne!(product, variant);
@@ -678,7 +699,10 @@ mod tests {
                 attribute_id,
                 PublishRequirementAttribute {
                     scope: scope.to_owned(),
-                    required_locales: required_locales.iter().map(|locale| (*locale).to_owned()).collect(),
+                    required_locales: required_locales
+                        .iter()
+                        .map(|locale| (*locale).to_owned())
+                        .collect(),
                 },
             )])
         };
@@ -687,9 +711,15 @@ mod tests {
         let product_and_more_locales = requirement("product", &["en", "fr"]);
         assert!(publish_requirements_tightened(None, Some(&product)));
         assert!(publish_requirements_tightened(Some(&product), Some(&both)));
-        assert!(publish_requirements_tightened(Some(&product), Some(&product_and_more_locales)));
+        assert!(publish_requirements_tightened(
+            Some(&product),
+            Some(&product_and_more_locales)
+        ));
         assert!(!publish_requirements_tightened(Some(&both), Some(&product)));
-        assert!(!publish_requirements_tightened(Some(&product_and_more_locales), Some(&product)));
+        assert!(!publish_requirements_tightened(
+            Some(&product_and_more_locales),
+            Some(&product)
+        ));
         assert!(!publish_requirements_tightened(Some(&product), None));
     }
 

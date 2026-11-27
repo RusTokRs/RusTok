@@ -141,7 +141,9 @@ pub async fn fetch_seo_meta(
 ) -> Result<Option<SeoMetaView>, ApiError> {
     let graphql_request = seo_meta_request(target_kind, target_id, locale);
     let Some(variables) = graphql_request.variables else {
-        return Err(ApiError::Graphql("missing seo meta request variables".to_string()));
+        return Err(ApiError::Graphql(
+            "missing seo meta request variables".to_string(),
+        ));
     };
     let response: SeoMetaResponse = request(
         graphql_request.query.as_str(),
@@ -160,7 +162,9 @@ pub async fn save_seo_meta(
 ) -> Result<SeoMetaView, ApiError> {
     let graphql_request = upsert_seo_meta_request(input);
     let Some(variables) = graphql_request.variables else {
-        return Err(ApiError::Graphql("missing upsert request variables".to_string()));
+        return Err(ApiError::Graphql(
+            "missing upsert request variables".to_string(),
+        ));
     };
     let response: UpsertSeoMetaResponse = request(
         graphql_request.query.as_str(),
@@ -181,7 +185,9 @@ pub async fn publish_seo_revision(
 ) -> Result<SeoRevisionView, ApiError> {
     let graphql_request = publish_seo_revision_request(target_kind, target_id, note);
     let Some(variables) = graphql_request.variables else {
-        return Err(ApiError::Graphql("missing publish request variables".to_string()));
+        return Err(ApiError::Graphql(
+            "missing publish request variables".to_string(),
+        ));
     };
     let response: PublishSeoRevisionResponse = request(
         graphql_request.query.as_str(),
@@ -217,7 +223,9 @@ pub async fn generate_seo_meta(
 ) -> Result<GeneratedSeoMetaView, ApiError> {
     let graphql_request = generate_seo_meta_request(target_kind, target_id, locale);
     let Some(variables) = graphql_request.variables else {
-        return Err(ApiError::Graphql("missing generate seo meta variables".to_string()));
+        return Err(ApiError::Graphql(
+            "missing generate seo meta variables".to_string(),
+        ));
     };
     let response: GenerateSeoMetaResponse = request(
         graphql_request.query.as_str(),

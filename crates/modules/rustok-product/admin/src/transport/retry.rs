@@ -7,7 +7,9 @@ use super::product_lifecycle_graphql;
 use crate::lifecycle_retry_identity::{
     ProductAdminLifecycleOperation, ProductAdminLifecycleRetryIdentity,
 };
-use crate::model::{ProductDetail, ProductDraft, ProductImage, ProductImageDraft, UpdateProductImageDraft};
+use crate::model::{
+    ProductDetail, ProductDraft, ProductImage, ProductImageDraft, UpdateProductImageDraft,
+};
 
 type RetryIdentity = ProductAdminLifecycleRetryIdentity<String>;
 
@@ -346,11 +348,8 @@ mod lifecycle_retry_tests {
         };
 
         assert!(finish_lifecycle_result::<()>(slot, &first, Err(error)).is_err());
-        let retry = retained_caller_key(
-            slot,
-            ProductAdminLifecycleOperation::DeleteProduct,
-            intent,
-        );
+        let retry =
+            retained_caller_key(slot, ProductAdminLifecycleOperation::DeleteProduct, intent);
 
         assert_ne!(first, retry);
         clear_lifecycle_identity_if_current(slot, &retry);
@@ -411,11 +410,8 @@ mod lifecycle_retry_tests {
         };
 
         assert!(finish_lifecycle_result::<()>(slot, &first, Err(error)).is_err());
-        let retry = retained_caller_key(
-            slot,
-            ProductAdminLifecycleOperation::UpdateProduct,
-            intent,
-        );
+        let retry =
+            retained_caller_key(slot, ProductAdminLifecycleOperation::UpdateProduct, intent);
 
         assert_eq!(first, retry);
         clear_lifecycle_identity_if_current(slot, &retry);

@@ -733,8 +733,25 @@ mod tests {
         assert!(auto_scroll_delta(BrowserPoint { x: 10.0, y: 10.0 }, small, policy).is_idle());
         let delta = auto_scroll_delta(BrowserPoint { x: 15.0, y: 15.0 }, small, policy);
         assert!(delta.x > 0.0 && delta.y > 0.0);
-        assert!(auto_scroll_delta(BrowserPoint { x: f64::NAN, y: 5.0 }, small, policy).is_idle());
-        assert!(auto_scroll_delta(BrowserPoint { x: 5.0, y: 5.0 }, rect(0.0, 0.0, -1.0, 20.0), policy).is_idle());
+        assert!(
+            auto_scroll_delta(
+                BrowserPoint {
+                    x: f64::NAN,
+                    y: 5.0
+                },
+                small,
+                policy
+            )
+            .is_idle()
+        );
+        assert!(
+            auto_scroll_delta(
+                BrowserPoint { x: 5.0, y: 5.0 },
+                rect(0.0, 0.0, -1.0, 20.0),
+                policy
+            )
+            .is_idle()
+        );
     }
 
     #[test]
@@ -757,14 +774,20 @@ mod tests {
         };
         assert!(normalize_hit_targets([hit(bad)], CoordinateTransform::default()).is_empty());
         assert!(normalize_hit_targets([hit(good)], transform).is_empty());
-        assert!(hit_test_drop_targets(
-            BrowserPoint { x: 50.0, y: 50.0 },
-            [drop_target(1.0, good)],
-            transform,
-        ).is_empty());
+        assert!(
+            hit_test_drop_targets(
+                BrowserPoint { x: 50.0, y: 50.0 },
+                [drop_target(1.0, good)],
+                transform,
+            )
+            .is_empty()
+        );
         assert_eq!(
             resolve_drop_position(
-                BrowserPoint { x: f64::MAX, y: 10.0 },
+                BrowserPoint {
+                    x: f64::MAX,
+                    y: 10.0
+                },
                 rect(f64::MAX, 0.0, f64::MAX, 100.0),
                 DropAxis::Horizontal,
                 DropZonePolicy::default(),

@@ -50,14 +50,30 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     ];
     let mut migrations = migrations;
     migrations.extend(jwt_fence_migrations());
-    migrations.push(Box::new(m20261126_000001_create_auth_email_change_requests::Migration));
-    migrations.push(Box::new(m20261126_000060_enforce_oauth_family_identity::Migration));
-    migrations.push(Box::new(m20261126_000061_bind_email_change_recovery_revision::Migration));
-    migrations.push(Box::new(m20261126_000062_create_auth_application_clock::Migration));
-    migrations.push(Box::new(m20261126_000063_bind_invite_issuer_recovery_revision::Migration));
-    migrations.push(Box::new(m20261127_000002_bind_invite_membership_revision::Migration));
-    migrations.push(Box::new(m20261127_000004_bind_invite_role_grant_revision::Migration));
-    migrations.push(Box::new(m20261127_000005_bind_invite_module_policy::Migration));
+    migrations.push(Box::new(
+        m20261126_000001_create_auth_email_change_requests::Migration,
+    ));
+    migrations.push(Box::new(
+        m20261126_000060_enforce_oauth_family_identity::Migration,
+    ));
+    migrations.push(Box::new(
+        m20261126_000061_bind_email_change_recovery_revision::Migration,
+    ));
+    migrations.push(Box::new(
+        m20261126_000062_create_auth_application_clock::Migration,
+    ));
+    migrations.push(Box::new(
+        m20261126_000063_bind_invite_issuer_recovery_revision::Migration,
+    ));
+    migrations.push(Box::new(
+        m20261127_000002_bind_invite_membership_revision::Migration,
+    ));
+    migrations.push(Box::new(
+        m20261127_000004_bind_invite_role_grant_revision::Migration,
+    ));
+    migrations.push(Box::new(
+        m20261127_000005_bind_invite_module_policy::Migration,
+    ));
     migrations
 }
 
@@ -74,23 +90,39 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
     vec![
         MigrationDependencyDescriptor::new(
             "m20261127_000005_bind_invite_module_policy",
-            vec!["m20261127_000004_bind_invite_role_grant_revision", "m20261027_000080_policy_revision_cursor_sequences"],
+            vec![
+                "m20261127_000004_bind_invite_role_grant_revision",
+                "m20261027_000080_policy_revision_cursor_sequences",
+            ],
         ),
         MigrationDependencyDescriptor::new(
             "m20261127_000004_bind_invite_role_grant_revision",
-            vec!["m20261127_000003_create_rbac_role_grant_revision", "m20261127_000002_bind_invite_membership_revision"],
+            vec![
+                "m20261127_000003_create_rbac_role_grant_revision",
+                "m20261127_000002_bind_invite_membership_revision",
+            ],
         ),
         MigrationDependencyDescriptor::new(
             "m20261127_000002_bind_invite_membership_revision",
-            vec!["m20261127_000001_create_rbac_membership_revision", "m20261126_000063_bind_invite_issuer_recovery_revision"],
+            vec![
+                "m20261127_000001_create_rbac_membership_revision",
+                "m20261126_000063_bind_invite_issuer_recovery_revision",
+            ],
         ),
         MigrationDependencyDescriptor::new(
             "m20261126_000063_bind_invite_issuer_recovery_revision",
-            vec!["m20261025_000004_create_auth_invites", "m20260713_000001_create_auth_invite_consumptions", "m20261126_000050_add_user_recovery_revision"],
+            vec![
+                "m20261025_000004_create_auth_invites",
+                "m20260713_000001_create_auth_invite_consumptions",
+                "m20261126_000050_add_user_recovery_revision",
+            ],
         ),
         MigrationDependencyDescriptor::new(
             "m20261126_000061_bind_email_change_recovery_revision",
-            vec!["m20261126_000001_create_auth_email_change_requests", "m20261126_000050_add_user_recovery_revision"],
+            vec![
+                "m20261126_000001_create_auth_email_change_requests",
+                "m20261126_000050_add_user_recovery_revision",
+            ],
         ),
         MigrationDependencyDescriptor::new(
             "m20260716_000001_create_flex_field_definition_cache_generation",

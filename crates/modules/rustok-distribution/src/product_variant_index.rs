@@ -5,11 +5,10 @@ use rustok_core::ModuleRuntimeExtensions;
 use rustok_index::{
     DomainError, EntityKey, EntityName, FieldCardinality, FieldName, IndexField, IndexMutation,
     IndexRecord, IndexSchema, IndexSource, IndexSourceCursor, IndexSourceFailure,
-    IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceScanRequest,
-    IndexSourceRegistrationError, IndexValue, IndexValueType, LocaleMode, ModuleName,
-    PostgresIndexSourceFactory, SchemaRef,
-    SchemaVersion, derive_index_source_event_id, register_index_schema_source,
-    register_index_source, register_postgres_index_source_factory,
+    IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceRegistrationError,
+    IndexSourceScanRequest, IndexValue, IndexValueType, LocaleMode, ModuleName,
+    PostgresIndexSourceFactory, SchemaRef, SchemaVersion, derive_index_source_event_id,
+    register_index_schema_source, register_index_source, register_postgres_index_source_factory,
 };
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};

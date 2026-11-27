@@ -1331,9 +1331,7 @@ async fn write_product_value_patch<C>(
 where
     C: ConnectionTrait,
 {
-    if matches!(&patch.value, ProductAttributeValuePatchValue::Clear)
-        && definition.is_localized
-    {
+    if matches!(&patch.value, ProductAttributeValuePatchValue::Clear) && definition.is_localized {
         let Some(value) = IdRow::find_by_statement(Statement::from_sql_and_values(
             conn.get_database_backend(),
             "SELECT id FROM product_attribute_values WHERE tenant_id = $1 AND product_id = $2 AND attribute_id = $3",

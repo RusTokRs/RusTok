@@ -18,7 +18,9 @@ pub enum ProviderCatalogError {
         id: ProviderTargetId,
         provider_slug: ProviderSlug,
     },
-    #[error("provider target `{id}` references integration `{provider_slug}` which is not compiled into this deployment")]
+    #[error(
+        "provider target `{id}` references integration `{provider_slug}` which is not compiled into this deployment"
+    )]
     IntegrationNotCompiled {
         id: ProviderTargetId,
         provider_slug: ProviderSlug,
@@ -431,7 +433,9 @@ impl ProviderEgressPolicy {
     ) -> Result<(), ProviderCatalogError> {
         for field in descriptor.settings {
             if field.required && !settings.contains_key(field.key) {
-                return Err(ProviderCatalogError::MissingRequiredSetting(field.key.to_string()));
+                return Err(ProviderCatalogError::MissingRequiredSetting(
+                    field.key.to_string(),
+                ));
             }
         }
         for (key, value) in settings {
@@ -453,7 +457,9 @@ impl ProviderEgressPolicy {
                     return Err(ProviderCatalogError::SettingMustBeBoolean(key.to_string()));
                 }
                 ProviderFieldKind::SecretRef => {
-                    return Err(ProviderCatalogError::SettingMustBeSecretRef(key.to_string()));
+                    return Err(ProviderCatalogError::SettingMustBeSecretRef(
+                        key.to_string(),
+                    ));
                 }
                 _ => {}
             }
@@ -465,8 +471,8 @@ impl ProviderEgressPolicy {
     }
 
     pub fn validate_egress_url(&self, value: &str) -> Result<(), ProviderCatalogError> {
-        let url =
-            url::Url::parse(value).map_err(|error| ProviderCatalogError::InvalidUrl(error.to_string()))?;
+        let url = url::Url::parse(value)
+            .map_err(|error| ProviderCatalogError::InvalidUrl(error.to_string()))?;
         if !matches!(url.scheme(), "https" | "http") {
             return Err(ProviderCatalogError::InvalidUrlScheme);
         }

@@ -486,8 +486,8 @@ pub fn bind_instance_placement(
     }
     if layout.root().is_dir() {
         let mut pending_markers = Vec::new();
-        for entry in std::fs::read_dir(layout.root())
-            .map_err(|source| io_error(layout.root(), source))?
+        for entry in
+            std::fs::read_dir(layout.root()).map_err(|source| io_error(layout.root(), source))?
         {
             let entry = entry.map_err(|source| io_error(layout.root(), source))?;
             let name = entry.file_name();

@@ -64,15 +64,17 @@ where
         .all(db)
         .await?;
         for row in rows {
-            declared.insert(row.id, (row.scope, row.value_type, row.is_localized, row.validation));
+            declared.insert(
+                row.id,
+                (row.scope, row.value_type, row.is_localized, row.validation),
+            );
         }
     }
 
     for form in forms {
         for binding in &mut form.attributes {
-            let (scope, value_type, is_localized, base) = declared
-                .get(&binding.attribute_id)
-                .ok_or_else(|| {
+            let (scope, value_type, is_localized, base) =
+                declared.get(&binding.attribute_id).ok_or_else(|| {
                     CommerceError::Core(rustok_core::error::Error::Internal(format!(
                         "Effective Product schema references missing or archived attribute {}",
                         binding.attribute_id
@@ -648,12 +650,7 @@ mod tests {
         .expect("create product_attributes");
 
         let mut form = effective_form(Uuid::new_v4());
-        let result = load_effective_attribute_validation(
-            &db,
-            Uuid::new_v4(),
-            &mut form,
-        )
-        .await;
+        let result = load_effective_attribute_validation(&db, Uuid::new_v4(), &mut form).await;
         assert!(matches!(
             result,
             Err(CommerceError::Core(rustok_core::error::Error::Internal(_)))

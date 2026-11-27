@@ -1,14 +1,12 @@
-use crate::core::session::{EditorSessionAction, EditorSessionEffect, EditorSessionState};
-use super::dioxus_recovery::{
-    initialize_draft_recovery, DraftRecoveryBase, DraftRecoveryStatus,
-};
 #[cfg(feature = "dioxus-web")]
 use super::dioxus_canvas::DioxusIsolatedCanvas;
+use super::dioxus_recovery::{DraftRecoveryBase, DraftRecoveryStatus, initialize_draft_recovery};
+use crate::BrowserIntentEffect;
+use crate::core::session::{EditorSessionAction, EditorSessionEffect, EditorSessionState};
 #[cfg(feature = "dioxus-web")]
 use crate::editor::render_canvas_srcdoc_with_context;
 use crate::i18n::t;
 use crate::model::AdminCanvasController;
-use crate::BrowserIntentEffect;
 use crate::transport::PageBuilderAdminFacade;
 use dioxus::prelude::*;
 use fly::{GrapesJsCodec, TraitSchemaRegistry};
@@ -18,11 +16,11 @@ use fly_ui::{
     CapabilityState, ContributionAssemblyResult, EditorCapabilityEvaluation, EditorMessages,
     UiIntent,
 };
-use rustok_page_builder::{RuntimeContextScenario, RuntimePublishGatePolicy};
 use rustok_page_builder::dto::{
     BuilderCapabilityKind, PageBuilderCapabilityRequest, PageBuilderCapabilityResponse,
     PublishPageBuilderInput,
 };
+use rustok_page_builder::{RuntimeContextScenario, RuntimePublishGatePolicy};
 use rustok_ui_core::{UiCspNonce, UiRouteContext};
 use serde_json::Value;
 use std::sync::Arc;
@@ -111,7 +109,10 @@ impl PartialEq for DioxusPageBuilderAdminHostContext {
             )
             && self.runtime_context == other.runtime_context
             && same_optional_arc(&self.runtime_scenarios, &other.runtime_scenarios)
-            && same_optional_arc(&self.runtime_publish_gate_policy, &other.runtime_publish_gate_policy)
+            && same_optional_arc(
+                &self.runtime_publish_gate_policy,
+                &other.runtime_publish_gate_policy,
+            )
             && self.adapter_workspace == other.adapter_workspace
             && self.on_reload_requested == other.on_reload_requested
             && self.draft_recovery_scope == other.draft_recovery_scope
@@ -159,8 +160,7 @@ fn dispatch_facade_effects<F>(
     effects: Vec<EditorSessionEffect>,
     on_publish_confirmed: F,
     mut save_outcome_unknown: Signal<Option<PublishPageBuilderInput>>,
-)
-where
+) where
     F: Fn(String, String, Value) + Clone + 'static,
 {
     for effect in effects {
@@ -175,59 +175,66 @@ where
                 command_sequence,
                 preview_attempt_id,
             } => {
-                let preview_attempt_id = if let PageBuilderCapabilityRequest::Preview(input) = &request {
-                    let mut state = session.write();
-                    if let Some(id) = preview_attempt_id {
-                        if !state.preview_attempt_active(id) {
+                let preview_attempt_id =
+                    if let PageBuilderCapabilityRequest::Preview(input) = &request {
+                        let mut state = session.write();
+                        if let Some(id) = preview_attempt_id {
+                            if !state.preview_attempt_active(id) {
+                                continue;
+                            }
+                        } else if state.preview_in_progress {
+                            state.fail("Preview already in progress");
                             continue;
                         }
-                    } else if state.preview_in_progress {
-                        state.fail("Preview already in progress");
-                        continue;
-                    }
-                    if let Err(error) = state.controller.validate_preview_request(input, command_sequence) {
-                        if let Some(id) = preview_attempt_id {
-                            state.handle_preview_failure(id, error.to_string());
-                        } else {
-                            state.fail(error.to_string());
-                        }
-                        continue;
-                    }
-                    if let Some(id) = preview_attempt_id {
-                        Some(id)
-                    } else {
-                        let context = input.runtime.context.clone();
-                        let scenario = input.runtime.scenario_id.clone();
-                        if !state.runtime_context_configured
-                            || state.runtime_context != context
-                            || state.active_runtime_scenario != scenario
+                        if let Err(error) = state
+                            .controller
+                            .validate_preview_request(input, command_sequence)
                         {
-                            state.runtime_publish_gate_evaluation = None;
-                            state.server_preview_html = None;
+                            if let Some(id) = preview_attempt_id {
+                                state.handle_preview_failure(id, error.to_string());
+                            } else {
+                                state.fail(error.to_string());
+                            }
+                            continue;
                         }
-                        state.runtime_context = context.clone();
-                        state.runtime_context_configured = true;
-                        state.active_runtime_scenario = scenario.clone();
-                        let attempt = crate::core::session::PreviewAttempt::new(
-                            state.controller.editor().revision().project_hash,
-                            state.controller.active_page_index(),
-                            context,
-                            scenario,
-                        );
-                        let id = attempt.id;
-                        state.preview_request = Some(attempt);
-                        state.preview_in_progress = true;
-                        Some(id)
-                    }
-                } else {
-                    None
-                };
+                        if let Some(id) = preview_attempt_id {
+                            Some(id)
+                        } else {
+                            let context = input.runtime.context.clone();
+                            let scenario = input.runtime.scenario_id.clone();
+                            if !state.runtime_context_configured
+                                || state.runtime_context != context
+                                || state.active_runtime_scenario != scenario
+                            {
+                                state.runtime_publish_gate_evaluation = None;
+                                state.server_preview_html = None;
+                            }
+                            state.runtime_context = context.clone();
+                            state.runtime_context_configured = true;
+                            state.active_runtime_scenario = scenario.clone();
+                            let attempt = crate::core::session::PreviewAttempt::new(
+                                state.controller.editor().revision().project_hash,
+                                state.controller.active_page_index(),
+                                context,
+                                scenario,
+                            );
+                            let id = attempt.id;
+                            state.preview_request = Some(attempt);
+                            state.preview_in_progress = true;
+                            Some(id)
+                        }
+                    } else {
+                        None
+                    };
                 let Some(facade) = facade.clone() else {
                     // No request is sent and therefore no completion will ever
                     // arrive to retire an already prepared preview operation.
                     let mut state = session.write();
                     if let Some(id) = preview_attempt_id {
-                        state.handle_preview_failure(id, "Page Builder facade is missing".to_string());
+                        state.handle_preview_failure(
+                            id,
+                            "Page Builder facade is missing".to_string(),
+                        );
                     } else {
                         state.fail("Page Builder facade is missing");
                     }
@@ -236,7 +243,9 @@ where
                 let capability = request.capability();
                 let submitted_input = match &request {
                     PageBuilderCapabilityRequest::Publish(input) => {
-                        let matches_unknown = save_outcome_unknown.peek().as_ref()
+                        let matches_unknown = save_outcome_unknown
+                            .peek()
+                            .as_ref()
                             .is_none_or(|submitted| same_publish_input(submitted, input));
                         if !matches_unknown {
                             session.write().fail(
@@ -249,26 +258,32 @@ where
                     _ => None,
                 };
                 if capability == BuilderCapabilityKind::Preview
-                    && facade.provider_status()
+                    && facade
+                        .provider_status()
                         .is_some_and(|status| !status.preview_enabled())
                 {
                     let mut state = session.write();
                     if let Some(id) = preview_attempt_id {
                         state.handle_preview_failure(
                             id,
-                            "Server preview is disabled by the consumer provider or health policy".to_string(),
+                            "Server preview is disabled by the consumer provider or health policy"
+                                .to_string(),
                         );
                     }
                     continue;
                 }
                 let save_attempt = if capability == BuilderCapabilityKind::Publish {
                     if expected_hash.is_none() {
-                        session.write().fail("Save request has no submitted project hash");
+                        session
+                            .write()
+                            .fail("Save request has no submitted project hash");
                         continue;
                     }
                     let start = {
                         session.write().controller.begin_save_request(
-                            &request, expected_hash, command_sequence,
+                            &request,
+                            expected_hash,
+                            command_sequence,
                         )
                     };
                     match start {
@@ -369,7 +384,10 @@ where
                                     _ => {
                                         // A generic retry failure cannot establish
                                         // whether the earlier request committed.
-                                        state.handle_publish_error_for_attempt(&id, error.to_string());
+                                        state.handle_publish_error_for_attempt(
+                                            &id,
+                                            error.to_string(),
+                                        );
                                     }
                                 }
                             } else if let Some(id) = preview_attempt_id {
@@ -397,7 +415,13 @@ fn controller_session_key(controller: &AdminCanvasController) -> String {
     // (for example after a remote edit or optimistic reconciler). Reusing
     // use_signal in that case would silently retain the old controlled draft.
     let revision = controller.editor().revision();
-    let selected = controller.ui().state.selection.component_id.as_deref().unwrap_or("");
+    let selected = controller
+        .ui()
+        .state
+        .selection
+        .component_id
+        .as_deref()
+        .unwrap_or("");
     format!(
         "page:{}:{}|revision:{}|hash:{}|seq:{}|active:{}|selection:{}:{}",
         controller.page_id().len(),
@@ -420,13 +444,15 @@ fn canvas_instance_id(page_id: &str, revision_id: &str, project_hash: &str) -> S
         encoded
     }
 
-    format!("fly-canvas-{}-{}-{}", hex(page_id), hex(revision_id), project_hash)
+    format!(
+        "fly-canvas-{}-{}-{}",
+        hex(page_id),
+        hex(revision_id),
+        project_hash
+    )
 }
 
-fn write_conflict_active(
-    peer_write_conflict: bool,
-    controller: &AdminCanvasController,
-) -> bool {
+fn write_conflict_active(peer_write_conflict: bool, controller: &AdminCanvasController) -> bool {
     peer_write_conflict || controller.ui().state.dirty.save_conflict
 }
 
@@ -495,7 +521,7 @@ pub fn PageBuilderAdmin() -> Element {
                 draft_recovery_scope: context.draft_recovery_scope,
             }
             }
-        },
+        }
         None => {
             let unbound_title = t(
                 locale.as_deref(),
@@ -563,7 +589,10 @@ impl PartialEq for PageBuilderAdminWithControllerProps {
             )
             && self.runtime_context == other.runtime_context
             && same_optional_arc(&self.runtime_scenarios, &other.runtime_scenarios)
-            && same_optional_arc(&self.runtime_publish_gate_policy, &other.runtime_publish_gate_policy)
+            && same_optional_arc(
+                &self.runtime_publish_gate_policy,
+                &other.runtime_publish_gate_policy,
+            )
             && self.adapter_workspace == other.adapter_workspace
             && self.on_reload_requested == other.on_reload_requested
             && self.draft_recovery_scope == other.draft_recovery_scope
@@ -608,9 +637,12 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
         .as_ref()
         .map(|evaluation| evaluation.effective)
         .or(props.editor_capabilities);
-    let provider_status = props.facade.as_ref().and_then(|facade| facade.provider_status());
-    let base_capabilities = host_capabilities
-        .unwrap_or_else(|| props.controller.ui().editable_capabilities());
+    let provider_status = props
+        .facade
+        .as_ref()
+        .and_then(|facade| facade.provider_status());
+    let base_capabilities =
+        host_capabilities.unwrap_or_else(|| props.controller.ui().editable_capabilities());
     let effective_capabilities = provider_status
         .as_ref()
         .map(|status| status.limit_capabilities(base_capabilities))
@@ -618,10 +650,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
         .normalized();
 
     let recovery_bootstrap = use_hook(|| {
-        initialize_draft_recovery(
-            props.draft_recovery_scope.as_deref(),
-            &props.controller,
-        )
+        initialize_draft_recovery(props.draft_recovery_scope.as_deref(), &props.controller)
     });
     let mut initial_recovery_status = recovery_bootstrap.status.clone();
     let mut initial_recovery_conflict_json = recovery_bootstrap.conflict_json.clone();
@@ -636,9 +665,10 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
         }
         // The host's tenant/RBAC and provider-health policy narrows the
         // core Fly state machine before any authoring action is accepted.
-        if let Err(error) = s.controller.dispatch(
-            UiIntent::SetEditableCapabilities(effective_capabilities),
-        ) {
+        if let Err(error) = s
+            .controller
+            .dispatch(UiIntent::SetEditableCapabilities(effective_capabilities))
+        {
             s.fail(format!("Cannot apply editor capabilities: {error}"));
         }
         if let Some(evaluation) = props.editor_capability_evaluation.clone() {
@@ -661,7 +691,9 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                 initial_recovery_status = DraftRecoveryStatus::Error(format!(
                     "Could not apply the recovered draft merge: {error}"
                 ));
-                s.fail(format!("Could not apply the recovered draft merge: {error}"));
+                s.fail(format!(
+                    "Could not apply the recovered draft merge: {error}"
+                ));
             }
         }
         s
@@ -743,7 +775,6 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
             facade_available,
         );
     }));
-
 
     {
         let persistence_store = recovery_store.clone();
@@ -893,9 +924,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                     // Do not consume or clear any recovery records without explicit user action.
                     persisted.set(false);
                 } else {
-                    let mut cleanup_error = store
-                        .clear_if_unchanged(&consumed_records)
-                        .err();
+                    let mut cleanup_error = store.clear_if_unchanged(&consumed_records).err();
                     if !current_session.read().controller.editor().revision().dirty {
                         if let Err(error) = store.clear_current() {
                             cleanup_error.get_or_insert(error);
@@ -948,12 +977,15 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
             // Drop the write guard before taking another one to report an
             // error; a temporary held by if-let could otherwise overlap.
             let result = {
-                session.write().controller.dispatch(
-                    UiIntent::SetEditableCapabilities(effective_capabilities),
-                )
+                session
+                    .write()
+                    .controller
+                    .dispatch(UiIntent::SetEditableCapabilities(effective_capabilities))
             };
             if let Err(error) = result {
-                session.write().fail(format!("Cannot refresh editor capabilities: {error}"));
+                session
+                    .write()
+                    .fail(format!("Cannot refresh editor capabilities: {error}"));
             }
         }
     }));
@@ -997,18 +1029,23 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
         *local_draft_copied.read(),
     );
     let save_outcome_unknown_active = save_outcome_unknown.read().is_some();
-    let unknown_save_retry_matches = save_outcome_unknown.read().as_ref()
+    let unknown_save_retry_matches = save_outcome_unknown
+        .read()
+        .as_ref()
         .is_some_and(|submitted| can_retry_unknown_save(&current.controller, submitted));
-    let local_recovery_json = (
-        peer_conflict_active || save_outcome_unknown_active || recovery_storage_unavailable
-    )
-        .then(|| local_recovery_json(&current.controller));
+    let local_recovery_json =
+        (peer_conflict_active || save_outcome_unknown_active || recovery_storage_unavailable)
+            .then(|| local_recovery_json(&current.controller));
     let local_recovery_json_text = local_recovery_json.as_deref().unwrap_or_default();
-    let recovery_conflict_json_text = (*recovery_conflict_json.read())
-        .clone()
-        .unwrap_or_default();
+    let recovery_conflict_json_text = (*recovery_conflict_json.read()).clone().unwrap_or_default();
     let save_retry_in_progress = current.controller.ui().state.dirty.save_in_progress
-        || current.controller.ui().state.dirty.save_started_request_id.is_some();
+        || current
+            .controller
+            .ui()
+            .state
+            .dirty
+            .save_started_request_id
+            .is_some();
     let mut capabilities = current.controller.ui().state.capabilities;
     if peer_conflict_active || save_outcome_unknown_active || recovery_conflict_active {
         capabilities = CapabilityState::read_only();
@@ -1020,7 +1057,13 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
         && !peer_conflict_active
         && !recovery_conflict_active
         && !current.controller.ui().state.dirty.save_in_progress
-        && current.controller.ui().state.dirty.save_started_request_id.is_none()
+        && current
+            .controller
+            .ui()
+            .state
+            .dirty
+            .save_started_request_id
+            .is_none()
         && !current.controller.ui().state.dirty.save_conflict
         && !current.controller.ui().state.has_blocking_diagnostics();
     drop(current);
@@ -1049,12 +1092,15 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     let on_workspace_intent = EventHandler::new(move |envelope: BrowserIntentEnvelope| {
         let write_conflict = *peer_write_conflict.peek()
             || save_outcome_unknown.peek().is_some()
-            || matches!(&*recovery_status.peek(), DraftRecoveryStatus::Conflict { .. })
+            || matches!(
+                &*recovery_status.peek(),
+                DraftRecoveryStatus::Conflict { .. }
+            )
             || session.read().controller.ui().state.dirty.save_conflict;
         if write_conflict && envelope.is_mutating() {
-            session.write().fail(
-                "This editor is read-only until the save result is reconciled.",
-            );
+            session
+                .write()
+                .fail("This editor is read-only until the save result is reconciled.");
             return;
         }
         if envelope.is_mutating() {
@@ -1084,7 +1130,9 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                         || result.project_hash != current_hash.hex()
                         || result.command_sequence != current_sequence
                     {
-                        state.fail("Browser workspace response no longer matches the active document");
+                        state.fail(
+                            "Browser workspace response no longer matches the active document",
+                        );
                         return;
                     }
                     if current_hash != previous_hash
@@ -1107,7 +1155,9 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                                 command_sequence,
                             } => {
                                 if command_sequence != current_sequence {
-                                    state.fail("Browser workspace request has a stale command sequence");
+                                    state.fail(
+                                        "Browser workspace request has a stale command sequence",
+                                    );
                                     return;
                                 }
                                 let expected_hash = match expected_hash {
@@ -1150,7 +1200,10 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     let on_canvas_ui_intent = EventHandler::new(move |intent: UiIntent| {
         let write_conflict = *peer_write_conflict.peek()
             || save_outcome_unknown.peek().is_some()
-            || matches!(&*recovery_status.peek(), DraftRecoveryStatus::Conflict { .. })
+            || matches!(
+                &*recovery_status.peek(),
+                DraftRecoveryStatus::Conflict { .. }
+            )
             || session.read().controller.ui().state.dirty.save_conflict;
         if write_conflict && peer_conflict_blocks_ui_intent(&intent) {
             if matches!(&intent, UiIntent::Drop) {
@@ -1165,16 +1218,18 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                     save_outcome_unknown,
                 );
             }
-            session.write().fail(
-                "This editor is read-only until the save result is reconciled.",
-            );
+            session
+                .write()
+                .fail("This editor is read-only until the save result is reconciled.");
             return;
         }
         if peer_conflict_blocks_ui_intent(&intent) {
             recovery_persisted.set(false);
         }
         let is_drop = matches!(&intent, UiIntent::Drop);
-        let effects = session.write().dispatch(EditorSessionAction::DispatchIntent(intent));
+        let effects = session
+            .write()
+            .dispatch(EditorSessionAction::DispatchIntent(intent));
         dispatch_facade_effects(
             session,
             canvas_facade.clone(),
@@ -1220,11 +1275,16 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     let on_retry_unknown_save = EventHandler::new(move |_| {
         if save_retry_in_progress
             || *peer_write_conflict.peek()
-            || matches!(&*recovery_status.peek(), DraftRecoveryStatus::Conflict { .. })
+            || matches!(
+                &*recovery_status.peek(),
+                DraftRecoveryStatus::Conflict { .. }
+            )
         {
             return;
         }
-        let matches_submitted = save_outcome_unknown.peek().as_ref()
+        let matches_submitted = save_outcome_unknown
+            .peek()
+            .as_ref()
             .is_some_and(|submitted| can_retry_unknown_save(&session.read().controller, submitted));
         if !matches_submitted {
             session.write().fail(
@@ -1232,9 +1292,9 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
             );
             return;
         }
-        let effects = session.write().dispatch(
-            EditorSessionAction::DispatchIntent(UiIntent::RequestSave),
-        );
+        let effects = session
+            .write()
+            .dispatch(EditorSessionAction::DispatchIntent(UiIntent::RequestSave));
         dispatch_facade_effects(
             session,
             retry_facade.clone(),
@@ -1255,9 +1315,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
         match active_page {
             Some(active_page) => {
                 canvas_document.project_mut().pages = vec![active_page];
-                let canvas_nonce = workspace_csp_nonce
-                    .as_deref()
-                    .and_then(UiCspNonce::new);
+                let canvas_nonce = workspace_csp_nonce.as_deref().and_then(UiCspNonce::new);
                 match render_canvas_srcdoc_with_context(
                     &canvas_document,
                     &workspace_canvas_instance_id,
@@ -1649,7 +1707,9 @@ mod props_regression_tests {
     #[test]
     fn reload_requires_persisted_recovery_or_copy_of_current_revision() {
         let mut controller = AdminCanvasController::new(
-            "home", "rev-1", json!({
+            "home",
+            "rev-1",
+            json!({
                 "pages": [{
                     "id": "home",
                     "component": { "id": "root", "type": "wrapper", "components": [{
@@ -1657,19 +1717,26 @@ mod props_regression_tests {
                     }] }
                 }]
             }),
-        ).expect("controller");
+        )
+        .expect("controller");
         let copied = Some(draft_stamp(&controller));
         assert!(!draft_reload_safe(&controller, false, None));
         assert!(draft_reload_safe(&controller, true, None));
         assert!(draft_reload_safe(&controller, false, copied));
 
-        controller.dispatch(UiIntent::execute(EditorCommand::Patch {
-            component_id: "hero".to_string(),
-            patch: ComponentPatch::default().set_field("content", json!("new unsaved content")),
-        })).expect("edit");
+        controller
+            .dispatch(UiIntent::execute(EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: ComponentPatch::default().set_field("content", json!("new unsaved content")),
+            }))
+            .expect("edit");
         assert!(!draft_reload_safe(&controller, false, copied));
         assert!(draft_reload_safe(&controller, true, copied));
-        assert!(draft_reload_safe(&controller, false, Some(draft_stamp(&controller))));
+        assert!(draft_reload_safe(
+            &controller,
+            false,
+            Some(draft_stamp(&controller))
+        ));
         controller.dispatch(UiIntent::Undo).expect("undo");
         // Even returning to the same content does not reuse a prior confirmation.
         assert!(!draft_reload_safe(&controller, false, copied));
@@ -1678,7 +1745,9 @@ mod props_regression_tests {
     #[test]
     fn unknown_save_retry_requires_exact_submitted_payload_and_revision() {
         let mut controller = AdminCanvasController::new(
-            "home", "rev-1", json!({
+            "home",
+            "rev-1",
+            json!({
                 "pages": [{
                     "id": "home",
                     "component": { "id": "root", "type": "wrapper", "components": [{
@@ -1686,11 +1755,13 @@ mod props_regression_tests {
                     }] }
                 }]
             }),
-        ).expect("controller");
+        )
+        .expect("controller");
         let input = PublishPageBuilderInput {
             page_id: controller.page_id().to_string(),
             revision_id: controller.revision_id().to_string(),
-            project_data: GrapesJsCodec::encode_value(controller.editor().document()).expect("encode"),
+            project_data: GrapesJsCodec::encode_value(controller.editor().document())
+                .expect("encode"),
         };
         assert!(can_retry_unknown_save(&controller, &input));
         assert!(same_publish_input(&input, &input));
@@ -1703,22 +1774,29 @@ mod props_regression_tests {
         assert!(!can_retry_unknown_save(&controller, &different));
         assert!(!same_publish_input(&input, &different));
 
-        controller.dispatch(UiIntent::execute(EditorCommand::Patch {
-            component_id: "hero".to_string(),
-            patch: ComponentPatch::default().set_field("content", json!("newer unsaved edit")),
-        })).expect("edit while saving");
+        controller
+            .dispatch(UiIntent::execute(EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: ComponentPatch::default().set_field("content", json!("newer unsaved edit")),
+            }))
+            .expect("edit while saving");
         assert!(!can_retry_unknown_save(&controller, &input));
         different = input.clone();
-        different.project_data = GrapesJsCodec::encode_value(controller.editor().document()).expect("encode");
+        different.project_data =
+            GrapesJsCodec::encode_value(controller.editor().document()).expect("encode");
         assert!(!same_publish_input(&input, &different));
-        controller.dispatch(UiIntent::Undo).expect("restore original payload");
+        controller
+            .dispatch(UiIntent::Undo)
+            .expect("restore original payload");
         assert!(can_retry_unknown_save(&controller, &input));
     }
 
     #[test]
     fn props_detect_draft_changes_without_a_new_server_revision() {
         let controller = AdminCanvasController::new(
-            "home", "rev-1", json!({
+            "home",
+            "rev-1",
+            json!({
                 "pages": [{
                     "id": "home",
                     "component": { "id": "root", "type": "wrapper", "components": [{
@@ -1726,14 +1804,21 @@ mod props_regression_tests {
                     }] }
                 }]
             }),
-        ).expect("controller");
+        )
+        .expect("controller");
         let original = DioxusPageBuilderAdminHostContext::new(controller);
         let mut changed = original.clone();
-        changed.controller.dispatch(UiIntent::execute(EditorCommand::Patch {
-            component_id: "hero".to_string(),
-            patch: ComponentPatch::default().set_field("content", json!("two")),
-        })).expect("edit");
-        assert_eq!(original.controller.revision_id(), changed.controller.revision_id());
+        changed
+            .controller
+            .dispatch(UiIntent::execute(EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: ComponentPatch::default().set_field("content", json!("two")),
+            }))
+            .expect("edit");
+        assert_eq!(
+            original.controller.revision_id(),
+            changed.controller.revision_id()
+        );
         assert!(original != changed, "draft edit must trigger prop update");
         let mut workspace = original.clone();
         workspace.adapter_workspace = false;
@@ -1756,8 +1841,12 @@ mod props_regression_tests {
                 "id": "home",
                 "component": { "id": "root", "type": "wrapper" }
             }] }),
-        ).expect("controller");
-        controller.dispatch(UiIntent::SetEditableCapabilities(CapabilityState::read_only()))
+        )
+        .expect("controller");
+        controller
+            .dispatch(UiIntent::SetEditableCapabilities(
+                CapabilityState::read_only(),
+            ))
             .expect("apply the host restriction");
         assert!(!controller.ui().state.capabilities.edit);
         assert!(!controller.ui().state.capabilities.history);
@@ -1782,12 +1871,13 @@ mod props_regression_tests {
                     }]
                 }
             }] }),
-        ).expect("controller");
+        )
+        .expect("controller");
         let recovered = local_recovery_json(&controller);
         assert!(recovered.contains("unsaved local work"));
         let decoded: Value = serde_json::from_str(&recovered).expect("recovery JSON");
-        let expected = GrapesJsCodec::encode_value(controller.editor().document())
-            .expect("GrapesJS project");
+        let expected =
+            GrapesJsCodec::encode_value(controller.editor().document()).expect("GrapesJS project");
         assert_eq!(decoded, expected);
     }
 
@@ -1818,8 +1908,7 @@ mod props_regression_tests {
         );
 
         let mut newer_revision =
-            AdminCanvasController::new("home", "rev-2", document.clone())
-                .expect("newer revision");
+            AdminCanvasController::new("home", "rev-2", document.clone()).expect("newer revision");
         assert!(matches!(
             crate::dispatch_browser_intent(&mut newer_revision, envelope.clone()),
             Err(crate::BrowserIntentDispatchError::RevisionConflict { .. })
@@ -1835,17 +1924,15 @@ mod props_regression_tests {
                 }
             }]
         });
-        let mut changed_snapshot =
-            AdminCanvasController::new("home", "rev-1", changed_document)
-                .expect("changed snapshot");
+        let mut changed_snapshot = AdminCanvasController::new("home", "rev-1", changed_document)
+            .expect("changed snapshot");
         assert!(matches!(
             crate::dispatch_browser_intent(&mut changed_snapshot, envelope.clone()),
             Err(crate::BrowserIntentDispatchError::ProjectHashConflict { .. })
         ));
 
         let mut other_page =
-            AdminCanvasController::new("about", "rev-1", document)
-                .expect("other page");
+            AdminCanvasController::new("about", "rev-1", document).expect("other page");
         assert!(matches!(
             crate::dispatch_browser_intent(&mut other_page, envelope),
             Err(crate::BrowserIntentDispatchError::PageScopeConflict { .. })
@@ -1861,7 +1948,8 @@ mod props_regression_tests {
                 "id": "home",
                 "component": { "id": "root", "type": "wrapper" }
             }] }),
-        ).expect("controller");
+        )
+        .expect("controller");
         controller
             .mark_save_conflict("rev-1".to_string(), "rev-2".to_string())
             .expect("mark server conflict");
@@ -1878,7 +1966,8 @@ mod props_regression_tests {
                 "id": "home",
                 "component": { "id": "root", "type": "wrapper" }
             }] }),
-        ).expect("controller");
+        )
+        .expect("controller");
         assert!(!write_conflict_active(false, &controller));
         assert!(write_conflict_active(true, &controller));
     }
@@ -1896,7 +1985,9 @@ mod props_regression_tests {
     fn peer_write_fence_blocks_mutations_but_allows_selection_and_cancel() {
         assert!(peer_conflict_blocks_ui_intent(&UiIntent::Drop));
         assert!(peer_conflict_blocks_ui_intent(&UiIntent::Undo));
-        assert!(!peer_conflict_blocks_ui_intent(&UiIntent::Select(Some("hero".to_string()))));
+        assert!(!peer_conflict_blocks_ui_intent(&UiIntent::Select(Some(
+            "hero".to_string()
+        ))));
         assert!(!peer_conflict_blocks_ui_intent(&UiIntent::CancelDrag));
     }
 
@@ -1905,28 +1996,42 @@ mod props_regression_tests {
         let doc = json!({
             "pages": [{ "id": "home", "component": { "id": "root", "type": "wrapper" } }]
         });
-        let home_v1 = AdminCanvasController::new("home", "rev-1", doc.clone())
-            .expect("first page");
-        let home_v2 = AdminCanvasController::new("home", "rev-2", doc.clone())
-            .expect("second revision");
-        let other = AdminCanvasController::new("other", "rev-1", doc)
-            .expect("second page");
-        assert_ne!(controller_session_key(&home_v1), controller_session_key(&home_v2));
-        assert_ne!(controller_session_key(&home_v1), controller_session_key(&other));
+        let home_v1 = AdminCanvasController::new("home", "rev-1", doc.clone()).expect("first page");
+        let home_v2 =
+            AdminCanvasController::new("home", "rev-2", doc.clone()).expect("second revision");
+        let other = AdminCanvasController::new("other", "rev-1", doc).expect("second page");
+        assert_ne!(
+            controller_session_key(&home_v1),
+            controller_session_key(&home_v2)
+        );
+        assert_ne!(
+            controller_session_key(&home_v1),
+            controller_session_key(&other)
+        );
 
         let mut changed_draft = home_v1.clone();
-        changed_draft.dispatch(UiIntent::execute(EditorCommand::Patch {
-            component_id: "root".to_string(),
-            patch: ComponentPatch::default().set_attribute(
-                "aria-label", json!("Updated draft without a new server revision"),
-            ),
-        })).expect("patch existing root");
+        changed_draft
+            .dispatch(UiIntent::execute(EditorCommand::Patch {
+                component_id: "root".to_string(),
+                patch: ComponentPatch::default().set_attribute(
+                    "aria-label",
+                    json!("Updated draft without a new server revision"),
+                ),
+            }))
+            .expect("patch existing root");
         assert_eq!(changed_draft.revision_id(), home_v1.revision_id());
-        assert_ne!(controller_session_key(&home_v1), controller_session_key(&changed_draft));
+        assert_ne!(
+            controller_session_key(&home_v1),
+            controller_session_key(&changed_draft)
+        );
 
         let mut selected = home_v1.clone();
-        selected.dispatch(UiIntent::Select(Some("root".to_string())))
+        selected
+            .dispatch(UiIntent::Select(Some("root".to_string())))
             .expect("select root");
-        assert_ne!(controller_session_key(&home_v1), controller_session_key(&selected));
+        assert_ne!(
+            controller_session_key(&home_v1),
+            controller_session_key(&selected)
+        );
     }
 }

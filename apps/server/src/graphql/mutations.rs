@@ -2452,13 +2452,19 @@ mod tests {
                 "hook_settings_evidence_unavailable".to_string(),
             ));
         assert!(missing.message.contains("cannot be verified"));
-        let unverified = map_module_operation_recovery_error(
-            ModuleOperationRecoveryError::NotRetryable(
+        let unverified =
+            map_module_operation_recovery_error(ModuleOperationRecoveryError::NotRetryable(
                 "hook_identity_and_quiescence_unverified".to_string(),
-            ),
+            ));
+        assert!(
+            unverified
+                .message
+                .contains("Automatic recovery is unavailable")
         );
-        assert!(unverified.message.contains("Automatic recovery is unavailable"));
-        assert_eq!(extension_bool(&unverified.extend(), "retryable_issue"), Some(false));
+        assert_eq!(
+            extension_bool(&unverified.extend(), "retryable_issue"),
+            Some(false)
+        );
         let transition = map_module_operation_recovery_error(
             ModuleOperationRecoveryError::NotRetryable("release_transition_unresolved".to_string()),
         );

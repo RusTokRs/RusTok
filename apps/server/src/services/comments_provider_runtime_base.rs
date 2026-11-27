@@ -32,7 +32,9 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::{DirectWorkerRegistrationLock, StopHandle};
 use crate::services::event_bus::transactional_event_bus_from_context;
-use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
+use crate::services::server_runtime_context::{
+    ServerRuntimeContext, ServerRuntimeStartReservation,
+};
 
 pub const COMMENTS_PROVIDER_MODE_ENV: &str = "RUSTOK_COMMENTS_PROVIDER_MODE";
 pub const COMMENTS_TCP_ENDPOINT_ENV: &str = "RUSTOK_COMMENTS_TCP_ENDPOINT";
@@ -289,7 +291,8 @@ pub fn register_comments_provider_runtime(
 pub async fn start_comments_tcp_listener_if_enabled(
     runtime_ctx: &ServerRuntimeContext,
 ) -> Result<()> {
-    let Some(config) = CommentsTcpListenerConfig::from_environment().map_err(|err| Error::BadRequest(err.to_string()))?
+    let Some(config) = CommentsTcpListenerConfig::from_environment()
+        .map_err(|err| Error::BadRequest(err.to_string()))?
     else {
         return Ok(());
     };
@@ -717,9 +720,6 @@ async fn run_comments_tcp_listener(
     }
 }
 
-
-
-
 fn validate_pre_request_timeout_ms(timeout_ms: u64) -> std::result::Result<u64, String> {
     if !(1..=MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS).contains(&timeout_ms) {
         return Err(format!(
@@ -901,7 +901,10 @@ mod tests {
         assert_eq!(MAX_COMMENTS_TCP_MAX_CONNECTIONS, 128);
         assert_eq!(MAX_COMMENTS_TCP_FRAME_BYTES, 8 * 1024 * 1024);
         assert_eq!(MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS, 60_000);
-        assert_eq!(COMMENTS_TCP_ACCEPT_RETRY_BASE_DELAY, Duration::from_millis(100));
+        assert_eq!(
+            COMMENTS_TCP_ACCEPT_RETRY_BASE_DELAY,
+            Duration::from_millis(100)
+        );
         assert_eq!(COMMENTS_TCP_ACCEPT_RETRY_MAX_DELAY, Duration::from_secs(5));
         assert_eq!(DEFAULT_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS, 2_000);
         assert_eq!(DEFAULT_COMMENTS_TCP_SHUTDOWN_GRACE_MS, 5_000);
@@ -923,15 +926,26 @@ mod tests {
         assert!(validate_max_connections(0).is_err());
         assert!(validate_max_connections(MAX_COMMENTS_TCP_MAX_CONNECTIONS + 1).is_err());
         assert_eq!(validate_pre_request_timeout_ms(1), Ok(1));
-        assert_eq!(validate_pre_request_timeout_ms(MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS), Ok(60_000));
+        assert_eq!(
+            validate_pre_request_timeout_ms(MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS),
+            Ok(60_000)
+        );
         assert!(validate_pre_request_timeout_ms(0).is_err());
-        assert!(validate_pre_request_timeout_ms(MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS + 1).is_err());
+        assert!(
+            validate_pre_request_timeout_ms(MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS + 1).is_err()
+        );
         assert_eq!(validate_max_frame_bytes(1), Ok(1));
-        assert_eq!(validate_max_frame_bytes(MAX_COMMENTS_TCP_FRAME_BYTES), Ok(8 * 1024 * 1024));
+        assert_eq!(
+            validate_max_frame_bytes(MAX_COMMENTS_TCP_FRAME_BYTES),
+            Ok(8 * 1024 * 1024)
+        );
         assert!(validate_max_frame_bytes(0).is_err());
         assert!(validate_max_frame_bytes(MAX_COMMENTS_TCP_FRAME_BYTES + 1).is_err());
         assert_eq!(validate_shutdown_grace_ms(1), Ok(1));
-        assert_eq!(validate_shutdown_grace_ms(MAX_COMMENTS_TCP_SHUTDOWN_GRACE_MS), Ok(60_000));
+        assert_eq!(
+            validate_shutdown_grace_ms(MAX_COMMENTS_TCP_SHUTDOWN_GRACE_MS),
+            Ok(60_000)
+        );
         assert!(validate_shutdown_grace_ms(0).is_err());
         assert!(validate_shutdown_grace_ms(MAX_COMMENTS_TCP_SHUTDOWN_GRACE_MS + 1).is_err());
         assert_eq!(
@@ -963,9 +977,7 @@ mod tests {
         assert!(parse_comments_tcp_service_actor_id(&format!(" {actor_id}")).is_err());
         let non_canonical_uuid = "550e8400-e29b-41d4-a716-446655440000";
         assert!(parse_comments_tcp_service_actor_id(&non_canonical_uuid.to_uppercase()).is_err());
-        assert!(
-            parse_comments_tcp_service_actor_id(&non_canonical_uuid.replace('-', "")).is_err()
-        );
+        assert!(parse_comments_tcp_service_actor_id(&non_canonical_uuid.replace('-', "")).is_err());
     }
 
     #[tokio::test]
@@ -1026,10 +1038,6 @@ mod tests {
             comments_tcp_accept_retry_delay(3),
             Duration::from_millis(400)
         );
-        assert_eq!(
-            comments_tcp_accept_retry_delay(32),
-            Duration::from_secs(5)
-        );
+        assert_eq!(comments_tcp_accept_retry_delay(32), Duration::from_secs(5));
     }
-
 }

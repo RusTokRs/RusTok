@@ -666,13 +666,16 @@ impl Model {
         })
     }
 
-    pub fn parsed_granted_permissions(&self) -> Result<Vec<Permission>, OAuthPermissionPolicyError> {
+    pub fn parsed_granted_permissions(
+        &self,
+    ) -> Result<Vec<Permission>, OAuthPermissionPolicyError> {
         let permissions: Vec<String> = serde_json::from_value(self.granted_permissions.clone())
             .map_err(|_| OAuthPermissionPolicyError::InvalidJson)?;
         permissions
             .iter()
             .map(|value| {
-                Permission::from_str(value).map_err(|_| OAuthPermissionPolicyError::InvalidPermission)
+                Permission::from_str(value)
+                    .map_err(|_| OAuthPermissionPolicyError::InvalidPermission)
             })
             .collect()
     }
@@ -782,11 +785,7 @@ mod tests {
     fn first_party_pkce_apps_without_a_secret_can_enable_server_side_credentials() {
         let mut app = app(
             true,
-            serde_json::json!([
-                "authorization_code",
-                "refresh_token",
-                "client_credentials"
-            ]),
+            serde_json::json!(["authorization_code", "refresh_token", "client_credentials"]),
         );
         app.app_type = "first_party".to_string();
         app.client_secret_hash = None;

@@ -524,7 +524,10 @@ mod tests {
             .await
             .expect("late original completion");
         assert_eq!(
-            store.claim(&expired_request).await.expect("late result replay"),
+            store
+                .claim(&expired_request)
+                .await
+                .expect("late result replay"),
             ArtifactBindingIdempotencyClaim::Replay { response }
         );
 

@@ -13,7 +13,8 @@ use crate::credentials::{
 };
 use crate::error::{AuthError, Result};
 use crate::jwt_keyring::{
-    JwtKeyring, SpecialJwtKeyring, SpecialJwtKeyrings, ValidatedJwtKeyrings, rsa_signing_key, verification_key,
+    JwtKeyring, SpecialJwtKeyring, SpecialJwtKeyrings, ValidatedJwtKeyrings, rsa_signing_key,
+    verification_key,
 };
 
 const DEFAULT_ACCESS_EXPIRATION_SECS: u64 = 900; // 15 minutes
@@ -41,11 +42,23 @@ pub(crate) fn mac_root_is_valid(root: &str) -> bool {
 fn mac_root_looks_like_placeholder(root: &str) -> bool {
     let normalized = root.trim().to_ascii_lowercase();
     const PLACEHOLDER_MARKERS: &[&str] = &[
-        "change_me", "changeme", "replace_me", "replace-this", "do-not-use",
-        "development", "example-secret", "test-secret",
+        "change_me",
+        "changeme",
+        "replace_me",
+        "replace-this",
+        "do-not-use",
+        "development",
+        "example-secret",
+        "test-secret",
     ];
-    PLACEHOLDER_MARKERS.iter().any(|marker| normalized.contains(marker))
-        || normalized.chars().collect::<std::collections::HashSet<_>>().len() < 16
+    PLACEHOLDER_MARKERS
+        .iter()
+        .any(|marker| normalized.contains(marker))
+        || normalized
+            .chars()
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            < 16
 }
 
 const MIN_ACCESS_EXPIRATION_SECS: u64 = 60;
@@ -112,17 +125,25 @@ impl VersionedJwtKeys {
         if !self.clock.healthy_at(now) {
             return false;
         }
-        if self.authority_clock.as_ref().is_some_and(|clock| !clock.healthy_at(now)) {
+        if self
+            .authority_clock
+            .as_ref()
+            .is_some_and(|clock| !clock.healthy_at(now))
+        {
             self.clock.trip();
         }
         !self.clock.faulted()
     }
 
     fn permits_crypto_at(&self, now: ClockSample) -> bool {
-        !self.shutdown_fenced && !self.emergency_fenced && (!self.lease_required || (
-            self.clock_healthy_at(now)
-                && self.lease_until.as_ref().is_some_and(|lease| lease.remaining(now) > Duration::ZERO)
-        ))
+        !self.shutdown_fenced
+            && !self.emergency_fenced
+            && (!self.lease_required
+                || (self.clock_healthy_at(now)
+                    && self
+                        .lease_until
+                        .as_ref()
+                        .is_some_and(|lease| lease.remaining(now) > Duration::ZERO)))
     }
 }
 
@@ -145,13 +166,19 @@ impl JwtLeaseReadiness {
         } else {
             0.0
         };
-        Some((guard.generation, ready, guard.emergency_fenced, remaining, !clock_healthy || guard.clock.faulted()))
+        Some((
+            guard.generation,
+            ready,
+            guard.emergency_fenced,
+            remaining,
+            !clock_healthy || guard.clock.faulted(),
+        ))
     }
 
     pub fn is_ready(&self) -> bool {
-        self.current.read().is_ok_and(|guard| {
-            guard.lease_required && guard.permits_crypto_at(ClockSample::now())
-        })
+        self.current
+            .read()
+            .is_ok_and(|guard| guard.lease_required && guard.permits_crypto_at(ClockSample::now()))
     }
 }
 
@@ -183,16 +210,19 @@ impl JwtKeyringDocument {
         if doc.generation == 0 || i64::try_from(doc.generation).is_err() {
             return Err(invalid_rotation());
         }
-        Ok((doc.generation, JwtKeyInputs {
-            jwt_keyring: doc.access.keyring,
-            rsa_private_key_pem: doc.access.rsa_private_key_pem,
-            rsa_public_key_pem: doc.access.rsa_public_key_pem,
-            special_jwt_keyrings: SpecialJwtKeyrings {
-                password_reset: doc.password_reset,
-                email_verification: doc.email_verification,
-                invite: doc.invite,
+        Ok((
+            doc.generation,
+            JwtKeyInputs {
+                jwt_keyring: doc.access.keyring,
+                rsa_private_key_pem: doc.access.rsa_private_key_pem,
+                rsa_public_key_pem: doc.access.rsa_public_key_pem,
+                special_jwt_keyrings: SpecialJwtKeyrings {
+                    password_reset: doc.password_reset,
+                    email_verification: doc.email_verification,
+                    invite: doc.invite,
+                },
             },
-        }))
+        ))
     }
 }
 
@@ -259,7 +289,10 @@ impl AuthConfig {
     /// the raw root to host composition or other dependent crates.
     pub fn validate_production_mac_root(&self) -> Result<()> {
         let root = self.secret();
-        if root.bytes().filter(|byte| !byte.is_ascii_whitespace()).count()
+        if root
+            .bytes()
+            .filter(|byte| !byte.is_ascii_whitespace())
+            .count()
             < MIN_PRODUCTION_MAC_ROOT_BYTES
         {
             return Err(AuthError::Validation(format!(
@@ -277,7 +310,8 @@ impl AuthConfig {
     fn key_snapshot(&self) -> Result<Arc<JwtKeyState>> {
         match &self.key_state {
             JwtKeySource::Fixed(keys) => Ok(keys.clone()),
-            JwtKeySource::Live(current) => current.read()
+            JwtKeySource::Live(current) => current
+                .read()
                 .map(|current| current.keys.clone())
                 .map_err(|_| keyring_runtime_error()),
         }
@@ -286,7 +320,8 @@ impl AuthConfig {
     /// Run a synchronous cryptographic operation under a read fence.
     /// Publication waits for in-flight crypto, but never for async DB/network IO.
     pub(crate) fn with_prepared_jwt<T>(
-        &self, operation: impl FnOnce(&ValidatedJwtKeyrings) -> Result<T>,
+        &self,
+        operation: impl FnOnce(&ValidatedJwtKeyrings) -> Result<T>,
     ) -> Result<T> {
         match &self.key_state {
             JwtKeySource::Fixed(keys) => operation(keys.prepared(self.secret())?),
@@ -305,7 +340,9 @@ impl AuthConfig {
             JwtKeySource::Fixed(_) => Ok(chrono::Utc::now()),
             JwtKeySource::Live(current) => {
                 let guard = current.read().map_err(|_| keyring_runtime_error())?;
-                let now = guard.clock.credential_sample(ClockSample::now)
+                let now = guard
+                    .clock
+                    .credential_sample(ClockSample::now)
                     .ok_or_else(keyring_runtime_error)?;
                 if !guard.permits_crypto_at(now) {
                     return Err(keyring_runtime_error());
@@ -318,13 +355,15 @@ impl AuthConfig {
     /// JWT operations use the lease gate; candidate validation and
     /// metadata inspection never require a request-serving lease.
     pub(crate) fn with_jwt_operation<T>(
-        &self, operation: impl FnOnce(&ValidatedJwtKeyrings) -> Result<T>,
+        &self,
+        operation: impl FnOnce(&ValidatedJwtKeyrings) -> Result<T>,
     ) -> Result<T> {
         self.with_jwt_operation_at(ClockSample::now, operation)
     }
 
     fn with_jwt_operation_at<T>(
-        &self, now: impl Fn() -> ClockSample,
+        &self,
+        now: impl Fn() -> ClockSample,
         operation: impl FnOnce(&ValidatedJwtKeyrings) -> Result<T>,
     ) -> Result<T> {
         match &self.key_state {
@@ -404,7 +443,11 @@ impl AuthConfig {
         self.into_jwt_runtime(generation, true)
     }
 
-    fn into_jwt_runtime(mut self, generation: u64, lease_required: bool) -> Result<(Self, JwtKeyringPublisher)> {
+    fn into_jwt_runtime(
+        mut self,
+        generation: u64,
+        lease_required: bool,
+    ) -> Result<(Self, JwtKeyringPublisher)> {
         if generation == 0
             || i64::try_from(generation).is_err()
             || !matches!(&self.key_state, JwtKeySource::Fixed(_))
@@ -417,7 +460,9 @@ impl AuthConfig {
             None
         } else {
             Some(LocalJwtHistory::enroll(
-                generation, keys.prepared(self.secret())?, self.secret(),
+                generation,
+                keys.prepared(self.secret())?,
+                self.secret(),
             )?)
         };
         self.key_state = JwtKeySource::Live(Arc::new(RwLock::new(VersionedJwtKeys {
@@ -431,7 +476,10 @@ impl AuthConfig {
             shutdown_fenced: false,
             local_history,
         })));
-        let publisher = JwtKeyringPublisher { config: self.clone(), incarnation: uuid::Uuid::new_v4() };
+        let publisher = JwtKeyringPublisher {
+            config: self.clone(),
+            incarnation: uuid::Uuid::new_v4(),
+        };
         Ok((self, publisher))
     }
 
@@ -460,7 +508,8 @@ impl AuthConfig {
 impl JwtKeyringPublisher {
     pub fn generation(&self) -> Result<u64> {
         match &self.config.key_state {
-            JwtKeySource::Live(current) => current.read()
+            JwtKeySource::Live(current) => current
+                .read()
                 .map(|current| current.generation)
                 .map_err(|_| keyring_runtime_error()),
             JwtKeySource::Fixed(_) => Err(invalid_rotation()),
@@ -472,10 +521,16 @@ impl JwtKeyringPublisher {
         let JwtKeySource::Live(current) = &self.config.key_state else {
             return Err(invalid_rotation());
         };
-        if !current.read().map_err(|_| keyring_runtime_error())?.lease_required {
+        if !current
+            .read()
+            .map_err(|_| keyring_runtime_error())?
+            .lease_required
+        {
             return Err(invalid_rotation());
         }
-        Ok(JwtLeaseReadiness { current: current.clone() })
+        Ok(JwtLeaseReadiness {
+            current: current.clone(),
+        })
     }
 
     pub(crate) fn incarnation(&self) -> uuid::Uuid {
@@ -487,7 +542,8 @@ impl JwtKeyringPublisher {
     }
 
     pub(crate) fn lease_metadata(
-        &self, fingerprint: impl Fn(&[u8; 32]) -> Result<String>,
+        &self,
+        fingerprint: impl Fn(&[u8; 32]) -> Result<String>,
     ) -> Result<(u64, crate::jwt_fence::Snapshot)> {
         let JwtKeySource::Live(current) = &self.config.key_state else {
             return Err(invalid_rotation());
@@ -496,7 +552,10 @@ impl JwtKeyringPublisher {
         if !guard.lease_required {
             return Err(invalid_rotation());
         }
-        let snapshot = guard.keys.prepared(self.config.secret())?.fence_snapshot(fingerprint)?;
+        let snapshot = guard
+            .keys
+            .prepared(self.config.secret())?
+            .fence_snapshot(fingerprint)?;
         Ok((guard.generation, snapshot))
     }
 
@@ -512,7 +571,11 @@ impl JwtKeyringPublisher {
         let JwtKeySource::Live(current) = &self.config.key_state else {
             return Err(invalid_rotation());
         };
-        current.read().map_err(|_| keyring_runtime_error())?.clock.trip();
+        current
+            .read()
+            .map_err(|_| keyring_runtime_error())?
+            .clock
+            .trip();
         Ok(())
     }
 
@@ -526,12 +589,19 @@ impl JwtKeyringPublisher {
             guard.clock.trip();
             return Ok(false);
         }
-        if !guard.lease_required || guard.shutdown_fenced || guard.emergency_fenced || guard.generation != generation
+        if !guard.lease_required
+            || guard.shutdown_fenced
+            || guard.emergency_fenced
+            || guard.generation != generation
             || deadline.remaining(now) == Duration::ZERO
         {
             return Ok(false);
         }
-        if guard.lease_until.as_ref().is_none_or(|previous| deadline.later_than(previous)) {
+        if guard
+            .lease_until
+            .as_ref()
+            .is_none_or(|previous| deadline.later_than(previous))
+        {
             guard.authority_clock = Some(deadline.authority.clone());
             guard.lease_until = Some(deadline);
         }
@@ -577,7 +647,10 @@ impl JwtKeyringPublisher {
 
     /// Only the Auth fence may install a deadline obtained for this candidate.
     pub(crate) fn publish_granted(
-        &self, generation: u64, candidate: AuthConfig, deadline: LeaseDeadline,
+        &self,
+        generation: u64,
+        candidate: AuthConfig,
+        deadline: LeaseDeadline,
     ) -> Result<bool> {
         self.publish_inner(generation, candidate, Some(deadline))
     }
@@ -595,7 +668,9 @@ impl JwtKeyringPublisher {
     /// Reject a locally incompatible candidate before reserving a durable
     /// replica grant. Publication still rechecks under the write fence.
     pub(crate) fn accepts_grant_candidate(
-        &self, generation: u64, candidate: &AuthConfig,
+        &self,
+        generation: u64,
+        candidate: &AuthConfig,
     ) -> Result<bool> {
         if !self.matches_candidate_policy(candidate) || i64::try_from(generation).is_err() {
             return Ok(false);
@@ -608,7 +683,10 @@ impl JwtKeyringPublisher {
     }
 
     fn publish_inner(
-        &self, generation: u64, candidate: AuthConfig, deadline: Option<LeaseDeadline>,
+        &self,
+        generation: u64,
+        candidate: AuthConfig,
+        deadline: Option<LeaseDeadline>,
     ) -> Result<bool> {
         if !self.matches_candidate_policy(&candidate) {
             return Err(invalid_rotation());
@@ -620,7 +698,10 @@ impl JwtKeyringPublisher {
             return Err(invalid_rotation());
         };
         let mut guard = current.write().map_err(|_| keyring_runtime_error())?;
-        if guard.shutdown_fenced || generation <= guard.generation || i64::try_from(generation).is_err() {
+        if guard.shutdown_fenced
+            || generation <= guard.generation
+            || i64::try_from(generation).is_err()
+        {
             return Err(invalid_rotation());
         }
         // A cluster runtime cannot use this candidate until the database
@@ -630,8 +711,13 @@ impl JwtKeyringPublisher {
         let local_history = if lease_required {
             None
         } else {
-            Some(guard.local_history.as_ref().ok_or_else(invalid_rotation)?
-                .advance(generation, next, self.config.secret())?)
+            Some(
+                guard
+                    .local_history
+                    .as_ref()
+                    .ok_or_else(invalid_rotation)?
+                    .advance(generation, next, self.config.secret())?,
+            )
         };
         if lease_required && deadline.is_none() {
             return Err(invalid_rotation());
@@ -654,11 +740,20 @@ impl JwtKeyringPublisher {
             return Ok(false);
         }
         let clock = guard.clock.clone();
-        let authority_clock = deadline.as_ref().map(|lease| lease.authority.clone())
+        let authority_clock = deadline
+            .as_ref()
+            .map(|lease| lease.authority.clone())
             .or_else(|| guard.authority_clock.clone());
         *guard = VersionedJwtKeys {
-            generation, keys, lease_required, lease_until: deadline,
-            clock, authority_clock, emergency_fenced: false, shutdown_fenced: false, local_history,
+            generation,
+            keys,
+            lease_required,
+            lease_until: deadline,
+            clock,
+            authority_clock,
+            emergency_fenced: false,
+            shutdown_fenced: false,
+            local_history,
         };
         Ok(true)
     }
@@ -805,16 +900,23 @@ mod tests {
 
     fn rsa_config(root: String, fixture: &JwtKeyringFixture) -> AuthConfig {
         build_auth_config_from_document(
-            root, 900, Default::default(), fixture.document(1).to_string().as_bytes(),
-        ).unwrap().1
+            root,
+            900,
+            Default::default(),
+            fixture.document(1).to_string().as_bytes(),
+        )
+        .unwrap()
+        .1
     }
 
     fn document(
-        fixture: &JwtKeyringFixture, generation: u64, kid: &str, pair: &RsaKeyPairFixture,
+        fixture: &JwtKeyringFixture,
+        generation: u64,
+        kid: &str,
+        pair: &RsaKeyPairFixture,
     ) -> Vec<u8> {
         serde_json::to_vec(&fixture.document_with_access(generation, kid, pair, None)).unwrap()
     }
-
 
     #[test]
     fn clock_fault_is_sticky_across_grants_and_publication() {
@@ -823,14 +925,20 @@ mod tests {
         let candidate = rsa_config(root, &fixture);
         let (_, publisher) = candidate.clone().into_cluster_jwt(1).unwrap();
         let authority = Arc::new(ClockGuard::new());
-        let deadline = LeaseDeadline::new(ClockSample::now(), Duration::from_secs(10), authority.clone()).unwrap();
+        let deadline = LeaseDeadline::new(
+            ClockSample::now(),
+            Duration::from_secs(10),
+            authority.clone(),
+        )
+        .unwrap();
         assert!(publisher.install_lease(1, deadline).unwrap());
         let readiness = publisher.lease_readiness().unwrap();
         assert!(readiness.is_ready());
         authority.trip();
         assert!(!readiness.is_ready());
         let fresh = Arc::new(ClockGuard::new());
-        let deadline = LeaseDeadline::new(ClockSample::now(), Duration::from_secs(10), fresh).unwrap();
+        let deadline =
+            LeaseDeadline::new(ClockSample::now(), Duration::from_secs(10), fresh).unwrap();
         assert!(!publisher.install_lease(1, deadline.clone()).unwrap());
         assert!(publisher.publish_granted(2, candidate, deadline).is_err());
         assert!(!readiness.is_ready());
@@ -849,7 +957,14 @@ mod tests {
         let deadline = start.checked_add(Duration::from_secs(60)).unwrap();
         let lease = LeaseDeadline::new(start, Duration::from_secs(60), authority.clone()).unwrap();
         assert!(!publisher.install_lease(2, lease.clone()).unwrap());
-        assert!(!publisher.install_lease(1, LeaseDeadline::new(start, Duration::ZERO, authority).unwrap()).unwrap());
+        assert!(
+            !publisher
+                .install_lease(
+                    1,
+                    LeaseDeadline::new(start, Duration::ZERO, authority).unwrap()
+                )
+                .unwrap()
+        );
         assert!(publisher.install_lease(1, lease).unwrap());
         assert!(readiness.is_ready());
 
@@ -857,18 +972,28 @@ mod tests {
         // started before expiry. Simulate the clock without sleeping.
         let clock = Cell::new(start);
         let calls = Cell::new(0);
-        let result = config.with_jwt_operation_at(|| clock.get(), |_| {
-            calls.set(calls.get() + 1);
-            clock.set(deadline);
-            Ok(123_u32)
-        });
+        let result = config.with_jwt_operation_at(
+            || clock.get(),
+            |_| {
+                calls.set(calls.get() + 1);
+                clock.set(deadline);
+                Ok(123_u32)
+            },
+        );
         assert!(result.is_err());
         assert_eq!(calls.get(), 1);
-        assert!(config.with_jwt_operation_at(|| deadline, |_| {
-            panic!("expired lease must not enter crypto");
-            #[allow(unreachable_code)]
-            Ok(())
-        }).is_err());
+        assert!(
+            config
+                .with_jwt_operation_at(
+                    || deadline,
+                    |_| {
+                        panic!("expired lease must not enter crypto");
+                        #[allow(unreachable_code)]
+                        Ok(())
+                    }
+                )
+                .is_err()
+        );
         publisher.revoke_lease();
         assert!(!readiness.is_ready());
         assert!(config.with_jwt_operation(|_| Ok(())).is_err());
@@ -880,9 +1005,8 @@ mod tests {
         let candidate = rsa_config(secret(), &fixture);
         let (config, publisher) = candidate.clone().into_cluster_jwt(1).unwrap();
         let authority = Arc::new(ClockGuard::new());
-        let lease = LeaseDeadline::new(
-            ClockSample::now(), Duration::from_secs(60), authority,
-        ).unwrap();
+        let lease =
+            LeaseDeadline::new(ClockSample::now(), Duration::from_secs(60), authority).unwrap();
         assert!(publisher.install_lease(1, lease.clone()).unwrap());
         let readiness = publisher.lease_readiness().unwrap();
         assert!(readiness.is_ready());
@@ -928,7 +1052,8 @@ mod tests {
             "issuer": "https://issuer.example",
             "audience": "rustok-admin",
             "min_password_length": 16
-        })).unwrap();
+        }))
+        .unwrap();
         assert_eq!(valid.refresh_expiration, Some(172800));
         assert_eq!(valid.issuer.as_deref(), Some("https://issuer.example"));
         assert_eq!(valid.audience.as_deref(), Some("rustok-admin"));
@@ -943,24 +1068,42 @@ mod tests {
         let mut active_secret = fixture.document(1);
         active_secret["access"]["keyring"]["active_hs256_secret"] =
             serde_json::json!("legacy-secret-material-that-must-not-be-used");
-        assert!(build_auth_config_from_document(
-            secret(), 900, Default::default(), active_secret.to_string().as_bytes(),
-        ).is_err());
+        assert!(
+            build_auth_config_from_document(
+                secret(),
+                900,
+                Default::default(),
+                active_secret.to_string().as_bytes(),
+            )
+            .is_err()
+        );
 
         let mut active_algorithm = fixture.document(1);
         active_algorithm["access"]["algorithm"] = serde_json::json!("HS256");
-        assert!(build_auth_config_from_document(
-            secret(), 900, Default::default(), active_algorithm.to_string().as_bytes(),
-        ).is_err());
+        assert!(
+            build_auth_config_from_document(
+                secret(),
+                900,
+                Default::default(),
+                active_algorithm.to_string().as_bytes(),
+            )
+            .is_err()
+        );
 
         let mut history_algorithm = fixture.document(1);
         history_algorithm["access"]["keyring"]["verification_keys"] = serde_json::json!([{
             "kid": "legacy", "algorithm": "HS256",
             "material": fixture.access.public_pem(), "verify_until": 4_000_000_000_i64
         }]);
-        assert!(build_auth_config_from_document(
-            secret(), 900, Default::default(), history_algorithm.to_string().as_bytes(),
-        ).is_err());
+        assert!(
+            build_auth_config_from_document(
+                secret(),
+                900,
+                Default::default(),
+                history_algorithm.to_string().as_bytes(),
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -998,9 +1141,15 @@ mod tests {
         invalid_documents.push(obsolete_field);
 
         for document in invalid_documents {
-            assert!(build_auth_config_from_document(
-                secret(), 900, Default::default(), document.to_string().as_bytes(),
-            ).is_err());
+            assert!(
+                build_auth_config_from_document(
+                    secret(),
+                    900,
+                    Default::default(),
+                    document.to_string().as_bytes(),
+                )
+                .is_err()
+            );
         }
     }
 
@@ -1011,21 +1160,32 @@ mod tests {
         doc["access"]["keyring"]["active_kid"] = serde_json::json!("file-key");
         let bytes = serde_json::to_vec(&doc).unwrap();
         let (generation, config) = build_auth_config_from_document(
-            secret(), 900,
+            secret(),
+            900,
             AuthSettingsOverrides {
                 issuer: Some("https://issuer.example".to_string()),
                 min_password_length: Some(15),
                 ..Default::default()
             },
             &bytes,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(generation, 7);
         assert_eq!(config.issuer, "https://issuer.example");
         assert_eq!(config.min_password_length, 15);
         assert_eq!(config.access_expiration, 900);
-        let token = crate::encode_access_token(&config, uuid::Uuid::new_v4(),
-            uuid::Uuid::new_v4(), rustok_core::UserRole::Customer, uuid::Uuid::new_v4()).unwrap();
-        assert_eq!(jsonwebtoken::decode_header(&token).unwrap().kid.as_deref(), Some("file-key"));
+        let token = crate::encode_access_token(
+            &config,
+            uuid::Uuid::new_v4(),
+            uuid::Uuid::new_v4(),
+            rustok_core::UserRole::Customer,
+            uuid::Uuid::new_v4(),
+        )
+        .unwrap();
+        assert_eq!(
+            jsonwebtoken::decode_header(&token).unwrap().kid.as_deref(),
+            Some("file-key")
+        );
         assert!(build_auth_config_from_document(secret(), 0, Default::default(), &bytes).is_err());
         assert!(build_auth_config_from_document(secret(), 900, Default::default(), b"{}").is_err());
     }
@@ -1039,28 +1199,48 @@ mod tests {
         let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
         let document = fixture.document(1);
         let (generation, config) = build_auth_config_from_document(
-            secret(), 900, Default::default(), document.to_string().as_bytes(),
-        ).unwrap();
+            secret(),
+            900,
+            Default::default(),
+            document.to_string().as_bytes(),
+        )
+        .unwrap();
         assert_eq!(generation, 1);
         let user = Uuid::new_v4();
         let tenant = Uuid::new_v4();
-        let access = encode_access_token(&config, user, tenant, UserRole::Customer, Uuid::new_v4()).unwrap();
-        let oauth = encode_oauth_access_token(&config, OauthAccessTokenInput {
-            app_id: user,
-            tenant_id: tenant,
-            role: UserRole::Customer,
-            client_id: Uuid::new_v4(),
-            scopes: &["catalog:read".to_string()],
-            grant_type: "client_credentials",
-            expires_in_secs: 900,
-            token_id: Uuid::new_v4(),
-        }).unwrap();
+        let access =
+            encode_access_token(&config, user, tenant, UserRole::Customer, Uuid::new_v4()).unwrap();
+        let oauth = encode_oauth_access_token(
+            &config,
+            OauthAccessTokenInput {
+                app_id: user,
+                tenant_id: tenant,
+                role: UserRole::Customer,
+                client_id: Uuid::new_v4(),
+                scopes: &["catalog:read".to_string()],
+                grant_type: "client_credentials",
+                expires_in_secs: 900,
+                token_id: Uuid::new_v4(),
+            },
+        )
+        .unwrap();
         let reset = encode_password_reset_token(&config, tenant, "a@example.com", 900).unwrap();
         let email = encode_email_verification_token(&config, tenant, "a@example.com", 900).unwrap();
-        let invite = encode_invite_token(&config, tenant, "a@example.com", UserRole::Customer, None, 900).unwrap();
+        let invite = encode_invite_token(
+            &config,
+            tenant,
+            "a@example.com",
+            UserRole::Customer,
+            None,
+            900,
+        )
+        .unwrap();
         for (token, kid) in [
-            (&access, "access"), (&oauth, "access"), (&reset, "password-reset"),
-            (&email, "email-verification"), (&invite, "invite"),
+            (&access, "access"),
+            (&oauth, "access"),
+            (&reset, "password-reset"),
+            (&email, "email-verification"),
+            (&invite, "invite"),
         ] {
             let header = jsonwebtoken::decode_header(token).unwrap();
             assert_eq!(header.alg, Algorithm::RS256);
@@ -1077,15 +1257,30 @@ mod tests {
         let mut reused = document.clone();
         reused["invite"] = document["access"].clone();
         reused["invite"]["keyring"]["active_kid"] = serde_json::json!("different-kid");
-        assert!(build_auth_config_from_document(
-            secret(), 900, Default::default(), reused.to_string().as_bytes(),
-        ).is_err());
+        assert!(
+            build_auth_config_from_document(
+                secret(),
+                900,
+                Default::default(),
+                reused.to_string().as_bytes(),
+            )
+            .is_err()
+        );
         for purpose in ["access", "password_reset", "email_verification", "invite"] {
             let mut incomplete = document.clone();
-            incomplete[purpose].as_object_mut().unwrap().remove("rsa_private_key_pem");
-            assert!(build_auth_config_from_document(
-                secret(), 900, Default::default(), incomplete.to_string().as_bytes(),
-            ).is_err());
+            incomplete[purpose]
+                .as_object_mut()
+                .unwrap()
+                .remove("rsa_private_key_pem");
+            assert!(
+                build_auth_config_from_document(
+                    secret(),
+                    900,
+                    Default::default(),
+                    incomplete.to_string().as_bytes(),
+                )
+                .is_err()
+            );
         }
     }
 
@@ -1093,17 +1288,27 @@ mod tests {
     fn generation_bearing_document_requires_four_complete_rsa_purpose_rings() {
         let fixture = JwtKeyringFixture::generate().unwrap();
         let document = fixture.document(1);
-        assert!(build_auth_config_from_document(
-            secret(), 900, Default::default(), document.to_string().as_bytes(),
-        ).is_ok());
+        assert!(
+            build_auth_config_from_document(
+                secret(),
+                900,
+                Default::default(),
+                document.to_string().as_bytes(),
+            )
+            .is_ok()
+        );
 
         for purpose in ["access", "password_reset", "email_verification", "invite"] {
             let mut incomplete = document.clone();
             incomplete.as_object_mut().unwrap().remove(purpose);
             assert!(
                 build_auth_config_from_document(
-                    secret(), 900, Default::default(), incomplete.to_string().as_bytes(),
-                ).is_err(),
+                    secret(),
+                    900,
+                    Default::default(),
+                    incomplete.to_string().as_bytes(),
+                )
+                .is_err(),
                 "{purpose} must be required",
             );
 
@@ -1111,8 +1316,12 @@ mod tests {
             marked[purpose]["algorithm"] = serde_json::json!("RS256");
             assert!(
                 build_auth_config_from_document(
-                    secret(), 900, Default::default(), marked.to_string().as_bytes(),
-                ).is_err(),
+                    secret(),
+                    900,
+                    Default::default(),
+                    marked.to_string().as_bytes(),
+                )
+                .is_err(),
                 "{purpose} must not carry an algorithm selector or marker",
             );
         }
@@ -1125,25 +1334,32 @@ mod tests {
         let material = &fixture.access;
         let max = i64::MAX as u64;
         for generation in [1, max] {
-            assert_eq!(base.prepare_jwt_document(&document(
-                &fixture, generation, "one", material,
-            )).unwrap().0, generation);
+            assert_eq!(
+                base.prepare_jwt_document(&document(&fixture, generation, "one", material,))
+                    .unwrap()
+                    .0,
+                generation
+            );
         }
         for generation in [0, max + 1, u64::MAX] {
-            assert!(base.prepare_jwt_document(&document(
-                &fixture, generation, "one", material,
-            )).is_err());
+            assert!(
+                base.prepare_jwt_document(&document(&fixture, generation, "one", material,))
+                    .is_err()
+            );
         }
         let mut obsolete: serde_json::Value =
             serde_json::from_slice(&document(&fixture, 1, "one", material)).unwrap();
         obsolete["schema_version"] = serde_json::json!(1);
-        assert!(base.prepare_jwt_document(&serde_json::to_vec(&obsolete).unwrap()).is_err());
+        assert!(
+            base.prepare_jwt_document(&serde_json::to_vec(&obsolete).unwrap())
+                .is_err()
+        );
         assert!(base.clone().into_live_jwt(max + 1).is_err());
         assert!(base.clone().into_cluster_jwt(max + 1).is_err());
         assert!(base.clone().into_cluster_jwt(0).is_err());
-        let (generation, first) = base.prepare_jwt_document(
-            &document(&fixture, 1, "one", material),
-        ).unwrap();
+        let (generation, first) = base
+            .prepare_jwt_document(&document(&fixture, 1, "one", material))
+            .unwrap();
         let (_, publisher) = first.clone().into_live_jwt(generation).unwrap();
         assert!(publisher.publish(max + 1, first).is_err());
         assert_eq!(publisher.generation().unwrap(), generation);
@@ -1151,25 +1367,35 @@ mod tests {
 
     #[test]
     fn live_rotation_updates_existing_clones_and_rejects_rollback() {
-        use crate::{encode_access_token, decode_access_token};
+        use crate::{decode_access_token, encode_access_token};
         use rustok_core::UserRole;
         use uuid::Uuid;
         let fixture = JwtKeyringFixture::generate().unwrap();
         let next_key = RsaKeyPairFixture::generate().unwrap();
         let reused_key = RsaKeyPairFixture::generate().unwrap();
         let (generation, first) = build_auth_config_from_document(
-            secret(), 900, Default::default(),
+            secret(),
+            900,
+            Default::default(),
             &document(&fixture, 1, "one", &fixture.access),
-        ).unwrap();
+        )
+        .unwrap();
         let (live, publisher) = first.into_live_jwt(generation).unwrap();
         let clone = live.clone();
-        let issue = |config: &AuthConfig| encode_access_token(
-            config, Uuid::new_v4(), Uuid::new_v4(), UserRole::Customer, Uuid::new_v4(),
-        ).unwrap();
+        let issue = |config: &AuthConfig| {
+            encode_access_token(
+                config,
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                UserRole::Customer,
+                Uuid::new_v4(),
+            )
+            .unwrap()
+        };
         let old = issue(&clone);
-        let (g, next) = publisher.prepare_document(&document(
-            &fixture, 2, "two", &next_key,
-        )).unwrap();
+        let (g, next) = publisher
+            .prepare_document(&document(&fixture, 2, "two", &next_key))
+            .unwrap();
         publisher.publish(g, next.clone()).unwrap();
         assert_eq!(publisher.generation().unwrap(), 2);
         assert!(decode_access_token(&clone, &old).is_err());
@@ -1182,9 +1408,9 @@ mod tests {
         assert_eq!(publisher.generation().unwrap(), 2);
         assert!(decode_access_token(&clone, &fresh).is_ok());
 
-        let (g, reused) = publisher.prepare_document(&document(
-            &fixture, 3, "two", &reused_key,
-        )).unwrap();
+        let (g, reused) = publisher
+            .prepare_document(&document(&fixture, 3, "two", &reused_key))
+            .unwrap();
         assert!(publisher.publish(g, reused).is_err());
         assert_eq!(publisher.generation().unwrap(), 2);
     }
@@ -1197,35 +1423,60 @@ mod tests {
         let fixture = JwtKeyringFixture::generate().unwrap();
         let next_key = RsaKeyPairFixture::generate().unwrap();
         let (generation, first) = build_auth_config_from_document(
-            secret(), 900, Default::default(),
+            secret(),
+            900,
+            Default::default(),
             &document(&fixture, 1, "one", &fixture.access),
-        ).unwrap();
+        )
+        .unwrap();
         let (live, publisher) = first.into_live_jwt(generation).unwrap();
         let existing_clone = live.clone();
-        let issue = || encode_access_token(
-            &existing_clone, Uuid::new_v4(), Uuid::new_v4(), UserRole::Customer, Uuid::new_v4(),
-        ).unwrap();
+        let issue = || {
+            encode_access_token(
+                &existing_clone,
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                UserRole::Customer,
+                Uuid::new_v4(),
+            )
+            .unwrap()
+        };
         let old = issue();
         let until = chrono::Utc::now().timestamp() + 3600;
         let with_history = |generation, active_kid, active_key, history_kid, history_key| {
             serde_json::to_vec(&fixture.document_with_access(
-                generation, active_kid, active_key, Some((history_kid, history_key, until)),
-            )).unwrap()
+                generation,
+                active_kid,
+                active_key,
+                Some((history_kid, history_key, until)),
+            ))
+            .unwrap()
         };
-        let (g, staged) = publisher.prepare_document(
-            &with_history(2, "one", &fixture.access, "two", &next_key)
-        ).unwrap();
+        let (g, staged) = publisher
+            .prepare_document(&with_history(2, "one", &fixture.access, "two", &next_key))
+            .unwrap();
         publisher.publish(g, staged).unwrap();
-        assert_eq!(jsonwebtoken::decode_header(&issue()).unwrap().kid.as_deref(), Some("one"));
-        let (g, promoted) = publisher.prepare_document(
-            &with_history(3, "two", &next_key, "one", &fixture.access)
-        ).unwrap();
+        assert_eq!(
+            jsonwebtoken::decode_header(&issue())
+                .unwrap()
+                .kid
+                .as_deref(),
+            Some("one")
+        );
+        let (g, promoted) = publisher
+            .prepare_document(&with_history(3, "two", &next_key, "one", &fixture.access))
+            .unwrap();
         publisher.publish(g, promoted).unwrap();
         let fresh = issue();
-        assert_eq!(jsonwebtoken::decode_header(&fresh).unwrap().kid.as_deref(), Some("two"));
+        assert_eq!(
+            jsonwebtoken::decode_header(&fresh).unwrap().kid.as_deref(),
+            Some("two")
+        );
         assert!(decode_access_token(&live, &old).is_ok());
         assert!(decode_access_token(&live, &fresh).is_ok());
-        let (g, retired) = publisher.prepare_document(&document(&fixture, 4, "two", &next_key)).unwrap();
+        let (g, retired) = publisher
+            .prepare_document(&document(&fixture, 4, "two", &next_key))
+            .unwrap();
         publisher.publish(g, retired).unwrap();
         assert!(decode_access_token(&existing_clone, &old).is_err());
         assert!(decode_access_token(&existing_clone, &fresh).is_ok());
@@ -1237,16 +1488,24 @@ mod tests {
         let fixture = JwtKeyringFixture::generate().unwrap();
         let second = RsaKeyPairFixture::generate().unwrap();
         let (g, first) = build_auth_config_from_document(
-            secret(), 900, Default::default(),
+            secret(),
+            900,
+            Default::default(),
             &document(&fixture, 1, "one", &fixture.access),
-        ).unwrap();
+        )
+        .unwrap();
         let (_, publisher) = first.into_live_jwt(g).unwrap();
         let until = chrono::Utc::now().timestamp() + 3600;
         let candidate = |generation, active_kid, active_key, history_kid, history_key, cutoff| {
             let doc = fixture.document_with_access(
-                generation, active_kid, active_key, Some((history_kid, history_key, cutoff)),
+                generation,
+                active_kid,
+                active_key,
+                Some((history_kid, history_key, cutoff)),
             );
-            publisher.prepare_document(doc.to_string().as_bytes()).unwrap()
+            publisher
+                .prepare_document(doc.to_string().as_bytes())
+                .unwrap()
         };
         let (g, staged) = candidate(2, "one", &fixture.access, "two", &second, until);
         publisher.publish(g, staged).unwrap();
@@ -1261,9 +1520,9 @@ mod tests {
         assert!(publisher.publish(g, demoted_signer).is_err());
         assert_eq!(publisher.generation().unwrap(), 3);
 
-        let (g, retired) = publisher.prepare_document(
-            &document(&fixture, 4, "two", &second),
-        ).unwrap();
+        let (g, retired) = publisher
+            .prepare_document(&document(&fixture, 4, "two", &second))
+            .unwrap();
         publisher.publish(g, retired).unwrap();
         let (g, reintroduced) = candidate(5, "two", &second, "one", &fixture.access, until);
         assert!(publisher.publish(g, reintroduced).is_err());
@@ -1278,16 +1537,19 @@ mod tests {
         let second_key = RsaKeyPairFixture::generate().unwrap();
         let third_key = RsaKeyPairFixture::generate().unwrap();
         let (g, first) = build_auth_config_from_document(
-            secret(), 900, Default::default(),
+            secret(),
+            900,
+            Default::default(),
             &document(&fixture, 1, "one", &fixture.access),
-        ).unwrap();
+        )
+        .unwrap();
         let (_, publisher) = first.into_live_jwt(g).unwrap();
-        let (g2, second) = publisher.prepare_document(&document(
-            &fixture, 2, "two", &second_key,
-        )).unwrap();
-        let (g3, third) = publisher.prepare_document(&document(
-            &fixture, 3, "three", &third_key,
-        )).unwrap();
+        let (g2, second) = publisher
+            .prepare_document(&document(&fixture, 2, "two", &second_key))
+            .unwrap();
+        let (g3, third) = publisher
+            .prepare_document(&document(&fixture, 3, "three", &third_key))
+            .unwrap();
         std::thread::scope(|scope| {
             let a = scope.spawn(|| publisher.publish(g2, second));
             let b = scope.spawn(|| publisher.publish(g3, third));
@@ -1300,19 +1562,32 @@ mod tests {
     #[test]
     fn prepared_snapshot_is_shared_and_crypto_mutation_detaches() {
         let fixture = JwtKeyringFixture::generate().unwrap();
-        let (_, inputs) = JwtKeyringDocument::parse(&document(&fixture, 1, "one", &fixture.access)).unwrap();
+        let (_, inputs) =
+            JwtKeyringDocument::parse(&document(&fixture, 1, "one", &fixture.access)).unwrap();
         let original = AuthConfig::from_key_inputs(secret(), inputs);
         let before_first_use = original.clone();
-        assert!(Arc::ptr_eq(&original.key_snapshot().unwrap(), &before_first_use.key_snapshot().unwrap()));
+        assert!(Arc::ptr_eq(
+            &original.key_snapshot().unwrap(),
+            &before_first_use.key_snapshot().unwrap()
+        ));
         let prepared = original.prepared_jwt().unwrap();
-        assert!(std::ptr::eq(prepared, before_first_use.prepared_jwt().unwrap()));
+        assert!(std::ptr::eq(
+            prepared,
+            before_first_use.prepared_jwt().unwrap()
+        ));
         let policy_only = original.clone().with_issuer("other-issuer");
         assert!(std::ptr::eq(prepared, policy_only.prepared_jwt().unwrap()));
         let next_key = RsaKeyPairFixture::generate().unwrap();
-        let (_, inputs) = JwtKeyringDocument::parse(&document(&fixture, 2, "two", &next_key)).unwrap();
+        let (_, inputs) =
+            JwtKeyringDocument::parse(&document(&fixture, 2, "two", &next_key)).unwrap();
         let mut candidate = original.clone();
-        candidate.edit_key_inputs(|current| *current = inputs).unwrap();
-        assert!(!Arc::ptr_eq(&original.key_snapshot().unwrap(), &candidate.key_snapshot().unwrap()));
+        candidate
+            .edit_key_inputs(|current| *current = inputs)
+            .unwrap();
+        assert!(!Arc::ptr_eq(
+            &original.key_snapshot().unwrap(),
+            &candidate.key_snapshot().unwrap()
+        ));
         let candidate_prepared = candidate.prepared_jwt().unwrap();
         assert!(!std::ptr::eq(prepared, candidate_prepared));
         assert!(std::ptr::eq(prepared, original.prepared_jwt().unwrap()));
@@ -1321,7 +1596,8 @@ mod tests {
     #[test]
     fn concurrent_first_use_and_failed_reconfiguration_are_isolated() {
         let fixture = JwtKeyringFixture::generate().unwrap();
-        let (_, inputs) = JwtKeyringDocument::parse(&document(&fixture, 1, "one", &fixture.access)).unwrap();
+        let (_, inputs) =
+            JwtKeyringDocument::parse(&document(&fixture, 1, "one", &fixture.access)).unwrap();
         let mut config = AuthConfig::from_key_inputs(secret(), inputs.clone());
         let clone = config.clone();
         std::thread::scope(|scope| {
@@ -1334,7 +1610,10 @@ mod tests {
             ..Default::default()
         };
         assert!(invalid.apply(&mut config).is_err());
-        assert!(std::ptr::eq(config.prepared_jwt().unwrap(), clone.prepared_jwt().unwrap()));
+        assert!(std::ptr::eq(
+            config.prepared_jwt().unwrap(),
+            clone.prepared_jwt().unwrap()
+        ));
         let invalid = AuthConfig::from_key_inputs("short".into(), inputs);
         assert!(invalid.prepared_jwt().is_err());
         assert!(invalid.prepared_jwt().is_err());
@@ -1350,8 +1629,13 @@ mod tests {
         let root = "super-secret-auth-key-0123456789-with-32-bytes".to_string();
         let document = fixture.document(1).to_string();
         let config = build_auth_config_from_document(
-            root.clone(), 900, Default::default(), document.as_bytes(),
-        ).unwrap().1;
+            root.clone(),
+            900,
+            Default::default(),
+            document.as_bytes(),
+        )
+        .unwrap()
+        .1;
         let rendered = format!("{config:?}");
 
         assert!(!rendered.contains(&root));
@@ -1380,11 +1664,15 @@ mod tests {
         let fixture = JwtKeyringFixture::generate().unwrap();
         let doc = fixture.document(1);
         for weak in [
-            "", "short-secret", "abc                              ",
-            fixture.access.public_pem(), fixture.access.private_pem(),
+            "",
+            "short-secret",
+            "abc                              ",
+            fixture.access.public_pem(),
+            fixture.access.private_pem(),
         ] {
             let config = AuthConfig::from_test_document_unvalidated(
-                weak.to_string(), doc.to_string().as_bytes(),
+                weak.to_string(),
+                doc.to_string().as_bytes(),
             );
             assert!(validate_auth_config(&config).is_err());
         }
@@ -1399,14 +1687,13 @@ mod tests {
             "development".repeat(8),
             "aB3!".repeat(20),
         ] {
-            let config = AuthConfig::from_test_document_unvalidated(
-                weak, document.as_bytes(),
-            );
+            let config = AuthConfig::from_test_document_unvalidated(weak, document.as_bytes());
             assert!(config.validate_production_mac_root().is_err());
         }
 
         let strong = AuthConfig::from_test_document_unvalidated(
-            "aB3!zY7@qW8#eR2$".repeat(5), document.as_bytes(),
+            "aB3!zY7@qW8#eR2$".repeat(5),
+            document.as_bytes(),
         );
         assert!(strong.validate_production_mac_root().is_ok());
     }
@@ -1417,8 +1704,14 @@ mod tests {
         let bytes = fixture.document(1).to_string();
 
         for settings in [
-            AuthSettingsOverrides { issuer: Some("  ".to_string()), ..Default::default() },
-            AuthSettingsOverrides { audience: Some(String::new()), ..Default::default() },
+            AuthSettingsOverrides {
+                issuer: Some("  ".to_string()),
+                ..Default::default()
+            },
+            AuthSettingsOverrides {
+                audience: Some(String::new()),
+                ..Default::default()
+            },
             AuthSettingsOverrides {
                 min_password_length: Some(MIN_PASSWORD_LENGTH_FLOOR_CHARS - 1),
                 ..Default::default()
@@ -1428,38 +1721,74 @@ mod tests {
                 ..Default::default()
             },
         ] {
-            assert!(build_auth_config_from_document(
-                secret(), 900, settings, bytes.as_bytes(),
-            ).is_err());
+            assert!(
+                build_auth_config_from_document(secret(), 900, settings, bytes.as_bytes(),)
+                    .is_err()
+            );
         }
 
-        assert!(build_auth_config_from_document(
-            secret(), MIN_ACCESS_EXPIRATION_SECS - 1, Default::default(), bytes.as_bytes(),
-        ).is_err());
-        assert!(build_auth_config_from_document(
-            secret(), 900,
-            AuthSettingsOverrides { refresh_expiration: Some(300), ..Default::default() },
-            bytes.as_bytes(),
-        ).is_err());
+        assert!(
+            build_auth_config_from_document(
+                secret(),
+                MIN_ACCESS_EXPIRATION_SECS - 1,
+                Default::default(),
+                bytes.as_bytes(),
+            )
+            .is_err()
+        );
+        assert!(
+            build_auth_config_from_document(
+                secret(),
+                900,
+                AuthSettingsOverrides {
+                    refresh_expiration: Some(300),
+                    ..Default::default()
+                },
+                bytes.as_bytes(),
+            )
+            .is_err()
+        );
 
         let other = JwtKeyringFixture::generate().unwrap();
         let mut malformed = fixture.document(1);
         malformed["access"]["rsa_private_key_pem"] = serde_json::json!("not-a-private-key");
-        assert!(build_auth_config_from_document(
-            secret(), 900, Default::default(), malformed.to_string().as_bytes(),
-        ).is_err());
+        assert!(
+            build_auth_config_from_document(
+                secret(),
+                900,
+                Default::default(),
+                malformed.to_string().as_bytes(),
+            )
+            .is_err()
+        );
 
         let mut mismatched = fixture.document(1);
         mismatched["access"]["rsa_public_key_pem"] = serde_json::json!(other.access.public_pem());
-        assert!(build_auth_config_from_document(
-            secret(), 900, Default::default(), mismatched.to_string().as_bytes(),
-        ).is_err());
+        assert!(
+            build_auth_config_from_document(
+                secret(),
+                900,
+                Default::default(),
+                mismatched.to_string().as_bytes(),
+            )
+            .is_err()
+        );
 
-        for weak_root in ["", "short-secret", fixture.access.public_pem(), fixture.access.private_pem()] {
-            assert!(build_auth_config_from_document(
-                weak_root.to_string(), 900, Default::default(), bytes.as_bytes(),
-            ).is_err());
+        for weak_root in [
+            "",
+            "short-secret",
+            fixture.access.public_pem(),
+            fixture.access.private_pem(),
+        ] {
+            assert!(
+                build_auth_config_from_document(
+                    weak_root.to_string(),
+                    900,
+                    Default::default(),
+                    bytes.as_bytes(),
+                )
+                .is_err()
+            );
         }
     }
-
 }

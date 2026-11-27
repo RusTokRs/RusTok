@@ -1233,10 +1233,7 @@ async fn retry_failed_post_hook_operation_retains_uncertain_hook_fence() {
     .expect("load recovery plan");
     assert_eq!(plan.issue, ModuleOperationIssue::PostHookFailed);
     assert!(!plan.retryable);
-    assert_eq!(
-        plan.recommended_action,
-        ModuleOperationRecoveryAction::None
-    );
+    assert_eq!(plan.recommended_action, ModuleOperationRecoveryAction::None);
     assert!(plan.correlation_id.is_some());
 
     let foreign_tenant_id = uuid::Uuid::new_v4();
@@ -1286,8 +1283,10 @@ async fn retry_failed_post_hook_operation_retains_uncertain_hook_fence() {
         )
         .await
         .expect_err("a possibly running old hook must block retry");
-        assert!(matches!(error, ModuleOperationRecoveryError::NotRetryable(reason)
-            if reason == "hook_identity_and_quiescence_unverified"));
+        assert!(
+            matches!(error, ModuleOperationRecoveryError::NotRetryable(reason)
+            if reason == "hook_identity_and_quiescence_unverified")
+        );
     }
     assert_eq!(post_enable_calls.load(Ordering::SeqCst), 1);
     let operations = module_operations::Entity::find()
@@ -1296,8 +1295,11 @@ async fn retry_failed_post_hook_operation_retains_uncertain_hook_fence() {
         .all(&db)
         .await
         .expect("load analytics operations");
-    assert_eq!(operations.len(), 1, "unclaimed retry must not create a durable attempt");
-
+    assert_eq!(
+        operations.len(),
+        1,
+        "unclaimed retry must not create a durable attempt"
+    );
 }
 
 #[tokio::test]
@@ -1330,10 +1332,7 @@ async fn retry_failed_post_hook_operation_rejects_pre_hook_failures() {
     .expect("load recovery plan");
     assert_eq!(plan.issue, ModuleOperationIssue::PreHookFailed);
     assert!(!plan.retryable);
-    assert_eq!(
-        plan.recommended_action,
-        ModuleOperationRecoveryAction::None
-    );
+    assert_eq!(plan.recommended_action, ModuleOperationRecoveryAction::None);
 
     let err = OwnerModuleLifecycleService::retry_failed_post_hook_operation(
         &db,
@@ -1407,8 +1406,10 @@ async fn compensation_is_blocked_by_uncertain_post_hook_fence() {
         )
         .await
         .expect_err("uncertain post-hook fence must block compensation");
-        assert!(matches!(error, ModuleOperationRecoveryError::NotRetryable(reason)
-            if reason == "hook_identity_and_quiescence_unverified"));
+        assert!(
+            matches!(error, ModuleOperationRecoveryError::NotRetryable(reason)
+            if reason == "hook_identity_and_quiescence_unverified")
+        );
     }
     assert_eq!(post_disable_calls.load(Ordering::SeqCst), 0);
     let compensation = module_operations::Entity::find()
@@ -1417,6 +1418,8 @@ async fn compensation_is_blocked_by_uncertain_post_hook_fence() {
         .one(&db)
         .await
         .expect("query compensation operation");
-    assert!(compensation.is_none(), "an unclaimed compensation must not persist");
-
+    assert!(
+        compensation.is_none(),
+        "an unclaimed compensation must not persist"
+    );
 }

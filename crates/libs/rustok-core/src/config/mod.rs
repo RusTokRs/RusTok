@@ -598,11 +598,7 @@ pub trait AppConfig: Config {
     }
 }
 
-fn parse_optional<T>(
-    map: &HashMap<String, String>,
-    key: &str,
-    default: T,
-) -> Result<T, ConfigError>
+fn parse_optional<T>(map: &HashMap<String, String>, key: &str, default: T) -> Result<T, ConfigError>
 where
     T: std::str::FromStr,
     T::Err: fmt::Display,

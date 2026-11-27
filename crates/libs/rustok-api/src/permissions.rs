@@ -670,7 +670,9 @@ mod tests {
 
     #[test]
     fn parse_newsletter_permissions_round_trip() {
-        let perm: Permission = "newsletter:manage".parse().expect("parse newsletter:manage");
+        let perm: Permission = "newsletter:manage"
+            .parse()
+            .expect("parse newsletter:manage");
         assert_eq!(perm, Permission::NEWSLETTER_MANAGE);
         assert_eq!(perm.to_string(), "newsletter:manage");
         assert!(has_effective_permission(

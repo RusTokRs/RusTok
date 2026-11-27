@@ -157,7 +157,9 @@ impl RbacRoleAssignmentDbWriter {
         let writer = ConnectionRoleAssignmentWriter { db };
         let ensured = writer.ensure_role(tenant_id, role).await?;
         if ensured.created {
-            writer.reconcile_role_permissions(ensured.id, tenant_id, role).await?;
+            writer
+                .reconcile_role_permissions(ensured.id, tenant_id, role)
+                .await?;
         }
         Ok(())
     }
@@ -368,9 +370,7 @@ where
             DbBackend::Sqlite => {
                 "SELECT id, is_system FROM roles WHERE tenant_id = ?1 AND slug = ?2 LIMIT 1"
             }
-            _ => {
-                "SELECT id, is_system FROM roles WHERE tenant_id = $1 AND slug = $2 LIMIT 1"
-            }
+            _ => "SELECT id, is_system FROM roles WHERE tenant_id = $1 AND slug = $2 LIMIT 1",
         };
         self.db
             .query_one_raw(Statement::from_sql_and_values(
@@ -522,9 +522,7 @@ where
             DbBackend::Sqlite => {
                 "DELETE FROM role_permissions WHERE role_id = ?1 AND permission_id = ?2"
             }
-            _ => {
-                "DELETE FROM role_permissions WHERE role_id = $1 AND permission_id = $2"
-            }
+            _ => "DELETE FROM role_permissions WHERE role_id = $1 AND permission_id = $2",
         };
         self.db
             .execute_raw(Statement::from_sql_and_values(

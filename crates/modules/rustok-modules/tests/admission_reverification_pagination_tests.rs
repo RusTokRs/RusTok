@@ -1,8 +1,6 @@
 use chrono::Utc;
-use rustok_modules::{
-    AdmissionReverificationPolicyRevision, SeaOrmArtifactInstallationStore,
-};
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DatabaseBackend, Statement};
+use rustok_modules::{AdmissionReverificationPolicyRevision, SeaOrmArtifactInstallationStore};
+use sea_orm::{ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement};
 use uuid::Uuid;
 
 async fn setup_db() -> DatabaseConnection {
@@ -31,11 +29,7 @@ async fn setup_db() -> DatabaseConnection {
     db
 }
 
-async fn insert_admission(
-    db: &DatabaseConnection,
-    installation_id: Uuid,
-    evidence: &str,
-) {
+async fn insert_admission(db: &DatabaseConnection, installation_id: Uuid, evidence: &str) {
     db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO module_artifact_installations
@@ -80,10 +74,7 @@ fn evidence_json(trust_revision: u64, capability_revision: u64) -> String {
     .to_string()
 }
 
-fn policy(
-    trust_revision: u64,
-    capability_revision: u64,
-) -> AdmissionReverificationPolicyRevision {
+fn policy(trust_revision: u64, capability_revision: u64) -> AdmissionReverificationPolicyRevision {
     AdmissionReverificationPolicyRevision {
         trust_policy_revision: trust_revision,
         capability_policy_revision: capability_revision,
@@ -103,11 +94,7 @@ async fn reverification_cursor_pages_past_persistent_stale_candidates() {
     let current_policy = policy(2, 2);
 
     let first = store
-        .list_stale_admission_reverification_candidates_after(
-            &current_policy,
-            None,
-            CANDIDATE_PAGE,
-        )
+        .list_stale_admission_reverification_candidates_after(&current_policy, None, CANDIDATE_PAGE)
         .await
         .expect("first stale page");
     assert_eq!(

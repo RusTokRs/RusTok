@@ -19,10 +19,7 @@ pub async fn not_found_fallback(uri: axum::http::Uri) -> impl IntoResponse {
 
 /// Returns whether this host mode actually mounts the OAuth protocol and
 /// discovery surface. Worker and registry-only hosts intentionally omit it.
-pub(crate) fn oauth_surface_enabled(
-    host_mode: RuntimeHostMode,
-    settings: &RustokSettings,
-) -> bool {
+pub(crate) fn oauth_surface_enabled(host_mode: RuntimeHostMode, settings: &RustokSettings) -> bool {
     !matches!(
         host_mode,
         RuntimeHostMode::Worker | RuntimeHostMode::RegistryOnly

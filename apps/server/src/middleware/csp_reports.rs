@@ -18,11 +18,7 @@ struct CspViolation {
     document_uri: Option<String>,
     #[serde(default, alias = "blocked-uri", alias = "blockedURL")]
     blocked_uri: Option<String>,
-    #[serde(
-        default,
-        alias = "effective-directive",
-        alias = "effectiveDirective"
-    )]
+    #[serde(default, alias = "effective-directive", alias = "effectiveDirective")]
     effective_directive: Option<String>,
     #[serde(default, alias = "violated-directive")]
     violated_directive: Option<String>,
@@ -237,9 +233,15 @@ fn normalized_directive(value: Option<&str>) -> &'static str {
         .next()
         .unwrap_or_default()
         .to_ascii_lowercase();
-    if matches!(value.as_str(), "script-src" | "script-src-elem" | "script-src-attr") {
+    if matches!(
+        value.as_str(),
+        "script-src" | "script-src-elem" | "script-src-attr"
+    ) {
         "script-src"
-    } else if matches!(value.as_str(), "style-src" | "style-src-elem" | "style-src-attr") {
+    } else if matches!(
+        value.as_str(),
+        "style-src" | "style-src-elem" | "style-src-attr"
+    ) {
         "style-src"
     } else {
         match value.as_str() {
@@ -278,9 +280,10 @@ fn sanitized_location(value: Option<&str>) -> Option<String> {
             // Retain only known scheme labels; arbitrary schemes may contain
             // private identifiers and must not be copied to telemetry.
             match scheme {
-                "about" | "blob" | "data" | "file" | "filesystem" | "javascript"
-                | "mailto" | "chrome" | "chrome-extension" | "moz-extension"
-                | "resource" => scheme.to_string(),
+                "about" | "blob" | "data" | "file" | "filesystem" | "javascript" | "mailto"
+                | "chrome" | "chrome-extension" | "moz-extension" | "resource" => {
+                    scheme.to_string()
+                }
                 _ => return Some("opaque".to_string()),
             }
         } else {
@@ -332,7 +335,9 @@ mod tests {
             Some("application/csp-report"),
             Some("application/json; charset=utf-8"),
         ] {
-            let mut request = axum::http::Request::builder().method(Method::POST).uri(CSP_REPORT_PATH);
+            let mut request = axum::http::Request::builder()
+                .method(Method::POST)
+                .uri(CSP_REPORT_PATH);
             if let Some(content_type) = content_type {
                 request = request.header(CONTENT_TYPE, content_type);
             }
@@ -353,10 +358,7 @@ mod tests {
         .expect("legacy report");
         assert_eq!(reports.len(), 1);
         assert_eq!(reports[0].format, "legacy");
-        assert_eq!(
-            report_directive(&reports[0].violation),
-            "script-src"
-        );
+        assert_eq!(report_directive(&reports[0].violation), "script-src");
         assert_eq!(
             sanitized_location(reports[0].violation.document_uri.as_deref()).as_deref(),
             Some("https://admin.example.com")
@@ -411,7 +413,11 @@ mod tests {
         let body = serde_json::to_vec(&entries).expect("reporting API JSON");
         let reports = parse_reports(&body).expect("CSP reports after unrelated entries");
         assert_eq!(reports.len(), MAX_REPORTS_PER_REQUEST);
-        assert!(reports.iter().all(|report| report.format == "reporting_api"));
+        assert!(
+            reports
+                .iter()
+                .all(|report| report.format == "reporting_api")
+        );
     }
 
     #[test]
@@ -452,7 +458,10 @@ mod tests {
             assert_eq!(sanitized_location(Some(value)).as_deref(), Some(expected));
         }
         assert_eq!(
-            sanitized_location(Some("https://user:password@example.com/path?secret=1#private")).as_deref(),
+            sanitized_location(Some(
+                "https://user:password@example.com/path?secret=1#private"
+            ))
+            .as_deref(),
             Some("https://example.com")
         );
     }
@@ -463,7 +472,10 @@ mod tests {
         assert_eq!(normalized_directive(Some("style-src-elem")), "style-src");
         assert_eq!(normalized_directive(Some("unknown-directive")), "other");
         assert_eq!(normalized_directive(Some("script-src-unrelated")), "other");
-        assert_eq!(normalized_directive(Some("script-src 'self'")), "script-src");
+        assert_eq!(
+            normalized_directive(Some("script-src 'self'")),
+            "script-src"
+        );
         assert_eq!(normalized_directive(Some("style-src-unrelated")), "other");
     }
 
@@ -497,10 +509,9 @@ mod tests {
 
     #[test]
     fn accepts_unknown_nonblank_directives_without_misclassifying_them() {
-        let reports = parse_reports(
-            br#"{"csp-report":{"effective-directive":"script-src-future"}}"#,
-        )
-        .expect("unknown directive remains observable");
+        let reports =
+            parse_reports(br#"{"csp-report":{"effective-directive":"script-src-future"}}"#)
+                .expect("unknown directive remains observable");
         assert_eq!(report_directive(&reports[0].violation), "other");
     }
 

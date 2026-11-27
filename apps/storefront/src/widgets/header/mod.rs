@@ -1,8 +1,8 @@
 mod core;
 
-use self::core::{SearchScope, build_header_links, resolve_default_scope};
 #[cfg(target_arch = "wasm32")]
 use self::core::build_search_target_url;
+use self::core::{SearchScope, build_header_links, resolve_default_scope};
 use crate::shared::ui::UiButton;
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;

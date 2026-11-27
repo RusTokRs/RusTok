@@ -3,7 +3,7 @@ use leptos_router::hooks::use_navigate;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_grid::{
-    ColumnFilters, FilterValue, GridPagination, PaginationMode, RowSelection, DEFAULT_PAGE_SIZE,
+    ColumnFilters, DEFAULT_PAGE_SIZE, FilterValue, GridPagination, PaginationMode, RowSelection,
 };
 use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
@@ -15,8 +15,7 @@ use crate::catalog_controls::{
 };
 use crate::catalog_transport;
 use crate::core::{
-    ProductKind, item_product_kind, product_admin_pagination_from_response,
-    product_grid_columns,
+    ProductKind, item_product_kind, product_admin_pagination_from_response, product_grid_columns,
 };
 use crate::facets::{build_product_admin_facet_labels, build_product_admin_facet_panel};
 use crate::model::{ProductList, ProductListItem};
@@ -91,8 +90,7 @@ pub fn ProductGridPage() -> impl IntoView {
             filters.set(next_filters);
         }
     });
-    let requested_page =
-        usize::try_from(initial_catalog_controls.page).unwrap_or(usize::MAX);
+    let requested_page = usize::try_from(initial_catalog_controls.page).unwrap_or(usize::MAX);
     let requested_page_size =
         usize::try_from(initial_catalog_controls.per_page).unwrap_or(DEFAULT_PAGE_SIZE);
     let pagination = RwSignal::new(GridPagination::new(1, requested_page_size, 0));
@@ -114,8 +112,7 @@ pub fn ProductGridPage() -> impl IntoView {
     let mut initial_filter_identity = initial_catalog_controls.clone();
     initial_filter_identity.page = 1;
     initial_filter_identity.per_page = DEFAULT_PAGE_SIZE as u64;
-    let (previous_filter_identity, set_previous_filter_identity) =
-        signal(initial_filter_identity);
+    let (previous_filter_identity, set_previous_filter_identity) = signal(initial_filter_identity);
     Effect::new(move |_| {
         // Discard accumulated pages and selected rows when the owner query changes,
         // but not when the user merely turns to the next page.
@@ -154,7 +151,6 @@ pub fn ProductGridPage() -> impl IntoView {
             set_page_request_nonce.update(|nonce| *nonce = nonce.saturating_add(1));
         }
     });
-
 
     let (last_auth_context, set_last_auth_context) =
         signal((token.get_untracked(), tenant.get_untracked()));
@@ -206,9 +202,7 @@ pub fn ProductGridPage() -> impl IntoView {
         },
         move |(tok, ten, loc, mut controls, (page, page_size), request_id)| async move {
             let requested_controls = controls.clone();
-            controls.page = u64::try_from(page)
-                .unwrap_or(u64::MAX)
-                .min(i32::MAX as u64);
+            controls.page = u64::try_from(page).unwrap_or(u64::MAX).min(i32::MAX as u64);
             controls.per_page = u64::try_from(page_size).unwrap_or(DEFAULT_PAGE_SIZE as u64);
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
@@ -237,8 +231,7 @@ pub fn ProductGridPage() -> impl IntoView {
                 ));
             }
             let current_pagination = pagination.get_untracked();
-            let normalized =
-                product_admin_pagination_from_response(current_pagination, &products);
+            let normalized = product_admin_pagination_from_response(current_pagination, &products);
             let response_page = usize::try_from(products.page).unwrap_or(usize::MAX);
             let response_page_size =
                 usize::try_from(products.per_page).unwrap_or(DEFAULT_PAGE_SIZE);
@@ -246,18 +239,11 @@ pub fn ProductGridPage() -> impl IntoView {
                 controls.page = u64::try_from(normalized.page).unwrap_or(u64::MAX);
                 controls.per_page =
                     u64::try_from(normalized.page_size).unwrap_or(DEFAULT_PAGE_SIZE as u64);
-                products = catalog_transport::fetch_products(
-                    tok,
-                    ten,
-                    tenant_id,
-                    loc,
-                    controls,
-                )
-                .await
-                .map_err(|e| e.to_string())?;
+                products = catalog_transport::fetch_products(tok, ten, tenant_id, loc, controls)
+                    .await
+                    .map_err(|e| e.to_string())?;
 
-                let retried =
-                    product_admin_pagination_from_response(current_pagination, &products);
+                let retried = product_admin_pagination_from_response(current_pagination, &products);
                 let retried_page = usize::try_from(products.page).unwrap_or(usize::MAX);
                 let retried_page_size =
                     usize::try_from(products.per_page).unwrap_or(DEFAULT_PAGE_SIZE);
@@ -287,13 +273,11 @@ pub fn ProductGridPage() -> impl IntoView {
     let products_page = Memo::new(move |_| {
         let request_id = page_request_nonce.get();
         let controls = catalog_controls.get();
-        products_resource
-            .get()
-            .and_then(Result::ok)
-            .and_then(|(loaded_request, loaded_controls, products)| {
-                (loaded_request == request_id && loaded_controls == controls)
-                    .then_some(products)
-            })
+        products_resource.get().and_then(Result::ok).and_then(
+            |(loaded_request, loaded_controls, products)| {
+                (loaded_request == request_id && loaded_controls == controls).then_some(products)
+            },
+        )
     });
     // Server metadata is authoritative. Out-of-range deep links are clamped
     // to the last real page and fetched again before rendering.
@@ -314,8 +298,7 @@ pub fn ProductGridPage() -> impl IntoView {
         set_last_applied_request.set(Some(request_id));
 
         let response_page = usize::try_from(products.page).unwrap_or(usize::MAX);
-        let response_page_size =
-            usize::try_from(products.per_page).unwrap_or(DEFAULT_PAGE_SIZE);
+        let response_page_size = usize::try_from(products.per_page).unwrap_or(DEFAULT_PAGE_SIZE);
         let normalized_pagination = (next.page, next.page_size);
         if (response_page, response_page_size) != normalized_pagination {
             set_last_requested_pagination.set(normalized_pagination);

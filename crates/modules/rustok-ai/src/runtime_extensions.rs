@@ -55,10 +55,10 @@ fn structured_result_keyring_from_environment(
     let config =
         serde_json::from_str::<AiStructuredResultKeyringConfig>(value.to_string_lossy().as_ref())
             .map_err(|error| {
-                AiError::InvalidConfig(format!(
-                    "invalid RUSTOK_AI_STRUCTURED_RESULT_KEYRING_JSON: {error}"
-                ))
-            })?;
+            AiError::InvalidConfig(format!(
+                "invalid RUSTOK_AI_STRUCTURED_RESULT_KEYRING_JSON: {error}"
+            ))
+        })?;
     config.validate().map_err(|error| {
         AiError::InvalidConfig(format!(
             "invalid RUSTOK_AI_STRUCTURED_RESULT_KEYRING_JSON: {}",
@@ -274,13 +274,11 @@ fn vault_auth(
     kubernetes_token_path: Option<PathBuf>,
 ) -> AiResult<VaultAuth> {
     let token = match (token_env, token_file) {
-        (Some(name), None) => {
-            Some(std::env::var(name).map(SecretString::from).map_err(|_| {
-                AiError::InvalidConfig(
-                    "configured Vault token environment variable is missing".to_string(),
-                )
-            })?)
-        }
+        (Some(name), None) => Some(std::env::var(name).map(SecretString::from).map_err(|_| {
+            AiError::InvalidConfig(
+                "configured Vault token environment variable is missing".to_string(),
+            )
+        })?),
         (None, Some(path)) => Some(SecretString::from(
             std::fs::read_to_string(path)
                 .map_err(|error| {
@@ -310,12 +308,19 @@ fn vault_auth(
         return Ok(VaultAuth::Token(token));
     }
     Ok(VaultAuth::Kubernetes {
-        role: kubernetes_role
-            .ok_or_else(|| AiError::InvalidConfig("Vault Kubernetes auth requires kubernetes_role".to_string()))?,
-        auth_mount: kubernetes_auth_mount
-            .ok_or_else(|| AiError::InvalidConfig("Vault Kubernetes auth requires kubernetes_auth_mount".to_string()))?,
-        service_account_token_path: kubernetes_token_path
-            .ok_or_else(|| AiError::InvalidConfig("Vault Kubernetes auth requires kubernetes_token_path".to_string()))?,
+        role: kubernetes_role.ok_or_else(|| {
+            AiError::InvalidConfig("Vault Kubernetes auth requires kubernetes_role".to_string())
+        })?,
+        auth_mount: kubernetes_auth_mount.ok_or_else(|| {
+            AiError::InvalidConfig(
+                "Vault Kubernetes auth requires kubernetes_auth_mount".to_string(),
+            )
+        })?,
+        service_account_token_path: kubernetes_token_path.ok_or_else(|| {
+            AiError::InvalidConfig(
+                "Vault Kubernetes auth requires kubernetes_token_path".to_string(),
+            )
+        })?,
     })
 }
 

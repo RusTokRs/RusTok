@@ -7,8 +7,8 @@ use rustok_auth::{
     CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,
     UpdateOAuthAppCommand, UserMutationRecord,
 };
-use rustok_core::UserRole;
 use rustok_cache::CacheService;
+use rustok_core::UserRole;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
@@ -139,10 +139,7 @@ pub struct ServerAuthAdminMutationProvider {
 }
 
 impl ServerAuthAdminMutationProvider {
-    pub fn new(
-        runtime_ctx: &ServerRuntimeContext,
-        auth_config: crate::auth::AuthConfig,
-    ) -> Self {
+    pub fn new(runtime_ctx: &ServerRuntimeContext, auth_config: crate::auth::AuthConfig) -> Self {
         Self {
             db: runtime_ctx.db_clone(),
             auth_config,
@@ -152,7 +149,10 @@ impl ServerAuthAdminMutationProvider {
         }
     }
 
-    pub(crate) fn with_invite_module_registry(mut self, registry: rustok_core::ModuleRegistry) -> Self {
+    pub(crate) fn with_invite_module_registry(
+        mut self,
+        registry: rustok_core::ModuleRegistry,
+    ) -> Self {
         self.invite_registry = Some(registry);
         self
     }

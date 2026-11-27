@@ -17,16 +17,31 @@ use super::{FenceMac, JwtGenerationFence, unavailable};
 use crate::{JwtKeyringPublisher, JwtLeaseReadiness, error::Result};
 
 const OUTCOMES: &[(&str, &str)] = &[
-    ("renew", "granted"), ("renew", "denied"), ("renew", "error"),
-    ("activate", "applied"), ("activate", "denied"), ("activate", "error"),
-    ("grant", "revoked"), ("grant", "not_admitted"), ("grant", "draining"),
-    ("grant", "capacity"), ("grant", "contention"),
-    ("admit", "admitted"), ("admit", "draining"), ("admit", "awaiting_replicas"),
-    ("admit", "rejected"), ("admit", "error"),
-    ("ack", "complete"), ("ack", "deferred"), ("ack", "error"),
-    ("reload", "source_unavailable"), ("reload", "rejected"),
-    ("reload", "waiting_drain"), ("reload", "waiting_replicas"),
-    ("reload", "waiting_grant"), ("reload", "published"),
+    ("renew", "granted"),
+    ("renew", "denied"),
+    ("renew", "error"),
+    ("activate", "applied"),
+    ("activate", "denied"),
+    ("activate", "error"),
+    ("grant", "revoked"),
+    ("grant", "not_admitted"),
+    ("grant", "draining"),
+    ("grant", "capacity"),
+    ("grant", "contention"),
+    ("admit", "admitted"),
+    ("admit", "draining"),
+    ("admit", "awaiting_replicas"),
+    ("admit", "rejected"),
+    ("admit", "error"),
+    ("ack", "complete"),
+    ("ack", "deferred"),
+    ("ack", "error"),
+    ("reload", "source_unavailable"),
+    ("reload", "rejected"),
+    ("reload", "waiting_drain"),
+    ("reload", "waiting_replicas"),
+    ("reload", "waiting_grant"),
+    ("reload", "published"),
 ];
 
 /// Observed file-supervisor outcome, not a durable admission decision.
@@ -56,7 +71,8 @@ impl JwtReloadOutcome {
 
     fn pending(self) -> Option<u64> {
         match self {
-            Self::WaitingDrain(generation) | Self::WaitingReplicas(generation)
+            Self::WaitingDrain(generation)
+            | Self::WaitingReplicas(generation)
             | Self::WaitingGrant(generation) => Some(generation),
             _ => None,
         }
@@ -83,19 +99,27 @@ impl OperationState {
 
 impl OperationMetrics {
     pub(super) fn record(&self, operation: &'static str, outcome: &'static str) {
-        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .record(operation, outcome);
     }
 
     pub(super) fn record_ack(&self, elapsed: Duration, outcome: &'static str) {
-        let mut state = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut state = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         state.record("ack", outcome);
         state.ack_count = state.ack_count.saturating_add(1);
         state.ack_seconds_sum += elapsed.as_secs_f64();
     }
 
     fn reload(&self, outcome: JwtReloadOutcome) {
-        let mut state = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut state = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if outcome != JwtReloadOutcome::Unchanged {
             state.record("reload", outcome.label());
         }
@@ -132,7 +156,10 @@ pub struct JwtOperationalMetrics {
 }
 
 impl JwtGenerationFence {
-    pub fn operational_metrics(&self, publisher: &JwtKeyringPublisher) -> Result<JwtOperationalMetrics> {
+    pub fn operational_metrics(
+        &self,
+        publisher: &JwtKeyringPublisher,
+    ) -> Result<JwtOperationalMetrics> {
         Ok(JwtOperationalMetrics {
             fence: self.clone(),
             mac: Arc::new(self.checked_mac(publisher.lease_root())?),
@@ -170,11 +197,15 @@ impl JwtOperationalMetrics {
                 stale_grants += 1;
                 stale_replicas.insert(incarnation);
             }
-            if ledger.as_ref().is_some_and(|ledger| ledger.contains_revoked(&grant.snapshot)) {
+            if ledger
+                .as_ref()
+                .is_some_and(|ledger| ledger.contains_revoked(&grant.snapshot))
+            {
                 revoked_grants += 1;
             }
         }
-        let remaining = |deadline: i64| deadline.saturating_sub(stored.now_ms).max(0) as f64 / 1000.0;
+        let remaining =
+            |deadline: i64| deadline.saturating_sub(stored.now_ms).max(0) as f64 / 1000.0;
         Ok(JwtClusterObservation {
             generation: stored.generation,
             current_grants,
@@ -182,9 +213,17 @@ impl JwtOperationalMetrics {
             current_replicas: current_replicas.len(),
             stale_replicas: stale_replicas.len(),
             revoked_grants,
-            revoked_bindings: ledger.as_ref().map_or(0, |ledger| ledger.seen.values()
-                .flat_map(|keys| keys.values()).filter(|binding| binding.revoked_at_ms.is_some()).count()),
-            current_revoked: ledger.as_ref().is_some_and(|ledger| ledger.contains_revoked(&ledger.current)),
+            revoked_bindings: ledger.as_ref().map_or(0, |ledger| {
+                ledger
+                    .seen
+                    .values()
+                    .flat_map(|keys| keys.values())
+                    .filter(|binding| binding.revoked_at_ms.is_some())
+                    .count()
+            }),
+            current_revoked: ledger
+                .as_ref()
+                .is_some_and(|ledger| ledger.contains_revoked(&ledger.current)),
             drain_seconds: remaining(stored.drain_until_ms),
             untracked_seconds: remaining(stored.untracked_until_ms),
             lease_horizon_seconds: remaining(stored.lease_until_ms),
@@ -195,42 +234,127 @@ impl JwtOperationalMetrics {
     pub fn render(&self, cluster: Option<&JwtClusterObservation>) -> String {
         let mut output = String::new();
         let local = self.local.operational_state();
-        let state = self.fence.metrics.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let state = self
+            .fence
+            .metrics
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         macro_rules! gauge {
             ($name:literal, $value:expr) => {
-                writeln!(output, concat!("# TYPE rustok_auth_jwt_", $name, " gauge\nrustok_auth_jwt_", $name, " {}"), $value)
-                    .expect("writing to String cannot fail")
+                writeln!(
+                    output,
+                    concat!(
+                        "# TYPE rustok_auth_jwt_",
+                        $name,
+                        " gauge\nrustok_auth_jwt_",
+                        $name,
+                        " {}"
+                    ),
+                    $value
+                )
+                .expect("writing to String cannot fail")
             };
         }
         gauge!("collection_status", u8::from(cluster.is_some()));
-        gauge!("independent_authority", u8::from(self.fence.binding.is_some()));
+        gauge!(
+            "independent_authority",
+            u8::from(self.fence.binding.is_some())
+        );
         gauge!("witness_configured", u8::from(self.fence.witness.is_some()));
-        gauge!("witness_fenced", u8::from(self.fence.witness.as_ref().is_some_and(|w| w.faulted())));
+        gauge!(
+            "witness_fenced",
+            u8::from(self.fence.witness.as_ref().is_some_and(|w| w.faulted()))
+        );
         gauge!("local_state_available", u8::from(local.is_some()));
         gauge!("local_generation", local.map_or(f64::NAN, |s| s.0 as f64));
         gauge!("local_ready", u8::from(local.is_some_and(|s| s.1)));
-        gauge!("local_emergency_fenced", local.map_or(f64::NAN, |s| u8::from(s.2) as f64));
-        gauge!("local_lease_remaining_seconds", local.map_or(f64::NAN, |s| s.3));
-        gauge!("local_clock_fenced", local.map_or(f64::NAN, |s| u8::from(s.4) as f64));
-        gauge!("authority_clock_fenced", u8::from(self.fence.clock.faulted()));
-        gauge!("durable_generation", cluster.map_or(f64::NAN, |s| s.generation as f64));
-        gauge!("generation_lag", cluster.zip(local).map_or(f64::NAN, |(s, l)|
-            (i128::from(s.generation) - i128::from(l.0)) as f64));
-        gauge!("current_grants", cluster.map_or(f64::NAN, |s| s.current_grants as f64));
-        gauge!("stale_grants", cluster.map_or(f64::NAN, |s| s.stale_grants as f64));
-        gauge!("current_grant_replicas", cluster.map_or(f64::NAN, |s| s.current_replicas as f64));
-        gauge!("stale_grant_replicas", cluster.map_or(f64::NAN, |s| s.stale_replicas as f64));
-        gauge!("revoked_grants", cluster.map_or(f64::NAN, |s| s.revoked_grants as f64));
-        gauge!("revoked_bindings", cluster.map_or(f64::NAN, |s| s.revoked_bindings as f64));
-        gauge!("current_revoked", cluster.map_or(f64::NAN, |s| u8::from(s.current_revoked) as f64));
-        gauge!("drain_remaining_seconds", cluster.map_or(f64::NAN, |s| s.drain_seconds));
-        gauge!("untracked_remaining_seconds", cluster.map_or(f64::NAN, |s| s.untracked_seconds));
-        gauge!("lease_horizon_remaining_seconds", cluster.map_or(f64::NAN, |s| s.lease_horizon_seconds));
-        gauge!("pending_generation", state.pending.map_or(f64::NAN, |(g, _)| g as f64));
-        gauge!("pending_seconds", state.pending.map_or(0.0, |(_, since)| since.elapsed().as_secs_f64()));
+        gauge!(
+            "local_emergency_fenced",
+            local.map_or(f64::NAN, |s| u8::from(s.2) as f64)
+        );
+        gauge!(
+            "local_lease_remaining_seconds",
+            local.map_or(f64::NAN, |s| s.3)
+        );
+        gauge!(
+            "local_clock_fenced",
+            local.map_or(f64::NAN, |s| u8::from(s.4) as f64)
+        );
+        gauge!(
+            "authority_clock_fenced",
+            u8::from(self.fence.clock.faulted())
+        );
+        gauge!(
+            "durable_generation",
+            cluster.map_or(f64::NAN, |s| s.generation as f64)
+        );
+        gauge!(
+            "generation_lag",
+            cluster
+                .zip(local)
+                .map_or(
+                    f64::NAN,
+                    |(s, l)| (i128::from(s.generation) - i128::from(l.0)) as f64
+                )
+        );
+        gauge!(
+            "current_grants",
+            cluster.map_or(f64::NAN, |s| s.current_grants as f64)
+        );
+        gauge!(
+            "stale_grants",
+            cluster.map_or(f64::NAN, |s| s.stale_grants as f64)
+        );
+        gauge!(
+            "current_grant_replicas",
+            cluster.map_or(f64::NAN, |s| s.current_replicas as f64)
+        );
+        gauge!(
+            "stale_grant_replicas",
+            cluster.map_or(f64::NAN, |s| s.stale_replicas as f64)
+        );
+        gauge!(
+            "revoked_grants",
+            cluster.map_or(f64::NAN, |s| s.revoked_grants as f64)
+        );
+        gauge!(
+            "revoked_bindings",
+            cluster.map_or(f64::NAN, |s| s.revoked_bindings as f64)
+        );
+        gauge!(
+            "current_revoked",
+            cluster.map_or(f64::NAN, |s| u8::from(s.current_revoked) as f64)
+        );
+        gauge!(
+            "drain_remaining_seconds",
+            cluster.map_or(f64::NAN, |s| s.drain_seconds)
+        );
+        gauge!(
+            "untracked_remaining_seconds",
+            cluster.map_or(f64::NAN, |s| s.untracked_seconds)
+        );
+        gauge!(
+            "lease_horizon_remaining_seconds",
+            cluster.map_or(f64::NAN, |s| s.lease_horizon_seconds)
+        );
+        gauge!(
+            "pending_generation",
+            state.pending.map_or(f64::NAN, |(g, _)| g as f64)
+        );
+        gauge!(
+            "pending_seconds",
+            state
+                .pending
+                .map_or(0.0, |(_, since)| since.elapsed().as_secs_f64())
+        );
         output.push_str("# TYPE rustok_auth_jwt_operations_total counter\n");
         for &(operation, outcome) in OUTCOMES {
-            let count = state.counts.get(&(operation, outcome)).copied().unwrap_or(0);
+            let count = state
+                .counts
+                .get(&(operation, outcome))
+                .copied()
+                .unwrap_or(0);
             writeln!(output, "rustok_auth_jwt_operations_total{{operation=\"{operation}\",outcome=\"{outcome}\"}} {count}")
                 .expect("writing to String cannot fail");
         }
@@ -242,27 +366,48 @@ impl JwtOperationalMetrics {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use super::super::tests::{ROOT, FenceKeys, database};
     use super::super::JwtAdmission;
+    use super::super::tests::{FenceKeys, ROOT, database};
+    use super::*;
 
     #[tokio::test]
     async fn observations_distinguish_grants_revocation_and_local_gate() {
         let keys = FenceKeys::generate();
         let fence = JwtGenerationFence::new(database().await);
         let first = keys.config(ROOT, "private-kid", keys.old(), None);
-        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        assert_eq!(
+            fence.admit(1, &first).await.unwrap(),
+            JwtAdmission::Admitted
+        );
         let (_, publisher) = first.clone().into_cluster_jwt(1).unwrap();
         let (_, other) = first.into_cluster_jwt(1).unwrap();
         let metrics = fence.operational_metrics(&publisher).unwrap();
         assert!(fence.renew(&publisher).await.unwrap());
         assert!(fence.renew(&other).await.unwrap());
-        let staged = keys.config(ROOT, "private-kid", keys.old(),
-            Some(("staged-kid", &keys.next, chrono::Utc::now().timestamp() + 3600)));
-        assert_eq!(fence.admit(2, &staged).await.unwrap(), JwtAdmission::Admitted);
+        let staged = keys.config(
+            ROOT,
+            "private-kid",
+            keys.old(),
+            Some((
+                "staged-kid",
+                &keys.next,
+                chrono::Utc::now().timestamp() + 3600,
+            )),
+        );
+        assert_eq!(
+            fence.admit(2, &staged).await.unwrap(),
+            JwtAdmission::Admitted
+        );
         assert!(fence.activate(&publisher, 2, staged).await.unwrap());
         let cluster = metrics.cluster_snapshot().await.unwrap();
-        assert_eq!((cluster.generation, cluster.current_grants, cluster.stale_grants), (2, 1, 1));
+        assert_eq!(
+            (
+                cluster.generation,
+                cluster.current_grants,
+                cluster.stale_grants
+            ),
+            (2, 1, 1)
+        );
         assert_eq!((cluster.current_replicas, cluster.stale_replicas), (1, 1));
         let rendered = metrics.render(Some(&cluster));
         assert!(rendered.contains("rustok_auth_jwt_local_ready 1\n"));
@@ -271,7 +416,10 @@ mod tests {
         assert!(!rendered.contains(ROOT));
         assert!(!rendered.contains(&publisher.incarnation().to_string()));
         let other_fence = JwtGenerationFence::new(fence.db.clone());
-        other_fence.revoke_key(ROOT, "access", "private-kid").await.unwrap();
+        other_fence
+            .revoke_key(ROOT, "access", "private-kid")
+            .await
+            .unwrap();
         let cluster = metrics.cluster_snapshot().await.unwrap();
         assert_eq!(cluster.revoked_bindings, 1);
         assert_eq!(cluster.revoked_grants, 2);
@@ -292,7 +440,10 @@ mod tests {
         let keys = FenceKeys::generate();
         let fence = JwtGenerationFence::new(database().await);
         let first = keys.config(ROOT, "clock-key", keys.old(), None);
-        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        assert_eq!(
+            fence.admit(1, &first).await.unwrap(),
+            JwtAdmission::Admitted
+        );
         let (_, publisher) = first.clone().into_cluster_jwt(1).unwrap();
         let metrics = fence.operational_metrics(&publisher).unwrap();
         assert!(fence.renew(&publisher).await.unwrap());
@@ -307,7 +458,13 @@ mod tests {
         assert!(!publisher.lease_readiness().unwrap().is_ready());
         assert!(fence.renew(&publisher).await.is_err());
         assert!(fence.admit(1, &first).await.is_err());
-        assert!(fence.revoke_key(ROOT, "access", "clock-key").await.unwrap().newly_revoked);
+        assert!(
+            fence
+                .revoke_key(ROOT, "access", "clock-key")
+                .await
+                .unwrap()
+                .newly_revoked
+        );
     }
 
     #[test]

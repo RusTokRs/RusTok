@@ -16,8 +16,8 @@ pub use foundation::{
     AutoScrollDelta, AutoScrollPolicy, BrowserDropTarget, BrowserHitTarget, BrowserPoint,
     BrowserRect, CleanupRegistry, CoordinateTransform, DropAxis, DropZonePolicy,
     FLY_IFRAME_PROTOCOL, IframeBridgeEnvelope, IframeBridgeMessage, MAX_IFRAME_MESSAGE_BYTES,
-    PointerKind, PointerSample,
-    auto_scroll_delta, hit_test_drop_targets, normalize_hit_targets, resolve_drop_position,
+    PointerKind, PointerSample, auto_scroll_delta, hit_test_drop_targets, normalize_hit_targets,
+    resolve_drop_position,
 };
 
 mod real_dom_inline;
@@ -33,11 +33,11 @@ mod origin;
 pub use origin::{OPAQUE_ORIGIN, normalize_expected_origin, outbound_target_origin};
 
 mod peer_write;
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+pub use peer_write::BrowserPeerWriteChannel;
 pub use peer_write::{
     BrowserPeerWriteConflict, FLY_PEER_WRITE_CHANNEL, FLY_PEER_WRITE_CONFLICT_CODE,
 };
-#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
-pub use peer_write::BrowserPeerWriteChannel;
 
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 mod browser_interaction;

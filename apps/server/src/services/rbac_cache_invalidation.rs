@@ -15,7 +15,6 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
 use crate::services::rbac_invalidation_generation::{
     RbacInvalidationGenerationState, ensure_rbac_invalidation_generation_state,
     read_rbac_invalidation_generation_for_cache_recovery,
@@ -24,6 +23,7 @@ use crate::services::rbac_runtime::{
     invalidate_all_user_permissions_cache, invalidate_user_permissions_cache,
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
 
 pub const RBAC_PERMISSION_INVALIDATION_CHANNEL: &str = "rbac.permissions.generation.v1";
 const RBAC_PERMISSION_INVALIDATION_CAUSE: &str = "rbac.user.permissions.changed";
@@ -285,9 +285,11 @@ impl RbacCacheInvalidationListener {
         // Until the durable checkpoint catches up, use full recovery rather
         // than applying or ignoring events based on the old high-water mark.
         if let (Some(tracked), Some(applied)) = (
-            self.tracker.last_generation(RBAC_PERMISSION_INVALIDATION_CHANNEL),
+            self.tracker
+                .last_generation(RBAC_PERMISSION_INVALIDATION_CHANNEL),
             self.durable_state.current(),
-        ) && tracked > applied && event.generation > applied
+        ) && tracked > applied
+            && event.generation > applied
         {
             self.recover_generation_and_clear_locked().await?;
             return Ok(());
@@ -368,10 +370,7 @@ pub async fn publish_user_rbac_invalidation(
 }
 
 #[tracing::instrument(skip(cache), fields(generation))]
-pub async fn publish_all_rbac_invalidation(
-    cache: &CacheService,
-    generation: u64,
-) -> Result<()> {
+pub async fn publish_all_rbac_invalidation(cache: &CacheService, generation: u64) -> Result<()> {
     tracing::debug!(
         generation,
         "Publishing namespace-wide RBAC cache invalidation"
@@ -621,8 +620,7 @@ pub async fn start_rbac_cache_invalidation_listener(
         .shared_get::<RbacCacheInvalidationListenerStartLock>()
         .ok_or_else(|| Error::Cache("RBAC invalidation start lock is unavailable".to_string()))?;
     let stop = StopHandle::ensure(ctx);
-    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await
-    else {
+    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await else {
         return Ok(());
     };
 
@@ -647,7 +645,9 @@ pub async fn start_rbac_cache_invalidation_listener(
                     }
                 }
             }
-        }).await else {
+        })
+        .await
+        else {
             return Ok(());
         };
     }
@@ -672,7 +672,9 @@ pub async fn start_rbac_cache_invalidation_listener(
                 "startup_recovery_deferred",
             );
         }
-    }).await else {
+    })
+    .await
+    else {
         return Ok(());
     };
 
@@ -778,11 +780,13 @@ mod tests {
         RBAC_PERMISSION_INVALIDATE_ALL_KEY, RBAC_PERMISSION_INVALIDATION_CHANNEL,
         RbacCacheInvalidationListener, RbacCacheInvalidationListenerHandle, RbacInvalidationTarget,
         acknowledge_rbac_applied_generation, acknowledge_rbac_recovery,
-        parse_rbac_invalidation_key, parse_rbac_invalidation_target, publish_user_rbac_invalidation,
-        rbac_invalidation_key, supervise_rbac_invalidation_worker,
+        parse_rbac_invalidation_key, parse_rbac_invalidation_target,
+        publish_user_rbac_invalidation, rbac_invalidation_key, supervise_rbac_invalidation_worker,
     };
     use crate::services::rbac_invalidation_generation::RbacInvalidationGenerationState;
-    use rustok_cache::{BoundedCacheInvalidationGapTracker, CacheService, VersionedCacheInvalidation};
+    use rustok_cache::{
+        BoundedCacheInvalidationGapTracker, CacheService, VersionedCacheInvalidation,
+    };
     use sea_orm::Database;
     use uuid::Uuid;
 
@@ -838,8 +842,12 @@ mod tests {
     fn malformed_rbac_invalidation_key_is_rejected() {
         assert!(parse_rbac_invalidation_key("not-a-pair").is_err());
         assert!(parse_rbac_invalidation_key("invalid:also-invalid").is_err());
-        assert!(parse_rbac_invalidation_key(&format!("{}:{}", Uuid::nil(), Uuid::new_v4())).is_err());
-        assert!(parse_rbac_invalidation_key(&format!("{}:{}", Uuid::new_v4(), Uuid::nil())).is_err());
+        assert!(
+            parse_rbac_invalidation_key(&format!("{}:{}", Uuid::nil(), Uuid::new_v4())).is_err()
+        );
+        assert!(
+            parse_rbac_invalidation_key(&format!("{}:{}", Uuid::new_v4(), Uuid::nil())).is_err()
+        );
     }
 
     #[tokio::test]
@@ -898,7 +906,10 @@ mod tests {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tx = db.begin().await.unwrap();
         for generation in 1..=2 {
-            assert_eq!(reserve_rbac_invalidation_generation(&tx).await.unwrap(), generation);
+            assert_eq!(
+                reserve_rbac_invalidation_generation(&tx).await.unwrap(),
+                generation
+            );
         }
         tx.commit().await.unwrap();
         let durable_state = RbacInvalidationGenerationState::default();
@@ -938,18 +949,26 @@ mod tests {
         let state = RbacInvalidationGenerationState::default();
         state.observe_applied(5);
         let listener = RbacCacheInvalidationListener::new(db, state.clone());
-        listener.tracker.seed(RBAC_PERMISSION_INVALIDATION_CHANNEL, 5).unwrap();
+        listener
+            .tracker
+            .seed(RBAC_PERMISSION_INVALIDATION_CHANNEL, 5)
+            .unwrap();
         let message = VersionedCacheInvalidation::new(
             RBAC_PERMISSION_INVALIDATION_CHANNEL,
             RBAC_PERMISSION_INVALIDATE_ALL_KEY,
             6,
             1,
-        ).unwrap().to_message().unwrap();
+        )
+        .unwrap()
+        .to_message()
+        .unwrap();
 
         let held = state.lock_reconciliation().await;
         let mut applying = Box::pin(listener.handle_message(message));
         assert!(
-            tokio::time::timeout(Duration::from_millis(10), applying.as_mut()).await.is_err(),
+            tokio::time::timeout(Duration::from_millis(10), applying.as_mut())
+                .await
+                .is_err(),
             "event application must wait for another recovery to finish"
         );
         assert_eq!(state.current(), Some(5));
@@ -997,13 +1016,18 @@ mod tests {
         let state = RbacInvalidationGenerationState::default();
         state.observe_applied(5);
         let listener = RbacCacheInvalidationListener::new(db, state.clone());
-        listener.tracker.seed(RBAC_PERMISSION_INVALIDATION_CHANNEL, 5).unwrap();
+        listener
+            .tracker
+            .seed(RBAC_PERMISSION_INVALIDATION_CHANNEL, 5)
+            .unwrap();
         let cache = MokaPermissionCache;
         let tenant_id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
 
         for reconcile in [false, true] {
-            cache.insert(&tenant_id, &user_id, vec![Permission::USERS_READ]).await;
+            cache
+                .insert(&tenant_id, &user_id, vec![Permission::USERS_READ])
+                .await;
             let (cached, old_token) = cache.lookup(&tenant_id, &user_id).await.into_parts();
             assert_eq!(cached, Some(vec![Permission::USERS_READ]));
             if reconcile {
@@ -1013,14 +1037,21 @@ mod tests {
             }
             assert!(cache.get(&tenant_id, &user_id).await.is_none());
             assert!(
-                !cache.insert_if_current(
-                    &tenant_id, &user_id, old_token, vec![Permission::USERS_READ],
-                ).await,
+                !cache
+                    .insert_if_current(
+                        &tenant_id,
+                        &user_id,
+                        old_token,
+                        vec![Permission::USERS_READ],
+                    )
+                    .await,
                 "a pre-failure permission fill must not be admitted"
             );
             assert_eq!(state.current(), Some(5));
             assert_eq!(
-                listener.tracker.last_generation(RBAC_PERMISSION_INVALIDATION_CHANNEL),
+                listener
+                    .tracker
+                    .last_generation(RBAC_PERMISSION_INVALIDATION_CHANNEL),
                 Some(5),
             );
         }

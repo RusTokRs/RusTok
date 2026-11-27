@@ -85,6 +85,7 @@ pub(crate) async fn remove_staged_file_best_effort(path: &std::path::Path) {
         );
     }
 }
+mod lifecycle_transition_fence;
 #[cfg(feature = "oci-distribution")]
 mod oci_transport;
 mod operation_store;
@@ -113,9 +114,8 @@ mod security_epoch;
 mod security_state;
 mod settings;
 mod settings_claim;
-mod settings_transition_fence;
-mod lifecycle_transition_fence;
 mod settings_guard;
+mod settings_transition_fence;
 pub mod source_object;
 mod static_package;
 mod static_settings_localization;
@@ -526,19 +526,19 @@ pub use installation::{
     ArtifactAdmissionReconciler, ArtifactAdmissionReplay, ArtifactAdmissionResult,
     ArtifactAdmissionReverificationCandidate, ArtifactAdmissionReverificationCommand,
     ArtifactAdmissionReverificationPage, ArtifactAdmissionReverificationService,
-    ArtifactAdmissionService, ArtifactAdmissionStage,
-    ArtifactAdmissionStatus, ArtifactAdmissionStore, ArtifactBlobGcCandidate,
-    ArtifactBlobGcCandidateState, ArtifactBlobGcCandidateStore, ArtifactBlobGcClaimOutcome,
-    ArtifactBlobGcMarkOutcome, ArtifactBlobGcReport, ArtifactBlobRetentionPolicy,
-    ArtifactBlobRetentionRule, ArtifactBlobStore, ArtifactDeactivationRequest,
-    ArtifactDeactivationResult, ArtifactMigrationCheckpointRequest, ArtifactMigrationRollbackMode,
-    ArtifactPayloadSource, ArtifactPermissionRegistrationStatus, ArtifactRegistry,
-    ArtifactRollbackRequest, ArtifactRollbackResult, ArtifactTenantDisableRequest,
-    ArtifactTenantDisableResult, ArtifactTenantEnableRequest, ArtifactTenantEnableResult,
-    ArtifactTenantLifecycleSnapshot, ArtifactUninstallRequest, ArtifactUninstallResult,
-    ArtifactVerificationEvidence, DurableArtifactBlobStore, InstalledModuleArtifact,
-    ModuleArtifactPackage, ModuleInstallationError, ModuleInstallationScope, ModuleInstaller,
-    OciArtifactReference, SeaOrmArtifactBlobRetentionPolicy, SeaOrmArtifactInstallationStore,
+    ArtifactAdmissionService, ArtifactAdmissionStage, ArtifactAdmissionStatus,
+    ArtifactAdmissionStore, ArtifactBlobGcCandidate, ArtifactBlobGcCandidateState,
+    ArtifactBlobGcCandidateStore, ArtifactBlobGcClaimOutcome, ArtifactBlobGcMarkOutcome,
+    ArtifactBlobGcReport, ArtifactBlobRetentionPolicy, ArtifactBlobRetentionRule,
+    ArtifactBlobStore, ArtifactDeactivationRequest, ArtifactDeactivationResult,
+    ArtifactMigrationCheckpointRequest, ArtifactMigrationRollbackMode, ArtifactPayloadSource,
+    ArtifactPermissionRegistrationStatus, ArtifactRegistry, ArtifactRollbackRequest,
+    ArtifactRollbackResult, ArtifactTenantDisableRequest, ArtifactTenantDisableResult,
+    ArtifactTenantEnableRequest, ArtifactTenantEnableResult, ArtifactTenantLifecycleSnapshot,
+    ArtifactUninstallRequest, ArtifactUninstallResult, ArtifactVerificationEvidence,
+    DurableArtifactBlobStore, InstalledModuleArtifact, ModuleArtifactPackage,
+    ModuleInstallationError, ModuleInstallationScope, ModuleInstaller, OciArtifactReference,
+    SeaOrmArtifactBlobRetentionPolicy, SeaOrmArtifactInstallationStore,
     SeaOrmArtifactSandboxPolicyResolver, SnapshotArtifactBlobRetentionPolicy, StagedArtifactBlob,
     TransitionRollbackRequest,
 };
@@ -584,10 +584,10 @@ pub use oci_admission::{
 pub use oci_transport::OciTransportError;
 pub use operation_store::{
     MAX_STALE_MODULE_OPERATIONS_PER_REAP, ModuleOperationJournal, ModuleOperationReapCursor,
-    ModuleOperationRecord, ModuleOperationRecordOutcome, ModuleOperationRequest, ModuleOperationSnapshot,
-    ModuleOperationStoreError, StaleModuleOperationReapReport, StaticTenantLifecycleClaim,
-    StaticTenantLifecycleSnapshot, StaticTenantLifecycleStore, StaticTenantLifecycleStoreError,
-    TenantModuleSettingsRecord, TenantModuleStateRecord,
+    ModuleOperationRecord, ModuleOperationRecordOutcome, ModuleOperationRequest,
+    ModuleOperationSnapshot, ModuleOperationStoreError, StaleModuleOperationReapReport,
+    StaticTenantLifecycleClaim, StaticTenantLifecycleSnapshot, StaticTenantLifecycleStore,
+    StaticTenantLifecycleStoreError, TenantModuleSettingsRecord, TenantModuleStateRecord,
 };
 pub(crate) use operation_store::{
     TenantModuleSettingsRequest, TenantModuleStateRequest, TenantModuleStateStore,

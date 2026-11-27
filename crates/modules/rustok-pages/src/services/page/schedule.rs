@@ -119,8 +119,7 @@ fn schedule_response_from_model(model: page_publish_job::Model) -> PagePublishSc
         id: model.id,
         page_id: model.page_id,
         publish_at: model.publish_at.to_string(),
-        state: PagePublishJobState::parse(&model.state)
-            .unwrap_or(PagePublishJobState::Scheduled),
+        state: PagePublishJobState::parse(&model.state).unwrap_or(PagePublishJobState::Scheduled),
         attempts: model.attempts,
         last_error_code: model.last_error_code,
         last_error_message: model.last_error_message,

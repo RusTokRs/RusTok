@@ -11,7 +11,9 @@ use thiserror::Error;
 pub enum AlloyScaffoldError {
     #[error("{0}")]
     Validation(String),
-    #[error("Direct write during alloy_scaffold_module is forbidden. Stage the design, review it, then use alloy_apply_module_scaffold with confirm=true.")]
+    #[error(
+        "Direct write during alloy_scaffold_module is forbidden. Stage the design, review it, then use alloy_apply_module_scaffold with confirm=true."
+    )]
     DirectWriteForbidden,
     #[error("Failed to canonicalize scaffold source digest")]
     DigestFailed,
@@ -189,7 +191,9 @@ pub fn generate_module_scaffold(
 ///
 /// Operational guidance is deliberately excluded: the digest binds only the
 /// logical crate root and the exact generated files that can be applied.
-pub fn scaffold_source_digest(preview: &ScaffoldModulePreview) -> Result<String, AlloyScaffoldError> {
+pub fn scaffold_source_digest(
+    preview: &ScaffoldModulePreview,
+) -> Result<String, AlloyScaffoldError> {
     let digest = hash_manifest(&ScaffoldSourceSnapshot {
         crate_name: &preview.crate_name,
         crate_path: &preview.crate_path,
@@ -276,16 +280,25 @@ fn build_file_map(
     files
 }
 
-fn write_scaffold_files(root: &Path, file_map: &BTreeMap<String, String>) -> Result<(), AlloyScaffoldError> {
+fn write_scaffold_files(
+    root: &Path,
+    file_map: &BTreeMap<String, String>,
+) -> Result<(), AlloyScaffoldError> {
     if root.exists() {
-        return Err(AlloyScaffoldError::TargetAlreadyExists(root.display().to_string()));
+        return Err(AlloyScaffoldError::TargetAlreadyExists(
+            root.display().to_string(),
+        ));
     }
 
     let workspace_root = root
         .parent()
         .and_then(Path::parent)
         .and_then(Path::parent)
-        .ok_or_else(|| AlloyScaffoldError::Workspace("Failed to resolve workspace root from target path".to_string()))?;
+        .ok_or_else(|| {
+            AlloyScaffoldError::Workspace(
+                "Failed to resolve workspace root from target path".to_string(),
+            )
+        })?;
     if !workspace_root.join("Cargo.toml").exists() {
         return Err(AlloyScaffoldError::Workspace(format!(
             "workspace_root does not look like a RusToK workspace: {}",
@@ -297,11 +310,18 @@ fn write_scaffold_files(root: &Path, file_map: &BTreeMap<String, String>) -> Res
         let target_path = root.join(relative_path);
         if let Some(parent) = target_path.parent() {
             fs::create_dir_all(parent).map_err(|error| {
-                AlloyScaffoldError::FileWrite(format!("Failed to create directory {}: {error}", parent.display()))
+                AlloyScaffoldError::FileWrite(format!(
+                    "Failed to create directory {}: {error}",
+                    parent.display()
+                ))
             })?;
         }
-        fs::write(&target_path, content)
-            .map_err(|error| AlloyScaffoldError::FileWrite(format!("Failed to write {}: {error}", target_path.display())))?;
+        fs::write(&target_path, content).map_err(|error| {
+            AlloyScaffoldError::FileWrite(format!(
+                "Failed to write {}: {error}",
+                target_path.display()
+            ))
+        })?;
     }
 
     Ok(())
@@ -427,10 +447,14 @@ fn render_contract_tests() -> String {
 fn validate_slug(slug: &str) -> Result<(), AlloyScaffoldError> {
     let slug = slug.trim();
     if slug.is_empty() {
-        return Err(AlloyScaffoldError::Validation("slug must not be empty".to_string()));
+        return Err(AlloyScaffoldError::Validation(
+            "slug must not be empty".to_string(),
+        ));
     }
     if slug.len() > 64 {
-        return Err(AlloyScaffoldError::Validation("slug must be 64 characters or fewer".to_string()));
+        return Err(AlloyScaffoldError::Validation(
+            "slug must be 64 characters or fewer".to_string(),
+        ));
     }
     if !slug
         .chars()
@@ -453,13 +477,19 @@ fn validate_description(description: &str) -> Result<(), AlloyScaffoldError> {
 
 fn validate_text(value: &str, field: &str, maximum_len: usize) -> Result<(), AlloyScaffoldError> {
     if value.trim().is_empty() {
-        return Err(AlloyScaffoldError::Validation(format!("{field} must not be empty")));
+        return Err(AlloyScaffoldError::Validation(format!(
+            "{field} must not be empty"
+        )));
     }
     if value.len() > maximum_len {
-        return Err(AlloyScaffoldError::Validation(format!("{field} must be {maximum_len} characters or fewer")));
+        return Err(AlloyScaffoldError::Validation(format!(
+            "{field} must be {maximum_len} characters or fewer"
+        )));
     }
     if value.chars().any(char::is_control) {
-        return Err(AlloyScaffoldError::Validation(format!("{field} must not contain control characters")));
+        return Err(AlloyScaffoldError::Validation(format!(
+            "{field} must not contain control characters"
+        )));
     }
     Ok(())
 }

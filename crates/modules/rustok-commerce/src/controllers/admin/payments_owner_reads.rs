@@ -1114,7 +1114,9 @@ pub async fn cancel_refund(
 }
 
 fn refund_creation_key(headers: &HeaderMap) -> HttpResult<String> {
-    let value = headers.get("idempotency-key").and_then(|value| value.to_str().ok())
+    let value = headers
+        .get("idempotency-key")
+        .and_then(|value| value.to_str().ok())
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| {

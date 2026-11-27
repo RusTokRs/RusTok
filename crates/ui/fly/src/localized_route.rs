@@ -1,9 +1,9 @@
+use crate::runtime_locale::{duplicate_locale_key, invalid_locale_key};
 use crate::{
     FLY_PAGE_METADATA_FIELD, FlyError, FlyResult, LOCALIZED_VALUES_FIELD, PageSelection,
     ProjectDocument, RUNTIME_LOCALE_FIELD, RuntimeLocaleSelection, ValidationDiagnostic,
     ValidationSeverity, materialize_project_locale_context, normalize_locale_tag, normalize_slug,
 };
-use crate::runtime_locale::{duplicate_locale_key, invalid_locale_key};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -436,12 +436,9 @@ mod tests {
                 "component": { "id": "traditional-root", "type": "wrapper" }
             }]
         }));
-        let resolution = resolve_localized_page_route(
-            &document,
-            "shared",
-            &json!({ "$locale": "zh-Hant-TW" }),
-        )
-        .expect("script-specific route");
+        let resolution =
+            resolve_localized_page_route(&document, "shared", &json!({ "$locale": "zh-Hant-TW" }))
+                .expect("script-specific route");
         assert_eq!(resolution.page_id.as_deref(), Some("traditional"));
         assert_eq!(resolution.matched_locale.as_deref(), Some("zh-Hant"));
         assert!(resolution.fallback_used);

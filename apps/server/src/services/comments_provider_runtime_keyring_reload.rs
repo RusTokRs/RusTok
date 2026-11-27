@@ -380,7 +380,8 @@ pub(super) async fn start_comments_tcp_listener_if_enabled(
     let Some(reload_handle) = reload_handle_from_context(runtime_ctx) else {
         return keyring::start_comments_tcp_listener_if_enabled(runtime_ctx).await;
     };
-    let Some(_) = base::CommentsTcpListenerConfig::from_environment().map_err(|err| Error::BadRequest(err.to_string()))?
+    let Some(_) = base::CommentsTcpListenerConfig::from_environment()
+        .map_err(|err| Error::BadRequest(err.to_string()))?
     else {
         return Ok(());
     };
@@ -395,8 +396,8 @@ pub(super) async fn start_comments_tcp_listener_if_enabled(
                 .is_some()
         });
     if !authority_already_configured {
-        let authority =
-            comments_tcp_authority_from_reload_handle(&reload_handle).map_err(|err| Error::BadRequest(err.to_string()))?;
+        let authority = comments_tcp_authority_from_reload_handle(&reload_handle)
+            .map_err(|err| Error::BadRequest(err.to_string()))?;
         runtime_ctx.shared_insert(base::SharedCommentsTcpAuthorityResolver(authority));
     }
 

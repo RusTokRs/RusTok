@@ -132,7 +132,9 @@ pub(crate) fn invalidate_current_rbac_request_scope(tenant_id: &Uuid, actor_id: 
 
 /// Invalidate the snapshot in this task for a full-cache invalidation.
 pub(crate) fn invalidate_current_rbac_request_scope_for_all() {
-    if let Err(error) = CURRENT_RBAC_SCOPE.try_with(|state| state.valid.store(false, Ordering::Release)) {
+    if let Err(error) =
+        CURRENT_RBAC_SCOPE.try_with(|state| state.valid.store(false, Ordering::Release))
+    {
         tracing::trace!(%error, "Current task has no active task-local RBAC scope to invalidate");
     }
 }

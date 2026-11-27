@@ -34,7 +34,10 @@ fn validate_initial_price(price: &InitialPrice) -> Result<(), sea_orm::DbErr> {
             "variant_id must not be a nil UUID".into(),
         ));
     }
-    if price.channel_id.is_some_and(|channel_id| channel_id.is_nil()) {
+    if price
+        .channel_id
+        .is_some_and(|channel_id| channel_id.is_nil())
+    {
         return Err(sea_orm::DbErr::Custom(
             "channel_id must not be a nil UUID".into(),
         ));
@@ -55,9 +58,7 @@ fn validate_initial_price(price: &InitialPrice) -> Result<(), sea_orm::DbErr> {
         }
     }
     let trimmed_currency = price.currency_code.trim();
-    if trimmed_currency.len() != 3
-        || !trimmed_currency.chars().all(|ch| ch.is_ascii_alphabetic())
-    {
+    if trimmed_currency.len() != 3 || !trimmed_currency.chars().all(|ch| ch.is_ascii_alphabetic()) {
         return Err(sea_orm::DbErr::Custom(
             "currency_code must be a 3-letter ASCII alphabetic code".into(),
         ));

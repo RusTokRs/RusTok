@@ -112,7 +112,8 @@ mod tests {
         )
         .await
         .expect("operator reconciles legacy recovery row");
-        Migration.up(&manager)
+        Migration
+            .up(&manager)
             .await
             .expect("install stricter unresolved guard");
     }
@@ -131,7 +132,8 @@ mod tests {
             .up(&manager)
             .await
             .expect("install old running guard");
-        Migration.up(&manager)
+        Migration
+            .up(&manager)
             .await
             .expect("install unresolved guard");
 

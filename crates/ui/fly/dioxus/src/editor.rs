@@ -77,10 +77,8 @@ pub fn FlyPalette(
     blocks: Vec<PaletteBlockItem>,
     on_insert: EventHandler<String>,
     on_begin_drag: Option<EventHandler<String>>,
-    #[props(default)]
-    on_cancel_drag: Option<EventHandler<()>>,
-    #[props(default)]
-    on_error: Option<EventHandler<String>>,
+    #[props(default)] on_cancel_drag: Option<EventHandler<()>>,
+    #[props(default)] on_error: Option<EventHandler<String>>,
     capabilities: Option<CapabilityState>,
     messages: Option<EditorMessages>,
 ) -> Element {
@@ -193,12 +191,9 @@ pub fn FlyLayerTree(
     selected: Option<String>,
     on_select: EventHandler<String>,
     messages: Option<EditorMessages>,
-    #[props(default)]
-    on_begin_move: Option<EventHandler<String>>,
-    #[props(default)]
-    on_cancel_drag: Option<EventHandler<()>>,
-    #[props(default)]
-    on_error: Option<EventHandler<String>>,
+    #[props(default)] on_begin_move: Option<EventHandler<String>>,
+    #[props(default)] on_cancel_drag: Option<EventHandler<()>>,
+    #[props(default)] on_error: Option<EventHandler<String>>,
 ) -> Element {
     let messages = messages.unwrap_or_default();
     let layers_label = messages.layers.clone();
@@ -470,9 +465,7 @@ fn subscribe_canvas_iframe(
     match fly_web::IframeJsonSubscription::subscribe_by_element_id(
         iframe_id,
         expected_origin,
-        move |payload, last_sequence| {
-            decode_fly_canvas_envelope(payload, &instance, last_sequence)
-        },
+        move |payload, last_sequence| decode_fly_canvas_envelope(payload, &instance, last_sequence),
         move |payload| on_message.call(payload),
     ) {
         Ok(next) => {
@@ -486,8 +479,8 @@ fn subscribe_canvas_iframe(
                 handler.call(error.to_string());
             }
         }
-        Err(BrowserRuntimeError::MissingElement(_)
-            | BrowserRuntimeError::MissingContentWindow) => {}
+        Err(BrowserRuntimeError::MissingElement(_) | BrowserRuntimeError::MissingContentWindow) => {
+        }
         Err(error) => {
             if let Some(handler) = on_error {
                 handler.call(error.to_string());
@@ -497,11 +490,11 @@ fn subscribe_canvas_iframe(
 }
 
 /// Sandboxed `srcdoc` canvas with a source-, origin- and sequence-checked message subscription.
- ///
- /// The host owns the document renderer and interprets the raw JSON messages. The iframe
- /// subscription is recreated after every load so a new document's sequence can start at one.
- #[component]
- pub fn FlyCanvasIframe(
+///
+/// The host owns the document renderer and interprets the raw JSON messages. The iframe
+/// subscription is recreated after every load so a new document's sequence can start at one.
+#[component]
+pub fn FlyCanvasIframe(
     id: String,
     instance_id: String,
     srcdoc: String,
@@ -776,11 +769,7 @@ pub fn FlyEditorWorkspace(
         let local = editor.read();
         workspace_render_document(authoritative_document.as_ref(), &local).clone()
     };
-    let rendered = render_page(
-        &current_document,
-        &page_selection,
-        &RenderPolicy::default(),
-    );
+    let rendered = render_page(&current_document, &page_selection, &RenderPolicy::default());
     // The canvas previews one active page: the layer panel must not expose
     // components from other pages as if they belong to that canvas.
     let layers = editor_layer_items_for_page(&current_document, active_page_index);
@@ -791,16 +780,18 @@ pub fn FlyEditorWorkspace(
         editor.read().selection().map(ToString::to_string)
     };
     let history_allowed = capabilities.is_none_or(|profile| profile.history);
-    let can_undo = history_allowed && if intent_mode {
-        host_can_undo.unwrap_or(true)
-    } else {
-        editor.read().history().can_undo()
-    };
-    let can_redo = history_allowed && if intent_mode {
-        host_can_redo.unwrap_or(true)
-    } else {
-        editor.read().history().can_redo()
-    };
+    let can_undo = history_allowed
+        && if intent_mode {
+            host_can_undo.unwrap_or(true)
+        } else {
+            editor.read().history().can_undo()
+        };
+    let can_redo = history_allowed
+        && if intent_mode {
+            host_can_redo.unwrap_or(true)
+        } else {
+            editor.read().history().can_redo()
+        };
 
     rsx! {
         section {
@@ -1043,7 +1034,6 @@ pub fn FlyEditorWorkspace(
     }
 }
 
-
 #[cfg(test)]
 mod controlled_workspace_regression_tests {
     use super::*;
@@ -1061,7 +1051,8 @@ mod controlled_workspace_regression_tests {
                     }]
                 }
             }]
-        })).expect("Fly document")
+        }))
+        .expect("Fly document")
     }
 
     #[test]
@@ -1098,7 +1089,8 @@ mod controlled_workspace_regression_tests {
                     "components": [{ "id": "about-hero", "type": "text" }]
                 }}
             ]
-        })).expect("two-page project");
+        }))
+        .expect("two-page project");
         let home = editor_layer_items_for_page(&project, 0);
         let about = editor_layer_items_for_page(&project, 1);
         assert!(home.iter().any(|item| item.id == "home-hero"));
@@ -1122,7 +1114,6 @@ mod controlled_workspace_regression_tests {
         assert_eq!(local.document(), &first, "standalone editor is not reset");
     }
 
-
     #[test]
     fn token_form_acknowledges_only_the_exact_rendered_value() {
         let tokens = vec![ThemeTokenItem {
@@ -1134,6 +1125,4 @@ mod controlled_workspace_regression_tests {
         assert!(!token_submission_is_visible(&tokens, "brand", "#654321"));
         assert!(!token_submission_is_visible(&tokens, "other", "#123456"));
     }
-
-
 }

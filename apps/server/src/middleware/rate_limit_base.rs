@@ -119,8 +119,7 @@ fn normalize_rate_limit_config(mut config: RateLimitConfig) -> RateLimitConfig {
             .clamp(MIN_RATE_LIMIT_WINDOW, MAX_RATE_LIMIT_WINDOW);
         // Redis expiry has millisecond precision. Round up once for both
         // backends so switching storage cannot shorten the configured window.
-        let millis = bounded.as_millis()
-            + u128::from(bounded.subsec_nanos() % 1_000_000 != 0);
+        let millis = bounded.as_millis() + u128::from(bounded.subsec_nanos() % 1_000_000 != 0);
         let normalized = Duration::from_millis(millis as u64);
         if normalized != config.window {
             tracing::warn!(
@@ -838,7 +837,9 @@ pub async fn rate_limit_middleware(
         &headers,
         &request,
         state.auth_config.as_ref(),
-        state.limiter.uses_trusted_auth_dimensions(state.trusted_auth_dimensions),
+        state
+            .limiter
+            .uses_trusted_auth_dimensions(state.trusted_auth_dimensions),
         &RequestTrustSettings::default(),
     );
 
@@ -891,7 +892,9 @@ pub async fn rate_limit_for_paths(
         state.auth_config.as_ref(),
         // The Auth namespace shares an IP-only budget with GraphQL. A valid
         // JWT must not partition the credential budget by tenant or app.
-        policy.limiter.uses_trusted_auth_dimensions(state.trusted_auth_dimensions),
+        policy
+            .limiter
+            .uses_trusted_auth_dimensions(state.trusted_auth_dimensions),
         &state.request_trust,
     );
 
@@ -968,7 +971,6 @@ mod fixed_window_tests {
         );
     }
 }
-
 
 #[cfg(test)]
 mod window_bounds_tests {

@@ -352,7 +352,10 @@ async fn loopback_grpc_provider_executes_the_product_catalog_port_contract() {
         .read_variant_identities(read_context(tenant_id), identity_request)
         .await
         .expect("SKU identity lookup should cross gRPC");
-    assert_eq!(identities.as_slice(), std::slice::from_ref(&expected_identity));
+    assert_eq!(
+        identities.as_slice(),
+        std::slice::from_ref(&expected_identity)
+    );
 
     let listed = identity_port
         .list_product_variant_identities(

@@ -1,11 +1,12 @@
-use crate::{
-    ContextMaterialization, ContextSchemaCatalog, ProjectDocument, RuntimeContextCompatibilityPolicy,
-    RuntimeContextCompatibilityReport, RuntimeContextContractChangeKind, RuntimeContextPreflightPolicy,
-    ValidationDiagnostic, ValidationSeverity, diff_runtime_context_contracts_with_policy,
-    materialize_context, remove_context_path,
-};
 use crate::context_contract::{deduplicate_diagnostics, promote_context_diagnostic};
 use crate::context_schema::validate_context_fields;
+use crate::{
+    ContextMaterialization, ContextSchemaCatalog, ProjectDocument,
+    RuntimeContextCompatibilityPolicy, RuntimeContextCompatibilityReport,
+    RuntimeContextContractChangeKind, RuntimeContextPreflightPolicy, ValidationDiagnostic,
+    ValidationSeverity, diff_runtime_context_contracts_with_policy, materialize_context,
+    remove_context_path,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -120,9 +121,15 @@ pub fn migrate_runtime_context(
         }
     }
     // Compatibility tolerance applies only to contract changes, never to invalid payloads.
-    diagnostics.extend(materialization.diagnostics.iter().cloned().map(|diagnostic| {
-        promote_context_diagnostic(diagnostic, RuntimeContextPreflightPolicy::default())
-    }));
+    diagnostics.extend(
+        materialization
+            .diagnostics
+            .iter()
+            .cloned()
+            .map(|diagnostic| {
+                promote_context_diagnostic(diagnostic, RuntimeContextPreflightPolicy::default())
+            }),
+    );
     for path in &dropped_paths {
         diagnostics.push(migration_diagnostic(
             ValidationSeverity::Warning,
@@ -197,7 +204,10 @@ mod tests {
             );
             assert!(!migration.is_accepted());
             assert_eq!(migration.type_mismatches, 3);
-            assert_eq!(migration.defaults_applied, if apply_target_defaults { 1 } else { 0 });
+            assert_eq!(
+                migration.defaults_applied,
+                if apply_target_defaults { 1 } else { 0 }
+            );
             if !apply_target_defaults {
                 assert_eq!(migration.context, input);
             }

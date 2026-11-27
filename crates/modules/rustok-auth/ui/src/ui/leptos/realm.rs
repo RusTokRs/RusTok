@@ -34,11 +34,9 @@ impl RealmTransition {
                 || js_sys::Reflect::get(window.as_ref(), &key).ok().as_ref() != Some(&value)
             {
                 // No request was sent. A malformed slot must not be treated as an idle lease.
-                if let Err(error) = js_sys::Reflect::set(
-                    window.as_ref(),
-                    &key,
-                    &JsValue::from_str("poisoned"),
-                ) {
+                if let Err(error) =
+                    js_sys::Reflect::set(window.as_ref(), &key, &JsValue::from_str("poisoned"))
+                {
                     tracing::debug!(?error, "failed to mark transition key poisoned");
                 }
                 return Err(AuthError::Network);

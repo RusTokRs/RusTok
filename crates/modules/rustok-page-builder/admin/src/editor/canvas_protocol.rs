@@ -1,6 +1,6 @@
 use crate::editor::CanvasComponentGeometry;
-use fly_web::{BrowserPoint, FLY_IFRAME_PROTOCOL, MAX_IFRAME_MESSAGE_BYTES, PointerSample};
 use fly_ui::KeyStroke;
+use fly_web::{BrowserPoint, FLY_IFRAME_PROTOCOL, MAX_IFRAME_MESSAGE_BYTES, PointerSample};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -181,5 +181,4 @@ mod tests {
         assert!(oversized.len() > MAX_IFRAME_MESSAGE_BYTES);
         assert!(decode_canvas_message(&oversized, "canvas-a", None).is_none());
     }
-
 }

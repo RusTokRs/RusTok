@@ -84,7 +84,8 @@ pub async fn permission_availability_for(
 /// replica. Use the current owner policy; the compiled ownership catalog is
 /// still safe to reuse.
 pub(crate) async fn authoritative_permission_availability_for(
-    ctx: &ServerRuntimeContext, tenant_id: uuid::Uuid,
+    ctx: &ServerRuntimeContext,
+    tenant_id: uuid::Uuid,
 ) -> Result<Option<PermissionAvailability>> {
     let Some(registry) = ctx.shared_get::<ModuleRegistry>() else {
         return Ok(None);
@@ -94,7 +95,10 @@ pub(crate) async fn authoritative_permission_availability_for(
         .await
         .map_err(|error| Error::Message(format!("module policy resolution failed: {error}")))?;
     let enabled: BTreeSet<String> = policy.into_enabled_modules().into_iter().collect();
-    Ok(Some(PermissionAvailability::new((*ownership).clone(), enabled)))
+    Ok(Some(PermissionAvailability::new(
+        (*ownership).clone(),
+        enabled,
+    )))
 }
 
 pub(super) async fn resolve_permission_availability(
@@ -118,7 +122,8 @@ pub(crate) async fn prepare_invite_module_policy(
 ) -> Result<()> {
     if registry.is_some() {
         super::platform_composition::PlatformCompositionService::active_snapshot(db)
-            .await.map_err(|error| Error::Message(format!("module composition unavailable: {error}")))?;
+            .await
+            .map_err(|error| Error::Message(format!("module composition unavailable: {error}")))?;
     }
     Ok(())
 }
@@ -135,21 +140,40 @@ pub(crate) async fn lock_invite_module_policy(
         return Ok(("v1:uncomposed".to_string(), None));
     };
     let ownership = build_permission_ownership(db, registry)?;
-    let owner_snapshot = rustok_modules::SeaOrmModuleCompositionService::lock_active_snapshot_in_transaction(tx)
-        .await.map_err(|error| Error::Message(format!("module composition lock failed: {error}")))?;
-    let snapshot = super::platform_composition::PlatformCompositionService::snapshot_from_owner(owner_snapshot)
-        .map_err(|error| Error::Message(format!("module composition decode failed: {error}")))?;
-    let corequisites = crate::modules::ManifestManager::module_policy_corequisites(&snapshot.manifest)
-        .map_err(|error| Error::Message(format!("module co-requisites unavailable: {error}")))?;
+    let owner_snapshot =
+        rustok_modules::SeaOrmModuleCompositionService::lock_active_snapshot_in_transaction(tx)
+            .await
+            .map_err(|error| Error::Message(format!("module composition lock failed: {error}")))?;
+    let snapshot = super::platform_composition::PlatformCompositionService::snapshot_from_owner(
+        owner_snapshot,
+    )
+    .map_err(|error| Error::Message(format!("module composition decode failed: {error}")))?;
+    let corequisites = crate::modules::ManifestManager::module_policy_corequisites(
+        &snapshot.manifest,
+    )
+    .map_err(|error| Error::Message(format!("module co-requisites unavailable: {error}")))?;
     let (policy, state) = rustok_modules::SeaOrmModulePolicyRevisionConsumer::new(db.clone())
         .lock_and_resolve_static_policy_state_in_transaction(
-            tx, tenant_id, "module.lifecycle", registry,
-            snapshot.manifest.settings.default_enabled, corequisites,
+            tx,
+            tenant_id,
+            "module.lifecycle",
+            registry,
+            snapshot.manifest.settings.default_enabled,
+            corequisites,
         )
-        .await.map_err(|error| Error::Message(format!("module policy lock failed: {error}")))?;
-    let binding = format!("v1:{}:{}:{}", snapshot.revision, state.current_sequence, policy.policy_revision());
+        .await
+        .map_err(|error| Error::Message(format!("module policy lock failed: {error}")))?;
+    let binding = format!(
+        "v1:{}:{}:{}",
+        snapshot.revision,
+        state.current_sequence,
+        policy.policy_revision()
+    );
     let enabled = policy.into_enabled_modules().into_iter().collect();
-    Ok((binding, Some(PermissionAvailability::new(ownership, enabled))))
+    Ok((
+        binding,
+        Some(PermissionAvailability::new(ownership, enabled)),
+    ))
 }
 
 /// GraphQL provider registered with the RBAC owner queries/mutations.

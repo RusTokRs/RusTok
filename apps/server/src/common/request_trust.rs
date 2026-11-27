@@ -143,9 +143,9 @@ fn forwarded_parameter_value(value: &str) -> Result<&str, ()> {
         }
         Ok(inner)
     } else if value.is_empty()
-        || value.bytes().any(|byte| {
-            byte.is_ascii_whitespace() || matches!(byte, b'"' | b'\\' | b',' | b';')
-        })
+        || value
+            .bytes()
+            .any(|byte| byte.is_ascii_whitespace() || matches!(byte, b'"' | b'\\' | b',' | b';'))
     {
         Err(())
     } else {
@@ -163,10 +163,9 @@ fn parse_forwarded_pair<'a>(element: &'a str, key: &str) -> Result<Option<&'a st
         let (name, value) = part.trim().split_once('=').ok_or(())?;
         let name = name.trim();
         if name.is_empty()
-            || !name.bytes().all(|byte| {
-                byte.is_ascii_alphanumeric()
-                    || b"!#$%&'*+-.^_`|~".contains(&byte)
-            })
+            || !name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte))
             || !seen.insert(name.to_ascii_lowercase())
         {
             return Err(());
@@ -535,12 +534,18 @@ mod tests {
         ));
 
         // Separate header fields from the trusted proxy are equivalent.
-        headers.insert("x-forwarded-host", HeaderValue::from_bytes(b"\xff").unwrap());
+        headers.insert(
+            "x-forwarded-host",
+            HeaderValue::from_bytes(b"\xff").unwrap(),
+        );
         headers.append(
             "x-forwarded-host",
             HeaderValue::from_static("tenant.example.test"),
         );
-        headers.insert("x-forwarded-proto", HeaderValue::from_bytes(b"\xff").unwrap());
+        headers.insert(
+            "x-forwarded-proto",
+            HeaderValue::from_bytes(b"\xff").unwrap(),
+        );
         headers.append("x-forwarded-proto", HeaderValue::from_static("https"));
         assert_eq!(
             extract_effective_host(&headers, peer, &settings).as_deref(),
@@ -619,7 +624,11 @@ mod tests {
             "for=203.0.113.8;host=;proto=https",
         ] {
             headers.insert(FORWARDED, HeaderValue::from_str(value).unwrap());
-            assert_eq!(extract_effective_host(&headers, peer, &settings), None, "{value}");
+            assert_eq!(
+                extract_effective_host(&headers, peer, &settings),
+                None,
+                "{value}"
+            );
         }
         headers.insert(
             FORWARDED,
@@ -641,16 +650,28 @@ mod tests {
                 "for=198.51.100.1, for=203.0.113.8;host=\"tenant.example.test\";proto=https;ext=\"a,b;host=other.example.test;proto=http\"",
             ),
         );
-        assert_eq!(extract_effective_host(&headers, peer, &settings).as_deref(), Some("tenant.example.test"));
-        assert_eq!(extract_effective_proto(&headers, peer, &settings).as_deref(), Some("https"));
-        assert_eq!(extract_effective_client_ip(&headers, peer, &settings), Some(IpAddr::from([203, 0, 113, 8])));
+        assert_eq!(
+            extract_effective_host(&headers, peer, &settings).as_deref(),
+            Some("tenant.example.test")
+        );
+        assert_eq!(
+            extract_effective_proto(&headers, peer, &settings).as_deref(),
+            Some("https")
+        );
+        assert_eq!(
+            extract_effective_client_ip(&headers, peer, &settings),
+            Some(IpAddr::from([203, 0, 113, 8]))
+        );
 
         // The quoted extension does not supply a host when no host exists.
         headers.insert(
             FORWARDED,
             HeaderValue::from_static("for=203.0.113.8;ext=\"a;host=other.example.test\""),
         );
-        assert_eq!(extract_effective_host(&headers, peer, &settings).as_deref(), Some("backend.internal"));
+        assert_eq!(
+            extract_effective_host(&headers, peer, &settings).as_deref(),
+            Some("backend.internal")
+        );
     }
 
     #[test]
@@ -659,9 +680,18 @@ mod tests {
         headers.append(HOST, HeaderValue::from_static("first.example.test"));
         headers.append(HOST, HeaderValue::from_static("second.example.test"));
         let peer = Some(IpAddr::from([10, 1, 2, 3]));
-        assert_eq!(extract_effective_host(&headers, peer, &RequestTrustSettings::default()), None);
-        headers.insert("x-forwarded-host", HeaderValue::from_static("tenant.example.test"));
-        assert_eq!(extract_effective_host(&headers, peer, &trusted_settings()), None);
+        assert_eq!(
+            extract_effective_host(&headers, peer, &RequestTrustSettings::default()),
+            None
+        );
+        headers.insert(
+            "x-forwarded-host",
+            HeaderValue::from_static("tenant.example.test"),
+        );
+        assert_eq!(
+            extract_effective_host(&headers, peer, &trusted_settings()),
+            None
+        );
     }
 
     #[test]
@@ -682,7 +712,10 @@ mod tests {
     fn invalid_x_forwarded_host_cannot_switch_to_other_host_authority() {
         let mut headers = HeaderMap::new();
         headers.insert(HOST, HeaderValue::from_static("backend.internal"));
-        headers.insert(FORWARDED, HeaderValue::from_static("host=other.example.test"));
+        headers.insert(
+            FORWARDED,
+            HeaderValue::from_static("host=other.example.test"),
+        );
         headers.insert(
             "x-forwarded-host",
             HeaderValue::from_static("valid.example.test, "),
@@ -794,11 +827,7 @@ mod tests {
         let settings = trusted_settings();
 
         for (name, combined, appended) in [
-            (
-                "x-forwarded-for",
-                &b"\xff, 203.0.113.8"[..],
-                "203.0.113.8",
-            ),
+            ("x-forwarded-for", &b"\xff, 203.0.113.8"[..], "203.0.113.8"),
             (
                 "forwarded",
                 &b"for=\xff, for=203.0.113.8"[..],
@@ -807,12 +836,18 @@ mod tests {
         ] {
             let mut headers = HeaderMap::new();
             headers.insert(name, HeaderValue::from_bytes(combined).unwrap());
-            assert_eq!(extract_effective_client_ip(&headers, peer, &settings), client);
+            assert_eq!(
+                extract_effective_client_ip(&headers, peer, &settings),
+                client
+            );
 
             // The same boundary applies across multiple header field lines.
             headers.insert(name, HeaderValue::from_bytes(b"\xff").unwrap());
             headers.append(name, HeaderValue::from_static(appended));
-            assert_eq!(extract_effective_client_ip(&headers, peer, &settings), client);
+            assert_eq!(
+                extract_effective_client_ip(&headers, peer, &settings),
+                client
+            );
 
             // Opaque bytes on the trusted side still fail closed.
             headers.append(name, HeaderValue::from_bytes(b"\xff").unwrap());

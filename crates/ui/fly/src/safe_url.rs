@@ -216,7 +216,7 @@ pub fn head_url(value: &str, allow_data_image: bool) -> Option<&str> {
         || absolute_url_has_authority(value, "http://")
         || absolute_url_has_authority(value, "https://")
         || (allow_data_image && safe_data_image(&normalized)))
-        .then_some(value)
+    .then_some(value)
 }
 
 /// Validate the bounded, deliberately conservative image candidate grammar.
@@ -253,9 +253,7 @@ pub fn validate_srcset_candidates(
         let Some(url) = tokens.next() else {
             return false;
         };
-        if url.to_ascii_lowercase().starts_with("data:")
-            || !allow_url(url)
-        {
+        if url.to_ascii_lowercase().starts_with("data:") || !allow_url(url) {
             return false;
         }
         let descriptor = tokens.next();
@@ -264,7 +262,9 @@ pub fn validate_srcset_candidates(
         // comma and another URL would be fetched as one unchecked resource.
         if descriptor.is_none()
             && !candidate.ends_with(' ')
-            && candidates.peek().is_some_and(|(_, next)| !next.starts_with(' '))
+            && candidates
+                .peek()
+                .is_some_and(|(_, next)| !next.starts_with(' '))
         {
             return false;
         }
@@ -293,8 +293,11 @@ fn srcset_descriptor(descriptor: &str) -> Option<(char, u32)> {
     }
     let density = descriptor.strip_suffix('x')?;
     let (whole, fraction) = density.split_once('.').unwrap_or((density, ""));
-    if whole.is_empty() || whole.len() > 3 || !whole.bytes().all(|b| b.is_ascii_digit())
-        || fraction.len() > 3 || !fraction.bytes().all(|b| b.is_ascii_digit())
+    if whole.is_empty()
+        || whole.len() > 3
+        || !whole.bytes().all(|b| b.is_ascii_digit())
+        || fraction.len() > 3
+        || !fraction.bytes().all(|b| b.is_ascii_digit())
         || (density.contains('.') && fraction.is_empty())
     {
         return None;
@@ -425,12 +428,18 @@ mod tests {
             "https:///example.test/a",
         ] {
             assert!(normalize_safe_url(value, "URL").is_err(), "{value}");
-            assert!(!url_allowed(value, UrlAttributeKind::Resource, &policy), "{value}");
+            assert!(
+                !url_allowed(value, UrlAttributeKind::Resource, &policy),
+                "{value}"
+            );
             assert!(head_url(value, false).is_none(), "{value}");
         }
         for value in ["https://[::1]:8443/a", "HTTPS://example.test/a"] {
             assert!(normalize_safe_url(value, "URL").is_ok(), "{value}");
-            assert!(url_allowed(value, UrlAttributeKind::Resource, &policy), "{value}");
+            assert!(
+                url_allowed(value, UrlAttributeKind::Resource, &policy),
+                "{value}"
+            );
             assert!(head_url(value, false).is_some(), "{value}");
         }
     }
@@ -453,26 +462,20 @@ mod tests {
         }
         assert!(srcset_allowed("/a 0.5x, /b 2x", &policy));
         assert!(srcset_allowed("/a 800w, /b 1600w", &policy));
-        let oversized = (1..=17).map(|i| format!("/image-{i} {i}w")).collect::<Vec<_>>().join(", ");
+        let oversized = (1..=17)
+            .map(|i| format!("/image-{i} {i}w"))
+            .collect::<Vec<_>>()
+            .join(", ");
         assert!(!srcset_allowed(&oversized, &policy));
     }
 
     #[test]
     fn srcset_rejects_commas_that_the_browser_would_include_in_a_url() {
         let policy = UrlPolicy::permissive();
-        for value in [
-            "/a,/b 2x",
-            "/a,https://example.test/b 2x",
-            "/a 2x,/b,/c 3x",
-        ] {
+        for value in ["/a,/b 2x", "/a,https://example.test/b 2x", "/a 2x,/b,/c 3x"] {
             assert!(!srcset_allowed(value, &policy), "{value}");
         }
-        for value in [
-            "/a, /b 2x",
-            "/a ,/b 2x",
-            "/a 1x,/b 2x",
-            "/a%2Cb 2x",
-        ] {
+        for value in ["/a, /b 2x", "/a ,/b 2x", "/a 1x,/b 2x", "/a%2Cb 2x"] {
             assert!(srcset_allowed(value, &policy), "{value}");
         }
     }
@@ -529,9 +532,10 @@ mod tests {
 
     #[test]
     fn strict_action_url_policy_honors_the_shared_size_limit() {
-        let at_limit = format!("https://example.com/{}", "a".repeat(
-            MAXIMUM_URL_LENGTH - "https://example.com/".len()
-        ));
+        let at_limit = format!(
+            "https://example.com/{}",
+            "a".repeat(MAXIMUM_URL_LENGTH - "https://example.com/".len())
+        );
         assert_eq!(at_limit.len(), MAXIMUM_URL_LENGTH);
         assert!(normalize_safe_url(&at_limit, "URL").is_ok());
         let too_long = format!("{at_limit}a");

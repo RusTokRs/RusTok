@@ -3,9 +3,9 @@
 //! Module identity: the safe-query facade mounts this file as
 //! `mod query_error_boundary;`, and the textually included query source forwards
 //! typed owner errors through `super::query_error_boundary`.
+use ::rustok_api::{PortError, PortErrorKind};
 use async_graphql::{Error, ErrorExtensions};
 use rustok_api::PortContext;
-use ::rustok_api::{PortError, PortErrorKind};
 use rustok_fulfillment::error::FulfillmentError;
 use rustok_order::error::OrderError;
 use rustok_payment::error::PaymentError;
@@ -345,10 +345,7 @@ impl From<sea_orm::DbErr> for BoundaryError {
 
 impl From<rustok_product::CommerceError> for BoundaryError {
     fn from(error: rustok_product::CommerceError) -> Self {
-        Self::Graphql(super::map_product_service_error(
-            error,
-            "commerce_query",
-        ))
+        Self::Graphql(super::map_product_service_error(error, "commerce_query"))
     }
 }
 

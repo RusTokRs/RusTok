@@ -33,11 +33,10 @@ pub use dto::{
     ChannelResolutionRuleResponse, ChannelResponse, ChannelTargetResponse, CreateChannelInput,
     CreateChannelRequest, CreateChannelResolutionPolicySetInput, CreateChannelResolutionRuleInput,
     CreateChannelTargetInput, CreateResolutionPolicySetRequest, CreateResolutionRuleRequest,
-    ReorderChannelResolutionRulesInput, ReorderResolutionRulesRequest,
-    SetChannelActiveRequest, UpdateChannelInput, UpdateChannelRequest,
-    UpdateChannelResolutionRuleInput, UpdateChannelTargetInput, UpdateResolutionRuleRequest,
-    create_channel_input, create_resolution_policy_set_input, create_resolution_rule_input,
-    update_resolution_rule_input,
+    ReorderChannelResolutionRulesInput, ReorderResolutionRulesRequest, SetChannelActiveRequest,
+    UpdateChannelInput, UpdateChannelRequest, UpdateChannelResolutionRuleInput,
+    UpdateChannelTargetInput, UpdateResolutionRuleRequest, create_channel_input,
+    create_resolution_policy_set_input, create_resolution_rule_input, update_resolution_rule_input,
 };
 pub use error::{ChannelError, ChannelResult};
 pub use index_identity::PostgresChannelIndexIdentity;
@@ -58,10 +57,10 @@ pub use resolution::{
     ChannelResolutionOrigin, ChannelResolver, RequestFacts, ResolutionDecision, ResolutionOutcome,
     ResolutionStage, ResolutionTraceStep, TargetSurface,
 };
-pub use status::ChannelStatus;
 pub use rustok_channel_ports::{
     CHANNEL_INDEX_IDENTITY_READ_CLAIM, ChannelIndexIdentityReadPort, ChannelIndexIdentitySelector,
     ChannelIndexIdentitySnapshot,
 };
 pub use services::{ChannelService, in_process_public_module_read_port};
+pub use status::ChannelStatus;
 pub use target_type::ChannelTargetType;

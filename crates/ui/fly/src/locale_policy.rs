@@ -1,3 +1,5 @@
+use crate::page_metadata::LOCALIZED_METADATA_FIELDS;
+use crate::runtime_locale::{duplicate_locale_key, has_unambiguous_locale};
 use crate::{
     FLY_PAGE_METADATA_FIELD, FlyError, FlyResult, LOCALIZED_VALUES_FIELD, ProjectDocument,
     RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD, TranslationCatalog, ValidationDiagnostic,
@@ -6,8 +8,6 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
-use crate::page_metadata::LOCALIZED_METADATA_FIELDS;
-use crate::runtime_locale::{duplicate_locale_key, has_unambiguous_locale};
 
 pub const FLY_LOCALES_FIELD: &str = "flyLocales";
 
@@ -105,7 +105,12 @@ pub fn set_project_locale_policy(
 }
 
 pub fn clear_project_locale_policy(document: &mut ProjectDocument) {
-    if document.project_mut().extensions.remove(FLY_LOCALES_FIELD).is_some() {
+    if document
+        .project_mut()
+        .extensions
+        .remove(FLY_LOCALES_FIELD)
+        .is_some()
+    {
         document.invalidate_caches();
     }
 }
@@ -260,7 +265,8 @@ fn validate_metadata_locale_keys(document: &ProjectDocument) -> Vec<ValidationDi
             continue;
         };
         for field in LOCALIZED_METADATA_FIELDS {
-            let Some(values) = metadata.get(*field)
+            let Some(values) = metadata
+                .get(*field)
                 .and_then(|wrapper| wrapper.get(LOCALIZED_VALUES_FIELD))
                 .and_then(Value::as_object)
             else {
@@ -482,7 +488,12 @@ mod tests {
         assert_eq!(policy.extensions["providerFuture"], true);
         clear_project_locale_policy(&mut document);
         assert_ne!(document.hash(), before_clear_hash);
-        assert!(!document.project().extensions.contains_key(FLY_LOCALES_FIELD));
+        assert!(
+            !document
+                .project()
+                .extensions
+                .contains_key(FLY_LOCALES_FIELD)
+        );
     }
 
     #[test]
@@ -587,7 +598,8 @@ mod tests {
                 && diagnostic.severity == ValidationSeverity::Warning
         }));
 
-        document.project_mut().extensions[FLY_LOCALES_FIELD]["enforce_required_locales"] = json!(true);
+        document.project_mut().extensions[FLY_LOCALES_FIELD]["enforce_required_locales"] =
+            json!(true);
         let diagnostics = validate_project_locale_policy(&document);
         assert!(diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "translation_required_locale_missing"

@@ -471,7 +471,12 @@ mod tests {
         list.rule_kind = None;
         assert!(stored_rule(&list).is_err());
         list.rule_kind = Some("percentage_discount".into());
-        for percent in [Decimal::ZERO, Decimal::new(-1, 0), Decimal::new(101, 0), Decimal::new(1, 7)] {
+        for percent in [
+            Decimal::ZERO,
+            Decimal::new(-1, 0),
+            Decimal::new(101, 0),
+            Decimal::new(1, 7),
+        ] {
             list.adjustment_percent = Some(percent);
             assert!(stored_rule(&list).is_err());
         }

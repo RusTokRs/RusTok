@@ -79,7 +79,8 @@ pub fn BillingAdminPage() -> impl IntoView {
         match col_id.as_str() {
             "title" => view! {
                 <span class="font-medium text-foreground">{row.title}</span>
-            }.into_any(),
+            }
+            .into_any(),
             "status" => {
                 let variant = match row.status.as_str() {
                     "active" => BadgeVariant::Success,
@@ -91,11 +92,13 @@ pub fn BillingAdminPage() -> impl IntoView {
                     <Badge variant=variant>
                         {row.status}
                     </Badge>
-                }.into_any()
+                }
+                .into_any()
             }
             "created_at" => view! {
                 <span class="text-xs text-muted-foreground">{row.created_at}</span>
-            }.into_any(),
+            }
+            .into_any(),
             "actions" => {
                 let edit_id = row.id.clone();
                 let delete_id = row.id.clone();
@@ -123,7 +126,8 @@ pub fn BillingAdminPage() -> impl IntoView {
                             {t(None, "billing-action-delete", "Delete")}
                         </button>
                     </div>
-                }.into_any()
+                }
+                .into_any()
             }
             _ => ().into_any(),
         }

@@ -53,9 +53,9 @@ struct PageLifecycleReceiptRequest {
 fn normalize_page_lifecycle_key(raw: &str) -> PagesResult<String> {
     if raw.is_empty()
         || raw.len() > 128
-        || !raw.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':')
-        })
+        || !raw
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
     {
         return Err(PagesError::validation(
             "Page lifecycle idempotency key must be 1..128 ASCII letters, digits, '-' '_' '.' or ':'",
@@ -207,8 +207,7 @@ async fn find_page_lifecycle_receipt<C: ConnectionTrait>(
         .filter(page_lifecycle_operation_receipt::Column::PageId.eq(page_id))
         .filter(page_lifecycle_operation_receipt::Column::Operation.eq(request.operation))
         .filter(
-            page_lifecycle_operation_receipt::Column::IdempotencyKey
-                .eq(&request.idempotency_key),
+            page_lifecycle_operation_receipt::Column::IdempotencyKey.eq(&request.idempotency_key),
         )
         .one(conn)
         .await?)
@@ -532,12 +531,7 @@ impl PageService {
             && let Some(receipt) =
                 find_page_lifecycle_receipt(&txn, tenant_id, page_id, request).await?
         {
-            enforce_owned_scope(
-                &security,
-                Resource::Pages,
-                Action::Delete,
-                receipt.owner_id,
-            )?;
+            enforce_owned_scope(&security, Resource::Pages, Action::Delete, receipt.owner_id)?;
             page_delete_response_from_receipt(
                 &receipt,
                 request,
@@ -803,9 +797,7 @@ impl PageService {
             .await?;
         if let Some(request) = receipt_request.as_ref() {
             let response_json = serde_json::to_string(&response).map_err(|error| {
-                PagesError::validation(format!(
-                    "Cannot serialize page lifecycle receipt: {error}"
-                ))
+                PagesError::validation(format!("Cannot serialize page lifecycle receipt: {error}"))
             })?;
             insert_page_lifecycle_receipt(
                 &txn,

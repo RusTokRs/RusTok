@@ -166,15 +166,12 @@ impl EditorSessionState {
     ) {
         let runtime_context_configured = runtime_context.is_some();
         let runtime_context = runtime_context.unwrap_or_else(|| Value::Object(Map::new()));
-        let trait_schemas = trait_schemas
-            .unwrap_or_else(|| Arc::new(TraitSchemaRegistry::with_builtins()));
+        let trait_schemas =
+            trait_schemas.unwrap_or_else(|| Arc::new(TraitSchemaRegistry::with_builtins()));
         let trait_schemas_changed = self.trait_schemas != trait_schemas;
         let (runtime_scenarios_changed, runtime_scenarios) = match runtime_scenarios {
             Some(next) => (self.runtime_scenarios != next, next),
-            None => (
-                !self.runtime_scenarios.is_empty(),
-                Arc::new(Vec::new()),
-            ),
+            None => (!self.runtime_scenarios.is_empty(), Arc::new(Vec::new())),
         };
         let runtime_inputs_changed = self.runtime_context != runtime_context
             || self.runtime_context_configured != runtime_context_configured
@@ -274,7 +271,10 @@ impl EditorSessionState {
         };
         let runtime_scenario_id = self.active_runtime_scenario.clone();
         let active_page_index = self.controller.active_page_index();
-        let project_data = self.controller.active_page_project().map_err(|e| e.to_string())?;
+        let project_data = self
+            .controller
+            .active_page_project()
+            .map_err(|e| e.to_string())?;
         let project_hash = self.controller.editor().revision().project_hash;
         let request = PageBuilderCapabilityRequest::Preview(
             PreviewPageBuilderInput::new(self.controller.page_id(), project_data).with_runtime(
@@ -356,7 +356,10 @@ impl EditorSessionState {
 
     pub(crate) fn preview_attempt_active(&self, attempt_id: uuid::Uuid) -> bool {
         self.preview_in_progress
-            && self.preview_request.as_ref().is_some_and(|attempt| attempt.id == attempt_id)
+            && self
+                .preview_request
+                .as_ref()
+                .is_some_and(|attempt| attempt.id == attempt_id)
     }
 
     pub(crate) fn handle_preview_failure(&mut self, attempt_id: uuid::Uuid, message: String) {
@@ -391,18 +394,18 @@ impl EditorSessionState {
             self.handle_publish_error_for_attempt(attempt, msg.clone());
             return Err(msg);
         };
-        match self.controller.acknowledge_save_for_attempt(
-            hash,
-            attempt,
-            revision_id.to_string(),
-        ) {
+        match self
+            .controller
+            .acknowledge_save_for_attempt(hash, attempt, revision_id.to_string())
+        {
             Ok(()) => {
                 self.last_error = None;
                 if self.controller.editor().revision().dirty {
                     // Fly UI already recorded the partial-save announcement when it
                     // acknowledged the submitted snapshot. Do not claim the newer
                     // working changes were saved.
-                    if let Some(message) = self.controller.ui().state.announcements.last().cloned() {
+                    if let Some(message) = self.controller.ui().state.announcements.last().cloned()
+                    {
                         self.announce(message);
                     }
                 } else {
@@ -461,11 +464,10 @@ impl EditorSessionState {
         let expected = self.controller.revision_id().to_string();
         let actual = conflict_actual_revision(&message)
             .unwrap_or_else(|| "newer server revision".to_string());
-        match self.controller.mark_save_conflict_for_attempt(
-            attempt,
-            expected,
-            actual,
-        ) {
+        match self
+            .controller
+            .mark_save_conflict_for_attempt(attempt, expected, actual)
+        {
             Ok(true) => {
                 self.fail(message);
                 true
@@ -480,19 +482,13 @@ impl EditorSessionState {
 
     /// A sibling editor has committed a newer revision. Retire any in-flight local
     /// save attempt before its delayed response can acknowledge an obsolete snapshot.
-    pub fn handle_peer_write_conflict(
-        &mut self,
-        actual_revision: impl Into<String>,
-    ) -> bool {
+    pub fn handle_peer_write_conflict(&mut self, actual_revision: impl Into<String>) -> bool {
         let actual = actual_revision.into();
         let expected = self.controller.revision_id().to_string();
         let message = format!(
             "Another tab saved this page at revision {actual}. Preserve your local changes and reload before editing again."
         );
-        let marked = match self
-            .controller
-            .mark_peer_write_conflict(expected, actual)
-        {
+        let marked = match self.controller.mark_peer_write_conflict(expected, actual) {
             Ok(()) => true,
             Err(error) => {
                 tracing::warn!(?error, "Failed to record Page Builder peer-write conflict");
@@ -618,7 +614,10 @@ impl EditorSessionState {
                             request,
                             expected_hash: Some(hash),
                             command_sequence: self.controller.editor().revision().command_sequence,
-                            preview_attempt_id: self.preview_request.as_ref().map(PreviewAttempt::id),
+                            preview_attempt_id: self
+                                .preview_request
+                                .as_ref()
+                                .map(PreviewAttempt::id),
                         });
                     }
                     Err(e) => {
@@ -649,12 +648,18 @@ impl EditorSessionState {
             EditorSessionAction::SaveFailed { attempt, message } => {
                 self.mark_save_failed_for_attempt(&attempt, message);
             }
-            EditorSessionAction::PreviewAcknowledged { attempt_id, response } => {
+            EditorSessionAction::PreviewAcknowledged {
+                attempt_id,
+                response,
+            } => {
                 if let Err(err) = self.handle_preview_response(attempt_id, &response) {
                     self.fail(err);
                 }
             }
-            EditorSessionAction::PreviewFailed { attempt_id, message } => {
+            EditorSessionAction::PreviewFailed {
+                attempt_id,
+                message,
+            } => {
                 self.handle_preview_failure(attempt_id, message);
             }
             EditorSessionAction::Announce(msg) => {
@@ -760,10 +765,15 @@ mod tests {
         let retry = session.mark_save_started_with_id().expect("retry");
         assert_ne!(first, retry);
         assert!(!session.handle_publish_error_for_attempt(&first, "stale error"));
-        assert!(session.handle_publish_response_for_attempt(
-            "home", "old-revision", Some(hash), &first,
-        ).is_err());
-        assert_eq!(session.controller.active_save_attempt().as_ref(), Some(&retry));
+        assert!(
+            session
+                .handle_publish_response_for_attempt("home", "old-revision", Some(hash), &first,)
+                .is_err()
+        );
+        assert_eq!(
+            session.controller.active_save_attempt().as_ref(),
+            Some(&retry)
+        );
         assert_eq!(session.last_error.as_deref(), Some("network failure"));
         session.dispatch(EditorSessionAction::SaveAcknowledged {
             page_id: "home".to_string(),
@@ -772,10 +782,13 @@ mod tests {
             attempt: first,
         });
         assert_eq!(session.last_error.as_deref(), Some("network failure"));
-        assert_eq!(session.controller.active_save_attempt().as_ref(), Some(&retry));
-        session.handle_publish_response_for_attempt(
-            "home", "rev-2", Some(hash), &retry,
-        ).expect("accepted response");
+        assert_eq!(
+            session.controller.active_save_attempt().as_ref(),
+            Some(&retry)
+        );
+        session
+            .handle_publish_response_for_attempt("home", "rev-2", Some(hash), &retry)
+            .expect("accepted response");
         assert_eq!(session.controller.revision_id(), "rev-2");
         assert!(session.last_error.is_none());
     }
@@ -785,12 +798,15 @@ mod tests {
         let mut session = EditorSessionState::new(sample_controller(), "Missing", "Saved");
         let hash = session.controller.editor().revision().project_hash;
         let attempt = session.mark_save_started_with_id().expect("save started");
-        session.dispatch_intent(UiIntent::execute(fly::EditorCommand::Insert {
-            parent_id: None,
-            index: 0,
-            component: fly::ComponentNode::object("section"),
-        })).expect("new edit");
-        session.handle_publish_response_for_attempt("home", "rev-2", Some(hash), &attempt)
+        session
+            .dispatch_intent(UiIntent::execute(fly::EditorCommand::Insert {
+                parent_id: None,
+                index: 0,
+                component: fly::ComponentNode::object("section"),
+            }))
+            .expect("new edit");
+        session
+            .handle_publish_response_for_attempt("home", "rev-2", Some(hash), &attempt)
             .expect("earlier save acknowledged");
 
         assert!(session.controller.editor().revision().dirty);
@@ -801,7 +817,8 @@ mod tests {
         );
         let latest_hash = session.controller.editor().revision().project_hash;
         let latest = session.mark_save_started_with_id().expect("save latest");
-        session.handle_publish_response_for_attempt("home", "rev-3", Some(latest_hash), &latest)
+        session
+            .handle_publish_response_for_attempt("home", "rev-3", Some(latest_hash), &latest)
             .expect("latest save acknowledged");
         assert!(!session.controller.editor().revision().dirty);
         assert_eq!(session.last_announcement.as_deref(), Some("Saved"));
@@ -813,17 +830,16 @@ mod tests {
         let mut session = EditorSessionState::new(controller, "Missing", "Saved");
         let attempt = session.mark_save_started_with_id().expect("save started");
 
-        assert!(session.handle_publish_conflict_for_attempt(
-            &attempt,
-            "The page changed in another session",
-        ));
+        assert!(
+            session.handle_publish_conflict_for_attempt(
+                &attempt,
+                "The page changed in another session",
+            )
+        );
         assert!(session.controller.active_save_attempt().is_none());
         assert!(session.controller.ui().state.dirty.save_conflict);
         assert!(!session.controller.ui().state.capabilities.edit);
-        assert!(!session.handle_publish_error_for_attempt(
-            &attempt,
-            "late transport error",
-        ));
+        assert!(!session.handle_publish_error_for_attempt(&attempt, "late transport error",));
     }
 
     #[test]
@@ -837,13 +853,25 @@ mod tests {
         assert!(session.controller.active_save_attempt().is_none());
         assert!(session.controller.ui().state.dirty.save_conflict);
         assert!(!session.controller.ui().state.capabilities.edit);
-        assert!(session.last_error.as_deref().is_some_and(|error| error.contains("Another tab")));
+        assert!(
+            session
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("Another tab"))
+        );
 
-        assert!(session
-            .handle_publish_response_for_attempt("home", "rev-2", Some(hash), &attempt)
-            .is_err());
+        assert!(
+            session
+                .handle_publish_response_for_attempt("home", "rev-2", Some(hash), &attempt)
+                .is_err()
+        );
         assert!(session.controller.ui().state.dirty.save_conflict);
-        assert!(session.last_error.as_deref().is_some_and(|error| error.contains("Another tab")));
+        assert!(
+            session
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("Another tab"))
+        );
     }
 
     #[test]
@@ -938,7 +966,10 @@ mod tests {
             true,
         );
 
-        assert_eq!(state.runtime_context, serde_json::json!({ "tenant": "new" }));
+        assert_eq!(
+            state.runtime_context,
+            serde_json::json!({ "tenant": "new" })
+        );
         assert!(state.runtime_context_configured);
         assert!(state.active_runtime_scenario.is_none());
         assert!(state.runtime_publish_gate_evaluation.is_none());
@@ -951,14 +982,18 @@ mod tests {
     #[test]
     fn runtime_context_change_retires_preview_and_ignores_old_completion() {
         let mut state = EditorSessionState::new(sample_controller(), "Missing", "Saved");
-        state.prepare_server_preview_request().expect("first preview");
+        state
+            .prepare_server_preview_request()
+            .expect("first preview");
         let first = state.preview_request.as_ref().expect("first attempt").id;
 
         state.set_runtime_context(json!({ "locale": "fr-FR" }));
         assert!(!state.preview_in_progress);
         assert!(state.preview_request.is_none());
 
-        state.prepare_server_preview_request().expect("second preview");
+        state
+            .prepare_server_preview_request()
+            .expect("second preview");
         let second = state.preview_request.as_ref().expect("second attempt").id;
         assert_ne!(first, second);
 
@@ -968,7 +1003,9 @@ mod tests {
             runtime_scenario_id: None,
         };
         state.handle_preview_failure(first, "late failure".to_string());
-        state.handle_preview_response(first, &stale).expect("stale response ignored");
+        state
+            .handle_preview_response(first, &stale)
+            .expect("stale response ignored");
         assert!(state.preview_attempt_active(second));
         assert!(state.last_error.is_none());
     }
@@ -978,7 +1015,9 @@ mod tests {
         let mut state = EditorSessionState::new(sample_controller(), "Missing", "Saved");
         state.prepare_server_preview_request().expect("preview");
 
-        state.dispatch_intent(UiIntent::RequestSave).expect("save intent");
+        state
+            .dispatch_intent(UiIntent::RequestSave)
+            .expect("save intent");
 
         assert!(!state.preview_in_progress);
         assert!(state.preview_request.is_none());
@@ -990,22 +1029,41 @@ mod tests {
         state.server_preview_html = Some("<main>previous</main>".to_string());
         state.prepare_server_preview_request().expect("preview");
         let attempt = state.preview_request.as_ref().expect("attempt").id;
-        assert!(state.dispatch_intent(UiIntent::ActivatePage {
-            page_id: Some("missing".to_string()),
-            page_index: usize::MAX,
-        }).is_err());
+        assert!(
+            state
+                .dispatch_intent(UiIntent::ActivatePage {
+                    page_id: Some("missing".to_string()),
+                    page_index: usize::MAX,
+                })
+                .is_err()
+        );
         assert!(state.preview_attempt_active(attempt));
-        assert_eq!(state.server_preview_html.as_deref(), Some("<main>previous</main>"));
-        assert!(state.dispatch_intent(UiIntent::execute(fly::EditorCommand::Remove {
-            component_id: "missing".to_string(),
-        })).is_err());
+        assert_eq!(
+            state.server_preview_html.as_deref(),
+            Some("<main>previous</main>")
+        );
+        assert!(
+            state
+                .dispatch_intent(UiIntent::execute(fly::EditorCommand::Remove {
+                    component_id: "missing".to_string(),
+                }))
+                .is_err()
+        );
         assert!(state.preview_attempt_active(attempt));
-        state.handle_preview_response(attempt, &PreviewPageBuilderResult {
-            page_id: "home".to_string(),
-            html: "<main>current</main>".to_string(),
-            runtime_scenario_id: None,
-        }).expect("still-current preview");
-        assert_eq!(state.server_preview_html.as_deref(), Some("<main>current</main>"));
+        state
+            .handle_preview_response(
+                attempt,
+                &PreviewPageBuilderResult {
+                    page_id: "home".to_string(),
+                    html: "<main>current</main>".to_string(),
+                    runtime_scenario_id: None,
+                },
+            )
+            .expect("still-current preview");
+        assert_eq!(
+            state.server_preview_html.as_deref(),
+            Some("<main>current</main>")
+        );
     }
 
     #[test]
@@ -1014,10 +1072,12 @@ mod tests {
         state.prepare_server_preview_request().expect("preview");
         let attempt = state.preview_request.as_ref().expect("attempt").id;
 
-        state.dispatch_intent(UiIntent::ActivatePage {
-            page_id: Some("home".to_string()),
-            page_index: 0,
-        }).expect("activate page");
+        state
+            .dispatch_intent(UiIntent::ActivatePage {
+                page_id: Some("home".to_string()),
+                page_index: 0,
+            })
+            .expect("activate page");
 
         assert!(!state.preview_in_progress);
         assert!(state.preview_request.is_none());
@@ -1028,7 +1088,9 @@ mod tests {
     #[test]
     fn stale_preview_completion_cannot_retire_an_identical_retry() {
         let mut state = EditorSessionState::new(sample_controller(), "Missing", "Saved");
-        state.prepare_server_preview_request().expect("first preview");
+        state
+            .prepare_server_preview_request()
+            .expect("first preview");
         let first = state.preview_request.as_ref().expect("attempt").id;
         state.update_host_configuration(
             None,
@@ -1039,7 +1101,9 @@ mod tests {
             true,
         );
         state.update_host_configuration(None, None, None, None, None, true);
-        state.prepare_server_preview_request().expect("second preview");
+        state
+            .prepare_server_preview_request()
+            .expect("second preview");
         let second = state.preview_request.as_ref().expect("attempt").id;
         assert_ne!(first, second);
         let response = PreviewPageBuilderResult {
@@ -1048,7 +1112,9 @@ mod tests {
             runtime_scenario_id: None,
         };
         state.handle_preview_failure(first, "stale error".to_string());
-        state.handle_preview_response(first, &response).expect("ignore stale");
+        state
+            .handle_preview_response(first, &response)
+            .expect("ignore stale");
         assert!(state.preview_attempt_active(second));
         assert!(state.last_error.is_none());
         assert!(state.server_preview_html.is_none());
@@ -1057,9 +1123,14 @@ mod tests {
             html: "<main>current</main>".to_string(),
             ..response
         };
-        state.handle_preview_response(second, &response).expect("current preview");
+        state
+            .handle_preview_response(second, &response)
+            .expect("current preview");
         assert!(!state.preview_in_progress);
-        assert_eq!(state.server_preview_html.as_deref(), Some("<main>current</main>"));
+        assert_eq!(
+            state.server_preview_html.as_deref(),
+            Some("<main>current</main>")
+        );
     }
 
     #[test]
@@ -1067,7 +1138,10 @@ mod tests {
         let mut state = EditorSessionState::new(sample_controller(), "Missing", "Saved")
             .with_trait_schemas(Arc::new(TraitSchemaRegistry::default()));
         state.update_host_configuration(None, None, None, None, None, true);
-        assert_eq!(state.trait_schemas.as_ref(), &TraitSchemaRegistry::with_builtins());
+        assert_eq!(
+            state.trait_schemas.as_ref(),
+            &TraitSchemaRegistry::with_builtins()
+        );
     }
 
     #[test]

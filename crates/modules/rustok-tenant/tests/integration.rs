@@ -196,10 +196,8 @@ async fn active_tenant_id_cursor_survives_deletion_and_activation_changes() {
     let db = setup_db().await;
     let service = TenantService::new(db.clone());
     for i in 1..=5_u128 {
-        let mut model = tenant::ActiveModel::new(
-            &format!("Cursor Tenant {i}"),
-            &format!("cursor-tenant-{i}"),
-        );
+        let mut model =
+            tenant::ActiveModel::new(&format!("Cursor Tenant {i}"), &format!("cursor-tenant-{i}"));
         model.id = Set(Uuid::from_u128(i));
         model.is_active = Set(i != 3);
         model.insert(&db).await.expect("insert tenant");

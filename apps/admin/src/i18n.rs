@@ -38,11 +38,19 @@ mod tests {
             "Повторить проверку доступности"
         );
         assert_eq!(
-            t(Some("en"), "modules.settings.nested_number_json_hint", "fallback"),
+            t(
+                Some("en"),
+                "modules.settings.nested_number_json_hint",
+                "fallback"
+            ),
             "Edit this number in the JSON editor below."
         );
         assert_eq!(
-            t(Some("ru"), "modules.settings.nested_number_json_hint", "fallback"),
+            t(
+                Some("ru"),
+                "modules.settings.nested_number_json_hint",
+                "fallback"
+            ),
             "Измените это число в редакторе JSON ниже."
         );
     }

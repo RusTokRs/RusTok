@@ -785,7 +785,8 @@ impl CatalogService {
                 fallback_locale.or(Some(PLATFORM_FALLBACK_LOCALE)),
                 match schema {
                     ProductProjectionSchema::CatalogRead(context) => Some(context),
-                    ProductProjectionSchema::Connection | ProductProjectionSchema::Pinned(_) => None,
+                    ProductProjectionSchema::Connection | ProductProjectionSchema::Pinned(_) =>
+                        None,
                 },
             ),
             async {
@@ -859,8 +860,12 @@ impl CatalogService {
                 if variant_ids.is_empty() {
                     Ok::<_, CommerceError>(HashMap::new())
                 } else if let Some(port) = &self.inventory_port {
-                    port.load_available_quantities(conn.as_inventory_connection(), tenant_id, &variant_ids)
-                        .await
+                    port.load_available_quantities(
+                        conn.as_inventory_connection(),
+                        tenant_id,
+                        &variant_ids,
+                    )
+                    .await
                 } else {
                     Ok(HashMap::new())
                 }
@@ -1117,8 +1122,12 @@ impl CatalogService {
                 if variant_ids.is_empty() {
                     Ok::<_, CommerceError>(HashMap::new())
                 } else if let Some(port) = &self.inventory_port {
-                    port.load_available_quantities(conn.as_inventory_connection(), tenant_id, &variant_ids)
-                        .await
+                    port.load_available_quantities(
+                        conn.as_inventory_connection(),
+                        tenant_id,
+                        &variant_ids,
+                    )
+                    .await
                 } else {
                     Ok(HashMap::new())
                 }
@@ -1394,11 +1403,21 @@ mod tests {
             ),
             (
                 "INSERT INTO product_attribute_option_translations (id, option_id, locale, label) VALUES (?, ?, ?, ?)",
-                vec![Uuid::new_v4().into(), medium_option.into(), "en".into(), "M".into()],
+                vec![
+                    Uuid::new_v4().into(),
+                    medium_option.into(),
+                    "en".into(),
+                    "M".into(),
+                ],
             ),
             (
                 "INSERT INTO product_attribute_option_translations (id, option_id, locale, label) VALUES (?, ?, ?, ?)",
-                vec![Uuid::new_v4().into(), red_option.into(), "en".into(), "Red".into()],
+                vec![
+                    Uuid::new_v4().into(),
+                    red_option.into(),
+                    "en".into(),
+                    "Red".into(),
+                ],
             ),
             (
                 "INSERT INTO product_attribute_option_translations (id, option_id, locale, label) VALUES (?, ?, ?, ?)",
@@ -1411,11 +1430,21 @@ mod tests {
             ),
             (
                 "INSERT INTO product_variant_attribute_values (id, tenant_id, variant_id, attribute_id) VALUES (?, ?, ?, ?)",
-                vec![color_value.into(), tenant_id.into(), variant_id.into(), color_attribute.into()],
+                vec![
+                    color_value.into(),
+                    tenant_id.into(),
+                    variant_id.into(),
+                    color_attribute.into(),
+                ],
             ),
             (
                 "INSERT INTO product_variant_attribute_values (id, tenant_id, variant_id, attribute_id) VALUES (?, ?, ?, ?)",
-                vec![size_value.into(), tenant_id.into(), variant_id.into(), size_attribute.into()],
+                vec![
+                    size_value.into(),
+                    tenant_id.into(),
+                    variant_id.into(),
+                    size_attribute.into(),
+                ],
             ),
             (
                 "INSERT INTO product_variant_attribute_value_options (tenant_id, value_id, option_id) VALUES (?, ?, ?)",
@@ -1426,9 +1455,11 @@ mod tests {
                 vec![tenant_id.into(), size_value.into(), medium_option.into()],
             ),
         ] {
-            db.execute_raw(sea_orm::Statement::from_sql_and_values(backend, sql, values))
-                .await
-                .expect("seed fixture row");
+            db.execute_raw(sea_orm::Statement::from_sql_and_values(
+                backend, sql, values,
+            ))
+            .await
+            .expect("seed fixture row");
         }
 
         (tenant_id, product_id, variant_id)
@@ -1439,32 +1470,20 @@ mod tests {
         let db = variant_projection_db().await;
         let (tenant_id, product_id, variant_id) = seed_variant_projection_fixture(&db).await;
 
-        let titles = load_variant_display_titles(
-            &db,
-            tenant_id,
-            product_id,
-            &[variant_id],
-            "ru",
-            "en",
-        )
-        .await
-        .expect("load ru titles");
+        let titles =
+            load_variant_display_titles(&db, tenant_id, product_id, &[variant_id], "ru", "en")
+                .await
+                .expect("load ru titles");
         assert_eq!(
             titles.get(&variant_id).map(String::as_str),
             Some("M / Красный"),
             "parts follow axis positions, labels resolve in the requested locale"
         );
 
-        let titles = load_variant_display_titles(
-            &db,
-            tenant_id,
-            product_id,
-            &[variant_id],
-            "de",
-            "en",
-        )
-        .await
-        .expect("load de titles with en fallback");
+        let titles =
+            load_variant_display_titles(&db, tenant_id, product_id, &[variant_id], "de", "en")
+                .await
+                .expect("load de titles with en fallback");
         assert_eq!(
             titles.get(&variant_id).map(String::as_str),
             Some("M / Red"),
@@ -1496,7 +1515,11 @@ mod tests {
             .await
             .unwrap();
         }
-        for (locale, title) in [("en", "M / Red"), ("ru", "Авторское название"), ("fr", "M / Red")] {
+        for (locale, title) in [
+            ("en", "M / Red"),
+            ("ru", "Авторское название"),
+            ("fr", "M / Red"),
+        ] {
             entities::variant_translation::ActiveModel {
                 id: Set(Uuid::new_v4()),
                 variant_id: Set(variant_id),
@@ -1586,16 +1609,9 @@ mod tests {
         let db = variant_projection_db().await;
         let (tenant_id, _product_id, variant_id) = seed_variant_projection_fixture(&db).await;
 
-        let values = load_variant_axis_values(
-            &db,
-            tenant_id,
-            &[variant_id],
-            "ru",
-            "en",
-            false,
-        )
-        .await
-        .expect("load axis values");
+        let values = load_variant_axis_values(&db, tenant_id, &[variant_id], "ru", "en", false)
+            .await
+            .expect("load axis values");
         let mut values = values.get(&variant_id).cloned().unwrap_or_default();
         values.sort_by_key(|value| value.attribute_id);
 
@@ -1607,16 +1623,9 @@ mod tests {
             value.code.as_deref() == Some("size") && value.label.as_deref() == Some("M")
         }));
 
-        let values = load_variant_axis_values(
-            &db,
-            tenant_id,
-            &[variant_id],
-            "de",
-            "en",
-            false,
-        )
-        .await
-        .expect("load axis values with fallback");
+        let values = load_variant_axis_values(&db, tenant_id, &[variant_id], "de", "en", false)
+            .await
+            .expect("load axis values with fallback");
         assert!(
             values
                 .get(&variant_id)
@@ -1641,18 +1650,13 @@ mod tests {
         .await
         .expect("detach assignments");
 
-        let values = load_variant_axis_values(
-            &db,
-            tenant_id,
-            &[variant_id],
-            "en",
-            "en",
-            false,
-        )
-        .await
-        .expect("load axis values");
+        let values = load_variant_axis_values(&db, tenant_id, &[variant_id], "en", "en", false)
+            .await
+            .expect("load axis values");
         assert!(
-            values.get(&variant_id).is_none_or(|values| values.is_empty()),
+            values
+                .get(&variant_id)
+                .is_none_or(|values| values.is_empty()),
             "detached assignments never surface"
         );
     }

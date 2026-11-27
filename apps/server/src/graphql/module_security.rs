@@ -131,7 +131,8 @@ fn collect_fields(
     fields: &mut BTreeSet<ModuleGraphqlField>,
 ) {
     let _completed = super::visit_selection_fields(document, selection_set, (), |field, ()| {
-        if let Some(field) = ModuleGraphqlField::classify(operation_type, field.name.node.as_str()) {
+        if let Some(field) = ModuleGraphqlField::classify(operation_type, field.name.node.as_str())
+        {
             fields.insert(field);
         }
         std::ops::ControlFlow::Continue(None)
@@ -298,9 +299,8 @@ mod tests {
                     && field.authority == ModuleAuthority::Read)
         );
 
-        let mut sub_request = Request::new(
-            r#"subscription BuildState { buildProgress { buildId } }"#,
-        );
+        let mut sub_request =
+            Request::new(r#"subscription BuildState { buildProgress { buildId } }"#);
         classify_document(&mut sub_request).expect("subscription document should parse");
         let sub_policy = sub_request
             .data

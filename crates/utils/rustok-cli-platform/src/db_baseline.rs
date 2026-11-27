@@ -120,7 +120,8 @@ async fn collect_pg_stat_statements(
                 match entry {
                     Ok(item) => statements.push(item),
                     Err(error) => {
-                        parse_error = Some(format!("failed to parse pg_stat_statements row: {error}"));
+                        parse_error =
+                            Some(format!("failed to parse pg_stat_statements row: {error}"));
                         break;
                     }
                 }
@@ -213,7 +214,10 @@ async fn explain_lines(
             .collect(),
         _ => rows
             .into_iter()
-            .map(|row| row.try_get::<String>("", "QUERY PLAN").map_err(command_failed))
+            .map(|row| {
+                row.try_get::<String>("", "QUERY PLAN")
+                    .map_err(command_failed)
+            })
             .collect(),
     }
 }

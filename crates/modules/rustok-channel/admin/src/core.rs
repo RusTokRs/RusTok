@@ -598,7 +598,10 @@ mod tests {
 
     #[test]
     fn channel_delete_feedback_matches_the_catalog_key() {
-        assert_eq!(CHANNEL_DELETE_FEEDBACK.feedback_key, "channel.feedback.deleted");
+        assert_eq!(
+            CHANNEL_DELETE_FEEDBACK.feedback_key,
+            "channel.feedback.deleted"
+        );
         assert_eq!(
             CHANNEL_DELETE_FEEDBACK.feedback_fallback,
             "Channel `{slug}` was deleted."

@@ -24,7 +24,10 @@ const CREATE_CATEGORY_GROUP_MUTATION: &str = "mutation ProductAdminCreateCategor
 const SET_CATEGORY_SCHEMA_MODE_MUTATION: &str = "mutation ProductAdminSetCategorySchemaMode($idempotencyKey: String!, $input: SetCategorySchemaModeInput!) { setCatalogCategorySchemaMode(idempotencyKey: $idempotencyKey, input: $input) }";
 const BIND_SCHEMA_ATTRIBUTE_MUTATION: &str = "mutation ProductAdminBindSchemaAttribute($idempotencyKey: String!, $input: BindSchemaAttributeInput!) { bindProductAttributeSchemaAttribute(idempotencyKey: $idempotencyKey, input: $input) }";
 const BIND_CATEGORY_ATTRIBUTE_MUTATION: &str = "mutation ProductAdminBindCategoryAttribute($idempotencyKey: String!, $input: BindCategoryAttributeInput!) { bindCatalogCategoryAttribute(idempotencyKey: $idempotencyKey, input: $input) }";
-#[expect(dead_code, reason = "Product attribute values transport pending UI editor panel integration")]
+#[expect(
+    dead_code,
+    reason = "Product attribute values transport pending UI editor panel integration"
+)]
 const SAVE_ATTRIBUTE_VALUES_MUTATION: &str = "mutation ProductAdminSaveAttributeValues($idempotencyKey: String!, $productId: UUID!, $locale: String!, $patches: [ProductAttributeValuePatchInput!]!) { saveProductAttributeValues(idempotencyKey: $idempotencyKey, productId: $productId, locale: $locale, patches: $patches) { attributeId kind text integer decimal boolean date datetime optionId optionIds json detached } }";
 const CLEAR_DETACHED_ATTRIBUTE_VALUES_MUTATION: &str = "mutation ProductAdminClearDetachedAttributeValues($idempotencyKey: String!, $productId: UUID!, $locale: String!, $attributeIds: [UUID!]!) { clearDetachedProductAttributeValues(idempotencyKey: $idempotencyKey, productId: $productId, locale: $locale, attributeIds: $attributeIds) { attributeId kind text integer decimal boolean date datetime optionId optionIds json detached } }";
 
@@ -51,7 +54,10 @@ struct BoolMutationResponse {
 }
 
 #[derive(Debug, Deserialize)]
-#[expect(dead_code, reason = "Product attribute values transport pending UI editor panel integration")]
+#[expect(
+    dead_code,
+    reason = "Product attribute values transport pending UI editor panel integration"
+)]
 struct SaveAttributeValuesResponse {
     #[serde(rename = "saveProductAttributeValues")]
     save_product_attribute_values: Vec<ProductAttributeValueItem>,
@@ -88,7 +94,10 @@ struct InputVariables<T> {
 }
 
 #[derive(Debug, Serialize)]
-#[expect(dead_code, reason = "Product attribute values transport pending UI editor panel integration")]
+#[expect(
+    dead_code,
+    reason = "Product attribute values transport pending UI editor panel integration"
+)]
 struct SaveAttributeValuesVariables {
     #[serde(rename = "productId")]
     product_id: String,
@@ -333,7 +342,10 @@ pub(crate) async fn bind_category_attribute(
     confirmed_schema_write(response.bind_catalog_category_attribute)
 }
 
-#[expect(dead_code, reason = "Product attribute values transport pending UI editor panel integration")]
+#[expect(
+    dead_code,
+    reason = "Product attribute values transport pending UI editor panel integration"
+)]
 pub(crate) async fn save_product_attribute_values(
     token: Option<String>,
     tenant_slug: Option<String>,

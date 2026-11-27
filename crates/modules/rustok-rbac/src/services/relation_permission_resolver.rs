@@ -123,10 +123,14 @@ impl<C: ConnectionTrait> RelationPermissionStore for ConnectionRelationPermissio
                 Ok(Permission::new(
                     resource
                         .parse()
-                        .map_err(|err: rustok_api::ResourceParseError| sea_orm::DbErr::Type(err.to_string()))?,
+                        .map_err(|err: rustok_api::ResourceParseError| {
+                            sea_orm::DbErr::Type(err.to_string())
+                        })?,
                     action
                         .parse()
-                        .map_err(|err: rustok_api::ActionParseError| sea_orm::DbErr::Type(err.to_string()))?,
+                        .map_err(|err: rustok_api::ActionParseError| {
+                            sea_orm::DbErr::Type(err.to_string())
+                        })?,
                 ))
             })
             .collect()

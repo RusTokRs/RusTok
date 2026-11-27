@@ -106,8 +106,7 @@ pub async fn start_cache_redis_status_monitor(ctx: &ServerRuntimeContext, cache:
         return;
     };
     let stop = StopHandle::ensure(ctx);
-    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await
-    else {
+    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await else {
         return;
     };
 
@@ -132,8 +131,7 @@ pub async fn start_cache_redis_status_monitor(ctx: &ServerRuntimeContext, cache:
         }
     }
 
-    let Some(initial) = await_worker_startup_or_stop(&stop, cache.redis_status()).await
-    else {
+    let Some(initial) = await_worker_startup_or_stop(&stop, cache.redis_status()).await else {
         return;
     };
     log_transition(None, &initial);

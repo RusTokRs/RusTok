@@ -91,9 +91,9 @@ impl PagesHttpRuntime {
     }
 
     fn from_host(runtime: &HostRuntimeContext) -> Result<Self, PagesControllerError> {
-        let event_bus = runtime
-            .shared_get::<TransactionalEventBus>()
-            .ok_or(PagesControllerError::MissingHostDependency("TransactionalEventBus"))?;
+        let event_bus = runtime.shared_get::<TransactionalEventBus>().ok_or(
+            PagesControllerError::MissingHostDependency("TransactionalEventBus"),
+        )?;
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
@@ -222,7 +222,11 @@ pub async fn get_page_artifact(
             .header(header::VARY, ARTIFACT_VARY)
             .header(header::CACHE_CONTROL, ARTIFACT_CACHE_CONTROL)
             .body(Body::empty())
-            .map_err(|error| HttpError::internal(format!("failed to construct artifact 304 response: {error}")));
+            .map_err(|error| {
+                HttpError::internal(format!(
+                    "failed to construct artifact 304 response: {error}"
+                ))
+            });
     }
 
     let csp = artifact_content_security_policy(&artifact.css);
@@ -239,7 +243,9 @@ pub async fn get_page_artifact(
         .header("x-content-type-options", "nosniff")
         .header("cross-origin-resource-policy", "same-origin")
         .body(Body::from(artifact.document_html))
-        .map_err(|error| HttpError::internal(format!("failed to construct artifact response: {error}")))
+        .map_err(|error| {
+            HttpError::internal(format!("failed to construct artifact response: {error}"))
+        })
 }
 
 async fn load_cached_page_artifact(

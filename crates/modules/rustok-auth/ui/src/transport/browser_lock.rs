@@ -18,10 +18,13 @@ pub(super) fn timeout_signal(milliseconds: u32) -> Result<web_sys::AbortSignal, 
         .map_err(|_| AuthError::Network)?;
     let timeout = js_sys::Reflect::get(&constructor, &JsValue::from_str("timeout"))
         .map_err(|_| AuthError::Network)?
-        .dyn_into::<js_sys::Function>().map_err(|_| AuthError::Network)?;
-    timeout.call1(&constructor, &JsValue::from_f64(f64::from(milliseconds)))
+        .dyn_into::<js_sys::Function>()
+        .map_err(|_| AuthError::Network)?;
+    timeout
+        .call1(&constructor, &JsValue::from_f64(f64::from(milliseconds)))
         .map_err(|_| AuthError::Network)?
-        .dyn_into::<web_sys::AbortSignal>().map_err(|_| AuthError::Network)
+        .dyn_into::<web_sys::AbortSignal>()
+        .map_err(|_| AuthError::Network)
 }
 
 pub(crate) async fn with_cookie_lock<T: 'static>(
@@ -37,7 +40,8 @@ pub(crate) async fn with_cookie_lock<T: 'static>(
         .map_err(|_| AuthError::Network)?;
     let request = js_sys::Reflect::get(&locks, &JsValue::from_str("request"))
         .map_err(|_| AuthError::Network)?
-        .dyn_into::<js_sys::Function>().map_err(|_| AuthError::Network)?;
+        .dyn_into::<js_sys::Function>()
+        .map_err(|_| AuthError::Network)?;
 
     let options = js_sys::Object::new();
     let signal = timeout_signal(25_000)?;
@@ -60,8 +64,10 @@ pub(crate) async fn with_cookie_lock<T: 'static>(
     // subsequently dispatch the operation. No credentials enter the JS result.
     let callback = Closure::once_assert_unwind_safe(move |lock: JsValue| -> js_sys::Promise {
         future_to_promise(async move {
-            let outcome = if lock.is_null() || lock.is_undefined()
-                || !super::browser_epoch::matches(&expected_epoch) {
+            let outcome = if lock.is_null()
+                || lock.is_undefined()
+                || !super::browser_epoch::matches(&expected_epoch)
+            {
                 Err(AuthError::Http(409))
             } else {
                 operation.await
@@ -70,14 +76,19 @@ pub(crate) async fn with_cookie_lock<T: 'static>(
             Ok(JsValue::UNDEFINED)
         })
     });
-    let promise = request.call3(
-        &locks,
-        &JsValue::from_str(COOKIE_LOCK),
-        options.as_ref(),
-        callback.as_ref(),
-    ).map_err(|_| AuthError::Network)?
-        .dyn_into::<js_sys::Promise>().map_err(|_| AuthError::Network)?;
-    JsFuture::from(promise).await.map_err(|_| AuthError::Network)?;
+    let promise = request
+        .call3(
+            &locks,
+            &JsValue::from_str(COOKIE_LOCK),
+            options.as_ref(),
+            callback.as_ref(),
+        )
+        .map_err(|_| AuthError::Network)?
+        .dyn_into::<js_sys::Promise>()
+        .map_err(|_| AuthError::Network)?;
+    JsFuture::from(promise)
+        .await
+        .map_err(|_| AuthError::Network)?;
     drop(callback);
     let outcome = result.borrow_mut().take().ok_or(AuthError::Network)?;
     outcome

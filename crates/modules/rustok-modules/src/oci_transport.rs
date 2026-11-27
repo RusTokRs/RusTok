@@ -1164,8 +1164,8 @@ fn parse_challenge_value(value: &str) -> Result<(String, &str), OciTransportErro
 
 #[cfg(test)]
 mod tests {
-    use super::{OciRegistryTransport, RegistryReference, parse_bearer_challenge};
     use super::OciRegistryTransportPolicy;
+    use super::{OciRegistryTransport, RegistryReference, parse_bearer_challenge};
 
     #[test]
     fn strict_transport_constructs_with_a_complete_policy() {

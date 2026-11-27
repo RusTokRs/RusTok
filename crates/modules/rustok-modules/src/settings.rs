@@ -1386,11 +1386,14 @@ mod tests {
                 ..Default::default()
             },
         )]);
-        assert!(normalize_module_settings(
-            "test",
-            &number_schema,
-            serde_json::json!({"limit": 9_007_199_254_740_993_u64}),
-        ).is_err());
+        assert!(
+            normalize_module_settings(
+                "test",
+                &number_schema,
+                serde_json::json!({"limit": 9_007_199_254_740_993_u64}),
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -1399,7 +1402,10 @@ mod tests {
             "integer",
             &serde_json::json!(18_446_744_073_709_551_616.0),
         ));
-        assert!(setting_value_matches_type("integer", &serde_json::json!(u64::MAX)));
+        assert!(setting_value_matches_type(
+            "integer",
+            &serde_json::json!(u64::MAX)
+        ));
         assert!(integer_below_bound(-2, -1.5));
         assert!(!integer_below_bound(-1, -1.5));
         assert!(integer_above_bound(2, 1.5));

@@ -3,14 +3,18 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use sea_orm::sea_query::Expr;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
+    TransactionTrait,
+};
 use serde_json::Value;
 use tracing::{error, info, instrument, warn};
 use uuid::Uuid;
 
 use crate::entities::{
     ExecutionStatus, OnError, StepExecutionStatus, StepType, WorkflowExecutionActiveModel,
-    WorkflowStepExecutionActiveModel, workflow_cron_firing, workflow_execution, workflow_step_execution,
+    WorkflowStepExecutionActiveModel, workflow_cron_firing, workflow_execution,
+    workflow_step_execution,
 };
 use crate::error::WorkflowResult;
 use crate::steps::{
@@ -137,7 +141,8 @@ impl WorkflowEngine {
             return Err(error.into());
         }
 
-        self.run_recorded_execution(execution_id, steps, initial_context, None).await
+        self.run_recorded_execution(execution_id, steps, initial_context, None)
+            .await
     }
 
     /// The Workflow cron owner inserts a trigger journal and checks its firing
@@ -153,8 +158,12 @@ impl WorkflowEngine {
         initial_context: Value,
     ) -> WorkflowResult<Uuid> {
         self.run_recorded_execution(
-            execution_id, steps, initial_context, Some((firing_id, attempt_token)),
-        ).await
+            execution_id,
+            steps,
+            initial_context,
+            Some((firing_id, attempt_token)),
+        )
+        .await
     }
 
     async fn run_recorded_execution(
@@ -224,7 +233,8 @@ impl WorkflowEngine {
                             self.update_step_status(
                                 step_execution_id,
                                 StepExecutionStatus::Skipped,
-                            ).await?;
+                            )
+                            .await?;
                             continue 'steps;
                         }
                         OnError::Retry => {
@@ -259,7 +269,8 @@ impl WorkflowEngine {
                 }
                 Err(err) => {
                     let err_msg = err.to_string();
-                    let step_timed_out = matches!(err, crate::error::WorkflowError::StepTimedOut { .. });
+                    let step_timed_out =
+                        matches!(err, crate::error::WorkflowError::StepTimedOut { .. });
                     error!(step_id = %step.id, error = %err_msg, "Step failed");
 
                     let external_outcome_uncertain = potentially_external_step(&step.step_type);
@@ -285,8 +296,10 @@ impl WorkflowEngine {
                     // effect stopped. Even a misclassified validation error
                     // from a pluggable executor may follow a remote send.
                     if external_outcome_uncertain {
-                        let uncertain_reason =
-                            Some(format!("step {} has an unconfirmed external outcome", step.id));
+                        let uncertain_reason = Some(format!(
+                            "step {} has an unconfirmed external outcome",
+                            step.id
+                        ));
                         if let Some((firing_id, token)) = cron_fence {
                             self.finish_claimed_cron_execution(
                                 execution_id,
@@ -295,14 +308,16 @@ impl WorkflowEngine {
                                 ExecutionStatus::ReconciliationRequired,
                                 context.data,
                                 uncertain_reason,
-                            ).await?;
+                            )
+                            .await?;
                         } else {
                             self.finish_execution(
                                 execution_id,
                                 ExecutionStatus::ReconciliationRequired,
                                 context.data,
                                 uncertain_reason,
-                            ).await?;
+                            )
+                            .await?;
                         }
                         return Err(crate::error::WorkflowError::ExecutionOutcomeUncertain(
                             execution_id,
@@ -360,8 +375,12 @@ impl WorkflowEngine {
                                     .await;
 
                                 match execute_with_step_timeout(
-                                    executor.as_ref(), step, context.clone(),
-                                ).await {
+                                    executor.as_ref(),
+                                    step,
+                                    context.clone(),
+                                )
+                                .await
+                                {
                                     Ok(out) => {
                                         stop_after_success = !out.should_continue;
                                         self.finish_step_execution(
@@ -378,7 +397,8 @@ impl WorkflowEngine {
                                     }
                                     Err(retry_err) => {
                                         last_timed_out = matches!(
-                                            retry_err, crate::error::WorkflowError::StepTimedOut { .. }
+                                            retry_err,
+                                            crate::error::WorkflowError::StepTimedOut { .. }
                                         );
                                         last_err = retry_err.to_string();
                                     }
@@ -429,10 +449,17 @@ impl WorkflowEngine {
         let last_error = if failed { Some(failure_msg) } else { None };
         if let Some((firing_id, token)) = cron_fence {
             self.finish_claimed_cron_execution(
-                execution_id, firing_id, token, final_status, context.data, last_error,
-            ).await?;
+                execution_id,
+                firing_id,
+                token,
+                final_status,
+                context.data,
+                last_error,
+            )
+            .await?;
         } else {
-            self.finish_execution(execution_id, final_status, context.data, last_error).await?;
+            self.finish_execution(execution_id, final_status, context.data, last_error)
+                .await?;
         }
 
         info!(execution_id = %execution_id, success = !failed, "Workflow execution finished");
@@ -444,9 +471,13 @@ impl WorkflowEngine {
         let owned = workflow_cron_firing::Entity::find_by_id(firing_id)
             .filter(workflow_cron_firing::Column::Status.eq(workflow_cron_firing::RUNNING))
             .filter(workflow_cron_firing::Column::AttemptToken.eq(token))
-            .one(&self.db).await?.is_some();
+            .one(&self.db)
+            .await?
+            .is_some();
         if !owned {
-            return Err(crate::error::WorkflowError::CronReconciliationConflict(firing_id));
+            return Err(crate::error::WorkflowError::CronReconciliationConflict(
+                firing_id,
+            ));
         }
         Ok(())
     }
@@ -459,8 +490,13 @@ impl WorkflowEngine {
         existing: workflow_execution::Model,
         trigger_event_id: Uuid,
     ) -> WorkflowResult<Uuid> {
-        if matches!(existing.status, ExecutionStatus::Running | ExecutionStatus::ReconciliationRequired) {
-            return Err(crate::error::WorkflowError::ExecutionOutcomeUncertain(existing.id));
+        if matches!(
+            existing.status,
+            ExecutionStatus::Running | ExecutionStatus::ReconciliationRequired
+        ) {
+            return Err(crate::error::WorkflowError::ExecutionOutcomeUncertain(
+                existing.id,
+            ));
         }
         info!(
             execution_id = %existing.id,
@@ -553,21 +589,35 @@ impl WorkflowEngine {
             .filter(workflow_cron_firing::Column::Status.eq(workflow_cron_firing::RUNNING))
             .filter(workflow_cron_firing::Column::AttemptToken.eq(token))
             .filter(workflow_cron_firing::Column::ExecutionId.eq(execution_id))
-            .exec(&transaction).await?.rows_affected;
+            .exec(&transaction)
+            .await?
+            .rows_affected;
         if owns != 1 {
-            return Err(crate::error::WorkflowError::CronReconciliationConflict(firing_id));
+            return Err(crate::error::WorkflowError::CronReconciliationConflict(
+                firing_id,
+            ));
         }
         let completed = workflow_execution::Entity::update_many()
-            .col_expr(workflow_execution::Column::Status, Expr::value(status.to_string()))
+            .col_expr(
+                workflow_execution::Column::Status,
+                Expr::value(status.to_string()),
+            )
             .col_expr(workflow_execution::Column::Context, Expr::value(context))
             .col_expr(workflow_execution::Column::Error, Expr::value(error))
-            .col_expr(workflow_execution::Column::CompletedAt, Expr::value(Utc::now().fixed_offset()))
+            .col_expr(
+                workflow_execution::Column::CompletedAt,
+                Expr::value(Utc::now().fixed_offset()),
+            )
             .filter(workflow_execution::Column::Id.eq(execution_id))
             .filter(workflow_execution::Column::TriggerEventId.eq(firing_id))
             .filter(workflow_execution::Column::Status.eq(ExecutionStatus::Running.to_string()))
-            .exec(&transaction).await?.rows_affected;
+            .exec(&transaction)
+            .await?
+            .rows_affected;
         if completed != 1 {
-            return Err(crate::error::WorkflowError::CronReconciliationConflict(firing_id));
+            return Err(crate::error::WorkflowError::CronReconciliationConflict(
+                firing_id,
+            ));
         }
         transaction.commit().await?;
         Ok(())
@@ -604,12 +654,12 @@ impl WorkflowEngine {
 #[cfg(test)]
 mod durable_external_step_tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use sea_orm::{Database, EntityTrait};
-    use sea_orm_migration::SchemaManager;
-    use crate::entities::{workflow, workflow_step, WorkflowStatus};
+    use crate::entities::{WorkflowStatus, workflow, workflow_step};
     use crate::error::WorkflowError;
     use crate::steps::{StepOutput, WorkflowStep};
+    use sea_orm::{Database, EntityTrait};
+    use sea_orm_migration::SchemaManager;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct AmbiguousHttp {
         calls: Arc<AtomicUsize>,
@@ -618,7 +668,9 @@ mod durable_external_step_tests {
 
     #[async_trait::async_trait]
     impl WorkflowStep for AmbiguousHttp {
-        fn step_type(&self) -> &'static str { "http" }
+        fn step_type(&self) -> &'static str {
+            "http"
+        }
 
         async fn execute(
             &self,
@@ -657,7 +709,9 @@ mod durable_external_step_tests {
         ) -> WorkflowResult<StepOutput> {
             let attempt = self.calls.fetch_add(1, Ordering::SeqCst);
             if attempt == 0 {
-                Err(WorkflowError::StepFailed("transient pure step error".into()))
+                Err(WorkflowError::StepFailed(
+                    "transient pure step error".into(),
+                ))
             } else {
                 Ok(StepOutput::stop_with(
                     context,
@@ -697,9 +751,7 @@ mod durable_external_step_tests {
             on_error: OnError::Stop,
             timeout_ms: Some(1),
         };
-        let result = execute_with_step_timeout(
-            &SlowAction, &step, StepContext::default(),
-        ).await;
+        let result = execute_with_step_timeout(&SlowAction, &step, StepContext::default()).await;
         assert!(matches!(
             result,
             Err(WorkflowError::StepTimedOut { step_id: id, timeout_ms: 1 })
@@ -709,16 +761,16 @@ mod durable_external_step_tests {
         for invalid in [0, -1, MAX_STEP_TIMEOUT_MS + 1] {
             step.timeout_ms = Some(invalid);
             assert!(matches!(
-                execute_with_step_timeout(
-                    &SlowAction, &step, StepContext::default(),
-                ).await,
+                execute_with_step_timeout(&SlowAction, &step, StepContext::default(),).await,
                 Err(WorkflowError::InvalidStepConfig(_)),
             ));
         }
         step.timeout_ms = None;
-        assert!(execute_with_step_timeout(
-            &SlowAction, &step, StepContext::default(),
-        ).await.is_ok());
+        assert!(
+            execute_with_step_timeout(&SlowAction, &step, StepContext::default(),)
+                .await
+                .is_ok()
+        );
     }
 
     #[tokio::test]
@@ -744,7 +796,10 @@ mod durable_external_step_tests {
             auto_disabled_at: Set(None),
             webhook_slug: Set(None),
             webhook_secret: Set(None),
-        }.insert(&db).await.unwrap();
+        }
+        .insert(&db)
+        .await
+        .unwrap();
 
         let first = workflow_step::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -754,7 +809,10 @@ mod durable_external_step_tests {
             config: Set(serde_json::json!({"max_retries":1,"retry_base_ms":0})),
             on_error: Set(OnError::Retry),
             timeout_ms: Set(None),
-        }.insert(&db).await.unwrap();
+        }
+        .insert(&db)
+        .await
+        .unwrap();
         let second = workflow_step::ActiveModel {
             id: Set(Uuid::new_v4()),
             workflow_id: Set(workflow_id),
@@ -763,22 +821,37 @@ mod durable_external_step_tests {
             config: Set(Value::Null),
             on_error: Set(OnError::Stop),
             timeout_ms: Set(None),
-        }.insert(&db).await.unwrap();
+        }
+        .insert(&db)
+        .await
+        .unwrap();
 
         let calls = Arc::new(AtomicUsize::new(0));
         let mut engine = WorkflowEngine::new(db.clone());
-        engine.register_step(RetryThenStopAction { calls: Arc::clone(&calls) });
-        let execution_id = engine.execute(
-            workflow_id, tenant_id, None, vec![first.clone(), second],
-            serde_json::json!({}),
-        ).await.unwrap();
+        engine.register_step(RetryThenStopAction {
+            calls: Arc::clone(&calls),
+        });
+        let execution_id = engine
+            .execute(
+                workflow_id,
+                tenant_id,
+                None,
+                vec![first.clone(), second],
+                serde_json::json!({}),
+            )
+            .await
+            .unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         let rows = crate::entities::workflow_step_execution::Entity::find()
-            .filter(
-                crate::entities::workflow_step_execution::Column::ExecutionId.eq(execution_id),
-            )
-            .all(&db).await.unwrap();
-        assert_eq!(rows.len(), 1, "a stop after retry must not admit another step");
+            .filter(crate::entities::workflow_step_execution::Column::ExecutionId.eq(execution_id))
+            .all(&db)
+            .await
+            .unwrap();
+        assert_eq!(
+            rows.len(),
+            1,
+            "a stop after retry must not admit another step"
+        );
         assert_eq!(rows[0].step_id, first.id);
         assert_eq!(rows[0].status, StepExecutionStatus::Completed);
     }
@@ -795,14 +868,23 @@ mod durable_external_step_tests {
         let trigger_id = Uuid::new_v4();
 
         workflow::ActiveModel {
-            id: Set(workflow_id), tenant_id: Set(tenant_id),
-            name: Set("Ambiguous external effect".into()), description: Set(None),
+            id: Set(workflow_id),
+            tenant_id: Set(tenant_id),
+            name: Set("Ambiguous external effect".into()),
+            description: Set(None),
             status: Set(WorkflowStatus::Active),
             trigger_config: Set(serde_json::json!({"type":"event","event_type":"test"})),
-            created_by: Set(None), created_at: Set(now), updated_at: Set(now),
-            failure_count: Set(0), auto_disabled_at: Set(None),
-            webhook_slug: Set(None), webhook_secret: Set(None),
-        }.insert(&db).await.unwrap();
+            created_by: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+            failure_count: Set(0),
+            auto_disabled_at: Set(None),
+            webhook_slug: Set(None),
+            webhook_secret: Set(None),
+        }
+        .insert(&db)
+        .await
+        .unwrap();
         let step = workflow_step::ActiveModel {
             id: Set(Uuid::new_v4()),
             workflow_id: Set(workflow_id),
@@ -811,7 +893,10 @@ mod durable_external_step_tests {
             config: Set(serde_json::json!({"max_retries":10})),
             on_error: Set(OnError::Retry),
             timeout_ms: Set(None),
-        }.insert(&db).await.unwrap();
+        }
+        .insert(&db)
+        .await
+        .unwrap();
 
         let calls = Arc::new(AtomicUsize::new(0));
         let mut engine = WorkflowEngine::new(db.clone());
@@ -821,22 +906,36 @@ mod durable_external_step_tests {
         });
         for _ in 0..2 {
             assert!(matches!(
-                engine.execute(
-                    workflow_id, tenant_id, Some(trigger_id),
-                    vec![step.clone()], Value::Null,
-                ).await,
+                engine
+                    .execute(
+                        workflow_id,
+                        tenant_id,
+                        Some(trigger_id),
+                        vec![step.clone()],
+                        Value::Null,
+                    )
+                    .await,
                 Err(WorkflowError::ExecutionOutcomeUncertain(_))
             ));
         }
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         let execution = workflow_execution::Entity::find()
             .filter(workflow_execution::Column::TriggerEventId.eq(trigger_id))
-            .one(&db).await.unwrap().unwrap();
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(execution.status, ExecutionStatus::ReconciliationRequired);
         let step_record = crate::entities::workflow_step_execution::Entity::find()
             .filter(crate::entities::workflow_step_execution::Column::ExecutionId.eq(execution.id))
-            .one(&db).await.unwrap().unwrap();
-        assert_eq!(step_record.status, StepExecutionStatus::ReconciliationRequired);
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            step_record.status,
+            StepExecutionStatus::ReconciliationRequired
+        );
 
         let validation_trigger = Uuid::new_v4();
         let mut engine = WorkflowEngine::new(db.clone());
@@ -846,18 +945,29 @@ mod durable_external_step_tests {
         });
         for _ in 0..2 {
             assert!(matches!(
-                engine.execute(
-                    workflow_id, tenant_id, Some(validation_trigger),
-                    vec![step.clone()], Value::Null,
-                ).await,
+                engine
+                    .execute(
+                        workflow_id,
+                        tenant_id,
+                        Some(validation_trigger),
+                        vec![step.clone()],
+                        Value::Null,
+                    )
+                    .await,
                 Err(WorkflowError::ExecutionOutcomeUncertain(_)),
             ));
         }
-        assert_eq!(calls.load(Ordering::SeqCst), 2,
-            "even a validation-labelled post-send error must not be retried");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            2,
+            "even a validation-labelled post-send error must not be retried"
+        );
         let execution = workflow_execution::Entity::find()
             .filter(workflow_execution::Column::TriggerEventId.eq(validation_trigger))
-            .one(&db).await.unwrap().unwrap();
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(execution.status, ExecutionStatus::ReconciliationRequired);
     }
 }

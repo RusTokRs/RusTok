@@ -9,8 +9,8 @@ pub(crate) mod write_journal;
 
 use rustok_api::locale_tags_match;
 use rustok_grid::{
-    ColumnAlign, ColumnFilters, FilterOption, FilterValue, GridColumnDef, GridFilterType,
-    GridPagination, DEFAULT_PAGE_SIZE,
+    ColumnAlign, ColumnFilters, DEFAULT_PAGE_SIZE, FilterOption, FilterValue, GridColumnDef,
+    GridFilterType, GridPagination,
 };
 use rustok_ui_core::{AdminQueryKey, UiRouteQueryIntent, normalize_ui_text};
 use std::collections::HashMap;
@@ -2234,11 +2234,7 @@ impl ProductKind {
     }
 
     /// Digital products may remain editable only when the existing record is already digital.
-    pub fn can_select_for_product(
-        &self,
-        is_editing: bool,
-        original_kind: Option<Self>,
-    ) -> bool {
+    pub fn can_select_for_product(&self, is_editing: bool, original_kind: Option<Self>) -> bool {
         self.is_available_for_creation() || (is_editing && original_kind == Some(*self))
     }
 
@@ -2965,7 +2961,11 @@ pub fn product_variant_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> 
             }),
         GridColumnDef::new(
             "shipping_profile_slug",
-            if is_ru { "Профиль доставки" } else { "Shipping profile" },
+            if is_ru {
+                "Профиль доставки"
+            } else {
+                "Shipping profile"
+            },
         )
         .min_width(150)
         .align(ColumnAlign::Left)
@@ -3066,7 +3066,10 @@ pub fn filter_product_variants(
                     && !item.options_summary.to_ascii_lowercase().contains(&term)
                     && !item.title.to_ascii_lowercase().contains(&term)
                     && !item.price.to_ascii_lowercase().contains(&term)
-                    && !item.shipping_profile_slug.to_ascii_lowercase().contains(&term)
+                    && !item
+                        .shipping_profile_slug
+                        .to_ascii_lowercase()
+                        .contains(&term)
                 {
                     return false;
                 }
@@ -4455,7 +4458,10 @@ mod tests {
             "USD",
             String::new(),
         );
-        assert!(matches!(cleared.shipping_profile_slug, rustok_api::Patch::Clear));
+        assert!(matches!(
+            cleared.shipping_profile_slug,
+            rustok_api::Patch::Clear
+        ));
         assert!(cleared.inventory_quantity.is_none());
         assert!(!cleared.prices_changed);
     }

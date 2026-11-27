@@ -3,8 +3,8 @@ use std::future::Future;
 use std::sync::Arc;
 
 use chrono::Utc;
-use rustok_core::{UserRole, UserStatus};
 use rustok_cache::CacheService;
+use rustok_core::{UserRole, UserStatus};
 use rustok_migrations::Migrator;
 use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_server::models::_entities::{roles, user_roles};

@@ -441,7 +441,9 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             owner_operation,
             request.variant_id,
             crate::product_port::find_variant_info_for_reservation(
-                &txn, tenant_id, request.variant_id,
+                &txn,
+                tenant_id,
+                request.variant_id,
             )
             .await,
         )?;

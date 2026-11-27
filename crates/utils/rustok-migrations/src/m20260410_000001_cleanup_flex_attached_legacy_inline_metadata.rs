@@ -121,7 +121,10 @@ where
             continue;
         }
 
-        let locale = extract_locale(&metadata, tenant_locales.get(&tenant_id).map(|s| s.as_str()));
+        let locale = extract_locale(
+            &metadata,
+            tenant_locales.get(&tenant_id).map(|s| s.as_str()),
+        );
 
         for (field_key, field_value) in localized {
             let mut insert = Query::insert();

@@ -54,11 +54,9 @@ pub enum PagesHttpError {
 
 impl PagesPublishHttpRuntime {
     fn from_host(runtime: &HostRuntimeContext) -> Result<Self, PagesHttpError> {
-        let event_bus = runtime
-            .shared_get::<TransactionalEventBus>()
-            .ok_or(PagesHttpError::MissingDependency(
-                "TransactionalEventBus in HostRuntimeContext",
-            ))?;
+        let event_bus = runtime.shared_get::<TransactionalEventBus>().ok_or(
+            PagesHttpError::MissingDependency("TransactionalEventBus in HostRuntimeContext"),
+        )?;
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,

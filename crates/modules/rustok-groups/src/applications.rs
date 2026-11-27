@@ -703,7 +703,9 @@ async fn find_group_for_update(
     };
     match transaction.get_database_backend() {
         DbBackend::Sqlite => query().one(transaction).await?,
-        DbBackend::Postgres | DbBackend::MySql | _ => query().lock_exclusive().one(transaction).await?,
+        DbBackend::Postgres | DbBackend::MySql | _ => {
+            query().lock_exclusive().one(transaction).await?
+        }
     }
     .ok_or(GroupsError::NotFound)
 }
@@ -730,7 +732,9 @@ async fn find_application_for_update(
     .await?;
     match transaction.get_database_backend() {
         DbBackend::Sqlite => query().one(transaction).await?,
-        DbBackend::Postgres | DbBackend::MySql | _ => query().lock_exclusive().one(transaction).await?,
+        DbBackend::Postgres | DbBackend::MySql | _ => {
+            query().lock_exclusive().one(transaction).await?
+        }
     }
     .ok_or(GroupsError::NotFound)
 }

@@ -21,7 +21,9 @@ use tokio::task::JoinHandle;
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
 use crate::services::server_runtime_context::published_worker_running;
-use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
+use crate::services::server_runtime_context::{
+    ServerRuntimeContext, ServerRuntimeStartReservation,
+};
 use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 
 const FORUM_SEARCH_INBOX_POLL_INTERVAL: Duration = Duration::from_secs(5);

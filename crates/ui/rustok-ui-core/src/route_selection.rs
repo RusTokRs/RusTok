@@ -415,15 +415,21 @@ mod tests {
         );
 
         assert_eq!(
-            sanitized.get(AdminQueryKey::CategoryId.as_str()).map(String::as_str),
+            sanitized
+                .get(AdminQueryKey::CategoryId.as_str())
+                .map(String::as_str),
             Some("cat_01")
         );
         assert_eq!(
-            sanitized.get(AdminQueryKey::Page.as_str()).map(String::as_str),
+            sanitized
+                .get(AdminQueryKey::Page.as_str())
+                .map(String::as_str),
             Some("3")
         );
         assert_eq!(
-            sanitized.get(AdminQueryKey::PerPage.as_str()).map(String::as_str),
+            sanitized
+                .get(AdminQueryKey::PerPage.as_str())
+                .map(String::as_str),
             Some("50")
         );
     }

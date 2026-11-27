@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, UpdateUserCommand, UserAdminMutationRuntime,
 };
-use rustok_core::{ModuleRuntimeExtensions, UserRole};
 use rustok_cache::CacheService;
+use rustok_core::{ModuleRuntimeExtensions, UserRole};
 use rustok_rbac::graphql::{
     RbacGraphqlRoleWriteError, RbacGraphqlRoleWriter, RbacGraphqlRoleWriterHandle,
 };
@@ -104,9 +104,12 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
         // Clear locally and expire the caller's scope before any fallible fan-out.
         // The committed global watermark remains available to all watchdogs.
         crate::services::rbac_runtime::invalidate_all_user_permissions_cache().await;
-        crate::services::rbac_cache_invalidation::publish_all_rbac_invalidation(&self.cache_service, generation)
-            .await
-            .map_err(|error| RbacGraphqlRoleWriteError::Internal(error.to_string()))
+        crate::services::rbac_cache_invalidation::publish_all_rbac_invalidation(
+            &self.cache_service,
+            generation,
+        )
+        .await
+        .map_err(|error| RbacGraphqlRoleWriteError::Internal(error.to_string()))
     }
 
     async fn invalidate_role_users(
@@ -305,7 +308,9 @@ mod tests {
         let cache_service = CacheService::from_url(None);
         let provider = ServerAuthAdminMutationProvider::new(
             db.clone(),
-            crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            crate::auth::test_auth_config(
+                "test-secret-key-for-unit-tests-only-32bytes!".to_string(),
+            ),
             cache_service.clone(),
         );
         let writer = ServerRbacGraphqlRoleWriter {
@@ -345,7 +350,9 @@ mod tests {
         let cache_service = CacheService::from_url(None);
         let provider = ServerAuthAdminMutationProvider::new(
             db.clone(),
-            crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            crate::auth::test_auth_config(
+                "test-secret-key-for-unit-tests-only-32bytes!".to_string(),
+            ),
             cache_service.clone(),
         );
         let writer = ServerRbacGraphqlRoleWriter {

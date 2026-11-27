@@ -270,7 +270,9 @@ pub enum AlloyStageExecutionError {
     UnknownAgent(String),
     #[error("{0} requires a task input operation")]
     MissingOperation(String),
-    #[error("{agent_slug} requires operation `{required_operation}` rather than `{actual_operation}`")]
+    #[error(
+        "{agent_slug} requires operation `{required_operation}` rather than `{actual_operation}`"
+    )]
     OperationMismatch {
         agent_slug: String,
         required_operation: &'static str,
@@ -307,7 +309,9 @@ pub fn validate_stage_execution_input(
     let operation = payload
         .get("operation")
         .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| AlloyStageExecutionError::MissingOperation(binding.agent_slug.to_string()))?;
+        .ok_or_else(|| {
+            AlloyStageExecutionError::MissingOperation(binding.agent_slug.to_string())
+        })?;
     if operation != binding.required_operation {
         return Err(AlloyStageExecutionError::OperationMismatch {
             agent_slug: binding.agent_slug.to_string(),

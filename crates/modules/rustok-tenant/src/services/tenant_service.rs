@@ -164,9 +164,8 @@ impl TenantService {
         input: CreateTenantInput,
     ) -> TenantResult<(TenantResponse, bool)> {
         let slug = input.slug.trim().to_string();
-        let slug =
-            rustok_core::tenant_validation::TenantIdentifierValidator::validate_slug(&slug)
-                .map_err(|e| TenantError::Validation(e.to_string()))?;
+        let slug = rustok_core::tenant_validation::TenantIdentifierValidator::validate_slug(&slug)
+            .map_err(|e| TenantError::Validation(e.to_string()))?;
         tracing::debug!(slug = %slug, "ensuring tenant");
 
         if let Some(existing) = tenant::Entity::find()

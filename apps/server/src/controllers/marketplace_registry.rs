@@ -29,8 +29,8 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::error::{Error, http_error};
-use crate::modules::{CatalogManifestModule, ManifestManager};
 use crate::middleware::registry_artifact_access::VerifiedRegistryRunnerAccess;
+use crate::modules::{CatalogManifestModule, ManifestManager};
 use crate::services::marketplace_catalog::{
     RegistryAuthorSignatureEvidenceRequest, RegistryCatalogModule, RegistryCatalogResponse,
     RegistryExternalPrebuiltStageRequest, RegistryExternalPrebuiltStageResponse,
@@ -1964,7 +1964,10 @@ async fn claim_remote_validation_stage(
     headers: HeaderMap,
     Json(request): Json<RegistryRunnerClaimRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(runner_id_len = request.runner_id.len(), "Handling remote runner stage claim request");
+    tracing::debug!(
+        runner_id_len = request.runner_id.len(),
+        "Handling remote runner stage claim request"
+    );
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
@@ -2027,7 +2030,10 @@ async fn heartbeat_remote_validation_stage(
     headers: HeaderMap,
     Json(request): Json<RegistryRunnerHeartbeatRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(claim_id_len = claim_id.len(), "Handling remote runner lease heartbeat request");
+    tracing::debug!(
+        claim_id_len = claim_id.len(),
+        "Handling remote runner lease heartbeat request"
+    );
     let claim_id = validate_remote_claim_id(&claim_id)?;
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
@@ -2092,7 +2098,10 @@ async fn complete_remote_validation_stage(
     headers: HeaderMap,
     Json(request): Json<RegistryRunnerCompletionRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(claim_id_len = claim_id.len(), "Handling remote runner stage completion request");
+    tracing::debug!(
+        claim_id_len = claim_id.len(),
+        "Handling remote runner stage completion request"
+    );
     let claim_id = validate_remote_claim_id(&claim_id)?;
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
@@ -2160,7 +2169,10 @@ async fn fail_remote_validation_stage(
     headers: HeaderMap,
     Json(request): Json<RegistryRunnerCompletionRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(claim_id_len = claim_id.len(), "Handling remote runner stage failure request");
+    tracing::debug!(
+        claim_id_len = claim_id.len(),
+        "Handling remote runner stage failure request"
+    );
     let claim_id = validate_remote_claim_id(&claim_id)?;
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
@@ -2532,9 +2544,11 @@ async fn transfer_owner(
         let new_owner = crate::services::registry_principal::RegistryPrincipalRef::user(
             request.new_owner_user_id,
         )
-        .ok_or_else(|| Error::BadRequest(
-            "Registry owner transfer requires a non-nil new_owner_user_id".to_string(),
-        ))?;
+        .ok_or_else(|| {
+            Error::BadRequest(
+                "Registry owner transfer requires a non-nil new_owner_user_id".to_string(),
+            )
+        })?;
         RegistryGovernanceService::new(ctx.db_clone())
             .transfer_registry_slug_owner(
                 &request.slug,
@@ -3232,11 +3246,12 @@ fn authority_from_auth(
         None => Err(Error::Unauthorized(format!(
             "{action_label} requires authentication"
         ))),
-        Some(AuthContextExtension(ctx)) => RegistryAuthority::from_session(ctx)
-            .ok_or_else(|| http_error(HttpError::forbidden(
+        Some(AuthContextExtension(ctx)) => RegistryAuthority::from_session(ctx).ok_or_else(|| {
+            http_error(HttpError::forbidden(
                 "forbidden",
                 format!("{action_label} requires a direct user session"),
-            ))),
+            ))
+        }),
     }
 }
 
@@ -3666,7 +3681,9 @@ mod marketplace_registry_tests {
         let headers = HeaderMap::new();
         assert_eq!(
             super::authority_from_auth(&headers, None, "Publish")
-                .unwrap_err().into_response().status(),
+                .unwrap_err()
+                .into_response()
+                .status(),
             StatusCode::UNAUTHORIZED
         );
         let mut auth = AuthContextExtension(AuthContext {
@@ -3679,14 +3696,24 @@ mod marketplace_registry_tests {
             grant_type: "direct".to_string(),
         });
         assert!(super::authority_from_auth(&headers, Some(&auth), "Publish").is_ok());
-        assert!(super::optional_authority_from_auth(&headers, Some(&auth)).unwrap().is_some());
+        assert!(
+            super::optional_authority_from_auth(&headers, Some(&auth))
+                .unwrap()
+                .is_some()
+        );
         auth.0.session_id = Uuid::nil();
         assert_eq!(
             super::authority_from_auth(&headers, Some(&auth), "Publish")
-                .unwrap_err().into_response().status(),
+                .unwrap_err()
+                .into_response()
+                .status(),
             StatusCode::FORBIDDEN
         );
-        assert!(super::optional_authority_from_auth(&headers, Some(&auth)).unwrap().is_none());
+        assert!(
+            super::optional_authority_from_auth(&headers, Some(&auth))
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

@@ -3,10 +3,10 @@ use std::{sync::Arc, time::Duration};
 use async_trait::async_trait;
 use rustok_artifact_node_transport::GrpcArtifactNodeAgent;
 use rustok_modules::{
-    ModuleArtifactNodeAssignmentHeartbeatReceipt, ModuleArtifactNodeAssignmentReport,
-    ModuleArtifactNodeAssignmentReportReceipt, ModuleArtifactNodeAssignmentWorkItem,
-    ModuleReconciliationEvidence, ModuleReconciliationFailure, ModuleReconciliationPhase,
-    MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS,
+    MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS, ModuleArtifactNodeAssignmentHeartbeatReceipt,
+    ModuleArtifactNodeAssignmentReport, ModuleArtifactNodeAssignmentReportReceipt,
+    ModuleArtifactNodeAssignmentWorkItem, ModuleReconciliationEvidence,
+    ModuleReconciliationFailure, ModuleReconciliationPhase,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -138,10 +138,12 @@ where
         identity: rustok_artifact_node_transport::ModuleArtifactNodeAgentIdentity,
         heartbeat_interval: Duration,
     ) -> Result<Self, ArtifactNodeAgentError> {
-        let half_lease = Duration::from_secs(MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS as u64) / 2;
+        let half_lease =
+            Duration::from_secs(MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS as u64) / 2;
         if heartbeat_interval.is_zero() || heartbeat_interval >= half_lease {
             return Err(ArtifactNodeAgentError::InvalidConfiguration(
-                "artifact node heartbeat interval must be positive and less than half the lease".to_string(),
+                "artifact node heartbeat interval must be positive and less than half the lease"
+                    .to_string(),
             ));
         }
         Ok(Self {
@@ -259,16 +261,14 @@ where
         work: &ModuleArtifactNodeAssignmentWorkItem,
     ) -> Result<AssignmentObservation, ArtifactNodeAgentError> {
         match work.assignment.phase {
-            ModuleReconciliationPhase::Pending => {
-                match self.materializer.prepare(work).await {
-                    Ok(_) => Ok(AssignmentObservation {
-                        phase: ModuleReconciliationPhase::Prepared,
-                        health_evidence: None,
-                        failure: None,
-                    }),
-                    Err(error) => materialization_failure(error),
-                }
-            }
+            ModuleReconciliationPhase::Pending => match self.materializer.prepare(work).await {
+                Ok(_) => Ok(AssignmentObservation {
+                    phase: ModuleReconciliationPhase::Prepared,
+                    health_evidence: None,
+                    failure: None,
+                }),
+                Err(error) => materialization_failure(error),
+            },
             ModuleReconciliationPhase::Prepared => {
                 match self.materializer.verify_ready(work).await {
                     Ok(preparation) => Ok(AssignmentObservation {
@@ -772,18 +772,24 @@ mod tests {
 
     impl Drop for NotifyOnDrop {
         fn drop(&mut self) {
-            if let Some(notify) = &self.0 { notify.notify_one(); }
+            if let Some(notify) = &self.0 {
+                notify.notify_one();
+            }
         }
     }
 
     #[async_trait]
     impl ArtifactNodeAssignmentController for FailingHeartbeatController {
-        async fn claim_assignment(&self) -> Result<Option<ModuleArtifactNodeAssignmentWorkItem>, String> {
+        async fn claim_assignment(
+            &self,
+        ) -> Result<Option<ModuleArtifactNodeAssignmentWorkItem>, String> {
             Ok(self.claims.lock().unwrap().pop_front())
         }
 
-        async fn heartbeat_assignment(&self, _claim_id: uuid::Uuid)
-            -> Result<ModuleArtifactNodeAssignmentHeartbeatReceipt, String> {
+        async fn heartbeat_assignment(
+            &self,
+            _claim_id: uuid::Uuid,
+        ) -> Result<ModuleArtifactNodeAssignmentHeartbeatReceipt, String> {
             let _drop_signal = NotifyOnDrop(self.heartbeat_dropped.clone());
             self.heartbeat_started.notify_one();
             if self.hang_heartbeat {
@@ -798,8 +804,10 @@ mod tests {
             }
         }
 
-        async fn report_assignment(&self, report: &ModuleArtifactNodeAssignmentReport)
-            -> Result<ModuleArtifactNodeAssignmentReportReceipt, String> {
+        async fn report_assignment(
+            &self,
+            report: &ModuleArtifactNodeAssignmentReport,
+        ) -> Result<ModuleArtifactNodeAssignmentReportReceipt, String> {
             self.reports.lock().unwrap().push(report.clone());
             self.report_started.notify_one();
             if let Some(release) = &self.report_release {
@@ -829,22 +837,36 @@ mod tests {
         async fn run(&self) -> Result<NodeArtifactPreparation, ArtifactNodeMaterializationError> {
             self.started.notify_one();
             self.release.notified().await;
-            self.finished.store(true, std::sync::atomic::Ordering::SeqCst);
-            Ok(NodeArtifactPreparation { runtime_fingerprint: format!("sha256:{}", "f".repeat(64)) })
+            self.finished
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(NodeArtifactPreparation {
+                runtime_fingerprint: format!("sha256:{}", "f".repeat(64)),
+            })
         }
     }
 
     #[async_trait]
     impl ArtifactNodeMaterializer for BlockingMaterializer {
-        async fn prepare(&self, _work: &ModuleArtifactNodeAssignmentWorkItem)
-            -> Result<NodeArtifactPreparation, ArtifactNodeMaterializationError> { self.run().await }
-        async fn verify_ready(&self, _work: &ModuleArtifactNodeAssignmentWorkItem)
-            -> Result<NodeArtifactPreparation, ArtifactNodeMaterializationError> { self.run().await }
+        async fn prepare(
+            &self,
+            _work: &ModuleArtifactNodeAssignmentWorkItem,
+        ) -> Result<NodeArtifactPreparation, ArtifactNodeMaterializationError> {
+            self.run().await
+        }
+        async fn verify_ready(
+            &self,
+            _work: &ModuleArtifactNodeAssignmentWorkItem,
+        ) -> Result<NodeArtifactPreparation, ArtifactNodeMaterializationError> {
+            self.run().await
+        }
     }
 
     #[tokio::test]
     async fn heartbeat_failure_drains_materialization_without_starting_report() {
-        for (phase, hang) in [(ModuleReconciliationPhase::Pending, false), (ModuleReconciliationPhase::Prepared, true)] {
+        for (phase, hang) in [
+            (ModuleReconciliationPhase::Pending, false),
+            (ModuleReconciliationPhase::Prepared, true),
+        ] {
             let identity = identity();
             let heartbeat_started = std::sync::Arc::new(tokio::sync::Notify::new());
             let started = std::sync::Arc::new(tokio::sync::Notify::new());
@@ -852,25 +874,51 @@ mod tests {
             let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             let controller = std::sync::Arc::new(FailingHeartbeatController {
                 claims: Mutex::new(VecDeque::from([work(identity.node_id, phase, 0)])),
-                reports: Mutex::new(Vec::new()), heartbeat_started: heartbeat_started.clone(),
+                reports: Mutex::new(Vec::new()),
+                heartbeat_started: heartbeat_started.clone(),
                 report_started: std::sync::Arc::new(tokio::sync::Notify::new()),
-                report_release: None, hang_heartbeat: hang, wrong_claim: false, heartbeat_dropped: None,
+                report_release: None,
+                hang_heartbeat: hang,
+                wrong_claim: false,
+                heartbeat_dropped: None,
             });
             let materializer = std::sync::Arc::new(BlockingMaterializer {
-                started: started.clone(), release: release.clone(), finished: finished.clone(),
+                started: started.clone(),
+                release: release.clone(),
+                finished: finished.clone(),
             });
-            let agent = ArtifactNodeAgent::new(controller.clone(), materializer, identity,
-                std::time::Duration::from_millis(10)).unwrap();
+            let agent = ArtifactNodeAgent::new(
+                controller.clone(),
+                materializer,
+                identity,
+                std::time::Duration::from_millis(10),
+            )
+            .unwrap();
             let task = tokio::spawn(async move { agent.run_once().await });
-            tokio::time::timeout(std::time::Duration::from_secs(2), started.notified()).await.unwrap();
-            tokio::time::timeout(std::time::Duration::from_secs(2), heartbeat_started.notified()).await.unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(2), started.notified())
+                .await
+                .unwrap();
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                heartbeat_started.notified(),
+            )
+            .await
+            .unwrap();
             // The hanging heartbeat must time out before materialization ends.
-            if hang { tokio::time::sleep(std::time::Duration::from_millis(50)).await; }
+            if hang {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
             assert!(!task.is_finished());
             assert!(controller.reports.lock().unwrap().is_empty());
             release.notify_one();
-            let result = tokio::time::timeout(std::time::Duration::from_secs(2), task).await.unwrap().unwrap();
-            assert!(matches!(result, Err(super::ArtifactNodeAgentError::Controller(_))));
+            let result = tokio::time::timeout(std::time::Duration::from_secs(2), task)
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(matches!(
+                result,
+                Err(super::ArtifactNodeAgentError::Controller(_))
+            ));
             assert!(finished.load(std::sync::atomic::Ordering::SeqCst));
             assert!(controller.reports.lock().unwrap().is_empty());
         }
@@ -882,48 +930,100 @@ mod tests {
         let heartbeat_started = std::sync::Arc::new(tokio::sync::Notify::new());
         let heartbeat_dropped = std::sync::Arc::new(tokio::sync::Notify::new());
         let controller = std::sync::Arc::new(FailingHeartbeatController {
-            claims: Mutex::new(VecDeque::from([work(identity.node_id, ModuleReconciliationPhase::Pending, 0)])),
-            reports: Mutex::new(Vec::new()), heartbeat_started: heartbeat_started.clone(),
-            report_started: std::sync::Arc::new(tokio::sync::Notify::new()), report_release: None,
-            hang_heartbeat: true, wrong_claim: false, heartbeat_dropped: Some(heartbeat_dropped.clone()),
+            claims: Mutex::new(VecDeque::from([work(
+                identity.node_id,
+                ModuleReconciliationPhase::Pending,
+                0,
+            )])),
+            reports: Mutex::new(Vec::new()),
+            heartbeat_started: heartbeat_started.clone(),
+            report_started: std::sync::Arc::new(tokio::sync::Notify::new()),
+            report_release: None,
+            hang_heartbeat: true,
+            wrong_claim: false,
+            heartbeat_dropped: Some(heartbeat_dropped.clone()),
         });
         let materializer = std::sync::Arc::new(BlockingMaterializer {
             started: std::sync::Arc::new(tokio::sync::Notify::new()),
             release: std::sync::Arc::new(tokio::sync::Notify::new()),
             finished: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         });
-        let agent = ArtifactNodeAgent::new(controller.clone(), materializer, identity,
-            std::time::Duration::from_secs(1)).unwrap();
+        let agent = ArtifactNodeAgent::new(
+            controller.clone(),
+            materializer,
+            identity,
+            std::time::Duration::from_secs(1),
+        )
+        .unwrap();
         let task = tokio::spawn(async move { agent.run_once().await });
-        tokio::time::timeout(std::time::Duration::from_secs(3), heartbeat_started.notified()).await.unwrap();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            heartbeat_started.notified(),
+        )
+        .await
+        .unwrap();
         task.abort();
         assert!(task.await.unwrap_err().is_cancelled());
-        tokio::time::timeout(std::time::Duration::from_secs(2), heartbeat_dropped.notified()).await.unwrap();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            heartbeat_dropped.notified(),
+        )
+        .await
+        .unwrap();
         assert!(controller.reports.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
     async fn heartbeat_rejects_receipt_for_a_different_claim() {
         let controller = std::sync::Arc::new(FailingHeartbeatController {
-            claims: Mutex::new(VecDeque::new()), reports: Mutex::new(Vec::new()),
+            claims: Mutex::new(VecDeque::new()),
+            reports: Mutex::new(Vec::new()),
             heartbeat_started: std::sync::Arc::new(tokio::sync::Notify::new()),
             report_started: std::sync::Arc::new(tokio::sync::Notify::new()),
-            report_release: None, hang_heartbeat: false, wrong_claim: true, heartbeat_dropped: None,
+            report_release: None,
+            hang_heartbeat: false,
+            wrong_claim: true,
+            heartbeat_dropped: None,
         });
-        let result = tokio::time::timeout(std::time::Duration::from_secs(2),
-            super::maintain_assignment_lease(controller, uuid::Uuid::new_v4(), std::time::Duration::from_millis(10)))
-            .await.unwrap();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            super::maintain_assignment_lease(
+                controller,
+                uuid::Uuid::new_v4(),
+                std::time::Duration::from_millis(10),
+            ),
+        )
+        .await
+        .unwrap();
         assert!(result.unwrap_err().contains("different claim"));
     }
 
     #[test]
     fn constructor_rejects_unsafe_heartbeat_interval() {
         let controller = std::sync::Arc::new(RecordingController {
-            claims: Mutex::new(VecDeque::new()), reports: Mutex::new(Vec::new()), heartbeats: Mutex::new(Vec::new()),
+            claims: Mutex::new(VecDeque::new()),
+            reports: Mutex::new(Vec::new()),
+            heartbeats: Mutex::new(Vec::new()),
         });
         let materializer = std::sync::Arc::new(successful_materializer());
-        assert!(ArtifactNodeAgent::new(controller.clone(), materializer.clone(), identity(), std::time::Duration::ZERO).is_err());
-        assert!(ArtifactNodeAgent::new(controller, materializer, identity(), std::time::Duration::from_secs(150)).is_err());
+        assert!(
+            ArtifactNodeAgent::new(
+                controller.clone(),
+                materializer.clone(),
+                identity(),
+                std::time::Duration::ZERO
+            )
+            .is_err()
+        );
+        assert!(
+            ArtifactNodeAgent::new(
+                controller,
+                materializer,
+                identity(),
+                std::time::Duration::from_secs(150)
+            )
+            .is_err()
+        );
     }
 
     #[tokio::test]
@@ -933,18 +1033,45 @@ mod tests {
         let report_started = std::sync::Arc::new(tokio::sync::Notify::new());
         let report_release = std::sync::Arc::new(tokio::sync::Notify::new());
         let controller = std::sync::Arc::new(FailingHeartbeatController {
-            claims: Mutex::new(VecDeque::from([work(identity.node_id, ModuleReconciliationPhase::Pending, 0)])),
-            reports: Mutex::new(Vec::new()), heartbeat_started: heartbeat_started.clone(),
-            report_started: report_started.clone(), report_release: Some(report_release.clone()), hang_heartbeat: false, wrong_claim: false, heartbeat_dropped: None,
+            claims: Mutex::new(VecDeque::from([work(
+                identity.node_id,
+                ModuleReconciliationPhase::Pending,
+                0,
+            )])),
+            reports: Mutex::new(Vec::new()),
+            heartbeat_started: heartbeat_started.clone(),
+            report_started: report_started.clone(),
+            report_release: Some(report_release.clone()),
+            hang_heartbeat: false,
+            wrong_claim: false,
+            heartbeat_dropped: None,
         });
-        let agent = ArtifactNodeAgent::new(controller.clone(), std::sync::Arc::new(successful_materializer()),
-            identity, std::time::Duration::from_millis(10)).unwrap();
+        let agent = ArtifactNodeAgent::new(
+            controller.clone(),
+            std::sync::Arc::new(successful_materializer()),
+            identity,
+            std::time::Duration::from_millis(10),
+        )
+        .unwrap();
         let task = tokio::spawn(async move { agent.run_once().await });
-        tokio::time::timeout(std::time::Duration::from_secs(2), report_started.notified()).await.unwrap();
-        tokio::time::timeout(std::time::Duration::from_secs(2), heartbeat_started.notified()).await.unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), report_started.notified())
+            .await
+            .unwrap();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            heartbeat_started.notified(),
+        )
+        .await
+        .unwrap();
         assert!(!task.is_finished());
         report_release.notify_one();
-        assert!(tokio::time::timeout(std::time::Duration::from_secs(2), task).await.unwrap().unwrap().unwrap());
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_secs(2), task)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap()
+        );
         assert_eq!(controller.reports.lock().unwrap().len(), 1);
     }
 

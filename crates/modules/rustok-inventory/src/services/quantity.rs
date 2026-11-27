@@ -533,7 +533,9 @@ impl QuantityPlan {
         // Preserve the complete locked predecessor, including other warehouses.
         // Only the selected physical stock counter may change in this command.
         plan.expected_levels = levels;
-        let expected_target = plan.expected_levels.iter_mut()
+        let expected_target = plan
+            .expected_levels
+            .iter_mut()
             .find(|level| level.id == target.id)
             .ok_or(QuantityWriteBlocker::StateUnverified)?;
         expected_target.stocked_quantity = stocked;
@@ -686,9 +688,16 @@ pub(super) async fn load_projection_item_bindings<C: ConnectionTrait>(
     conn: &C,
     variant_ids: &[Uuid],
 ) -> Result<std::collections::HashMap<Uuid, Uuid>, DbErr> {
-    let requested: Vec<_> = variant_ids.iter().copied().collect::<BTreeSet<_>>().into_iter().collect();
+    let requested: Vec<_> = variant_ids
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
     if requested.iter().any(Uuid::is_nil) {
-        return Err(DbErr::Custom("Inventory availability variant identity is invalid".into()));
+        return Err(DbErr::Custom(
+            "Inventory availability variant identity is invalid".into(),
+        ));
     }
     let mut bindings = std::collections::HashMap::new();
     let mut seen_variants = BTreeSet::new();
@@ -699,14 +708,19 @@ pub(super) async fn load_projection_item_bindings<C: ConnectionTrait>(
             .all(conn)
             .await?;
         if items.len() > chunk.len() {
-            return Err(DbErr::Custom("Inventory availability item identity is ambiguous".into()));
+            return Err(DbErr::Custom(
+                "Inventory availability item identity is ambiguous".into(),
+            ));
         }
         for item in items {
-            if item.id.is_nil() || !chunk.contains(&item.variant_id)
+            if item.id.is_nil()
+                || !chunk.contains(&item.variant_id)
                 || !seen_variants.insert(item.variant_id)
                 || bindings.insert(item.id, item.variant_id).is_some()
             {
-                return Err(DbErr::Custom("Inventory availability item identity is unverified".into()));
+                return Err(DbErr::Custom(
+                    "Inventory availability item identity is unverified".into(),
+                ));
             }
         }
     }
@@ -730,14 +744,18 @@ pub(super) async fn load_projection_levels<C: ConnectionTrait>(
             .all(conn)
             .await?;
         if rows.len() > bound {
-            return Err(DbErr::Custom("Inventory availability exceeds the level read bound".into()));
+            return Err(DbErr::Custom(
+                "Inventory availability exceeds the level read bound".into(),
+            ));
         }
         let mut counts = std::collections::HashMap::<Uuid, usize>::new();
         for row in &rows {
             let count = counts.entry(row.inventory_item_id).or_default();
             *count += 1;
             if *count > MAX_QUANTITY_LEVELS {
-                return Err(DbErr::Custom("Inventory availability exceeds the level read bound".into()));
+                return Err(DbErr::Custom(
+                    "Inventory availability exceeds the level read bound".into(),
+                ));
             }
         }
         levels.extend(rows);
@@ -753,10 +771,13 @@ pub(super) fn available_by_variant<'a>(
     levels: impl IntoIterator<Item = &'a inventory_level::Model>,
 ) -> Result<std::collections::HashMap<Uuid, i32>, DbErr> {
     let mut variants = BTreeSet::new();
-    if item_to_variant.iter().any(|(item, variant)| {
-        item.is_nil() || variant.is_nil() || !variants.insert(*variant)
-    }) {
-        return Err(DbErr::Custom("Inventory availability item identity is unverified".into()));
+    if item_to_variant
+        .iter()
+        .any(|(item, variant)| item.is_nil() || variant.is_nil() || !variants.insert(*variant))
+    {
+        return Err(DbErr::Custom(
+            "Inventory availability item identity is unverified".into(),
+        ));
     }
     let mut level_ids = BTreeSet::new();
     let mut level_bindings = BTreeSet::new();
@@ -770,16 +791,21 @@ pub(super) fn available_by_variant<'a>(
         let variant_id = item_to_variant
             .get(&level.inventory_item_id)
             .ok_or_else(|| DbErr::Custom("Inventory availability binding is unverified".into()))?;
-        if level.id.is_nil() || level.location_id.is_nil()
+        if level.id.is_nil()
+            || level.location_id.is_nil()
             || !level_ids.insert(level.id)
             || !level_bindings.insert((level.inventory_item_id, level.location_id))
         {
-            return Err(DbErr::Custom("Inventory availability level identity is unverified".into()));
+            return Err(DbErr::Custom(
+                "Inventory availability level identity is unverified".into(),
+            ));
         }
         let count = level_counts.entry(level.inventory_item_id).or_default();
         *count += 1;
         if *count > MAX_QUANTITY_LEVELS {
-            return Err(DbErr::Custom("Inventory availability exceeds the level read bound".into()));
+            return Err(DbErr::Custom(
+                "Inventory availability exceeds the level read bound".into(),
+            ));
         }
         if level.stocked_quantity < 0 || level.reserved_quantity < 0 || level.incoming_quantity < 0
         {
@@ -845,10 +871,9 @@ fn validate_event_quantities(before: i32, after: i32) -> WriteResult<()> {
 #[cfg(test)]
 mod tests;
 
-
 #[cfg(test)]
 mod sku_sync_tests {
-    use super::{sync_variant_sku, QuantityWriteBlocker, QuantityWriteError};
+    use super::{QuantityWriteBlocker, QuantityWriteError, sync_variant_sku};
     use chrono::Utc;
     use sea_orm::{
         ConnectionTrait, Database, DatabaseBackend, EntityTrait, Statement, TransactionTrait,
@@ -861,9 +886,12 @@ mod sku_sync_tests {
             "CREATE TABLE product_variants (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, product_id TEXT NOT NULL, sku TEXT, inventory_policy TEXT NOT NULL DEFAULT 'deny')",
             "CREATE TABLE inventory_items (id TEXT PRIMARY KEY NOT NULL, variant_id TEXT NOT NULL, sku TEXT NULL, requires_shipping BOOLEAN NOT NULL, metadata TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
         ] {
-            db.execute_raw(Statement::from_string(DatabaseBackend::Sqlite, sql.to_owned()))
-                .await
-                .expect("create SKU sync fixture table");
+            db.execute_raw(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                sql.to_owned(),
+            ))
+            .await
+            .expect("create SKU sync fixture table");
         }
     }
 

@@ -2,13 +2,12 @@
 pub use rustok_auth::{
     AuthConfig, AuthError, AuthSettingsOverrides, Claims, DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
     InviteClaims, MAX_PASSWORD_LENGTH_BYTES, MIN_PASSWORD_LENGTH_FLOOR_CHARS,
-    normalize_display_name, normalize_email, password_hash_needs_rehash,
-    validate_password_policy,
+    normalize_display_name, normalize_email, password_hash_needs_rehash, validate_password_policy,
 };
 
 use crate::error::{Error, Result};
-use serde::Deserialize;
 use rustok_auth::{AuthMacPurpose, auth_purpose_mac, is_canonical_auth_mac_tag};
+use serde::Deserialize;
 use subtle::ConstantTimeEq;
 
 const TOKEN_SUBJECT_SEPARATOR: char = '\u{001f}';
@@ -60,8 +59,12 @@ pub(crate) fn auth_config_from_host_document(
     bytes: &[u8],
 ) -> Result<(u64, AuthConfig)> {
     rustok_auth::build_auth_config_from_document(
-        mac_root, access_expiration, parse_auth_settings(settings)?, bytes,
-    ).map_err(auth_err)
+        mac_root,
+        access_expiration,
+        parse_auth_settings(settings)?,
+        bytes,
+    )
+    .map_err(auth_err)
 }
 
 /// Fresh, complete RSA configuration for an isolated server test runtime.
@@ -70,8 +73,14 @@ pub(crate) fn auth_config_from_host_document(
 #[cfg(test)]
 pub(crate) fn test_auth_config(mac_root: String) -> AuthConfig {
     let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().expect("RSA fixture");
-    auth_config_from_host_document(mac_root, 900, None, fixture.document(1).to_string().as_bytes())
-        .expect("valid test JWT configuration").1
+    auth_config_from_host_document(
+        mac_root,
+        900,
+        None,
+        fixture.document(1).to_string().as_bytes(),
+    )
+    .expect("valid test JWT configuration")
+    .1
 }
 
 // ─── Token functions ─────────────────────────────────────────────────
@@ -130,13 +139,18 @@ pub fn decode_access_token(config: &AuthConfig, token: &str) -> Result<Claims> {
 // normalized email. Reset appends the existing purpose-separated MAC tag.
 fn recovery_subject(user: &crate::models::users::Model) -> Result<String> {
     let email = user.email.trim().to_lowercase();
-    if user.id.is_nil() || user.tenant_id.is_nil() || user.recovery_revision < 0
-        || email.is_empty() || email.contains(TOKEN_SUBJECT_SEPARATOR)
+    if user.id.is_nil()
+        || user.tenant_id.is_nil()
+        || user.recovery_revision < 0
+        || email.is_empty()
+        || email.contains(TOKEN_SUBJECT_SEPARATOR)
     {
         return Err(auth_err(AuthError::TokenEncodingFailed));
     }
-    Ok(format!("{}{TOKEN_SUBJECT_SEPARATOR}{}{TOKEN_SUBJECT_SEPARATOR}{email}",
-        user.id, user.recovery_revision))
+    Ok(format!(
+        "{}{TOKEN_SUBJECT_SEPARATOR}{}{TOKEN_SUBJECT_SEPARATOR}{email}",
+        user.id, user.recovery_revision
+    ))
 }
 
 fn parse_recovery_subject(subject: &str) -> Option<(uuid::Uuid, i64, &str)> {
@@ -146,9 +160,12 @@ fn parse_recovery_subject(subject: &str) -> Option<(uuid::Uuid, i64, &str)> {
     let email = fields.next()?;
     let user_id = uuid::Uuid::parse_str(raw_id).ok()?;
     let revision = raw_revision.parse::<i64>().ok()?;
-    if user_id.is_nil() || user_id.to_string() != raw_id
-        || revision < 0 || revision.to_string() != raw_revision
-        || email.is_empty() || fields.next().is_some()
+    if user_id.is_nil()
+        || user_id.to_string() != raw_id
+        || revision < 0
+        || revision.to_string() != raw_revision
+        || email.is_empty()
+        || fields.next().is_some()
     {
         return None;
     }
@@ -177,8 +194,8 @@ pub fn decode_password_reset_token(
         .rsplit_once(TOKEN_SUBJECT_SEPARATOR)
         .filter(|(_, fingerprint)| is_canonical_auth_mac_tag(fingerprint))
         .ok_or_else(|| auth_err(AuthError::InvalidResetToken))?;
-    let (user_id, recovery_revision, email) = parse_recovery_subject(prefix)
-        .ok_or_else(|| auth_err(AuthError::InvalidResetToken))?;
+    let (user_id, recovery_revision, email) =
+        parse_recovery_subject(prefix).ok_or_else(|| auth_err(AuthError::InvalidResetToken))?;
 
     Ok(PasswordResetClaims {
         sub: email.to_string(),
@@ -208,9 +225,16 @@ pub fn password_reset_credential_matches(
         .into()
 }
 
-fn password_reset_credential_fingerprint(config: &AuthConfig, password_hash: &str) -> Result<String> {
-    let tag = auth_purpose_mac(config, AuthMacPurpose::PasswordResetCredential, password_hash.as_bytes())
-        .map_err(auth_err)?;
+fn password_reset_credential_fingerprint(
+    config: &AuthConfig,
+    password_hash: &str,
+) -> Result<String> {
+    let tag = auth_purpose_mac(
+        config,
+        AuthMacPurpose::PasswordResetCredential,
+        password_hash.as_bytes(),
+    )
+    .map_err(auth_err)?;
     Ok(hex::encode(tag))
 }
 
@@ -302,8 +326,7 @@ pub fn hash_refresh_token(token: &str) -> String {
 
 const DUMMY_PASSWORD_VALUE: &str = "rustok-timing-equalization-dummy";
 
-static DUMMY_PASSWORD_HASH: once_cell::sync::OnceCell<String> =
-    once_cell::sync::OnceCell::new();
+static DUMMY_PASSWORD_HASH: once_cell::sync::OnceCell<String> = once_cell::sync::OnceCell::new();
 
 /// A valid Argon2id hash of a non-credential constant, generated once per
 /// process. Verifying a candidate password against it costs the same as
@@ -311,9 +334,7 @@ static DUMMY_PASSWORD_HASH: once_cell::sync::OnceCell<String> =
 /// indistinguishable by latency from wrong-password logins.
 pub fn dummy_password_hash() -> Result<String> {
     DUMMY_PASSWORD_HASH
-        .get_or_try_init(|| {
-            rustok_auth::hash_password(DUMMY_PASSWORD_VALUE).map_err(auth_err)
-        })
+        .get_or_try_init(|| rustok_auth::hash_password(DUMMY_PASSWORD_VALUE).map_err(auth_err))
         .cloned()
 }
 
@@ -326,7 +347,9 @@ pub async fn dummy_password_hash_async() -> Result<String> {
     }
     tokio::task::spawn_blocking(dummy_password_hash)
         .await
-        .map_err(|error| Error::Message(format!("dummy_password_hash_async spawn_blocking: {error}")))?
+        .map_err(|error| {
+            Error::Message(format!("dummy_password_hash_async spawn_blocking: {error}"))
+        })?
 }
 
 /// Perform a fixed-cost password verification on public account-lookup
@@ -376,7 +399,9 @@ mod tests {
     #[tokio::test]
     async fn public_lookup_timing_mask_reuses_the_dummy_password_hash() {
         let first = dummy_password_hash_async().await.expect("dummy hash");
-        let second = dummy_password_hash_async().await.expect("cached dummy hash");
+        let second = dummy_password_hash_async()
+            .await
+            .expect("cached dummy hash");
         assert_eq!(first, second);
         mask_auth_lookup_timing()
             .await
@@ -387,8 +412,12 @@ mod tests {
     fn auth_config_from_complete_rsa_document_preserves_host_policy() {
         let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
         let (generation, config) = auth_config_from_host_document(
-            mac_root(), 900, None, fixture.document(7).to_string().as_bytes(),
-        ).expect("auth config");
+            mac_root(),
+            900,
+            None,
+            fixture.document(7).to_string().as_bytes(),
+        )
+        .expect("auth config");
 
         assert_eq!(generation, 7);
         assert_eq!(config.access_expiration, 900);
@@ -405,9 +434,8 @@ mod tests {
         let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
         let document = fixture.document(1).to_string();
 
-        let result = auth_config_from_host_document(
-            mac_root(), 900, Some(&settings), document.as_bytes(),
-        );
+        let result =
+            auth_config_from_host_document(mac_root(), 900, Some(&settings), document.as_bytes());
 
         assert!(matches!(result, Err(crate::error::Error::Json(_))));
     }
@@ -422,9 +450,8 @@ mod tests {
         let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
         let document = fixture.document(1).to_string();
 
-        let result = auth_config_from_host_document(
-            mac_root(), 900, Some(&settings), document.as_bytes(),
-        );
+        let result =
+            auth_config_from_host_document(mac_root(), 900, Some(&settings), document.as_bytes());
 
         assert!(result.is_err());
     }
@@ -442,7 +469,8 @@ mod tests {
 
     fn rsa_test_config(root: String, document: &serde_json::Value) -> AuthConfig {
         auth_config_from_host_document(root, 900, None, document.to_string().as_bytes())
-            .expect("complete RSA test keyring").1
+            .expect("complete RSA test keyring")
+            .1
     }
 
     #[test]
@@ -450,12 +478,12 @@ mod tests {
         let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
         let config = rsa_test_config(mac_root(), &fixture.document(1));
         let tenant_id = uuid::Uuid::new_v4();
-        let mut user = crate::models::users::Model::default_service_user(uuid::Uuid::new_v4(), tenant_id);
+        let mut user =
+            crate::models::users::Model::default_service_user(uuid::Uuid::new_v4(), tenant_id);
         user.email = " User@Example.com ".to_string();
         user.password_hash = "old-password-hash".to_string();
         user.recovery_revision = 7;
-        let token = encode_password_reset_token(&config, &user, 900)
-        .expect("encode reset token");
+        let token = encode_password_reset_token(&config, &user, 900).expect("encode reset token");
         let claims = decode_password_reset_token(&config, &token).expect("decode reset token");
 
         assert_eq!(claims.sub, "user@example.com");
@@ -482,29 +510,55 @@ mod tests {
         let config = rsa_test_config(mac_root(), &document);
         let tag = password_reset_credential_fingerprint(&config, "hash").unwrap();
         assert!(password_reset_credential_matches(&config, "hash", &tag));
-        assert!(!password_reset_credential_matches(&config, "hash", &format!("v2:{tag}")));
-        assert!(!password_reset_credential_matches(&config, "hash", &tag[2..]));
+        assert!(!password_reset_credential_matches(
+            &config,
+            "hash",
+            &format!("v2:{tag}")
+        ));
+        assert!(!password_reset_credential_matches(
+            &config,
+            "hash",
+            &tag[2..]
+        ));
         let tenant = uuid::Uuid::new_v4();
         let user_id = uuid::Uuid::new_v4();
-        for invalid in [format!("v2:{tag}"), tag.to_uppercase(), tag[2..].to_string()] {
-            let subject = format!("{user_id}{TOKEN_SUBJECT_SEPARATOR}0{TOKEN_SUBJECT_SEPARATOR}user@example.com{TOKEN_SUBJECT_SEPARATOR}{invalid}");
-            let token = rustok_auth::encode_password_reset_token(&config, tenant, &subject, 900).unwrap();
+        for invalid in [
+            format!("v2:{tag}"),
+            tag.to_uppercase(),
+            tag[2..].to_string(),
+        ] {
+            let subject = format!(
+                "{user_id}{TOKEN_SUBJECT_SEPARATOR}0{TOKEN_SUBJECT_SEPARATOR}user@example.com{TOKEN_SUBJECT_SEPARATOR}{invalid}"
+            );
+            let token =
+                rustok_auth::encode_password_reset_token(&config, tenant, &subject, 900).unwrap();
             assert!(decode_password_reset_token(&config, &token).is_err());
         }
         let legacy = format!("user@example.com{TOKEN_SUBJECT_SEPARATOR}{tag}");
-        let legacy = rustok_auth::encode_password_reset_token(&config, tenant, &legacy, 900).unwrap();
+        let legacy =
+            rustok_auth::encode_password_reset_token(&config, tenant, &legacy, 900).unwrap();
         assert!(decode_password_reset_token(&config, &legacy).is_err());
         for revision in ["-1", "+1", "01", "9223372036854775808"] {
-            let subject = format!("{user_id}{TOKEN_SUBJECT_SEPARATOR}{revision}{TOKEN_SUBJECT_SEPARATOR}user@example.com{TOKEN_SUBJECT_SEPARATOR}{tag}");
-            let token = rustok_auth::encode_password_reset_token(&config, tenant, &subject, 900).unwrap();
+            let subject = format!(
+                "{user_id}{TOKEN_SUBJECT_SEPARATOR}{revision}{TOKEN_SUBJECT_SEPARATOR}user@example.com{TOKEN_SUBJECT_SEPARATOR}{tag}"
+            );
+            let token =
+                rustok_auth::encode_password_reset_token(&config, tenant, &subject, 900).unwrap();
             assert!(decode_password_reset_token(&config, &token).is_err());
         }
-        let other = rsa_test_config("another-secret-at-least-thirty-two-bytes".to_string(), &document);
+        let other = rsa_test_config(
+            "another-secret-at-least-thirty-two-bytes".to_string(),
+            &document,
+        );
         assert!(!password_reset_credential_matches(&other, "hash", &tag));
         assert!(
             auth_config_from_host_document(
-                "short".to_string(), 900, None, document.to_string().as_bytes(),
-            ).is_err(),
+                "short".to_string(),
+                900,
+                None,
+                document.to_string().as_bytes(),
+            )
+            .is_err(),
             "a weak MAC root must fail during Auth preparation",
         );
     }
@@ -518,9 +572,8 @@ mod tests {
         let mut user = crate::models::users::Model::default_service_user(user_id, tenant_id);
         user.email = " User@Example.com ".to_string();
         user.recovery_revision = 9;
-        let token =
-            encode_email_verification_token(&config, &user, 900)
-                .expect("encode verification token");
+        let token = encode_email_verification_token(&config, &user, 900)
+            .expect("encode verification token");
         let claims =
             decode_email_verification_token(&config, &token).expect("decode verification token");
 
@@ -529,7 +582,8 @@ mod tests {
         assert_eq!(claims.recovery_revision, 9);
         assert_eq!(claims.sub, "user@example.com");
         let legacy = format!("{user_id}{TOKEN_SUBJECT_SEPARATOR}user@example.com");
-        let legacy = rustok_auth::encode_email_verification_token(&config, tenant_id, &legacy, 900).unwrap();
+        let legacy =
+            rustok_auth::encode_email_verification_token(&config, tenant_id, &legacy, 900).unwrap();
         assert!(decode_email_verification_token(&config, &legacy).is_err());
     }
 }

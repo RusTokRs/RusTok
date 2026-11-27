@@ -26,8 +26,16 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(AuthEmailChangeRequests::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(AuthEmailChangeRequests::UserId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(AuthEmailChangeRequests::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AuthEmailChangeRequests::UserId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(AuthEmailChangeRequests::CurrentEmail)
                             .string_len(255)
@@ -62,14 +70,20 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_auth_email_change_requests_tenant")
-                            .from(AuthEmailChangeRequests::Table, AuthEmailChangeRequests::TenantId)
+                            .from(
+                                AuthEmailChangeRequests::Table,
+                                AuthEmailChangeRequests::TenantId,
+                            )
                             .to(Tenants::Table, Tenants::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_auth_email_change_requests_user")
-                            .from(AuthEmailChangeRequests::Table, AuthEmailChangeRequests::UserId)
+                            .from(
+                                AuthEmailChangeRequests::Table,
+                                AuthEmailChangeRequests::UserId,
+                            )
                             .to(Users::Table, Users::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
@@ -158,7 +172,11 @@ ALTER TABLE auth_email_change_requests
         }
 
         manager
-            .drop_table(Table::drop().table(AuthEmailChangeRequests::Table).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(AuthEmailChangeRequests::Table)
+                    .to_owned(),
+            )
             .await
     }
 }
@@ -251,11 +269,9 @@ mod tests {
             .is_err()
         );
         assert!(
-            db.execute_unprepared(
-                "UPDATE users SET tenant_id = 'tenant-2' WHERE id = 'user-1'"
-            )
-            .await
-            .is_err()
+            db.execute_unprepared("UPDATE users SET tenant_id = 'tenant-2' WHERE id = 'user-1'")
+                .await
+                .is_err()
         );
     }
 }

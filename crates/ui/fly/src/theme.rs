@@ -83,7 +83,10 @@ fn validate_token_dependencies(decoded: &[DesignToken]) -> Result<(), String> {
     let mut reference_graph = std::collections::BTreeMap::new();
     for token in decoded {
         let references = crate::css_var_references(&token.value).ok_or_else(|| {
-            format!("design token {} contains a malformed var() reference", token.name)
+            format!(
+                "design token {} contains a malformed var() reference",
+                token.name
+            )
         })?;
         for reference in &references {
             if !allowed_references.contains(reference) {
@@ -1010,16 +1013,24 @@ mod command_tests {
                     "style": {"color": "var(--brand)"}
                 }
             }]
-        })).expect("document");
+        }))
+        .expect("document");
         let usages = find_token_usages(&document, "brand");
         assert_eq!(usages.len(), 4);
         for id in ["opaque-child", "nested", "opaque-children", "opaque-root"] {
-            assert!(usages.iter().any(|usage| usage.location == TokenUsageLocation::ComponentStyle {
-                component_id: id.to_string(),
-                property: "color".to_string(),
-            }), "missing usage for {id}");
+            assert!(
+                usages.iter().any(|usage| usage.location
+                    == TokenUsageLocation::ComponentStyle {
+                        component_id: id.to_string(),
+                        property: "color".to_string(),
+                    }),
+                "missing usage for {id}"
+            );
         }
-        assert_eq!(rename_token_references(&mut document, "brand", "primary"), 4);
+        assert_eq!(
+            rename_token_references(&mut document, "brand", "primary"),
+            4
+        );
         assert!(find_token_usages(&document, "brand").is_empty());
         assert_eq!(find_token_usages(&document, "primary").len(), 4);
         let raw = serde_json::to_value(document.project()).expect("project");
@@ -1037,7 +1048,9 @@ mod command_tests {
         let before = document.clone();
         let hash = document.hash();
         for command in [
-            ThemeCommand::Remove { name: "brand".to_string() },
+            ThemeCommand::Remove {
+                name: "brand".to_string(),
+            },
             ThemeCommand::Upsert {
                 token: DesignToken {
                     name: "brand".to_string(),
@@ -1055,7 +1068,10 @@ mod command_tests {
                 new_name: "missing".to_string(),
             },
         ] {
-            assert!(apply_theme_command(&mut document, &command).is_err(), "{command:?}");
+            assert!(
+                apply_theme_command(&mut document, &command).is_err(),
+                "{command:?}"
+            );
             assert_eq!(document, before);
             assert_eq!(document.hash(), hash);
         }
@@ -1081,11 +1097,16 @@ mod command_tests {
             }],
         };
         apply_theme_command(&mut document, &repair).expect("repair malformed theme");
-        assert_eq!(decode_theme_tokens(&document).expect("valid tokens")[0].value, "#123456");
+        assert_eq!(
+            decode_theme_tokens(&document).expect("valid tokens")[0].value,
+            "#123456"
+        );
 
         let mut editor = FlyEditor::new(before, RegistrySet::with_builtins());
         assert!(!editor.validate().is_valid());
-        editor.apply(EditorCommand::Theme { command: repair }).expect("repair via editor");
+        editor
+            .apply(EditorCommand::Theme { command: repair })
+            .expect("repair via editor");
         assert!(editor.validate().is_valid());
     }
 
@@ -1094,7 +1115,10 @@ mod command_tests {
         fn upsert(name: &str, value: &str) -> EditorCommand {
             EditorCommand::Theme {
                 command: ThemeCommand::Upsert {
-                    token: DesignToken { name: name.into(), value: value.into() },
+                    token: DesignToken {
+                        name: name.into(),
+                        value: value.into(),
+                    },
                 },
             }
         }
@@ -1108,19 +1132,25 @@ mod command_tests {
         assert_eq!(editor.revision().project_hash, before_hash);
         assert_eq!(editor.history().undo_len(), 0);
 
-        editor.apply(EditorCommand::batch([
-            upsert("accent", "var(--brand)"),
-            upsert("brand", "#123456"),
-        ])).expect("forward dependency resolved by the same batch");
+        editor
+            .apply(EditorCommand::batch([
+                upsert("accent", "var(--brand)"),
+                upsert("brand", "#123456"),
+            ]))
+            .expect("forward dependency resolved by the same batch");
         let after = editor.document().clone();
         assert_eq!(editor.history().undo_len(), 1);
         assert_eq!(decode_theme_tokens(&after).expect("valid theme").len(), 2);
 
         let state = editor.clone();
-        assert!(editor.apply(EditorCommand::batch([
-            upsert("brand", "var(--accent)"),
-            upsert("other", "1rem"),
-        ])).is_err());
+        assert!(
+            editor
+                .apply(EditorCommand::batch([
+                    upsert("brand", "var(--accent)"),
+                    upsert("other", "1rem"),
+                ]))
+                .is_err()
+        );
         assert_eq!(editor, state);
         assert_eq!(editor.undo().expect("undo"), &before);
         assert_eq!(editor.redo().expect("redo"), &after);
@@ -1187,7 +1217,11 @@ mod command_tests {
             },
         )
         .expect_err("expanded token value must exceed the size limit");
-        assert!(error.to_string().contains("value must be 1..=256 characters"));
+        assert!(
+            error
+                .to_string()
+                .contains("value must be 1..=256 characters")
+        );
         assert_eq!(document, before);
     }
 }

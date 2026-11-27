@@ -147,7 +147,11 @@ fn resolve_csr_debug_modules(
     _query_params: &std::collections::HashMap<String, String>,
 ) -> Option<Vec<String>> {
     #[cfg(debug_assertions)]
-    if _query_params.get("rustok_debug_modules").map(|v| v.as_str()) == Some("true") {
+    if _query_params
+        .get("rustok_debug_modules")
+        .map(|v| v.as_str())
+        == Some("true")
+    {
         return Some(vec![
             "content".into(),
             "cart".into(),
@@ -183,9 +187,13 @@ mod csr_query_parity_tests {
     fn standalone_csr_requires_a_policy_read_unless_explicit_debug_is_enabled() {
         assert!(resolve_csr_debug_modules(&Default::default()).is_none());
         #[cfg(debug_assertions)]
-        assert!(resolve_csr_debug_modules(&std::collections::HashMap::from([
-            ("rustok_debug_modules".to_string(), "true".to_string())
-        ])).is_some());
+        assert!(
+            resolve_csr_debug_modules(&std::collections::HashMap::from([(
+                "rustok_debug_modules".to_string(),
+                "true".to_string()
+            )]))
+            .is_some()
+        );
     }
 
     #[test]

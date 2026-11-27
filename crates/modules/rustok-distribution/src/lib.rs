@@ -8,11 +8,11 @@
 mod channel_index;
 mod generated_promotions;
 mod generation;
-mod localized_record_index;
 #[cfg(all(feature = "mod-groups", feature = "mod-taxonomy"))]
 mod groups_taxonomy_port;
 #[cfg(feature = "mod-inventory")]
 pub mod inventory_index;
+mod localized_record_index;
 #[cfg(feature = "mod-product")]
 pub mod product_index;
 #[cfg(feature = "mod-product")]

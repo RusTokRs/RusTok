@@ -269,8 +269,14 @@ mod normalization_tests {
             component_id: "hero".to_string(),
             patch: ComponentPatch::default().merge_style(serde_json::json!({"color": "red"})),
         });
-        let inconsistent = CapabilityState { edit: false, ..CapabilityState::full() };
-        assert_eq!(requirement.first_missing(inconsistent), Some(EditorCapability::Styles));
+        let inconsistent = CapabilityState {
+            edit: false,
+            ..CapabilityState::full()
+        };
+        assert_eq!(
+            requirement.first_missing(inconsistent),
+            Some(EditorCapability::Styles)
+        );
         assert!(!requirement.is_satisfied_by(inconsistent));
     }
 }

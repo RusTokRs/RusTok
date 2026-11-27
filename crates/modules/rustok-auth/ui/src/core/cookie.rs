@@ -22,14 +22,18 @@ impl std::fmt::Debug for RefreshCredential {
 
 fn canonical_secret(value: &str) -> bool {
     value.len() == 64
-        && value.bytes().all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f'))
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f'))
         && value.bytes().any(|b| b != b'0')
 }
 
 fn valid_tenant(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 253
-        && value.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
 }
 
 impl RefreshCredential {
@@ -38,12 +42,18 @@ impl RefreshCredential {
         let tenant = parts.next().ok_or(RefreshCookieError::Malformed)?;
         let token = parts.next().ok_or(RefreshCookieError::Malformed)?;
         let seed = parts.next().ok_or(RefreshCookieError::Malformed)?;
-        if parts.next().is_some() || !valid_tenant(tenant)
-            || !canonical_secret(token) || !canonical_secret(seed)
+        if parts.next().is_some()
+            || !valid_tenant(tenant)
+            || !canonical_secret(token)
+            || !canonical_secret(seed)
         {
             return Err(RefreshCookieError::Malformed);
         }
-        Ok(Self { tenant: tenant.into(), token: token.into(), seed: seed.into() })
+        Ok(Self {
+            tenant: tenant.into(),
+            token: token.into(),
+            seed: seed.into(),
+        })
     }
 
     pub fn tenant(&self) -> &str {
@@ -79,7 +89,9 @@ impl RefreshCredential {
     pub(crate) fn generate_seed() -> Result<String, crate::model::AuthError> {
         use rand_core::{OsRng, RngCore};
         let mut seed = [0u8; 32];
-        OsRng.try_fill_bytes(&mut seed).map_err(|_| crate::model::AuthError::Network)?;
+        OsRng
+            .try_fill_bytes(&mut seed)
+            .map_err(|_| crate::model::AuthError::Network)?;
         if seed == [0; 32] {
             return Err(crate::model::AuthError::Network);
         }
@@ -91,8 +103,8 @@ impl RefreshCredential {
         use hmac::{Hmac, KeyInit, Mac};
         use sha2::Sha256;
         let seed = hex::decode(&self.seed).map_err(|_| crate::model::AuthError::Network)?;
-        let mut mac = Hmac::<Sha256>::new_from_slice(&seed)
-            .map_err(|_| crate::model::AuthError::Network)?;
+        let mut mac =
+            Hmac::<Sha256>::new_from_slice(&seed).map_err(|_| crate::model::AuthError::Network)?;
         // The tenant excludes NUL, the token is fixed-width canonical hex.
         mac.update(b"rustok/leptos-bff/refresh-retry\0");
         mac.update(self.tenant.as_bytes());
@@ -142,8 +154,14 @@ mod tests {
     fn only_an_absent_cookie_is_an_anonymous_observation() {
         assert_eq!(inspect_refresh_cookie_headers([]), Ok(None));
         assert_eq!(inspect_refresh_cookie_headers(["theme=dark"]), Ok(None));
-        let header = format!("theme=dark; {}={}", super::super::ADMIN_REFRESH_COOKIE, envelope());
-        let credential = inspect_refresh_cookie_headers([header.as_str()]).unwrap().unwrap();
+        let header = format!(
+            "theme=dark; {}={}",
+            super::super::ADMIN_REFRESH_COOKIE,
+            envelope()
+        );
+        let credential = inspect_refresh_cookie_headers([header.as_str()])
+            .unwrap()
+            .unwrap();
         assert_eq!(credential.tenant(), "shop");
         assert_eq!(credential.cookie_value(), envelope());
         assert!(!format!("{credential:?}").contains(&"a1".repeat(32)));
@@ -153,7 +171,9 @@ mod tests {
     #[test]
     fn malformed_or_legacy_envelopes_never_become_anonymous() {
         for value in [
-            String::new(), "shop".into(), format!("shop.{}", "a1".repeat(32)),
+            String::new(),
+            "shop".into(),
+            format!("shop.{}", "a1".repeat(32)),
             format!("shop.{}.{}", "0".repeat(64), "b2".repeat(32)),
             format!("shop.{}.{}", "a1".repeat(32), "0".repeat(64)),
             format!("bad tenant.{}.{}", "a1".repeat(32), "b2".repeat(32)),
@@ -161,14 +181,20 @@ mod tests {
             format!("{}.extra", envelope()),
         ] {
             let header = format!("{}={value}", super::super::ADMIN_REFRESH_COOKIE);
-            assert_eq!(inspect_refresh_cookie_headers([header.as_str()]), Err(RefreshCookieError::Malformed));
+            assert_eq!(
+                inspect_refresh_cookie_headers([header.as_str()]),
+                Err(RefreshCookieError::Malformed)
+            );
         }
     }
 
     #[test]
     fn duplicate_cookies_are_ambiguous_even_when_values_match() {
         let header = format!("{}={}", super::super::ADMIN_REFRESH_COOKIE, envelope());
-        assert_eq!(inspect_refresh_cookie_headers([header.as_str(), header.as_str()]), Err(RefreshCookieError::Duplicate));
+        assert_eq!(
+            inspect_refresh_cookie_headers([header.as_str(), header.as_str()]),
+            Err(RefreshCookieError::Duplicate)
+        );
     }
 
     #[cfg(feature = "ssr")]
@@ -177,10 +203,38 @@ mod tests {
         let credential = RefreshCredential::parse(&envelope()).unwrap();
         let proof = credential.retry_key().unwrap();
         assert!(canonical_secret(&proof));
-        assert_eq!(proof, RefreshCredential::parse(&credential.cookie_value()).unwrap().retry_key().unwrap());
-        assert_ne!(proof, credential.rotated(&"c3".repeat(32)).unwrap().retry_key().unwrap());
-        assert_ne!(proof, RefreshCredential::new("other", credential.token(), credential.seed.clone()).unwrap().retry_key().unwrap());
-        assert_ne!(proof, RefreshCredential::new("shop", credential.token(), "d4".repeat(32)).unwrap().retry_key().unwrap());
-        assert_ne!(RefreshCredential::generate_seed().unwrap(), RefreshCredential::generate_seed().unwrap());
+        assert_eq!(
+            proof,
+            RefreshCredential::parse(&credential.cookie_value())
+                .unwrap()
+                .retry_key()
+                .unwrap()
+        );
+        assert_ne!(
+            proof,
+            credential
+                .rotated(&"c3".repeat(32))
+                .unwrap()
+                .retry_key()
+                .unwrap()
+        );
+        assert_ne!(
+            proof,
+            RefreshCredential::new("other", credential.token(), credential.seed.clone())
+                .unwrap()
+                .retry_key()
+                .unwrap()
+        );
+        assert_ne!(
+            proof,
+            RefreshCredential::new("shop", credential.token(), "d4".repeat(32))
+                .unwrap()
+                .retry_key()
+                .unwrap()
+        );
+        assert_ne!(
+            RefreshCredential::generate_seed().unwrap(),
+            RefreshCredential::generate_seed().unwrap()
+        );
     }
 }

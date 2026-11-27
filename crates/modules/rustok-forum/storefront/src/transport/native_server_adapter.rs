@@ -1725,10 +1725,7 @@ async fn storefront_reply_current_revision_native(
     }
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "forum/storefront-reply-quote-revision"
-)]
+#[server(prefix = "/api/fn", endpoint = "forum/storefront-reply-quote-revision")]
 async fn storefront_reply_quote_revision_native(
     reply_id: String,
     locale: Option<String>,
@@ -1880,8 +1877,8 @@ async fn storefront_report_topic_native(
         }
         let topic_id = uuid::Uuid::parse_str(topic_id.trim())
             .map_err(|_| ServerFnError::new("topic_id must be a valid UUID"))?;
-        let reason_code = ForumModerationReportService::parse_reason_code(&reason_code)
-            .map_err(server_error)?;
+        let reason_code =
+            ForumModerationReportService::parse_reason_code(&reason_code).map_err(server_error)?;
         let effective_locale = normalize_locale(
             locale
                 .as_deref()
@@ -1953,8 +1950,8 @@ async fn storefront_report_reply_native(
         }
         let reply_id = uuid::Uuid::parse_str(reply_id.trim())
             .map_err(|_| ServerFnError::new("reply_id must be a valid UUID"))?;
-        let reason_code = ForumModerationReportService::parse_reason_code(&reason_code)
-            .map_err(server_error)?;
+        let reason_code =
+            ForumModerationReportService::parse_reason_code(&reason_code).map_err(server_error)?;
         let effective_locale = normalize_locale(
             locale
                 .as_deref()

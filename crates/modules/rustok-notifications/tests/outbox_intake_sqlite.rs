@@ -9,8 +9,7 @@ use rustok_notifications::{
     MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, NotificationError,
     NotificationOutboxEnvelopeDecoder, NotificationOutboxEnvelopeRecord,
     NotificationOutboxIntakeOutcome, NotificationOutboxIntakeReceiptPort,
-    NotificationOutboxIntakeWorker, NotificationResult,
-    NotificationsModule,
+    NotificationOutboxIntakeWorker, NotificationResult, NotificationsModule,
 };
 use sea_orm::{
     ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
@@ -123,7 +122,10 @@ async fn terminal_intake_receipt_and_outbox_ack_commit_atomically() {
         .process_outbox_event(accepted_id)
         .await
         .expect("accepted receipt and outbox acknowledgement commit together");
-    assert!(matches!(accepted, NotificationOutboxIntakeOutcome::Accepted(_)));
+    assert!(matches!(
+        accepted,
+        NotificationOutboxIntakeOutcome::Accepted(_)
+    ));
     let ack_count: i64 = db
         .query_one_raw(sea_orm::Statement::from_string(
             db.get_database_backend(),
@@ -332,10 +334,7 @@ async fn retryable_prefix_does_not_starve_later_pages_and_is_revisited() {
     let third = Uuid::from_u128(3);
     let fourth = Uuid::from_u128(4);
     for id in [first, second] {
-        insert_outbox_event(
-            &db, id, 1, serde_json::json!({"retryable": true}), 1,
-        )
-        .await;
+        insert_outbox_event(&db, id, 1, serde_json::json!({"retryable": true}), 1).await;
     }
     // The third row shares the failed prefix's timestamp. The exclusive
     // tie-breaker must find it even when the full first page remains pending.
@@ -353,12 +352,21 @@ async fn retryable_prefix_does_not_starve_later_pages_and_is_revisited() {
         )
         .await;
     }
-    let worker = NotificationOutboxIntakeWorker::new(db.clone(), Arc::new(FakeDecoder), 2)
-        .expect("worker");
-    let page = worker.pending_outbox_page_after(None).await.expect("first page");
+    let worker =
+        NotificationOutboxIntakeWorker::new(db.clone(), Arc::new(FakeDecoder), 2).expect("worker");
+    let page = worker
+        .pending_outbox_page_after(None)
+        .await
+        .expect("first page");
     assert_eq!(page.event_ids, vec![first, second]);
     for id in page.event_ids {
-        assert!(worker.process_outbox_event(id).await.expect_err("retryable").is_retryable());
+        assert!(
+            worker
+                .process_outbox_event(id)
+                .await
+                .expect_err("retryable")
+                .is_retryable()
+        );
     }
     let page = worker
         .pending_outbox_page_after(page.next_cursor.as_ref())

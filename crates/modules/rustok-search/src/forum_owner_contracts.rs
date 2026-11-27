@@ -1,6 +1,6 @@
-use std::sync::Arc;
 use async_trait::async_trait;
 use rustok_api::PortError;
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub const MAX_FORUM_OWNER_TENANT_PAGE_LIMIT: usize = 256;

@@ -32,8 +32,9 @@ impl WorkflowMutation {
             &[Permission::WORKFLOWS_MANAGE],
             "Permission denied: workflows:manage required",
         )?;
-        let actor_id = auth.human_user_id()
-            .ok_or_else(|| async_graphql::Error::new("An authenticated human operator is required"))?;
+        let actor_id = auth.human_user_id().ok_or_else(|| {
+            async_graphql::Error::new("An authenticated human operator is required")
+        })?;
         let outcome = crate::services::reconcile_firing(
             &db,
             tenant.id,
@@ -42,9 +43,13 @@ impl WorkflowMutation {
             decision.into(),
             &evidence,
             prior_worker_fenced,
-        ).await.map_err(|_| async_graphql::Error::new(
-            "Workflow cron reconciliation failed its evidence or state precondition"
-        ))?;
+        )
+        .await
+        .map_err(|_| {
+            async_graphql::Error::new(
+                "Workflow cron reconciliation failed its evidence or state precondition",
+            )
+        })?;
         Ok(crate::WorkflowCronReconciliationItem::from(outcome).into())
     }
 

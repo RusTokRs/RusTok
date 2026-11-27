@@ -204,7 +204,10 @@ impl std::fmt::Debug for NotificationOutboxIntakeWorker {
         formatter
             .debug_struct("NotificationOutboxIntakeWorker")
             .field("batch_size", &self.batch_size)
-            .field("receipt_acknowledgements_enabled", &self.receipt_port.is_some())
+            .field(
+                "receipt_acknowledgements_enabled",
+                &self.receipt_port.is_some(),
+            )
             .finish_non_exhaustive()
     }
 }
@@ -249,7 +252,6 @@ impl NotificationOutboxIntakeWorker {
         self.receipt_port = Some(ReceiptPortBinding { consumer_key, port });
         Ok(self)
     }
-
 
     /// Selects one stable bounded page of committed supported outbox envelopes
     /// that have neither an accepted receipt nor a permanent rejection record.
@@ -301,7 +303,8 @@ impl NotificationOutboxIntakeWorker {
         // SQLite orders its stored timestamp text. Do not round-trip it
         // through chrono, which can change the offset/format and skip ties.
         // PostgreSQL uses the native timestamp value for its comparison.
-        let rows: Vec<(Uuid, Value)> = if self.db.get_database_backend() == DatabaseBackend::Sqlite {
+        let rows: Vec<(Uuid, Value)> = if self.db.get_database_backend() == DatabaseBackend::Sqlite
+        {
             select
                 .into_tuple::<(Uuid, String)>()
                 .all(&self.db)
@@ -319,10 +322,11 @@ impl NotificationOutboxIntakeWorker {
                 .collect()
         };
         let next_cursor = if rows.len() == self.batch_size {
-            rows.last().map(|(id, created_at)| NotificationOutboxIntakeCursor {
-                created_at: created_at.clone(),
-                id: *id,
-            })
+            rows.last()
+                .map(|(id, created_at)| NotificationOutboxIntakeCursor {
+                    created_at: created_at.clone(),
+                    id: *id,
+                })
         } else {
             None
         };
@@ -399,7 +403,8 @@ impl NotificationOutboxIntakeWorker {
                 .decode(&envelope)
                 .map_err(|_| NotificationError::SourceIdentityConflict)?;
             ensure_receipt_identity(&existing, outbox_event_id, &source_event)?;
-            self.acknowledge_existing_outbox_event(outbox_event_id, row.event_type.as_str()).await?;
+            self.acknowledge_existing_outbox_event(outbox_event_id, row.event_type.as_str())
+                .await?;
             return Ok(NotificationOutboxIntakeOutcome::Accepted(intake_result(
                 existing, true,
             )));
@@ -409,7 +414,8 @@ impl NotificationOutboxIntakeWorker {
             .await?
         {
             ensure_rejection_matches_outbox(&existing, &row)?;
-            self.acknowledge_existing_outbox_event(outbox_event_id, row.event_type.as_str()).await?;
+            self.acknowledge_existing_outbox_event(outbox_event_id, row.event_type.as_str())
+                .await?;
             return Ok(NotificationOutboxIntakeOutcome::Rejected(rejection_result(
                 existing, true,
             )));
@@ -588,12 +594,8 @@ impl NotificationOutboxIntakeWorker {
             .await?
         {
             ensure_rejection_matches_outbox(&existing, row)?;
-            self.acknowledge_outbox_event_in_transaction(
-                &txn,
-                row.id,
-                row.event_type.as_str(),
-            )
-            .await?;
+            self.acknowledge_outbox_event_in_transaction(&txn, row.id, row.event_type.as_str())
+                .await?;
             txn.commit().await?;
             return Ok(NotificationOutboxIntakeOutcome::Rejected(rejection_result(
                 existing, true,
@@ -620,7 +622,8 @@ impl NotificationOutboxIntakeWorker {
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
         ensure_rejection_matches_outbox(&rejection, row)?;
-        self.acknowledge_outbox_event_in_transaction(&txn, row.id, row.event_type.as_str()).await?;
+        self.acknowledge_outbox_event_in_transaction(&txn, row.id, row.event_type.as_str())
+            .await?;
         txn.commit().await?;
         Ok(NotificationOutboxIntakeOutcome::Rejected(rejection_result(
             rejection, false,
@@ -634,12 +637,15 @@ impl NotificationOutboxIntakeWorker {
         event_type: &str,
     ) -> NotificationResult<()> {
         if let Some(binding) = &self.receipt_port {
-            binding.port.acknowledge_in_transaction(
-                transaction,
-                &binding.consumer_key,
-                outbox_event_id,
-                event_type,
-            ).await?;
+            binding
+                .port
+                .acknowledge_in_transaction(
+                    transaction,
+                    &binding.consumer_key,
+                    outbox_event_id,
+                    event_type,
+                )
+                .await?;
         }
         Ok(())
     }
@@ -653,12 +659,8 @@ impl NotificationOutboxIntakeWorker {
             return Ok(());
         }
         let transaction = self.db.begin().await?;
-        self.acknowledge_outbox_event_in_transaction(
-            &transaction,
-            outbox_event_id,
-            event_type,
-        )
-        .await?;
+        self.acknowledge_outbox_event_in_transaction(&transaction, outbox_event_id, event_type)
+            .await?;
         transaction.commit().await?;
         Ok(())
     }

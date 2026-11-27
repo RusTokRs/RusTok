@@ -443,7 +443,8 @@ mod tests {
             PageBuilderContributionHostExtension::new(manifest("second"), |_| {
                 Err("second installer failed".to_string())
             }),
-        ]).expect("host");
+        ])
+        .expect("host");
         let mut registries = RegistrySet::with_builtins();
         let before = registries.clone();
         assert!(host.install_registries(&mut registries).is_err());

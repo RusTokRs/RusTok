@@ -196,16 +196,17 @@ pub fn forum_fly_registry_set() -> FlyResult<RegistrySet> {
     Ok(registries)
 }
 
-static EMPTY_CONTRIBUTION: LazyLock<ContributionDescriptor> = LazyLock::new(|| ContributionDescriptor {
-    id: String::new(),
-    provider: String::new(),
-    required_capabilities: BTreeSet::new(),
-    blocks: Vec::new(),
-    renderers: Vec::new(),
-    property_editors: Vec::new(),
-    messages: std::collections::BTreeMap::new(),
-    metadata: Map::new(),
-});
+static EMPTY_CONTRIBUTION: LazyLock<ContributionDescriptor> =
+    LazyLock::new(|| ContributionDescriptor {
+        id: String::new(),
+        provider: String::new(),
+        required_capabilities: BTreeSet::new(),
+        blocks: Vec::new(),
+        renderers: Vec::new(),
+        property_editors: Vec::new(),
+        messages: std::collections::BTreeMap::new(),
+        metadata: Map::new(),
+    });
 
 fn generated_contribution(id: &str) -> &'static ContributionDescriptor {
     GENERATED_FORUM_CONTRIBUTION_MANIFEST
@@ -213,7 +214,10 @@ fn generated_contribution(id: &str) -> &'static ContributionDescriptor {
         .iter()
         .find(|contribution| contribution.id == id)
         .unwrap_or_else(|| {
-            tracing::error!(id, "generated Forum admin contribution is missing from manifest");
+            tracing::error!(
+                id,
+                "generated Forum admin contribution is missing from manifest"
+            );
             &EMPTY_CONTRIBUTION
         })
 }

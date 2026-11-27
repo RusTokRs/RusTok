@@ -1,9 +1,8 @@
 use crate::{
-    FlyResult, FormProviderEndpointResolver, PageSelection, ProjectDocument, RenderPolicy,
-    EmbedProviderRegistry, RenderedPage, RuntimeProjectMaterialization, ValidationDiagnostic,
+    EmbedProviderRegistry, FlyResult, FormProviderEndpointResolver, PageSelection, ProjectDocument,
+    RenderPolicy, RenderedPage, RuntimeProjectMaterialization, ValidationDiagnostic,
     materialize_project_with_runtime_context,
-    materialize_project_with_runtime_context_with_providers,
-    render_page_with_embed_registry,
+    materialize_project_with_runtime_context_with_providers, render_page_with_embed_registry,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -209,38 +208,56 @@ mod tests {
         assert!(crate::PageMetadata::from_page(page).title.is_some());
 
         let unresolved = render_page_with_runtime_context(
-            &document, &PageSelection::First, &policy, &json!({ "$locale": "de" }),
-        ).expect("unresolved metadata can still render the body");
+            &document,
+            &PageSelection::First,
+            &policy,
+            &json!({ "$locale": "de" }),
+        )
+        .expect("unresolved metadata can still render the body");
         assert!(unresolved.page.metadata.title.is_none());
         assert!(unresolved.page.head.title.is_none());
         assert!(unresolved.page.head.canonical_url.is_none());
         assert!(unresolved.page.head.twitter_title.is_none());
-        assert!(unresolved.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "runtime_localized_value_unresolved"
-        }));
-        assert!(render_page_with_runtime_context(
-            &document,
-            &PageSelection::Slug("english".to_string()),
-            &policy,
-            &json!({ "$locale": "de" }),
-        ).is_err());
+        assert!(
+            unresolved
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "runtime_localized_value_unresolved" })
+        );
+        assert!(
+            render_page_with_runtime_context(
+                &document,
+                &PageSelection::Slug("english".to_string()),
+                &policy,
+                &json!({ "$locale": "de" }),
+            )
+            .is_err()
+        );
 
         let resolved = render_page_with_runtime_context(
             &document,
             &PageSelection::Slug("russian".to_string()),
             &policy,
             &json!({ "$locale": "ru" }),
-        ).expect("localized render");
+        )
+        .expect("localized render");
         assert_eq!(resolved.page.head.title.as_deref(), Some("Russian title"));
-        assert_eq!(resolved.page.head.canonical_url.as_deref(), Some("/russian"));
-        assert_eq!(resolved.page.head.twitter_title.as_deref(), Some("Russian tweet"));
+        assert_eq!(
+            resolved.page.head.canonical_url.as_deref(),
+            Some("/russian")
+        );
+        assert_eq!(
+            resolved.page.head.twitter_title.as_deref(),
+            Some("Russian tweet")
+        );
 
         let fallback = render_page_with_runtime_context(
             &document,
             &PageSelection::Slug("english".to_string()),
             &policy,
             &json!({ "$locale": "de", "$fallback_locales": ["en"] }),
-        ).expect("explicit fallback");
+        )
+        .expect("explicit fallback");
         assert_eq!(fallback.page.head.title.as_deref(), Some("English title"));
         assert!(page.extensions[crate::FLY_PAGE_METADATA_FIELD]["title"].is_object());
     }
@@ -372,7 +389,6 @@ mod tests {
         assert!(result.page.html.contains("href=\"/o-nas\""));
     }
 
-
     #[test]
     fn runtime_renderer_accepts_the_same_custom_embed_registry() {
         let mut embed_node = json!({ "id": "player", "type": "wrapper" });
@@ -415,6 +431,4 @@ mod tests {
         .expect("runtime render");
         assert!(rendered.page.html.contains("<iframe"));
     }
-
-
 }

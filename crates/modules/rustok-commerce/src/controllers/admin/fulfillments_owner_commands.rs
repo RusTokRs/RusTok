@@ -400,8 +400,13 @@ pub async fn list_fulfillments(
     );
 
     let pagination = params.pagination.unwrap_or_default();
-    let read_context =
-        admin_fulfillment_read_context(&tenant, &auth, &request_context, None, "list_fulfillments")?;
+    let read_context = admin_fulfillment_read_context(
+        &tenant,
+        &auth,
+        &request_context,
+        None,
+        "list_fulfillments",
+    )?;
     let page = runtime
         .fulfillment_read_port()
         .list_fulfillment_projections(
@@ -558,8 +563,7 @@ pub async fn create_fulfillment(
         },
     );
     let idempotency_key = require_idempotency_key(&headers)?;
-    let read_context =
-        admin_fulfillment_create_read_context(&tenant, &auth, &request_context)?;
+    let read_context = admin_fulfillment_create_read_context(&tenant, &auth, &request_context)?;
     let write_context = admin_fulfillment_create_command_context(
         &tenant,
         &auth,
@@ -1069,21 +1073,35 @@ mod shipment_context_tests {
         let mut nil_tenant = tenant.clone();
         nil_tenant.id = Uuid::nil();
         assert!(
-            admin_fulfillment_read_context(&tenant, &foreign_auth, &request, None, "show_fulfillment")
-                .is_err()
+            admin_fulfillment_read_context(
+                &tenant,
+                &foreign_auth,
+                &request,
+                None,
+                "show_fulfillment"
+            )
+            .is_err()
         );
         assert!(
-            admin_fulfillment_read_context(&tenant, &auth, &foreign_request, None, "show_fulfillment")
-                .is_err()
+            admin_fulfillment_read_context(
+                &tenant,
+                &auth,
+                &foreign_request,
+                None,
+                "show_fulfillment"
+            )
+            .is_err()
         );
-        assert!(admin_fulfillment_command_context(
-            &nil_tenant,
-            &auth,
-            &request,
-            Uuid::new_v4(),
-            "ship_fulfillment",
-            "unchanged".into()
-        )
-        .is_err());
+        assert!(
+            admin_fulfillment_command_context(
+                &nil_tenant,
+                &auth,
+                &request,
+                Uuid::new_v4(),
+                "ship_fulfillment",
+                "unchanged".into()
+            )
+            .is_err()
+        );
     }
 }

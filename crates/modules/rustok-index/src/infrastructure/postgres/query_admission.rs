@@ -222,7 +222,9 @@ impl PostgresIndexQueryAdmissionCatalog {
 }
 
 fn referenced_first_hop_links(query: &IndexQuery) -> BTreeSet<String> {
-    query.referenced_paths().into_iter()
+    query
+        .referenced_paths()
+        .into_iter()
         .filter_map(|path| path.links().first().map(|link| link.as_str().to_owned()))
         .collect()
 }

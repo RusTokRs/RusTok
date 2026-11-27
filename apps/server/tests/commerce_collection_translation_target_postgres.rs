@@ -433,7 +433,10 @@ fn owner_service(db: DatabaseConnection) -> CollectionTranslationService {
     CollectionTranslationService::new(db, event_bus)
 }
 
-fn registered_provider(db: DatabaseConnection, auth_config: AuthConfig) -> Arc<dyn TranslationTargetProvider> {
+fn registered_provider(
+    db: DatabaseConnection,
+    auth_config: AuthConfig,
+) -> Arc<dyn TranslationTargetProvider> {
     let registry = ModuleRegistry::new().register(CommerceModule);
     let settings = RustokSettings::default();
     let runtime = ServerRuntimeContext::new(db, settings.clone());

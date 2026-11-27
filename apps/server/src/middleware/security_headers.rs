@@ -355,11 +355,13 @@ mod tests {
             "/ws/builds-guide",
         ] {
             assert!(
-                select_csp(path, Some(&nonce), false)
-                    .contains(nonce.source_expression().as_str()),
+                select_csp(path, Some(&nonce), false).contains(nonce.source_expression().as_str()),
                 "{path}"
             );
-            assert!(select_report_only_csp(path, Some(&nonce)).is_some(), "{path}");
+            assert!(
+                select_report_only_csp(path, Some(&nonce)).is_some(),
+                "{path}"
+            );
         }
     }
 
@@ -526,12 +528,22 @@ mod tests {
                 .expect("edge response");
             assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS, "{path}");
             assert_eq!(
-                response.headers().get(header::CACHE_CONTROL).and_then(|v| v.to_str().ok()),
-                Some(if private { "no-store" } else { "public, max-age=60" }),
+                response
+                    .headers()
+                    .get(header::CACHE_CONTROL)
+                    .and_then(|v| v.to_str().ok()),
+                Some(if private {
+                    "no-store"
+                } else {
+                    "public, max-age=60"
+                }),
                 "{path}",
             );
             assert_eq!(
-                response.headers().get(header::PRAGMA).and_then(|v| v.to_str().ok()),
+                response
+                    .headers()
+                    .get(header::PRAGMA)
+                    .and_then(|v| v.to_str().ok()),
                 private.then_some("no-cache"),
                 "{path}",
             );
@@ -548,20 +560,33 @@ mod tests {
             .route("/api/other", get(|| async { StatusCode::OK }))
             .layer(middleware::from_fn(security_headers));
 
-        for path in ["/health/ready", "/health/runtime", "/metrics", "/health/live"] {
+        for path in [
+            "/health/ready",
+            "/health/runtime",
+            "/metrics",
+            "/health/live",
+        ] {
             let response = app
                 .clone()
                 .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
                 .await
                 .expect("operational response");
             assert_eq!(
-                response.headers().get("cache-control").and_then(|v| v.to_str().ok()),
+                response
+                    .headers()
+                    .get("cache-control")
+                    .and_then(|v| v.to_str().ok()),
                 Some("private, no-store"),
                 "{path}",
             );
         }
         let response = app
-            .oneshot(Request::builder().uri("/api/other").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/other")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .expect("unrelated API response");
         assert!(!response.headers().contains_key("cache-control"));
@@ -633,7 +658,11 @@ mod tests {
                 Some(API_CSP),
                 "{path}"
             );
-            assert!(!response.headers().contains_key("content-security-policy-report-only"));
+            assert!(
+                !response
+                    .headers()
+                    .contains_key("content-security-policy-report-only")
+            );
             assert!(!response.headers().contains_key("reporting-endpoints"));
         }
     }

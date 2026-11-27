@@ -59,21 +59,31 @@ impl ScopeTransition {
             return false;
         }
         let released = self.realm.take().is_some_and(|realm| realm.release());
-        let saved = released && if verified {
-            match (self.session.try_get_untracked(), self.user.try_get_untracked()) {
-                (Some(Some(session)), Some(Some(user))) =>
-                    storage::publish_identity(&session, &user, &self.stamp).is_ok(),
-                (Some(None), Some(None)) => { storage::clear_session(); true }
-                _ => false,
-            }
-        } else {
-            storage::clear_session();
-            true
-        };
+        let saved = released
+            && if verified {
+                match (
+                    self.session.try_get_untracked(),
+                    self.user.try_get_untracked(),
+                ) {
+                    (Some(Some(session)), Some(Some(user))) => {
+                        storage::publish_identity(&session, &user, &self.stamp).is_ok()
+                    }
+                    (Some(None), Some(None)) => {
+                        storage::clear_session();
+                        true
+                    }
+                    _ => false,
+                }
+            } else {
+                storage::clear_session();
+                true
+            };
         // A failed explicit login in a stale tab does not grant permission to
         // subsequently refresh/logout whichever identity another tab installed.
         let epoch_set = if verified && saved || self.previously_current {
-            self.projection_epoch.try_update(|epoch| *epoch = self.stamp.clone()).is_some()
+            self.projection_epoch
+                .try_update(|epoch| *epoch = self.stamp.clone())
+                .is_some()
         } else {
             self.projection_epoch.try_get_untracked().is_some()
         };
@@ -168,14 +178,23 @@ impl AuthContext {
     #[cfg(target_arch = "wasm32")]
     fn install_epoch_listeners(&self) -> bool {
         use leptos::wasm_bindgen::{JsCast, closure::Closure};
-        let Some(window) = web_sys::window() else { return false; };
+        let Some(window) = web_sys::window() else {
+            return false;
+        };
         let auth = self.clone();
         let listener = Closure::<dyn FnMut(web_sys::Event)>::new(move |_event| {
             // Read the current storage value, not an asynchronously delivered
             // event payload. Ignore this provider's own start/end notifications.
             let current = browser_epoch::read();
-            let own = current.as_ref().ok().and_then(|epoch| epoch.as_deref())
-                .is_some_and(|stamp| stamp.split_once(':').is_some_and(|(source, _)| source == auth.source));
+            let own = current
+                .as_ref()
+                .ok()
+                .and_then(|epoch| epoch.as_deref())
+                .is_some_and(|stamp| {
+                    stamp
+                        .split_once(':')
+                        .is_some_and(|(source, _)| source == auth.source)
+                });
             if own || auth.epoch_is_current() {
                 return;
             }
@@ -183,16 +202,24 @@ impl AuthContext {
             let _ = auth.user_state.try_update(|user| *user = None);
             let _ = auth.session_state.try_update(|session| *session = None);
             let _ = auth.loading_state.try_update(|loading| *loading = false);
-            let _ = auth.error_state.try_update(|error| *error = Some(AuthError::Http(409).to_string()));
+            let _ = auth
+                .error_state
+                .try_update(|error| *error = Some(AuthError::Http(409).to_string()));
             // Do not adopt the foreign epoch: stale logout/refresh intents
             // remain inadmissible until explicit sign-in or document reload.
         });
         let names = [AUTH_SCOPE_CHANGE_EVENT, "storage", "pageshow", "focus"];
         let mut installed = Vec::new();
         for name in names {
-            if window.add_event_listener_with_callback(name, listener.as_ref().unchecked_ref()).is_err() {
+            if window
+                .add_event_listener_with_callback(name, listener.as_ref().unchecked_ref())
+                .is_err()
+            {
                 for name in installed {
-                    let _ = window.remove_event_listener_with_callback(name, listener.as_ref().unchecked_ref());
+                    let _ = window.remove_event_listener_with_callback(
+                        name,
+                        listener.as_ref().unchecked_ref(),
+                    );
                 }
                 return false;
             }
@@ -202,7 +229,8 @@ impl AuthContext {
         on_cleanup(move || {
             let (window, names, listener) = &*registration;
             for name in names {
-                let _ = window.remove_event_listener_with_callback(name, listener.as_ref().unchecked_ref());
+                let _ = window
+                    .remove_event_listener_with_callback(name, listener.as_ref().unchecked_ref());
             }
         });
         true
@@ -227,8 +255,15 @@ impl AuthContext {
 
     /// Tracked, credential-free scope stamp. Consumers must still authorize server-side.
     pub fn client_scope(&self) -> ClientAuthScope {
-        let mut scope = self.scope.try_get().unwrap_or_else(|| ClientAuthScope::new(false));
-        if !self.projection_epoch.try_get().is_some_and(|epoch| browser_epoch::matches(&epoch)) {
+        let mut scope = self
+            .scope
+            .try_get()
+            .unwrap_or_else(|| ClientAuthScope::new(false));
+        if !self
+            .projection_epoch
+            .try_get()
+            .is_some_and(|epoch| browser_epoch::matches(&epoch))
+        {
             scope.set_verified(false);
         }
         scope
@@ -236,7 +271,10 @@ impl AuthContext {
 
     /// Untracked version for checking an asynchronous operation before publishing its result.
     pub fn client_scope_untracked(&self) -> ClientAuthScope {
-        let mut scope = self.scope.try_get_untracked().unwrap_or_else(|| ClientAuthScope::new(false));
+        let mut scope = self
+            .scope
+            .try_get_untracked()
+            .unwrap_or_else(|| ClientAuthScope::new(false));
         if !self.epoch_is_current() {
             scope.set_verified(false);
         }
@@ -248,7 +286,8 @@ impl AuthContext {
     }
 
     fn epoch_is_current(&self) -> bool {
-        self.projection_epoch.try_get_untracked()
+        self.projection_epoch
+            .try_get_untracked()
             .is_some_and(|epoch| browser_epoch::matches(&epoch))
     }
 
@@ -269,11 +308,13 @@ impl AuthContext {
             }
             transport::browser_lock::with_cookie_lock(async move {
                 if auth.scope.try_get_untracked() != Some(scope)
-                    || (require_current && !auth.epoch_is_current()) {
+                    || (require_current && !auth.epoch_is_current())
+                {
                     return Err(AuthError::Http(409));
                 }
                 operation.await
-            }).await
+            })
+            .await
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -350,10 +391,16 @@ impl AuthContext {
         let auth = self.clone();
         self.with_provider_lock(false, async move {
             auth.sign_in_locked(email, password, tenant).await
-        }).await
+        })
+        .await
     }
 
-    async fn sign_in_locked(&self, email: String, password: String, tenant: String) -> Result<(), AuthError> {
+    async fn sign_in_locked(
+        &self,
+        email: String,
+        password: String,
+        tenant: String,
+    ) -> Result<(), AuthError> {
         let transition = self.begin_scope_transition(true)?;
         self.error_state.set(None);
         if !transition.is_current() {
@@ -392,10 +439,17 @@ impl AuthContext {
         let auth = self.clone();
         self.with_provider_lock(false, async move {
             auth.sign_up_locked(email, password, name, tenant).await
-        }).await
+        })
+        .await
     }
 
-    async fn sign_up_locked(&self, email: String, password: String, name: Option<String>, tenant: String) -> Result<(), AuthError> {
+    async fn sign_up_locked(
+        &self,
+        email: String,
+        password: String,
+        name: Option<String>,
+        tenant: String,
+    ) -> Result<(), AuthError> {
         let transition = self.begin_scope_transition(true)?;
         self.error_state.set(None);
         if !transition.is_current() {
@@ -428,8 +482,10 @@ impl AuthContext {
         let auth = self.clone();
         self.with_provider_lock(true, async move {
             let expected = auth.expected_session_id()?;
-            auth.sign_out_with(move |tenant| transport::sign_out_unlocked(tenant, expected)).await
-        }).await
+            auth.sign_out_with(move |tenant| transport::sign_out_unlocked(tenant, expected))
+                .await
+        })
+        .await
     }
 
     async fn sign_out_with<F, Fut>(&self, revoke: F) -> Result<(), AuthError>
@@ -487,7 +543,8 @@ impl AuthContext {
             Err(error) => {
                 // Keep the old in-memory identity for an explicit retry. The cookie may
                 // still be live, so neither that identity nor guest scope is verified.
-                self.error_state.update(|slot| *slot = Some(error.to_string()));
+                self.error_state
+                    .update(|slot| *slot = Some(error.to_string()));
             }
         }
         if transition.complete(result.is_ok()) {
@@ -537,14 +594,19 @@ impl AuthContext {
 
     pub async fn refresh_session(&self) -> Result<(), AuthError> {
         let auth = self.clone();
-        self.with_provider_lock(true, async move { auth.refresh_session_locked().await }).await
+        self.with_provider_lock(true, async move { auth.refresh_session_locked().await })
+            .await
     }
 
     fn expected_session_id(&self) -> Result<Option<String>, AuthError> {
-        self.session.try_get_untracked().ok_or(AuthError::Network)?
-            .map(|session| crate::core::session_id_from_access_token(&session.token)
-                .filter(|id| crate::core::canonical_session_id(id))
-                .ok_or(AuthError::Http(409)))
+        self.session
+            .try_get_untracked()
+            .ok_or(AuthError::Network)?
+            .map(|session| {
+                crate::core::session_id_from_access_token(&session.token)
+                    .filter(|id| crate::core::canonical_session_id(id))
+                    .ok_or(AuthError::Http(409))
+            })
             .transpose()
     }
 
@@ -588,7 +650,12 @@ impl AuthContext {
             }
         };
         let previous_user = self.user.try_get_untracked().flatten();
-        if !refresh_matches_identity(previous_session.as_ref(), previous_user.as_ref(), &new_session, &new_user) {
+        if !refresh_matches_identity(
+            previous_session.as_ref(),
+            previous_user.as_ref(),
+            &new_session,
+            &new_user,
+        ) {
             self.session_state.set(None);
             self.user_state.set(None);
             // Do not rebind a mismatched cookie on a second refresh attempt.
@@ -618,7 +685,8 @@ impl AuthContext {
 
     pub async fn fetch_current_user(&self) -> Result<(), AuthError> {
         let auth = self.clone();
-        self.with_provider_lock(true, async move { auth.fetch_current_user_locked().await }).await
+        self.with_provider_lock(true, async move { auth.fetch_current_user_locked().await })
+            .await
     }
 
     async fn fetch_current_user_locked(&self) -> Result<(), AuthError> {
@@ -637,7 +705,12 @@ impl AuthContext {
         }
         match result {
             Ok(Some(user)) => {
-                if self.user.try_get_untracked().flatten().is_some_and(|previous| previous.id != user.id) {
+                if self
+                    .user
+                    .try_get_untracked()
+                    .flatten()
+                    .is_some_and(|previous| previous.id != user.id)
+                {
                     self.user_state.set(None);
                     self.session_state.set(None);
                     drop(transition);
@@ -696,9 +769,12 @@ fn refresh_matches_identity(
     match (previous_session, previous_user) {
         (None, None) => true,
         (Some(session), Some(user)) => {
-            session.tenant == next_session.tenant && user.id == next_user.id
+            session.tenant == next_session.tenant
+                && user.id == next_user.id
                 && crate::core::session_id_from_access_token(&session.token)
-                    .zip(crate::core::session_id_from_access_token(&next_session.token))
+                    .zip(crate::core::session_id_from_access_token(
+                        &next_session.token,
+                    ))
                     .is_some_and(|(old, new)| old == new)
         }
         _ => false,
@@ -735,7 +811,9 @@ pub fn AuthProvider(
     if !listeners_ready {
         auth_context.scope.update(|scope| scope.set_verified(false));
         auth_context.loading_state.set(false);
-        auth_context.error_state.set(Some(AuthError::Network.to_string()));
+        auth_context
+            .error_state
+            .set(Some(AuthError::Network.to_string()));
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -757,7 +835,10 @@ pub fn AuthProvider(
                         return;
                     }
                     if let Err(err) = auth.restore_session().await {
-                        tracing::debug!(?err, "initial session restore failed or session not present");
+                        tracing::debug!(
+                            ?err,
+                            "initial session restore failed or session not present"
+                        );
                     }
                     auth.finish_initial_loading();
                 });
@@ -924,16 +1005,41 @@ mod tests {
         let previous_user = user();
         let mut next_user = previous_user.clone();
         next_user.permissions.push("pages:read".into());
-        assert!(refresh_matches_identity(Some(&old), Some(&previous_user), &next, &next_user));
+        assert!(refresh_matches_identity(
+            Some(&old),
+            Some(&previous_user),
+            &next,
+            &next_user
+        ));
         next_user.id = "other".into();
-        assert!(!refresh_matches_identity(Some(&old), Some(&previous_user), &next, &next_user));
+        assert!(!refresh_matches_identity(
+            Some(&old),
+            Some(&previous_user),
+            &next,
+            &next_user
+        ));
         next_user.id = previous_user.id.clone();
         next.tenant = "other".into();
-        assert!(!refresh_matches_identity(Some(&old), Some(&previous_user), &next, &next_user));
+        assert!(!refresh_matches_identity(
+            Some(&old),
+            Some(&previous_user),
+            &next,
+            &next_user
+        ));
         next.tenant = old.tenant.clone();
         next.token = "header.eyJzZXNzaW9uX2lkIjoidHdvIn0.signature".into();
-        assert!(!refresh_matches_identity(Some(&old), Some(&previous_user), &next, &next_user));
-        assert!(!refresh_matches_identity(Some(&old), None, &next, &next_user));
+        assert!(!refresh_matches_identity(
+            Some(&old),
+            Some(&previous_user),
+            &next,
+            &next_user
+        ));
+        assert!(!refresh_matches_identity(
+            Some(&old),
+            None,
+            &next,
+            &next_user
+        ));
         assert!(refresh_matches_identity(None, None, &next, &next_user));
     }
 

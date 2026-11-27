@@ -211,8 +211,7 @@ async fn grant_role_permissions_in_tx(
         let (resource, action) = permission_parts(permission);
         let (resource, action) = (resource.as_str(), action.as_str());
 
-        let find_perm_sql =
-            "SELECT id FROM permissions WHERE tenant_id = ? AND resource = ? AND action = ? LIMIT 1";
+        let find_perm_sql = "SELECT id FROM permissions WHERE tenant_id = ? AND resource = ? AND action = ? LIMIT 1";
         let perm_row = tx
             .query_one_raw(prepare_statement(
                 backend,

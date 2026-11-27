@@ -33,24 +33,23 @@ impl AuthLifecycleService {
         let user = users::Entity::find_by_email(ctx.db(), tenant_id, email.trim())
             .await
             .map_err(AuthLifecycleError::from)?;
-        mask_auth_lookup_timing().await.map_err(AuthLifecycleError::from)?;
+        mask_auth_lookup_timing()
+            .await
+            .map_err(AuthLifecycleError::from)?;
 
         let Some(user) = user.filter(users::Model::is_active) else {
             return Ok(());
         };
         let prepared = (|| {
-            let token = encode_password_reset_token(
-                config,
-                &user,
-                PASSWORD_RESET_TOKEN_TTL_SECS,
-            )?;
+            let token = encode_password_reset_token(config, &user, PASSWORD_RESET_TOKEN_TTL_SECS)?;
             let service = email_service_from_ctx(ctx, locale)?;
             let url = password_reset_url(ctx, &token)?;
             Ok::<_, crate::error::Error>((service, url, token))
         })();
         match prepared {
             Ok((service, url, token)) => {
-                let _task = spawn_password_reset_email(ctx, service, user.email, url, config, token);
+                let _task =
+                    spawn_password_reset_email(ctx, service, user.email, url, config, token);
             }
             Err(_) => {
                 tracing::warn!(
@@ -87,9 +86,14 @@ impl AuthLifecycleService {
             .one(ctx.db())
             .await
             .map_err(AuthLifecycleError::from)?
-            .filter(|user| user.matches_recovery_identity(
-                tenant_id, claims.user_id, &claims.sub, claims.recovery_revision,
-            ))
+            .filter(|user| {
+                user.matches_recovery_identity(
+                    tenant_id,
+                    claims.user_id,
+                    &claims.sub,
+                    claims.recovery_revision,
+                )
+            })
             .ok_or(AuthLifecycleError::InvalidResetToken)?;
         if !user.is_active() {
             return Err(AuthLifecycleError::UserInactive);
@@ -110,7 +114,10 @@ impl AuthLifecycleService {
             .map_err(AuthLifecycleError::from)?;
         let tx = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
         let (current, now) = AuthLifecycleService::lock_user_for_recovery(
-            &tx, tenant_id, user.id, claims.expires_at,
+            &tx,
+            tenant_id,
+            user.id,
+            claims.expires_at,
         )
         .await
         .map_err(AuthLifecycleError::from)?
@@ -120,7 +127,10 @@ impl AuthLifecycleService {
         // status and original credential after the user lock and expiry check.
         if !current.is_active()
             || !current.matches_recovery_identity(
-                tenant_id, claims.user_id, &claims.sub, claims.recovery_revision,
+                tenant_id,
+                claims.user_id,
+                &claims.sub,
+                claims.recovery_revision,
             )
             || current.password_hash != user.password_hash
             || decode_password_reset_token(config, token).is_err()
@@ -130,9 +140,8 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::InvalidResetToken);
         }
 
-        let revoked_sessions = Self::revoke_user_sessions_db_with_connection(
-            &tx, tenant_id, user.id, None,
-        ).await?;
+        let revoked_sessions =
+            Self::revoke_user_sessions_db_with_connection(&tx, tenant_id, user.id, None).await?;
 
         let _revoked_oauth_tokens =
             crate::services::oauth_token_service::revoke_user_delegated_tokens_in_tx(
@@ -239,7 +248,8 @@ mod tests {
     ) {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
-        let config = crate::auth::test_auth_config("reset-service-secret-key-for-tests-32b".to_string());
+        let config =
+            crate::auth::test_auth_config("reset-service-secret-key-for-tests-32b".to_string());
         let tenant = tenants::ActiveModel::new("Reset Tenant", slug)
             .insert(&db)
             .await
@@ -286,14 +296,9 @@ mod tests {
         .await
         .expect("deactivate user");
 
-        let updated = update_password_if_active(
-            &db,
-            &user,
-            "unexpected-new-hash",
-            Utc::now(),
-        )
-        .await
-        .expect("compare-and-swap");
+        let updated = update_password_if_active(&db, &user, "unexpected-new-hash", Utc::now())
+            .await
+            .expect("compare-and-swap");
         assert!(!updated);
 
         let stored = users::Entity::find_by_id(user.id)
@@ -307,30 +312,47 @@ mod tests {
 
     #[tokio::test]
     async fn recovery_links_cannot_revive_after_mailbox_or_status_aba() {
-        let (db, ctx, config, tenant, user) = setup_user_with_sessions(
-            "recovery-aba", "old@example.com", &[],
-        ).await;
+        let (db, ctx, config, tenant, user) =
+            setup_user_with_sessions("recovery-aba", "old@example.com", &[]).await;
         let reset = encode_password_reset_token(&config, &user, 900).unwrap();
-        let verification = crate::auth::encode_email_verification_token(&config, &user, 900).unwrap();
+        let verification =
+            crate::auth::encode_email_verification_token(&config, &user, 900).unwrap();
         let read = || users::Entity::find_by_id(user.id);
 
         // Exact no-ops and unrelated profile updates preserve the revision.
         users::ActiveModel {
-            id: Set(user.id), email: Set(user.email.clone()),
-            name: Set(Some("New name".to_string())), ..Default::default()
-        }.update(&db).await.unwrap();
-        assert_eq!(read().one(&db).await.unwrap().unwrap().recovery_revision, user.recovery_revision);
+            id: Set(user.id),
+            email: Set(user.email.clone()),
+            name: Set(Some("New name".to_string())),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .unwrap();
+        assert_eq!(
+            read().one(&db).await.unwrap().unwrap().recovery_revision,
+            user.recovery_revision
+        );
 
         for email in ["new@example.com", "old@example.com"] {
             users::ActiveModel {
-                id: Set(user.id), email: Set(email.to_string()), ..Default::default()
-            }.update(&db).await.unwrap();
+                id: Set(user.id),
+                email: Set(email.to_string()),
+                ..Default::default()
+            }
+            .update(&db)
+            .await
+            .unwrap();
         }
         let current = read().one(&db).await.unwrap().unwrap();
         assert_eq!(current.email, user.email);
         assert_eq!(current.password_hash, user.password_hash);
         assert_eq!(current.recovery_revision, user.recovery_revision + 2);
-        assert!(!update_password_if_active(&db, &user, "unexpected-hash", Utc::now()).await.unwrap());
+        assert!(
+            !update_password_if_active(&db, &user, "unexpected-hash", Utc::now())
+                .await
+                .unwrap()
+        );
 
         for (index, (reset_token, verification_token)) in [
             (reset, verification),
@@ -338,24 +360,46 @@ mod tests {
                 encode_password_reset_token(&config, &current, 900).unwrap(),
                 crate::auth::encode_email_verification_token(&config, &current, 900).unwrap(),
             ),
-        ].into_iter().enumerate() {
+        ]
+        .into_iter()
+        .enumerate()
+        {
             // The second pair was issued after the mailbox transitions.
             if index == 1 {
-                for status in [rustok_core::UserStatus::Inactive, rustok_core::UserStatus::Active] {
+                for status in [
+                    rustok_core::UserStatus::Inactive,
+                    rustok_core::UserStatus::Active,
+                ] {
                     users::ActiveModel {
-                        id: Set(user.id), status: Set(status), ..Default::default()
-                    }.update(&db).await.unwrap();
+                        id: Set(user.id),
+                        status: Set(status),
+                        ..Default::default()
+                    }
+                    .update(&db)
+                    .await
+                    .unwrap();
                 }
             }
             assert!(matches!(
                 AuthLifecycleService::confirm_bound_password_reset_runtime(
-                    &ctx, &config, tenant.id, &reset_token, NEW_PASSWORD,
-                ).await, Err(AuthLifecycleError::InvalidResetToken)
+                    &ctx,
+                    &config,
+                    tenant.id,
+                    &reset_token,
+                    NEW_PASSWORD,
+                )
+                .await,
+                Err(AuthLifecycleError::InvalidResetToken)
             ));
             assert!(matches!(
                 AuthLifecycleService::confirm_email_verification_runtime(
-                    &ctx, &config, tenant.id, &verification_token,
-                ).await, Err(AuthLifecycleError::InvalidVerificationToken)
+                    &ctx,
+                    &config,
+                    tenant.id,
+                    &verification_token,
+                )
+                .await,
+                Err(AuthLifecycleError::InvalidVerificationToken)
             ));
         }
         let current = read().one(&db).await.unwrap().unwrap();
@@ -407,8 +451,7 @@ mod tests {
         .await;
 
         let token =
-            encode_password_reset_token(&config, &user, 900)
-                .expect("failed to encode reset token");
+            encode_password_reset_token(&config, &user, 900).expect("failed to encode reset token");
         let metrics_before = AuthLifecycleService::metrics_snapshot();
 
         AuthLifecycleService::confirm_bound_password_reset_runtime(
@@ -463,8 +506,7 @@ mod tests {
         .await;
 
         let token =
-            encode_password_reset_token(&config, &user, 900)
-                .expect("failed to encode reset token");
+            encode_password_reset_token(&config, &user, 900).expect("failed to encode reset token");
 
         AuthLifecycleService::confirm_bound_password_reset_runtime(
             &ctx,
@@ -501,8 +543,7 @@ mod tests {
             .expect("failed to create other tenant");
 
         let token =
-            encode_password_reset_token(&config, &user, 900)
-                .expect("failed to encode reset token");
+            encode_password_reset_token(&config, &user, 900).expect("failed to encode reset token");
 
         let result = AuthLifecycleService::confirm_bound_password_reset_runtime(
             &ctx,
@@ -522,8 +563,7 @@ mod tests {
                 .await;
 
         let token =
-            encode_password_reset_token(&config, &user, 900)
-                .expect("failed to encode reset token");
+            encode_password_reset_token(&config, &user, 900).expect("failed to encode reset token");
 
         let weak = AuthLifecycleService::confirm_bound_password_reset_runtime(
             &ctx, &config, tenant.id, &token, "short",

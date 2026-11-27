@@ -180,7 +180,13 @@ fn pages_server_preview_response_with_policy(html: &str, policy: &str) -> axum::
         .header(header::REFERRER_POLICY, "no-referrer")
         .header("x-content-type-options", "nosniff")
         .body(axum::body::Body::from(html.to_string()))
-        .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "failed to build preview response").into_response())
+        .unwrap_or_else(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to build preview response",
+            )
+                .into_response()
+        })
 }
 
 /// Why a preview document could not be served.

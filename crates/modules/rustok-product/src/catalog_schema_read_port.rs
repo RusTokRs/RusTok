@@ -443,19 +443,19 @@ fn parse_tenant_id(
         .ok()
         .filter(|tenant_id| !tenant_id.is_nil())
         .ok_or_else(|| {
-        let context_facts = product_port_context_facts(context);
-        tracing::warn!(
-            correlation_id_length = context_facts.correlation_id_length,
-            tenant_id_length = context_facts.tenant_id_length,
-            operation = owner_operation,
-            code = "product.tenant_id_invalid",
-            "Product catalog schema tenant context is invalid"
-        );
-        PortError::validation(
-            "product.tenant_id_invalid",
-            "product schema request context is invalid",
-        )
-    })
+            let context_facts = product_port_context_facts(context);
+            tracing::warn!(
+                correlation_id_length = context_facts.correlation_id_length,
+                tenant_id_length = context_facts.tenant_id_length,
+                operation = owner_operation,
+                code = "product.tenant_id_invalid",
+                "Product catalog schema tenant context is invalid"
+            );
+            PortError::validation(
+                "product.tenant_id_invalid",
+                "product schema request context is invalid",
+            )
+        })
 }
 
 fn schema_error_to_port_error(

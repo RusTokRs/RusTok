@@ -466,7 +466,7 @@ mod tests {
         PAGES_AUTHORING_CACHE_CONTROL, PAGES_AUTHORING_ROBOTS_POLICY,
         auth_can_resolve_without_tenant_context, auth_error_response,
         is_direct_user_self_service_path, is_direct_user_self_service_principal,
-        is_human_user_self_service_path, is_observability_auth_path, is_oauth_client_auth_request,
+        is_human_user_self_service_path, is_oauth_client_auth_request, is_observability_auth_path,
         is_pages_inline_authoring_server_fn, is_pages_inline_authoring_surface,
         pages_inline_authoring_response, service_forum_boundary_violation,
         verified_tenant_id_from_access_token,
@@ -537,7 +537,10 @@ mod tests {
         assert!(is_oauth_client_auth_request("POST", "/api/oauth/token"));
         assert!(is_oauth_client_auth_request("POST", "/api/oauth/revoke"));
         assert!(!is_oauth_client_auth_request("GET", "/api/oauth/token"));
-        assert!(!is_oauth_client_auth_request("POST", "/api/oauth/authorize"));
+        assert!(!is_oauth_client_auth_request(
+            "POST",
+            "/api/oauth/authorize"
+        ));
         assert!(!is_oauth_client_auth_request("POST", "/api/auth/login"));
     }
 
@@ -550,8 +553,7 @@ mod tests {
             sea_orm::DatabaseConnection::default(),
             crate::common::settings::RustokSettings::default(),
         );
-        let state =
-            crate::services::server_runtime_context::ServerAuthRuntime::without_auth(ctx);
+        let state = crate::services::server_runtime_context::ServerAuthRuntime::without_auth(ctx);
         let app = Router::new()
             .route(
                 "/api/mcp/runtime/bootstrap",
@@ -569,7 +571,10 @@ mod tests {
                 "/api/mcp/clients",
                 post(|| async { StatusCode::NO_CONTENT }),
             )
-            .layer(middleware::from_fn_with_state(state, super::resolve_optional));
+            .layer(middleware::from_fn_with_state(
+                state,
+                super::resolve_optional,
+            ));
 
         for path in [
             "/api/mcp/runtime/bootstrap",
@@ -996,16 +1001,17 @@ mod tests {
         };
         let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
         header.kid = Some("access".into());
-        let key = jsonwebtoken::EncodingKey::from_rsa_pem(
-            fixture.access.private_pem().as_bytes(),
-        )
-        .expect("fixture RSA private key");
+        let key = jsonwebtoken::EncodingKey::from_rsa_pem(fixture.access.private_pem().as_bytes())
+            .expect("fixture RSA private key");
         // Positive control: the exact same key/header accepts a valid tenant.
         let mut valid_claims = serde_json::to_value(&claims).unwrap();
         let valid_tenant = Uuid::new_v4();
         valid_claims["tenant_id"] = serde_json::json!(valid_tenant);
         let valid = jsonwebtoken::encode(&header, &valid_claims, &key).unwrap();
-        assert_eq!(verified_tenant_id_from_access_token(&config, &valid), Ok(valid_tenant));
+        assert_eq!(
+            verified_tenant_id_from_access_token(&config, &valid),
+            Ok(valid_tenant)
+        );
         let token = jsonwebtoken::encode(&header, &claims, &key).expect("forge access token");
 
         assert_eq!(

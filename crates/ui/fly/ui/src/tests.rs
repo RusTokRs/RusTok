@@ -302,12 +302,26 @@ fn restarting_drag_clears_the_previous_insertion_overlay() {
     let source = DragSource::ExistingComponent {
         component_id: "hero".to_string(),
     };
-    machine.dispatch(UiIntent::BeginDrag(source.clone())).expect("drag");
-    machine.dispatch(UiIntent::UpdateHitTest(vec![legal_candidate()])).expect("candidate");
+    machine
+        .dispatch(UiIntent::BeginDrag(source.clone()))
+        .expect("drag");
+    machine
+        .dispatch(UiIntent::UpdateHitTest(vec![legal_candidate()]))
+        .expect("candidate");
     assert!(machine.state.overlays.insertion.is_some());
-    machine.dispatch(UiIntent::BeginDrag(source)).expect("restart");
+    machine
+        .dispatch(UiIntent::BeginDrag(source))
+        .expect("restart");
     assert!(machine.state.overlays.insertion.is_none());
-    assert!(machine.state.drag.as_ref().expect("drag").active_candidate().is_none());
+    assert!(
+        machine
+            .state
+            .drag
+            .as_ref()
+            .expect("drag")
+            .active_candidate()
+            .is_none()
+    );
 }
 
 #[test]
@@ -382,10 +396,13 @@ fn drop_rechecks_edit_permission_even_with_a_restored_drag() {
 #[test]
 fn deserializing_ui_does_not_restore_orphaned_save_in_progress() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
-    machine.dispatch(UiIntent::SaveStarted { request_id: "req-1".into() }).expect("begin");
+    machine
+        .dispatch(UiIntent::SaveStarted {
+            request_id: "req-1".into(),
+        })
+        .expect("begin");
     let restored: FlyUiStateMachine =
-        serde_json::from_value(serde_json::to_value(machine).expect("serialize"))
-            .expect("restore");
+        serde_json::from_value(serde_json::to_value(machine).expect("serialize")).expect("restore");
     assert!(!restored.state.dirty.save_in_progress);
     assert!(restored.state.dirty.save_started_sequence.is_none());
     assert!(restored.state.dirty.save_started_request_id.is_none());
@@ -398,7 +415,11 @@ fn save_start_and_acknowledgement_respect_conflicts_and_submitted_hash() {
     let document = fly::GrapesJsCodec::decode_value(json!({ "pages": [] })).expect("document");
     let snapshot_hash = fly::ProjectHash::from_document(&document);
     machine.state.dirty.project_hash = Some(snapshot_hash);
-    machine.dispatch(UiIntent::SaveStarted { request_id: "req-1".into() }).expect("save started");
+    machine
+        .dispatch(UiIntent::SaveStarted {
+            request_id: "req-1".into(),
+        })
+        .expect("save started");
     let wrong_hash = fly::ProjectHash::from_bytes(b"other snapshot");
     assert!(matches!(
         machine.dispatch(UiIntent::SaveSucceeded {
@@ -410,12 +431,20 @@ fn save_start_and_acknowledgement_respect_conflicts_and_submitted_hash() {
     ));
     assert!(machine.state.dirty.save_in_progress);
     assert_eq!(machine.state.dirty.save_started_hash, Some(snapshot_hash));
-    machine.dispatch(UiIntent::SaveConflict {
-        request_id: Some("req-1".into()),
-        expected: "rev-1".to_string(),
-        actual: "rev-2".to_string(),
-    }).expect("remote conflict");
-    assert!(machine.dispatch(UiIntent::SaveStarted { request_id: "req-2".into() }).is_err());
+    machine
+        .dispatch(UiIntent::SaveConflict {
+            request_id: Some("req-1".into()),
+            expected: "rev-1".to_string(),
+            actual: "rev-2".to_string(),
+        })
+        .expect("remote conflict");
+    assert!(
+        machine
+            .dispatch(UiIntent::SaveStarted {
+                request_id: "req-2".into()
+            })
+            .is_err()
+    );
     assert!(machine.state.dirty.save_conflict);
     assert!(!machine.state.dirty.save_in_progress);
 }
@@ -423,54 +452,100 @@ fn save_start_and_acknowledgement_respect_conflicts_and_submitted_hash() {
 #[test]
 fn stale_save_responses_cannot_acknowledge_or_fail_a_new_attempt() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
-    machine.dispatch(UiIntent::SaveStarted { request_id: "request-a".into() }).expect("first start");
-    machine.dispatch(UiIntent::SaveFailed { request_id: Some("request-a".into()) }).expect("first failure");
-    machine.dispatch(UiIntent::SaveStarted { request_id: "request-b".into() }).expect("retry start");
+    machine
+        .dispatch(UiIntent::SaveStarted {
+            request_id: "request-a".into(),
+        })
+        .expect("first start");
+    machine
+        .dispatch(UiIntent::SaveFailed {
+            request_id: Some("request-a".into()),
+        })
+        .expect("first failure");
+    machine
+        .dispatch(UiIntent::SaveStarted {
+            request_id: "request-b".into(),
+        })
+        .expect("retry start");
 
     let document = fly::GrapesJsCodec::decode_value(json!({ "pages": [] })).expect("document");
     let hash = fly::ProjectHash::from_document(&document);
-    assert!(machine.dispatch(UiIntent::SaveSucceeded {
-        request_id: "request-a".into(),
-        revision: "stale-revision".into(),
-        project_hash: hash,
-    }).is_err());
-    assert!(machine.dispatch(UiIntent::SaveFailed {
-        request_id: Some("request-a".into()),
-    }).is_err());
-    assert!(machine.dispatch(UiIntent::SaveConflict {
-        request_id: Some("request-a".into()),
-        expected: "rev-1".into(),
-        actual: "rev-2".into(),
-    }).is_err());
-    assert_eq!(machine.state.dirty.save_started_request_id.as_deref(), Some("request-b"));
+    assert!(
+        machine
+            .dispatch(UiIntent::SaveSucceeded {
+                request_id: "request-a".into(),
+                revision: "stale-revision".into(),
+                project_hash: hash,
+            })
+            .is_err()
+    );
+    assert!(
+        machine
+            .dispatch(UiIntent::SaveFailed {
+                request_id: Some("request-a".into()),
+            })
+            .is_err()
+    );
+    assert!(
+        machine
+            .dispatch(UiIntent::SaveConflict {
+                request_id: Some("request-a".into()),
+                expected: "rev-1".into(),
+                actual: "rev-2".into(),
+            })
+            .is_err()
+    );
+    assert_eq!(
+        machine.state.dirty.save_started_request_id.as_deref(),
+        Some("request-b")
+    );
     assert!(machine.state.dirty.save_in_progress);
 
-    machine.dispatch(UiIntent::SaveSucceeded {
-        request_id: "request-b".into(),
-        revision: "current-revision".into(),
-        project_hash: hash,
-    }).expect("current response");
+    machine
+        .dispatch(UiIntent::SaveSucceeded {
+            request_id: "request-b".into(),
+            revision: "current-revision".into(),
+            project_hash: hash,
+        })
+        .expect("current response");
     assert!(!machine.state.dirty.save_in_progress);
 }
 
 #[test]
 fn uncorrelated_failure_cannot_clear_an_active_save() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
-    machine.dispatch(UiIntent::SaveStarted { request_id: "request-a".into() }).expect("start");
-    assert!(machine.dispatch(UiIntent::SaveFailed { request_id: None }).is_err());
-    assert_eq!(machine.state.dirty.save_started_request_id.as_deref(), Some("request-a"));
+    machine
+        .dispatch(UiIntent::SaveStarted {
+            request_id: "request-a".into(),
+        })
+        .expect("start");
+    assert!(
+        machine
+            .dispatch(UiIntent::SaveFailed { request_id: None })
+            .is_err()
+    );
+    assert_eq!(
+        machine.state.dirty.save_started_request_id.as_deref(),
+        Some("request-a")
+    );
     assert!(machine.state.dirty.save_in_progress);
 }
 
 #[test]
 fn exhausted_sequence_rejects_all_mutating_intents_without_state_changes() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
-    machine.dispatch(UiIntent::Select(Some("hero".to_string()))).expect("select");
-    machine.dispatch(UiIntent::BeginDrag(DragSource::PaletteBlock {
-        block_id: "section".to_string(),
-        component: ComponentNode::object("section"),
-    })).expect("begin drag");
-    machine.dispatch(UiIntent::UpdateHitTest(vec![legal_candidate()])).expect("candidate");
+    machine
+        .dispatch(UiIntent::Select(Some("hero".to_string())))
+        .expect("select");
+    machine
+        .dispatch(UiIntent::BeginDrag(DragSource::PaletteBlock {
+            block_id: "section".to_string(),
+            component: ComponentNode::object("section"),
+        }))
+        .expect("begin drag");
+    machine
+        .dispatch(UiIntent::UpdateHitTest(vec![legal_candidate()]))
+        .expect("candidate");
     machine.state.dirty.command_sequence = u64::MAX;
 
     for intent in [
@@ -485,16 +560,22 @@ fn exhausted_sequence_rejects_all_mutating_intents_without_state_changes() {
         UiIntent::Redo,
     ] {
         let before = machine.clone();
-        assert!(matches!(machine.dispatch(intent), Err(UiError::CapabilityUnavailable(message))
-            if message.contains("sequence is exhausted")));
+        assert!(
+            matches!(machine.dispatch(intent), Err(UiError::CapabilityUnavailable(message))
+            if message.contains("sequence is exhausted"))
+        );
         assert_eq!(machine, before);
     }
 
     let before = machine.clone();
-    machine.dispatch(UiIntent::execute(EditorCommand::batch([]))).expect("empty batch");
+    machine
+        .dispatch(UiIntent::execute(EditorCommand::batch([])))
+        .expect("empty batch");
     assert_eq!(machine, before);
     machine.dispatch(UiIntent::CancelDrag).expect("cancel");
-    machine.dispatch(UiIntent::RequestSave).expect("existing document can still be saved");
+    machine
+        .dispatch(UiIntent::RequestSave)
+        .expect("existing document can still be saved");
 }
 
 #[test]
@@ -503,20 +584,28 @@ fn final_sequence_increment_is_visible_to_save_acknowledgement() {
     let hash = fly::ProjectHash::from_bytes(b"submitted");
     machine.state.dirty.command_sequence = u64::MAX - 1;
     machine.state.dirty.project_hash = Some(hash);
-    machine.dispatch(UiIntent::SaveStarted { request_id: "req-last".into() }).expect("start");
-    machine.dispatch(UiIntent::execute(EditorCommand::Patch {
-        component_id: "hero".to_string(),
-        patch: ComponentPatch::default().set_field("content", json!("last edit")),
-    })).expect("last representable edit");
+    machine
+        .dispatch(UiIntent::SaveStarted {
+            request_id: "req-last".into(),
+        })
+        .expect("start");
+    machine
+        .dispatch(UiIntent::execute(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().set_field("content", json!("last edit")),
+        }))
+        .expect("last representable edit");
     assert_eq!(machine.state.dirty.command_sequence, u64::MAX);
     let before = machine.clone();
     assert!(machine.dispatch(UiIntent::Undo).is_err());
     assert_eq!(machine, before);
-    machine.dispatch(UiIntent::SaveSucceeded {
-        request_id: "req-last".into(),
-        revision: "rev-last".into(),
-        project_hash: hash,
-    }).expect("acknowledge earlier snapshot");
+    machine
+        .dispatch(UiIntent::SaveSucceeded {
+            request_id: "req-last".into(),
+            revision: "rev-last".into(),
+            project_hash: hash,
+        })
+        .expect("acknowledge earlier snapshot");
     assert!(machine.state.dirty.dirty);
     assert_eq!(machine.state.dirty.command_sequence, u64::MAX);
 }
@@ -532,7 +621,11 @@ fn save_acknowledgement_cannot_clean_edits_made_during_save() {
             patch: Default::default(),
         }))
         .expect("first edit");
-    machine.dispatch(UiIntent::SaveStarted { request_id: "req-1".into() }).expect("save starts");
+    machine
+        .dispatch(UiIntent::SaveStarted {
+            request_id: "req-1".into(),
+        })
+        .expect("save starts");
     assert!(machine.dispatch(UiIntent::RequestSave).is_err());
     machine
         .dispatch(UiIntent::execute(EditorCommand::Patch {
@@ -549,13 +642,20 @@ fn save_acknowledgement_cannot_clean_edits_made_during_save() {
         .expect("earlier snapshot saved");
     assert!(machine.state.dirty.dirty);
     assert!(!machine.state.dirty.save_in_progress);
-    assert_eq!(machine.state.dirty.last_acknowledged_revision.as_deref(), Some("rev-2"));
+    assert_eq!(
+        machine.state.dirty.last_acknowledged_revision.as_deref(),
+        Some("rev-2")
+    );
     assert!(machine.state.dirty.project_hash.is_none());
     assert!(effects.iter().any(|effect| matches!(
         effect,
         UiEffect::Announce(message) if message.contains("remain unsaved")
     )));
-    machine.dispatch(UiIntent::SaveStarted { request_id: "req-2".into() }).expect("next save starts");
+    machine
+        .dispatch(UiIntent::SaveStarted {
+            request_id: "req-2".into(),
+        })
+        .expect("next save starts");
     machine
         .dispatch(UiIntent::SaveSucceeded {
             request_id: "req-2".into(),
@@ -571,25 +671,42 @@ fn save_acknowledgement_cannot_clean_edits_made_during_save() {
 fn overlays_and_property_editor_follow_component_identity() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
     let rect = legal_candidate().rect;
-    machine.dispatch(UiIntent::SetSelectedOverlay(Some(rect))).unwrap();
-    machine.dispatch(UiIntent::SetHoveredOverlay(Some(rect))).unwrap();
+    machine
+        .dispatch(UiIntent::SetSelectedOverlay(Some(rect)))
+        .unwrap();
+    machine
+        .dispatch(UiIntent::SetHoveredOverlay(Some(rect)))
+        .unwrap();
     assert_eq!(machine.state.overlays, OverlayState::default());
 
-    machine.dispatch(UiIntent::Select(Some("a".into()))).unwrap();
+    machine
+        .dispatch(UiIntent::Select(Some("a".into())))
+        .unwrap();
     machine.dispatch(UiIntent::Hover(Some("a".into()))).unwrap();
-    machine.dispatch(UiIntent::SetSelectedOverlay(Some(rect))).unwrap();
-    machine.dispatch(UiIntent::SetHoveredOverlay(Some(rect))).unwrap();
+    machine
+        .dispatch(UiIntent::SetSelectedOverlay(Some(rect)))
+        .unwrap();
+    machine
+        .dispatch(UiIntent::SetHoveredOverlay(Some(rect)))
+        .unwrap();
     machine.state.selection.property_editor_id = Some("editor-a".into());
     assert!(machine.state.overlays.resize_handles_visible);
 
     // Repeated identity notifications do not discard still-valid geometry.
-    machine.dispatch(UiIntent::Select(Some("a".into()))).unwrap();
+    machine
+        .dispatch(UiIntent::Select(Some("a".into())))
+        .unwrap();
     machine.dispatch(UiIntent::Hover(Some("a".into()))).unwrap();
     assert_eq!(machine.state.overlays.selected, Some(rect));
     assert_eq!(machine.state.overlays.hovered, Some(rect));
-    assert_eq!(machine.state.selection.property_editor_id.as_deref(), Some("editor-a"));
+    assert_eq!(
+        machine.state.selection.property_editor_id.as_deref(),
+        Some("editor-a")
+    );
 
-    machine.dispatch(UiIntent::Select(Some("b".into()))).unwrap();
+    machine
+        .dispatch(UiIntent::Select(Some("b".into())))
+        .unwrap();
     assert!(machine.state.overlays.selected.is_none());
     assert!(!machine.state.overlays.resize_handles_visible);
     assert!(machine.state.selection.property_editor_id.is_none());
@@ -597,8 +714,12 @@ fn overlays_and_property_editor_follow_component_identity() {
 
     machine.dispatch(UiIntent::Hover(Some("b".into()))).unwrap();
     assert!(machine.state.overlays.hovered.is_none());
-    machine.dispatch(UiIntent::SetSelectedOverlay(Some(rect))).unwrap();
-    machine.dispatch(UiIntent::SetHoveredOverlay(Some(rect))).unwrap();
+    machine
+        .dispatch(UiIntent::SetSelectedOverlay(Some(rect)))
+        .unwrap();
+    machine
+        .dispatch(UiIntent::SetHoveredOverlay(Some(rect)))
+        .unwrap();
     machine.dispatch(UiIntent::Select(None)).unwrap();
     machine.dispatch(UiIntent::Hover(None)).unwrap();
     assert_eq!(machine.state.overlays, OverlayState::default());
@@ -608,13 +729,15 @@ fn overlays_and_property_editor_follow_component_identity() {
 #[test]
 fn viewport_and_overlay_geometry_are_bounded_at_the_state_machine_boundary() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
-    machine.dispatch(UiIntent::SetViewport(ViewportState {
-        width: 0,
-        height: u32::MAX,
-        zoom: f32::NAN,
-        scroll_x: f64::NEG_INFINITY,
-        scroll_y: -17.0,
-    })).expect("normalized viewport");
+    machine
+        .dispatch(UiIntent::SetViewport(ViewportState {
+            width: 0,
+            height: u32::MAX,
+            zoom: f32::NAN,
+            scroll_x: f64::NEG_INFINITY,
+            scroll_y: -17.0,
+        }))
+        .expect("normalized viewport");
     assert_eq!(machine.state.viewport.width, 240);
     assert_eq!(machine.state.viewport.height, 4320);
     assert_eq!(machine.state.viewport.zoom, 1.0);
@@ -622,7 +745,10 @@ fn viewport_and_overlay_geometry_are_bounded_at_the_state_machine_boundary() {
     assert_eq!(machine.state.viewport.scroll_y, 0.0);
 
     let bad_rect = CanvasRect {
-        x: 0.0, y: 0.0, width: f64::INFINITY, height: 10.0,
+        x: 0.0,
+        y: 0.0,
+        width: f64::INFINITY,
+        height: 10.0,
     };
     assert!(!bad_rect.contains(1.0, 1.0));
     assert!(matches!(
@@ -635,17 +761,25 @@ fn viewport_and_overlay_geometry_are_bounded_at_the_state_machine_boundary() {
         Err(UiError::InvalidGeometry(_))
     ));
 
-    machine.dispatch(UiIntent::BeginDrag(DragSource::PaletteBlock {
-        block_id: "section".to_string(),
-        component: ComponentNode::object("section"),
-    })).expect("begin drag");
+    machine
+        .dispatch(UiIntent::BeginDrag(DragSource::PaletteBlock {
+            block_id: "section".to_string(),
+            component: ComponentNode::object("section"),
+        }))
+        .expect("begin drag");
     let mut candidate = legal_candidate();
     candidate.score = f32::NAN;
     assert!(matches!(
         machine.dispatch(UiIntent::UpdateHitTest(vec![candidate])),
         Err(UiError::InvalidGeometry(_))
     ));
-    assert!(machine.state.drag.as_ref().is_some_and(|drag| drag.candidates.is_empty()));
+    assert!(
+        machine
+            .state
+            .drag
+            .as_ref()
+            .is_some_and(|drag| drag.candidates.is_empty())
+    );
 }
 
 #[test]
@@ -661,9 +795,13 @@ fn blocking_diagnostics_prevent_save() {
         .expect("replace diagnostics");
     assert!(machine.dispatch(UiIntent::RequestSave).is_err());
     let before = machine.clone();
-    assert!(machine.dispatch(UiIntent::SaveStarted {
-        request_id: "req-1".into(),
-    }).is_err());
+    assert!(
+        machine
+            .dispatch(UiIntent::SaveStarted {
+                request_id: "req-1".into(),
+            })
+            .is_err()
+    );
     assert_eq!(machine, before);
 }
 
@@ -673,24 +811,32 @@ fn save_success_requires_nonblank_revision_and_preserves_changed_hash() {
     let submitted = fly::ProjectHash::from_bytes(b"submitted");
     let current = fly::ProjectHash::from_bytes(b"current");
     machine.state.dirty.project_hash = Some(submitted);
-    machine.dispatch(UiIntent::SaveStarted {
-        request_id: "req-1".into(),
-    }).expect("start");
+    machine
+        .dispatch(UiIntent::SaveStarted {
+            request_id: "req-1".into(),
+        })
+        .expect("start");
     let before = machine.clone();
-    assert!(machine.dispatch(UiIntent::SaveSucceeded {
-        request_id: "req-1".into(),
-        revision: " ".into(),
-        project_hash: submitted,
-    }).is_err());
+    assert!(
+        machine
+            .dispatch(UiIntent::SaveSucceeded {
+                request_id: "req-1".into(),
+                revision: " ".into(),
+                project_hash: submitted,
+            })
+            .is_err()
+    );
     assert_eq!(machine, before);
 
     // The host may synchronize a new working hash before its sequence projection.
     machine.state.dirty.project_hash = Some(current);
-    machine.dispatch(UiIntent::SaveSucceeded {
-        request_id: "req-1".into(),
-        revision: "rev-2".into(),
-        project_hash: submitted,
-    }).expect("submitted snapshot acknowledged");
+    machine
+        .dispatch(UiIntent::SaveSucceeded {
+            request_id: "req-1".into(),
+            revision: "rev-2".into(),
+            project_hash: submitted,
+        })
+        .expect("submitted snapshot acknowledged");
     assert!(machine.state.dirty.dirty);
     assert_eq!(machine.state.dirty.project_hash, Some(current));
     assert!(!machine.state.dirty.save_in_progress);
@@ -755,8 +901,16 @@ fn selection_remains_possible_without_edit_capability() {
 #[test]
 fn edit_after_failed_save_keeps_the_failure_signal() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
-    machine.dispatch(UiIntent::SaveStarted { request_id: "req-1".into() }).expect("started");
-    machine.dispatch(UiIntent::SaveFailed { request_id: Some("req-1".into()) }).expect("failed");
+    machine
+        .dispatch(UiIntent::SaveStarted {
+            request_id: "req-1".into(),
+        })
+        .expect("started");
+    machine
+        .dispatch(UiIntent::SaveFailed {
+            request_id: Some("req-1".into()),
+        })
+        .expect("failed");
     assert!(machine.state.dirty.save_failed);
 
     // The rejected changes are still unsaved: a further edit must not clear the signal.
@@ -770,14 +924,22 @@ fn edit_after_failed_save_keeps_the_failure_signal() {
     assert!(machine.state.dirty.save_failed);
 
     // The next save attempt does.
-    machine.dispatch(UiIntent::SaveStarted { request_id: "req-2".into() }).expect("retry");
+    machine
+        .dispatch(UiIntent::SaveStarted {
+            request_id: "req-2".into(),
+        })
+        .expect("retry");
     assert!(!machine.state.dirty.save_failed);
 }
 
 #[test]
 fn save_conflict_is_a_distinct_lost_update_state() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
-    machine.dispatch(UiIntent::SaveStarted { request_id: "req-1".into() }).expect("started");
+    machine
+        .dispatch(UiIntent::SaveStarted {
+            request_id: "req-1".into(),
+        })
+        .expect("started");
     let effects = machine
         .dispatch(UiIntent::SaveConflict {
             request_id: Some("req-1".into()),
@@ -800,34 +962,45 @@ fn save_conflict_is_a_distinct_lost_update_state() {
     )));
     // A response without an active submitted save cannot make the conflict vanish.
     let document = fly::GrapesJsCodec::decode_value(json!({ "pages": [] })).expect("document");
-    assert!(machine
-        .dispatch(UiIntent::SaveSucceeded {
-            request_id: "req-1".into(),
-            revision: "rev-3".to_string(),
-            project_hash: fly::ProjectHash::from_document(&document),
-        })
-        .is_err());
+    assert!(
+        machine
+            .dispatch(UiIntent::SaveSucceeded {
+                request_id: "req-1".into(),
+                revision: "rev-3".to_string(),
+                project_hash: fly::ProjectHash::from_document(&document),
+            })
+            .is_err()
+    );
     assert!(machine.state.dirty.save_conflict);
-    machine.dispatch(UiIntent::SaveFailed { request_id: None }).expect("failed response");
+    machine
+        .dispatch(UiIntent::SaveFailed { request_id: None })
+        .expect("failed response");
     assert!(machine.state.dirty.save_conflict);
 }
 
 #[test]
 fn revision_conflict_fences_mutations_across_policy_refresh_and_rehydration() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
-    machine.dispatch(UiIntent::BeginDrag(DragSource::PaletteBlock {
-        block_id: "section".into(),
-        component: ComponentNode::object("section"),
-    })).expect("begin drag");
-    machine.dispatch(UiIntent::Select(Some("hero".into()))).expect("select");
-    machine.dispatch(UiIntent::SetSelectedOverlay(Some(legal_candidate().rect)))
+    machine
+        .dispatch(UiIntent::BeginDrag(DragSource::PaletteBlock {
+            block_id: "section".into(),
+            component: ComponentNode::object("section"),
+        }))
+        .expect("begin drag");
+    machine
+        .dispatch(UiIntent::Select(Some("hero".into())))
+        .expect("select");
+    machine
+        .dispatch(UiIntent::SetSelectedOverlay(Some(legal_candidate().rect)))
         .expect("resize overlay");
     assert!(machine.state.overlays.resize_handles_visible);
-    machine.dispatch(UiIntent::SaveConflict {
-        request_id: None,
-        expected: "rev-1".into(),
-        actual: "rev-2".into(),
-    }).expect("peer conflict");
+    machine
+        .dispatch(UiIntent::SaveConflict {
+            request_id: None,
+            expected: "rev-1".into(),
+            actual: "rev-2".into(),
+        })
+        .expect("peer conflict");
     assert_eq!(machine.state.capabilities, CapabilityState::read_only());
     assert!(machine.state.drag.is_none());
     assert!(machine.state.overlays.insertion.is_none());
@@ -836,9 +1009,11 @@ fn revision_conflict_fences_mutations_across_policy_refresh_and_rehydration() {
 
     let mut restored: FlyUiStateMachine =
         serde_json::from_value(serde_json::to_value(&machine).unwrap()).unwrap();
-    restored.dispatch(UiIntent::SetEditableCapabilities(CapabilityState::full()))
+    restored
+        .dispatch(UiIntent::SetEditableCapabilities(CapabilityState::full()))
         .expect("host policy refresh");
-    restored.dispatch(UiIntent::SetPresentation(Presentation::Inline))
+    restored
+        .dispatch(UiIntent::SetPresentation(Presentation::Inline))
         .expect("presentation change");
     assert_eq!(restored.state.capabilities, CapabilityState::read_only());
     // Even an inconsistent restored projection cannot bypass the conflict.
@@ -857,7 +1032,8 @@ fn revision_conflict_fences_mutations_across_policy_refresh_and_rehydration() {
         assert!(restored.dispatch(intent).is_err());
         assert_eq!(restored, before);
     }
-    restored.dispatch(UiIntent::Select(Some("hero".into())))
+    restored
+        .dispatch(UiIntent::Select(Some("hero".into())))
         .expect("read-only selection remains available");
 }
 
@@ -880,7 +1056,10 @@ fn inconsistent_projection_cannot_bypass_edit_denial_or_host_ceiling() {
     ];
     for intent in intents {
         let before = machine.clone();
-        assert!(matches!(machine.dispatch(intent), Err(UiError::CapabilityUnavailable(_))));
+        assert!(matches!(
+            machine.dispatch(intent),
+            Err(UiError::CapabilityUnavailable(_))
+        ));
         assert_eq!(machine, before);
     }
 
@@ -891,13 +1070,21 @@ fn inconsistent_projection_cannot_bypass_edit_denial_or_host_ceiling() {
     // Simulate an inconsistent projection after an external write or restore.
     machine.state.capabilities.styles = true;
     let before = machine.clone();
-    assert!(matches!(machine.dispatch(UiIntent::execute(EditorCommand::Patch {
-        component_id: "hero".to_string(),
-        patch: ComponentPatch::default().merge_style(json!({"color": "blue"})),
-    })), Err(UiError::CapabilityUnavailable(_))));
+    assert!(matches!(
+        machine.dispatch(UiIntent::execute(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().merge_style(json!({"color": "blue"})),
+        })),
+        Err(UiError::CapabilityUnavailable(_))
+    ));
     assert_eq!(machine, before);
-    machine.dispatch(UiIntent::SetSelectedOverlay(Some(legal_candidate().rect)))
+    machine
+        .dispatch(UiIntent::SetSelectedOverlay(Some(legal_candidate().rect)))
         .expect("overlay");
     assert!(!machine.state.overlays.resize_handles_visible);
-    assert!(machine.dispatch(UiIntent::Select(Some("hero".to_string()))).is_ok());
+    assert!(
+        machine
+            .dispatch(UiIntent::Select(Some("hero".to_string())))
+            .is_ok()
+    );
 }

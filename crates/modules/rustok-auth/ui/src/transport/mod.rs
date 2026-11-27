@@ -1,7 +1,7 @@
-mod cookie_adapter;
+pub(crate) mod browser_epoch;
 #[cfg(target_arch = "wasm32")]
 pub(crate) mod browser_lock;
-pub(crate) mod browser_epoch;
+mod cookie_adapter;
 mod graphql_adapter;
 mod native_server_adapter;
 #[cfg(feature = "ssr")]
@@ -267,7 +267,8 @@ async fn cookie_operation<T: 'static>(
             }
             browser_epoch::publish("transport", true)?;
             outcome
-        }).await
+        })
+        .await
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -333,12 +334,19 @@ pub async fn sign_out(tenant: String) -> Result<(), AuthError> {
     cookie_operation(sign_out_unlocked(tenant, None)).await
 }
 
-pub(crate) async fn sign_out_unlocked(tenant: String, expected_session_id: Option<String>) -> Result<(), AuthError> {
+pub(crate) async fn sign_out_unlocked(
+    tenant: String,
+    expected_session_id: Option<String>,
+) -> Result<(), AuthError> {
     match selected_transport_path() {
-        UiTransportPath::NativeServer => native_server_adapter::sign_out_native(tenant, expected_session_id)
-            .await
-            .map_err(|error| map_server_auth_error(error, false)),
-        UiTransportPath::Graphql => cookie_adapter::sign_out_cookie(tenant, expected_session_id).await,
+        UiTransportPath::NativeServer => {
+            native_server_adapter::sign_out_native(tenant, expected_session_id)
+                .await
+                .map_err(|error| map_server_auth_error(error, false))
+        }
+        UiTransportPath::Graphql => {
+            cookie_adapter::sign_out_cookie(tenant, expected_session_id).await
+        }
     }
 }
 
@@ -349,7 +357,10 @@ pub async fn refresh_session(tenant: String) -> Result<Option<(AuthSession, Auth
     cookie_operation(refresh_session_unlocked(tenant, None)).await
 }
 
-pub(crate) async fn refresh_session_unlocked(tenant: String, expected_session_id: Option<String>) -> Result<Option<(AuthSession, AuthUser)>, AuthError> {
+pub(crate) async fn refresh_session_unlocked(
+    tenant: String,
+    expected_session_id: Option<String>,
+) -> Result<Option<(AuthSession, AuthUser)>, AuthError> {
     match selected_transport_path() {
         UiTransportPath::NativeServer => {
             let payload = native_server_adapter::refresh_token_native(tenant, expected_session_id)
@@ -357,9 +368,11 @@ pub(crate) async fn refresh_session_unlocked(tenant: String, expected_session_id
                 .map_err(|error| map_server_auth_error(error, false))?;
             Ok(payload.map(|payload| (payload.session, payload.user)))
         }
-        UiTransportPath::Graphql => cookie_adapter::refresh_session_cookie(tenant, expected_session_id)
-            .await
-            .map(Some),
+        UiTransportPath::Graphql => {
+            cookie_adapter::refresh_session_cookie(tenant, expected_session_id)
+                .await
+                .map(Some)
+        }
     }
 }
 

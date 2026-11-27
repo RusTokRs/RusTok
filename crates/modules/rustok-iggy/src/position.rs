@@ -50,7 +50,10 @@ impl ConsumerPositionSnapshot {
     /// Whether every topic partition has a coherent lag value.
     pub fn is_complete(&self) -> bool {
         !self.partitions.is_empty()
-            && self.partitions.iter().all(|position| position.lag().is_some())
+            && self
+                .partitions
+                .iter()
+                .all(|position| position.lag().is_some())
     }
 
     /// Exact total lag across all partitions, or `None` when one partition is unknown.

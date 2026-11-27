@@ -813,16 +813,15 @@ async fn build_ws_connection_data(
             async_graphql::Error::new("Channel resolution failed")
         }
     })?;
-    let channel = crate::middleware::channel::resolve_channel_context_for_facts(
-        &runtime_ctx,
-        channel_facts,
-    )
-    .await
-    .map_err(|_| async_graphql::Error::new("Channel resolution failed"))?;
+    let channel =
+        crate::middleware::channel::resolve_channel_context_for_facts(&runtime_ctx, channel_facts)
+            .await
+            .map_err(|_| async_graphql::Error::new("Channel resolution failed"))?;
     ensure_ws_channel_tenant(channel.as_ref(), tenant_ctx.id)?;
 
     let lease = WebSocketAuthLease::new(access_token, &current_user);
-    lease.ensure_local_authority(&auth_runtime)
+    lease
+        .ensure_local_authority(&auth_runtime)
         .map_err(|_| async_graphql::Error::new("WebSocket credential is no longer admissible"))?;
     auth_lease
         .set(lease)
@@ -1158,7 +1157,12 @@ mod tests {
     #[test]
     fn graphql_ws_client_cancellation_error_is_protocol_specific() {
         for (protocol, start_type, stop_type, should_forward) in [
-            (WebSocketProtocols::GraphQLWS, "subscribe", "complete", false),
+            (
+                WebSocketProtocols::GraphQLWS,
+                "subscribe",
+                "complete",
+                false,
+            ),
             (
                 WebSocketProtocols::SubscriptionsTransportWS,
                 "start",
@@ -1259,7 +1263,9 @@ mod tests {
             let complete = serde_json::json!({ "type": "complete", "id": "op" }).to_string();
 
             tracker.observe_client_message(&start).expect("start");
-            tracker.observe_client_message(&stop).expect("client cancellation");
+            tracker
+                .observe_client_message(&stop)
+                .expect("client cancellation");
             assert!(
                 !super::ws_should_forward_text(protocol, &payload, &mut tracker),
                 "queued operation payload must not be forwarded after cancellation"
@@ -1942,7 +1948,6 @@ mod tests {
         );
     }
 }
-
 
 #[cfg(test)]
 mod incoming_forwarder_shutdown_tests {

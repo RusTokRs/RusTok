@@ -1,4 +1,4 @@
-use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortErrorKind, PortError};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind};
 use rustok_cart::PreparedCartCheckoutSnapshot;
 use rustok_inventory::{
     InventoryIdentityReservationReleaseRequest, InventoryIdentityReservationRequest,

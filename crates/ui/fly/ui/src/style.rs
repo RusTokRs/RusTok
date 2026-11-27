@@ -578,7 +578,13 @@ mod tests {
 
     #[test]
     fn typed_style_patch_rejects_renderer_denied_writes_but_allows_removal() {
-        for property in ["behavior", "-moz-binding", "-ms-behavior", "expression", "--custom"] {
+        for property in [
+            "behavior",
+            "-moz-binding",
+            "-ms-behavior",
+            "expression",
+            "--custom",
+        ] {
             assert!(
                 style_patch([StyleEntry {
                     property: property.into(),

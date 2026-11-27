@@ -124,10 +124,13 @@ mod tests {
 
     #[test]
     fn keyring_validation_command_requires_exact_invocation() {
-        assert!(is_validate_jwt_keyring_command(&["validate-jwt-keyring".to_string()]));
+        assert!(is_validate_jwt_keyring_command(&[
+            "validate-jwt-keyring".to_string()
+        ]));
         assert!(!is_validate_jwt_keyring_command(&[]));
         assert!(!is_validate_jwt_keyring_command(&[
-            "validate-jwt-keyring".to_string(), "extra".to_string(),
+            "validate-jwt-keyring".to_string(),
+            "extra".to_string(),
         ]));
         assert!(!is_validate_jwt_keyring_command(&["validate".to_string()]));
     }

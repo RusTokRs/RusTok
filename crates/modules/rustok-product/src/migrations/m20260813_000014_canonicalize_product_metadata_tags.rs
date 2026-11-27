@@ -264,10 +264,7 @@ async fn find_existing_term(
     locale: &str,
     route_key: &str,
 ) -> Result<Option<Uuid>, DbErr> {
-    for (scope_type, scope_value) in [
-        ("module", PRODUCT_SCOPE_VALUE),
-        ("global", ""),
-    ] {
+    for (scope_type, scope_value) in [("module", PRODUCT_SCOPE_VALUE), ("global", "")] {
         for candidate_locale in locale_candidates(locale) {
             let row = RouteKeyTermIdRow::find_by_statement(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,

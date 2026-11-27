@@ -422,8 +422,7 @@ pub async fn start_tenant_locale_generation_listener(
         .shared_get::<TenantLocaleGenerationStartLock>()
         .unwrap_or(candidate);
     let stop = StopHandle::ensure(ctx);
-    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await
-    else {
+    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await else {
         return;
     };
 
@@ -448,7 +447,9 @@ pub async fn start_tenant_locale_generation_listener(
                     }
                 }
             }
-        }).await else {
+        })
+        .await
+        else {
             return;
         };
     }
@@ -459,8 +460,7 @@ pub async fn start_tenant_locale_generation_listener(
     let initial_local = cache
         .invalidations()
         .subscribe_local_channel(TENANT_CACHE_GENERATION_CHANNEL);
-    let Some(recovery) =
-        await_worker_startup_or_stop(&stop, listener.recover_if_advanced()).await
+    let Some(recovery) = await_worker_startup_or_stop(&stop, listener.recover_if_advanced()).await
     else {
         return;
     };

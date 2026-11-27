@@ -503,23 +503,39 @@ mod tests {
         struct BrokenSource;
         #[async_trait]
         impl ModuleWorkSource for BrokenSource {
-            async fn claim(&self, _: &str) -> Result<Option<ModuleWorkItem>, rustok_api::ModuleWorkError> {
+            async fn claim(
+                &self,
+                _: &str,
+            ) -> Result<Option<ModuleWorkItem>, rustok_api::ModuleWorkError> {
                 Err(rustok_api::ModuleWorkError::Source("needs repair".into()))
             }
-            async fn complete(&self, _: &ModuleWorkItem, _: ModuleWorkOutcome) -> Result<(), rustok_api::ModuleWorkError> {
+            async fn complete(
+                &self,
+                _: &ModuleWorkItem,
+                _: ModuleWorkOutcome,
+            ) -> Result<(), rustok_api::ModuleWorkError> {
                 panic!("broken source cannot claim work")
             }
         }
         let healthy = Arc::new(TestSource {
             item: Mutex::new(Some(ModuleWorkItem {
-                id: Uuid::new_v4(), tenant_id: Uuid::new_v4(), worker_slug: "second".into(),
-                lease_token: "lease".into(), payload: serde_json::json!({}),
+                id: Uuid::new_v4(),
+                tenant_id: Uuid::new_v4(),
+                worker_slug: "second".into(),
+                lease_token: "lease".into(),
+                payload: serde_json::json!({}),
             })),
             ..Default::default()
         });
         let scheduler = ModuleWorkScheduler::new();
-        scheduler.register(Arc::new(BrokenSource), Arc::new(TestHandler("first"))).await.unwrap();
-        scheduler.register(healthy.clone(), Arc::new(TestHandler("second"))).await.unwrap();
+        scheduler
+            .register(Arc::new(BrokenSource), Arc::new(TestHandler("first")))
+            .await
+            .unwrap();
+        scheduler
+            .register(healthy.clone(), Arc::new(TestHandler("second")))
+            .await
+            .unwrap();
         assert!(matches!(scheduler.run_once().await,
             Err(rustok_api::ModuleWorkError::Source(message)) if message == "needs repair"));
         assert_eq!(healthy.completed.lock().unwrap().len(), 1);
@@ -530,21 +546,45 @@ mod tests {
         struct FailingCompletion(Mutex<Option<ModuleWorkItem>>);
         #[async_trait]
         impl ModuleWorkSource for FailingCompletion {
-            async fn claim(&self, _: &str) -> Result<Option<ModuleWorkItem>, rustok_api::ModuleWorkError> {
+            async fn claim(
+                &self,
+                _: &str,
+            ) -> Result<Option<ModuleWorkItem>, rustok_api::ModuleWorkError> {
                 Ok(self.0.lock().unwrap().take())
             }
-            async fn complete(&self, _: &ModuleWorkItem, _: ModuleWorkOutcome) -> Result<(), rustok_api::ModuleWorkError> {
-                Err(rustok_api::ModuleWorkError::Source("completion failed".into()))
+            async fn complete(
+                &self,
+                _: &ModuleWorkItem,
+                _: ModuleWorkOutcome,
+            ) -> Result<(), rustok_api::ModuleWorkError> {
+                Err(rustok_api::ModuleWorkError::Source(
+                    "completion failed".into(),
+                ))
             }
         }
         let item = |slug: &str| ModuleWorkItem {
-            id: Uuid::new_v4(), tenant_id: Uuid::new_v4(), worker_slug: slug.into(),
-            lease_token: "lease".into(), payload: serde_json::json!({}),
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            worker_slug: slug.into(),
+            lease_token: "lease".into(),
+            payload: serde_json::json!({}),
         };
-        let healthy = Arc::new(TestSource { item: Mutex::new(Some(item("second"))), ..Default::default() });
+        let healthy = Arc::new(TestSource {
+            item: Mutex::new(Some(item("second"))),
+            ..Default::default()
+        });
         let scheduler = ModuleWorkScheduler::new();
-        scheduler.register(Arc::new(FailingCompletion(Mutex::new(Some(item("first"))))), Arc::new(TestHandler("first"))).await.unwrap();
-        scheduler.register(healthy.clone(), Arc::new(TestHandler("second"))).await.unwrap();
+        scheduler
+            .register(
+                Arc::new(FailingCompletion(Mutex::new(Some(item("first"))))),
+                Arc::new(TestHandler("first")),
+            )
+            .await
+            .unwrap();
+        scheduler
+            .register(healthy.clone(), Arc::new(TestHandler("second")))
+            .await
+            .unwrap();
         assert!(matches!(scheduler.run_once().await,
             Err(rustok_api::ModuleWorkError::Source(message)) if message == "completion failed"));
         assert_eq!(healthy.completed.lock().unwrap().len(), 1);

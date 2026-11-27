@@ -413,7 +413,10 @@ pub struct VariantUpdateDraft {
     pub prices_changed: bool,
     #[serde(rename = "inventoryQuantity")]
     pub inventory_quantity: Option<i32>,
-    #[serde(rename = "expectedInventoryQuantity", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "expectedInventoryQuantity",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub expected_inventory_quantity: Option<i32>,
     #[serde(rename = "expectedRevision", skip_serializing_if = "Option::is_none")]
     pub expected_revision: Option<String>,
@@ -486,9 +489,7 @@ impl VariantUpdateDraft {
         let compare_at_amount = rustok_ui_core::normalize_ui_text(&compare_at_amount);
 
         if amount.is_empty() {
-            if clear_primary_price
-                && let Some(primary_currency) = primary_currency
-            {
+            if clear_primary_price && let Some(primary_currency) = primary_currency {
                 next_prices.retain(|price| price.currency_code != primary_currency);
             }
         } else {

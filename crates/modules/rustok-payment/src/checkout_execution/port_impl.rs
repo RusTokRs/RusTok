@@ -178,7 +178,9 @@ impl CheckoutPaymentExecutionPort for InProcessCheckoutPaymentExecutionPort {
             None,
             None,
         );
-        let result = self.read(context, owner_operation, tenant_id, request).await;
+        let result = self
+            .read(context, owner_operation, tenant_id, request)
+            .await;
         result.map_err(|error| {
             map_checkout_payment_execution_local_port_error(
                 &diagnostic_context,

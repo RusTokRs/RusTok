@@ -229,7 +229,9 @@ pub(super) fn next_body_revision_timestamp(
     match previous {
         Some(previous) if candidate <= *previous => previous
             .checked_add_signed(chrono::Duration::microseconds(1))
-            .ok_or_else(|| crate::error::PagesError::validation("Page body revision clock exhausted")),
+            .ok_or_else(|| {
+                crate::error::PagesError::validation("Page body revision clock exhausted")
+            }),
         _ => Ok(candidate),
     }
 }
@@ -505,11 +507,9 @@ mod tests {
             .expect("same clock advances the revision");
         assert_eq!(same_clock, previous + chrono::Duration::microseconds(1));
 
-        let regressed_clock = next_body_revision_timestamp(
-            now - chrono::Duration::seconds(1),
-            Some(&same_clock),
-        )
-        .expect("regressed clock advances the revision");
+        let regressed_clock =
+            next_body_revision_timestamp(now - chrono::Duration::seconds(1), Some(&same_clock))
+                .expect("regressed clock advances the revision");
         assert_eq!(
             regressed_clock,
             same_clock + chrono::Duration::microseconds(1)

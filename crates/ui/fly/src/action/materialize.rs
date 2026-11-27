@@ -335,10 +335,7 @@ fn apply_action(
                 Ok(index) => index,
                 Err(error) => return AppliedAction::Unresolved(error.to_string()),
             };
-            let href = match resolution
-                .routes
-                .slug_for(page_index, resolution.locale)
-            {
+            let href = match resolution.routes.slug_for(page_index, resolution.locale) {
                 Ok(Some(slug)) => build_interaction_href(
                     base_path.as_deref(),
                     &slug,

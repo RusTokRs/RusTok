@@ -2,11 +2,11 @@ use crate::model::AdminCanvasController;
 use fly::GrapesJsCodec;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+#[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
 use std::{cell::Cell, rc::Rc};
-#[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-use std::cell::RefCell;
 
 const RECOVERY_FORMAT: u8 = 1;
 const MAX_RECOVERY_RECORD_BYTES: usize = 2 * 1024 * 1024;
@@ -68,7 +68,6 @@ pub(crate) struct DraftRecoveryBootstrap {
     pub persisted: bool,
 }
 
-
 struct LoadedRecoveryRecord {
     record: DraftRecoveryRecord,
 }
@@ -126,9 +125,7 @@ fn recovery_record_is_newer(
 /// Validate the complete persisted lineage before projecting one record per writer.
 /// Superseded records can still participate in a cycle, and an unrelated live
 /// record must not hide that corruption.
-fn recovery_lineage_has_cycle(
-    entries: &[(RecoveryRecordRef, DraftRecoveryRecord)],
-) -> bool {
+fn recovery_lineage_has_cycle(entries: &[(RecoveryRecordRef, DraftRecoveryRecord)]) -> bool {
     let keys = entries
         .iter()
         .map(|(reference, _)| reference.key.clone())
@@ -312,8 +309,8 @@ impl DraftRecoveryStore {
 
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     fn storage(&self) -> Result<web_sys::Storage, String> {
-        let window = web_sys::window()
-            .ok_or_else(|| "Browser window is unavailable.".to_string())?;
+        let window =
+            web_sys::window().ok_or_else(|| "Browser window is unavailable.".to_string())?;
         window
             .local_storage()
             .map_err(|error| format!("Cannot access browser local storage: {error:?}"))?
@@ -368,13 +365,16 @@ impl DraftRecoveryStore {
                     superseded_key.len() > 512
                         || !valid_recovery_storage_key(&self.prefix, superseded_key)
                 })
-                || key != recovery_record_storage_key(
-                    &self.prefix,
-                    &record.writer_id,
-                    &record.record_id,
-                )
+                || key
+                    != recovery_record_storage_key(
+                        &self.prefix,
+                        &record.writer_id,
+                        &record.record_id,
+                    )
             {
-                return Err("A local recovery record has an unsupported identity or format.".to_string());
+                return Err(
+                    "A local recovery record has an unsupported identity or format.".to_string(),
+                );
             }
 
             if entries.len() >= MAX_RECOVERY_RECORDS_PER_SCOPE {
@@ -408,9 +408,10 @@ impl DraftRecoveryStore {
                 .nth(1)
                 .unwrap_or_default()
                 .to_string();
-            let sequence = self.sequence.get().checked_add(1).ok_or_else(|| {
-                "The local recovery writer sequence is exhausted.".to_string()
-            })?;
+            let sequence =
+                self.sequence.get().checked_add(1).ok_or_else(|| {
+                    "The local recovery writer sequence is exhausted.".to_string()
+                })?;
             let record_id = format!(
                 "{sequence:x}-{:x}-{:x}",
                 js_sys::Date::now().max(0.0) as u64,
@@ -440,9 +441,9 @@ impl DraftRecoveryStore {
 
             let storage = self.storage()?;
             let key = recovery_record_storage_key(&self.prefix, &self.writer_id, &record_id);
-            storage
-                .set_item(&key, &raw)
-                .map_err(|error| format!("Cannot persist local draft in browser storage: {error:?}"))?;
+            storage.set_item(&key, &raw).map_err(|error| {
+                format!("Cannot persist local draft in browser storage: {error:?}")
+            })?;
             self.sequence.set(sequence);
 
             // Never overwrite a key another tab may have read. The new immutable record is
@@ -645,11 +646,14 @@ pub(crate) fn initialize_draft_recovery(
             }
         };
         let mut supersedes_keys = loaded.supersedes_keys.clone();
-        supersedes_keys.extend(loaded.references.iter().map(|reference| reference.key.clone()));
+        supersedes_keys.extend(
+            loaded
+                .references
+                .iter()
+                .map(|reference| reference.key.clone()),
+        );
         let consumed_records = loaded.references;
-        if let Err(error) =
-            store.set_recovery_lineage(supersedes_keys, consumed_records.clone())
-        {
+        if let Err(error) = store.set_recovery_lineage(supersedes_keys, consumed_records.clone()) {
             return DraftRecoveryBootstrap {
                 store: Some(store),
                 base,
@@ -824,9 +828,7 @@ fn merge_arrays_by_id(
     path: &str,
     conflicts: &mut Vec<String>,
 ) -> Option<Value> {
-    fn indexed<'a>(
-        values: &'a [Value],
-    ) -> Option<(Vec<String>, BTreeMap<String, &'a Value>)> {
+    fn indexed<'a>(values: &'a [Value]) -> Option<(Vec<String>, BTreeMap<String, &'a Value>)> {
         let mut order = Vec::with_capacity(values.len());
         let mut items = BTreeMap::new();
         for value in values {
@@ -895,10 +897,7 @@ fn merge_arrays_by_id(
     let merged_local_base_order = surviving_base(&local_order);
     let server_reordered = merged_server_base_order != merged_original_base_order;
     let local_reordered = merged_local_base_order != merged_original_base_order;
-    if server_reordered
-        && local_reordered
-        && merged_server_base_order != merged_local_base_order
-    {
+    if server_reordered && local_reordered && merged_server_base_order != merged_local_base_order {
         conflicts.push(format!("{path}/$order"));
         return None;
     }
@@ -1092,7 +1091,8 @@ fn merge_arrays_by_id(
         );
         let server_insertions = server_groups.get(&gap).map(Vec::as_slice).unwrap_or(&[]);
         let local_insertions = local_groups.get(&gap).map(Vec::as_slice).unwrap_or(&[]);
-        let Some(insertions) = merge_insertion_sequences(server_insertions, local_insertions) else {
+        let Some(insertions) = merge_insertion_sequences(server_insertions, local_insertions)
+        else {
             conflicts.push(format!("{path}/$order"));
             return None;
         };
@@ -1116,7 +1116,6 @@ fn merge_arrays_by_id(
     ))
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1128,10 +1127,19 @@ mod tests {
         let server = json!({"title":"server","theme":{"color":"blue"}});
         let local = json!({"title":"old","theme":{"color":"red"}});
         let mut conflicts = Vec::new();
-        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts)
-            .expect("merge");
+        let merged = merge_optional(
+            Some(&base),
+            Some(&server),
+            Some(&local),
+            "$",
+            &mut conflicts,
+        )
+        .expect("merge");
         assert!(conflicts.is_empty());
-        assert_eq!(merged, Some(json!({"title":"server","theme":{"color":"red"}})));
+        assert_eq!(
+            merged,
+            Some(json!({"title":"server","theme":{"color":"red"}}))
+        );
     }
 
     #[test]
@@ -1149,13 +1157,22 @@ mod tests {
             {"id":"b","content":"local"}
         ]});
         let mut conflicts = Vec::new();
-        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts)
-            .expect("merge");
+        let merged = merge_optional(
+            Some(&base),
+            Some(&server),
+            Some(&local),
+            "$",
+            &mut conflicts,
+        )
+        .expect("merge");
         assert!(conflicts.is_empty());
-        assert_eq!(merged, Some(json!({"components":[
-            {"id":"a","content":"server"},
-            {"id":"b","content":"local"}
-        ]})));
+        assert_eq!(
+            merged,
+            Some(json!({"components":[
+                {"id":"a","content":"server"},
+                {"id":"b","content":"local"}
+            ]}))
+        );
     }
 
     #[test]
@@ -1164,7 +1181,13 @@ mod tests {
         let server = json!({"items":[{"id":" a ","content":"original"}]});
         let local = json!({"items":[{"id":"a","content":"local edit"}]});
         let mut conflicts = Vec::new();
-        let _ = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts);
+        let _ = merge_optional(
+            Some(&base),
+            Some(&server),
+            Some(&local),
+            "$",
+            &mut conflicts,
+        );
         assert!(conflicts.iter().any(|path| path.contains("id=a")));
 
         // Independent insertions with distinct exact IDs must not be collapsed.
@@ -1172,13 +1195,22 @@ mod tests {
         let server = json!({"items":[{"id":"a","content":"server"}]});
         let local = json!({"items":[{"id":" a ","content":"local"}]});
         let mut conflicts = Vec::new();
-        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts)
-            .expect("merge");
+        let merged = merge_optional(
+            Some(&base),
+            Some(&server),
+            Some(&local),
+            "$",
+            &mut conflicts,
+        )
+        .expect("merge");
         assert!(conflicts.is_empty());
-        assert_eq!(merged, Some(json!({"items":[
-            {"id":"a","content":"server"},
-            {"id":" a ","content":"local"}
-        ]})));
+        assert_eq!(
+            merged,
+            Some(json!({"items":[
+                {"id":"a","content":"server"},
+                {"id":" a ","content":"local"}
+            ]}))
+        );
     }
 
     #[test]
@@ -1187,12 +1219,17 @@ mod tests {
         let server = json!({"components":[{"id":"a","content":"server"}]});
         let local = json!({"components":[{"id":"a","content":"local"}]});
         let mut conflicts = Vec::new();
-        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts);
+        let merged = merge_optional(
+            Some(&base),
+            Some(&server),
+            Some(&local),
+            "$",
+            &mut conflicts,
+        );
         assert!(merged.is_some());
         assert!(!conflicts.is_empty());
         assert!(conflicts.iter().any(|path| path.contains("id=a")));
     }
-
 
     #[test]
     fn recovery_record_keys_are_immutable_per_write_and_keep_legacy_reads() {
@@ -1207,8 +1244,14 @@ mod tests {
         assert_ne!(legacy, first);
         assert!(valid_recovery_storage_key(prefix, &legacy));
         assert!(valid_recovery_storage_key(prefix, &first));
-        assert!(!valid_recovery_storage_key(prefix, &format!("{prefix}bad:token:extra")));
-        assert!(!valid_recovery_storage_key(prefix, "other-scope:writer:1-a"));
+        assert!(!valid_recovery_storage_key(
+            prefix,
+            &format!("{prefix}bad:token:extra")
+        ));
+        assert!(!valid_recovery_storage_key(
+            prefix,
+            "other-scope:writer:1-a"
+        ));
     }
 
     #[test]
@@ -1254,9 +1297,6 @@ mod tests {
         assert!(recovery_record_is_newer(&newer, &base));
     }
 
-
-
-
     #[test]
     fn three_way_merge_preserves_independent_insertions_at_their_shared_gap() {
         let base = json!([
@@ -1274,8 +1314,14 @@ mod tests {
             { "id": "b", "content": "B" }
         ]);
         let mut conflicts = Vec::new();
-        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts)
-            .expect("merge");
+        let merged = merge_optional(
+            Some(&base),
+            Some(&server),
+            Some(&local),
+            "$",
+            &mut conflicts,
+        )
+        .expect("merge");
         assert!(conflicts.is_empty());
         assert_eq!(
             merged,
@@ -1305,8 +1351,14 @@ mod tests {
             { "id": "end", "content": "E" }
         ]);
         let mut conflicts = Vec::new();
-        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts)
-            .expect("merge");
+        let merged = merge_optional(
+            Some(&base),
+            Some(&server),
+            Some(&local),
+            "$",
+            &mut conflicts,
+        )
+        .expect("merge");
         assert!(conflicts.is_empty());
         assert_eq!(
             merged,
@@ -1335,7 +1387,13 @@ mod tests {
             { "id": "b", "content": "B" }
         ]);
         let mut conflicts = Vec::new();
-        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts);
+        let merged = merge_optional(
+            Some(&base),
+            Some(&server),
+            Some(&local),
+            "$",
+            &mut conflicts,
+        );
         assert!(merged.is_none());
         assert!(conflicts.iter().any(|path| path == "$/$order"));
     }
@@ -1357,12 +1415,16 @@ mod tests {
             { "id": "b", "content": "B" }
         ]);
         let mut conflicts = Vec::new();
-        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts);
+        let merged = merge_optional(
+            Some(&base),
+            Some(&server),
+            Some(&local),
+            "$",
+            &mut conflicts,
+        );
         assert!(merged.is_none());
         assert!(conflicts.iter().any(|path| path == "$/$order"));
     }
-
-
 
     #[test]
     fn three_way_merge_ignores_reorders_of_items_deleted_by_the_other_side() {
@@ -1380,13 +1442,17 @@ mod tests {
             { "id": "b", "content": "B" }
         ]);
         let mut conflicts = Vec::new();
-        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts)
-            .expect("merge");
+        let merged = merge_optional(
+            Some(&base),
+            Some(&server),
+            Some(&local),
+            "$",
+            &mut conflicts,
+        )
+        .expect("merge");
         assert!(conflicts.is_empty());
         assert_eq!(merged, Some(json!([{ "id": "b", "content": "B" }])));
     }
-
-
 
     #[test]
     fn three_way_merge_preserves_surviving_reorder_when_other_writer_only_moved_deleted_item() {
@@ -1404,9 +1470,8 @@ mod tests {
             (&surviving_reorder, &moved_deleted),
         ] {
             let mut conflicts = Vec::new();
-            let merged = merge_optional(
-                Some(&base), Some(server), Some(local), "$", &mut conflicts,
-            );
+            let merged =
+                merge_optional(Some(&base), Some(server), Some(local), "$", &mut conflicts);
             assert!(conflicts.is_empty(), "{conflicts:?}");
             assert_eq!(merged, Some(Some(surviving_reorder.clone())));
         }
@@ -1424,7 +1489,16 @@ mod tests {
             { "id": "a" }, { "id": "c" }, { "id": "b" }
         ]);
         let mut conflicts = Vec::new();
-        assert!(merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts).is_none());
+        assert!(
+            merge_optional(
+                Some(&base),
+                Some(&server),
+                Some(&local),
+                "$",
+                &mut conflicts
+            )
+            .is_none()
+        );
         assert_eq!(conflicts, vec!["$/$order"]);
     }
 
@@ -1504,16 +1578,20 @@ mod tests {
         .expect("concurrent latest writer snapshots");
 
         assert_eq!(loaded.records.len(), 2);
-        assert!(loaded
-            .records
-            .iter()
-            .any(|loaded| loaded.record.writer_id == "writer-a"
-                && loaded.record.record_id == "a3"));
-        assert!(loaded
-            .records
-            .iter()
-            .any(|loaded| loaded.record.writer_id == "writer-b"
-                && loaded.record.record_id == "b1"));
+        assert!(
+            loaded
+                .records
+                .iter()
+                .any(|loaded| loaded.record.writer_id == "writer-a"
+                    && loaded.record.record_id == "a3")
+        );
+        assert!(
+            loaded
+                .records
+                .iter()
+                .any(|loaded| loaded.record.writer_id == "writer-b"
+                    && loaded.record.record_id == "b1")
+        );
     }
 
     #[test]
@@ -1558,8 +1636,6 @@ mod tests {
         );
     }
 
-
-
     #[test]
     fn three_way_merge_rejects_reordered_shared_insertions_in_one_gap() {
         let base = json!([
@@ -1579,7 +1655,13 @@ mod tests {
             { "id": "b", "content": "B" }
         ]);
         let mut conflicts = Vec::new();
-        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts);
+        let merged = merge_optional(
+            Some(&base),
+            Some(&server),
+            Some(&local),
+            "$",
+            &mut conflicts,
+        );
         assert!(merged.is_none());
         assert!(conflicts.iter().any(|path| path == "$/$order"));
     }
@@ -1604,8 +1686,14 @@ mod tests {
             { "id": "b", "content": "B" }
         ]);
         let mut conflicts = Vec::new();
-        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts)
-            .expect("merge");
+        let merged = merge_optional(
+            Some(&base),
+            Some(&server),
+            Some(&local),
+            "$",
+            &mut conflicts,
+        )
+        .expect("merge");
         assert!(conflicts.is_empty());
         assert_eq!(
             merged,
@@ -1618,5 +1706,4 @@ mod tests {
             ]))
         );
     }
-
 }

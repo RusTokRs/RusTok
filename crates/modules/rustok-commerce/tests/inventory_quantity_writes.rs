@@ -747,21 +747,38 @@ async fn initial_inventory_refuses_foreign_or_archived_location_snapshots() {
     let f = fixture(&db, &catalog).await;
     let other = fixture(&db, &catalog).await;
     let location = stock_location::Entity::find_by_id(f.location)
-        .one(&db).await.unwrap().unwrap();
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
     let mut forged = stock_location::Entity::find_by_id(other.location)
-        .one(&db).await.unwrap().unwrap();
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
     forged.tenant_id = f.tenant;
     for (candidate, variant, expected) in [
         (location.clone(), other.variant, "SKU ownership"),
-        (forged, f.variant, "location is missing, foreign or archived"),
+        (
+            forged,
+            f.variant,
+            "location is missing, foreign or archived",
+        ),
     ] {
         let before = snapshot(&db).await;
         let txn = db.begin().await.unwrap();
         let error = BootstrapService::create_initial_records_in_tx(
-            &txn, &candidate, f.actor, rustok_inventory::InitialInventory {
-                variant_id: variant, sku: None, available_quantity: 1,
+            &txn,
+            &candidate,
+            f.actor,
+            rustok_inventory::InitialInventory {
+                variant_id: variant,
+                sku: None,
+                available_quantity: 1,
             },
-        ).await.unwrap_err();
+        )
+        .await
+        .unwrap_err();
         assert!(error.to_string().contains(expected), "{error}");
         txn.rollback().await.unwrap();
         assert_eq!(snapshot(&db).await, before);
@@ -772,11 +789,22 @@ async fn initial_inventory_refuses_foreign_or_archived_location_snapshots() {
     let before = snapshot(&db).await;
     let txn = db.begin().await.unwrap();
     let error = BootstrapService::create_initial_records_in_tx(
-        &txn, &location, f.actor, rustok_inventory::InitialInventory {
-            variant_id: f.variant, sku: None, available_quantity: 1,
+        &txn,
+        &location,
+        f.actor,
+        rustok_inventory::InitialInventory {
+            variant_id: f.variant,
+            sku: None,
+            available_quantity: 1,
         },
-    ).await.unwrap_err();
-    assert!(error.to_string().contains("location is missing, foreign or archived"));
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("location is missing, foreign or archived")
+    );
     txn.rollback().await.unwrap();
     assert_eq!(snapshot(&db).await, before);
 }
@@ -788,11 +816,19 @@ async fn product_inventory_bootstrap_refuses_foreign_sku_before_creating_locatio
     let before = snapshot(&db).await;
     let txn = db.begin().await.unwrap();
     let port = rustok_inventory::in_process_product_inventory_port(db.clone());
-    let error = port.bootstrap_variants_in_tx(
-        &txn, Uuid::new_v4(), f.actor, vec![rustok_product::ports::ProductInitialInventory {
-            variant_id: f.variant, sku: None, available_quantity: 1,
-        }],
-    ).await.unwrap_err();
+    let error = port
+        .bootstrap_variants_in_tx(
+            &txn,
+            Uuid::new_v4(),
+            f.actor,
+            vec![rustok_product::ports::ProductInitialInventory {
+                variant_id: f.variant,
+                sku: None,
+                available_quantity: 1,
+            }],
+        )
+        .await
+        .unwrap_err();
     assert!(matches!(error, CommerceError::VariantNotFound(id) if id == f.variant));
     // The rejection must precede all writes, even if the caller commits.
     txn.commit().await.unwrap();
@@ -810,21 +846,42 @@ async fn quantity_rejects_rewritten_saved_counters_before_event_or_product_commi
         )).await.unwrap();
         let before = snapshot(&db).await;
         if product_path {
-            let revision = before.variants.iter().find(|row| row.id == f.variant).unwrap().index_revision;
-            let error = catalog.update_variant(f.tenant, f.actor, f.variant, UpdateVariantInput {
-                expected_revision: Some(revision.to_string()),
-                expected_inventory_quantity: Some(8),
-                inventory_quantity: Some(12),
-                barcode: Patch::Set("must-roll-back".into()),
-                ..Default::default()
-            }).await.unwrap_err();
-            assert!(matches!(error, CommerceError::InventoryQuantityBlocked(
-                rustok_product::ProductInventoryQuantityBlocker::ConcurrentChange
-            )));
+            let revision = before
+                .variants
+                .iter()
+                .find(|row| row.id == f.variant)
+                .unwrap()
+                .index_revision;
+            let error = catalog
+                .update_variant(
+                    f.tenant,
+                    f.actor,
+                    f.variant,
+                    UpdateVariantInput {
+                        expected_revision: Some(revision.to_string()),
+                        expected_inventory_quantity: Some(8),
+                        inventory_quantity: Some(12),
+                        barcode: Patch::Set("must-roll-back".into()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap_err();
+            assert!(matches!(
+                error,
+                CommerceError::InventoryQuantityBlocked(
+                    rustok_product::ProductInventoryQuantityBlocker::ConcurrentChange
+                )
+            ));
         } else {
-            let error = service(&db).set_inventory(f.tenant, f.actor, f.variant, 12)
-                .await.unwrap_err();
-            assert!(matches!(error, QuantityWriteError::Rejected(B::ConcurrentChange)));
+            let error = service(&db)
+                .set_inventory(f.tenant, f.actor, f.variant, 12)
+                .await
+                .unwrap_err();
+            assert!(matches!(
+                error,
+                QuantityWriteError::Rejected(B::ConcurrentChange)
+            ));
         }
         assert_eq!(snapshot(&db).await, before);
     }
