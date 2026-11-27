@@ -105,7 +105,19 @@ pub(crate) fn normalized_refusal(code: &str) -> Option<&'static str> {
         | "product.conflict" => Some("conflict"),
         "PRODUCT_INVENTORY_DELETION_HISTORY_PRESENT"
         | "PRODUCT_INVENTORY_DELETION_STOCK_PRESENT"
-        | "PRODUCT_INVENTORY_DELETION_CHANGED" => Some("inventory_blocked"),
+        | "PRODUCT_INVENTORY_DELETION_CHANGED"
+        | "PRODUCT_INVENTORY_QUANTITY_LOCATION_UNAVAILABLE"
+        | "PRODUCT_INVENTORY_QUANTITY_INSUFFICIENT"
+        | "PRODUCT_INVENTORY_QUANTITY_CHANGED"
+        | "PRODUCT_INVENTORY_QUANTITY_HISTORY_PRESENT"
+        | "product.inventory_quantity_location_unavailable"
+        | "product.inventory_quantity_insufficient"
+        | "product.inventory_quantity_changed"
+        | "product.inventory_quantity_history_present" => Some("inventory_blocked"),
+        "PRODUCT_INVENTORY_QUANTITY_INVALID"
+        | "PRODUCT_INVENTORY_QUANTITY_LIMIT"
+        | "product.inventory_quantity_invalid"
+        | "product.inventory_quantity_limit" => Some("validation"),
         _ => None,
     }
 }
@@ -527,15 +539,63 @@ mod tests {
     }
 
     #[test]
+    fn inventory_quantity_refusals_match_the_owner_terminal_classes() {
+        for (code, expected) in [
+            ("PRODUCT_INVENTORY_QUANTITY_INVALID", Some("validation")),
+            ("product.inventory_quantity_invalid", Some("validation")),
+            ("PRODUCT_INVENTORY_QUANTITY_LIMIT", Some("validation")),
+            ("product.inventory_quantity_limit", Some("validation")),
+            (
+                "PRODUCT_INVENTORY_QUANTITY_LOCATION_UNAVAILABLE",
+                Some("inventory_blocked"),
+            ),
+            (
+                "product.inventory_quantity_location_unavailable",
+                Some("inventory_blocked"),
+            ),
+            (
+                "PRODUCT_INVENTORY_QUANTITY_INSUFFICIENT",
+                Some("inventory_blocked"),
+            ),
+            (
+                "product.inventory_quantity_insufficient",
+                Some("inventory_blocked"),
+            ),
+            (
+                "PRODUCT_INVENTORY_QUANTITY_CHANGED",
+                Some("inventory_blocked"),
+            ),
+            (
+                "product.inventory_quantity_changed",
+                Some("inventory_blocked"),
+            ),
+            (
+                "PRODUCT_INVENTORY_QUANTITY_HISTORY_PRESENT",
+                Some("inventory_blocked"),
+            ),
+            (
+                "product.inventory_quantity_history_present",
+                Some("inventory_blocked"),
+            ),
+        ] {
+            assert_eq!(normalized_refusal(code), expected, "{code}");
+        }
+    }
+
+    #[test]
     fn invariant_and_unknown_owner_codes_never_settle_the_request() {
-        assert_eq!(
-            normalized_refusal("PRODUCT_INVENTORY_DELETION_HISTORY_PRESENT"),
-            Some("inventory_blocked")
-        );
-        assert_eq!(
-            normalized_refusal("PRODUCT_INVENTORY_DELETION_STATE_UNVERIFIED"),
-            None
-        );
-        assert_eq!(normalized_refusal("PRODUCT_TEMPORARILY_UNAVAILABLE"), None);
+        for code in [
+            "PRODUCT_INVENTORY_DELETION_STATE_UNVERIFIED",
+            "PRODUCT_INVENTORY_QUANTITY_IDENTITY_UNAVAILABLE",
+            "PRODUCT_INVENTORY_QUANTITY_STATE_UNVERIFIED",
+            "PRODUCT_INVENTORY_QUANTITY_UNREPRESENTABLE",
+            "product.inventory_quantity_unrepresentable",
+            "PRODUCT_INVENTORY_QUANTITY_ISOLATION_UNSUPPORTED",
+            "PRODUCT_INVENTORY_QUANTITY_EVENT_UNREPRESENTABLE",
+            "PRODUCT_INVENTORY_QUANTITY_PUBLICATION_UNVERIFIED",
+            "PRODUCT_TEMPORARILY_UNAVAILABLE",
+        ] {
+            assert_eq!(normalized_refusal(code), None, "{code}");
+        }
     }
 }
