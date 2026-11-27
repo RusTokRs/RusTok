@@ -62,8 +62,9 @@ async fn ensure_configured_superadmin(
     tenant_slug: &str,
 ) -> Result<()> {
     // The lookup must use exactly the identity that account creation persists.
-    // Normalize before provisioning a tenant to avoid side effects for invalid
-    // email configuration.
+    // Check for an existing account before validating new credentials, then
+    // validate before tenant creation so invalid bootstrap config has no
+    // provisioning side effects.
     let email = crate::auth::normalize_email(email).map_err(AuthLifecycleError::from)?;
     let existing_tenant = tenants::find_by_slug(ctx.db(), tenant_slug).await?;
 
