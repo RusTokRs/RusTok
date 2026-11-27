@@ -593,6 +593,7 @@ mod tests {
             "PRODUCT_INVENTORY_QUANTITY_ISOLATION_UNSUPPORTED",
             "PRODUCT_INVENTORY_QUANTITY_EVENT_UNREPRESENTABLE",
             "PRODUCT_INVENTORY_QUANTITY_PUBLICATION_UNVERIFIED",
+            "NO_VARIANTS",
             "PRODUCT_TEMPORARILY_UNAVAILABLE",
         ] {
             assert_eq!(normalized_refusal(code), None, "{code}");

@@ -161,7 +161,6 @@ const refusals = new Set([
 const lifecycleRefusals = new Set([
   ...refusals,
   'PRODUCT_REVISION_CONFLICT',
-  'NO_VARIANTS',
   'CANNOT_DELETE_ONLY_VARIANT',
   'PRODUCT_INVENTORY_DELETION_INVALID',
   'PRODUCT_INVENTORY_DELETION_LIMIT',

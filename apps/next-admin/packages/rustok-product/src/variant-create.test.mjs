@@ -487,7 +487,6 @@ test('sparse variant update journal input accepts only bounded owner fields', ()
     assert.equal(isVariantUpdateInput(invalid), false);
   }
   assert.equal(isVariantLifecycleRefusalCode('DUPLICATE_SKU'), true);
-  assert.equal(isVariantLifecycleRefusalCode('NO_VARIANTS'), true);
   assert.equal(isVariantLifecycleRefusalCode('IDEMPOTENCY_KEY_CONFLICT'), false);
   assert.equal(isVariantLifecycleRefusalCode('UNAUTHORIZED'), false);
 });
@@ -511,6 +510,7 @@ test('variant lifecycle refusal allowlist mirrors only terminal Product owner de
     assert.equal(isVariantLifecycleRefusalCode(code), true, code);
   }
   for (const code of [
+    'NO_VARIANTS',
     'PRODUCT_INVENTORY_DELETION_IDENTITY_UNAVAILABLE',
     'PRODUCT_INVENTORY_DELETION_STATE_UNVERIFIED',
     'PRODUCT_INVENTORY_DELETION_ISOLATION_UNSUPPORTED',
