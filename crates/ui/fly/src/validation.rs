@@ -153,9 +153,9 @@ pub fn validate_project_with_embed_registry(
         match crate::resolve_symbol_instances(document) {
             Ok(resolved) => Some(resolved),
             Err(error) => {
-                report
-                    .diagnostics
-                    .push(symbol_materialization_diagnostic(&error));
+                if let Some(diagnostic) = symbol_materialization_diagnostic(&error) {
+                    report.diagnostics.push(diagnostic);
+                }
                 None
             }
         }
@@ -1051,7 +1051,9 @@ fn deduplicate_diagnostics(diagnostics: &mut Vec<ValidationDiagnostic>) {
     });
 }
 
-fn symbol_materialization_diagnostic(error: &crate::FlyError) -> ValidationDiagnostic {
+fn symbol_materialization_diagnostic(
+    error: &crate::FlyError,
+) -> Option<ValidationDiagnostic> {
     let code = match error {
         crate::FlyError::MaximumNodesExceeded { .. } => {
             "symbol_expansion_maximum_nodes_exceeded"
@@ -1062,17 +1064,26 @@ fn symbol_materialization_diagnostic(error: &crate::FlyError) -> ValidationDiagn
         crate::FlyError::MaximumAssetsExceeded { .. } => {
             "symbol_expansion_maximum_assets_exceeded"
         }
-        crate::FlyError::InvalidAssetReference(_) => "symbol_asset_materialization_invalid",
-        crate::FlyError::SymbolNotFound(_) => "symbol_reference_missing",
-        crate::FlyError::SymbolCycle(_) => "symbol_cycle",
-        _ => "symbol_materialization_invalid",
+        crate::FlyError::InvalidAssetReference(message)
+            if message.contains("conflicts with an existing asset") =>
+        {
+            "symbol_asset_materialization_invalid"
+        }
+        crate::FlyError::InvalidSymbolReference(message)
+            if message.contains("collides with the page") =>
+        {
+            "symbol_form_id_page_collision"
+        }
+        // Missing references, cycles, malformed instances and invalid definitions already have
+        // more precise diagnostics in validate_symbols.
+        _ => return None,
     };
-    diagnostic(
+    Some(diagnostic(
         ValidationSeverity::Error,
         code,
         FLY_SYMBOLS_FIELD,
         error.to_string(),
-    )
+    ))
 }
 
 fn diagnostic(
