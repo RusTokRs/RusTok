@@ -322,6 +322,7 @@ mod tests {
             .up(&SchemaManager::new(&db))
             .await
             .expect("create sys_events");
+        rustok_outbox::RelayConfig::default().verify_execution_admission(&db).await.expect("bind execution policy");
 
         let event_id = Uuid::new_v4();
         let tenant_id = Uuid::new_v4();

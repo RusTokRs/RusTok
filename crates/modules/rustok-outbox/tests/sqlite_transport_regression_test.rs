@@ -234,6 +234,7 @@ async fn write_to_outbox_in_transaction_works_on_sqlite() {
 #[tokio::test]
 async fn unfenced_transport_ack_cannot_steal_a_relay_claim() {
     let db = setup_test_db().await;
+    rustok_outbox::RelayConfig::default().verify_execution_admission(&db).await.expect("bind execution policy");
     let transport = OutboxTransport::new(db.clone());
     let envelope = EventEnvelope::new(
         Uuid::new_v4(), None,

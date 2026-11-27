@@ -316,9 +316,77 @@ async fn relay_moves_to_dlq_on_max_retry() -> TestResult<()> {
     Ok(())
 }
 
+async fn assert_execution_policy_integrity(db: &DatabaseConnection) -> TestResult<()> {
+    // Bind through the same admission path as a real relay.
+    db.execute_unprepared("UPDATE outbox_execution_policy SET max_in_flight = 1 WHERE id = 1").await?;
+    let first = seed_event(db).await?;
+    let second = seed_event(db).await?;
+    async fn claim(db: &DatabaseConnection, id: Uuid, age_seconds: i64) -> TestResult<()> {
+        let mut row: entity::ActiveModel = entity::Entity::find_by_id(id)
+            .one(db).await?.expect("event").into();
+        row.claimed_by = Set(Some("test-worker".into()));
+        row.claimed_at = Set(Some(Utc::now() - chrono::Duration::seconds(age_seconds)));
+        row.update(db).await?;
+        Ok(())
+    }
+    assert!(claim(db, first.id, 0).await.is_err(), "unbound policy");
+    RelayConfig::default().verify_execution_admission(db).await?;
+    for sql in [
+        "DELETE FROM outbox_execution_policy",
+        "INSERT INTO outbox_execution_policy VALUES (1, 2, 60000) ON CONFLICT (id) DO NOTHING",
+        "UPDATE outbox_execution_policy SET claim_ttl_ms = NULL",
+        "UPDATE outbox_execution_policy SET id = 2",
+    ] {
+        assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+    }
+    if db.get_database_backend() == DatabaseBackend::Sqlite {
+        for sql in [
+            "INSERT OR REPLACE INTO outbox_execution_policy VALUES (1, 2, 60000)",
+            "UPDATE outbox_execution_policy SET max_in_flight = 1.5",
+        ] {
+            assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+        }
+    } else {
+        assert!(db.execute_unprepared("TRUNCATE outbox_execution_policy").await.is_err());
+    }
+
+    claim(db, first.id, 0).await?;
+    assert!(claim(db, second.id, 0).await.is_err(), "live capacity");
+    assert!(db.execute_unprepared("UPDATE outbox_execution_policy SET max_in_flight = 2").await.is_err());
+    assert!(db.execute_unprepared("UPDATE outbox_execution_policy SET claim_ttl_ms = 120000").await.is_err());
+    // A stale claim does not occupy a live permit, but still blocks policy changes.
+    claim(db, first.id, 120).await?;
+    claim(db, second.id, 0).await?;
+    assert!(claim(db, first.id, 0).await.is_err());
+    db.execute_unprepared("UPDATE sys_events SET claimed_by = NULL, claimed_at = NULL").await?;
+    db.execute_unprepared("UPDATE outbox_execution_policy SET max_in_flight = 2, claim_ttl_ms = 120000").await?;
+    assert!(RelayConfig::default().verify_execution_admission(db).await.is_err());
+    RelayConfig { claim_ttl: std::time::Duration::from_secs(120), ..Default::default() }.verify_execution_admission(db).await?;
+    claim(db, first.id, 0).await?;
+    claim(db, second.id, 0).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn sqlite_execution_policy_integrity_rejects_reset_and_overbooking() -> TestResult<()> {
+    let db = setup_sqlite_db().await?;
+    assert_execution_policy_integrity(&db).await
+}
+
+#[tokio::test]
+async fn postgres_execution_policy_integrity_rejects_reset_and_overbooking() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+    let Some(db) = setup_db().await? else { return Ok(()) };
+    if db.get_database_backend() != DatabaseBackend::Postgres {
+        return Ok(());
+    }
+    assert_execution_policy_integrity(&db).await
+}
+
 #[tokio::test]
 async fn relay_reclaims_stale_claims() -> TestResult<()> {
     let db = setup_sqlite_db().await?;
+    RelayConfig { claim_ttl: std::time::Duration::from_secs(5), publish_timeout: std::time::Duration::from_secs(2), ..Default::default() }.verify_execution_admission(&db).await?;
     let envelope = seed_event(&db).await?;
     let mut claimed: entity::ActiveModel = entity::Entity::find_by_id(envelope.id)
         .one(&db)

@@ -1090,6 +1090,7 @@ mod tests {
     #[tokio::test]
     async fn queued_claim_is_refreshed_and_old_snapshot_is_fenced() {
         let db = database().await;
+        RelayConfig::default().verify_execution_admission(&db).await.expect("bind execution policy");
         let envelope = EventEnvelope::new(
             Uuid::new_v4(),
             None,
@@ -1134,6 +1135,7 @@ mod tests {
     #[tokio::test]
     async fn expired_claim_cannot_be_refreshed_without_reclaim() {
         let db = database().await;
+        RelayConfig::default().verify_execution_admission(&db).await.expect("bind execution policy");
         let envelope = EventEnvelope::new(
             Uuid::new_v4(), None,
             rustok_events::DomainEvent::UserLoggedIn { user_id: Uuid::new_v4() },
@@ -1156,6 +1158,7 @@ mod tests {
     #[tokio::test]
     async fn stale_worker_cannot_complete_a_reclaimed_event() {
         let db = database().await;
+        RelayConfig::default().verify_execution_admission(&db).await.expect("bind execution policy");
         let event_id = Uuid::new_v4();
         entity::Entity::insert(entity::ActiveModel {
             id: Set(event_id),

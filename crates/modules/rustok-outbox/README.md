@@ -300,3 +300,31 @@ Event and terminal-receipt pruning accept batches of 1..=10000; direct receipt
 pruning also enforces the positive, at-most-3650-day window before SQL.
 Source regressions are unrun; PostgreSQL multi-connection contention,
 compilation and runtime verification remain open.
+
+## Durable execution policy integrity (source only)
+
+The append-only migration `m20261127_000202_fence_outbox_execution_policy`
+and standalone owner schema install the same database guards. The singleton
+cannot be inserted, deleted, replaced, truncated (PostgreSQL), change identity
+or reset a bound TTL to NULL through ordinary SQL. Exact no-op reservation
+updates remain valid. First TTL binding and later cap/TTL changes require
+**all** claims to be absent, including expired or ambiguous claims.
+PostgreSQL event claim writes take the existing policy row NOWAIT and write
+it before checking live capacity; canonical relay admissions already hold
+that row. The write fences stale repeatable-read admissions. SQLite serializes
+writers and validates integer policy values and claim timestamp shape. Both
+backends reject unbound policies, malformed claim pairs and acquisitions that
+would exceed the live claim cap. Expired claims may exist for normal reclaim.
+There is no second reservation table.
+
+Stop and drain all relays, reconcile ambiguous external publications and
+clear any remaining claims through reviewed recovery before this migration or
+a policy change. The migration rejects missing/corrupt singleton state and
+any outstanding claims; it never silently resets a policy. Apply it before
+restarting workers. Offline downgrade also requires drained workers.
+The guards enforce ordinary DML quota and policy integrity, not database
+superuser/DDL authority, the identity of an arbitrary SQL writer that can
+clear or replace a token, clock discontinuities, or fencing at a remote broker.
+The PostgreSQL per-claim policy write and SQLite timestamp conversion in the
+quota guard need workload measurement. Compilation, SQL migration lifecycle,
+multi-connection contention and broker behavior remain unverified.
