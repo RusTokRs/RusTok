@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-11-28](./2026-11-28-auth-session-tenant-admission.md) | Tenant admission fence for session credential issuance | Accepted | In progress | Extends [Proof-bound direct session refresh recovery](./2026-11-26-session-refresh-retry-proof.md), [OAuth browser authorization CSRF boundary](./2026-11-25-oauth-browser-authorization-csrf.md), and [Invite static module policy binding](./2026-11-27-auth-invite-module-policy-binding.md) |
 | [2026-11-27](./2026-11-27-artifact-execution-capability-lease.md) | Execution-bound host capability authority | Accepted | In progress | Extends [Deployment readiness authority](./2026-11-27-artifact-deployment-readiness-authority.md) |
 | [2026-11-27](./2026-11-27-artifact-deployment-readiness-authority.md) | Deployment readiness is independent of tenant serving policy | Accepted | In progress | Extends [Node reconciliation ledger](./2026-08-14-module-node-reconciliation-ledger.md) and [Effective module policy](./2026-07-22-effective-module-policy-decision.md); supersedes their implicit shared revision identity |
 | [2026-11-27](./2026-11-27-auth-invite-module-policy-binding.md) | Invite static module policy binding | Accepted | In progress | Extends [Effective module policy](./2026-07-22-effective-module-policy-decision.md) |
