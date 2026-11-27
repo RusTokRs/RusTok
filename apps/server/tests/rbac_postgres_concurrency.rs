@@ -367,7 +367,7 @@ async fn standalone_replacement_locks_continuity_and_destination_in_uuid_order()
                     if task.is_finished() {
                         return Err("writer completed without waiting for the lower role".into());
                     }
-                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    tokio::task::yield_now().await;
                 }
                 // Waiting for the lower UUID must not retain the higher UUID.
                 holder.execute_unprepared(&format!(
