@@ -330,3 +330,13 @@ admission-only when unbound. See the
 [clock ADR](../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md) for
 configuration, recovery and limits. Source implementation only; runtime,
 contention and failover evidence remain pending.
+
+Server artifact HTTP/command execution captures the original direct request
+scope in a host-only per-execution lease, sharing the invalidation flag with
+callback tasks. At initial lease admission and before each capability call,
+the host rechecks the same tenant/user/session/recovery and current binding
+permission through the existing transaction. Lease lifetime is bounded by the
+original credential expiry and sandbox budget; it is removed on cancellation,
+failure or completion. No bearer evidence crosses worker transport. This does
+not revoke already-started external effects or provide an atomic fence for
+every domain owner commit. Compilation and worker integration remain pending.

@@ -3542,3 +3542,19 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   intent tamper and desired/observed mismatch. Tests and migration unrun;
   real cross-tenant integration, PostgreSQL/RLS and continuous liveness remain
   open. See [ADR](../../../../DECISIONS/2026-11-27-artifact-deployment-readiness-authority.md).
+
+### Execution-bound capability admission
+
+- Source-wired the server-only execution lease and capability broker guard;
+  captured direct request evidence shares its invalidation flag across callback
+  tasks, remains host-only, and reuses the locked Auth/RBAC permission read.
+- Require exact execution/subject/context/binding capability, current tenant
+  effective-policy revision and readiness, current installed grant identity;
+  check membership after async work. Deadline bounded by wall-clock budget
+  and original direct credential expiry. Lifecycle and data-upgrade owner
+  dispatch remain distinct from HTTP/command user authority.
+- Source tests exercise captured scope across tasks and invalidation, plus
+  lease cancellation before launch and before releasing output. Tests unrun.
+- No atomic effect commit fence, independent worker liveness guarantee,
+  channel/maintenance wiring or forced cancellation of in-flight external
+  effects. Standalone non-server executor compositions are not claimed covered.

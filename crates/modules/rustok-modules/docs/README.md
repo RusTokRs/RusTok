@@ -1448,3 +1448,26 @@ transition watchdog reading all checkpoints.
 - [Implementation plan](./implementation-plan.md)
 - [Neutral sandbox ADR](../../../../DECISIONS/2026-07-11-neutral-sandbox-foundation.md)
 - [Module control-plane plan](../../../../docs/modules/module-control-plane-consolidation-plan.md)
+
+### Host execution capability lease
+
+The server-composed artifact binding executor registers a host-only live lease
+for each generated execution ID. It binds the exact sandbox subject, tenant,
+actor/trace/idempotency context, phase, binding and admitted capability set.
+The non-renewable monotonic deadline is bounded by the sandbox wall-clock
+budget and, for direct HTTP/command execution, the original credential expiry.
+The request scope capture shares its invalidation flag and never serializes
+bearer evidence to a worker. Initial preflight and each capability call check
+current direct-session/RBAC authority, tenant serving policy and readiness
+(non-lifecycle), and exact current installation/grant evidence (capability
+calls). Only declared binding capabilities are eligible. Owner lifecycle and
+durable work retain their own admission; audit actor attribution does not
+create a direct credential. Scope and lease expiry are checked before launch
+and before returning output. The guard removes the lease on completion,
+failure or cancellation; the broker checks membership again after async reads.
+This is process-local admission, not an atomic external-effect fence or a
+continuous interrupt for capability-free computation. In-flight calls may
+complete, and a post-launch denial preserves ambiguous-outcome semantics.
+Contextual channel/maintenance policy, external owner transactional authority,
+performance and actual worker callback verification remain open. See
+[execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).

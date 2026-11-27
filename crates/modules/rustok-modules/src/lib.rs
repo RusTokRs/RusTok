@@ -648,7 +648,7 @@ pub use resolution::{
     ModuleResolutionResult, ModuleResolutionScope, resolve_module_dependencies,
 };
 pub use runtime::{
-    ArtifactEffectivePolicyResolveError, ArtifactEffectivePolicyResolver,
+    ArtifactEffectivePolicyResolveError, ArtifactEffectivePolicyResolver, ArtifactExecutionLeaseGuard,
     ArtifactInstallationResolveError, ArtifactInstallationResolver, ArtifactRuntime,
     ArtifactRuntimeError, ArtifactRuntimeLifecycleExecutor, ArtifactRuntimeReadinessProbe,
     ArtifactSandboxPolicyResolveError, ArtifactSandboxPolicyResolver, VerifiedArtifactNodeCache,

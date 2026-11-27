@@ -7,6 +7,9 @@
 
 use std::sync::Arc;
 
+mod execution_authority;
+use execution_authority::{ExecutionAuthority, FencedCapabilityBroker};
+
 use async_trait::async_trait;
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
@@ -63,6 +66,7 @@ struct ServerArtifactEffectivePolicyResolver {
     registry: ModuleRegistry,
     node_readiness: SeaOrmArtifactNodeReadiness,
     supported_payload_kinds: Vec<ArtifactPayloadKind>,
+    execution_authority: ExecutionAuthority,
 }
 
 #[async_trait]
@@ -105,6 +109,18 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
                 _ => ArtifactEffectivePolicyResolveError::NodeNotReady(error.to_string()),
             })?;
         Ok(policy)
+    }
+
+    async fn begin_execution(
+        &self,
+        artifact: &InstalledModuleArtifact,
+        binding: &rustok_modules::ModuleRuntimeBinding,
+        context: &rustok_sandbox::SandboxContext,
+        policy: &rustok_sandbox::SandboxPolicy,
+        effective_revision: Option<&str>,
+    ) -> std::result::Result<Option<Box<dyn rustok_modules::ArtifactExecutionLeaseGuard>>, rustok_modules::ArtifactBindingDispatchError> {
+        self.execution_authority.begin(self, artifact, binding, context, policy, effective_revision)
+            .await.map(Some)
     }
 }
 
@@ -216,9 +232,29 @@ pub async fn compose_artifact_binding_executor(
         .register_in_process(rustok_sandbox::wasm::WasmComponentExecutor::new())
         .map_err(|error| Error::Message(format!("artifact WASM executor failed: {error}")))?;
 
+    let execution_authority = ExecutionAuthority::new(
+        ctx.shared_get::<Arc<rustok_core::ModuleRuntimeExtensions>>()
+            .and_then(|extensions| extensions.get::<Arc<super::auth_admin_mutation_provider::ServerAuthAdminMutationProvider>>()),
+    );
+    let supported_payload_kinds = [
+        ArtifactPayloadKind::Rhai,
+        ArtifactPayloadKind::WasmComponent,
+    ].into_iter()
+        .filter(|kind| kind.sandbox_executor().is_some_and(|executor| executors.contains(executor)))
+        .collect();
+    let policy_resolver = ServerArtifactEffectivePolicyResolver {
+        db: ctx.db_clone(),
+        registry,
+        node_readiness,
+        supported_payload_kinds,
+        execution_authority: execution_authority.clone(),
+    };
     let sandbox = SandboxRuntime::new(
         executors,
-        Arc::new(ResolvingArtifactCapabilityBroker::new(resolver)),
+        Arc::new(FencedCapabilityBroker::new(
+            policy_resolver.clone(),
+            ResolvingArtifactCapabilityBroker::new(resolver),
+        )),
     )
     .with_observer(Arc::new(control_plane.artifact_execution_audit()));
     let artifact_cache = VerifiedArtifactNodeCache::new(
@@ -227,19 +263,6 @@ pub async fn compose_artifact_binding_executor(
     )
     .map_err(|error| Error::Message(format!("artifact node cache is invalid: {error}")))?;
     let runtime = ArtifactRuntime::new(artifact_cache, sandbox);
-    let supported_payload_kinds = [
-        ArtifactPayloadKind::Rhai,
-        ArtifactPayloadKind::WasmComponent,
-    ]
-    .into_iter()
-    .filter(|kind| runtime.supports_payload_kind(*kind))
-    .collect();
-    let policy_resolver = ServerArtifactEffectivePolicyResolver {
-        db: ctx.db_clone(),
-        registry,
-        node_readiness,
-        supported_payload_kinds,
-    };
     ctx.shared_insert(policy_resolver.clone());
     Ok(Arc::new(ArtifactRuntimeLifecycleExecutor::new(
         runtime,

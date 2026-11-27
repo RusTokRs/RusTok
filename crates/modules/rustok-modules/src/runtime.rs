@@ -219,6 +219,18 @@ where
         input: ArtifactBindingDispatchEnvelope,
         policy: SandboxPolicy,
     ) -> Result<SandboxOutcome, ArtifactRuntimeError> {
+        self.execute_binding_with_lease(artifact, binding, context, input, policy, None).await
+    }
+
+    async fn execute_binding_with_lease(
+        &self,
+        artifact: &InstalledModuleArtifact,
+        binding: &ModuleRuntimeBinding,
+        context: SandboxContext,
+        input: ArtifactBindingDispatchEnvelope,
+        policy: SandboxPolicy,
+        lease: Option<&dyn ArtifactExecutionLeaseGuard>,
+    ) -> Result<SandboxOutcome, ArtifactRuntimeError> {
         self.validate_descriptor(&artifact.descriptor)?;
         if !artifact
             .descriptor
@@ -238,6 +250,10 @@ where
             .map_err(|error| ArtifactRuntimeError::DispatchEnvelopeEncoding(error.to_string()))?;
         let mut request = artifact.sandbox_request(payload, context, input, policy)?;
         request.payload.entrypoint = binding.entrypoint.clone();
+        // CAS and schema preparation can outlive the original admission.
+        if lease.is_some_and(|lease| !lease.is_live()) {
+            return Err(rustok_sandbox::SandboxError::Cancelled.into());
+        }
         let outcome = self.sandbox.execute(request).await?;
         let outcome = self.decode_rhai_output(artifact, outcome)?;
         self.validate_binding_value(
@@ -246,6 +262,11 @@ where
             BindingSchemaStage::Output,
             &outcome.output,
         )?;
+        if lease.is_some_and(|lease| !lease.is_live()) {
+            // Guest effects may already have committed. Preserve the existing
+            // ambiguous execution failure semantics rather than replaying it.
+            return Err(rustok_sandbox::SandboxError::Cancelled.into());
+        }
         Ok(outcome)
     }
 
@@ -559,6 +580,26 @@ pub trait ArtifactEffectivePolicyResolver: Send + Sync {
         tenant_id: uuid::Uuid,
         artifact: &InstalledModuleArtifact,
     ) -> Result<ModuleEffectivePolicy, ArtifactEffectivePolicyResolveError>;
+
+    /// Optional host composition seam. The production server binds every
+    /// execution to its capability broker's live lease registry. Standalone
+    /// owner/test executors retain their existing explicit broker contracts.
+    async fn begin_execution(
+        &self,
+        _artifact: &InstalledModuleArtifact,
+        _binding: &ModuleRuntimeBinding,
+        _context: &SandboxContext,
+        _policy: &SandboxPolicy,
+        _effective_revision: Option<&str>,
+    ) -> Result<Option<Box<dyn ArtifactExecutionLeaseGuard>>, ArtifactBindingDispatchError> {
+        Ok(None)
+    }
+}
+
+/// Host-owned lifetime guard for one exact sandbox execution. The owner
+/// drops it on success, failure, or future cancellation.
+pub trait ArtifactExecutionLeaseGuard: Send + Sync {
+    fn is_live(&self) -> bool;
 }
 
 /// Production adapter from admitted dispatcher bindings to the shared sandbox.
@@ -643,7 +684,7 @@ where
             dispatch.phase,
             &artifact,
         )?;
-        if dispatch.phase != ExecutionPhase::Lifecycle {
+        let effective_revision = if dispatch.phase != ExecutionPhase::Lifecycle {
             let policy = self
                 .effective_policy
                 .resolve(dispatch.tenant_id, &artifact)
@@ -670,7 +711,10 @@ where
                     policy_revision: policy.policy_revision().to_string(),
                 });
             }
-        }
+            Some(policy.policy_revision().to_owned())
+        } else {
+            None
+        };
         let policy = effective_binding_policy(
             dispatch.binding,
             dispatch.phase,
@@ -682,11 +726,14 @@ where
         context.trace_id = dispatch.context.trace_id.clone();
         context.idempotency_key = dispatch.context.idempotency_key;
         context.audit_label = Some(dispatch.binding.id.clone());
+        let lease = self.effective_policy.begin_execution(
+            &artifact, dispatch.binding, &context, &policy, effective_revision.as_deref(),
+        ).await?;
         let input =
             ArtifactBindingDispatchEnvelope::new(dispatch.binding, dispatch.phase, dispatch.input);
         Ok(self
             .runtime
-            .execute_binding(&artifact, dispatch.binding, context, input, policy)
+            .execute_binding_with_lease(&artifact, dispatch.binding, context, input, policy, lease.as_deref())
             .await?
             .output)
     }
@@ -1334,6 +1381,30 @@ mod tests {
             .expect("admit payload");
         let runtime = ArtifactRuntime::new(blobs, sandbox);
         let context = SandboxContext::new(ExecutionPhase::Event);
+
+        // A failed lease before sandbox launch must not reach the executor.
+        // A lease expiring after launch must not release a successful result.
+        struct CheckBudget(std::sync::atomic::AtomicUsize);
+        impl ArtifactExecutionLeaseGuard for CheckBudget {
+            fn is_live(&self) -> bool {
+                self.0.fetch_update(
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::SeqCst,
+                    |remaining| remaining.checked_sub(1),
+                ).is_ok()
+            }
+        }
+        for budget in [0, 1] {
+            let lease = CheckBudget(std::sync::atomic::AtomicUsize::new(budget));
+            let error = runtime.execute_binding_with_lease(
+                &installed, &binding, SandboxContext::new(ExecutionPhase::Event),
+                ArtifactBindingDispatchEnvelope::new(&binding, ExecutionPhase::Event, json!({"id": 1})),
+                SandboxPolicy::default(), Some(&lease),
+            ).await.expect_err("expired execution lease");
+            assert!(matches!(error, ArtifactRuntimeError::Sandbox(SandboxError::Cancelled)));
+            assert_eq!(observed.lock().unwrap().is_some(), budget == 1);
+            *observed.lock().unwrap() = None;
+        }
 
         let outcome = runtime
             .execute_binding(
