@@ -62,14 +62,23 @@ fn http_effect_receipt_key(
     };
     let request_digest = crate::idempotency::semantic_request_digest(&call.input)
         .map_err(|_| SandboxError::InvalidRequest("HTTP request could not be fingerprinted".to_string()))?;
-    let request_idempotency_key = match input
-        .get("idempotency_key")
-        .and_then(Value::as_str)
-        .and_then(|value| Uuid::parse_str(value).ok())
-        .filter(|id| !id.is_nil())
-    {
-        Some(key) => key,
-        None => deterministic_http_request_key(&request_digest),
+    let request_idempotency_key = match input.get("idempotency_key") {
+        None => deterministic_http_request_key(&request_digest).ok_or_else(|| {
+            SandboxError::InvalidRequest("HTTP request identity could not be derived".to_string())
+        })?,
+        Some(Value::String(value)) => Uuid::parse_str(value)
+            .ok()
+            .filter(|id| !id.is_nil())
+            .ok_or_else(|| SandboxError::CapabilityConstraintDenied {
+                capability: call.capability.clone(),
+                reason: "HTTP idempotency_key must be a non-nil UUID".to_string(),
+            })?,
+        Some(_) => {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: call.capability.clone(),
+                reason: "HTTP idempotency_key must be a UUID string".to_string(),
+            });
+        }
     };
     Ok(HttpEffectReceiptKey {
         tenant_id,
@@ -80,17 +89,16 @@ fn http_effect_receipt_key(
     })
 }
 
-fn deterministic_http_request_key(request_digest: &str) -> Uuid {
+fn deterministic_http_request_key(request_digest: &str) -> Option<Uuid> {
     let digest_prefix = request_digest
         .strip_prefix("sha256:")
         .and_then(|digest| digest.get(..32))
-        .and_then(|digest| u128::from_str_radix(digest, 16).ok())
-        .expect("semantic request digest is a SHA-256 hex value");
+        .and_then(|digest| u128::from_str_radix(digest, 16).ok())?;
     let mut bytes = digest_prefix.to_be_bytes();
     // Mark the deterministic value as an RFC 4122 name-based UUID.
     bytes[6] = (bytes[6] & 0x0f) | 0x50;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    Uuid::from_bytes(bytes)
+    Some(Uuid::from_bytes(bytes))
 }
 
 fn http_receipt_identity_values(
