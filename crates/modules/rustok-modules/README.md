@@ -254,3 +254,9 @@ and evidence. These items must not be presented as production-ready until their
 owner contracts, runtime composition, and production evidence are complete.
 
 See the [local documentation](./docs/README.md).
+
+Deployment reconciliation and migration checkpoints now share the platform slug
+ordering: reconciliation fences all target slugs before readiness state, uses
+read-only identity locks compatible with PostgreSQL FK KEY SHARE, and rechecks
+all target identities before convergence. This is source-only remediation;
+registry trigger entry and wider FK/receipt ordering still require review.

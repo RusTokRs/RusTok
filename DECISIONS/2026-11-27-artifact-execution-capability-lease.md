@@ -200,10 +200,38 @@ background serving acquires composition before the mixed closure. SQLite's
 composition owner obtains its own write reservation before reading. Root
 grant/security/registry checks finish before Channel and maintenance locks.
 
-This is a partial cross-owner order, not an exhaustive proof. Reconciliation
-writers' installation/admission row locks, arbitrary SQL trigger entry,
-FK-induced locks, other domain effects and external effects need separate
-analysis. Do not infer production deadlock freedom from the authored tests.
+Reconciliation request, claim, heartbeat and report writers now acquire the
+distinct platform slug fences in lexical order before the reconciliation
+state row. Unlocked installation locators are re-read under the fence;
+agent paths compare the desired head, state revision and complete target
+installation ID set after waiting. If the head or membership changed, reject
+rather than acquiring another slug beneath the state lock. SQLite reserves
+the writer before reading the desired head. PostgreSQL identity reads use
+explicit FOR SHARE OF installation, admission rather than FOR UPDATE on
+a joined query: both owner records are read-only, and FK KEY SHARE may
+coexist. Installation migration checkpoint writes acquire platform then
+tenant slug fences before receipt or identity writes and re-read the locator;
+this does not invoke the serving journal guard because a checkpoint may be
+part of an admitted lifecycle. Reconciliation revalidates every target's
+current installation identity before either transition to Converged, not
+merely the installation in the final healthy report.
+
+Reconciliation operation receipts are a private admission fence acquired
+before the slug/state locks for request and report; the same receipt is
+completed later in the transaction. No inspected path acquires a new receipt
+under the state lock. Do not generalize this exception to foreign owner
+receipts or FK checks. Holding all target slugs for claim/heartbeat/report
+is conservative and can increase contention for large topologies; the
+existing bounded topology size limits the set. No schema change is needed.
+
+This is still a partial cross-owner order, not an exhaustive proof.
+The registry release AFTER trigger can acquire a platform slug fence after
+a release row lock when administrative SQL bypasses canonical publication,
+yank and unyank writers. This entry-order hazard is not fixed by the
+reconciliation changes. Other implicit FK and trigger locks, owner receipts,
+security/RBAC generations, and external effects need separate analysis.
+Coordinate reconciliation and installation writer rollout; do not infer
+production deadlock freedom from the authored tests.
 
 ## Context, events and migration
 

@@ -1597,3 +1597,13 @@ acquiring its slug fence; no-transition commits do not acquire a cursor.
 Direct serving SQL checks composition before roles; background serving checks
 composition before closure locks. SQLite composition reserves its writer
 itself. See the [execution authority ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md) for the scoped ordering and remaining audit gaps.
+
+Reconciliation request/claim/heartbeat/report now acquire sorted distinct
+platform slug fences before the readiness state row and read installation
+and admission identity under PostgreSQL FOR SHARE (compatible with FK KEY
+SHARE). Agent paths recheck the exact desired state and target installation
+set after waiting; either convergence branch revalidates all target identities.
+Migration checkpoint writes now acquire platform/tenant slug fences before
+receipt and identity writes. No new migration; coordinate owner writer rollout.
+The registry AFTER-trigger lock inversion under noncanonical administrative SQL
+and remaining implicit FK/receipt/generation ordering are still open.

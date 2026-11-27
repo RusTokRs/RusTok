@@ -1841,9 +1841,7 @@ impl SeaOrmArtifactInstallationStore {
     ) -> Result<u64, ModuleInstallationError> {
         validate_migration_checkpoint_request(&request)?;
         let request_digest = migration_checkpoint_request_digest(&request)?;
-        let transaction = self
-            .db
-            .begin()
+        let transaction = crate::backend::begin_fenced_transaction(&self.db)
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &request.scope).await?;
@@ -1869,6 +1867,31 @@ impl SeaOrmArtifactInstallationStore {
                 "installation.scope_kind = ?3 AND installation.tenant_id IS ?4"
             }
         };
+        // Locate without a row lock; then serialize with activation, rollback
+        // and reconciliation before taking any admission/installation or FK lock.
+        let locator = transaction.query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            format!("SELECT installation.slug FROM module_artifact_installations installation WHERE installation.installation_id = {} AND {scope}", backend.placeholder(1)),
+            vec![backend.uuid_value(request.installation_id), scope_kind.into(), backend.optional_uuid_value(tenant_id)],
+        )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+            .ok_or_else(|| ModuleInstallationError::AdmissionRevisionConflict("migration checkpoint installation is absent or outside its scope".into()))?;
+        let slug: String = locator.try_get("", "slug").map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        acquire_artifact_activation_lock(&transaction, &ModuleInstallationScope::Platform, &slug).await?;
+        if let Some(tenant_id) = tenant_id {
+            acquire_artifact_activation_lock(&transaction, &ModuleInstallationScope::Tenant { tenant_id }, &slug).await?;
+        }
+        // Check the locator again without following a changed identity while
+        // holding the old fence. Do not use the serving journal guard here:
+        // a checkpoint may be part of an already-admitted lifecycle operation.
+        let current = transaction.query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            format!("SELECT installation.slug FROM module_artifact_installations installation WHERE installation.installation_id = {} AND {scope}", backend.placeholder(1)),
+            vec![backend.uuid_value(request.installation_id), scope_kind.into(), backend.optional_uuid_value(tenant_id)],
+        )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+            .ok_or_else(|| ModuleInstallationError::AdmissionRevisionConflict("migration checkpoint installation disappeared".into()))?;
+        if current.try_get::<String>("", "slug").map_err(|error| ModuleInstallationError::Store(error.to_string()))? != slug {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict("migration checkpoint installation identity changed".into()));
+        }
         let existing = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
