@@ -2266,3 +2266,11 @@ missing extension is returned as a startup error instead of causing a panic in
 the spawned worker. Regression tests cover both missing and registered state.
 
 Formatting, compilation and tests remain unrun at the maintainer's request.
+
+## Server follow-up — GraphQL module-list authorization (2026-11-27)
+
+The root `enabledModules` query now uses the same `modules:read` / `modules:list` /
+`modules:manage` guard as the adjacent module inventory and policy queries. It previously
+resolved the tenant's effective module policy without requiring an authenticated
+principal with module-read access. The unauthenticated GraphQL regression test now
+covers `enabledModules` alongside the reporting queries.
