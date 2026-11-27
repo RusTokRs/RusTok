@@ -9,13 +9,14 @@
  */
 
 use rustok_telemetry::{LogFormat, TelemetryConfig};
+use std::ffi::{OsStr, OsString};
 
 const DEFAULT_STACK_SIZE: usize = 8 * 1024 * 1024;
 const MIN_STACK_SIZE: usize = 2 * 1024 * 1024;
 const MAX_STACK_SIZE: usize = 64 * 1024 * 1024;
 
 fn main() -> eyre::Result<()> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let args: Vec<OsString> = std::env::args_os().skip(1).collect();
     if is_validate_jwt_keyring_command(&args) {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -50,8 +51,8 @@ fn main() -> eyre::Result<()> {
     result.map_err(Into::into)
 }
 
-fn is_validate_jwt_keyring_command(args: &[String]) -> bool {
-    args.len() == 1 && args[0] == "validate-jwt-keyring"
+fn is_validate_jwt_keyring_command(args: &[OsString]) -> bool {
+    args.len() == 1 && args[0].as_os_str() == OsStr::new("validate-jwt-keyring")
 }
 
 fn parse_thread_stack_size(raw: Option<&str>) -> usize {
@@ -139,15 +140,24 @@ mod tests {
 
     #[test]
     fn keyring_validation_command_requires_exact_invocation() {
-        assert!(is_validate_jwt_keyring_command(&[
-            "validate-jwt-keyring".to_string()
-        ]));
+        assert!(is_validate_jwt_keyring_command(&[OsString::from(
+            "validate-jwt-keyring"
+        )]));
         assert!(!is_validate_jwt_keyring_command(&[]));
         assert!(!is_validate_jwt_keyring_command(&[
-            "validate-jwt-keyring".to_string(),
-            "extra".to_string(),
+            OsString::from("validate-jwt-keyring"),
+            OsString::from("extra"),
         ]));
-        assert!(!is_validate_jwt_keyring_command(&["validate".to_string()]));
+        assert!(!is_validate_jwt_keyring_command(&[OsString::from("validate")]));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn keyring_command_rejects_non_unicode_arguments_without_panicking() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let argument = OsString::from_vec(vec![0xff]);
+        assert!(!is_validate_jwt_keyring_command(&[argument]));
     }
 
     #[test]
