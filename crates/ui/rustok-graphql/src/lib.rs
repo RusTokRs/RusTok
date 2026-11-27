@@ -104,12 +104,39 @@ impl<V> GraphqlRequest<V> {
     }
 
     pub fn is_mutation(&self) -> bool {
-        self.query.trim_start().starts_with("mutation")
+        starts_with_graphql_keyword(skip_graphql_trivia(&self.query), "mutation")
+    }
+
+    pub fn is_subscription(&self) -> bool {
+        starts_with_graphql_keyword(skip_graphql_trivia(&self.query), "subscription")
     }
 
     pub fn is_query(&self) -> bool {
-        !self.is_mutation()
+        !self.is_mutation() && !self.is_subscription()
     }
+}
+
+fn skip_graphql_trivia(mut input: &str) -> &str {
+    input = input.strip_prefix('\u{feff}').unwrap_or(input);
+    loop {
+        input = input.trim_start_matches(|c: char| c.is_whitespace() || c == ',');
+        if let Some(rest) = input.strip_prefix('#') {
+            match rest.find('\n') {
+                Some(idx) => input = &rest[idx + 1..],
+                None => return "",
+            }
+        } else {
+            return input;
+        }
+    }
+}
+
+fn starts_with_graphql_keyword(input: &str, keyword: &str) -> bool {
+    let Some(rest) = input.strip_prefix(keyword) else {
+        return false;
+    };
+    rest.is_empty()
+        || rest.starts_with(|c: char| c.is_whitespace() || matches!(c, '{' | '(' | '@'))
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

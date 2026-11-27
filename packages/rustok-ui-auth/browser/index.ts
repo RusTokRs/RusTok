@@ -7,12 +7,29 @@ export type AuthUser = {
   email: string;
   name?: string | null;
   role: string;
+  /**
+   * Effective RBAC permission snapshot (`"{resource}:{action}"` strings,
+   * e.g. `pages:update`) as resolved by the backend auth service.
+   * Capability decisions must read this list; `role` is for display only.
+   */
+  permissions?: string[];
 };
 
 export type AuthSession = {
   token: string;
   tenant: string;
+  expiresAt?: number;
 };
+
+const REFRESH_SAFETY_WINDOW_SECS = 60;
+
+export function secsUntilExpiry(expiresAt: number, nowSecs = Math.floor(Date.now() / 1000)): number {
+  return Math.max(0, expiresAt - nowSecs);
+}
+
+export function isSessionExpired(expiresAt: number, nowSecs = Math.floor(Date.now() / 1000)): boolean {
+  return nowSecs >= expiresAt - REFRESH_SAFETY_WINDOW_SECS;
+}
 
 export type AuthError =
   | { type: "unauthorized" }
