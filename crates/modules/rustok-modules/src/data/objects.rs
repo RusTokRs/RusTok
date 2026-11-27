@@ -4,10 +4,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use object_store::path::Path;
 use rustok_storage::{ObjectKey, ObjectScope, ObjectZone};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
-    Value as SqlValue,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use uuid::Uuid;
 
 use super::constants::*;
