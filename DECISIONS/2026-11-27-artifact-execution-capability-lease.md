@@ -239,7 +239,22 @@ after release row locks. The PostgreSQL BEFORE guard and matching canonical
 advisory gate reject late competing registry DML, including first insertion.
 This closes that particular blocking edge in source, not arbitrary multi-row
 or cross-owner deadlocks. Other implicit FK and trigger locks, owner receipts,
-security/RBAC generations, and external effects need separate analysis.
+RBAC generations, and external effects need separate analysis.
+For the governed-transition/security-state seam, the global security epoch
+singleton follows the required platform/tenant slug fences and precedes domain
+writes. Staging, governed activation and finalization hold a PostgreSQL
+FOR SHARE epoch lock through commit; quarantine/revoke acquire FOR UPDATE
+before security state writes. SQLite reserves its writer before reading the
+epoch. Finalization discovers and revalidates its checkpoint under the platform
+fence before acquiring the epoch and reserving the FK-bearing receipt; exact
+replay is checked again after waiting. Security operation receipts remain
+private admission fences before the slug, with no new receipt acquired below
+the epoch. Watchdog and operator failure/recovery paths do not grant new
+execution authority and retain their existing revision CAS behavior.
+The epoch increment returns its exact successor with UPDATE RETURNING and
+rejects exhausted signed-integer storage without mutation. Cross-owner
+ordering beyond this slice remains open; emergency mutations may wait for
+an already admitted SQL transition to commit, not for external execution.
 Migration 000098 preserves existing witness revisions; stop old writers and
 drain leases before applying it and deploying the matching gate users.
 PostgreSQL contention regressions are authored but not executed.

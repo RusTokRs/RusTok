@@ -1169,6 +1169,18 @@ of releases is rejected. No witness changes on metadata-only updates,
 failed writes or rollback. Drain old writers/leases before the coordinated
 migration and application rollout. PostgreSQL regressions are unrun.
 
+Governed checkpoint staging, activation and finalization retain the durable
+security epoch through commit: platform/tenant slug fences precede the epoch
+(FOR SHARE on PostgreSQL, SQLite writer reservation), followed by domain
+writes. Quarantine/revoke acquire the exclusive epoch after the slug and before
+security state writes; security receipts are private admission fences.
+Finalization rechecks exact receipt replay after waiting on the platform
+fence, then acquires the epoch before the FK-bearing receipt. Epoch advancement
+returns the exact assigned successor and fails closed on exhaustion.
+This is not a guarantee of global deadlock freedom or of immediate interruption
+of an admitted transaction. PostgreSQL and SQLite regressions are authored,
+not executed.
+
 Lifecycle toggle and post-hook recovery admission now take that same platform
 lock while checking checkpoints and acquiring the durable journal aggregate
 claim. For an artifact target they also resolve the tenant/platform winning

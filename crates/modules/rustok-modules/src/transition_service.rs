@@ -683,6 +683,13 @@ impl SeaOrmModuleTransitionService {
         .await
         .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?;
 
+        // Retain the epoch through staging, not only its unlocked preflight.
+        let security_registry = SeaOrmSecurityEpochStore::load_registry_for_commit(&transaction)
+            .await
+            .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?;
+        security_registry.validate_epoch(checkpoint.security_epoch)
+            .map_err(|error| GovernedArtifactTransitionError::Conflict(error.to_string()))?;
+
         // The earlier discovery and preflight happened outside this
         // transaction. Recheck after acquiring the common lock, otherwise
         // concurrent starts can both stage and a serving mutation can leave
@@ -768,7 +775,8 @@ impl SeaOrmModuleTransitionService {
             return Ok(receipt);
         }
 
-        let transaction = self.db.begin().await.map_err(database_error)?;
+        let transaction = crate::backend::begin_fenced_transaction(&self.db)
+            .await.map_err(database_error)?;
         match command.context.tenant_id {
             Some(tenant_id) => crate::backend::set_tenant_scope(&transaction, tenant_id).await,
             None => crate::backend::set_platform_scope(&transaction).await,
@@ -777,12 +785,30 @@ impl SeaOrmModuleTransitionService {
         if let Some(receipt) = load_operation(&transaction, &command, &request_digest).await? {
             return Ok(receipt);
         }
+        // Discover the slug without locking the checkpoint or its receipt.
+        let located =
+            TransitionCheckpointStore::load_checkpoint(&transaction, command.operation_id)
+                .await
+                .map_err(store_error)?
+                .ok_or(ModuleTransitionServiceError::NotFound(command.operation_id))?;
+        if located.tenant_id != command.context.tenant_id {
+            return Err(ModuleTransitionServiceError::AuthorizationDenied);
+        }
+        crate::installation::acquire_artifact_activation_lock(
+            &transaction, &ModuleInstallationScope::Platform, &located.module_slug,
+        ).await.map_err(database_error)?;
+        // A concurrent exact retry may have committed while we waited.
+        if let Some(receipt) = load_operation(&transaction, &command, &request_digest).await? {
+            return Ok(receipt);
+        }
         let checkpoint =
             TransitionCheckpointStore::load_checkpoint(&transaction, command.operation_id)
                 .await
                 .map_err(store_error)?
                 .ok_or(ModuleTransitionServiceError::NotFound(command.operation_id))?;
-        if checkpoint.tenant_id != command.context.tenant_id {
+        if checkpoint.tenant_id != command.context.tenant_id
+            || checkpoint.module_slug != located.module_slug
+        {
             return Err(ModuleTransitionServiceError::AuthorizationDenied);
         }
         if checkpoint.revision != command.expected_revision {
@@ -791,17 +817,14 @@ impl SeaOrmModuleTransitionService {
                 current: checkpoint.revision,
             });
         }
+        // Slug -> epoch -> receipt/FK -> checkpoint/outbox. No later
+        // slug acquisition or shared-to-exclusive epoch upgrade is allowed.
+        let security_registry = SeaOrmSecurityEpochStore::load_registry_for_commit(&transaction)
+            .await
+            .map_err(database_error)?;
         if let Some(receipt) = reserve_operation(&transaction, &command, &request_digest).await? {
             return Ok(receipt);
         }
-
-        // Validate against the durable platform epoch: a quarantine or
-        // revocation recorded by any process since the checkpoint was taken
-        // must preempt this finalization. (Previously a fresh in-memory
-        // registry pinned at epoch 1 made the check a permanent no-op.)
-        let security_registry = SeaOrmSecurityEpochStore::load_registry(&transaction)
-            .await
-            .map_err(database_error)?;
         let mut coordinator = ModuleTransitionCoordinator::new(checkpoint);
         coordinator.finalize_convergence(&security_registry)?;
         TransitionCheckpointStore::save_checkpoint(&transaction, coordinator.checkpoint())
@@ -1452,6 +1475,8 @@ mod preflight_tests {
             .await
             .unwrap();
         for sql in [
+            "CREATE TABLE module_security_epoch (singleton_id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL, last_reason TEXT NOT NULL, updated_at TEXT NOT NULL)",
+            "INSERT INTO module_security_epoch VALUES (1, 1, 'initial', '1970-01-01T00:00:00+00:00')",
             "CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, PRIMARY KEY(scope_kind, scope_tenant_key, slug))",
             "CREATE TABLE module_static_tenant_lifecycle (tenant_id BLOB NOT NULL, module_slug TEXT NOT NULL, active_idempotency_key BLOB, active_claimed_at TEXT, claim_owner TEXT NOT NULL DEFAULT 'journal')",
             "CREATE TABLE module_artifact_installations (installation_id TEXT PRIMARY KEY, scope_kind TEXT, tenant_id TEXT, slug TEXT)",

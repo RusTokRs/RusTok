@@ -402,7 +402,15 @@ where
             transaction.commit().await.map_err(store_error)?;
             return Ok(receipt);
         }
-        let current = lock_security_snapshot_on(&transaction, &command.release).await?;
+        // Receipt admission is private to this command table. Take the
+        // slug and then the global epoch before any security-state row lock.
+        crate::installation::acquire_artifact_activation_lock(
+            &transaction, &crate::ModuleInstallationScope::Platform, &command.release.slug,
+        ).await.map_err(store_error)?;
+        if matches!(action, SecurityAction::Quarantine | SecurityAction::Revoke) {
+            SeaOrmSecurityEpochStore::lock_for_advance(&transaction).await.map_err(store_error)?;
+        }
+        let current = load_snapshot(&transaction, &command.release, true).await?;
         if current.revision != command.expected_revision {
             return Err(ModuleArtifactSecurityError::RevisionConflict {
                 expected: command.expected_revision,

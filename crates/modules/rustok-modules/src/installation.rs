@@ -2321,6 +2321,15 @@ impl SeaOrmArtifactInstallationStore {
             )
         })?;
         acquire_artifact_serving_locks(&transaction, &request.scope, &slug).await?;
+        // A governed activation retains the epoch from before the first
+        // serving-domain write through the selection/checkpoint commit.
+        let governed_security_registry = if governed.is_some() {
+            Some(SeaOrmSecurityEpochStore::load_registry_for_commit(&transaction)
+                .await
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?)
+        } else {
+            None
+        };
         assert_artifact_ui_contributions_available(
             &transaction,
             &request.scope,
@@ -2542,9 +2551,9 @@ impl SeaOrmArtifactInstallationStore {
                         checkpoint.state.name()
                     )));
                 }
-                let security_registry = SeaOrmSecurityEpochStore::load_registry(&transaction)
-                    .await
-                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+                let security_registry = governed_security_registry.as_ref().ok_or_else(|| {
+                    ModuleInstallationError::Store("governed activation has no retained security epoch".into())
+                })?;
                 let mut coordinator = ModuleTransitionCoordinator::new(checkpoint);
                 if let (Some(payload_digest), Some(manifest_digest)) =
                     (&predecessor_digest, &predecessor_manifest_digest)
@@ -2596,7 +2605,7 @@ impl SeaOrmArtifactInstallationStore {
                     .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
                 coordinator
                     .advance_to_activating_with_ledger(
-                        &security_registry,
+                        security_registry,
                         Some(&ledger),
                         governed.observation_duration,
                     )
