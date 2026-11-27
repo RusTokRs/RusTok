@@ -71,6 +71,11 @@ const SQLITE_GUARDS: &[&str] = &[
            SELECT 1 FROM sessions s WHERE s.id = NEW.id OR
                (s.tenant_id = NEW.tenant_id AND s.token_hash = NEW.token_hash)
        ) BEGIN SELECT RAISE(ABORT, 'Session replacement is forbidden'); END"#,
+    r#"CREATE TRIGGER trg_session_update_replace_guard BEFORE UPDATE OF token_hash ON sessions
+       FOR EACH ROW WHEN EXISTS (
+           SELECT 1 FROM sessions s WHERE s.id <> OLD.id AND
+               s.tenant_id = NEW.tenant_id AND s.token_hash = NEW.token_hash
+       ) BEGIN SELECT RAISE(ABORT, 'Session replacement is forbidden'); END"#,
     r#"CREATE TRIGGER trg_session_history_immutable_update BEFORE UPDATE ON session_refresh_history
        FOR EACH ROW BEGIN SELECT RAISE(ABORT, 'Session refresh evidence is immutable'); END"#,
     r#"CREATE TRIGGER trg_session_history_parent_delete BEFORE DELETE ON session_refresh_history
@@ -170,7 +175,9 @@ mod tests {
         db.execute_unprepared("PRAGMA foreign_keys = ON").await.unwrap();
         db.execute_unprepared(&fixture_sql()).await.unwrap();
         Migration.up(&SchemaManager::new(&db)).await.unwrap();
+        db.execute_unprepared(&format!("INSERT INTO sessions VALUES ('{S2}', '{T}', '{U}', 'other-current', '2026-01-01')")).await.unwrap();
         for sql in invalid_writes().into_iter().chain([
+            format!("UPDATE OR REPLACE sessions SET token_hash = 'other-current' WHERE id = '{S}'"),
             format!("INSERT OR REPLACE INTO sessions VALUES ('{S}', '{T}', '{U}', 'replacement', '2026-01-02')"),
             format!("INSERT OR REPLACE INTO session_refresh_history VALUES ('historical', '{S}', '2026-01-03')"),
         ]) {

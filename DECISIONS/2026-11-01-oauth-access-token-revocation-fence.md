@@ -294,3 +294,13 @@ waiting for an earlier owner; retry in a fresh transaction. SQLite retains
 serialized deletion. No retention duration or clock contract changes.
 PostgreSQL regression is authored, unrun; arbitrary direct SQL, DDL, large
 sweep throughput and all cross-owner bulk revocations remain unverified.
+
+User-wide delegated credential revocation and application-wide credential
+revocation prelock exact PostgreSQL token/code candidates (and application
+consents for the latter) in UUID order, NOWAIT, before the first credential
+write. Preserve the respective existing owner fence: never discover an app
+lock after a user. Contention rejects the entire caller transaction, with
+no partial credential revocation. SQLite uses its serialized writer. The
+existing mutation predicates remain authoritative. This covers broad user/app
+writers, not every family replay and cross-owner receipt path. PostgreSQL
+contention regression is authored, unrun.

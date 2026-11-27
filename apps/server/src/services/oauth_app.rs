@@ -1535,6 +1535,12 @@ async fn revoke_oauth_app_credentials<C>(
 where
     C: ConnectionTrait,
 {
+    crate::services::oauth_token_service::lock_bulk_oauth_credentials(
+        db, tenant_id, crate::services::oauth_token_service::BulkOAuthRevocationScope::Application(app_id),
+    ).await.map_err(|error| {
+        tracing::error!(%error, %tenant_id, %app_id, "Failed to prelock OAuth app credentials");
+        Error::InternalServerError
+    })?;
     OAuthTokens::update_many()
         .col_expr(
             oauth_tokens::Column::RevokedAt,

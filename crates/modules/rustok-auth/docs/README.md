@@ -1196,3 +1196,11 @@ without deleting history. Tests that age history explicitly restore the
 SQLite guard inside an isolated fixture transaction. No runtime bypass.
 This protects ordinary DML, not privileged trigger disabling or parent
 removal outside the retention contract. Compile and runtime tests unrun.
+
+Broad user credential revocation (password change/recovery/admin account
+changes) and app credential revocation prelock exact token and pending-code
+rows in UUID order with PostgreSQL NOWAIT; app revocation also prelocks
+consents. No new app lock is acquired after a user lock. Existing mutation
+scope and transaction rollback semantics remain; SQLite serializes writers.
+The new PostgreSQL regression covers token/code contention and unrelated
+user isolation; compile/runtime verification remains pending.

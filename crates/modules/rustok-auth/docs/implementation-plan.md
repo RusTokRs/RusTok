@@ -716,3 +716,9 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   regressions and aging fixture adjustments authored; no runtime verification.
   Absolute deadline monotonicity, parent-delete authorization, bulk revocation
   and cross-owner/outbox ordering remain open.
+
+- Broad OAuth user/app revocation: stable exact credential prelocks, NOWAIT
+  before mutations, with existing owner fences and all-or-nothing rollback.
+  App-wide scope includes consents; user scope preserves delegated-only tokens.
+  PostgreSQL source contention test unrun. Family replay and consent paths,
+  cross-owner receipts and outbox still require closure.
