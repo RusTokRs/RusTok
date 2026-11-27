@@ -401,6 +401,14 @@ where
             "lease operation_id and token must not be nil",
         ));
     }
+    // A transient failure must not become a permanent replay result.
+    // The owner must roll back its effects and use release_retryable instead.
+    if error.retryable {
+        return Err(PortError::validation(
+            "outbox.operation_receipt_fail_retryable",
+            "retryable owner-operation failures must release the receipt, not finalize it",
+        ));
+    }
     let error_json = serde_json::to_value(error).map_err(|encoding_error| {
         PortError::invariant_violation(
             "outbox.operation_receipt_encode",
@@ -1186,6 +1194,18 @@ mod tests {
             Admission::Run(lease) => lease,
             _ => panic!("first request must run"),
         };
+
+        let retryable = PortError::unavailable("comments.database", "temporary outage");
+        let invalid_finalization = fail(&database, first, &retryable)
+            .await
+            .expect_err("temporary failures must not become terminal replay results");
+        assert_eq!(invalid_finalization.code, "outbox.operation_receipt_fail_retryable");
+        let stored = entity::Entity::find_by_id(first.operation_id)
+            .one(&database).await.unwrap().unwrap();
+        assert_eq!(stored.status, STATUS_PROCESSING);
+        assert_eq!(stored.lease_token, first.token);
+        assert!(stored.error_json.is_none());
+        assert!(stored.completed_at.is_none());
 
         let lost = release_retryable(
             &database,

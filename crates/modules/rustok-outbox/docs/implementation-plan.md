@@ -479,3 +479,9 @@ entering the polling loop. A wrapper cannot disable checkpointing after a
 primary confirmation has been persisted for that event; the relay rejects
 that invocation before primary I/O, preserving the existing checkpoint.
 Focused source regressions cover both paths; execution remains unverified.
+
+Terminal owner-operation receipt finalization rejects retryable `PortError`
+values before touching storage. Owners must use `release_retryable` after
+rollback for these errors; accidental terminal finalization can no longer
+poison subsequent replay with a temporary outage. The focused receipt
+regression is source-only and has not been executed.

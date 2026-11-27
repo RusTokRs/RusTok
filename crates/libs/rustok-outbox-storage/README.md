@@ -255,3 +255,9 @@ binaries must be stopped/drained before migration
 spans broker I/O. This is not an exactly-once guarantee, a complete
 per-handler receipt system, or a proof that the broker retained an accepted
 message. Source regression tests are authored, not executed.
+
+Terminal owner-operation receipt finalization rejects retryable `PortError`
+values before touching storage. Owners must use `release_retryable` after
+rollback for these errors; accidental terminal finalization can no longer
+poison subsequent replay with a temporary outage. The focused receipt
+regression is source-only and has not been executed.
