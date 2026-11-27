@@ -1766,6 +1766,56 @@ mod tests {
     }
 
     #[test]
+    fn symbol_expansion_budget_is_reported_by_project_validation() {
+        let symbol_components = (0..crate::MAX_SYMBOL_COMPONENTS)
+            .map(|index| {
+                json!({
+                    "id": format!("node-{index}"),
+                    "type": "text"
+                })
+            })
+            .collect::<Vec<_>>();
+        let instances = (0..20)
+            .map(|index| {
+                json!({
+                    "id": format!("instance-{index}"),
+                    "type": "symbol",
+                    "symbolId": "heavy"
+                })
+            })
+            .collect::<Vec<_>>();
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [{
+                "id": "heavy",
+                "components": symbol_components
+            }],
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": instances
+                }
+            }]
+        }))
+        .expect("document");
+
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert!(
+            report.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "symbol_expansion_maximum_nodes_exceeded"
+            }),
+            "{:?}",
+            report.diagnostics
+        );
+    }
+
+    #[test]
     fn public_url_attributes_are_revalidated_for_rendering() {
         let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
