@@ -750,7 +750,7 @@ fn expand_node(
             }
             Ok(())
         }
-        ComponentNode::Opaque(value) => expand_opaque_symbol_node(
+        ComponentNode::Opaque(value) => expand_opaque_symbol_children(
             value,
             catalog,
             identities,
