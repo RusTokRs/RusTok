@@ -156,7 +156,7 @@ pub fn validate_project_with_embed_registry(
     validate_components(document, registries, embeds, limits, &mut report);
     validate_assets(document, &mut report);
     validate_style_rules(document, index, &mut report);
-    validate_symbols(document, &mut report);
+    validate_symbols(document, registries, embeds, limits, &mut report);
 
     if report.node_count > limits.maximum_nodes {
         report.diagnostics.push(ValidationDiagnostic {
@@ -1050,7 +1050,13 @@ fn diagnostic(
     }
 }
 
-fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
+fn validate_symbols(
+    document: &ProjectDocument,
+    registries: &RegistrySet,
+    embeds: &EmbedProviderRegistry,
+    limits: ValidationLimits,
+    report: &mut ValidationReport,
+) {
     if let Some(block) = document.project().extensions.get(FLY_SYMBOLS_FIELD) {
         if let Err(error) =
             crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH)
@@ -1137,6 +1143,28 @@ fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
                 &path,
                 message,
             ));
+        } else {
+            // Symbol definitions are authored content too. Validate their component trees with
+            // the same URL, raw-HTML, rich-text, embed and provider checks as page components,
+            // but keep each definition's node budget independent of the live page tree.
+            let mut symbol_report = ValidationReport::default();
+            let mut symbol_component_ids = BTreeSet::new();
+            let mut symbol_slot_count = 0;
+            for (component_index, component) in descriptor.components.iter().enumerate() {
+                walk_component(
+                    component,
+                    1,
+                    &format!("{path}.components[{component_index}]"),
+                    registries,
+                    embeds,
+                    limits,
+                    crate::DocumentKind::Page,
+                    &mut symbol_component_ids,
+                    &mut symbol_slot_count,
+                    &mut symbol_report,
+                );
+            }
+            report.diagnostics.extend(symbol_report.diagnostics);
         }
         if catalog.insert(descriptor.id.clone(), descriptor).is_some() {
             report.diagnostics.push(diagnostic(
@@ -1653,6 +1681,48 @@ mod tests {
             validate_component_public_urls(&document)
                 .iter()
                 .any(|diagnostic| { diagnostic.path.ends_with(".srcset") })
+        );
+    }
+
+    #[test]
+    fn symbol_definition_components_receive_the_page_static_url_policy() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [{
+                "id": "cta",
+                "components": [{
+                    "id": "unsafe-link",
+                    "type": "link",
+                    "attributes": { "href": "javascript:alert(1)" }
+                }]
+            }],
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "cta-instance",
+                        "type": "symbol",
+                        "symbolId": "cta"
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert!(
+            report.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "runtime_public_url_invalid"
+                    && diagnostic.path.contains("flySymbols")
+            }),
+            "{:?}",
+            report.diagnostics
         );
     }
 
