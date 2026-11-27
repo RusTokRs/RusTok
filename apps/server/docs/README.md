@@ -2353,3 +2353,13 @@ The host-global `eventsStatus.iggyMode` field reports the initialized
 `EventRuntime` mode. An initialized Outbox-only runtime reports `inactive`;
 the deployment setting is used only before runtime initialization. This is
 diagnostic state, not proof of broker health or cross-replica readiness.
+
+## Authenticated RBAC snapshot epoch binding
+
+The common JWT extractor captures the existing process-local cache epoch before
+resolving persisted authority and checks it before returning CurrentUser. HTTP,
+GraphQL and WebSocket scopes keep that exact token; later targeted/full cache
+invalidation makes matching authenticated scope lookups and captured leases
+fail closed. Stripe collisions can conservatively reject unrelated actors.
+Trusted grant-only scopes remain task-local. Remote delivery lag, raw SQL and
+already admitted effects are not fenced; source regression unrun.

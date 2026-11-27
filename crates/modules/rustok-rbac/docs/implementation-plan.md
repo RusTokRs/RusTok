@@ -550,3 +550,9 @@ exists.
   sample, including captured artifact scopes and GraphQL root admission.
   Source regressions authored, unrun; cross-task, cross-replica and durable
   direct-SQL revocation remain open.
+
+- Process-local request snapshot revocation: bind JWT admission and HTTP/WS
+  scopes to the existing cache epoch, reject pre-entry and cross-task changes,
+  and retain the original token for captured leases. Authenticated stripe
+  collisions are conservative denials. Source regressions unrun; durable
+  revocation and unscoped snapshot consumers remain open.

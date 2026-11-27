@@ -42,6 +42,8 @@ pub struct CurrentUser {
     pub grant_type: String,
     /// Effective access deadline: the earlier of the signed JWT and durable credential.
     pub access_token_expires_at: chrono::DateTime<chrono::Utc>,
+    /// Process-local RBAC epoch sampled before resolving persisted authority.
+    pub(crate) rbac_epoch: u64,
     pub(crate) oauth_credential:
         Option<crate::services::rbac_request_scope::OAuthCredentialEvidence>,
 }
@@ -139,6 +141,9 @@ impl WebSocketAuthLease {
         if self.remaining().is_zero() {
             return Err(WebSocketAuthLeaseError::Expired);
         }
+        if !self.initial_scope.epoch_is_current() {
+            return Err(WebSocketAuthLeaseError::AuthorityChanged);
+        }
         let config = auth_runtime
             .auth_config()
             .ok_or(WebSocketAuthLeaseError::ResolutionFailed)?;
@@ -146,6 +151,9 @@ impl WebSocketAuthLease {
             .map_err(|_| WebSocketAuthLeaseError::ResolutionFailed)?;
         if self.remaining().is_zero() {
             return Err(WebSocketAuthLeaseError::Expired);
+        }
+        if !self.initial_scope.epoch_is_current() {
+            return Err(WebSocketAuthLeaseError::AuthorityChanged);
         }
         Ok(())
     }
@@ -552,6 +560,12 @@ pub async fn resolve_current_user_from_access_token(
     }
 
     let principal_kind = classify_access_token_claims(&claims)?;
+    let authority_changed = (
+        StatusCode::SERVICE_UNAVAILABLE,
+        "Request authority is temporarily unavailable",
+    );
+    let rbac_epoch = crate::services::rbac_runtime::request_authority_epoch(tenant_id, claims.sub)
+        .ok_or(authority_changed)?;
     let mut delegated_credential_issued_at = None;
     let mut oauth_credential = None;
     let mut static_authority_revision = None;
@@ -869,6 +883,14 @@ pub async fn resolve_current_user_from_access_token(
         return Err((StatusCode::UNAUTHORIZED, "Access token expired"));
     }
 
+    // Do not label a pre-invalidation grant read with a fresh epoch.
+    // The original token travels with the admitted user into HTTP/WS scopes.
+    if crate::services::rbac_runtime::request_authority_epoch(tenant_id, user.id)
+        != Some(rbac_epoch)
+    {
+        return Err(authority_changed);
+    }
+
     Ok(CurrentUser {
         user,
         session_id,
@@ -880,6 +902,7 @@ pub async fn resolve_current_user_from_access_token(
         scopes: claims.scopes,
         grant_type: claims.grant_type,
         access_token_expires_at: access_token_expires_at.min(durable_credential_expires_at),
+        rbac_epoch,
         oauth_credential,
     })
 }

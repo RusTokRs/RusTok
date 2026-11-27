@@ -174,6 +174,12 @@ fn current_permission_cache_token(key: &PermissionCacheKey) -> Option<u64> {
     Some(permission_cache_token(global_epoch, key_epoch))
 }
 
+/// The same bounded local token fences cache fills and admitted request scopes.
+/// None is terminal epoch exhaustion, never a usable token.
+pub(crate) fn request_authority_epoch(tenant_id: uuid::Uuid, actor_id: uuid::Uuid) -> Option<u64> {
+    current_permission_cache_token(&(tenant_id, actor_id))
+}
+
 fn advance_permission_cache_epoch(epoch: &AtomicU32) {
     let mut current = epoch.load(Ordering::Acquire);
     loop {

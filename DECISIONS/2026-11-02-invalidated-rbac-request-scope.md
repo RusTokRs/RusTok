@@ -71,6 +71,24 @@ its existing contract. This is a process-local time check, not durable clock
 corroboration or a new session/grant revocation fence. Source regressions are
 unrun.
 
+## Process-local epoch binding (2026-11-27)
+
+Authentication samples the existing bounded cache epoch for the exact tenant
+and actor before resolving database authority and checks it again before
+returning the admitted user. The original token is carried into HTTP and WS
+request scopes, including captured artifact scopes. A matching scope rejects
+epoch drift or exhaustion, even when invalidation occurred before entering
+the task-local scope. No refresh of the original token is allowed. WebSocket
+lease admission and local output checks also reject drift.
+
+Targeted cache invalidation advances one of the existing 64 bounded stripes;
+a collision conservatively expires unrelated authenticated scopes on that
+stripe. A full clear advances the global epoch. Trusted grant-only scopes
+retain their task-local contract. Cross-task observation requires no new
+cache, subscription, allocation per actor or persistent generation. This
+also observes remote invalidations after local delivery, not at remote
+commit. Source regressions are unrun.
+
 ## Non-goals
 
 This change does not create an atomic revocation fence, ensure immediate
@@ -84,10 +102,10 @@ transaction-bound authoritative reads retain their existing distinct contracts.
 
 ## Data, transaction, and concurrency boundary
 
-No persistence or migration changes. Targeted invalidation is local to the current
-task and exact tenant/actor; a full-cache invalidation expires the current task's
-snapshot regardless of identity. This follows existing invalidation calls and is
-not an atomic guard over future commits or responses.
+No persistence or migration changes. The direct task-local invalidation helpers
+retain exact tenant/actor or full-scope semantics; runtime cache invalidation
+also advances the shared epoch as described above. This is not an atomic guard
+over future commits or responses.
 
 ## Context dimensions
 
@@ -97,8 +115,8 @@ permissions. Channel, locale and trace fields do not change this lookup.
 ## Events and projections
 
 No events are added. Existing invalidation events and durable generation retain
-their contracts. Other tasks and replicas are not synchronously invalidated by
-this task-local state.
+their contracts. Other authenticated tasks observe the process-local epoch at subsequent
+scope checks. Replicas depend on existing event delivery and durable recovery.
 
 ## Failure semantics
 
@@ -126,7 +144,7 @@ permission-list and role lookups, the owner-policy adapter, self-invalidation,
 GraphQL root-field sequencing and post-commit membership-lookup failure, and
 safe error mapping. Run server tests with the workspace toolchain and real
 transport/database integration; local task-scope tests are not evidence of
-cross-task, cross-replica or transaction-spanning revocation.
+cross-replica or transaction-spanning revocation.
 
 ## Consequences
 

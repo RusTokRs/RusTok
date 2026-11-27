@@ -237,6 +237,7 @@ fn service_current_user_builds_service_security_context() {
         scopes: Vec::new(),
         grant_type: "client_credentials".to_string(),
         access_token_expires_at: Utc::now() + Duration::hours(1),
+        rbac_epoch: 0, // SecurityContext-only fixture, never admitted as a request.
         oauth_credential: None,
     };
 
