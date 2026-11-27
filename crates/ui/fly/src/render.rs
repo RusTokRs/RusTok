@@ -808,13 +808,7 @@ fn render_component(
 
     for (name, value) in &component.attributes {
         let name = name.to_ascii_lowercase();
-        if !safe_attribute_name(&name)
-            || renderer_manages_attribute(&name)
-            || matches!(
-                name.as_str(),
-                "style" | "srcdoc" | "xlink:href" | "ping" | "background"
-            )
-        {
+        if !component_attribute_is_renderable(&name) {
             continue;
         }
         // URL attributes must be strings, including srcset. Check before
@@ -1251,6 +1245,16 @@ fn renderer_manages_attribute(name: &str) -> bool {
             | "data-fly-index"
             | "data-fly-parent-id"
     )
+}
+
+pub(crate) fn component_attribute_is_renderable(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    safe_attribute_name(&name)
+        && !renderer_manages_attribute(&name)
+        && !matches!(
+            name.as_str(),
+            "style" | "srcdoc" | "xlink:href" | "ping" | "background"
+        )
 }
 
 fn safe_attribute_name(name: &str) -> bool {

@@ -539,6 +539,47 @@ pub fn validate_context_definitions(document: &ProjectDocument) -> Vec<Validatio
         );
     }
 
+    // A computed producer owns its complete target subtree. A declared input
+    // field must not occupy that path or any ancestor/descendant path, because
+    // materialization clears producer-owned values before evaluation.
+    let declared_fields = catalog
+        .fields
+        .iter()
+        .filter_map(|field| parse_context_path(&field.path).map(|path| (field, path)))
+        .collect::<Vec<_>>();
+    for computed in &catalog.computed {
+        let Some(computed_path) = parse_context_path(&computed.path) else {
+            continue;
+        };
+        for (field, field_path) in &declared_fields {
+            if field_path.starts_with(&computed_path) || computed_path.starts_with(field_path) {
+                let (code, message) = if field_path == &computed_path {
+                    (
+                        "runtime_context_path_shadowed_by_computed",
+                        format!(
+                            "runtime path `{}` is declared as input and also written by a computed value",
+                            field.path
+                        ),
+                    )
+                } else {
+                    (
+                        "runtime_context_field_computed_target_overlap",
+                        format!(
+                            "computed value {} target {} overlaps declared input field {} path {}; input and computed paths must not overlap",
+                            computed.id, computed.path, field.id, field.path
+                        ),
+                    )
+                };
+                diagnostics.push(context_diagnostic(
+                    ValidationSeverity::Error,
+                    code,
+                    &computed.path,
+                    message,
+                ));
+            }
+        }
+    }
+
     diagnostics.extend(detect_computed_cycles(&catalog.computed));
 
     if !catalog.unknown_field_entries.is_empty() {
@@ -789,6 +830,27 @@ fn conflicting_field_paths(catalog: &ContextSchemaCatalog) -> Vec<ValidationDiag
         }
     }
     diagnostics
+}
+
+pub(crate) fn context_paths_equal(left: &str, right: &str) -> bool {
+    matches!(
+        (parse_context_path(left), parse_context_path(right)),
+        (Some(left), Some(right)) if left == right
+    )
+}
+
+pub(crate) fn context_path_is_prefix(prefix: &str, path: &str) -> bool {
+    let (Some(prefix), Some(path)) = (parse_context_path(prefix), parse_context_path(path)) else {
+        return false;
+    };
+    path.starts_with(&prefix)
+}
+
+pub(crate) fn context_paths_overlap(left: &str, right: &str) -> bool {
+    let (Some(left), Some(right)) = (parse_context_path(left), parse_context_path(right)) else {
+        return false;
+    };
+    left.starts_with(&right) || right.starts_with(&left)
 }
 
 fn parse_context_path(path: &str) -> Option<Vec<ContextPathSegment>> {
@@ -1427,7 +1489,7 @@ fn detect_computed_cycles(computed: &[ComputedContextValue]) -> Vec<ValidationDi
 /// on an object also depends on its computed descendants; a dependency on a
 /// child depends on a computed ancestor. Overlapping writes are ambiguous.
 /// Kahn's algorithm avoids recursion proportional to the catalog length.
-fn computed_evaluation_order(
+pub(crate) fn computed_evaluation_order(
     computed: &[ComputedContextValue],
 ) -> (Vec<usize>, Vec<ValidationDiagnostic>) {
     let mut targets = BTreeMap::<Vec<ContextPathSegment>, usize>::new();
@@ -1798,6 +1860,51 @@ mod tests {
         assert_eq!(result.unresolved_computed, 1);
         assert_eq!(result.computed_applied, 0);
         assert_eq!(result.context["obj"], 2);
+    }
+
+    #[test]
+    fn declared_fields_cannot_overlap_computed_targets() {
+        let make_document = |field_path: &str, computed_path: &str| {
+            GrapesJsCodec::decode_value(json!({
+                "pages": [{"component": {"id": "root", "type": "wrapper"}}],
+                "flyRuntimeContextSchema": [{
+                    "id": "input",
+                    "path": field_path,
+                    "kind": "object"
+                }],
+                "flyRuntimeComputed": [{
+                    "id": "producer",
+                    "path": computed_path,
+                    "expression": {"op": "literal", "value": {}}
+                }]
+            }))
+            .expect("document")
+        };
+
+        for (field_path, computed_path, expected_code) in [
+            ("user.name", "user", "runtime_context_field_computed_target_overlap"),
+            ("user", "user.name", "runtime_context_field_computed_target_overlap"),
+            ("$.user.name", "user.name", "runtime_context_path_shadowed_by_computed"),
+            ("items[0]", "items[00]", "runtime_context_path_shadowed_by_computed")
+        ] {
+            let document = make_document(field_path, computed_path);
+            assert!(
+                validate_context_definitions(&document)
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == expected_code),
+                "expected {expected_code} for field {} and computed {}",
+                field_path,
+                computed_path
+            );
+            assert!(!crate::extract_runtime_context_contract(&document).is_valid());
+        }
+
+        let disjoint = make_document("user", "username");
+        assert!(
+            !validate_context_definitions(&disjoint)
+                .iter()
+                .any(|diagnostic| diagnostic.code == "runtime_context_field_computed_target_overlap")
+        );
     }
 
     #[test]

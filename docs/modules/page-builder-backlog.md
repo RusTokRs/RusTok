@@ -152,8 +152,8 @@ self-references compare structural path segments. JSON-schema export checks the 
 path grammar. Repeater expansion charges complete cloned subtrees against the global
 work budget before nesting and borrows only the bounded input slice rather than
 cloning an entire source array. Three focused regressions authored; tests, build,
-lint and remediation gate not run. Computed dependency scheduling and alias admission
-remain open for follow-up.
+lint and remediation gate not run. The public dependency graph now shares canonical
+computed scheduling; repeater alias admission remains open for follow-up.
 
 Fly computed context follow-up (2026-11-25, source-only): validation and materialization
 share a bounded iterative dependency graph with structural paths and ancestor/descendant
@@ -162,7 +162,7 @@ fallbacks propagate in order, cycles/overlapping writers block, and write failur
 as unresolved and obey strict preflight. Repeater command, validation and expansion share
 distinct single-key alias admission while preserving nested shadowing. Four regressions
 authored; compilation, tests, lint and remediation gate not run. Binding transform
-semantics and unresolved producer input ownership remain open.
+semantics beyond the target/type guards remain open; structural field/computed path overlap is now rejected before materialization.
 
 Fly binding follow-up (2026-11-25, source-only): single-writer component-slot
 ownership is enforced at upsert, validation and materialization; HTML/CSS names compare
@@ -179,13 +179,15 @@ single mutable walk and counted per surviving instance. Global bindings retain
 pre-expansion semantics. Local identity/reference/provider contract writes are
 intentionally rejected pending integration with repeater identity proofs.
 Two pipeline regressions authored; tests, build, lint and remediation gate not run.
-Unresolved computed producer ownership and repeat-materialization protection remain open.
+Broader computed producer ownership and repeat-materialization protection remain open; structural field/computed path overlap is now rejected before materialization.
 
 Fly source-review correction (2026-11-25): computed producers clear stale target
 values before evaluation without shifting indexed siblings; malformed scoped paths
 use the same blocking admission as global bindings; URL attributes and srcset require
 strings in both SSR and runtime validation (before generic scalar/boolean rendering).
 Three regressions authored. Build, tests, lint and remediation gate not run.
+
+Fly runtime contract correction (2026-11-27, source-only): declared context fields and computed producer targets now reject structural ancestor/descendant overlap, including normalized-equivalent paths; the public dependency graph now reuses the canonical computed-order algorithm and resolves descendant reads from computed ancestors instead of labelling them external. Global binding targets share SSR's actual HTML-attribute admission and CSS-property admission, and non-string/non-null tagName values fail without clearing the authored tag. Focused regressions were added. Binding transform semantics beyond these target/type guards remain open. No Cargo build, Rust test, lint, Node gate, WASM compilation or mounted browser test was run in this connector-only pass; maintainer verification remains open.
 
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of

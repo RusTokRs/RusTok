@@ -313,6 +313,19 @@ fn resolve_binding_value(
             ),
         )
     })?;
+    if matches!(&binding.target, BindingTarget::Field { name } if name == "tagName")
+        && !value.is_null()
+        && !value.is_string()
+    {
+        return Err(binding_diagnostic(
+            ValidationSeverity::Warning,
+            "runtime_binding_target_value_invalid",
+            format!(
+                "binding {} targets tagName, which accepts only a string or null",
+                binding.id
+            ),
+        ));
+    }
     Ok((value, used_fallback))
 }
 
@@ -621,12 +634,29 @@ fn set_component_field(component: &mut ComponentObject, name: &str, value: Value
 
 fn validate_binding_target(target: &BindingTarget) -> Result<(), String> {
     match target {
-        BindingTarget::Attribute { name } | BindingTarget::Style { name } => {
+        BindingTarget::Attribute { name } => {
             if name.trim().is_empty() {
-                Err("attribute and style targets require a non-empty name".to_string())
-            } else {
-                Ok(())
+                return Err("attribute targets require a non-empty name".to_string());
             }
+            if !crate::render::component_attribute_is_renderable(name) {
+                return Err(format!(
+                    "attribute target {} is reserved, unsafe or not emitted by the HTML renderer",
+                    name
+                ));
+            }
+            Ok(())
+        }
+        BindingTarget::Style { name } => {
+            if name.trim().is_empty() {
+                return Err("style targets require a non-empty name".to_string());
+            }
+            if !crate::css_property_allowed(name) {
+                return Err(format!(
+                    "style target {} is not admitted by the CSS renderer",
+                    name
+                ));
+            }
+            Ok(())
         }
         BindingTarget::Field { name } => {
             if name.trim().is_empty() {
@@ -891,6 +921,87 @@ mod tests {
                 name: "symbolId".to_string()
             })
             .is_err()
+        );
+    }
+
+    #[test]
+    fn renderer_dropped_attribute_and_style_targets_are_rejected() {
+        let mut source = document();
+        source.project_mut().extensions.insert(
+            FLY_RUNTIME_BINDINGS_FIELD.to_string(),
+            json!([
+                {"id": "event", "component_id": "title", "path": "event", "target": "attribute", "name": "onerror"},
+                {"id": "hook", "component_id": "title", "path": "hook", "target": "attribute", "name": "data-fly-style-id"},
+                {"id": "srcdoc", "component_id": "title", "path": "srcdoc", "target": "attribute", "name": "srcdoc"},
+                {"id": "style", "component_id": "title", "path": "style", "target": "style", "name": "behavior"}
+            ]),
+        );
+        let result = materialize_bindings(
+            &source,
+            &json!({
+                "event": "alert(1)",
+                "hook": "forged",
+                "srcdoc": "<script>alert(1)</script>",
+                "style": "expression(alert(1))"
+            }),
+        );
+        assert_eq!(result.document, source);
+        assert_eq!(result.applied_bindings, 0);
+        assert_eq!(result.unresolved_bindings, 4);
+        assert_eq!(
+            validate_binding_definitions(&source)
+                .iter()
+                .filter(|diagnostic| diagnostic.code == "runtime_binding_target_invalid")
+                .count(),
+            4
+        );
+        assert!(
+            apply_binding_command(
+                &mut source,
+                &BindingCommand::Upsert {
+                    binding: Box::new(RuntimeBinding {
+                        id: "event".to_string(),
+                        component_id: "title".to_string(),
+                        path: "event".to_string(),
+                        target: BindingTarget::Attribute {
+                            name: "onerror".to_string(),
+                        },
+                        fallback: None,
+                        transform: BindingTransform::Identity,
+                        extensions: Map::new(),
+                    })
+                }
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn tag_name_binding_rejects_non_string_values_without_clearing_the_tag() {
+        let mut source = document();
+        source.component_mut("title").expect("title").tag_name = Some("span".to_string());
+        source.project_mut().extensions.insert(
+            FLY_RUNTIME_BINDINGS_FIELD.to_string(),
+            json!([{
+                "id": "tag-name",
+                "component_id": "title",
+                "path": "tag",
+                "target": "field",
+                "name": "tagName"
+            }]),
+        );
+        let result = materialize_bindings(&source, &json!({"tag": 42}));
+        assert_eq!(result.applied_bindings, 0);
+        assert_eq!(result.unresolved_bindings, 1);
+        assert_eq!(
+            result.document.component("title").and_then(|component| component.tag_name.as_deref()),
+            Some("span")
+        );
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "runtime_binding_target_value_invalid")
         );
     }
 
