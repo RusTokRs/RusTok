@@ -32,8 +32,7 @@ Use the canonical persisted tenant row as the final admission fence for session
 credential issuance and failed-login state updates.
 
 - Registration, login, refresh, and failed-login lockout mutations acquire the
-  active tenant fence inside their final database transaction before taking
-  user/session locks.
+  active tenant fence inside their final database transaction before taking user/session locks or inserting user/session rows.
 - The fence is held until the transaction commits. PostgreSQL uses a shared row
   lock; SQLite uses the existing no-op update lock protocol.
 - If the tenant is missing or inactive when the fence is acquired, the
@@ -117,9 +116,10 @@ without requiring an active tenant.
 
 ## Data, transaction, and concurrency boundary
 
-The tenant lock, user lock, and session lock belong to the same issuance
-transaction. The required order is tenant -> user -> session. The transaction
-holds these locks through the final credential/session write and commit.
+The tenant lock and all user/session reads and writes belong to the same
+issuance transaction. Where rows are locked, the required order is tenant ->
+user -> session; registration inserts user and session rows only after the
+tenant fence is held. The transaction retains the tenant lock through commit.
 
 If tenant admission fails during refresh, the original transaction is rolled
 back before replay cleanup begins. The cleanup transaction uses user -> session
