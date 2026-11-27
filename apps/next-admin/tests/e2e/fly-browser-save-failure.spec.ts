@@ -12,10 +12,20 @@ const SAVE_FAILURE_KEY = 'fly:ssr-save-failure:home';
 
 // The shape of `PagesBrowserIntentProblem`, which the Pages endpoint puts into `save_failure`.
 const saveFailure = {
+  status: 500,
+  code: 'SAVE_FAILED',
+  error: 'The server could not save the working copy. Your edits remain in the draft.',
+  intent: 'save'
+};
+const revisionConflictFailure = {
   status: 409,
   code: 'REVISION_CONFLICT',
   error: 'The page was changed on the server. Your edit is kept in the draft.',
   intent: 'save'
+};
+const peerWriteConflict = {
+  code: 'FLY_PEER_WRITE_CONFLICT',
+  error: 'The server rejected this save because the page changed in another session. Preserve your unsaved changes, then reload the latest document before editing again.'
 };
 
 type FetchMode = 'rejected' | 'dirty' | 'saved' | 'denied' | 'text' | 'unreported';
@@ -53,17 +63,19 @@ async function openHost(page: Page) {
 async function mountAdapter(
   page: Page,
   mode: FetchMode,
-  parked?: Record<string, unknown>
+  parked?: Record<string, unknown>,
+  failure: BrowserProblem = saveFailure,
+  revision = 'rev-1'
 ) {
   const adapterSource = await readFile(adapterPath, 'utf8');
   await page.evaluate(
-    async ({ source, mode, parked, failure, key }) => {
+    async ({ source, mode, parked, failure, key, revision }) => {
       document.body.innerHTML = `
         <div
           id="fly-root"
           data-fly-browser-root
           data-fly-page-id="home"
-          data-fly-revision="rev-1"
+          data-fly-revision="${revision}"
           data-fly-project-hash="hash-1"
           data-fly-intent-endpoint="/fly-intent"
         >
@@ -159,7 +171,8 @@ async function mountAdapter(
       source: adapterSource,
       mode,
       parked,
-      failure: saveFailure,
+      failure,
+      revision,
       key: SAVE_FAILURE_KEY
     }
   );
@@ -200,11 +213,11 @@ async function parkedFailure(page: Page) {
   );
 }
 
-test('a rejected save is announced after the reload and stands until the working copy is saved', async ({
+test('a revision conflict stays fenced until a fresh revision is loaded', async ({
   page
 }) => {
   await openHost(page);
-  await mountAdapter(page, 'rejected');
+  await mountAdapter(page, 'rejected', undefined, revisionConflictFailure);
 
   // The response asks for a reload; the document that reported the failure is discarded.
   await page.evaluate(() => {
@@ -220,38 +233,34 @@ test('a rejected save is announced after the reload and stands until the working
   );
   await page.waitForLoadState('networkidle');
   await expect(page.locator('#fly-root')).toHaveCount(0);
-  expect(await parkedFailure(page)).toMatchObject(saveFailure);
+  expect(await parkedFailure(page)).toMatchObject(revisionConflictFailure);
 
-  // The adapter of the new document reports it at mount, before any intent.
-  await mountAdapter(page, 'dirty');
+  // The adapter of the reloaded document reports the server revision fence at mount.
+  await mountAdapter(page, 'dirty', undefined, revisionConflictFailure);
   const root = page.locator('#fly-root');
   const alert = page.locator('[data-fly-browser-status="problem"]');
   await expect(root).toHaveAttribute(
     'data-fly-browser-problem',
-    'REVISION_CONFLICT'
+    'FLY_PEER_WRITE_CONFLICT'
   );
+  await expect(root).toHaveAttribute('data-fly-peer-write-conflict', 'true');
   await expect(root).toHaveAttribute('data-fly-save-failed', 'true');
   await expect(alert).toHaveAttribute('role', 'alert');
-  await expect(alert).toHaveText(saveFailure.error);
-  expect(await reportedProblems(page)).toMatchObject([saveFailure]);
+  await expect(alert).toHaveText(peerWriteConflict.error);
+  expect(await reportedProblems(page)).toMatchObject([peerWriteConflict]);
+  expect(await parkedFailure(page)).toMatchObject(revisionConflictFailure);
 
-  // An intent that leaves the working copy dirty neither clears the failure nor announces it
-  // a second time.
-  await emit(page, 'select');
-  await expect(root).toHaveAttribute('data-fly-save-failed', 'true');
-  await expect(alert).toHaveText(saveFailure.error);
-  expect(await reportedProblems(page)).toHaveLength(1);
-  expect(await parkedFailure(page)).toMatchObject(saveFailure);
-
-  // A response with a saved working copy ends it.
-  await setFetchMode(page, 'saved');
-  await emit(page, 'save');
-  await expect(root).not.toHaveAttribute('data-fly-browser-problem');
-  await expect(root).not.toHaveAttribute('data-fly-save-failed');
-  await expect(alert).toHaveCount(0);
-  await expect(root).toHaveAttribute('data-fly-revision', 'rev-2');
+  // A fresh server revision clears the persisted stale-revision fence on a new mount.
+  await page.reload();
+  await expect(page.locator('#fly-root')).toHaveCount(0);
+  await mountAdapter(page, 'dirty', undefined, revisionConflictFailure, 'rev-2');
+  const freshRoot = page.locator('#fly-root');
+  await expect(freshRoot).not.toHaveAttribute('data-fly-browser-problem');
+  await expect(freshRoot).not.toHaveAttribute('data-fly-peer-write-conflict');
+  await expect(freshRoot).not.toHaveAttribute('data-fly-save-failed');
+  await expect(page.locator('[data-fly-browser-status="problem"]')).toHaveCount(0);
   expect(await parkedFailure(page)).toBeNull();
-  expect(await reportedProblems(page)).toHaveLength(1);
+  expect(await reportedProblems(page)).toHaveLength(0);
 });
 
 test('a standing save failure returns after another problem replaced it', async ({
@@ -262,6 +271,7 @@ test('a standing save failure returns after another problem replaced it', async 
 
   const root = page.locator('#fly-root');
   const alert = page.locator('[data-fly-browser-status="problem"]');
+  await expect(root).toHaveAttribute('data-fly-browser-problem', 'SAVE_FAILED');
   await expect(root).toHaveAttribute('data-fly-save-failed', 'true');
 
   await emit(page, 'save');
@@ -273,14 +283,11 @@ test('a standing save failure returns after another problem replaced it', async 
 
   await setFetchMode(page, 'dirty');
   await emit(page, 'select');
-  await expect(root).toHaveAttribute(
-    'data-fly-browser-problem',
-    'REVISION_CONFLICT'
-  );
+  await expect(root).toHaveAttribute('data-fly-browser-problem', 'SAVE_FAILED');
   await expect(root).toHaveAttribute('data-fly-save-failed', 'true');
   await expect(alert).toHaveText(saveFailure.error);
   expect((await reportedProblems(page)).map((problem) => problem.code)).toEqual(
-    ['REVISION_CONFLICT', 'FLY_CAPABILITY_DENIED', 'REVISION_CONFLICT']
+    ['SAVE_FAILED', 'FLY_CAPABILITY_DENIED', 'SAVE_FAILED']
   );
 });
 
@@ -310,7 +317,7 @@ test('successful text responses do not erase a parked lost-save warning', async 
   const root = page.locator('#fly-root');
   await expect(root).toHaveAttribute('data-fly-save-failed', 'true');
   await emit(page, 'select');
-  await expect(root).toHaveAttribute('data-fly-browser-problem', 'REVISION_CONFLICT');
+  await expect(root).toHaveAttribute('data-fly-browser-problem', 'SAVE_FAILED');
   await expect(root).toHaveAttribute('data-fly-save-failed', 'true');
   expect(await parkedFailure(page)).toMatchObject(saveFailure);
   expect(await reportedProblems(page)).toHaveLength(1);
@@ -322,7 +329,7 @@ test('a response without dirty does not claim the lost draft was saved', async (
   await mountAdapter(page, 'unreported', { at: Date.now(), ...saveFailure });
   const root = page.locator('#fly-root');
   await emit(page, 'select');
-  await expect(root).toHaveAttribute('data-fly-browser-problem', 'REVISION_CONFLICT');
+  await expect(root).toHaveAttribute('data-fly-browser-problem', 'SAVE_FAILED');
   await expect(root).toHaveAttribute('data-fly-save-failed', 'true');
   expect(await parkedFailure(page)).toMatchObject(saveFailure);
   expect(await reportedProblems(page)).toHaveLength(1);

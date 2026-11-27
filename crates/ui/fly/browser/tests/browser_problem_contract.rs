@@ -35,6 +35,9 @@ fn public_bundle_surfaces_save_failures_across_the_reload() {
     assert!(contains("const failure = { ...result.save_failure };"));
     assert!(contains("writeSaveFailure(adapter.pageId, failure);"));
     assert!(contains("reportSaveFailure(adapter, failure, request);"));
+    assert!(contains(
+        "fencePeerWriteConflict(adapter, {\n      source: \"server\",\n      reason: \"because the server rejected a stale revision\",\n    });\n    // reportPeerWriteConflict replaces the visible problem and clears this marker.\n    // Restore it so the host still knows the working copy contains a rejected save.\n    adapter.root.dataset.flySaveFailed = \"true\";\n    return;"
+    ));
     // ...kept while the response still describes an unsaved working copy: a host does not have
     // to repeat the save of an unchanged document, so such a response carries no `save_failure`...
     assert!(contains(

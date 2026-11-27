@@ -732,7 +732,6 @@ function fencePeerWriteConflict(adapter, details = {}) {
 }
 
 function reportSaveFailure(adapter, failure, request) {
-  adapter.root.dataset.flySaveFailed = "true";
   const code = nonEmptyString(failure.code);
   if (code === "REVISION_CONFLICT" || code === "PAGE_DOCUMENT_REVISION_CONFLICT") {
     const expectedRevision = nonEmptyString(failure.expected_revision);
@@ -749,6 +748,9 @@ function reportSaveFailure(adapter, failure, request) {
       source: "server",
       reason: "because the server rejected a stale revision",
     });
+    // reportPeerWriteConflict replaces the visible problem and clears this marker.
+    // Restore it so the host still knows the working copy contains a rejected save.
+    adapter.root.dataset.flySaveFailed = "true";
     return;
   }
   reportBrowserProblem(
