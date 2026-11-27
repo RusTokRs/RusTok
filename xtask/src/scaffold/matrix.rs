@@ -216,14 +216,22 @@ impl Matrix {
             adapter.to_str().context("CLI fixture path must be UTF-8")?,
             "--tests",
             tests.to_str().context("CLI fixture path must be UTF-8")?,
-            "--dependency", "rustok-api",
-            "--dependency", "rustok-modules",
-            "--dependency", "serde_json",
-            "--dependency", "uuid",
-            "--dev-dependency", "rustok-migrations",
-            "--dev-dependency", "rustok-test-utils",
-            "--dev-dependency", "sea-orm",
-            "--dev-dependency", "sea-orm-migration",
+            "--dependency",
+            "rustok-api",
+            "--dependency",
+            "rustok-modules",
+            "--dependency",
+            "serde_json",
+            "--dependency",
+            "uuid",
+            "--dev-dependency",
+            "rustok-migrations",
+            "--dev-dependency",
+            "rustok-test-utils",
+            "--dev-dependency",
+            "sea-orm",
+            "--dev-dependency",
+            "sea-orm-migration",
         ])?;
         let status = Command::new("node")
             .current_dir(&self.source)
@@ -248,7 +256,8 @@ impl Matrix {
         let mut features = MODES
             .map(|(mode, _, _)| format!("mod-scaffold_matrix_{mode}"))
             .join(",");
-        features.push_str(",mod-scaffold_matrix_localized,rustok-scaffold-matrix-localized/graphql");
+        features
+            .push_str(",mod-scaffold_matrix_localized,rustok-scaffold-matrix-localized/graphql");
         println!("Running selected distribution registry with defaults disabled");
         let mut args = vec![
             "--locked",

@@ -6,6 +6,8 @@
 //! enumeration surface.
 
 use axum::http::StatusCode;
+use rustok_api::AuthPrincipalKind;
+use rustok_auth::AuthAdminMutationError;
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
     ArtifactBindingDispatchError, ArtifactBindingExecutionContext, ArtifactBindingIdempotencyClaim,
@@ -15,8 +17,6 @@ use rustok_modules::{
     ModuleRuntimeBinding, SharedArtifactBindingExecutor, artifact_binding_request_digest,
     dispatch_artifact_command_binding, dispatch_artifact_http_binding,
 };
-use rustok_api::AuthPrincipalKind;
-use rustok_auth::AuthAdminMutationError;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -129,12 +129,20 @@ pub(crate) async fn dispatch_artifact_binding_operation(
                     // A claimed-but-denied operation follows the existing
                     // conservative reconciliation path, without execution.
                     let result = async {
-                        let admission = authorize_binding(ctx, tenant_id, actor_id, installation, binding).await?;
+                        let admission =
+                            authorize_binding(ctx, tenant_id, actor_id, installation, binding)
+                                .await?;
                         execute_operation(
-                            executor.as_ref(), installation, tenant_id, admission,
-                            operation, binding_execution_context,
-                        ).await
-                    }.await;
+                            executor.as_ref(),
+                            installation,
+                            tenant_id,
+                            admission,
+                            operation,
+                            binding_execution_context,
+                        )
+                        .await
+                    }
+                    .await;
                     match result {
                         Ok(output) => match store.complete(&request, operation_id, &output).await {
                             Ok(()) => Ok(output),
@@ -188,15 +196,21 @@ pub(crate) async fn dispatch_artifact_binding_operation(
 
 fn artifact_permission_denied() -> Error {
     http_error(rustok_web::HttpError::forbidden(
-        "forbidden", "Permission denied for artifact binding",
+        "forbidden",
+        "Permission denied for artifact binding",
     ))
 }
 
 /// Bind the host-admitted scope, never a caller-supplied principal kind.
 pub(crate) fn require_artifact_direct_credential(tenant_id: Uuid, actor_id: Uuid) -> Result<()> {
     crate::services::rbac_request_scope::bind_admin_context(
-        tenant_id, actor_id, AuthPrincipalKind::DirectUser, None,
-    ).map(|_| ()).map_err(|_| artifact_permission_denied())
+        tenant_id,
+        actor_id,
+        AuthPrincipalKind::DirectUser,
+        None,
+    )
+    .map(|_| ())
+    .map_err(|_| artifact_permission_denied())
 }
 
 /// Shared policy admission for execution, UI metadata and audit reads.
@@ -245,13 +259,20 @@ pub(crate) async fn authorize_artifact_surface(
 ) -> Result<(ArtifactExecutionAdmission, Vec<String>)> {
     require_artifact_direct_credential(tenant_id, actor_id)?;
     let admission = artifact_policy_admission(ctx, tenant_id, installation).await?;
-    let extensions = ctx.shared_get::<Arc<rustok_core::ModuleRuntimeExtensions>>()
+    let extensions = ctx
+        .shared_get::<Arc<rustok_core::ModuleRuntimeExtensions>>()
         .ok_or(Error::InternalServerError)?;
-    let provider = extensions.get::<Arc<crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider>>()
+    let provider = extensions
+        .get::<Arc<crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider>>(
+        )
         .ok_or(Error::InternalServerError)?;
-    let keys = provider.artifact_runtime_permission_keys(tenant_id, actor_id, installation)
-        .await.map_err(|error| match error {
-            AuthAdminMutationError::Unauthorized | AuthAdminMutationError::Forbidden(_) => artifact_permission_denied(),
+    let keys = provider
+        .artifact_runtime_permission_keys(tenant_id, actor_id, installation)
+        .await
+        .map_err(|error| match error {
+            AuthAdminMutationError::Unauthorized | AuthAdminMutationError::Forbidden(_) => {
+                artifact_permission_denied()
+            }
             _ => Error::InternalServerError,
         })?;
     Ok((admission, keys))
@@ -264,7 +285,8 @@ async fn authorize_binding(
     installation: &InstalledModuleArtifact,
     binding: &ModuleRuntimeBinding,
 ) -> Result<ArtifactExecutionAdmission> {
-    let (admission, keys) = authorize_artifact_surface(ctx, tenant_id, actor_id, installation).await?;
+    let (admission, keys) =
+        authorize_artifact_surface(ctx, tenant_id, actor_id, installation).await?;
     if keys.iter().any(|key| key == &binding.permission) {
         Ok(admission)
     } else {

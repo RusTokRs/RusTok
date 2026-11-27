@@ -208,8 +208,11 @@ impl SeaOrmArtifactPermissionAuthorizer {
         module_slug: &str,
         release_digest: &str,
     ) -> Result<Vec<String>, ArtifactPermissionAssignmentError> {
-        if tenant_id.is_nil() || user_id.is_nil() || installation_id.is_nil()
-            || module_slug.is_empty() || release_digest.is_empty()
+        if tenant_id.is_nil()
+            || user_id.is_nil()
+            || installation_id.is_nil()
+            || module_slug.is_empty()
+            || release_digest.is_empty()
         {
             return Err(ArtifactPermissionAssignmentError::InvalidCommand(
                 "authorization identity must be present",
@@ -470,10 +473,15 @@ async fn lock_assignment_actor(
     command: &ArtifactRolePermissionAssignmentCommand,
 ) -> Result<(), ArtifactPermissionAssignmentError> {
     let backend = transaction.get_database_backend();
-    let sql = placeholders(backend, match backend {
-        DbBackend::Postgres => "SELECT 1 FROM users WHERE id = {actor_id} AND tenant_id = {tenant_id} FOR KEY SHARE",
-        _ => "SELECT 1 FROM users WHERE id = {actor_id} AND tenant_id = {tenant_id}",
-    });
+    let sql = placeholders(
+        backend,
+        match backend {
+            DbBackend::Postgres => {
+                "SELECT 1 FROM users WHERE id = {actor_id} AND tenant_id = {tenant_id} FOR KEY SHARE"
+            }
+            _ => "SELECT 1 FROM users WHERE id = {actor_id} AND tenant_id = {tenant_id}",
+        },
+    );
     if transaction
         .query_one_raw(Statement::from_sql_and_values(
             backend,
@@ -536,8 +544,12 @@ async fn resolve_artifact_permission_identity(
         // Definitions are immutable, but a concurrent delete must not
         // invalidate the exact parent between resolution and receipt/write.
         match backend {
-            DbBackend::Postgres => "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key} LIMIT 1 FOR KEY SHARE",
-            _ => "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key} LIMIT 1",
+            DbBackend::Postgres => {
+                "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key} LIMIT 1 FOR KEY SHARE"
+            }
+            _ => {
+                "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key} LIMIT 1"
+            }
         },
     );
     transaction

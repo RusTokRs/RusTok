@@ -512,32 +512,55 @@ mod tests {
         use crate::services::artifact_binding::require_artifact_direct_credential;
         let tenant = Uuid::new_v4();
         let actor = Uuid::new_v4();
-        let make_scope = || RbacRequestScope::new(
-            tenant, actor, vec![Permission::MODULES_MANAGE], UserRole::Admin,
-        );
+        let make_scope = || {
+            RbacRequestScope::new(
+                tenant,
+                actor,
+                vec![Permission::MODULES_MANAGE],
+                UserRole::Admin,
+            )
+        };
         assert!(require_artifact_direct_credential(tenant, actor).is_err());
         with_rbac_request_scope(Some(make_scope()), async {
             assert!(require_artifact_direct_credential(tenant, actor).is_err());
-        }).await;
-        for kind in [AuthPrincipalKind::DirectUser, AuthPrincipalKind::DelegatedUser, AuthPrincipalKind::Service] {
+        })
+        .await;
+        for kind in [
+            AuthPrincipalKind::DirectUser,
+            AuthPrincipalKind::DelegatedUser,
+            AuthPrincipalKind::Service,
+        ] {
             let mut scope = make_scope();
             let oauth = (kind != AuthPrincipalKind::DirectUser).then(|| OAuthCredentialEvidence {
-                registration_id: Uuid::new_v4(), app_id: Uuid::new_v4(),
-                client_id: Uuid::new_v4(), token_hash: "digest".into(),
-                issued_at: Utc::now(), consent_granted_at: None,
+                registration_id: Uuid::new_v4(),
+                app_id: Uuid::new_v4(),
+                client_id: Uuid::new_v4(),
+                token_hash: "digest".into(),
+                issued_at: Utc::now(),
+                consent_granted_at: None,
                 scopes: vec!["modules:manage".into()],
             });
             scope.credential = Some(RequestCredentialAuthority {
-                principal_kind: kind, session_id: if oauth.is_some() { Uuid::nil() } else { Uuid::new_v4() },
+                principal_kind: kind,
+                session_id: if oauth.is_some() {
+                    Uuid::nil()
+                } else {
+                    Uuid::new_v4()
+                },
                 expires_at: Utc::now() + chrono::Duration::minutes(5),
-                recovery_revision: 1, oauth,
+                recovery_revision: 1,
+                oauth,
             });
             with_rbac_request_scope(Some(scope), async {
-                assert_eq!(require_artifact_direct_credential(tenant, actor).is_ok(), kind == AuthPrincipalKind::DirectUser);
+                assert_eq!(
+                    require_artifact_direct_credential(tenant, actor).is_ok(),
+                    kind == AuthPrincipalKind::DirectUser
+                );
                 assert!(require_artifact_direct_credential(tenant, Uuid::new_v4()).is_err());
-                invalidate_current_rbac_request_scope( &tenant, &actor);
+                invalidate_current_rbac_request_scope(&tenant, &actor);
                 assert!(require_artifact_direct_credential(tenant, actor).is_err());
-            }).await;
+            })
+            .await;
         }
     }
 
