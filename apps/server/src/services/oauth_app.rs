@@ -796,7 +796,7 @@ impl OAuthAppService {
             rustok_auth::application_clock::decision_time(verified, clock()?)?,
         )?;
 
-        if app.requires_user_consent() {
+        let consent_id = if app.requires_user_consent() {
             let consent = OAuthConsents::find_active_consent(&tx, app_id, user.id, tenant_id)
                 .await
                 .map_err(|_| Error::InternalServerError)?;
@@ -836,7 +836,20 @@ impl OAuthAppService {
                     GrantConsentAttempt::Fatal(error) => error,
                 })?;
             }
-        }
+            // Capture the exact active identity after any confirmed re-grant.
+            // The existing app and subject locks serialize canonical writers.
+            let consent = OAuthConsents::find_active_consent(&tx, app_id, user.id, tenant_id)
+                .await
+                .map_err(|_| Error::InternalServerError)?
+                .ok_or_else(|| Error::Unauthorized("OAuth consent is no longer active".to_string()))?;
+            let granted = consent.scopes_list().map_err(|_| Error::InternalServerError)?;
+            if !scopes.iter().all(|scope| scope_matches(&granted, scope)) {
+                return Err(Error::Unauthorized("OAuth consent no longer covers requested scopes".to_string()));
+            }
+            Some(consent.id)
+        } else {
+            None
+        };
 
         // Generate a fresh code only after the caller has passed authoritative
         // checks. Hashing an opaque random code does not leak plaintext to DB.
@@ -859,6 +872,7 @@ impl OAuthAppService {
             user_id: Set(user.id),
             tenant_id: Set(tenant_id),
             code_hash: Set(code_hash),
+            consent_id: Set(consent_id),
             redirect_uri: Set(redirect_uri),
             scopes: Set(serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?),
             code_challenge: Set(code_challenge),
@@ -2410,6 +2424,7 @@ mod tests {
             user_id: Set(user_id),
             tenant_id: Set(tenant_id),
             code_hash: Set(format!("pending-{id}")),
+            consent_id: Set(None),
             redirect_uri: Set("https://partner.example.com/oauth/callback".to_string()),
             scopes: Set(serde_json::json!(["catalog:read"])),
             code_challenge: Set("challenge".to_string()),
@@ -3364,6 +3379,9 @@ mod tests {
             .expect("pending code exists");
         assert_eq!(pending.app_id, app.id);
         assert_eq!(pending.user_id, user.id);
+        let consent = OAuthConsents::find_active_consent(&db, app.id, user.id, tenant.id)
+            .await.expect("load consent").expect("active grant");
+        assert_eq!(pending.consent_id, Some(consent.id));
         assert!(pending.used_at.is_none());
 
         OAuthAppService::revoke_user_consent(&db, app.id, user.id, tenant.id)

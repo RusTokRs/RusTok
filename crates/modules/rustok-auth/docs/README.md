@@ -1257,3 +1257,14 @@ deadline validation. Authorization and deadline failures, unmapped storage
 errors, rollback failure and every commit error are not auto-replayed. No
 external effects run in the retried body. Trusted low-level calls retain
 single-attempt semantics. No client contract change; source regressions unrun.
+
+### Authorization-code consent generation
+
+Migration 000018 stores the exact consent UUID when a consent-required
+client receives an authorization code. The UUID is immutable, including
+NULL on legacy codes, and is not cleared by consent cleanup. Exchange
+checks the current generation at preflight and again under the existing
+app/subject transaction fences. No timestamp-based backfill is attempted:
+legacy unbound codes for consent-required clients must be reissued; exempt
+clients keep NULL. Token registrations still use timestamp consent binding
+until the next coordinated cutover. Source regressions unrun.

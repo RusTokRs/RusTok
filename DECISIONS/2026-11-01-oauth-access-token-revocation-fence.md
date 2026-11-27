@@ -369,3 +369,16 @@ materializes legacy NULL once, while runtime continues to clamp against the
 original creation-time cap. SQLite rejects ambiguous date comparisons.
 The UUID-based consent credential binding is still outstanding. Source
 regressions unrun.
+
+## Authorization-code consent generation (2026-11-27)
+
+Codes for consent-required clients capture the active consent UUID under the
+app/subject fences, after any confirmed grant. Both exchange preflight and
+locked exchange require the exact current UUID and retain the timestamp
+creation bound. A replacement grant with the same timestamp does not match.
+Migration 000018 adds a nullable immutable binding; existing unbound codes
+for consent-required apps fail closed rather than being assigned an inferred
+generation. Consent-exempt codes remain NULL. Token registration generation
+and transaction-bound token evidence still use their existing timestamp
+contract; this extension covers the code lifecycle only. Source regressions
+unrun. Coordinate schema upgrade and host rollout.

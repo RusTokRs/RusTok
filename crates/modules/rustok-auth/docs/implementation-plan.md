@@ -763,3 +763,10 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   ambiguous timestamp changes rather than allowing a possible extension.
   Timestamp-independent consent binding and sliding expiry remain open.
   Source regressions unrun.
+
+- Authorization-code UUID generation: migration 000018 adds a write-once
+  consent_id and the issuance/exchange path checks the exact live generation
+  before preparation and under the app/subject lock. Legacy unbound codes
+  for consent-required clients fail closed, without guessed backfill.
+  Token registrations, refresh lineage and admin evidence UUID binding
+  remain outstanding. Source regressions unrun.

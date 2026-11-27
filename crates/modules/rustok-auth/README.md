@@ -415,3 +415,14 @@ rows in the existing stable order. On a typed PostgreSQL statement conflict,
 confirmed rollback permits a bounded fresh attempt with new clock admission
 and locked credential authority. Commit failure is never auto-replayed.
 Source regressions are unrun; other admin paths are not covered by this retry.
+
+### Authorization-code consent generation
+
+Migration 000018 stores the exact consent UUID when a consent-required
+client receives an authorization code. The UUID is immutable, including
+NULL on legacy codes, and is not cleared by consent cleanup. Exchange
+checks the current generation at preflight and again under the existing
+app/subject transaction fences. No timestamp-based backfill is attempted:
+legacy unbound codes for consent-required clients must be reissued; exempt
+clients keep NULL. Token registrations still use timestamp consent binding
+until the next coordinated cutover. Source regressions unrun.

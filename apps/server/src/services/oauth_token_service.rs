@@ -559,9 +559,9 @@ async fn validate_authorization_code(
         OAuthTokenProtocolError::invalid_grant("Authorization code scopes are invalid")
     })?;
     validate_scope_subset(&app.scopes_list(), &scopes)?;
-    let (user, consent_granted_at) =
+    let (user, consent_granted_at, consent_id) =
         validate_active_subject_and_consent(db, app, tenant_id, code.user_id, &scopes).await?;
-    validate_code_consent_epoch(&code, consent_granted_at.as_ref())?;
+    validate_code_consent_epoch(&code, consent_granted_at.as_ref(), consent_id)?;
     if user.rejects_delegated_token_issued_at(code.created_at.with_timezone(&Utc)) {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Authorization code predates the current credential state",
@@ -570,13 +570,17 @@ async fn validate_authorization_code(
     Ok(code)
 }
 
-// Also fence pre-existing codes from before the re-grant invalidation fix.
-// Exact persisted timestamps are used; equality is allowed for coarse DB clocks.
+// Consent UUID is the generation authority; time is an additional bound,
+// never evidence that an unbound legacy code belongs to the current grant.
 fn validate_code_consent_epoch(
     code: &oauth_codes::Model,
     consent_granted_at: Option<&sea_orm::prelude::DateTimeWithTimeZone>,
+    consent_id: Option<Uuid>,
 ) -> Result<(), OAuthTokenProtocolError> {
-    if consent_granted_at.is_some_and(|granted_at| &code.created_at < granted_at) {
+    if code.consent_id != consent_id
+        || consent_granted_at.is_some() != consent_id.is_some()
+        || consent_granted_at.is_some_and(|granted_at| &code.created_at < granted_at)
+    {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Authorization code predates the current consent epoch",
         ));
@@ -628,7 +632,7 @@ async fn validate_refresh_token(
     })?;
     let scopes = token.scopes_list();
     validate_scope_subset(&app.scopes_list(), &scopes)?;
-    let (user, consent_granted_at) =
+    let (user, consent_granted_at, _) =
         validate_active_subject_and_consent(db, app, tenant_id, user_id, &scopes).await?;
     if user.rejects_delegated_token_issued_at(token.created_at.with_timezone(&Utc)) {
         return Err(OAuthTokenProtocolError::invalid_grant(
@@ -1156,7 +1160,7 @@ async fn validate_active_subject_and_consent(
     tenant_id: Uuid,
     user_id: Uuid,
     scopes: &[String],
-) -> Result<(users::Model, Option<sea_orm::prelude::DateTimeWithTimeZone>), OAuthTokenProtocolError>
+) -> Result<(users::Model, Option<sea_orm::prelude::DateTimeWithTimeZone>, Option<Uuid>), OAuthTokenProtocolError>
 {
     let user = Users::find_by_id(user_id)
         .filter(users::Column::TenantId.eq(tenant_id))
@@ -1169,6 +1173,7 @@ async fn validate_active_subject_and_consent(
         })?;
 
     let mut consent_granted_at = None;
+    let mut consent_id = None;
     if app.requires_user_consent() {
         let consent = OAuthConsents::find_active_consent(db, app.id, user.id, tenant_id)
             .await
@@ -1181,9 +1186,10 @@ async fn validate_active_subject_and_consent(
         })?;
         validate_scope_subset(&consent_scopes, scopes)?;
         consent_granted_at = Some(consent.granted_at);
+        consent_id = Some(consent.id);
     }
 
-    Ok((user, consent_granted_at))
+    Ok((user, consent_granted_at, consent_id))
 }
 
 async fn validate_locked_oauth_consent<C>(
@@ -1193,12 +1199,12 @@ async fn validate_locked_oauth_consent<C>(
     user_id: Uuid,
     scopes: &[String],
     expected_granted_at: Option<sea_orm::prelude::DateTimeWithTimeZone>,
-) -> Result<(), OAuthTokenProtocolError>
+) -> Result<Option<Uuid>, OAuthTokenProtocolError>
 where
     C: ConnectionTrait,
 {
     if !app.requires_user_consent() {
-        return Ok(());
+        return Ok(None);
     }
 
     let consent = OAuthConsents::find_active_consent(db, app.id, user_id, tenant_id)
@@ -1224,7 +1230,7 @@ where
         ));
     }
 
-    Ok(())
+    Ok(Some(consent.id))
 }
 
 async fn lock_active_oauth_app<C>(
@@ -1397,7 +1403,7 @@ async fn prepare_user_tokens(
     derived_refresh: Option<String>,
     clock: &OAuthClock<'_>,
 ) -> Result<PreparedOAuthTokens, OAuthTokenProtocolError> {
-    let (_user, consent_granted_at) =
+    let (_user, consent_granted_at, _) =
         validate_active_subject_and_consent(db, app, app.tenant_id, user_id, scopes).await?;
     let permissions = RbacService::get_user_permissions_authoritative(db, &app.tenant_id, &user_id)
         .await
@@ -1534,7 +1540,6 @@ async fn commit_authorization_code_exchange(
         // must not result in a persisted refresh credential.
         require_grant(&current_app, REFRESH_TOKEN_GRANT)?;
     }
-    validate_code_consent_epoch(code, prepared.consent_granted_at.as_ref())?;
     if !current_app
         .redirect_uris_list()
         .contains(&code.redirect_uri)
@@ -1555,7 +1560,7 @@ async fn commit_authorization_code_exchange(
         require_email_verification,
     )
     .await?;
-    validate_locked_oauth_consent(
+    let consent_id = validate_locked_oauth_consent(
         &tx,
         &current_app,
         code.tenant_id,
@@ -1564,6 +1569,7 @@ async fn commit_authorization_code_exchange(
         prepared.consent_granted_at.clone(),
     )
     .await?;
+    validate_code_consent_epoch(code, prepared.consent_granted_at.as_ref(), consent_id)?;
 
     let now = verify_application_clock(&tx, clock).await?;
     validate_prepared_deadlines(prepared, now, None)?;
@@ -2131,6 +2137,7 @@ mod tests {
                 user_id TEXT NOT NULL,
                 tenant_id TEXT NOT NULL,
                 code_hash TEXT NOT NULL,
+                consent_id TEXT NULL,
                 redirect_uri TEXT NOT NULL,
                 scopes TEXT NOT NULL,
                 code_challenge TEXT NOT NULL,
@@ -2159,6 +2166,7 @@ mod tests {
                 user_id: Set(Uuid::new_v4()),
                 tenant_id: Set(Uuid::new_v4()),
                 code_hash: Set(Uuid::new_v4().to_string()),
+                consent_id: Set(None),
                 redirect_uri: Set("https://example.com/callback".to_string()),
                 scopes: Set(serde_json::json!(["openid"])),
                 code_challenge: Set("challenge".to_string()),
@@ -2203,6 +2211,7 @@ mod tests {
             user_id: Uuid::new_v4(),
             tenant_id: Uuid::new_v4(),
             code_hash: "digest".to_string(),
+            consent_id: None,
             redirect_uri: "https://example.com/callback".to_string(),
             scopes: serde_json::json!(["profile"]),
             code_challenge: "challenge".to_string(),
@@ -2226,10 +2235,20 @@ mod tests {
         }
         let older = (now - chrono::Duration::seconds(1)).into();
         let newer = (now + chrono::Duration::seconds(1)).into();
-        assert!(super::validate_code_consent_epoch(&code, None).is_ok());
-        assert!(super::validate_code_consent_epoch(&code, Some(&older)).is_ok());
-        assert!(super::validate_code_consent_epoch(&code, Some(&code.created_at)).is_ok());
-        let error = super::validate_code_consent_epoch(&code, Some(&newer))
+        let id = Uuid::new_v4();
+        let replacement = Uuid::new_v4();
+        assert!(super::validate_code_consent_epoch(&code, None, None).is_ok());
+        assert!(super::validate_code_consent_epoch(&code, Some(&older), Some(id)).is_err(),
+            "legacy unbound code cannot adopt a consent");
+        let mut code = code;
+        code.consent_id = Some(id);
+        assert!(super::validate_code_consent_epoch(&code, Some(&older), Some(id)).is_ok());
+        assert!(super::validate_code_consent_epoch(&code, Some(&code.created_at), Some(id)).is_ok());
+        assert!(super::validate_code_consent_epoch(&code, Some(&code.created_at), Some(replacement)).is_err(),
+            "same-timestamp replacement is a different generation");
+        assert!(super::validate_code_consent_epoch(&code, None, None).is_err(),
+            "a bound code cannot silently become consent-exempt");
+        let error = super::validate_code_consent_epoch(&code, Some(&newer), Some(id))
             .expect_err("a stale code cannot adopt later consent");
         assert_eq!(error.error, "invalid_grant");
     }
@@ -2709,6 +2728,7 @@ mod tests {
                 user_id TEXT NOT NULL,
                 tenant_id TEXT NOT NULL,
                 code_hash TEXT NOT NULL,
+                consent_id TEXT NULL,
                 redirect_uri TEXT NOT NULL,
                 scopes TEXT NOT NULL,
                 code_challenge TEXT NOT NULL,
@@ -2754,6 +2774,7 @@ mod tests {
             user_id: Set(user_id),
             tenant_id: Set(tenant_id),
             code_hash: Set("pending-authorization-code".to_string()),
+                consent_id: Set(None),
             redirect_uri: Set("https://client.example/callback".to_string()),
             scopes: Set(serde_json::json!(["openid"])),
             code_challenge: Set("challenge".to_string()),
@@ -3659,6 +3680,7 @@ mod tests {
             user_id,
             tenant_id,
             code_hash: "code-hash".to_string(),
+            consent_id: None,
             redirect_uri: "https://client.example/callback".to_string(),
             scopes: serde_json::json!(["openid"]),
             code_challenge: "challenge".to_string(),
