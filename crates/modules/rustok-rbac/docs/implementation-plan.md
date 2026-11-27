@@ -544,3 +544,9 @@ exists.
   rollback, no-ops, exhaustion and PostgreSQL commit/role contention. Drain
   old writers. Static direct relation coupling, bulk ordering, retry and
   execution evidence remain open.
+
+- Request snapshot temporal admission: matching credential-bearing scopes
+  terminally expire on the original deadline or an unhealthy Auth local clock
+  sample, including captured artifact scopes and GraphQL root admission.
+  Source regressions authored, unrun; cross-task, cross-replica and durable
+  direct-SQL revocation remain open.

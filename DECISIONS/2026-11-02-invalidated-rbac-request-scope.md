@@ -60,6 +60,17 @@ The server must not reinterpret an invalid matching snapshot as absence of a
 scope and use unscoped persisted grants, return its stale role, or turn the
 unavailable condition into a successful authorization decision.
 
+## Authenticated credential deadline extension (2026-11-27)
+
+A credential-bearing scope also becomes terminally invalid when its original
+exclusive deadline is reached or the shared Auth application clock cannot
+produce a healthy local observation. Permission, role and credential accessors,
+matching-scope fallback guards, GraphQL root admission and captured artifact
+scopes share that check. The grant-only trusted internal constructor retains
+its existing contract. This is a process-local time check, not durable clock
+corroboration or a new session/grant revocation fence. Source regressions are
+unrun.
+
 ## Non-goals
 
 This change does not create an atomic revocation fence, ensure immediate

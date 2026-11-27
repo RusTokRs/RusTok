@@ -136,8 +136,25 @@ impl RbacRequestScopeState {
         }
     }
 
+    fn is_valid(&self) -> bool {
+        if !self.valid.load(Ordering::Acquire) {
+            return false;
+        }
+        if let Some(credential) = &self.scope.credential {
+            // Expiry and clock failure are terminal for this snapshot,
+            // including all captured clones.
+            if !rustok_auth::application_clock::local_now()
+                .is_ok_and(|now| now < credential.expires_at)
+            {
+                self.valid.store(false, Ordering::Release);
+                return false;
+            }
+        }
+        self.valid.load(Ordering::Acquire)
+    }
+
     fn matches_valid(&self, tenant_id: &Uuid, actor_id: &Uuid) -> bool {
-        self.valid.load(Ordering::Acquire) && self.scope.matches(tenant_id, actor_id)
+        self.scope.matches(tenant_id, actor_id) && self.is_valid()
     }
 }
 
@@ -181,11 +198,7 @@ impl CapturedArtifactRequestScope {
     }
 
     pub(crate) fn is_valid(&self) -> bool {
-        // A captured credential must share the Auth process clock fence as
-        // well as request invalidation; raw wall-clock checks alone could
-        // release output after a latched clock discontinuity.
-        self.0.valid.load(Ordering::Acquire)
-            && rustok_auth::application_clock::check_local().is_ok()
+        self.0.is_valid()
     }
 
     pub(crate) fn expires_at(&self) -> DateTime<Utc> {
@@ -289,7 +302,7 @@ pub fn role_for(tenant_id: &Uuid, actor_id: &Uuid) -> Option<UserRole> {
         .flatten()
 }
 
-/// Reject unscoped fallback for an invalidated matching request snapshot.
+/// Reject unscoped fallback for an invalidated or expired matching request snapshot.
 ///
 /// Absence of a scope, or a scope for a different tenant/actor, retains the
 /// existing persisted-grant behavior. This is task-local and is not a fence for
@@ -301,7 +314,7 @@ pub(crate) fn ensure_scope_not_invalidated(
     let invalidated = CURRENT_RBAC_SCOPE
         .try_with(|state| {
             state.as_ref().is_some_and(|state| {
-                state.scope.matches(tenant_id, actor_id) && !state.valid.load(Ordering::Acquire)
+                state.scope.matches(tenant_id, actor_id) && !state.is_valid()
             })
         })
         .unwrap_or(false);
@@ -474,7 +487,7 @@ mod tests {
         let credential = RequestCredentialAuthority {
             principal_kind: AuthPrincipalKind::DirectUser,
             session_id: Uuid::new_v4(),
-            expires_at: Utc::now(),
+            expires_at: Utc::now() + chrono::Duration::minutes(5),
             recovery_revision: 7,
             oauth: None,
         };
@@ -488,6 +501,67 @@ mod tests {
         })
         .await;
         assert_eq!(credential_for(&tenant, &actor), None);
+    }
+
+    #[tokio::test]
+    async fn expired_authenticated_scope_rejects_matching_lookups_without_fallback() {
+        for kind in [
+            AuthPrincipalKind::DirectUser,
+            AuthPrincipalKind::DelegatedUser,
+            AuthPrincipalKind::Service,
+        ] {
+            let tenant = Uuid::new_v4();
+            let actor = Uuid::new_v4();
+            let mut scope = RbacRequestScope::new(
+                tenant,
+                actor,
+                vec![Permission::USERS_MANAGE],
+                UserRole::Admin,
+            );
+            scope.credential = Some(RequestCredentialAuthority {
+                principal_kind: kind,
+                session_id: Uuid::new_v4(),
+                expires_at: Utc::now() - chrono::Duration::seconds(1),
+                recovery_revision: 1,
+                oauth: (kind != AuthPrincipalKind::DirectUser).then(|| OAuthCredentialEvidence {
+                    registration_id: Uuid::new_v4(),
+                    app_id: Uuid::new_v4(),
+                    client_id: Uuid::new_v4(),
+                    token_hash: "digest".into(),
+                    issued_at: Utc::now() - chrono::Duration::minutes(1),
+                    consent_granted_at: None,
+                    scopes: vec!["users:manage".into()],
+                }),
+            });
+            with_rbac_request_scope(Some(scope), async {
+                assert!(permissions_for(&tenant, &actor).is_none());
+                assert!(role_for(&tenant, &actor).is_none());
+                assert!(credential_for(&tenant, &actor).is_none());
+                assert!(bind_admin_context(tenant, actor, kind, None).is_err());
+                assert!(CapturedArtifactRequestScope::capture(tenant, actor).is_none());
+                assert!(matches!(
+                    ensure_scope_not_invalidated(&tenant, &actor),
+                    Err(crate::error::Error::Cache(_))
+                ));
+                assert!(ensure_scope_not_invalidated(&tenant, &Uuid::new_v4()).is_ok());
+                assert!(ensure_scope_not_invalidated(&Uuid::new_v4(), &actor).is_ok());
+                let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+                use crate::services::rbac_service::RbacService;
+                assert!(matches!(
+                    RbacService::has_permission(&db, &tenant, &actor, &Permission::USERS_READ).await,
+                    Err(crate::error::Error::Cache(_))
+                ));
+                assert!(matches!(
+                    RbacService::get_user_permissions(&db, &tenant, &actor).await,
+                    Err(crate::error::Error::Cache(_))
+                ));
+                assert!(matches!(
+                    RbacService::get_user_role(&db, &tenant, &actor).await,
+                    Err(crate::error::Error::Cache(_))
+                ));
+            })
+            .await;
+        }
     }
 
     #[tokio::test]

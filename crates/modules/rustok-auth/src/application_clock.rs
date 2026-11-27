@@ -543,13 +543,19 @@ pub fn decision_time(verified: DateTime<Utc>, live: DateTime<Utc>) -> Result<Dat
     Ok(verified)
 }
 
+/// Observe the current host UTC time through the shared process clock latch.
+/// This is a local credential deadline check, not durable DB corroboration.
+pub fn local_now() -> Result<DateTime<Utc>, DbErr> {
+    application_clock()
+        .credential_sample(ClockSample::now)
+        .and_then(ClockSample::utc)
+        .ok_or_else(clock_unavailable)
+}
+
 /// Recheck the local latch after a commit or an asynchronous operation without
 /// adding another fallible DB round trip after a one-shot credential commits.
 pub fn check_local() -> Result<(), DbErr> {
-    application_clock()
-        .credential_sample(ClockSample::now)
-        .map(|_| ())
-        .ok_or_else(clock_unavailable)
+    local_now().map(|_| ())
 }
 
 #[cfg(test)]

@@ -87,7 +87,9 @@ regression evidence is authored but unrun.
   contract. Single, any, and all permission decisions use the same tenant policy
   engine; the server never decides permission membership independently. Snapshot
   use preserves the request permission ceiling and does not prove current grants
-  or an atomic revocation fence;
+  or an atomic revocation fence. Credential-bearing snapshots fail closed at
+  their exclusive deadline or a fault of the shared Auth local clock; matching
+  invalid scopes never fall back to persisted grants;
 - `RbacRoleAssignmentDbWriter::remove_tenant_role_assignments_on` validates
   persisted subject tenancy and owns membership deletion inside the host transaction;
 - `plan_persisted_user_role_mutation_on` reads and locks current target authority,

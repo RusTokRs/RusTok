@@ -398,7 +398,9 @@ A valid request snapshot preserves its permission ceiling, and persisted role-us
 membership queries delegate to `load_role_user_ids_on`. Request-scope fast paths
 also evaluate membership in `RbacService`. After invalidation of a matching
 snapshot, its scope-aware permission and role fallbacks now report unavailable
-authority instead of using unscoped grants; retry needs a freshly authenticated
+authority instead of using unscoped grants. Credential-bearing scopes also
+expire terminally at their exclusive deadline or a failed Auth local clock
+observation. This is not durable reauthorization; retry needs a freshly authenticated
 scope, and a mutation may already have committed. The GraphQL schema also checks
 the matching task-local scope before starting a normal root resolver; nested
 fields of an already admitted root are not rechecked. GraphQL role-grant

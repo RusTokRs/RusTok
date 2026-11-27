@@ -742,6 +742,8 @@ rather than extends them. Publication after commit rechecks the local latch
 without another potentially failing DB round trip. Explicit revocations do not
 require this clock check.
 
+`application_clock::local_now` exposes a guarded host UTC sample for local
+credential deadline decisions; it does not perform durable DB corroboration.
 The application clock latch is shared with retention within one process,
 assuming a single trusted application primary; it is independent of the
 JWT authority latch. Slow/inconclusive DB observations deny the operation
