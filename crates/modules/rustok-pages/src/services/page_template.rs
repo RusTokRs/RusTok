@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::entities::{page, page_template, site_symbol};
+use crate::entities::{page, page_template};
 use crate::error::{PagesError, PagesResult};
 
 pub const MAX_TEMPLATE_SECTIONS: usize = 16;
@@ -211,15 +211,16 @@ impl PageTemplateService {
         let tx = self.db.begin().await?;
         // Symbol deletion and template insertion cannot race on Postgres.
         crate::services::page::lock_site_symbol_catalog_in_tx(&tx, tenant_id, &locale).await?;
-        let present = site_symbol::Entity::find()
-            .filter(site_symbol::Column::TenantId.eq(tenant_id))
-            .filter(site_symbol::Column::Locale.eq(&locale))
-            .filter(site_symbol::Column::SymbolId.is_in(ids.iter().cloned()))
-            .all(&tx)
-            .await?
-            .into_iter()
-            .map(|row| row.symbol_id)
-            .collect::<BTreeSet<_>>();
+        let stored_symbols =
+            crate::services::page::load_site_symbols_for_locale(&tx, tenant_id, &locale).await?;
+        let present = stored_symbols
+            .iter()
+            .map(|content| {
+                fly::SymbolDescriptor::from_value(content)
+                    .map(|descriptor| descriptor.id)
+                    .ok_or_else(|| PagesError::validation("Stored site symbol is malformed"))
+            })
+            .collect::<PagesResult<BTreeSet<_>>>()?;
         if ids != present {
             tx.rollback().await?;
             return Err(PagesError::validation(
