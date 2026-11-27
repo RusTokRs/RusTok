@@ -496,5 +496,7 @@ mod tests {
         assert!(matches!(conflict, Error::Http(ref e) if e.status == StatusCode::CONFLICT));
         let busy = super::map_assignment_error(ArtifactPermissionAssignmentError::OperationBusy);
         assert!(matches!(busy, Error::Http(ref e) if e.status == StatusCode::CONFLICT));
+        let retired = super::map_assignment_error(ArtifactPermissionAssignmentError::OperationRetired);
+        assert!(matches!(retired, Error::Http(ref e) if e.status == StatusCode::CONFLICT));
     }
 }

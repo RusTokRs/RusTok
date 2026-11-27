@@ -742,3 +742,7 @@ This does not couple direct tenant_modules edits to the cursor or prove that
 a manually supplied successor digest describes the current policy; the
 existing content observation remains necessary. Privileged DDL, restores
 and pre-cutover lost history are not covered. Source regressions unrun.
+
+  PostgreSQL source regression now checks the raw receipt INSERT/DELETE key
+  fence, cleanup, witness immutability/TRUNCATE and rollback reuse; owner
+  witness reads acquire a nonwaiting relation fence. Unrun.

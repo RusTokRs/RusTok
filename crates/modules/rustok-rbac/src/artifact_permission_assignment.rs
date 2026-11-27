@@ -429,6 +429,13 @@ async fn operation_key_consumed(
     command: &ArtifactRolePermissionAssignmentCommand,
 ) -> Result<bool, ArtifactPermissionAssignmentError> {
     let backend = tx.get_database_backend();
+    if backend == DbBackend::Postgres {
+        // This lookup happens after role/definition/key admission. Refuse
+        // maintenance DDL instead of waiting on a new late relation lock.
+        tx.execute_unprepared(
+            "LOCK TABLE rbac_artifact_operation_witnesses IN ACCESS SHARE MODE NOWAIT",
+        ).await.map_err(database_error)?;
+    }
     let tenant: sea_orm::Value = match backend {
         DbBackend::Postgres => command.tenant_id.into(),
         _ => command.tenant_id.simple().to_string().into(),

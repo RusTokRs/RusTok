@@ -162,6 +162,89 @@ mod tests {
     const T: &str = "10000000-0000-0000-0000-000000000001";
 
     #[tokio::test]
+    #[ignore = "requires RUSTOK_RBAC_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_receipt_cleanup_and_direct_writers_share_permanent_key_fence() {
+        use sea_orm_migration::sea_orm::{DatabaseConnection, DatabaseTransaction, IsolationLevel};
+        use std::time::Duration;
+        use uuid::Uuid;
+
+        async fn tx(db: &DatabaseConnection, schema: &str) -> DatabaseTransaction {
+            let tx = db.begin_with_config(Some(IsolationLevel::ReadCommitted), None).await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+            tx
+        }
+        let db = Database::connect(std::env::var("RUSTOK_RBAC_TEST_DATABASE_URL").unwrap()).await.unwrap();
+        assert_eq!(db.get_database_backend(), DatabaseBackend::Postgres);
+        let schema = format!("rbac_receipt_witness_{}", Uuid::new_v4().simple());
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
+        let setup = tx(&db, &schema).await;
+        setup.execute_unprepared(&format!(
+            "CREATE TABLE rbac_artifact_role_permission_operations (
+                id UUID PRIMARY KEY, tenant_id UUID NOT NULL, idempotency_key TEXT NOT NULL,
+                UNIQUE (tenant_id, idempotency_key));
+             INSERT INTO rbac_artifact_role_permission_operations VALUES ('{}', '{T}', 'used')",
+            Uuid::new_v4(),
+        )).await.unwrap();
+        Migration.up(&SchemaManager::new(&setup)).await.unwrap();
+        setup.commit().await.unwrap();
+
+        let holder = tx(&db, &schema).await;
+        holder.execute_unprepared(&format!(
+            "SELECT rbac_try_artifact_operation_key('{T}', 'used')"
+        )).await.unwrap();
+        let contender = tx(&db, &schema).await;
+        let error = tokio::time::timeout(Duration::from_secs(3),
+            contender.execute_unprepared("DELETE FROM rbac_artifact_role_permission_operations WHERE idempotency_key = 'used'"))
+            .await.expect("receipt cleanup must not wait on a held key").unwrap_err();
+        assert_eq!(
+            rustok_core::resilience::retry::PostgresTransactionConflict::classify(DatabaseBackend::Postgres, &error),
+            Some(rustok_core::resilience::retry::PostgresTransactionConflict::LockUnavailable),
+        );
+        contender.rollback().await.unwrap();
+        holder.rollback().await.unwrap();
+
+        let cleanup = tx(&db, &schema).await;
+        cleanup.execute_unprepared("DELETE FROM rbac_artifact_role_permission_operations").await.unwrap();
+        cleanup.commit().await.unwrap();
+        for sql in [
+            format!("INSERT INTO rbac_artifact_role_permission_operations VALUES ('{}', '{T}', 'used') ON CONFLICT DO NOTHING", Uuid::new_v4()),
+            "DELETE FROM rbac_artifact_operation_witnesses".into(),
+            "UPDATE rbac_artifact_operation_witnesses SET idempotency_key = 'other'".into(),
+            "TRUNCATE rbac_artifact_operation_witnesses".into(),
+            "TRUNCATE rbac_artifact_role_permission_operations".into(),
+        ] {
+            let rejected = tx(&db, &schema).await;
+            assert!(rejected.execute_unprepared(&sql).await.is_err(), "{sql}");
+            rejected.rollback().await.unwrap();
+        }
+
+        let holder = tx(&db, &schema).await;
+        holder.execute_unprepared(&format!(
+            "SELECT rbac_try_artifact_operation_key('{T}', 'fresh')"
+        )).await.unwrap();
+        let contender = tx(&db, &schema).await;
+        let insert = format!(
+            "INSERT INTO rbac_artifact_role_permission_operations VALUES ('{}', '{T}', 'fresh')",
+            Uuid::new_v4(),
+        );
+        let error = tokio::time::timeout(Duration::from_secs(3), contender.execute_unprepared(&insert))
+            .await.expect("raw insertion must not wait on a held key").unwrap_err();
+        assert_eq!(
+            rustok_core::resilience::retry::PostgresTransactionConflict::classify(DatabaseBackend::Postgres, &error),
+            Some(rustok_core::resilience::retry::PostgresTransactionConflict::LockUnavailable),
+        );
+        contender.rollback().await.unwrap();
+        holder.rollback().await.unwrap();
+        let rolled_back = tx(&db, &schema).await;
+        rolled_back.execute_unprepared(&insert).await.unwrap();
+        rolled_back.rollback().await.unwrap();
+        let fresh = tx(&db, &schema).await;
+        fresh.execute_unprepared(&insert).await.unwrap();
+        fresh.commit().await.unwrap();
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+    }
+
+    #[tokio::test]
     async fn sqlite_claim_survives_cleanup_and_rejects_replace_and_uuid_alias() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         db.execute_unprepared(&format!(
