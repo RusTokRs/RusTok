@@ -700,3 +700,11 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   unrelated credentials. Existing orphan/cross-tenant rows block cutover;
   no automatic cleanup. Source tests authored, unrun. PostgreSQL existing
   composite FK is unchanged.
+
+- Session/retention lock closure: exact session identity under the user fence
+  for refresh/logout; platform migration 000010 for nonblocking session/history
+  parent admission; PostgreSQL retention locks candidate apps before children,
+  then exact roots/members and eligible code rows. Busy candidates abort the
+  whole transaction; fixed conservative cutoff and SQLite behavior preserved.
+  Source regressions unrun. Full session history immutability, tenant/user
+  identity parity, bulk revocation and cross-owner/outbox ordering remain open.

@@ -360,3 +360,8 @@ Migration 000008 closes the SQLite token/user deletion parity gap: physical
 user deletion removes delegated descendants before roots, preserving service
 and other-user credentials. Existing orphan/cross-tenant lineage blocks
 migration for explicit reconciliation. Source tests unrun.
+
+PostgreSQL retention uses ordered nonblocking candidate locks and app-first
+OAuth family deletion with fresh whole-family expiry checks. Contention rolls
+back the complete sweep; the next attempt starts a new transaction. SQLite
+retains serialized writes. Source regressions are unrun.

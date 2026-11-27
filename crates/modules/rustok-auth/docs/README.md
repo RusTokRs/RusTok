@@ -1173,3 +1173,15 @@ row cannot wait on a history writer that needs that same session. The existing
 cascade remains authoritative; this does not enforce history immutability or
 add a composite session tenant/user FK. SQLite is unchanged. Source regression
 covers contention and owner cascade; runtime verification remains open.
+
+PostgreSQL retention now acquires candidate OAuth applications in UUID order
+with FOR UPDATE NOWAIT before any child deletion, scopes the sweep to those
+apps, locks the family root and all members, and rechecks the entire expiry
+horizon before deleting descendants then roots. Code replay evidence remains
+until no token references it. Session/invite/recovery and code candidates
+use ordered nonblocking row locks. A busy candidate aborts the entire sweep;
+retry later from a fresh transaction. SQLite retains its serialized writer.
+Clock cutoffs, final corroboration and all-or-nothing semantics are unchanged.
+The source regression exercises app/session/member/code contention and rollback,
+plus retained lineage and retry; execution, large sweeps and external DDL/direct
+SQL are not certified.

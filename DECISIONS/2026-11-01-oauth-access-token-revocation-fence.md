@@ -283,3 +283,14 @@ users and NULL-subject service credentials. PostgreSQL retains the composite
 user FK cascade. Reject existing orphan/cross-tenant lineage at migration;
 operator reconciliation is required instead of silently removing history.
 SQLite downgrade is denied. Source regression tests remain unrun.
+
+PostgreSQL retention obtains UUID-ordered candidate app locks before deleting
+any artifacts and restricts OAuth deletion to these apps. For a candidate
+family lock its root and every member nonblockingly, then recheck the full
+expiry horizon under Read Committed before deleting descendants and root.
+Delete old authorization codes only when no token references them and while
+retaining the app fence. Contention aborts the complete sweep rather than
+waiting for an earlier owner; retry in a fresh transaction. SQLite retains
+serialized deletion. No retention duration or clock contract changes.
+PostgreSQL regression is authored, unrun; arbitrary direct SQL, DDL, large
+sweep throughput and all cross-owner bulk revocations remain unverified.
