@@ -4717,6 +4717,53 @@ impl SeaOrmArtifactInstallationStore {
     /// All slugs are deduplicated and queried in chunks under one RLS-scoped
     /// transaction; results retain the requested release order. The transaction
     /// does not promise a repeatable-read snapshot across chunks.
+    /// Loads the complete bounded serving selection using the same owner
+    /// eligibility, scope precedence and immutable row validation as dispatch.
+    /// A corrupt or ambiguous winner fails closed; never expose a partial catalog.
+    pub(crate) async fn list_active_for_tenant(
+        &self,
+        tenant_id: Uuid,
+    ) -> Result<Vec<InstalledModuleArtifact>, ArtifactInstallationResolveError> {
+        if tenant_id.is_nil() {
+            return Err(ArtifactInstallationResolveError::InvalidRequest(
+                "artifact installation resolution requires a non-nil tenant".to_string(),
+            ));
+        }
+        let tx = self.db.begin().await
+            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
+        configure_rls_scope(&tx, &ModuleInstallationScope::Tenant { tenant_id }).await
+            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
+        let backend = SupportedBackend::new(tx.get_database_backend())
+            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
+        let rows = load_active_candidate_rows(&tx, tenant_id, None).await?;
+        let selection = crate::installation_selection::select_projection_rows(rows)
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
+        if selection.ambiguous_count != 0 || selection.rows.len() > 1000 {
+            return Err(ArtifactInstallationResolveError::Invariant(
+                "ambiguous or oversized active artifact catalog".to_string(),
+            ));
+        }
+        let mut artifacts = Vec::with_capacity(selection.rows.len());
+        for row in selection.rows {
+            let field = |name: &str| row.try_get::<String>("", name)
+                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()));
+            let release = ArtifactReleaseRef {
+                slug: field("slug")?,
+                version: field("version")?,
+                digest: field("payload_digest")?,
+            };
+            if field("admission_payload_digest")? != release.digest {
+                return Err(ArtifactInstallationResolveError::Invariant(
+                    "selected artifact admission payload does not match the installation".to_string(),
+                ));
+            }
+            artifacts.push(decode_installed_artifact_row(&row, backend, &release)?);
+        }
+        tx.commit().await
+            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
+        Ok(artifacts)
+    }
+
     pub(crate) async fn resolve_active_many(
         &self,
         releases: &[ArtifactReleaseRef],
@@ -5027,69 +5074,13 @@ pub(crate) async fn resolve_active_many_in_transaction(
     }
     let backend = SupportedBackend::new(transaction.get_database_backend())
         .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
-    let enabled = match backend {
-        SupportedBackend::Postgres => "COALESCE(tenant_lifecycle.enabled, TRUE) = TRUE",
-        SupportedBackend::Sqlite => "COALESCE(tenant_lifecycle.enabled, 1) = 1",
-    };
     let slugs = releases
         .iter()
         .map(|release| release.slug.as_str())
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
-    let mut rows = Vec::new();
-    for chunk in slugs.chunks(100) {
-        let mut values = vec![backend.uuid_value(tenant_id)];
-        let mut placeholders = Vec::with_capacity(chunk.len());
-        for (index, slug) in chunk.iter().enumerate() {
-            placeholders.push(backend.placeholder(index + 2));
-            values.push((*slug).to_string().into());
-        }
-        let slug_placeholders = placeholders.join(", ");
-        // At most two rows per slug and scope are needed to detect an
-        // ambiguous winner, even if durable state contains many duplicates.
-        let chunk_rows = transaction
-            .query_all_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                format!(
-                    "SELECT * FROM (\
-                     SELECT installation.installation_id, installation.data_owner_id, \
-                     installation.namespace_instance_id, installation.secret_instance_id, \
-                     installation.settings_instance_id, installation.scope_kind, installation.tenant_id, \
-                     installation.registry, installation.repository, installation.manifest_digest, \
-                     installation.slug, installation.version, installation.payload_digest, \
-                     admission.media_type AS payload_media_type, \
-                     admission.payload_digest AS admission_payload_digest, \
-                     CAST(installation.descriptor AS TEXT) AS descriptor, \
-                     installation.dependency_graph_revision, installation.dependency_graph_digest, \
-                     CAST(installation.dependency_lock AS TEXT) AS dependency_lock, \
-                     installation.capability_grant_revision, installation.installed_at, \
-                     ROW_NUMBER() OVER (PARTITION BY installation.slug, installation.scope_kind \
-                                        ORDER BY installation.installation_id) AS selection_rank \
-                     FROM module_artifact_installations installation \
-                     JOIN module_artifact_admissions admission \
-                       ON admission.installation_id = installation.installation_id \
-                     LEFT JOIN module_artifact_tenant_lifecycle tenant_lifecycle \
-                       ON tenant_lifecycle.installation_id = installation.installation_id \
-                      AND tenant_lifecycle.tenant_id = {tenant} \
-                     WHERE installation.slug IN ({slug_placeholders}) \
-                       AND admission.status = 'active' \
-                       AND NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall \
-                                       WHERE uninstall.installation_id = installation.installation_id) \
-                       AND {enabled} \
-                       AND ((installation.scope_kind = 'tenant' AND installation.tenant_id = {tenant}) \
-                            OR (installation.scope_kind = 'platform' \
-                                AND installation.tenant_id IS NULL)) \
-                     ) candidates WHERE selection_rank <= 2 \
-                     ORDER BY slug, CASE WHEN scope_kind = 'tenant' THEN 0 ELSE 1 END, installation_id",
-                    tenant = backend.placeholder(1),
-                ),
-                values,
-            ))
-            .await
-            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
-        rows.extend(chunk_rows);
-    }
+    let rows = load_active_candidate_rows(transaction, tenant_id, Some(&slugs)).await?;
     // Select before comparing release identity or decoding the descriptor.
     // Both projections use the same precedence/ambiguity algorithm.
     let mut selection = crate::installation_selection::EffectiveInstallationSelection::new();
@@ -5145,6 +5136,89 @@ pub(crate) async fn resolve_active_many_in_transaction(
         results.push(result);
     }
     Ok(results)
+}
+
+/// Shared active-candidate query for exact resolution and whole-catalog policy.
+async fn load_active_candidate_rows(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    slugs: Option<&[&str]>,
+) -> Result<Vec<sea_orm::QueryResult>, ArtifactInstallationResolveError> {
+    let backend = SupportedBackend::new(transaction.get_database_backend())
+        .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
+    let enabled = match backend {
+        SupportedBackend::Postgres => "COALESCE(tenant_lifecycle.enabled, TRUE) = TRUE",
+        SupportedBackend::Sqlite => "COALESCE(tenant_lifecycle.enabled, 1) = 1",
+    };
+    let mut rows = Vec::new();
+    let chunks: Vec<&[&str]> = match slugs {
+        Some(slugs) => slugs.chunks(100).collect(),
+        None => vec![&[]],
+    };
+    for chunk in chunks {
+        let mut values = vec![backend.uuid_value(tenant_id)];
+        let mut placeholders = Vec::with_capacity(chunk.len());
+        for (index, slug) in chunk.iter().enumerate() {
+            placeholders.push(backend.placeholder(index + 2));
+            values.push((*slug).to_string().into());
+        }
+        let slug_filter = if chunk.is_empty() {
+            String::new()
+        } else {
+            format!("installation.slug IN ({}) AND ", placeholders.join(", "))
+        };
+        // A full catalog has at most two candidates per scope and slug.
+        // Read one extra row and reject rather than silently truncate.
+        let catalog_limit = if slugs.is_none() { " LIMIT 4001" } else { "" };
+        // At most two rows per slug and scope are needed to detect an
+        // ambiguous winner, even if durable state contains many duplicates.
+        let chunk_rows = transaction
+            .query_all_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "SELECT * FROM (\
+                     SELECT installation.installation_id, installation.data_owner_id, \
+                     installation.namespace_instance_id, installation.secret_instance_id, \
+                     installation.settings_instance_id, installation.scope_kind, installation.tenant_id, \
+                     installation.registry, installation.repository, installation.manifest_digest, \
+                     installation.slug, installation.version, installation.payload_digest, \
+                     admission.media_type AS payload_media_type, \
+                     admission.payload_digest AS admission_payload_digest, \
+                     CAST(installation.descriptor AS TEXT) AS descriptor, \
+                     installation.dependency_graph_revision, installation.dependency_graph_digest, \
+                     CAST(installation.dependency_lock AS TEXT) AS dependency_lock, \
+                     installation.capability_grant_revision, installation.installed_at, \
+                     ROW_NUMBER() OVER (PARTITION BY installation.slug, installation.scope_kind \
+                                        ORDER BY installation.installation_id) AS selection_rank \
+                     FROM module_artifact_installations installation \
+                     JOIN module_artifact_admissions admission \
+                       ON admission.installation_id = installation.installation_id \
+                     LEFT JOIN module_artifact_tenant_lifecycle tenant_lifecycle \
+                       ON tenant_lifecycle.installation_id = installation.installation_id \
+                      AND tenant_lifecycle.tenant_id = {tenant} \
+                     WHERE {slug_filter}admission.status = 'active' \
+                       AND NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall \
+                                       WHERE uninstall.installation_id = installation.installation_id) \
+                       AND {enabled} \
+                       AND ((installation.scope_kind = 'tenant' AND installation.tenant_id = {tenant}) \
+                            OR (installation.scope_kind = 'platform' \
+                                AND installation.tenant_id IS NULL)) \
+                     ) candidates WHERE selection_rank <= 2 \
+                     ORDER BY slug, CASE WHEN scope_kind = 'tenant' THEN 0 ELSE 1 END, installation_id{catalog_limit}",
+                    tenant = backend.placeholder(1),
+                ),
+                values,
+            ))
+            .await
+            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
+        rows.extend(chunk_rows);
+    }
+    if slugs.is_none() && rows.len() > 4000 {
+        return Err(ArtifactInstallationResolveError::Invariant(
+            "active artifact catalog exceeds the supported bound".to_string(),
+        ));
+    }
+    Ok(rows)
 }
 
 /// Decodes and validates descriptor, media type, dependency lock and persisted identity.
@@ -12378,6 +12452,9 @@ mod tests {
             .await
             .expect("tenant resolution");
         assert_eq!(selected.installation_id, tenant.installation_id);
+        let catalog = store.list_active_for_tenant(tenant_id).await.unwrap();
+        assert_eq!(catalog.len(), 1);
+        assert_eq!(catalog[0].installation_id, tenant.installation_id);
         assert_eq!(
             selected.scope,
             ModuleInstallationScope::Tenant { tenant_id }
@@ -12402,6 +12479,9 @@ mod tests {
             .await
             .expect("platform fallback");
         assert_eq!(selected.installation_id, platform.installation_id);
+        let catalog = store.list_active_for_tenant(tenant_id).await.unwrap();
+        assert_eq!(catalog.len(), 1);
+        assert_eq!(catalog[0].installation_id, platform.installation_id);
         assert!(
             crate::ArtifactSandboxPolicyResolver::resolve(&policies, &selected, tenant_id)
                 .await
@@ -12423,5 +12503,6 @@ mod tests {
                 .await
                 .is_err()
         );
+        assert!(store.list_active_for_tenant(tenant_id).await.unwrap().is_empty());
     }
 }

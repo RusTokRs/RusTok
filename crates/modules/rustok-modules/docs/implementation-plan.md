@@ -3496,3 +3496,20 @@ durable source projection, retains original identity and awaits queue insertion 
 Root payload representation and queue ownership remain unchanged. Two scoped definitions are
 **uncompiled/unrun**. Remaining: compile, actual backend exact/wildcard admission/dedupe,
 worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#sealed-artifact-subscription-intake-2026-11-01-source-only).
+
+## Mixed artifact serving policy — 2026-11-27
+
+- Source-wired bounded active installation catalog under tenant RLS using the
+  exact dispatch candidate query and common scope selection. Ambiguous or
+  invalid selections and native slug collisions fail closed.
+- Shared owner capability, security and dependency evidence for lifecycle and
+  mixed serving policy; active tenant-enabled installations supply activation
+  intent and explicit tenant overrides still deny. Static authorization remains
+  independent of sandbox availability.
+- HTTP/GraphQL UI, audit, replay and sandbox runtime share an uncached resolver
+  using actual configured payload support plus exact observed node readiness.
+  Reject effective-policy admissions after a policy revision change.
+- Owner selection regression extended; compilation and all tests unrun.
+  Reconciliation producer revision parity, request-specific channel/maintenance
+  inputs, dependency/node liveness coverage and post-admission races remain
+  open. No readiness promotion or atomic sandbox guarantee is claimed.
