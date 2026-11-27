@@ -2834,7 +2834,12 @@ mod tests {
 
         let prepared = PreparedOAuthTokens {
             access_token: "not-published".to_string(),
-            access_model: oauth_tokens::ActiveModel::default(),
+            access_model: make_token(
+                Uuid::new_v4(),
+                replayed_snapshot.id,
+                replayed_family,
+                "access",
+            ),
             refresh_token: None,
             refresh_model: None,
             consent_granted_at: None,
@@ -2960,7 +2965,7 @@ mod tests {
 
         let prepared = PreparedOAuthTokens {
             access_token: "not-published".to_string(),
-            access_model: oauth_tokens::ActiveModel::default(),
+            access_model: make_token(Uuid::new_v4(), "prepared-access", None, None),
             refresh_token: None,
             refresh_model: None,
             consent_granted_at: None,
@@ -4169,7 +4174,7 @@ mod tests {
         let user_id = Uuid::new_v4();
         let mut tenant = tenants::ActiveModel::new("Code replay tenant", "code-replay-tenant");
         tenant.id = Set(tenant_id);
-        tenant.insert(&db).await.expect("insert tenant");
+        let tenant = tenant.insert(&db).await.expect("insert tenant");
         let mut client = app(
             serde_json::json!(["openid"]),
             serde_json::json!(["authorization_code", "refresh_token"]),
