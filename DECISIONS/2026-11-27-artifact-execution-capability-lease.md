@@ -53,9 +53,15 @@ root release's clear security revision and checks it for every host capability.
 SQL effects and security writers share the platform slug fence, including
 the implicit clear state. Quarantine/clear does not revive older leases.
 Lifecycle admission remains distinct from serving mutations but cannot bypass
-release security. Full effective-policy revision, dependency closure/security,
-registry mutation fencing and deployment readiness remain open; PostgreSQL
-cross-owner lock-order and runtime evidence remain required.
+release security. Ordinary serving leases also bind the exact artifact dependency/co-requisite
+closure validated by readiness. SQL admission locks all artifact slug
+fences in ascending slug order (platform then tenant per slug) before
+reselecting and verifying the complete artifact set, its durable policies
+and clear security revisions. Non-SQL preflight compares fresh closure
+evidence without holding effect locks. Owner lifecycle remains root-only.
+Static dependency lifecycle/composition, registry mutation fencing, full
+effective-policy revision, installation ABA and deployment readiness remain
+open; PostgreSQL cross-owner lock-order and runtime evidence remain required.
 
 ## Context, events and migration
 

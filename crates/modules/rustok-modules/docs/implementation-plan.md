@@ -3585,3 +3585,12 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   and opt-in PostgreSQL first-quarantine lock-wait regressions are authored,
   not run. Registry writers, dependency security and global ordering remain
   outstanding. Coordinate upgrade of security writers and effect consumers.
+
+- Source-wired serving artifact dependency/co-requisite closure capture from the
+  existing node readiness traversal. SQL effects acquire all artifact slug
+  locks before root locks and compare exact active identities, durable policy
+  availability and clear security revisions. Ordinary capability preflight
+  compares the same complete artifact closure. Lifecycle retains root-only
+  owner admission. Static lifecycle/composition, registry mutation, readiness,
+  installation ABA and cross-owner ordering remain open. Source regressions
+  authored; compilation and concurrent database verification remain pending.

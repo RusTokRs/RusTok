@@ -12103,6 +12103,164 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn serving_closure_fences_corequisite_security_and_selection() {
+        use crate::policy::{
+            ModuleEffectivePolicyInstallationFact, ModuleEffectivePolicyQuery,
+            ModuleEffectivePolicyRuntimeInput,
+        };
+
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared("CREATE TABLE tenants (id TEXT PRIMARY KEY NOT NULL); CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants")
+            .await.unwrap();
+        rustok_outbox::SysEventsMigration.up(&SchemaManager::new(&db)).await.unwrap();
+        for migration in crate::ModulesModule.migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
+        let tenant_id = Uuid::new_v4();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite, "INSERT INTO tenants (id) VALUES (?1)",
+            vec![tenant_id.to_string().into()],
+        )).await.unwrap();
+
+        let store = SeaOrmArtifactInstallationStore::new(db.clone());
+        let mut selected = BTreeMap::new();
+        let mut catalog = crate::ModuleDefinitionCatalog::default();
+        let mut inputs = Vec::new();
+        // Root sorts after its co-requisite; insertion/traversal order must
+        // not determine the order of the transaction's selection locks.
+        for (slug, marker) in [("z_root", 'a'), ("a_provider", 'b')] {
+            let mut package = package(ArtifactPayloadKind::Rhai);
+            package.reference.repository = format!("modules/{slug}");
+            package.reference.digest = format!("sha256:{}", marker.to_string().repeat(64));
+            package.descriptor.slug = slug.to_string();
+            let mut command = admission_command(package.reference.clone(), ModuleInstallationScope::Platform);
+            command.sandbox_policy.grants = vec![CapabilityGrant {
+                name: CapabilityName::new("platform.events").unwrap(),
+                constraints: json!({}),
+            }];
+            let installation = ModuleInstaller::new(
+                FixtureRegistry(package), store.clone(), InMemoryArtifactBlobStore::default(),
+                trust_verifier(), trust_policy(), AllowArtifactPermissionRegistrar,
+            ).admit(command).await.unwrap();
+            db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_artifact_admissions SET status = 'active' WHERE installation_id = ?1",
+                vec![installation.installation_id.to_string().into()],
+            )).await.unwrap();
+            let item = crate::ArtifactInstallationResolver::resolve(&store, &installation.release, tenant_id)
+                .await.unwrap();
+            catalog.insert(crate::ModuleDefinition::from_artifact_descriptor(&item.descriptor)).unwrap();
+            inputs.push(ModuleEffectivePolicyRuntimeInput {
+                module_slug: slug.to_string(),
+                installation: Some(ModuleEffectivePolicyInstallationFact {
+                    installation_id: item.installation_id,
+                    scope: item.scope.clone(),
+                    release_digest: item.release.digest.clone(),
+                    payload_kind: item.descriptor.payload_kind,
+                    dependency_graph_revision: item.dependency_lock.graph_revision,
+                    dependency_graph_digest: item.dependency_lock.graph_digest.clone(),
+                    capability_grant_revision: item.capability_grant_revision,
+                }),
+                capability_policy_revision: Some(item.capability_grant_revision),
+                executor_available: true,
+                security: Some(crate::ModuleArtifactSecuritySnapshot {
+                    release: item.release.clone(), revision: 0,
+                    status: crate::ModuleArtifactSecurityStatus::Clear,
+                    registry_status: crate::ModuleArtifactRegistryReleaseStatus::Unlisted,
+                    policy_revision: None, reason_code: None, reason_detail: None,
+                }),
+            });
+            selected.insert(slug.to_string(), item);
+        }
+        let policy = ModuleEffectivePolicyQuery::new(
+            &catalog, ["z_root".to_string(), "a_provider".to_string()], [], inputs,
+        ).with_corequisites([crate::ModuleEffectivePolicyCoRequisite {
+            module_slug: "z_root".to_string(),
+            required_module_slug: "a_provider".to_string(),
+            version_requirement: "^1.0".to_string(),
+        }]).execute().unwrap();
+        let root = &selected["z_root"];
+        let provider = &selected["a_provider"];
+        let closure = crate::ArtifactServingClosure::from_policy_selection(
+            tenant_id, root, &policy, &selected,
+        ).unwrap();
+        assert_eq!(closure.root_security_revision(root), Some(0));
+        let mut missing = selected.clone();
+        missing.remove("a_provider");
+        assert!(crate::ArtifactServingClosure::from_policy_selection(
+            tenant_id, root, &policy, &missing,
+        ).is_err());
+
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        closure.require_current_on(&tx).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        // The root remains active while its co-requisite is quarantined.
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_artifact_security_states (module_slug, module_version, payload_digest, revision, status, policy_revision, reason_code, reason_detail, changed_by, changed_at) VALUES (?1, ?2, ?3, 1, 'quarantined', 'test', 'test', 'test', ?4, CURRENT_TIMESTAMP)",
+            vec![provider.release.slug.clone().into(), provider.release.version.clone().into(),
+                provider.release.digest.clone().into(), Uuid::new_v4().to_string().into()],
+        )).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        assert!(closure.require_current_on(&tx).await.is_err());
+        tx.rollback().await.unwrap();
+
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE module_artifact_security_states SET status = 'clear', revision = 2 WHERE module_slug = ?1",
+            vec![provider.release.slug.clone().into()],
+        )).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        assert!(closure.require_current_on(&tx).await.is_err(), "security ABA must not revive the lease");
+        tx.rollback().await.unwrap();
+
+        // Refresh the policy evidence for a new lease, then invalidate its
+        // exact dependency selection without changing the root.
+        let mut inputs = Vec::new();
+        for item in selected.values() {
+            let security = crate::SeaOrmModuleArtifactSecurityResolver::new(db.clone())
+                .resolve(&item.release).await.unwrap();
+            inputs.push(ModuleEffectivePolicyRuntimeInput {
+                module_slug: item.release.slug.clone(),
+                installation: Some(ModuleEffectivePolicyInstallationFact {
+                    installation_id: item.installation_id,
+                    scope: item.scope.clone(),
+                    release_digest: item.release.digest.clone(),
+                    payload_kind: item.descriptor.payload_kind,
+                    dependency_graph_revision: item.dependency_lock.graph_revision,
+                    dependency_graph_digest: item.dependency_lock.graph_digest.clone(),
+                    capability_grant_revision: item.capability_grant_revision,
+                }),
+                capability_policy_revision: Some(item.capability_grant_revision),
+                executor_available: true,
+                security: Some(security),
+            });
+        }
+        let policy = ModuleEffectivePolicyQuery::new(
+            &catalog, ["z_root".to_string(), "a_provider".to_string()], [], inputs,
+        ).with_corequisites([crate::ModuleEffectivePolicyCoRequisite {
+            module_slug: "z_root".to_string(),
+            required_module_slug: "a_provider".to_string(),
+            version_requirement: "^1.0".to_string(),
+        }]).execute().unwrap();
+        let refreshed = crate::ArtifactServingClosure::from_policy_selection(
+            tenant_id, root, &policy, &selected,
+        ).unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        refreshed.require_current_on(&tx).await.unwrap();
+        tx.rollback().await.unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE module_artifact_admissions SET status = 'inactive' WHERE installation_id = ?1",
+            vec![provider.installation_id.to_string().into()],
+        )).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        assert!(refreshed.require_current_on(&tx).await.is_err());
+        tx.rollback().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn active_resolution_selects_scope_before_release_and_rejects_ambiguity() {
         let database = Database::connect("sqlite::memory:")
             .await
