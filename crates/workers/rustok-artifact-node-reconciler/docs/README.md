@@ -36,7 +36,7 @@ application-server background task.
 ## Request contract
 
 `ArtifactNodeReconciliationService.ReconcileTopology` carries an expected
-reconciliation-state revision, canonical policy revision, idempotency UUID,
+reconciliation-state revision, deployment intent revision (wire field `policy_revision`), idempotency UUID,
 and strict JSON `ModuleArtifactNodeTopologySnapshot`. The snapshot contains
 only a topology reference/digest and node/installation pairs. The mTLS
 certificate determines the audit actor and limits all target node IDs before
@@ -51,3 +51,10 @@ installation under lock, freezes the complete immutable assignment identity,
 and commits the desired set with its outbox event. Node agents remain unable
 to author topology because their controller exposes a different service and a
 different certificate principal map.
+
+The owner derives the actual deployment readiness revision from the intent,
+canonical topology and locked installation identities. Agent work and reports
+carry that derived revision, not the submitted intent or a tenant policy digest.
+After migration 000094, stop old writers and submit a fresh request with a new
+idempotency key; legacy observations cannot authorize serving. Desired and
+observed heads must converge before artifact traffic is admitted.

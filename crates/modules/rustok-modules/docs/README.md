@@ -246,8 +246,25 @@ and treats active tenant-enabled installations as dynamic activation intent
 while honoring explicit tenant override denials. The actual composed executor's
 payload-kind support supplies the availability input; it is not a worker
 health probe. Exact durable node readiness is still required for the resulting
-policy revision. The reconciliation producer must observe that revision before
-serving; mismatches fail closed. Contextual channel/maintenance owner inputs,
+deployment readiness revision, independently derived from the deployment intent,
+topology digest and frozen owner assignment identities. Tenant effective-policy
+revision remains independently bound to execution admission; see the
+[deployment readiness authority ADR](../../../../DECISIONS/2026-11-27-artifact-deployment-readiness-authority.md). Readiness now covers the root and every selected artifact in its dependency
+and co-requisite closure. Each dependency lock node must match the selected
+artifact version, payload and manifest digest, and dependency edges; a native
+definition without immutable artifact evidence cannot satisfy a lock node.
+Every required artifact must match the policy's installation/graph/capability
+facts and active observed assignment on the same node and reconciliation
+revision. The owner checks the observed-head revision before and after the
+closure read, not an atomic execution lease. Storage failures remain
+infrastructure errors; unavailable or stale readiness is a policy denial.
+The singleton ledger now carries a deployment-scoped revision rather than a
+tenant policy digest. Its owner reconstructs the digest from stored intent,
+topology and exact assignments, requires desired/observed equality, and rejects
+legacy rows whose deployment intent is NULL. The tenant-specific policy is still
+required and the sandbox compares its admission revision separately. Fresh
+reconciliation is mandatory at cutover; historical observations are not promoted.
+Contextual channel/maintenance owner inputs,
 the reconciliation producer's full revision parity and atomic runtime fences
 remain outstanding.
 The active installation resolver chooses the effective tenant/platform scope by

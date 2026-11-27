@@ -935,7 +935,7 @@ async fn download_publish_artifact(
     } else {
         // Preserve direct-handler compatibility when this controller is used
         // without the composed registry middleware.
-        require_remote_executor_access(&ctx, &headers)?;
+        require_remote_executor_access(&ctx, &headers, None)?;
     }
 
     let artifact = governance
@@ -1962,6 +1962,7 @@ async fn resume_publish_request(
 async fn claim_remote_validation_stage(
     State(ctx): State<ServerRuntimeContext>,
     headers: HeaderMap,
+    verified_runner: Option<Extension<VerifiedRegistryRunnerAccess>>,
     Json(request): Json<RegistryRunnerClaimRequest>,
 ) -> Result<impl IntoResponse, Error> {
     tracing::debug!(
@@ -1972,7 +1973,7 @@ async fn claim_remote_validation_stage(
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
     validate_supported_runner_stages(&request.supported_stages)?;
-    let remote_executor = require_remote_executor_access(&ctx, &headers)?;
+    let remote_executor = require_remote_executor_access(&ctx, &headers, verified_runner.as_ref())?;
     let claim = claim_remote_validation_stage_atomic(
         ctx.db(),
         &runner_id,
@@ -2028,6 +2029,7 @@ async fn heartbeat_remote_validation_stage(
     State(ctx): State<ServerRuntimeContext>,
     Path(claim_id): Path<String>,
     headers: HeaderMap,
+    verified_runner: Option<Extension<VerifiedRegistryRunnerAccess>>,
     Json(request): Json<RegistryRunnerHeartbeatRequest>,
 ) -> Result<impl IntoResponse, Error> {
     tracing::debug!(
@@ -2038,7 +2040,7 @@ async fn heartbeat_remote_validation_stage(
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
-    let remote_executor = require_remote_executor_access(&ctx, &headers)?;
+    let remote_executor = require_remote_executor_access(&ctx, &headers, verified_runner.as_ref())?;
     let stage = heartbeat_remote_validation_stage_atomic(
         ctx.db(),
         &claim_id,
@@ -2096,6 +2098,7 @@ async fn complete_remote_validation_stage(
     State(ctx): State<ServerRuntimeContext>,
     Path(claim_id): Path<String>,
     headers: HeaderMap,
+    verified_runner: Option<Extension<VerifiedRegistryRunnerAccess>>,
     Json(request): Json<RegistryRunnerCompletionRequest>,
 ) -> Result<impl IntoResponse, Error> {
     tracing::debug!(
@@ -2106,7 +2109,7 @@ async fn complete_remote_validation_stage(
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
-    require_remote_executor_access(&ctx, &headers)?;
+    require_remote_executor_access(&ctx, &headers, verified_runner.as_ref())?;
     let stage = finish_remote_validation_stage_atomic(
         ctx.db(),
         &claim_id,
@@ -2167,6 +2170,7 @@ async fn fail_remote_validation_stage(
     State(ctx): State<ServerRuntimeContext>,
     Path(claim_id): Path<String>,
     headers: HeaderMap,
+    verified_runner: Option<Extension<VerifiedRegistryRunnerAccess>>,
     Json(request): Json<RegistryRunnerCompletionRequest>,
 ) -> Result<impl IntoResponse, Error> {
     tracing::debug!(
@@ -2177,7 +2181,7 @@ async fn fail_remote_validation_stage(
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
-    require_remote_executor_access(&ctx, &headers)?;
+    require_remote_executor_access(&ctx, &headers, verified_runner.as_ref())?;
     let stage = finish_remote_validation_stage_atomic(
         ctx.db(),
         &claim_id,
@@ -3304,31 +3308,37 @@ fn registry_platform_command_context(
 fn require_remote_executor_access(
     ctx: &ServerRuntimeContext,
     headers: &HeaderMap,
+    verified_runner: Option<&Extension<VerifiedRegistryRunnerAccess>>,
 ) -> Result<crate::common::settings::RegistryRemoteExecutorSettings, Error> {
     let executor = ctx.settings().registry.remote_executor.clone();
     if !executor.enabled {
         return Err(Error::NotFound);
     }
-    let expected_token = executor.shared_token.clone().ok_or_else(|| {
+    let expected_token = executor.shared_token.as_deref().ok_or_else(|| {
         Error::Unauthorized("Remote executor is enabled but shared_token is missing".to_string())
     })?;
-    let expected_trimmed = expected_token.trim().trim_matches('"');
+    let expected_trimmed = expected_token.trim().trim_matches('"').trim();
     if expected_trimmed.is_empty() {
         return Err(Error::Unauthorized(
             "Remote executor shared_token is empty".to_string(),
         ));
     }
+
+    // The registry middleware validates the secret and strips it before
+    // dispatch. Its private extension is the only proof accepted in that path.
+    if verified_runner.is_some() {
+        return Ok(executor);
+    }
+
     let mut values = headers.get_all("x-rustok-runner-token").iter();
     let first = values
         .next()
         .ok_or_else(|| Error::Unauthorized("Missing x-rustok-runner-token header".to_string()))?;
-    for duplicate in values {
-        if duplicate != first {
-            tracing::warn!("Conflicting duplicate x-rustok-runner-token headers rejected");
-            return Err(Error::Unauthorized(
-                "Conflicting duplicate x-rustok-runner-token headers".to_string(),
-            ));
-        }
+    if values.next().is_some() {
+        tracing::warn!("Duplicate x-rustok-runner-token headers rejected");
+        return Err(Error::Unauthorized(
+            "Duplicate x-rustok-runner-token headers".to_string(),
+        ));
     }
     let provided_token = first
         .to_str()
@@ -3336,7 +3346,8 @@ fn require_remote_executor_access(
             Error::Unauthorized("Invalid x-rustok-runner-token header encoding".to_string())
         })?
         .trim()
-        .trim_matches('"');
+        .trim_matches('"')
+        .trim();
     if !bool::from(provided_token.as_bytes().ct_eq(expected_trimmed.as_bytes())) {
         return Err(Error::Unauthorized(
             "Invalid x-rustok-runner-token header".to_string(),
@@ -3616,8 +3627,9 @@ fn validate_registry_version(version: &str) -> Result<(), Error> {
 #[cfg(test)]
 mod marketplace_registry_tests {
     use super::{
-        RegistryCatalogListParams, build_registry_response, map_module_governance_error,
-        paginate_catalog_modules, request_matches_etag,
+        RegistryCatalogListParams, VerifiedRegistryRunnerAccess, build_registry_response,
+        map_module_governance_error, paginate_catalog_modules, request_matches_etag,
+        require_remote_executor_access,
     };
     use crate::modules::CatalogManifestModule;
     use axum::body::to_bytes;
@@ -3824,6 +3836,46 @@ mod marketplace_registry_tests {
             HeaderValue::from_static("00000000-0000-0000-0000-000000000002"),
         );
         assert!(super::required_non_nil_idempotency_key(&dup_headers).is_err());
+    }
+
+    #[test]
+    fn verified_runner_proof_survives_secret_header_removal() {
+        use crate::common::settings::RustokSettings;
+        use crate::services::server_runtime_context::ServerRuntimeContext;
+        use axum::Extension;
+        use sea_orm::DatabaseConnection;
+
+        let mut settings = RustokSettings::default();
+        settings.registry.remote_executor.enabled = true;
+        settings.registry.remote_executor.shared_token = Some("runner-secret".to_string());
+        let ctx = ServerRuntimeContext::new(DatabaseConnection::default(), settings);
+        let headers = HeaderMap::new();
+        let verified = Extension(VerifiedRegistryRunnerAccess);
+
+        assert!(require_remote_executor_access(&ctx, &headers, Some(&verified)).is_ok());
+    }
+
+    #[test]
+    fn direct_runner_fallback_rejects_duplicate_identical_secret_headers() {
+        use crate::common::settings::RustokSettings;
+        use crate::services::server_runtime_context::ServerRuntimeContext;
+        use sea_orm::DatabaseConnection;
+
+        let mut settings = RustokSettings::default();
+        settings.registry.remote_executor.enabled = true;
+        settings.registry.remote_executor.shared_token = Some("runner-secret".to_string());
+        let ctx = ServerRuntimeContext::new(DatabaseConnection::default(), settings);
+        let mut headers = HeaderMap::new();
+        headers.append(
+            HeaderName::from_static("x-rustok-runner-token"),
+            HeaderValue::from_static("runner-secret"),
+        );
+        headers.append(
+            HeaderName::from_static("x-rustok-runner-token"),
+            HeaderValue::from_static("runner-secret"),
+        );
+
+        assert!(require_remote_executor_access(&ctx, &headers, None).is_err());
     }
 
     #[test]

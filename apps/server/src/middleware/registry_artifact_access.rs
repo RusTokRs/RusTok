@@ -55,11 +55,11 @@ pub async fn enforce(
     }
 
     if method == Method::POST && is_remote_runner_path(path) {
-        return if runner_token_valid {
-            next.run(request).await
-        } else {
-            unauthorized("Missing or invalid registry runner token")
-        };
+        if !runner_token_valid {
+            return unauthorized("Missing or invalid registry runner token");
+        }
+        request.extensions_mut().insert(VerifiedRegistryRunnerAccess);
+        return next.run(request).await;
     }
 
     let Some((request_id, operation)) = registry_route(path) else {
@@ -288,16 +288,7 @@ fn registry_route(path: &str) -> Option<(&str, RegistryOperation)> {
 }
 
 fn is_remote_runner_path(path: &str) -> bool {
-    let segments = path.trim_matches('/').split('/').collect::<Vec<_>>();
-    if segments.as_slice() == ["v2", "catalog", "runner", "claim"] {
-        return true;
-    }
-    segments.len() == 5
-        && segments[0] == "v2"
-        && segments[1] == "catalog"
-        && segments[2] == "runner"
-        && !segments[3].is_empty()
-        && matches!(segments[4], "heartbeat" | "complete" | "fail")
+    super::registry_remote_claim::is_remote_runner_path(path)
 }
 
 fn strip_runner_token_header(request: &mut Request<Body>) {
@@ -437,6 +428,8 @@ mod tests {
         assert!(is_remote_runner_path("/v2/catalog/runner/claim_1/complete"));
         assert!(is_remote_runner_path("/v2/catalog/runner/claim_1/fail"));
         assert!(!is_remote_runner_path("/v2/catalog/runner/claim_1"));
+        assert!(!is_remote_runner_path("/v2/catalog/runner/claim_1/heartbeat/"));
+        assert!(!is_remote_runner_path("//v2/catalog/runner/claim_1/heartbeat"));
         assert!(!is_remote_runner_path("/v2/catalog/publish/rpr_1"));
     }
 
@@ -509,6 +502,46 @@ mod tests {
             .header("x-rustok-runner-token", "runner-secret")
             .body(Body::empty())
             .expect("runner download request");
+
+        let response = app.oneshot(request).await.expect("middleware response");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn remote_runner_passes_verified_context_without_forwarding_secret() {
+        use crate::common::settings::RustokSettings;
+        use crate::services::server_runtime_context::ServerRuntimeContext;
+        use axum::{
+            Extension, Router,
+            body::Body,
+            http::{HeaderMap, Request, StatusCode},
+            middleware::from_fn_with_state,
+            routing::post,
+        };
+        use sea_orm::DatabaseConnection;
+        use tower::ServiceExt;
+
+        async fn assert_verified_runner(
+            Extension(_verified): Extension<VerifiedRegistryRunnerAccess>,
+            headers: HeaderMap,
+        ) -> StatusCode {
+            assert!(!headers.contains_key("x-rustok-runner-token"));
+            StatusCode::OK
+        }
+
+        let mut settings = RustokSettings::default();
+        settings.registry.remote_executor.enabled = true;
+        settings.registry.remote_executor.shared_token = Some("runner-secret".to_string());
+        let ctx = ServerRuntimeContext::new(DatabaseConnection::default(), settings);
+        let app = Router::new()
+            .route("/v2/catalog/runner/claim", post(assert_verified_runner))
+            .layer(from_fn_with_state(ctx, enforce));
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v2/catalog/runner/claim")
+            .header("x-rustok-runner-token", "runner-secret")
+            .body(Body::empty())
+            .expect("runner request");
 
         let response = app.oneshot(request).await.expect("middleware response");
         assert_eq!(response.status(), StatusCode::OK);

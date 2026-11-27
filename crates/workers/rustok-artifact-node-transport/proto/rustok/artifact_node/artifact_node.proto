@@ -40,6 +40,8 @@ message NoAssignment {}
 // release, capability, or secret identity.
 message ReconcileTopologyRequest {
   uint64 expected_reconciliation_state_revision = 1;
+  // Deployment intent digest; the owner derives the assignment readiness revision.
+  // Never a tenant effective-policy digest or caller-selected assignment authority.
   string policy_revision = 2;
   string idempotency_key = 3;
   bytes topology_json = 4;

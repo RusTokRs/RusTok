@@ -3513,3 +3513,32 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   Reconciliation producer revision parity, request-specific channel/maintenance
   inputs, dependency/node liveness coverage and post-admission races remain
   open. No readiness promotion or atomic sandbox guarantee is claimed.
+
+### Dependency-closure node readiness
+
+- Source-wired the exact active assignment check for the entire effective
+  dependency/co-requisite closure, with immutable artifact lock identity and
+  policy installation/graph/capability evidence comparisons. Compare the
+  durable observed state revision before and after all assignment reads.
+- Deny stale/unavailable readiness at both host admission and runtime
+  dispatch; distinguish storage errors from policy denials.
+- Added pure closure regression for exact match, replaced manifest digest,
+  changed capability revision and absent selection; tests unrun.
+- The existing singleton platform observed head cannot represent differing
+  tenant-specific serving policy revisions simultaneously. Producer parity
+  needs an explicit contract change and migration (not a fallback comparison).
+  Contextual channel/maintenance inputs, independent liveness/expiry and
+  atomic post-admission enforcement remain open.
+
+### Deployment readiness authority separation
+
+- Source-wired owner-derived deployment revision from intent, topology and exact
+  assignment identities. Reconstruct it from the converged desired/observed
+  set before checking each required node assignment. Tenant policy is an
+  independent mandatory authority; no equality between unrelated digests.
+- Migration 000094 preserves old rows as legacy (NULL intent); require fresh
+  reconciliation, coordinated writer/reader cutover, and new idempotency key.
+- Extended owner test with distinct intent/derived digest, legacy marker,
+  intent tamper and desired/observed mismatch. Tests and migration unrun;
+  real cross-tenant integration, PostgreSQL/RLS and continuous liveness remain
+  open. See [ADR](../../../../DECISIONS/2026-11-27-artifact-deployment-readiness-authority.md).

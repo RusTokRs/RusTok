@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-11-27](./2026-11-27-artifact-deployment-readiness-authority.md) | Deployment readiness is independent of tenant serving policy | Accepted | In progress | Extends [Node reconciliation ledger](./2026-08-14-module-node-reconciliation-ledger.md) and [Effective module policy](./2026-07-22-effective-module-policy-decision.md); supersedes their implicit shared revision identity |
 | [2026-11-27](./2026-11-27-auth-invite-module-policy-binding.md) | Invite static module policy binding | Accepted | In progress | Extends [Effective module policy](./2026-07-22-effective-module-policy-decision.md) |
 | [2026-11-27](./2026-11-27-rbac-role-grant-revision.md) | Durable RBAC static role grant revision | Accepted | In progress | Extends [Membership revision](./2026-11-27-rbac-membership-revision.md) |
 | [2026-11-27](./2026-11-27-rbac-membership-revision.md) | Durable RBAC membership revision | Accepted | In progress | Extends [RBAC source of truth](./2026-02-26-rbac-relation-source-of-truth-cutover.md) |
