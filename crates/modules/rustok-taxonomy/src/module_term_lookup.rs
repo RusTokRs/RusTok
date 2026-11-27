@@ -1,6 +1,6 @@
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_api::locale::normalize_locale_code;
-use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -192,8 +192,8 @@ impl TaxonomyService {
     }
 }
 
-async fn route_source_alias_id(
-    db: &DatabaseConnection,
+async fn route_source_alias_id<C: ConnectionTrait>(
+    db: &C,
     tenant_id: Uuid,
     route: &taxonomy_term_route_key::Model,
 ) -> TaxonomyResult<Option<Uuid>> {

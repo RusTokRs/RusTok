@@ -1,0 +1,181 @@
+mod index_graphql {
+    use async_graphql::{EmptySubscription, Request, Response, Schema, Variables};
+    use rustok_api::{
+        HostRuntimeContext, RequestContext, TenantContext, graphql::GraphqlRuntimeInputs,
+    };
+    use rustok_core::MigrationSource;
+    use rustok_index::SharedIndexQueryRuntime;
+    use rustok_modules::DatabaseStaticModuleSettingsReader;
+    use rustok_scaffold_matrix_localized::graphql::{
+        ScaffoldMatrixLocalizedAdminMutation, ScaffoldMatrixLocalizedQuery, attach_schema_data,
+    };
+    use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
+    use sea_orm_migration::SchemaManager;
+    use serde_json::{Value, json};
+    use uuid::Uuid;
+
+    const MODULE: &str = "scaffold_matrix_localized";
+    const FIELD: &str = "storefrontScaffoldMatrixLocalizedRecords";
+    const QUERY: &str = include_str!(
+        "../../rustok-scaffold-matrix-localized/contracts/graphql/storefront_records.graphql"
+    );
+    type PublicSchema = Schema<
+        ScaffoldMatrixLocalizedQuery,
+        ScaffoldMatrixLocalizedAdminMutation,
+        EmptySubscription,
+    >;
+
+    pub(super) async fn migrate_channels(manager: &SchemaManager<'_>) {
+        let mut migrations = rustok_channel::ChannelModule.migrations();
+        for name in [
+            "m20260325_000001_create_channels",
+            "m20260325_000003_create_channel_module_bindings",
+        ] {
+            let at = migrations
+                .iter()
+                .position(|migration| migration.name() == name)
+                .unwrap();
+            migrations.remove(at).up(manager).await.unwrap();
+        }
+    }
+
+    pub(super) async fn verify(
+        db: &DatabaseConnection,
+        tenant: Uuid,
+        foreign: Uuid,
+        index: &SharedIndexQueryRuntime,
+        record: Uuid,
+    ) {
+        let allowed = insert_channel(db, tenant, true).await;
+        let inactive = insert_channel(db, tenant, false).await;
+        let foreign_channel = insert_channel(db, foreign, true).await;
+        let schema = schema(db, index, true);
+        assert_eq!(
+            page(
+                schema
+                    .execute(request(tenant, tenant, Some(allowed), "ru"))
+                    .await
+            )["items"],
+            json!([{ "id": record, "title": "Русский" }]),
+        );
+        let invalid =
+            schema
+                .execute(request(tenant, tenant, Some(allowed), "ru").variables(
+                    Variables::from_json(json!({ "first": 1, "after": "invalid" })),
+                ))
+                .await;
+        assert_eq!(invalid.errors[0].message, "Invalid continuation cursor");
+        for channel in [
+            None,
+            Some(inactive),
+            Some(foreign_channel),
+            Some(Uuid::new_v4()),
+        ] {
+            assert_eq!(
+                page(schema.execute(request(tenant, tenant, channel, "ru")).await)["items"],
+                json!([]),
+            );
+        }
+        assert_eq!(
+            page(
+                schema
+                    .execute(request(tenant, tenant, Some(allowed), "de"))
+                    .await
+            )["items"],
+            json!([]),
+        );
+        assert!(
+            !schema
+                .execute(request(tenant, foreign, Some(allowed), "ru"))
+                .await
+                .errors
+                .is_empty()
+        );
+        let without_provider = self::schema(db, index, false);
+        assert!(
+            !without_provider
+                .execute(request(tenant, tenant, Some(allowed), "ru"))
+                .await
+                .errors
+                .is_empty()
+        );
+
+        db.execute_raw(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            "INSERT INTO channel_module_bindings (id, channel_id, module_slug, is_enabled)
+             VALUES ($1, $2, $3, false)",
+            [Uuid::new_v4().into(), allowed.into(), MODULE.into()],
+        ))
+        .await
+        .unwrap();
+        assert_eq!(
+            page(
+                schema
+                    .execute(request(tenant, tenant, Some(allowed), "ru"))
+                    .await
+            )["items"],
+            json!([]),
+        );
+    }
+
+    fn schema(
+        db: &DatabaseConnection,
+        index: &SharedIndexQueryRuntime,
+        with_channel: bool,
+    ) -> PublicSchema {
+        let mut host = HostRuntimeContext::new(db.clone())
+            .with_shared_value(DatabaseStaticModuleSettingsReader::shared(db.clone()))
+            .with_shared_value(index.clone());
+        if with_channel {
+            host = host.with_shared_value(rustok_channel::in_process_public_module_read_port(
+                db.clone(),
+            ));
+        }
+        Schema::build(
+            ScaffoldMatrixLocalizedQuery::default(),
+            ScaffoldMatrixLocalizedAdminMutation,
+            EmptySubscription,
+        )
+        .data(db.clone())
+        .data(attach_schema_data(&GraphqlRuntimeInputs::new(host)).unwrap())
+        .finish()
+    }
+
+    fn request(tenant: Uuid, request_tenant: Uuid, channel: Option<Uuid>, locale: &str) -> Request {
+        Request::new(QUERY)
+            .variables(Variables::from_json(json!({ "first": 1 })))
+            .data(TenantContext {
+                id: tenant,
+                name: "Scaffold fixture".into(),
+                slug: tenant.to_string(),
+                domain: None,
+                settings: json!({}),
+                default_locale: "en".into(),
+                is_active: true,
+            })
+            .data(RequestContext {
+                tenant_id: request_tenant,
+                user_id: None,
+                channel_id: channel,
+                channel_slug: None,
+                channel_resolution_source: None,
+                locale: locale.into(),
+                correlation_id: Uuid::new_v4().to_string(),
+            })
+    }
+
+    async fn insert_channel(db: &DatabaseConnection, tenant: Uuid, active: bool) -> Uuid {
+        let id = Uuid::new_v4();
+        db.execute_raw(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            "INSERT INTO channels (id, tenant_id, slug, name, is_active) VALUES ($1, $2, $3, $4, $5)",
+            [id.into(), tenant.into(), id.to_string().into(), "Scaffold fixture".into(), active.into()],
+        )).await.unwrap();
+        id
+    }
+
+    fn page(response: Response) -> Value {
+        assert!(response.errors.is_empty(), "{:?}", response.errors);
+        response.data.into_json().unwrap()[FIELD].clone()
+    }
+}

@@ -558,6 +558,42 @@ fn map_rbac_authority_error(
 }
 
 impl ServerAuthAdminMutationProvider {
+    /// Short runtime admission transaction: no sandbox calls or external
+    /// work under SQL locks. Dynamic permissions have no OAuth delegation
+    /// contract, so only admitted direct sessions are supported.
+    pub(crate) async fn artifact_runtime_permission_keys(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        installation: &rustok_modules::InstalledModuleArtifact,
+    ) -> Result<Vec<String>, AuthAdminMutationError> {
+        let context = bind_admin_context(tenant_id, actor_id, AuthPrincipalKind::DirectUser, None)?;
+        let scope = match &installation.scope {
+            rustok_modules::ModuleInstallationScope::Platform =>
+                rustok_rbac::ArtifactPermissionAssignmentScope::Platform,
+            rustok_modules::ModuleInstallationScope::Tenant { tenant_id: installed_tenant }
+                if *installed_tenant == tenant_id =>
+                rustok_rbac::ArtifactPermissionAssignmentScope::Tenant,
+            _ => return Err(AuthAdminMutationError::Unauthorized),
+        };
+        let tx = self.prepare_admin_transaction(false).await?;
+        self.lock_admin_oauth_apps(&tx, &context, None).await?;
+        let actor = AuthLifecycleService::lock_user_for_mutation(&tx, tenant_id, actor_id)
+            .await.map_err(internal_admin_error)?
+            .filter(|user| user.is_active()).ok_or(AuthAdminMutationError::Unauthorized)?;
+        let deadline = self.lock_user_admin_credential(&tx, &context, &actor, None)
+            .await?.ok_or(AuthAdminMutationError::Unauthorized)?;
+        rustok_rbac::lock_actor_role_grants_on(&tx, tenant_id, actor_id)
+            .await.map_err(internal_admin_error)?;
+        let keys = rustok_rbac::SeaOrmArtifactPermissionAuthorizer::authorized_keys_on(
+            &tx, tenant_id, actor_id, installation.installation_id, scope,
+            &installation.release.slug, &installation.release.digest,
+        ).await.map_err(internal_admin_error)?;
+        self.ensure_user_admin_credential_deadline(&tx, Some(deadline)).await?;
+        tx.commit().await.map_err(internal_admin_error)?;
+        Ok(keys)
+    }
+
     async fn lock_rbac_control_plane(
         &self,
         tx: &sea_orm::DatabaseTransaction,

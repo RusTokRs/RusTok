@@ -79,7 +79,10 @@ documentation for this module must live inside the crate, not spread across
   `rbac_artifact_role_permissions`. Grants and operation receipts reference the
   exact immutable permission definition and admitted scope, validate the exact
   installation and platform-or-tenant scope before writing, record the acting
-  operator, and never mutate static `role_permissions`;
+  operator, and never mutate static `role_permissions`. Actual state changes
+  reserve the existing durable permission generation before event publication;
+  no-ops and exact retries do not. Actor identity and exact permission
+  definition remain protected through commit;
 - `SeaOrmArtifactPermissionAuthorizer` resolves a role-derived grant only when
   tenant, user, role, exact permission definition, admitted scope, installation
   and permission key all match. The platform artifact HTTP and command routes

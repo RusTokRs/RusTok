@@ -16,7 +16,7 @@ mod tests;
 
 pub(super) use registration::is_registration_target;
 
-pub(crate) const USAGE: &str = "cargo xtask module scaffold-cli <slug> --name <command> --summary <text> --adapter <file.rs> --tests <file.rs> [--dependency <workspace-key>] [--supports-dry-run] [--dry-run]";
+pub(crate) const USAGE: &str = "cargo xtask module scaffold-cli <slug> --name <command> --summary <text> --adapter <file.rs> --tests <file.rs> [--dependency <workspace-key>] [--dev-dependency <workspace-key>] [--supports-dry-run] [--dry-run]";
 
 pub(crate) fn command(args: &[String]) -> Result<()> {
     if args == ["--help"] {

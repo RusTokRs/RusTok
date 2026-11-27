@@ -36,12 +36,13 @@ fn client_grid_renders_second_page_once_and_localizes_its_chrome() {
         let rows = RwSignal::new((1..=25).collect::<Vec<u64>>());
         let pagination = RwSignal::new(GridPagination::new(2, 10, 25));
         let render = || view! {
-            <DataGrid columns=vec![GridColumnDef::new("id", "Identifiant")]
+            <DataGrid columns=vec![GridColumnDef::new("id", "Identifiant").width(137)]
                 data=Signal::derive(move || rows.get()) key_fn=|id: &u64| *id
                 cell_renderer=Callback::new(|(id, _): (u64, String)| view! { <span>{format!("row-{id}")}</span> }.into_any())
                 pagination=pagination messages=rustok_grid::GridMessages::for_locale(Some("fr")) />
         }.to_html();
         let second = render();
+        assert!(second.contains("<col width=\"137\""));
         assert!(second.contains("row-11</span>"));
         assert!(second.contains("row-20</span>"));
         assert!(!second.contains("row-1</span>"));

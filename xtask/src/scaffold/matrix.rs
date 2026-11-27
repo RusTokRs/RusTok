@@ -139,8 +139,8 @@ impl Matrix {
             "rustok-scaffold-matrix-admin",
             "rustok-scaffold-matrix-storefront",
             "rustok-scaffold-matrix-dual",
-            "rustok-scaffold-matrix-headless-cli",
             "rustok-scaffold-matrix-localized",
+            "rustok-scaffold-matrix-localized-cli",
         ];
         let ui_packages = [
             "rustok-scaffold-matrix-admin-admin",
@@ -207,17 +207,23 @@ impl Matrix {
         self.xtask(&[
             "module",
             "scaffold-cli",
-            "scaffold_matrix_headless",
+            "scaffold_matrix_localized",
             "--name",
-            "module-identity",
+            "public-discovery",
             "--summary",
-            "Read the generated owner's module identity",
+            "Read the tenant's current public record discovery setting",
             "--adapter",
             adapter.to_str().context("CLI fixture path must be UTF-8")?,
             "--tests",
             tests.to_str().context("CLI fixture path must be UTF-8")?,
-            "--dependency",
-            "rustok-core",
+            "--dependency", "rustok-api",
+            "--dependency", "rustok-modules",
+            "--dependency", "serde_json",
+            "--dependency", "uuid",
+            "--dev-dependency", "rustok-migrations",
+            "--dev-dependency", "rustok-test-utils",
+            "--dev-dependency", "sea-orm",
+            "--dev-dependency", "sea-orm-migration",
         ])?;
         let status = Command::new("node")
             .current_dir(&self.source)
@@ -242,7 +248,7 @@ impl Matrix {
         let mut features = MODES
             .map(|(mode, _, _)| format!("mod-scaffold_matrix_{mode}"))
             .join(",");
-        features.push_str(",mod-scaffold_matrix_localized");
+        features.push_str(",mod-scaffold_matrix_localized,rustok-scaffold-matrix-localized/graphql");
         println!("Running selected distribution registry with defaults disabled");
         let mut args = vec![
             "--locked",

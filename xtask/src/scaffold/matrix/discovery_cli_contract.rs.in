@@ -1,0 +1,112 @@
+use rustok_cli_core::{CliCoreError, CommandRequest};
+use rustok_runtime::RuntimeComposition;
+use sea_orm::{
+    ConnectionTrait, Statement,
+    sea_query::{Alias, Expr, Query},
+};
+use sea_orm_migration::SchemaManager;
+use serde_json::json;
+use uuid::Uuid;
+
+const MODULE: &str = "scaffold_matrix_localized";
+const COMMAND: &str = "public-discovery";
+
+fn request(id: Uuid) -> CommandRequest {
+    CommandRequest::new(
+        MODULE,
+        COMMAND,
+        json!({ "options": { "tenant_id": id } }),
+        false,
+    )
+}
+
+#[tokio::test]
+async fn reads_current_discovery_from_the_owner() {
+    let db = rustok_test_utils::db::setup_test_db().await;
+    let manager = SchemaManager::new(&db);
+    let settings = rustok_modules::migrations::migrations()
+        .into_iter()
+        .find(|migration| migration.name() == "m20250101_000060_create_tenant_modules")
+        .unwrap();
+    for migration in rustok_migrations::identity::migrations()
+        .into_iter()
+        .chain([settings])
+    {
+        migration.up(&manager).await.unwrap();
+    }
+    db.execute_unprepared(
+        "CREATE VIEW IF NOT EXISTS tenant_identity_keys AS SELECT id FROM tenants",
+    )
+    .await
+    .unwrap();
+    let tenant = Uuid::new_v4();
+    let backend = db.get_database_backend();
+    let seed = Query::insert()
+        .into_table(Alias::new("tenants"))
+        .columns(["id", "name", "slug"].map(Alias::new))
+        .values_panic([
+            Expr::value(tenant),
+            Expr::value("CLI fixture"),
+            Expr::value(tenant.to_string()),
+        ])
+        .to_owned();
+    db.execute_raw(backend.build(&seed)).await.unwrap();
+    let runtime = RuntimeComposition::from_database(db.clone(), Default::default());
+    let provider = crate::command_provider(&runtime);
+    assert!(provider.commands()[0].matches(MODULE, COMMAND));
+    assert_eq!(
+        provider.execute(request(tenant)).await.unwrap().data["public_discovery_allowed"],
+        false
+    );
+
+    let enable = Query::insert()
+        .into_table(Alias::new("tenant_modules"))
+        .columns(["id", "tenant_id", "module_slug", "enabled", "settings"].map(Alias::new))
+        .values_panic([
+            Expr::value(Uuid::new_v4()),
+            Expr::value(tenant),
+            Expr::value(MODULE),
+            Expr::value(true),
+            Expr::value(json!({ "public_discovery_enabled": true })),
+        ])
+        .to_owned();
+    db.execute_raw(backend.build(&enable)).await.unwrap();
+    let open = provider.execute(request(tenant)).await.unwrap();
+    assert_eq!(
+        open.data,
+        json!({ "tenant_id": tenant, "public_discovery_allowed": true })
+    );
+    assert_eq!(
+        provider
+            .execute(request(Uuid::new_v4()))
+            .await
+            .unwrap()
+            .data["public_discovery_allowed"],
+        false
+    );
+
+    db.execute_raw(Statement::from_string(
+        backend,
+        "UPDATE tenant_modules SET enabled = false",
+    ))
+    .await
+    .unwrap();
+    assert_eq!(
+        provider.execute(request(tenant)).await.unwrap().data["public_discovery_allowed"],
+        false
+    );
+}
+
+#[tokio::test]
+async fn refuses_an_invalid_tenant_and_reports_a_missing_database() {
+    let runtime = RuntimeComposition::without_database(Default::default());
+    let provider = crate::command_provider(&runtime);
+    assert!(matches!(
+        provider.execute(request(Uuid::nil())).await,
+        Err(CliCoreError::InvalidInput { .. })
+    ));
+    assert!(matches!(
+        provider.execute(request(Uuid::new_v4())).await,
+        Err(CliCoreError::CommandFailed { .. })
+    ));
+}

@@ -286,6 +286,9 @@ fn map_artifact_ui_contribution_error(error: ServerError) -> FieldError {
         ServerError::NotFound => {
             <FieldError as GraphQLError>::not_found("Artifact installation is unavailable")
         }
+        ServerError::Http(error) if error.status == StatusCode::FORBIDDEN => {
+            <FieldError as GraphQLError>::permission_denied("Permission denied for artifact UI contributions")
+        }
         _error => {
             tracing::error!(
                 error_code = "artifact_ui_contribution_graphql_read_failed",
