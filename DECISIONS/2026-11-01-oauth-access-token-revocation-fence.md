@@ -344,3 +344,13 @@ codes and consents and replacement through the active consent unique key.
 These are ordinary DML integrity constraints, not a proof of fresh consent
 epochs, complete nonterminal claim integrity, or privileged restore protection.
 Source regressions authored, unrun.
+
+## Fresh consent grant identity (2026-11-27)
+
+The canonical grant writer never updates a historical or active consent into a
+new grant. It invalidates live exact-tenant/app/user tokens and pending codes,
+retires the active consent if present and inserts a new UUID, in the existing
+app/subject-locked transaction. This also repairs the old unfiltered lookup
+that could select a terminal row after a revoke or several grants. No history
+is rewritten. Timestamp-based epoch comparison remains in readers; permanent
+UUID claims alone do not yet replace that comparison. Source regressions unrun.

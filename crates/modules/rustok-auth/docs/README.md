@@ -1229,8 +1229,10 @@ Witness storage grows with credential births; no plaintext is retained.
 Terminal revocation timestamps on sessions, tokens and consents, and used_at
 on authorization codes, are immutable once set. Revoked OAuth token last-use
 evidence cannot be rewritten to forge a rotation; a revoked consent retains
-its original grant and subject. An active consent may be updated and a new
-consent may be inserted after revocation. OAuth application reactivation is
+its original grant and subject. The canonical grant writer always invalidates exact-subject tokens and codes,
+retires the active consent if present, and inserts a fresh UUID in the same
+transaction. It never selects or revives a historical row, even after repeated
+grants. Direct active consent updates are not yet forbidden by the schema. OAuth application reactivation is
 unchanged. SQLite prevents hidden-rowid replacement on tokens, codes and
 consents and implicit replacement of an active consent by another UUID.
 Pre-cutover removed identities, reuse of a consent epoch under a fresh UUID,

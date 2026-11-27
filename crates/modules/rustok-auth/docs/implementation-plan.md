@@ -743,3 +743,9 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   admission; commit errors never retry. Other admin and owner adapters,
   rollback/commit fault injection, full auth reauthorization contention
   and external-effect receipts remain open. Source regressions unrun.
+
+- Consent writer correction: every grant now retires the existing active row
+  and inserts a fresh UUID, invalidating exact-subject tokens and codes even
+  when no active consent is present. The terminal guard must never be bypassed
+  to revive a revoked row. Timestamp-based epoch binding remains a separate
+  open cross-reader contract. Source regressions unrun.
