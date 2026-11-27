@@ -31,9 +31,10 @@ fn public_bundle_surfaces_save_failures_across_the_reload() {
     assert!(contains(
         "if (event.detail?.ok === true) { settleSaveFailure(this, event.detail.result, event.detail.request); }"
     ));
-    assert!(contains(
-        "writeSaveFailure(adapter.pageId, result.save_failure); reportSaveFailure(adapter, result.save_failure, request);"
-    ));
+    // Copy before enrichment so revision-conflict details can be added without mutating the response.
+    assert!(contains("const failure = { ...result.save_failure };"));
+    assert!(contains("writeSaveFailure(adapter.pageId, failure);"));
+    assert!(contains("reportSaveFailure(adapter, failure, request);"));
     // ...kept while the response still describes an unsaved working copy: a host does not have
     // to repeat the save of an unchanged document, so such a response carries no `save_failure`...
     assert!(contains(

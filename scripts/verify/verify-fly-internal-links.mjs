@@ -108,8 +108,8 @@ requireMarkers('localizedRoute', [
   'pub struct LocalizedPageRouteEntry',
 ], 'localized route dependency');
 requireMarkers('runtimePipeline', [
-  'validate_internal_page_links(&dynamic_document)',
-  'materialize_internal_page_links(&dynamic_document, &effective_context)',
+  'validate_internal_page_links_with_routes(',
+  'materialize_internal_page_links_with_routes(',
   'pub resolved_internal_links: usize',
   'pub fallback_internal_links: usize',
   'pub unresolved_internal_links: usize',
@@ -123,7 +123,7 @@ requireMarkers('runtimeRender', [
   'resolved_internal_links,',
 ], 'internal link render counters');
 requireMarkers('runtimeValidation', [
-  'validate_internal_page_links(document)',
+  'validate_internal_page_links(effective_document)',
   'missing_internal_page_link_target_blocks_publish_validation',
 ], 'internal link publish validation');
 requireMarkers('browserContract', [

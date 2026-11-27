@@ -188,7 +188,7 @@ requireMarkers('pageBuilderBrowserHost', [
   'adapter.abortController?.signal',
   'data-fly-intent-form',
   '__flyFormPayload',
-  'delete payload[number.name]',
+  'delete payload[name]',
   'history.replaceState',
 ], 'framework-neutral Page Builder browser host');
 for (const forbidden of [
@@ -291,12 +291,12 @@ const pipelineStages = [
   'materialize_runtime_locale_context(&translation_context)',
   'materialize_localized_page_metadata(document, &localized_input_context)',
   'materialize_context(&localized_document, &localized_input_context)',
-  'materialize_bindings(&localized_document, &effective_context)',
-  'materialize_runtime(&bound_document, &effective_context)',
-  'validate_internal_page_links(&dynamic_document)',
-  'validate_component_actions(&dynamic_document)',
-  'materialize_internal_page_links(&dynamic_document, &effective_context)',
-  'materialize_component_actions(&linked_document, &effective_context)',
+  'prepare_scoped_bindings(&localized_document, &effective_context)',
+  'materialize_runtime_with_scoped_bindings(',
+  'validate_internal_page_links_with_routes(',
+  'validate_component_actions_with_routes(',
+  'materialize_internal_page_links_with_routes(',
+  'materialize_component_actions_with_routes(',
 ];
 let previousIndex = -1;
 for (const stage of pipelineStages) {

@@ -46,19 +46,19 @@ requireText("crates/ui/fly/src/lib.rs", "mod action;");
 requireText("crates/ui/fly/src/lib.rs", "mod audit;");
 requireText(
   "crates/ui/fly/src/runtime_validation.rs",
-  "validate_component_actions(document)",
+  "validate_component_actions(effective_document)",
 );
 requireText(
   "crates/ui/fly/src/runtime_pipeline.rs",
   "pub materialized_forms: usize",
 );
 requireOrder("crates/ui/fly/src/runtime_pipeline.rs", [
-  "materialize_bindings(&localized_document, &effective_context)",
-  "materialize_runtime(&bound_document, &effective_context)",
-  "validate_internal_page_links(&dynamic_document)",
-  "validate_component_actions(&dynamic_document)",
-  "materialize_internal_page_links(&dynamic_document, &effective_context)",
-  "materialize_component_actions(&linked_document, &effective_context)",
+  "prepare_scoped_bindings(&localized_document, &effective_context)",
+  "materialize_runtime_with_scoped_bindings(",
+  "validate_internal_page_links_with_routes(",
+  "validate_component_actions_with_routes(",
+  "materialize_internal_page_links_with_routes(",
+  "materialize_component_actions_with_routes(",
 ]);
 requireText(
   "crates/ui/fly/src/runtime_pipeline.rs",

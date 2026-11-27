@@ -1565,3 +1565,6 @@ Fly Dioxus/classic JS handoff correction (2026-11-27, source-only): Dioxus now m
 
 
 Fly compile-blocker correction (2026-11-27, source-only): fixed the missing semicolon after a let-else statement in fragment asset remapping, removed invalid escaped-backtick sequences from a symbol error message, and imported GrapesJsCodec/AssetDescriptor in the symbol regression-test module. These were existing blockers in untouched Fly modules surfaced by the first focused workflow run. No new test result is claimed until the workflow reruns.
+
+
+Fly runtime verifier alignment (2026-11-27, source-only): updated SSR-first, multilingual, internal-link, action/form, asset, and landing-readiness guards to assert the current scoped-binding and route-catalog runtime pipeline rather than obsolete pre-refactor call names. Updated the save-failure contract to verify that the copied failure object is persisted and reported after revision-conflict enrichment. No Fly Page Builder workflow rerun has completed yet.

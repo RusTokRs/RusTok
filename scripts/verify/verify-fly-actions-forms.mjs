@@ -172,8 +172,8 @@ requireMarkers('actionTests', [
   'anonymous_action_diagnostics_use_the_shared_canonical_path',
 ], 'split action and form regression coverage');
 requireOrder('runtimePipeline', [
-  'validate_component_actions(&dynamic_document)',
-  'materialize_component_actions(&linked_document, &effective_context)',
+  'validate_component_actions_with_routes(',
+  'materialize_component_actions_with_routes(',
 ], 'runtime action/form validation and materialization');
 
 const mutationIntents = [

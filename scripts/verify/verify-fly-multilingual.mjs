@@ -127,7 +127,7 @@ requireMarkers('runtimePipeline', [
   'materialize_runtime_locale_context(&translation_context)',
   'materialize_localized_page_metadata(document, &localized_input_context)',
   'materialize_context(&localized_document, &localized_input_context)',
-  'materialize_bindings(&localized_document, &effective_context)',
+  'prepare_scoped_bindings(&localized_document, &effective_context)',
   'project_locale_policy_defaults_before_translation_materialization',
   'project_translation_catalog_materializes_before_bindings',
 ], 'multilingual Fly runtime ordering');

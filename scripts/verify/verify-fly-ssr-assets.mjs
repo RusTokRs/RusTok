@@ -68,7 +68,7 @@ rejectMarker(
 );
 requireMarkers('adapter', [
   'data-fly-intent-form',
-  'delete payload[number.name]',
+  'delete payload[name]',
   'data-fly-selected-component-input',
 ], 'SSR form adapter');
 requireMarkers('assets', [
