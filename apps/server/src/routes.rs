@@ -54,6 +54,7 @@ pub fn build_application_router(
         .merge(crate::controllers::marketplace_registry::router())
         .merge(crate::controllers::artifact_http::router())
         .merge(crate::controllers::artifact_permissions::router())
+        .merge(crate::controllers::artifact_security::router())
         .merge(crate::controllers::admin_events::router())
         .merge(crate::controllers::auth::router())
         .merge(crate::controllers::channel::router());

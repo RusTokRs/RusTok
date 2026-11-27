@@ -42,7 +42,7 @@ impl ModuleGraphqlField {
                 | "activeBuild"
                 | "buildHistory",
             ) => ModuleAuthority::Read,
-            (OperationType::Query, "marketplaceRegistryFreshness") => ModuleAuthority::Manage,
+            (OperationType::Query, "marketplaceRegistryFreshness" | "moduleArtifactSecurity") => ModuleAuthority::Manage,
             (OperationType::Mutation, "executeArtifactUiAction") => ModuleAuthority::Read,
             (
                 OperationType::Mutation,
@@ -57,7 +57,10 @@ impl ModuleGraphqlField {
                 | "rollbackTenantArtifact"
                 | "retryFailedModuleOperationPostHook"
                 | "compensateFailedModuleOperation"
-                | "updateModuleSettings",
+                | "updateModuleSettings"
+                | "quarantineModuleArtifact"
+                | "clearModuleArtifactQuarantine"
+                | "revokeModuleArtifact",
             ) => ModuleAuthority::Manage,
             (OperationType::Subscription, "buildProgress") => ModuleAuthority::Read,
             _ => return None,
@@ -76,6 +79,7 @@ impl ModuleGraphqlField {
                 "marketplace" => "marketplace",
                 "marketplaceModule" => "marketplaceModule",
                 "marketplaceRegistryFreshness" => "marketplaceRegistryFreshness",
+                "moduleArtifactSecurity" => "moduleArtifactSecurity",
                 "moduleOperationRecoveryPlan" => "moduleOperationRecoveryPlan",
                 "failedModuleOperationRecoveryPlans" => "failedModuleOperationRecoveryPlans",
                 "activeBuild" => "activeBuild",
@@ -93,6 +97,9 @@ impl ModuleGraphqlField {
                 "retryFailedModuleOperationPostHook" => "retryFailedModuleOperationPostHook",
                 "compensateFailedModuleOperation" => "compensateFailedModuleOperation",
                 "updateModuleSettings" => "updateModuleSettings",
+                "quarantineModuleArtifact" => "quarantineModuleArtifact",
+                "clearModuleArtifactQuarantine" => "clearModuleArtifactQuarantine",
+                "revokeModuleArtifact" => "revokeModuleArtifact",
                 "buildProgress" => "buildProgress",
                 _ => return None,
             },
@@ -492,6 +499,71 @@ mod tests {
                         | "rollbackTenantArtifact"
                 )
         }));
+    }
+
+    #[test]
+    fn classifies_global_artifact_security_query_and_mutations_as_manage() {
+        let mut request = Request::new(
+            r#"
+                query ReadReleaseSecurity {
+                    moduleArtifactSecurity(
+                        moduleSlug: "example"
+                        version: "1.2.3"
+                        payloadDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    ) { revision status }
+                }
+                mutation ChangeReleaseSecurity {
+                    quarantineModuleArtifact(
+                        moduleSlug: "example"
+                        version: "1.2.3"
+                        payloadDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                        expectedRevision: "0"
+                        policyRevision: "policy-r1"
+                        reasonCode: "security-review"
+                        reasonDetail: "reviewed"
+                        idempotencyKey: "00000000-0000-0000-0000-000000000001"
+                    ) { created }
+                    clearModuleArtifactQuarantine(
+                        moduleSlug: "example"
+                        version: "1.2.3"
+                        payloadDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                        expectedRevision: "1"
+                        policyRevision: "policy-r2"
+                        reasonCode: "security-review"
+                        reasonDetail: "cleared"
+                        idempotencyKey: "00000000-0000-0000-0000-000000000002"
+                    ) { created }
+                    revokeModuleArtifact(
+                        moduleSlug: "example"
+                        version: "1.2.3"
+                        payloadDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                        expectedRevision: "2"
+                        policyRevision: "policy-r3"
+                        reasonCode: "security-review"
+                        reasonDetail: "revoked"
+                        idempotencyKey: "00000000-0000-0000-0000-000000000003"
+                    ) { created }
+                }
+            "#,
+        );
+
+        classify_document(&mut request).expect("document should parse");
+        let policy = request
+            .data
+            .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
+            .and_then(|value| value.downcast_ref::<ModuleGraphqlDocumentPolicy>())
+            .expect("artifact security policy should be attached");
+
+        assert_eq!(policy.0.len(), 4);
+        assert!(policy.0.iter().all(|field| field.authority == ModuleAuthority::Manage));
+        for name in [
+            "moduleArtifactSecurity",
+            "quarantineModuleArtifact",
+            "clearModuleArtifactQuarantine",
+            "revokeModuleArtifact",
+        ] {
+            assert!(policy.0.iter().any(|field| field.name == name));
+        }
     }
 
     #[test]

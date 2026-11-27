@@ -2266,3 +2266,29 @@ missing extension is returned as a startup error instead of causing a panic in
 the spawned worker. Regression tests cover both missing and registered state.
 
 Formatting, compilation and tests remain unrun at the maintainer's request.
+
+## Server follow-up — global artifact release security API (2026-11-27)
+
+The server now exposes the Modules owner's global release-security aggregate through
+both REST and GraphQL. Operators can inspect the immutable release identity
+(module slug, version, payload digest) and issue the revisioned quarantine,
+clear-quarantine, and terminal revoke commands. The transports preserve the
+owner's idempotency key, expected revision, policy revision, reason evidence and
+actor context; the owner remains responsible for the atomic state/receipt/redacted
+outbox write. The REST responses are private and non-cacheable. Revisions are
+exposed as decimal strings in both transports so JavaScript clients preserve the
+full unsigned 64-bit owner revision without numeric rounding.
+
+Both transports require a direct authenticated user session and the effective
+modules:manage permission in the resolved tenant. Delegated and service
+principals are rejected. The permission is checked against both the authenticated
+permission snapshot and persisted RBAC state. Successful commands clear the
+process-local effective module-policy cache across all tenants, because the
+security aggregate is global to the release. The owner-side SQL execution fence
+remains authoritative for already-running artifact work.
+
+Focused source regressions cover direct-principal authorization, persisted
+permission checks, tenant/actor binding, global command context, response cache
+headers, owner error mapping, GraphQL field classification and OpenAPI auth
+contracts. Tests, compilation and formatting were not run at the maintainer's
+request.

@@ -26,6 +26,7 @@ use super::legacy_disable_user::LegacyDisableUserPolicy;
 use super::loaders::TenantNameLoader;
 #[cfg(feature = "mod-moderation")]
 use super::moderation_recovery::ModerationRecoveryMutation;
+use super::artifact_security::{ArtifactSecurityMutation, ArtifactSecurityQuery};
 use super::module_rollback::ModuleRollbackMutation;
 use super::module_security::GraphqlModuleSecurityPolicy;
 use super::module_settings_cas::ModuleSettingsCasMutation;
@@ -81,6 +82,7 @@ pub mod module_slug {
 #[derive(MergedObject, Default)]
 pub struct Query(
     RootQuery,
+    ArtifactSecurityQuery,
     SearchQueryRoot,
     #[cfg(feature = "mod-forum")] ForumSearchProjectionReconciliationQuery,
     AuthQuery,
@@ -95,6 +97,7 @@ pub struct Query(
 #[derive(MergedObject, Default)]
 pub struct Mutation(
     RootMutation,
+    ArtifactSecurityMutation,
     IndexDriftDiagnosisMutation,
     ModuleRollbackMutation,
     ModuleSettingsCasMutation,

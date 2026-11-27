@@ -88,6 +88,11 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
         // RBAC artifact permissions
         crate::controllers::artifact_permissions::grant_artifact_permission,
         crate::controllers::artifact_permissions::revoke_artifact_permission,
+        // Global artifact release security
+        crate::controllers::artifact_security::get_artifact_security_snapshot,
+        crate::controllers::artifact_security::quarantine_artifact_release,
+        crate::controllers::artifact_security::clear_artifact_release_quarantine,
+        crate::controllers::artifact_security::revoke_artifact_release,
         // Swagger
         crate::controllers::swagger::openapi_json,
         crate::controllers::swagger::openapi_yaml,
@@ -195,6 +200,10 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
             // RBAC artifact permissions
             crate::controllers::artifact_permissions::ArtifactRolePermissionAssignmentRequest,
             crate::controllers::artifact_permissions::ArtifactRolePermissionAssignmentResponse,
+            crate::controllers::artifact_security::ArtifactSecurityLookup,
+            crate::controllers::artifact_security::ArtifactSecurityCommandRequest,
+            crate::services::artifact_security::ArtifactSecuritySnapshotView,
+            crate::services::artifact_security::ArtifactSecurityReceiptView,
             crate::modules::ModuleSettingSpec,
 
             // Health
@@ -607,6 +616,10 @@ mod tests {
             "/v2/catalog/unyank",
             "/v2/catalog/owner-transfer",
             "/api/rbac/artifact-permissions/roles/{role_id}",
+            "/api/modules/artifact-security",
+            "/api/modules/artifact-security/quarantine",
+            "/api/modules/artifact-security/clear-quarantine",
+            "/api/modules/artifact-security/revoke",
             "/api/admin/events/dlq",
             "/api/admin/events/dlq/{id}/replay",
             "/api/users",
@@ -623,6 +636,31 @@ mod tests {
             assert!(
                 openapi.paths.paths.contains_key(path),
                 "OpenAPI spec must include documented core path {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn openapi_marks_artifact_security_operations_with_bearer_auth() {
+        use utoipa::openapi::HttpMethod;
+
+        let openapi = ApiDoc::openapi();
+        for (path, method) in [
+            ("/api/modules/artifact-security", HttpMethod::Get),
+            ("/api/modules/artifact-security/quarantine", HttpMethod::Post),
+            ("/api/modules/artifact-security/clear-quarantine", HttpMethod::Post),
+            ("/api/modules/artifact-security/revoke", HttpMethod::Post),
+        ] {
+            let security = openapi
+                .paths
+                .get_path_operation(path, method)
+                .and_then(|operation| operation.security.as_ref())
+                .unwrap_or_else(|| panic!("{path} must require bearer auth"));
+
+            assert_eq!(
+                serde_json::to_value(security).expect("security serializes"),
+                serde_json::json!([{ "bearer_auth": [] }]),
+                "unexpected security contract for {path}"
             );
         }
     }
