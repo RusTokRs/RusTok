@@ -16,7 +16,13 @@ See [the cache-consistency decision](../../../DECISIONS/2026-11-02-rbac-cache-re
 The persisted SeaORM reader resolves the entire tenant/user membership and
 static-grant graph in one SQL statement, for both cache misses and uncached
 authorization. A statement snapshot prevents mixed membership/grant reads; it
-does not fence subsequent revocation or make cache hits current.
+does not fence subsequent revocation. A cached candidate is validated against
+the exact persisted permission pairs in a fresh statement before returning a
+hit, followed by a local token recheck. This handles direct SQL and missed
+notifications without adding a global write lock. Cache hits still incur a DB
+query; a mismatch triggers the typed relation read and conditional publication.
+The durable invalidation generation remains the owner mutation/recovery
+watermark, not a complete raw-DML change feed.
 
 ## Responsibilities
 

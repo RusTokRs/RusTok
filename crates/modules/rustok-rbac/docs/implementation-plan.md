@@ -484,3 +484,11 @@ exists.
   regressions, including actual generation contention. Compilation, migration
   execution, direct relation invalidation coupling and global lock evidence
   remain pending.
+
+- Direct relation mutation continuation: validate every persisted cache-hit
+  candidate against an exact current grant set, then recheck local token.
+  This closes stale unscoped cache use on direct SQL or missed notifications
+  without introducing an early global generation lock. A hit now requires a
+  read query. Source regressions authored; compile, PostgreSQL query parity
+  and performance evidence remain pending. Raw-DML generation coupling,
+  request-snapshot revocation and relation incarnation continuity remain open.

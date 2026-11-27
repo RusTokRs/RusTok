@@ -416,6 +416,15 @@ impl PermissionCache for MokaPermissionCache {
         PermissionCacheLookup::new(None, current_permission_cache_token(&key).unwrap_or(0))
     }
 
+    async fn is_lookup_current(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        token: u64,
+    ) -> bool {
+        current_permission_cache_token(&(*tenant_id, *user_id)) == Some(token)
+    }
+
     async fn insert_if_current(
         &self,
         tenant_id: &uuid::Uuid,

@@ -300,3 +300,14 @@ are outside ordinary DML enforcement. User-admin update resolves response role
 and tenant before reservation. The generation-bearing outbox insert and final
 live credential deadline check remain after reservation and must not acquire
 new domain identities. SQLite and opt-in PostgreSQL regressions are unrun.
+
+### Raw relation writes and cached decisions
+
+Unscoped persisted permission resolution validates each cache hit by exact
+tenant/user grant-set equivalence in a database statement, then rechecks the
+local token. A mismatch is a cache miss; read failure is an authority failure
+even with a warm entry. A raw relation change no longer depends on the global
+watermark or a pub/sub notification to be observed by the next such decision.
+The extra database read is intentional; this does not revoke already admitted
+request snapshots or make direct DML advance the recovery watermark. No new
+global write locks or duplicate generation reservation are introduced.
