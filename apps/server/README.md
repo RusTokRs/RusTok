@@ -262,10 +262,13 @@ matching BFFs and revoke pre-cutover sessions; bare cookies are rejected.
 - OAuth refresh-token reuse now propagates failed revocation persistence as
   `server_error`, allowing the caller to retry after a storage outage instead of
   falsely reporting only an invalid grant. Its 30-second grace window suppresses
-  family revocation for a likely concurrent duplicate, but still returns
-  `invalid_grant` and does not replay the replacement token; a lost successful
-  response cannot be recovered from the old token. Durable incident/retry
-  evidence and two-replica failure-injection verification remain pending.
+  family revocation for a likely concurrent duplicate. A retry carrying the same
+  `x-rustok-refresh-retry-key` proof can recover only the exact still-current
+  successor for that refresh-token generation; requests without a matching proof,
+  outside the grace window, or after the successor is no longer current return
+  `invalid_grant`. Recovery never extends the successor or family deadline.
+  Durable incident/retry evidence and two-replica failure-injection verification
+  remain pending.
 
 - Artifact execution leases bind each host execution to its exact installation,
   sandbox grant constraints, direct request scope, dependency/co-requisite
