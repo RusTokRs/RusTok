@@ -43,9 +43,14 @@ impl IggyTransport {
             })?;
 
         let topology = TopologyManager::new();
-        topology
-            .ensure_topology(&config, connector.as_ref())
-            .await?;
+        if let Err(error) = topology.ensure_topology(&config, connector.as_ref()).await {
+            // Do not leave a connected client or managed broker behind on
+            // failed topology admission.
+            if let Err(shutdown_error) = connector.shutdown().await {
+                tracing::error!(error = %shutdown_error, "Failed to shut down Iggy after topology failure");
+            }
+            return Err(error);
+        }
 
         let serializer: Arc<dyn EventSerializer> = match config.serialization {
             crate::config::SerializationFormat::Json => Arc::new(JsonSerializer),

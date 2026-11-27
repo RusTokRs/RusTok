@@ -1,4 +1,4 @@
-use iggy::prelude::{Client, IggyClient, IggyError, IggyMessage, Partitioning};
+use iggy::prelude::{Client, DirectConfig, IggyClient, IggyError, IggyMessage, Partitioning};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -28,8 +28,8 @@ impl DlqPublisherError {
 /// Lazily connected SDK publisher for DLQ entries that carry an explicit broker message ID.
 ///
 /// It is owned by `IggyTransport`, connects to the same configured broker process, and does
-/// not create or supervise another transport. The dedicated connection exists because the
-/// current generic connector publish API does not expose Iggy's `u128` message header ID.
+/// not create or supervise another transport. Keep the existing dedicated path
+/// for its deployed poison-receipt partition routing and message identity.
 pub(crate) struct IggyDlqPublisher {
     client: IggyClient,
     stream: String,
@@ -109,6 +109,7 @@ impl IggyDlqPublisher {
             .client
             .producer(&self.stream, "dlq")
             .map_err(publish_error)?
+            .direct(DirectConfig::builder().batch_length(1).build())
             .partitioning(Partitioning::partition_id(broker_partition))
             .create_stream_if_not_exists()
             .create_topic_if_not_exists(self.partitions, Default::default(), Default::default())

@@ -625,7 +625,7 @@ impl OutboxRelay {
         let publish_result = match publish_result {
             Ok(result) => result,
             Err(_elapsed) => Err(Error::External(format!(
-                "outbox dispatch timed out after {} ms",
+                "outbox dispatch outcome unconfirmed after timeout ({} ms); retry may redeliver",
                 publish_timeout.as_millis()
             ))),
         };
@@ -640,8 +640,10 @@ impl OutboxRelay {
             }
             Err(err) => {
                 tracing::warn!(event_id = %event_id, error = %err, "Outbox event dispatch failed");
-                let terminal = Self::is_terminal_dispatch_error(&err);
-                let outcome = self.mark_failed_attempt(model, err, terminal).await?;
+                // The transport can have performed a remote effect before
+                // reporting a later local validation/serialization failure.
+                // Only relay-side envelope rejection is proven pre-publication.
+                let outcome = self.mark_failed_attempt(model, err, false).await?;
                 self.record_processed(&model.event_type, elapsed_ms, false);
                 Ok(outcome)
             }
@@ -652,10 +654,6 @@ impl OutboxRelay {
     /// undecodable payload) cannot succeed on a later attempt and go to the
     /// DLQ immediately. Everything else (transport, database, timeouts) is
     /// treated as transient and follows the retry/backoff policy.
-    fn is_terminal_dispatch_error(error: &Error) -> bool {
-        matches!(error, Error::Validation(_) | Error::Serialization(_))
-    }
-
     fn decode_envelope(model: &entity::Model) -> Result<RelayEnvelope> {
         let envelope = match from_value::<ContractEventEnvelope>(model.payload.clone()) {
             Ok(envelope) => {
@@ -965,19 +963,6 @@ mod tests {
             ..RelayConfig::default()
         });
         assert!(invalid.validate_config().is_err());
-    }
-
-    #[test]
-    fn permanent_dispatch_errors_are_terminal_transient_ones_are_not() {
-        assert!(OutboxRelay::is_terminal_dispatch_error(&Error::Validation(
-            "bad envelope".to_string()
-        )));
-        assert!(OutboxRelay::is_terminal_dispatch_error(
-            &Error::Serialization(serde_json::from_str::<serde_json::Value>("x").unwrap_err())
-        ));
-        assert!(!OutboxRelay::is_terminal_dispatch_error(&Error::External(
-            "broker unavailable".to_string()
-        )));
     }
 
     #[tokio::test]

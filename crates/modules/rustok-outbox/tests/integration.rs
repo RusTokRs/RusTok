@@ -95,6 +95,47 @@ impl EventTransport for TrackingTransport {
 
 type TestResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+struct AcceptedThenLocalFailure {
+    accepted: Mutex<Vec<Uuid>>,
+}
+
+#[async_trait]
+impl EventTransport for AcceptedThenLocalFailure {
+    async fn publish(&self, envelope: EventEnvelope) -> Result<()> {
+        let mut accepted = self.accepted.lock().await;
+        accepted.push(envelope.id);
+        if accepted.len() == 1 {
+            return Err(Error::Validation("local projection failed after primary acceptance".to_string()));
+        }
+        Ok(())
+    }
+    fn reliability_level(&self) -> ReliabilityLevel { ReliabilityLevel::Streaming }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+#[tokio::test]
+async fn post_acceptance_validation_failure_retries_original_identity() -> TestResult<()> {
+    let db = setup_sqlite_db().await?;
+    let event = seed_event(&db).await?;
+    let transport = Arc::new(AcceptedThenLocalFailure { accepted: Mutex::new(Vec::new()) });
+    let relay = OutboxRelay::new(db.clone(), transport.clone()).with_config(RelayConfig {
+        max_attempts: 3, ..Default::default()
+    });
+    assert_eq!(relay.process_pending_once(None).await?, 1);
+    let row = entity::Entity::find_by_id(event.id).one(&db).await?.expect("event");
+    assert_eq!(row.status, SysEventStatus::Pending);
+    assert_eq!(row.retry_count, 1);
+    assert_eq!(relay.metrics().dlq_total, 0);
+    let mut row: entity::ActiveModel = row.into();
+    row.next_attempt_at = Set(None);
+    row.update(&db).await?;
+    assert_eq!(relay.process_pending_once(None).await?, 1);
+    let row = entity::Entity::find_by_id(event.id).one(&db).await?.expect("event");
+    assert_eq!(row.status, SysEventStatus::Dispatched);
+    assert_eq!(*transport.accepted.lock().await, vec![event.id, event.id]);
+    Ok(())
+}
+
 #[tokio::test]
 async fn relay_delivers_successfully() -> TestResult<()> {
     let _guard = test_lock().lock().await;
