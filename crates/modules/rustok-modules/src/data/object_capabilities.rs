@@ -97,7 +97,7 @@ where
         }
     }
 
-    fn with_sql_effect_authorizer(
+    pub(crate) fn with_sql_effect_authorizer(
         mut self,
         authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>,
     ) -> Self {
