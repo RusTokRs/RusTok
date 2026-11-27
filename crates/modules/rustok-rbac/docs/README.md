@@ -411,6 +411,9 @@ The Moka adapter binds grants to the original coherent static actor revision.
 Cache fills recheck the revision after publication and retry on drift even
 without local invalidation. Bound hits compare exact vocabulary and revision
 in one database statement; ABA is a miss. Missing subjects and legacy entries
-retain exact checks. Revision storage counts toward the cache weight. Exact
+retain exact checks. A revision-aware miss with absent subject evidence may
+publish only empty grants: a nonempty read without a revision retries before
+publication, even if the subject would again be absent afterward. Revision
+storage counts toward the cache weight. Exact
 validation is retained because database restore can reproduce counters; no
 warm-hit speedup or commit-time fence is claimed. Source regressions unrun.

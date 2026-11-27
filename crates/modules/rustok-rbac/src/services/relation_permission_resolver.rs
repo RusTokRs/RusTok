@@ -336,6 +336,8 @@ pub trait RelationPermissionStore {
 
     /// Optional durable static relation observation. Legacy stores retain
     /// exact validation and do not produce revision-bound cache entries.
+    /// For a revision-aware cache/store pair, None means the subject is
+    /// absent; it is not an authority revision for a nonempty grant set.
     async fn read_static_revision(
         &self,
         _tenant_id: &uuid::Uuid,
@@ -542,6 +544,13 @@ where
         let resolved_permissions = resolve_permissions_from_relations(store, tenant_id, user_id)
             .await
             .map_err(PermissionCacheResolutionError::Store)?;
+        // Absence is not a revision: a subject could be created and deleted
+        // (or move into and out of this tenant) between the two observations.
+        // Never publish or return grants without a subject revision in the
+        // revision-aware path, even if both observations would be None.
+        if revision_aware && revision.is_none() && !resolved_permissions.is_empty() {
+            continue;
+        }
         if cache
             .insert_bound_if_current(tenant_id, user_id, token, resolved_permissions.clone(), revision.clone())
             .await
@@ -869,23 +878,23 @@ mod tests {
         )).await.unwrap();
         let store = super::ConnectionRelationPermissionStore { db: &tx };
         let expected = [Permission::MODULES_MANAGE];
-        assert!(store.cached_grants_match(&tenant, &user, &expected).await.unwrap());
-        assert!(!store.cached_grants_match(&tenant, &user, &[]).await.unwrap());
-        assert!(!store.cached_grants_match(&tenant, &user, &[Permission::USERS_READ]).await.unwrap());
-        assert!(!store.cached_grants_match(&uuid::Uuid::new_v4(), &user, &expected).await.unwrap());
+        assert!(store.cached_grants_match(&tenant, &user, &expected, None).await.unwrap());
+        assert!(!store.cached_grants_match(&tenant, &user, &[], None).await.unwrap());
+        assert!(!store.cached_grants_match(&tenant, &user, &[Permission::USERS_READ], None).await.unwrap());
+        assert!(!store.cached_grants_match(&uuid::Uuid::new_v4(), &user, &expected, None).await.unwrap());
 
         tx.execute_unprepared(&format!("DELETE FROM permissions WHERE id = '{permission}'"))
             .await.unwrap();
-        assert!(!store.cached_grants_match(&tenant, &user, &expected).await.unwrap());
-        assert!(store.cached_grants_match(&tenant, &user, &[]).await.unwrap());
+        assert!(!store.cached_grants_match(&tenant, &user, &expected, None).await.unwrap());
+        assert!(store.cached_grants_match(&tenant, &user, &[], None).await.unwrap());
         tx.execute_unprepared(&format!(
             "INSERT INTO permissions VALUES ('{permission}', '{tenant}', 'modules', 'manage');
              INSERT INTO role_permissions VALUES ('{role}', '{permission}')"
         )).await.unwrap();
-        assert!(store.cached_grants_match(&tenant, &user, &expected).await.unwrap());
+        assert!(store.cached_grants_match(&tenant, &user, &expected, None).await.unwrap());
         tx.execute_unprepared(&format!("DELETE FROM roles WHERE id = '{role}'")).await.unwrap();
-        assert!(!store.cached_grants_match(&tenant, &user, &expected).await.unwrap());
-        assert!(store.cached_grants_match(&tenant, &user, &[]).await.unwrap());
+        assert!(!store.cached_grants_match(&tenant, &user, &expected, None).await.unwrap());
+        assert!(store.cached_grants_match(&tenant, &user, &[], None).await.unwrap());
         // Transactional DDL keeps the disposable test schema out of the database.
         tx.rollback().await.unwrap();
     }
@@ -1235,6 +1244,103 @@ mod tests {
             cache.attempts.load(Ordering::SeqCst),
             super::MAX_PERMISSION_CACHE_RESOLUTION_ATTEMPTS
         );
+    }
+
+    #[tokio::test]
+    async fn revision_aware_fill_never_publishes_grants_for_absent_subject() {
+        struct AbsentRevisionStore {
+            reads: AtomicUsize,
+            transient_reads: usize,
+        }
+
+        #[async_trait]
+        impl RelationPermissionStore for AbsentRevisionStore {
+            type Error = String;
+
+            async fn load_permissions_for_user(
+                &self,
+                _: &uuid::Uuid,
+                _: &uuid::Uuid,
+            ) -> Result<Vec<Permission>, Self::Error> {
+                let read = self.reads.fetch_add(1, Ordering::SeqCst);
+                Ok(if read < self.transient_reads {
+                    vec![Permission::USERS_MANAGE]
+                } else {
+                    Vec::new()
+                })
+            }
+
+            async fn read_static_revision(
+                &self,
+                _: &uuid::Uuid,
+                _: &uuid::Uuid,
+            ) -> Result<Option<super::StaticActorAuthorityRevision>, Self::Error> {
+                Ok(None)
+            }
+        }
+
+        #[derive(Default)]
+        struct RevisionAwareCache {
+            publications: AtomicUsize,
+        }
+
+        #[async_trait]
+        impl PermissionCache for RevisionAwareCache {
+            fn supports_static_revisions(&self) -> bool {
+                true
+            }
+
+            async fn get(&self, _: &uuid::Uuid, _: &uuid::Uuid) -> Option<Vec<Permission>> {
+                None
+            }
+
+            async fn insert(
+                &self,
+                _: &uuid::Uuid,
+                _: &uuid::Uuid,
+                permissions: Vec<Permission>,
+            ) {
+                assert!(permissions.is_empty(), "absent subject cannot have grants");
+                self.publications.fetch_add(1, Ordering::SeqCst);
+            }
+
+            async fn invalidate(&self, _: &uuid::Uuid, _: &uuid::Uuid) {}
+        }
+
+        let tenant = uuid::Uuid::new_v4();
+        let actor = uuid::Uuid::new_v4();
+
+        // Model a transient subject visible to the first coherent grant
+        // read but absent at the revision observations.
+        let store = AbsentRevisionStore {
+            reads: AtomicUsize::new(0),
+            transient_reads: 1,
+        };
+        let cache = RevisionAwareCache::default();
+        let result = resolve_permissions_with_cache(&store, &cache, &tenant, &actor)
+            .await
+            .unwrap();
+        assert!(result.permissions.is_empty());
+        assert!(!result.cache_hit);
+        assert_eq!(store.reads.load(Ordering::SeqCst), 2);
+        assert_eq!(cache.publications.load(Ordering::SeqCst), 1);
+
+        // Repeated contradictory evidence must exhaust the retry budget,
+        // not publish an empty success or the last unbound grant set.
+        let store = AbsentRevisionStore {
+            reads: AtomicUsize::new(0),
+            transient_reads: usize::MAX,
+        };
+        let cache = RevisionAwareCache::default();
+        assert!(matches!(
+            resolve_permissions_with_cache(&store, &cache, &tenant, &actor).await,
+            Err(PermissionCacheResolutionError::Invalidated)
+        ));
+        assert_eq!(
+            store.reads.load(Ordering::SeqCst),
+            super::MAX_PERMISSION_CACHE_RESOLUTION_ATTEMPTS
+        );
+        assert_eq!(cache.publications.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]

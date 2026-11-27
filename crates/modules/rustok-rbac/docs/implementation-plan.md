@@ -569,5 +569,7 @@ exists.
   compare exact grants and original revision in one statement. Legacy entries
   retain exact validation; missing/corrupt evidence and storage failure do not
   authorize stale grants. Source regression covers raw grant ABA and mutation
-  during publication. Tests and performance evidence pending; revision-only
+  during publication, plus transient subject visibility between absent
+  revision observations and bounded rejection of repeated contradictions.
+  Tests and performance evidence pending; revision-only
   optimization requires a trustworthy database incarnation/restore contract.

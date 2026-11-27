@@ -76,7 +76,11 @@ hits must validate both its exact persisted vocabulary and revision.
 Bound hits compare both using one SQL statement and the shared owner revision
 decoder. Equal grants after membership/grant ABA are a miss. Unknown subjects
 and legacy cache entries have no reusable revision and retain exact validation.
-Legacy adapters that do not opt in retain the existing contract. Include
+In a revision-aware fill, a missing subject revision cannot witness nonempty
+grants: subject creation/deletion or tenant movement may occur between two
+absent observations. Retry before publishing any such contradictory read;
+exhaustion remains an unavailable error. Stable absence can publish empty
+grants. Legacy adapters that do not opt in retain the existing contract. Include
 revision heap allocation in the bounded Moka entry weight.
 
 Do not replace exact-set validation with revision equality alone: privileged
