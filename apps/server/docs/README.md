@@ -2156,11 +2156,27 @@ before resolving direct, delegated or service authority, including global
 routes without tenant middleware and requests with an older cached tenant
 projection. Database failures remain internal errors. WebSocket lease
 revalidation uses the same check rather than a duplicate tenant lookup.
-This is an admission-time check, not a transaction-wide deactivation fence;
-an already admitted operation can still finish. Successful service-token
-extractor tests now issue signed credentials and persist matching access rows
-instead of bypassing the registration contract. Regression cases authored,
-unrun by request.
+This is an admission-time check, not a global request-cancellation
+fence; an already admitted non-credential operation can still finish.
+Successful service-token extractor tests now issue signed credentials and
+persist matching access rows instead of bypassing the registration contract.
+Regression cases authored, unrun by request.
+
+## Session credential tenant deactivation fence (2026-11-28)
+
+Registration, login, refresh, and failed-login lockout writes now acquire the
+canonical active tenant row inside their final transaction before user/session
+locks and retain it through commit. If tenant deactivation wins, no new session
+is issued and failed-login state is not mutated. A refresh request that loses
+the fence rolls back and re-reads the user/session under user-then-session
+locks; stale replay outside grace is still revoked, but no replacement token is
+issued. The replay check deliberately re-reads current session state rather
+than trusting a preflight hash snapshot. Logout and explicit revocation remain
+security-reducing operations and do not require an active tenant. See the
+[tenant admission fence ADR](../../DECISIONS/2026-11-28-auth-session-tenant-admission.md).
+Regression cases authored; full Rust compilation and runtime tests remain
+unverified because the workspace check currently fails earlier in
+`rustok-outbox-storage`.
 
 ## Flex field-definition generation reconciliation
 
