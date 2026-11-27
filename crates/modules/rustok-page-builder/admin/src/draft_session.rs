@@ -1437,8 +1437,11 @@ impl FileSsrDraftSessionStore {
             Err(err) => return Err(SsrDraftSessionError::Io(err.to_string())),
         };
         for partition in partitions {
-            let partition =
-                partition.map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
+            let partition = match partition {
+                Ok(partition) => partition,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
+            };
             let name = partition.file_name();
             let Some(name) = name.to_str() else {
                 continue;
@@ -1700,7 +1703,11 @@ impl FileSsrDraftSessionStore {
         };
         let mut owned: Vec<(PathBuf, String, u64, RecordAge, bool)> = Vec::new();
         for entry in entries {
-            let entry = entry.map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
+            };
             let path = entry.path();
             let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
@@ -1920,7 +1927,11 @@ impl FileSsrDraftSessionStore {
         };
         let mut pruned = 0;
         for entry in entries {
-            let entry = entry.map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
+            };
             let path = entry.path();
             let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
@@ -2309,15 +2320,20 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
             bool,
         )> = Vec::new();
         for entry in entries {
-            let entry = entry.map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
+            };
             let path = entry.path();
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
-            let is_dir = entry
-                .file_type()
-                .map_err(|error| SsrDraftSessionError::Io(error.to_string()))?
-                .is_dir();
+            let is_dir = match entry.file_type() {
+                Ok(kind) => kind.is_dir(),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
+            };
             if !is_dir {
                 if Self::is_legacy_flat_file(name) {
                     if let Some(token) = name.strip_suffix(".json") {
@@ -3629,7 +3645,11 @@ fn prune_token_lock_files(dir: &Path) -> Result<(), SsrDraftSessionError> {
         Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
     };
     for entry in entries {
-        let entry = entry.map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
+        let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
+            };
         let path = entry.path();
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
