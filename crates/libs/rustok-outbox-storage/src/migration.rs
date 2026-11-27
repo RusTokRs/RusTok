@@ -1,4 +1,4 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -11,6 +11,9 @@ impl MigrationTrait for SysEventsMigration {
     }
 
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        let txn = manager.get_connection().begin().await?;
+        let nested = SchemaManager::new(&txn);
+        let manager = &nested;
         create_sys_events_schema(manager).await?;
         create_sys_events_claim_index(manager).await?;
         create_sys_events_retention_index(manager).await?;
@@ -21,7 +24,9 @@ impl MigrationTrait for SysEventsMigration {
         create_sys_event_consumer_tables(manager).await?;
         create_outbox_temporal_clock(manager).await?;
         create_outbox_execution_policy(manager).await?;
-        create_outbox_execution_policy_integrity(manager).await
+        create_outbox_execution_policy_integrity(manager).await?;
+        create_outbox_temporal_clock_integrity(manager).await?;
+        txn.commit().await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -314,18 +319,10 @@ pub async fn add_sys_events_integrity_checks(manager: &SchemaManager<'_>) -> Res
             "status <> 'dispatched' OR dispatched_at IS NOT NULL",
         ),
     ] {
-        // Re-running the helper against a schema that already carries the
-        // constraint is success, not drift.
-        if let Err(error) = db
-            .execute_raw(Statement::from_string(
-                DbBackend::Postgres,
-                format!("ALTER TABLE sys_events ADD CONSTRAINT {name} CHECK ({check}) NOT VALID"),
-            ))
-            .await
-            && !error.to_string().contains("already exists")
-        {
-            return Err(error);
-        }
+        // A duplicate DDL error otherwise poisons the enclosing transaction.
+        db.execute_unprepared(&format!(
+            "DO $ BEGIN ALTER TABLE sys_events ADD CONSTRAINT {name} CHECK ({check}) NOT VALID; EXCEPTION WHEN duplicate_object THEN NULL; END $"
+        )).await?;
     }
     Ok(())
 }
@@ -687,6 +684,9 @@ enum OwnerOperationReceipts {
 /// Append-only owner schema for the durable temporal authority. Do not reset
 /// a previously initialized floor when applying this idempotent helper.
 pub async fn create_outbox_temporal_clock(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    if manager.has_table("outbox_temporal_clock").await? {
+        return Ok(());
+    }
     let connection = manager.get_connection();
     connection.execute_unprepared(
         "CREATE TABLE IF NOT EXISTS outbox_temporal_clock (id INTEGER PRIMARY KEY CHECK (id = 1), high_water_ms BIGINT NOT NULL CHECK (high_water_ms >= 0))",
@@ -698,6 +698,9 @@ pub async fn create_outbox_temporal_clock(manager: &SchemaManager<'_>) -> Result
 }
 
 pub async fn drop_outbox_temporal_clock(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    if manager.has_table("outbox_temporal_clock").await? {
+        drop_outbox_temporal_clock_integrity(manager).await?;
+    }
     manager.get_connection().execute_unprepared("DROP TABLE IF EXISTS outbox_temporal_clock").await?;
     Ok(())
 }
@@ -721,12 +724,14 @@ impl MigrationTrait for OutboxTemporalClockMigration {
 /// The canonical execution permits remain the pending event claim columns.
 pub async fn create_outbox_execution_policy(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let db = manager.get_connection();
-    db.execute_unprepared(
-        "CREATE TABLE IF NOT EXISTS outbox_execution_policy (id INTEGER PRIMARY KEY CHECK (id = 1), max_in_flight BIGINT NOT NULL CHECK (max_in_flight BETWEEN 1 AND 1024), claim_ttl_ms BIGINT CHECK (claim_ttl_ms BETWEEN 2 AND 315360000000))",
-    ).await?;
-    db.execute_unprepared(
-        "INSERT INTO outbox_execution_policy (id, max_in_flight, claim_ttl_ms) SELECT 1, 8, NULL WHERE NOT EXISTS (SELECT 1 FROM outbox_execution_policy WHERE id = 1) ON CONFLICT (id) DO NOTHING",
-    ).await?;
+    if !manager.has_table("outbox_execution_policy").await? {
+        db.execute_unprepared(
+            "CREATE TABLE outbox_execution_policy (id INTEGER PRIMARY KEY CHECK (id = 1), max_in_flight BIGINT NOT NULL CHECK (max_in_flight BETWEEN 1 AND 1024), claim_ttl_ms BIGINT CHECK (claim_ttl_ms BETWEEN 2 AND 315360000000))",
+        ).await?;
+        db.execute_unprepared(
+            "INSERT INTO outbox_execution_policy (id, max_in_flight, claim_ttl_ms) VALUES (1, 8, NULL)",
+        ).await?;
+    }
     db.execute_unprepared(
         "CREATE INDEX IF NOT EXISTS idx_sys_events_execution_claims ON sys_events (status, claimed_at) WHERE claimed_at IS NOT NULL",
     ).await?;
@@ -896,6 +901,13 @@ END
 pub async fn create_outbox_execution_policy_integrity(
     manager: &SchemaManager<'_>,
 ) -> Result<(), DbErr> {
+    let txn = manager.get_connection().begin().await?;
+    let nested = SchemaManager::new(&txn);
+    install_execution_policy_integrity(&nested).await?;
+    txn.commit().await
+}
+
+async fn install_execution_policy_integrity(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let db = manager.get_connection();
     let backend = manager.get_database_backend();
     let integer_guard = match backend {
@@ -987,5 +999,126 @@ impl MigrationTrait for OutboxExecutionPolicyIntegrityMigration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         drop_outbox_execution_policy_integrity(manager).await
+    }
+}
+
+const POSTGRES_TEMPORAL_CLOCK_GUARD: &str = r#"
+CREATE OR REPLACE FUNCTION outbox_guard_temporal_clock() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP <> 'UPDATE' THEN
+        RAISE EXCEPTION 'outbox temporal clock singleton cannot be inserted or removed' USING ERRCODE = '23514';
+    END IF;
+    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.id <> 1
+       OR NEW.high_water_ms < OLD.high_water_ms THEN
+        RAISE EXCEPTION 'outbox temporal clock identity or floor regression is forbidden' USING ERRCODE = '23514';
+    END IF;
+    IF NEW.high_water_ms IS DISTINCT FROM OLD.high_water_ms
+       AND NEW.high_water_ms > CAST(FLOOR(EXTRACT(EPOCH FROM clock_timestamp()) * 1000) AS BIGINT) THEN
+        RAISE EXCEPTION 'outbox temporal clock cannot advance beyond SQL time' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END $$;
+"#;
+
+const SQLITE_TEMPORAL_CLOCK_GUARD: &str = r#"
+CREATE TRIGGER outbox_temporal_clock_guard
+BEFORE UPDATE ON outbox_temporal_clock
+WHEN NEW.id IS NOT OLD.id OR NEW.id <> 1
+ OR typeof(NEW.high_water_ms) <> 'integer'
+ OR NEW.high_water_ms < OLD.high_water_ms
+ OR (NEW.high_water_ms IS NOT OLD.high_water_ms
+     AND NEW.high_water_ms > CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER))
+BEGIN SELECT RAISE(ABORT, 'invalid outbox temporal clock advance'); END
+"#;
+
+/// Install guards without resetting the baseline. A preexisting future
+/// floor is preserved: observation fails closed until SQL time catches up.
+pub async fn create_outbox_temporal_clock_integrity(
+    manager: &SchemaManager<'_>,
+) -> Result<(), DbErr> {
+    let txn = manager.get_connection().begin().await?;
+    let nested = SchemaManager::new(&txn);
+    install_temporal_clock_integrity(&nested).await?;
+    txn.commit().await
+}
+
+async fn install_temporal_clock_integrity(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let db = manager.get_connection();
+    let backend = manager.get_database_backend();
+    let integer_guard = match backend {
+        DbBackend::Postgres => {
+            db.execute_unprepared("LOCK TABLE outbox_temporal_clock IN ACCESS EXCLUSIVE MODE").await?;
+            ""
+        }
+        DbBackend::Sqlite => {
+            db.execute_unprepared("UPDATE outbox_temporal_clock SET high_water_ms = high_water_ms WHERE id = 1").await?;
+            " AND typeof(high_water_ms) = 'integer'"
+        }
+        _ => return Err(DbErr::Migration("unsupported outbox temporal clock backend".into())),
+    };
+    let row = db.query_one_raw(Statement::from_string(backend, format!(
+        "SELECT COUNT(*) AS total, COUNT(CASE WHEN id = 1 AND high_water_ms >= 0{integer_guard} THEN 1 END) AS valid FROM outbox_temporal_clock"
+    ))).await?.ok_or_else(|| DbErr::Migration("outbox temporal clock validation unavailable".into()))?;
+    if row.try_get::<i64>("", "total")? != 1 || row.try_get::<i64>("", "valid")? != 1 {
+        return Err(DbErr::Migration("invalid outbox temporal clock singleton; offline recovery required".into()));
+    }
+    drop_outbox_temporal_clock_integrity(manager).await?;
+    let statements: &[&str] = match backend {
+        DbBackend::Postgres => &[
+            POSTGRES_TEMPORAL_CLOCK_GUARD,
+            "CREATE TRIGGER outbox_temporal_clock_guard BEFORE INSERT OR UPDATE OR DELETE ON outbox_temporal_clock FOR EACH ROW EXECUTE FUNCTION outbox_guard_temporal_clock()",
+            "CREATE TRIGGER outbox_temporal_clock_no_truncate BEFORE TRUNCATE ON outbox_temporal_clock FOR EACH STATEMENT EXECUTE FUNCTION outbox_guard_temporal_clock()",
+        ],
+        DbBackend::Sqlite => &[
+            "CREATE TRIGGER outbox_temporal_clock_no_insert BEFORE INSERT ON outbox_temporal_clock BEGIN SELECT RAISE(ABORT, 'outbox temporal clock singleton cannot be inserted'); END",
+            "CREATE TRIGGER outbox_temporal_clock_no_delete BEFORE DELETE ON outbox_temporal_clock BEGIN SELECT RAISE(ABORT, 'outbox temporal clock singleton cannot be removed'); END",
+            SQLITE_TEMPORAL_CLOCK_GUARD,
+        ],
+        _ => return Err(DbErr::Migration("unsupported outbox temporal clock backend".into())),
+    };
+    for sql in statements {
+        db.execute_unprepared(sql).await?;
+    }
+    Ok(())
+}
+
+pub async fn drop_outbox_temporal_clock_integrity(
+    manager: &SchemaManager<'_>,
+) -> Result<(), DbErr> {
+    let db = manager.get_connection();
+    let statements: &[&str] = match manager.get_database_backend() {
+        DbBackend::Postgres => &[
+            "DROP TRIGGER IF EXISTS outbox_temporal_clock_guard ON outbox_temporal_clock",
+            "DROP TRIGGER IF EXISTS outbox_temporal_clock_no_truncate ON outbox_temporal_clock",
+            "DROP FUNCTION IF EXISTS outbox_guard_temporal_clock()",
+        ],
+        DbBackend::Sqlite => &[
+            "DROP TRIGGER IF EXISTS outbox_temporal_clock_guard",
+            "DROP TRIGGER IF EXISTS outbox_temporal_clock_no_insert",
+            "DROP TRIGGER IF EXISTS outbox_temporal_clock_no_delete",
+        ],
+        _ => return Err(DbErr::Migration("unsupported outbox temporal clock backend".into())),
+    };
+    for sql in statements {
+        db.execute_unprepared(sql).await?;
+    }
+    Ok(())
+}
+
+#[derive(DeriveMigrationName)]
+pub struct OutboxTemporalClockIntegrityMigration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for OutboxTemporalClockIntegrityMigration {
+    fn use_transaction(&self) -> Option<bool> {
+        Some(true)
+    }
+
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        create_outbox_temporal_clock_integrity(manager).await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        drop_outbox_temporal_clock_integrity(manager).await
     }
 }

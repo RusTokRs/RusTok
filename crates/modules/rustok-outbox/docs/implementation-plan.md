@@ -353,3 +353,23 @@ clear or replace a token, clock discontinuities, or fencing at a remote broker.
 The PostgreSQL per-claim policy write and SQLite timestamp conversion in the
 quota guard need workload measurement. Compilation, SQL migration lifecycle,
 multi-connection contention and broker behavior remain unverified.
+
+## Durable temporal authority integrity (source only)
+
+Append-only migration `m20261127_000203_fence_outbox_temporal_clock`
+and standalone schema guard the permanent clock singleton. Ordinary INSERT,
+DELETE, replacement, PostgreSQL TRUNCATE, identity changes, fractional
+SQLite values, decreasing floors and advances past SQL time are rejected.
+Exact no-op reservations remain valid. Existing missing singletons are
+not reseeded; migration validates the baseline under a writer fence.
+A preexisting future floor is preserved and observations fail closed.
+
+The guards protect the durable floor, not independent distributed time,
+privileged DDL/restore or simultaneous primary/host clock jumps. Owner
+transactions still do not take a shared clock writer lock. Drain old
+binaries and use reviewed offline recovery; never reset at startup.
+Both integrity installers now open a transaction/savepoint even for
+direct standalone setup. PostgreSQL duplicate DDL errors are handled
+within SQL, not by continuing an aborted transaction. SQLite and
+PostgreSQL regression sources are authored; compilation, migration
+lifecycle and contention evidence remain pending.

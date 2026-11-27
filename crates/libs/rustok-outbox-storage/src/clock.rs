@@ -121,11 +121,43 @@ mod tests {
         txn.rollback().await.unwrap();
         let second = observe_database_clock(&db).await.unwrap();
         assert!(second >= first);
-        db.execute_unprepared("UPDATE outbox_temporal_clock SET high_water_ms = high_water_ms + 60000 WHERE id = 1").await.unwrap();
+        for sql in [
+            "DELETE FROM outbox_temporal_clock",
+            "INSERT OR REPLACE INTO outbox_temporal_clock VALUES (1, 0)",
+            "UPDATE outbox_temporal_clock SET high_water_ms = 0",
+            "UPDATE outbox_temporal_clock SET high_water_ms = high_water_ms + 60000",
+            "UPDATE outbox_temporal_clock SET high_water_ms = high_water_ms + 0.5",
+            "UPDATE outbox_temporal_clock SET id = 2",
+        ] {
+            assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+        }
+        crate::migration::create_outbox_temporal_clock(&SchemaManager::new(&db)).await.unwrap();
+        assert!(observe_database_clock(&db).await.unwrap() >= second);
+    }
+
+    #[tokio::test]
+    async fn legacy_future_floor_is_preserved_and_fails_closed() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let manager = SchemaManager::new(&db);
+        crate::migration::create_outbox_temporal_clock(&manager).await.unwrap();
+        let future = Utc::now().timestamp_millis() + 60000;
+        db.execute_unprepared(&format!("UPDATE outbox_temporal_clock SET high_water_ms = {future}")).await.unwrap();
+        crate::migration::create_outbox_temporal_clock_integrity(&manager).await.unwrap();
         assert!(database_now(&db).await.is_err());
         assert!(observe_database_clock(&db).await.is_err());
-        // Recreating schema must never reset a previously persisted floor.
-        crate::migration::create_outbox_temporal_clock(&SchemaManager::new(&db)).await.unwrap();
+        assert!(db.execute_unprepared("UPDATE outbox_temporal_clock SET high_water_ms = 0").await.is_err());
+        crate::migration::create_outbox_temporal_clock(&manager).await.unwrap();
+        assert!(database_now(&db).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn missing_legacy_singleton_is_not_reseeded() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let manager = SchemaManager::new(&db);
+        crate::migration::create_outbox_temporal_clock(&manager).await.unwrap();
+        db.execute_unprepared("DELETE FROM outbox_temporal_clock").await.unwrap();
+        crate::migration::create_outbox_temporal_clock(&manager).await.unwrap();
+        assert!(crate::migration::create_outbox_temporal_clock_integrity(&manager).await.is_err());
         assert!(database_now(&db).await.is_err());
     }
 }

@@ -368,6 +368,45 @@ async fn assert_execution_policy_integrity(db: &DatabaseConnection) -> TestResul
 }
 
 #[tokio::test]
+async fn postgres_temporal_clock_integrity_preserves_floor() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+    let Some(db) = setup_db().await? else { return Ok(()) };
+    if db.get_database_backend() != DatabaseBackend::Postgres { return Ok(()) }
+    async fn floor(db: &impl ConnectionTrait) -> TestResult<i64> {
+        Ok(db.query_one_raw(Statement::from_string(
+            db.get_database_backend(),
+            "SELECT high_water_ms FROM outbox_temporal_clock WHERE id = 1",
+        )).await?.expect("clock floor").try_get("", "high_water_ms")?)
+    }
+    let relay = OutboxRelay::new(db.clone(), Arc::new(MockTransport::default()));
+    relay.process_pending_once(None).await?;
+    let before = floor(&db).await?;
+    assert!(before > 0);
+    for sql in [
+        "DELETE FROM outbox_temporal_clock",
+        "TRUNCATE outbox_temporal_clock",
+        "INSERT INTO outbox_temporal_clock VALUES (1, 0) ON CONFLICT (id) DO NOTHING",
+        "UPDATE outbox_temporal_clock SET id = 2",
+        "UPDATE outbox_temporal_clock SET high_water_ms = 0",
+        "UPDATE outbox_temporal_clock SET high_water_ms = high_water_ms + 60000",
+    ] {
+        assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+        assert_eq!(floor(&db).await?, before);
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    let txn = db.begin().await?;
+    txn.execute_unprepared("UPDATE outbox_temporal_clock SET high_water_ms = CAST(FLOOR(EXTRACT(EPOCH FROM clock_timestamp()) * 1000) AS BIGINT)").await?;
+    assert!(floor(&txn).await? > before);
+    txn.rollback().await?;
+    assert_eq!(floor(&db).await?, before);
+    SysEventsMigration.up(&SchemaManager::new(&db)).await?;
+    assert_eq!(floor(&db).await?, before);
+    relay.process_pending_once(None).await?;
+    assert!(floor(&db).await? >= before);
+    Ok(())
+}
+
+#[tokio::test]
 async fn sqlite_execution_policy_integrity_rejects_reset_and_overbooking() -> TestResult<()> {
     let db = setup_sqlite_db().await?;
     assert_execution_policy_integrity(&db).await
