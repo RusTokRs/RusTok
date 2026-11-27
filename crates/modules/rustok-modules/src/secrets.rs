@@ -787,62 +787,62 @@ where
         validate_use_request(&request, purpose)?;
         self.authorizer.authorize_secret_use(&request).await?;
 
-        let transaction = self.db.begin().await.map_err(storage_error)?;
-        configure_tenant_scope(&transaction, request.scope.capability.tenant_id)
-            .await
-            .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
-        let backend =
-            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-        // Acquire a write lock on the exact bound revision before resolving
-        // or consuming its secret. PostgreSQL UPDATE locks the row; SQLite's
-        // write transaction serializes competing binding changes. Keep this
-        // transaction open through the fixed trusted consumer so a rotation
-        // cannot slip between the final revision check and use.
-        let locked = transaction
-            .execute_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                format!(
-                    "UPDATE module_artifact_secret_bindings SET revision = revision
-                     WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {}
-                     AND reference_name = {} AND revision = {}",
-                    backend.placeholder(1),
-                    backend.placeholder(2),
-                    backend.placeholder(3),
-                    backend.placeholder(4),
-                    backend.placeholder(5),
-                ),
-                binding_values_for_use(&request, backend)?,
-            ))
-            .await
-            .map_err(storage_error)?;
-        if locked.rows_affected() != 1 {
-            return Err(ArtifactSecretError::HandleUnavailable);
-        }
-        let row = transaction
-            .query_one_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                format!(
-                    "SELECT resolver_alias, resolver_key, revision
-                     FROM module_artifact_secret_bindings
-                     WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {}
-                     AND reference_name = {} AND revision = {}",
-                    backend.placeholder(1),
-                    backend.placeholder(2),
-                    backend.placeholder(3),
-                    backend.placeholder(4),
-                    backend.placeholder(5),
-                ),
-                binding_values_for_use(&request, backend)?,
-            ))
-            .await
-            .map_err(storage_error)?
-            .ok_or(ArtifactSecretError::HandleUnavailable)?;
-        let resolver: String = row.try_get("", "resolver_alias").map_err(storage_error)?;
-        let key: String = row.try_get("", "resolver_key").map_err(storage_error)?;
-        let revision: i64 = row.try_get("", "revision").map_err(storage_error)?;
-        // See acquire_handle: a non-positive stored revision is corrupted
-        // state and must not be masked as a missing handle.
-        let revision = positive_receipt_revision(revision)?;
+        // Read and lock the exact bound revision, then close the SQL
+        // transaction before resolving a secret from an external provider.
+        let (resolver, key, revision) = {
+            let transaction = self.db.begin().await.map_err(storage_error)?;
+            configure_tenant_scope(&transaction, request.scope.capability.tenant_id)
+                .await
+                .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
+            let backend =
+                SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+            let locked = transaction
+                .execute_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
+                    format!(
+                        "UPDATE module_artifact_secret_bindings SET revision = revision
+                         WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {}
+                         AND reference_name = {} AND revision = {}",
+                        backend.placeholder(1),
+                        backend.placeholder(2),
+                        backend.placeholder(3),
+                        backend.placeholder(4),
+                        backend.placeholder(5),
+                    ),
+                    binding_values_for_use(&request, backend)?,
+                ))
+                .await
+                .map_err(storage_error)?;
+            if locked.rows_affected() != 1 {
+                return Err(ArtifactSecretError::HandleUnavailable);
+            }
+            let row = transaction
+                .query_one_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
+                    format!(
+                        "SELECT resolver_alias, resolver_key, revision
+                         FROM module_artifact_secret_bindings
+                         WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {}
+                         AND reference_name = {} AND revision = {}",
+                        backend.placeholder(1),
+                        backend.placeholder(2),
+                        backend.placeholder(3),
+                        backend.placeholder(4),
+                        backend.placeholder(5),
+                    ),
+                    binding_values_for_use(&request, backend)?,
+                ))
+                .await
+                .map_err(storage_error)?
+                .ok_or(ArtifactSecretError::HandleUnavailable)?;
+            let resolver: String = row.try_get("", "resolver_alias").map_err(storage_error)?;
+            let key: String = row.try_get("", "resolver_key").map_err(storage_error)?;
+            let revision: i64 = row.try_get("", "revision").map_err(storage_error)?;
+            let revision = positive_receipt_revision(revision)?;
+            transaction.commit().await.map_err(storage_error)?;
+            (resolver, key, revision)
+        };
+
         let secret = self
             .resolvers
             .resolve_for_tenant(
@@ -854,6 +854,73 @@ where
             )
             .await
             .map_err(|_| ArtifactSecretError::ResolutionUnavailable)?;
+
+        // Rotation or revocation may have happened while the external
+        // resolver was running. Re-lock and compare the exact binding facts,
+        // then reauthorize immediately before handing the value to the fixed
+        // host consumer. No SQL transaction or row lock spans either call.
+        {
+            let transaction = self.db.begin().await.map_err(storage_error)?;
+            configure_tenant_scope(&transaction, request.scope.capability.tenant_id)
+                .await
+                .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
+            let backend =
+                SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+            let locked = transaction
+                .execute_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
+                    format!(
+                        "UPDATE module_artifact_secret_bindings SET revision = revision
+                         WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {}
+                         AND reference_name = {} AND revision = {}",
+                        backend.placeholder(1),
+                        backend.placeholder(2),
+                        backend.placeholder(3),
+                        backend.placeholder(4),
+                        backend.placeholder(5),
+                    ),
+                    binding_values_for_use(&request, backend)?,
+                ))
+                .await
+                .map_err(storage_error)?;
+            if locked.rows_affected() != 1 {
+                return Err(ArtifactSecretError::HandleUnavailable);
+            }
+            let row = transaction
+                .query_one_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
+                    format!(
+                        "SELECT resolver_alias, resolver_key, revision
+                         FROM module_artifact_secret_bindings
+                         WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {}
+                         AND reference_name = {} AND revision = {}",
+                        backend.placeholder(1),
+                        backend.placeholder(2),
+                        backend.placeholder(3),
+                        backend.placeholder(4),
+                        backend.placeholder(5),
+                    ),
+                    binding_values_for_use(&request, backend)?,
+                ))
+                .await
+                .map_err(storage_error)?
+                .ok_or(ArtifactSecretError::HandleUnavailable)?;
+            let current_resolver: String =
+                row.try_get("", "resolver_alias").map_err(storage_error)?;
+            let current_key: String =
+                row.try_get("", "resolver_key").map_err(storage_error)?;
+            let current_revision: i64 =
+                row.try_get("", "revision").map_err(storage_error)?;
+            if current_resolver != resolver
+                || current_key != key
+                || positive_receipt_revision(current_revision)? != revision
+            {
+                return Err(ArtifactSecretError::HandleUnavailable);
+            }
+            transaction.commit().await.map_err(storage_error)?;
+        }
+        self.authorizer.authorize_secret_use(&request).await?;
+
         let context = ArtifactSecretUseContext {
             scope: request.scope,
             reference: request.handle.reference,
@@ -869,15 +936,13 @@ where
             .consume_secret(&context, &secret)
             .await
             .map_err(|_| ArtifactSecretError::ConsumerUnavailable)?;
-        transaction.commit().await.map_err(storage_error)?;
         Ok(ArtifactSecretUseReceipt {
             reference: context.reference,
             secret_instance_id: context.scope.secret_instance_id,
             revision: context.revision,
             purpose: context.purpose.to_string(),
         })
-    }
-}
+    }}
 
 /// The `platform.secrets` adapter for one installed artifact scope. It is
 /// injected into the neutral sandbox runtime by the deployment and exposes
