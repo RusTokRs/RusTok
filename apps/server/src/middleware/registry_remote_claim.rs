@@ -2,7 +2,7 @@ use axum::{
     Json,
     body::{Body, to_bytes},
     extract::State,
-    http::{Method, Request, StatusCode},
+    http::{HeaderMap, Method, Request, StatusCode, header::CONTENT_TYPE},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -67,6 +67,13 @@ pub async fn claim_atomic(
             "Missing or invalid registry runner token",
         );
     }
+    if !has_json_content_type(request.headers()) {
+        return response(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "unsupported_media_type",
+            "Runner requests require a single application/json content type",
+        );
+    }
 
     let (_parts, body) = request.into_parts();
     let bytes = match to_bytes(body, MAX_RUNNER_BODY_BYTES).await {
@@ -99,6 +106,24 @@ pub async fn claim_atomic(
 /// validation before the controller handles the registry mutation.
 fn publish_route_requires_policy(method: &Method, path: &str) -> bool {
     *method == Method::POST && super::registry_publish_policy::is_publish_path(path)
+}
+
+/// The atomic runner middleware consumes the body before Axum's JSON
+/// extractor can enforce its media type. Preserve the extractor's JSON-only
+/// contract and reject ambiguous duplicate singleton headers here.
+fn has_json_content_type(headers: &HeaderMap) -> bool {
+    let mut values = headers.get_all(CONTENT_TYPE).iter();
+    let Some(value) = values.next() else {
+        return false;
+    };
+    if values.next().is_some() {
+        return false;
+    }
+    value
+        .to_str()
+        .ok()
+        .and_then(|value| value.split(';').next())
+        .is_some_and(|media_type| media_type.trim().eq_ignore_ascii_case("application/json"))
 }
 
 async fn handle_claim(ctx: &ServerRuntimeContext, lease_ttl_ms: u64, bytes: &[u8]) -> Response {
@@ -539,6 +564,27 @@ mod tests {
         assert_eq!(MAX_RUNNER_BODY_BYTES, 64 * 1024);
         assert_eq!(runner_route("/v2/catalog/runner/rvc_1/heartbeat/"), None);
         assert_eq!(runner_route("//v2/catalog/runner/rvc_1/heartbeat"), None);
+    }
+
+    #[test]
+    fn runner_json_content_type_is_required_and_unambiguous() {
+        use axum::http::{HeaderMap, HeaderValue, header::CONTENT_TYPE};
+
+        let mut headers = HeaderMap::new();
+        assert!(!super::has_json_content_type(&headers));
+
+        headers.insert(
+            CONTENT_TYPE,
+            HeaderValue::from_static("Application/JSON; charset=utf-8"),
+        );
+        assert!(super::has_json_content_type(&headers));
+
+        headers.append(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        assert!(!super::has_json_content_type(&headers));
+
+        headers.remove(CONTENT_TYPE);
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/plain"));
+        assert!(!super::has_json_content_type(&headers));
     }
 
     #[test]
