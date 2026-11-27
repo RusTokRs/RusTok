@@ -42,7 +42,24 @@ impl OAuthAppService {
                 Error::Unauthorized("OAuth consent subject is missing or inactive".to_string())
             })?;
 
-        let allowed_scopes = app.scopes_list();
+        Self::grant_locked_user_consent(&tx, &app, &user, scopes).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn grant_locked_user_consent(
+        tx: &sea_orm::DatabaseTransaction,
+        app: &crate::models::oauth_apps::Model,
+        user: &crate::models::users::Model,
+        scopes: Vec<String>,
+    ) -> Result<()> {
+        if !app.is_active() || !user.is_active() || user.tenant_id != app.tenant_id {
+            return Err(Error::Unauthorized("OAuth consent authority is inactive or mismatched".to_string()));
+        }
+        if scopes.is_empty() {
+            return Err(Error::BadRequest("OAuth consent must include at least one scope".to_string()));
+        }
+        let allowed_scopes = app.decoded_scopes().map_err(|_| Error::InternalServerError)?;
         let mut normalized = Vec::with_capacity(scopes.len());
         for scope in scopes {
             let scope = scope.trim().to_string();
@@ -63,12 +80,12 @@ impl OAuthAppService {
 
         let scopes_json = serde_json::to_value(&normalized)
             .map_err(|_| Error::InternalServerError)?;
-        let now = rustok_auth::application_clock::verified_now(&tx).await?;
+        let now = rustok_auth::application_clock::verified_now(tx).await?;
         OAuthAppService::grant_consent_in_transaction(
-            &tx,
+            tx,
             app.id,
             user.id,
-            tenant_id,
+            app.tenant_id,
             &scopes_json,
             now,
         )
@@ -79,8 +96,7 @@ impl OAuthAppService {
             ),
             GrantConsentAttempt::Fatal(error) => error,
         })?;
-        rustok_auth::application_clock::verified_now(&tx).await?;
-        tx.commit().await?;
+        rustok_auth::application_clock::verified_now(tx).await?;
         Ok(())
     }
 }

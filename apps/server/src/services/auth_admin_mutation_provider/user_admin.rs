@@ -33,14 +33,14 @@ use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::rbac_cache_invalidation::publish_user_rbac_invalidation;
 use crate::services::rbac_invalidation_generation::reserve_rbac_invalidation_generation;
-use crate::services::rbac_request_scope::{DelegatedCredentialEvidence, credential_for, permissions_for, role_for};
+use crate::services::rbac_request_scope::{OAuthCredentialEvidence, credential_for, permissions_for, role_for};
 use crate::services::rbac_service::RbacService;
 
 use super::{
     ServerAuthAdminMutationProvider, super_admin_guard::ensure_active_super_admin_continuity,
 };
 
-fn map_oauth_credential_error(
+pub(super) fn map_oauth_credential_error(
     (status, message): (axum::http::StatusCode, &'static str),
 ) -> AuthAdminMutationError {
     if status.is_server_error() {
@@ -52,15 +52,15 @@ fn map_oauth_credential_error(
 
 /// Restrict newly resolved grants to the exact admitted OAuth scopes as well
 /// as requiring the independent original request permission ceiling.
-fn scope_live_admin_permissions(
+pub(super) fn scope_live_admin_permissions(
     context: &AuthAdminMutationContext,
     permissions: Vec<Permission>,
 ) -> Result<Vec<Permission>, AuthAdminMutationError> {
     match credential_for(&context.tenant_id, &context.actor_id)
         .ok_or(AuthAdminMutationError::Unauthorized)?
     {
-        Some(evidence) if evidence.principal_kind == AuthPrincipalKind::DelegatedUser => {
-            let delegated = evidence.delegated.ok_or(AuthAdminMutationError::Unauthorized)?;
+        Some(evidence) if evidence.principal_kind != AuthPrincipalKind::DirectUser => {
+            let delegated = evidence.oauth.ok_or(AuthAdminMutationError::Unauthorized)?;
             Ok(rustok_api::context::restrict_permissions_to_scopes(&permissions, &delegated.scopes))
         }
         _ => Ok(permissions),
@@ -309,70 +309,105 @@ impl ServerAuthAdminMutationProvider {
         })
     }
 
-    /// Delegated administrative writes must follow the OAuth owner's app ->
-    /// user order, never acquire an app fence while holding a user row.
-    /// PostgreSQL manifest reconciliation takes tenant FOR UPDATE before apps;
-    /// reserve a compatible tenant FK fence first so later owner inserts do
-    /// not invert tenant/app ordering. SQLite's app lock reserves the writer.
+    /// Shared OAuth mutation fence. Tenant first (manifest reconciliation),
+    /// then all participating app rows in UUID order, before any user row.
+    /// SQLite reserves its writer before reading any protected state.
+    pub(super) async fn lock_admin_oauth_apps(
+        &self,
+        tx: &sea_orm::DatabaseTransaction,
+        context: &AuthAdminMutationContext,
+        target_id: Option<Uuid>,
+    ) -> Result<(Option<oauth_apps::Model>, Option<oauth_apps::Model>), AuthAdminMutationError> {
+        let evidence = credential_for(&context.tenant_id, &context.actor_id)
+            .ok_or(AuthAdminMutationError::Unauthorized)?;
+        if evidence.as_ref().is_some_and(|e| context.principal_kind.is_some_and(|kind| kind != e.principal_kind)) {
+            return Err(AuthAdminMutationError::Unauthorized);
+        }
+        let oauth = match evidence.as_ref() {
+            Some(e) if e.principal_kind != AuthPrincipalKind::DirectUser => {
+                Some(e.oauth.as_ref().ok_or(AuthAdminMutationError::Unauthorized)?)
+            }
+            _ => None,
+        };
+        match tx.get_database_backend() {
+            DbBackend::Postgres => {
+                let tenant = tx.query_one_raw(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    "SELECT id FROM tenants WHERE id = $1 AND is_active = TRUE FOR KEY SHARE",
+                    [context.tenant_id.into()],
+                )).await.map_err(super::internal_admin_error)?;
+                if tenant.is_none() {
+                    return Err(AuthAdminMutationError::Unauthorized);
+                }
+            }
+            DbBackend::Sqlite => {
+                let locked = tenants::Entity::update_many()
+                    .col_expr(tenants::Column::UpdatedAt, sea_orm::sea_query::Expr::col(tenants::Column::UpdatedAt))
+                    .filter(tenants::Column::Id.eq(context.tenant_id))
+                    .filter(tenants::Column::IsActive.eq(true))
+                    .exec(tx).await.map_err(super::internal_admin_error)?;
+                if locked.rows_affected != 1 {
+                    return Err(AuthAdminMutationError::Unauthorized);
+                }
+            }
+            _ => return Err(AuthAdminMutationError::Internal("Unsupported credential transaction backend".to_string())),
+        }
+        let mut ids = Vec::new();
+        if let Some(id) = target_id { ids.push(id); }
+        if let Some(oauth) = oauth { ids.push(oauth.app_id); }
+        ids.sort_unstable();
+        ids.dedup();
+        let mut target = None;
+        let mut issuer = None;
+        for id in ids {
+            let app = crate::services::oauth_app::lock_oauth_app_for_mutation(tx, id, context.tenant_id)
+                .await.map_err(super::internal_admin_error)?;
+            if oauth.is_some_and(|e| e.app_id == id) {
+                let e = oauth.ok_or(AuthAdminMutationError::Unauthorized)?;
+                let grant = if evidence.as_ref().is_some_and(|e| e.principal_kind == AuthPrincipalKind::Service) {
+                    "client_credentials"
+                } else {
+                    "authorization_code"
+                };
+                let app = app.as_ref().filter(|app| app.is_active() && app.client_id == e.client_id
+                    && app.supports_grant_type(grant))
+                    .ok_or(AuthAdminMutationError::Unauthorized)?;
+                crate::extractors::auth::validate_oauth_token_scopes(app, &e.scopes)
+                    .map_err(map_oauth_credential_error)?;
+                issuer = Some(app.clone());
+            }
+            if target_id == Some(id) {
+                target = Some(app.ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?);
+            }
+        }
+        Ok((target, issuer))
+    }
+
     async fn lock_delegated_admin_app(
         &self,
         tx: &sea_orm::DatabaseTransaction,
         context: &AuthAdminMutationContext,
     ) -> Result<Option<oauth_apps::Model>, AuthAdminMutationError> {
-        let Some(evidence) = credential_for(&context.tenant_id, &context.actor_id)
-            .ok_or(AuthAdminMutationError::Unauthorized)? else {
-            return Ok(None);
-        };
-        if context.principal_kind.is_some_and(|kind| kind != evidence.principal_kind) {
-            return Err(AuthAdminMutationError::Unauthorized);
-        }
-        if evidence.principal_kind != AuthPrincipalKind::DelegatedUser {
-            return Ok(None);
-        }
-        let delegated = evidence.delegated.as_ref().ok_or(AuthAdminMutationError::Unauthorized)?;
-        if tx.get_database_backend() == DbBackend::Postgres {
-            let tenant = tx.query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "SELECT id FROM tenants WHERE id = $1 AND is_active = TRUE FOR KEY SHARE",
-                [context.tenant_id.into()],
-            )).await.map_err(super::internal_admin_error)?;
-            if tenant.is_none() {
-                return Err(AuthAdminMutationError::Unauthorized);
-            }
-        } else if tx.get_database_backend() != DbBackend::Sqlite {
-            return Err(AuthAdminMutationError::Internal("Unsupported credential transaction backend".to_string()));
-        }
-        let app = crate::services::oauth_app::lock_oauth_app_for_mutation(
-            tx, delegated.app_id, context.tenant_id,
-        ).await.map_err(super::internal_admin_error)?
-            .filter(|app| app.is_active() && app.client_id == delegated.client_id
-                && app.supports_grant_type("authorization_code"))
+        let evidence = credential_for(&context.tenant_id, &context.actor_id)
             .ok_or(AuthAdminMutationError::Unauthorized)?;
-        if tx.get_database_backend() == DbBackend::Sqlite
-            && !tenants::Entity::find_by_id(context.tenant_id).one(tx).await
-                .map_err(super::internal_admin_error)?.is_some_and(|tenant| tenant.is_active)
-        {
-            return Err(AuthAdminMutationError::Unauthorized);
+        if evidence.as_ref().is_some_and(|e| e.principal_kind == AuthPrincipalKind::DelegatedUser) {
+            Ok(self.lock_admin_oauth_apps(tx, context, None).await?.1)
+        } else {
+            Ok(None)
         }
-        if delegated.scopes.is_empty() {
-            return Err(AuthAdminMutationError::Unauthorized);
-        }
-        crate::extractors::auth::validate_oauth_token_scopes(&app, &delegated.scopes)
-            .map_err(map_oauth_credential_error)?;
-        Ok(Some(app))
     }
 
     /// The app and actor fences are already held. Check the exact access
     /// registration under a row lock; SQLite already holds its writer fence.
     /// All canonical app/consent changes revoke old registrations in their
     /// own transaction. Keep both fences until the administrative commit.
-    async fn lock_delegated_admin_registration(
+    pub(super) async fn lock_admin_oauth_registration(
         &self,
         tx: &sea_orm::DatabaseTransaction,
         context: &AuthAdminMutationContext,
-        actor: &users::Model,
+        actor: Option<&users::Model>,
         app: &oauth_apps::Model,
-        delegated: &DelegatedCredentialEvidence,
+        delegated: &OAuthCredentialEvidence,
     ) -> Result<DateTime<Utc>, AuthAdminMutationError> {
         let query = oauth_tokens::Entity::find_by_id(delegated.registration_id)
             .filter(oauth_tokens::Column::TenantId.eq(context.tenant_id))
@@ -383,23 +418,31 @@ impl ServerAuthAdminMutationProvider {
             _ => return Err(AuthAdminMutationError::Internal("Unsupported credential transaction backend".to_string())),
         }.map_err(super::internal_admin_error)?.ok_or(AuthAdminMutationError::Unauthorized)?;
         let scopes = row.decoded_scopes().map_err(|_| AuthAdminMutationError::Unauthorized)?;
+        let (expected_subject, expected_grant) = match actor {
+            Some(actor) => (Some(actor.id), "authorization_code"),
+            None if app.id == context.actor_id => (None, "client_credentials"),
+            None => return Err(AuthAdminMutationError::Unauthorized),
+        };
         if app.id != delegated.app_id
             || app.client_id != delegated.client_id
-            || row.user_id != Some(actor.id)
+            || row.user_id != expected_subject
             || row.token_hash != delegated.token_hash
-            || row.grant_type != "authorization_code"
+            || row.grant_type != expected_grant
             || row.token_kind != oauth_tokens::TOKEN_KIND_ACCESS
             || row.revoked_at.is_some()
             || row.created_at.with_timezone(&Utc) != delegated.issued_at
             || row.consent_granted_at != delegated.consent_granted_at
             || scopes != delegated.scopes
-            || actor.rejects_delegated_token_issued_at(delegated.issued_at)
+            || actor.is_some_and(|actor| actor.rejects_delegated_token_issued_at(delegated.issued_at))
+            || (actor.is_none() && row.consent_granted_at.is_some())
         {
             return Err(AuthAdminMutationError::Unauthorized);
         }
-        crate::extractors::auth::validate_active_user_consent(
-            tx, app, context.tenant_id, actor.id, &delegated.scopes, row.consent_granted_at,
-        ).await.map_err(map_oauth_credential_error)?;
+        if let Some(actor) = actor {
+            crate::extractors::auth::validate_active_user_consent(
+                tx, app, context.tenant_id, actor.id, &delegated.scopes, row.consent_granted_at,
+            ).await.map_err(map_oauth_credential_error)?;
+        }
         let now = self.user_admin_credential_now(tx).await?;
         let expires = row.expires_at.with_timezone(&Utc);
         if now < delegated.issued_at || now >= expires {
@@ -411,7 +454,7 @@ impl ServerAuthAdminMutationProvider {
     /// The actor user row is already locked. Acquire the direct session fence
     /// in the same user -> session order as refresh and recovery, or validate
     /// the delegated registration under the earlier app fence.
-    async fn lock_user_admin_credential(
+    pub(super) async fn lock_user_admin_credential(
         &self,
         tx: &sea_orm::DatabaseTransaction,
         context: &AuthAdminMutationContext,
@@ -454,9 +497,9 @@ impl ServerAuthAdminMutationProvider {
             }
         } else {
             let app = delegated_app.ok_or(AuthAdminMutationError::Unauthorized)?;
-            let delegated = evidence.delegated.as_ref().ok_or(AuthAdminMutationError::Unauthorized)?;
-            deadline = deadline.min(self.lock_delegated_admin_registration(
-                tx, context, actor, app, delegated,
+            let delegated = evidence.oauth.as_ref().ok_or(AuthAdminMutationError::Unauthorized)?;
+            deadline = deadline.min(self.lock_admin_oauth_registration(
+                tx, context, Some(actor), app, delegated,
             ).await?);
             self.ensure_user_admin_credential_deadline(tx, Some(deadline)).await?;
         }
@@ -477,7 +520,7 @@ impl ServerAuthAdminMutationProvider {
         Ok(decision.max(live))
     }
 
-    async fn ensure_user_admin_credential_deadline(
+    pub(super) async fn ensure_user_admin_credential_deadline(
         &self,
         tx: &sea_orm::DatabaseTransaction,
         deadline: Option<DateTime<Utc>>,
@@ -1746,7 +1789,7 @@ mod tests {
             scopes: Vec::new(),
             grant_type: "direct".to_string(),
             access_token_expires_at: chrono::Utc::now() + chrono::Duration::minutes(10),
-            delegated_credential: None,
+            oauth_credential: None,
         };
         let authenticated = |deadline| RbacRequestScope::authenticated(&current, deadline);
         let allowed = with_rbac_request_scope(Some(authenticated(current.access_token_expires_at)), async {
