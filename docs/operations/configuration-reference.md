@@ -188,12 +188,23 @@ format. The release container sets JSON format by default.
 | :--- | :--- | :--- | :--- |
 | `settings.rustok.email.enabled` | `EMAIL_ENABLED` | `false` | Master toggle for outbound transactional email. |
 | `settings.rustok.email.provider` | `EMAIL_PROVIDER` | `smtp` | Mail transport provider. |
-| `settings.rustok.email.from` | `EMAIL_FROM` | `no-reply@example.com` | Default sender email address in RFC 5322 format. |
-| `settings.rustok.email.reset_base_url`| `RESET_BASE_URL` | `http://localhost:3000/reset` | Base URL used to construct password reset verification links. |
+| `settings.rustok.email.from` | `EMAIL_FROM` | `no-reply@rustok.local` | Default sender email address in RFC 5322 format. |
+| `settings.rustok.email.reset_base_url` | `RESET_BASE_URL` | `http://localhost:3000/reset-password` | Base URL used to construct password reset verification links. |
 | `settings.rustok.email.smtp.host` | `SMTP_HOST` | `localhost` | Outbound SMTP relay hostname. |
-| `settings.rustok.email.smtp.port` | `SMTP_PORT` | `587` | Outbound SMTP relay port (typically 587 for STARTTLS, 465 for TLS). |
+| `settings.rustok.email.smtp.port` | `SMTP_PORT` | `1025` | Outbound SMTP relay port (typically 587 for STARTTLS, 465 for TLS). |
 | `settings.rustok.email.smtp.username` | `SMTP_USERNAME` | *none* | Authentication username for SMTP relay. |
 | `settings.rustok.email.smtp.password` | `SMTP_PASSWORD` | *none* | Authentication secret for SMTP relay. Scrubbed on debug inspect. |
+
+All eight environment variables above are read by `RustokSettings::from_settings`
+and override their YAML counterparts. `EMAIL_ENABLED` accepts true/false,
+1/0, yes/no, or on/off; `EMAIL_PROVIDER` accepts `smtp` or `none`;
+`SMTP_PORT` must be an integer from 1 through 65535. SMTP username and
+password must either both be set or both be empty.
+
+In production, enabled SMTP email requires a non-local, non-placeholder SMTP
+host and sender domain, an HTTPS reset URL on a non-placeholder host, and no
+placeholder credentials. Reserved example domains and common `CHANGE_ME`
+values are rejected during settings validation.
 
 ---
 
