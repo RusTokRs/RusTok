@@ -746,3 +746,7 @@ and pre-cutover lost history are not covered. Source regressions unrun.
   PostgreSQL source regression now checks the raw receipt INSERT/DELETE key
   fence, cleanup, witness immutability/TRUNCATE and rollback reuse; owner
   witness reads acquire a nonwaiting relation fence. Unrun.
+
+### Static intent physical change witness (2026-11-27)
+
+Migration `m20261127_000105_static_intent_authority_generation` installs a permanent per-tenant generation maintained transactionally by `tenant_modules` DML triggers. It complements, rather than changes, the lifecycle event cursor: INSERT/DELETE and changed enablement advance the witness; settings-only updates do not. SQLite additionally advances on override ID changes and rejects cross-tenant implicit REPLACE, including rowid conflicts. PostgreSQL forbids TRUNCATE of intent or witness history; both backends reject witness reset, deletion, identity replacement and overflow. Zero is the cutover baseline, not reconstructed history. No tenant FK removes witness history on deletion. RBAC uncached observations bracket policy evaluation with this owner-issued generation in addition to the lifecycle cursor and composition identity. A completed raw-DML ABA invalidates admitted scope and WebSocket leases, without event delivery. The witness is not a policy engine or event producer. DDL/privileged trigger bypass, database restore, composition raw-DML ABA and commit-time authorization fences remain distinct boundaries. Deployment must apply migrations before the new auth reader. Regression sources authored, not executed.

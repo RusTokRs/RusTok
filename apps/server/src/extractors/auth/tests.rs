@@ -1784,8 +1784,23 @@ async fn admitted_scope_rejects_module_policy_drift_without_notification() {
     let fresh = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
         .await.unwrap();
     let fresh_scope = RbacRequestScope::authenticated(&fresh, fresh.access_token_expires_at);
+    let fresh_lease = super::WebSocketAuthLease::new(token.clone(), &fresh);
     with_rbac_request_scope(Some(fresh_scope), async {
         assert!(ensure_scope_authority(Some(&db), &tenant.id, &user.id).await.is_ok());
+        // Direct DML ABA completes before any further observation. Neither
+        // the lifecycle cursor nor the final policy digest needs to change.
+        let inserted = tenant_modules::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant.id),
+            module_slug: Set(module_slug.to_string()),
+            enabled: Set(Some(!enabled)),
+            settings: Set(serde_json::json!({})),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        }.insert(&db).await.unwrap();
+        tenant_modules::Entity::delete_by_id(inserted.id).exec(&db).await.unwrap();
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &user.id).await.is_err());
+        assert!(fresh_lease.revalidate(&runtime).await.is_err());
     }).await;
 }
 

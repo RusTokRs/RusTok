@@ -29,6 +29,7 @@ pub(super) struct ModulePolicyAuthorityRevision {
     pub composition_revision: i64,
     pub composition_hash: String,
     pub lifecycle_cursor: Option<ModulePolicyRevisionCursorState>,
+    pub static_intent_generation: u64,
 }
 
 pub struct EffectiveModulePolicyService;
@@ -209,18 +210,25 @@ impl EffectiveModulePolicyService {
             cursor_owner.observe_lifecycle_cursor(tenant_id).await
                 .map_err(|error| PlatformCompositionError::EffectivePolicy(error.to_string()))
         };
+        let observe_intent = || async {
+            cursor_owner.observe_static_intent_generation(tenant_id).await
+                .map_err(|error| PlatformCompositionError::EffectivePolicy(error.to_string()))
+        };
         let revision = ModulePolicyAuthorityRevision {
             composition_revision: composition.revision,
             composition_hash: composition.manifest_hash.clone(),
             lifecycle_cursor: observe_cursor().await?,
+            static_intent_generation: observe_intent().await?,
         };
         let snapshot =
             Self::resolve_snapshot_from_composition(db, registry, tenant_id, composition).await?;
         // Bracket the policy evaluation with both owner observations. Do not
         // attach a newer generation to older overrides or manifest inputs.
+        let live_intent = observe_intent().await?;
         let live_cursor = observe_cursor().await?;
         let live_composition = owner.active_snapshot().await?;
-        if live_cursor != revision.lifecycle_cursor
+        if live_intent != revision.static_intent_generation
+            || live_cursor != revision.lifecycle_cursor
             || live_composition.revision != revision.composition_revision
             || live_composition.manifest_hash != revision.composition_hash
         {

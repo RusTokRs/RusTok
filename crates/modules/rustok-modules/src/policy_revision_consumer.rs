@@ -301,6 +301,41 @@ impl SeaOrmModulePolicyRevisionConsumer {
         Ok(state)
     }
 
+    /// Physical tenant enablement-intent witness, including SQL changes
+    /// outside the lifecycle transition writer. Zero is the migration baseline
+    /// for tenants without a recorded change; issued rows cannot be removed.
+    pub async fn observe_static_intent_generation(
+        &self,
+        tenant_id: Uuid,
+    ) -> Result<u64, ModulePolicyRevisionConsumerError> {
+        validate_request(tenant_id, "module.lifecycle")?;
+        let tx = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&tx, tenant_id).await.map_err(storage_error)?;
+        let backend = SupportedBackend::new(tx.get_database_backend()).map_err(storage_error)?;
+        let (sql, key) = match backend {
+            SupportedBackend::Postgres => (
+                "SELECT generation FROM module_static_intent_generations WHERE tenant_id = $1",
+                tenant_id.into(),
+            ),
+            SupportedBackend::Sqlite => (
+                "SELECT generation FROM module_static_intent_generations WHERE tenant_key = ?1",
+                tenant_id.simple().to_string().into(),
+            ),
+        };
+        let row = tx.query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(), sql, vec![key],
+        )).await.map_err(storage_error)?;
+        let generation = match row {
+            Some(row) => {
+                let value: i64 = row.try_get("", "generation").map_err(storage_error)?;
+                u64::try_from(value).map_err(storage_error)?
+            }
+            None => 0,
+        };
+        tx.commit().await.map_err(storage_error)?;
+        Ok(generation)
+    }
+
     pub async fn cursor_state(
         &self,
         tenant_id: Uuid,
