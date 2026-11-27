@@ -2308,6 +2308,36 @@ mod tests {
     }
 
     #[test]
+    fn direct_symbol_upsert_can_repair_a_missing_nested_definition() {
+        let mut document = document_with(object("root", "wrapper", vec![]), Vec::new());
+        document.project_mut().extensions.insert(
+            FLY_SYMBOLS_FIELD.to_string(),
+            json!([{
+                "id": "outer",
+                "components": [{
+                    "id": "inner-slot",
+                    "type": "symbol",
+                    "symbolId": "inner",
+                    "components": []
+                }]
+            }]),
+        );
+
+        apply_symbol_command(
+            &mut document,
+            &SymbolCommand::Upsert {
+                symbol: symbol_json("inner", vec![plain_component_json("inner-copy")]),
+            },
+        )
+        .expect("upsert should repair the missing definition");
+
+        let catalog = SymbolDescriptor::catalog_from_document(&document);
+        assert!(catalog.contains_key("outer"));
+        assert!(catalog.contains_key("inner"));
+        assert!(symbol_references(&catalog["outer"].components).contains(&"inner".to_string()));
+    }
+
+    #[test]
     fn direct_symbol_upsert_rejects_missing_nested_references_atomically() {
         let mut document = document_with(object("root", "wrapper", vec![]), Vec::new());
         let before = document.clone();
