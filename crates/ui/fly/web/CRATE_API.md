@@ -29,7 +29,7 @@ Framework-neutral browser runtime, geometric transforms, hit-testing, and iframe
 - **Bounded Iframe Messages**: Inbound and outbound bridge payloads are capped at 4 MiB before parsing or posting.
 - **Framework Neutrality**: Pure browser runtime and math primitives without dependencies on Leptos, Dioxus, or React.
 - **Fail-Closed Geometry**: Non-finite points, invalid/negative rect bounds and degenerate transforms hit nothing; public `BrowserRect::contains` applies the same checks independently. An `After` drop whose insertion index overflows is omitted rather than saturated.
-- **Iframe Identity & Sequence**: Sender and subscriber construction reject blank instance IDs, receivers reject blank identities, and outbound sequence exhaustion fails before `postMessage` rather than repeating a sequence.
+- **Iframe Identity & Sequence**: Sender and subscriber construction reject blank instance IDs; receivers reject blank identities and zero-valued initial sequences; outbound sequence exhaustion fails before `postMessage` rather than repeating a sequence.
 
 ## 3. Error Handling & Edge Cases
 - Degenerate rects, broken zoom, and out-of-range pointer coordinates gracefully clamp without panicking.

@@ -2,6 +2,8 @@ use crate::editor::AdminEditorRuntime;
 use leptos::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
+use crate::AdminCanvasController;
+#[cfg(target_arch = "wasm32")]
 use fly::ComponentPatch;
 #[cfg(any(target_arch = "wasm32", test))]
 use crate::core::page_builder_resize_policy;
@@ -35,15 +37,65 @@ fn can_start_resize_pointer(listeners_ready: bool, button: i16, is_primary: bool
     listeners_ready && button == 0 && is_primary
 }
 
+#[derive(Debug, Clone, PartialEq)]
+#[cfg(any(target_arch = "wasm32", test))]
+struct ResizeContext {
+    page_id: String,
+    active_page_id: Option<String>,
+    active_page_index: usize,
+    revision_id: String,
+    project_hash: String,
+    command_sequence: u64,
+    component_id: String,
+    rect: CanvasRect,
+    zoom: f64,
+}
+
+#[cfg(target_arch = "wasm32")]
+fn current_resize_context(controller: &AdminCanvasController) -> Option<ResizeContext> {
+    let selected = controller.selected_component_view()?;
+    let capabilities = controller.ui().state.capabilities;
+    if selected.is_root || selected.is_locked || !capabilities.edit || !capabilities.styles {
+        return None;
+    }
+    let rect = controller.ui().state.overlays.selected?;
+    if !rect.is_valid() {
+        return None;
+    }
+    let revision = controller.editor().revision();
+    Some(ResizeContext {
+        page_id: controller.page_id().to_string(),
+        active_page_id: controller.active_page_summary().and_then(|page| page.id),
+        active_page_index: controller.active_page_index(),
+        revision_id: controller.revision_id().to_string(),
+        project_hash: revision.project_hash.hex(),
+        command_sequence: revision.command_sequence,
+        component_id: selected.id,
+        rect,
+        zoom: f64::from(controller.ui().state.viewport.zoom.max(0.01)),
+    })
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn resize_context_is_current(captured: &ResizeContext, current: Option<&ResizeContext>) -> bool {
+    current == Some(captured)
+}
+
 #[cfg(target_arch = "wasm32")]
 #[component]
 pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
     let session = StoredValue::new_local(None::<fly_leptos::BrowserResizeSession>);
     let captured_element = StoredValue::new_local(None::<Element>);
+    let resize_context = StoredValue::new_local(None::<ResizeContext>);
     let preview = RwSignal::new(None::<ResizeResult>);
 
-    let listeners_ready =
-        install_resize_listeners(runtime.clone(), session, captured_element, preview);
+    let listeners_ready = install_resize_listeners(
+        runtime.clone(),
+        session,
+        captured_element,
+        resize_context,
+        preview,
+    );
 
     let handles = [
         ResizeHandle::North,
@@ -99,7 +151,7 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                     rect.map(|rect| svg_handle_position(rect, viewport, handle))
                 }));
                 let class = format!(
-                    "pointer-events-auto fill-white stroke-violet-700 stroke-1 drop-shadow focus-visible:stroke-primary {}",
+                    "pointer-events-auto touch-none select-none fill-white stroke-violet-700 stroke-1 drop-shadow focus-visible:stroke-primary {}",
                     resize_handle_cursor_class(handle),
                 );
                 view! {
@@ -115,26 +167,16 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                         on:keydown={
                             let runtime = runtime.clone();
                             move |event: KeyboardEvent| {
-                                let Some((component_id, rect)) = runtime.controller.with(|controller| {
-                                    let selected = controller.selected_component_view()?;
-                                    if selected.is_root
-                                        || selected.is_locked
-                                        || !controller.ui().state.capabilities.edit
-                                        || !controller.ui().state.capabilities.styles
-                                    {
-                                        return None;
-                                    }
-                                    Some((
-                                        selected.id,
-                                        controller.ui().state.overlays.selected?,
-                                    ))
-                                }) else {
+                                let Some(context) = runtime
+                                    .controller
+                                    .with(current_resize_context)
+                                else {
                                     return;
                                 };
                                 let resize = ResizeSession {
-                                    component_id: component_id.clone(),
+                                    component_id: context.component_id.clone(),
                                     handle,
-                                    start_rect: rect,
+                                    start_rect: context.rect,
                                     start_x: 0.0,
                                     start_y: 0.0,
                                     policy: page_builder_resize_policy(),
@@ -150,7 +192,7 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                                 event.prevent_default();
                                 apply_resize_patch(
                                     &runtime,
-                                    &component_id,
+                                    &context.component_id,
                                     resize.component_patch(result),
                                 );
                             }
@@ -165,30 +207,19 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                                 ) {
                                     return;
                                 }
-                                let Some((component_id, rect, zoom)) = runtime.controller.with(|controller| {
-                                    let selected = controller.selected_component_view()?;
-                                    if selected.is_root
-                                        || selected.is_locked
-                                        || !controller.ui().state.capabilities.edit
-                                        || !controller.ui().state.capabilities.styles
-                                    {
-                                        return None;
-                                    }
-                                    Some((
-                                        selected.id,
-                                        controller.ui().state.overlays.selected?,
-                                        controller.ui().state.viewport.zoom,
-                                    ))
-                                }) else {
+                                let Some(context) = runtime
+                                    .controller
+                                    .with(current_resize_context)
+                                else {
                                     return;
                                 };
                                 let resize = fly_leptos::BrowserResizeSession::begin_scaled(
-                                    component_id,
+                                    context.component_id.clone(),
                                     handle,
-                                    rect,
+                                    context.rect,
                                     &event,
                                     page_builder_resize_policy(),
-                                    f64::from(zoom),
+                                    context.zoom,
                                 );
                                 let Some(element) = event
                                     .current_target()
@@ -208,6 +239,7 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                                 event.prevent_default();
                                 event.stop_propagation();
                                 captured_element.set_value(Some(element));
+                                resize_context.set_value(Some(context));
                                 session.set_value(Some(resize));
                                 preview.set(None);
                             }
@@ -224,6 +256,7 @@ fn install_resize_listeners(
     runtime: AdminEditorRuntime,
     session: StoredValue<Option<fly_leptos::BrowserResizeSession>, LocalStorage>,
     captured_element: StoredValue<Option<Element>, LocalStorage>,
+    resize_context: StoredValue<Option<ResizeContext>, LocalStorage>,
     preview: RwSignal<Option<ResizeResult>>,
 ) -> bool {
     let Some(window) = web_sys::window() else {
@@ -232,16 +265,39 @@ fn install_resize_listeners(
     };
     let target: EventTarget = window.unchecked_into();
 
+    let move_runtime = runtime.clone();
     let move_session = session;
+    let move_element = captured_element;
+    let move_context = resize_context;
+    let move_preview = preview;
     let move_listener = fly_leptos::EventListenerHandle::new::<PointerEvent>(
         &target,
         "pointermove",
         move |event| {
-            if let Some(result) = move_session
-                .get_value()
-                .and_then(|session| session.update(&event))
-            {
-                preview.set(Some(result));
+            let Some(active) = move_session.get_value() else {
+                return;
+            };
+            if !active.accepts(&event) {
+                return;
+            }
+            let captured = move_context.get_value();
+            let current = move_runtime.controller.with(current_resize_context);
+            if !captured.as_ref().is_some_and(|captured| {
+                resize_context_is_current(captured, current.as_ref())
+            }) {
+                cancel_active_resize(
+                    &move_runtime,
+                    move_session,
+                    move_element,
+                    move_context,
+                    move_preview,
+                    None,
+                    true,
+                );
+                return;
+            }
+            if let Some(result) = active.update(&event) {
+                move_preview.set(Some(result));
             }
         },
     );
@@ -249,6 +305,8 @@ fn install_resize_listeners(
     let up_runtime = runtime.clone();
     let up_session = session;
     let up_element = captured_element;
+    let up_context = resize_context;
+    let up_preview = preview;
     let up_listener =
         fly_leptos::EventListenerHandle::new::<PointerEvent>(&target, "pointerup", move |event| {
             let Some(active) = up_session.get_value() else {
@@ -257,8 +315,26 @@ fn install_resize_listeners(
             if !active.accepts(&event) {
                 return;
             }
-            let result = active.update(&event).or_else(|| preview.get_untracked());
-            if let Some(result) = result.filter(|result| result.width_changed || result.height_changed) {
+            let captured = up_context.get_value();
+            let current = up_runtime.controller.with(current_resize_context);
+            if !captured.as_ref().is_some_and(|captured| {
+                resize_context_is_current(captured, current.as_ref())
+            }) {
+                cancel_active_resize(
+                    &up_runtime,
+                    up_session,
+                    up_element,
+                    up_context,
+                    up_preview,
+                    None,
+                    true,
+                );
+                return;
+            }
+            let result = active.update(&event).or_else(|| up_preview.get_untracked());
+            if let Some(result) = result
+                .filter(|result| result.width_changed || result.height_changed)
+            {
                 apply_resize_patch(
                     &up_runtime,
                     &active.resize.component_id,
@@ -271,13 +347,15 @@ fn install_resize_listeners(
                 }
             }
             up_element.set_value(None);
+            up_context.set_value(None);
             up_session.set_value(None);
-            preview.set(None);
+            up_preview.set(None);
         });
 
     let cancel_runtime = runtime.clone();
     let cancel_session = session;
     let cancel_element = captured_element;
+    let cancel_context = resize_context;
     let cancel_preview = preview;
     let cancel_listener = fly_leptos::EventListenerHandle::new::<PointerEvent>(
         &target,
@@ -287,6 +365,7 @@ fn install_resize_listeners(
                 &cancel_runtime,
                 cancel_session,
                 cancel_element,
+                cancel_context,
                 cancel_preview,
                 Some(event.pointer_id()),
                 true,
@@ -297,6 +376,7 @@ fn install_resize_listeners(
     let lost_runtime = runtime.clone();
     let lost_session = session;
     let lost_element = captured_element;
+    let lost_context = resize_context;
     let lost_preview = preview;
     let lost_listener = fly_leptos::EventListenerHandle::new::<PointerEvent>(
         &target,
@@ -306,6 +386,7 @@ fn install_resize_listeners(
                 &lost_runtime,
                 lost_session,
                 lost_element,
+                lost_context,
                 lost_preview,
                 Some(event.pointer_id()),
                 false,
@@ -316,6 +397,7 @@ fn install_resize_listeners(
     let blur_runtime = runtime.clone();
     let blur_session = session;
     let blur_element = captured_element;
+    let blur_context = resize_context;
     let blur_preview = preview;
     let blur_listener = fly_leptos::EventListenerHandle::new::<Event>(
         &target,
@@ -325,6 +407,7 @@ fn install_resize_listeners(
                 &blur_runtime,
                 blur_session,
                 blur_element,
+                blur_context,
                 blur_preview,
                 None,
                 true,
@@ -374,11 +457,15 @@ fn cancel_active_resize(
     runtime: &AdminEditorRuntime,
     session: StoredValue<Option<fly_leptos::BrowserResizeSession>, LocalStorage>,
     captured_element: StoredValue<Option<Element>, LocalStorage>,
+    resize_context: StoredValue<Option<ResizeContext>, LocalStorage>,
     preview: RwSignal<Option<ResizeResult>>,
     pointer_id: Option<i32>,
     release_capture: bool,
 ) {
     let Some(active) = session.get_value() else {
+        captured_element.set_value(None);
+        resize_context.set_value(None);
+        preview.set(None);
         return;
     };
     if pointer_id.is_some_and(|pointer_id| pointer_id != active.pointer_id) {
@@ -394,6 +481,7 @@ fn cancel_active_resize(
         }
     }
     captured_element.set_value(None);
+    resize_context.set_value(None);
     session.set_value(None);
     preview.set(None);
 }
@@ -454,6 +542,68 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
 mod tests {
     use super::*;
     use fly_ui::{MAX_RESIZE_DIMENSION_PX, MIN_RESIZE_HEIGHT_PX, MIN_RESIZE_WIDTH_PX};
+
+    fn resize_context() -> ResizeContext {
+        ResizeContext {
+            page_id: "home".to_string(),
+            active_page_id: Some("landing".to_string()),
+            active_page_index: 1,
+            revision_id: "rev-2".to_string(),
+            project_hash: "hash-2".to_string(),
+            command_sequence: 7,
+            component_id: "hero".to_string(),
+            rect: CanvasRect {
+                x: 10.0,
+                y: 20.0,
+                width: 100.0,
+                height: 50.0,
+            },
+            zoom: 0.8,
+        }
+    }
+
+    #[test]
+    fn resize_gesture_is_fenced_to_its_canvas_snapshot_and_target() {
+        let captured = resize_context();
+        assert!(resize_context_is_current(&captured, Some(&captured)));
+        assert!(!resize_context_is_current(&captured, None));
+
+        let mut changed = captured.clone();
+        changed.page_id = "about".to_string();
+        assert!(!resize_context_is_current(&captured, Some(&changed)));
+
+        let mut changed = captured.clone();
+        changed.active_page_id = Some("about".to_string());
+        assert!(!resize_context_is_current(&captured, Some(&changed)));
+
+        let mut changed = captured.clone();
+        changed.active_page_index += 1;
+        assert!(!resize_context_is_current(&captured, Some(&changed)));
+
+        let mut changed = captured.clone();
+        changed.revision_id = "rev-3".to_string();
+        assert!(!resize_context_is_current(&captured, Some(&changed)));
+
+        let mut changed = captured.clone();
+        changed.project_hash = "hash-3".to_string();
+        assert!(!resize_context_is_current(&captured, Some(&changed)));
+
+        let mut changed = captured.clone();
+        changed.command_sequence += 1;
+        assert!(!resize_context_is_current(&captured, Some(&changed)));
+
+        let mut changed = captured.clone();
+        changed.component_id = "other".to_string();
+        assert!(!resize_context_is_current(&captured, Some(&changed)));
+
+        let mut changed = captured.clone();
+        changed.rect.width += 1.0;
+        assert!(!resize_context_is_current(&captured, Some(&changed)));
+
+        let mut changed = captured.clone();
+        changed.zoom = 1.0;
+        assert!(!resize_context_is_current(&captured, Some(&changed)));
+    }
 
     #[test]
     fn resize_pointerdown_only_consumes_primary_left_gestures() {

@@ -35,7 +35,7 @@ const RESIZE_HANDLES: [ResizeHandle; 8] = [
 #[component]
 pub fn DioxusIsolatedCanvas(
     srcdoc: String,
-    /// Per-document iframe identity. It changes whenever the document or its revision changes.
+    /// Per-document iframe identity. It changes whenever the document, revision or active page changes.
     instance_id: String,
     /// Stable page identity used for server-side browser intents.
     intent_instance_id: String,
@@ -565,7 +565,7 @@ pub fn DioxusIsolatedCanvas(
                                         aria_label: "Resize {name}",
                                         aria_keyshortcuts: "ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowUp Shift+ArrowDown Shift+ArrowLeft Shift+ArrowRight",
                                         class: format!(
-                                            "pointer-events-auto fill-white stroke-violet-700 stroke-2 {}",
+                                            "pointer-events-auto touch-none select-none fill-white stroke-violet-700 stroke-2 {}",
                                             cursor
                                         ),
                                         onkeydown: {
