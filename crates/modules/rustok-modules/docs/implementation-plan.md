@@ -8,6 +8,23 @@ across DNS and the complete HTTP exchange. It rejects zero timeout/response
 limits and uses checked response-size arithmetic. Focused source regressions
 were added; compilation, formatting and tests remain pending.
 
+## Artifact object capability effect fencing (2026-11-27)
+
+The server-composed `platform.data.objects` resolver now receives the same
+SQL effect authorizer as structured data and events. Object metadata reads and
+writes, idempotency receipts, upload-session/chunk transitions, completion
+claims and replay paths lock the exact execution authority in their owner
+transactions. The server also revalidates installation, policy, direct
+authority, security and lease state after object-store reads before releasing
+bytes. Upload completion replay resolves the object receipt by the session's
+stored idempotency key, and begin replay returns the completed object result.
+
+Physical object-store bytes remain outside SQL transactions. Known denied
+commits compensate private staged bytes; ambiguous outcomes retain them for
+safe reconciliation. Orphan collection and production fleet/write/retention
+cutover remain open. Source regressions were added; compilation, formatting
+and tests remain pending.
+
 ## Scope
 
 Own the mandatory Core module control plane: identity, releases, marketplace,
