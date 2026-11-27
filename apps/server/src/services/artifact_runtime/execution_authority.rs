@@ -4,6 +4,7 @@
 
 use std::{
     collections::HashMap,
+    future::Future,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -380,6 +381,16 @@ async fn revalidate_capability_authority(
     Ok(())
 }
 
+/// Releases either a broker response or its error only after the awaited
+/// authority check succeeds.
+async fn release_capability_result<T>(
+    result: SandboxResult<T>,
+    authority_check: impl Future<Output = SandboxResult<()>>,
+) -> SandboxResult<T> {
+    authority_check.await?;
+    result
+}
+
 /// A bound call is produced from the live host registry, not the guest.
 struct SqlEffectFence {
     authority: ExecutionAuthority,
@@ -631,7 +642,52 @@ impl<B: CapabilityBroker> CapabilityBroker for FencedCapabilityBroker<B> {
         // Apply the same output-release fence to errors: a revoked execution
         // must not receive broker diagnostics from an operation that was
         // still awaiting when its authority expired or was invalidated.
-        revalidate_capability_authority(&self.resolver, authority, call, &lease).await?;
-        result
+        release_capability_result(
+            result,
+            revalidate_capability_authority(&self.resolver, authority, call, &lease),
+        )
+        .await
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use rustok_sandbox::{CapabilityName, SandboxError};
+
+    use super::release_capability_result;
+
+    #[tokio::test]
+    async fn broker_results_and_errors_are_both_fenced_before_release() {
+        let capability = CapabilityName::new("platform.http").expect("capability");
+        let successful = release_capability_result(
+            Ok("response"),
+            async { Err(SandboxError::CapabilityDenied(capability.clone())) },
+        )
+        .await;
+        assert!(matches!(
+            successful,
+            Err(SandboxError::CapabilityDenied(name)) if name == capability
+        ));
+
+        let owner_error = release_capability_result::<&str>(
+            Err(SandboxError::InvalidRequest("owner failure".to_string())),
+            async { Ok(()) },
+        )
+        .await;
+        assert!(matches!(
+            owner_error,
+            Err(SandboxError::InvalidRequest(message)) if message == "owner failure"
+        ));
+
+        let revoked_owner_error = release_capability_result::<&str>(
+            Err(SandboxError::InvalidRequest("owner failure".to_string())),
+            async { Err(SandboxError::CapabilityDenied(capability.clone())) },
+        )
+        .await;
+        assert!(matches!(
+            revoked_owner_error,
+            Err(SandboxError::CapabilityDenied(name)) if name == capability
+        ));
     }
 }
