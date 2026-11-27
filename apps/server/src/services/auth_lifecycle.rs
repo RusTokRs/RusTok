@@ -118,6 +118,7 @@ pub enum AuthLifecycleError {
     EmailAlreadyExists,
     InvalidCredentials,
     UserInactive,
+    TenantInactive,
     AccountLocked,
     EmailNotVerified,
     InvalidRefreshToken,
@@ -139,6 +140,7 @@ impl std::fmt::Display for AuthLifecycleError {
             AuthLifecycleError::EmailAlreadyExists => formatter.write_str("email already exists"),
             AuthLifecycleError::InvalidCredentials => formatter.write_str("invalid credentials"),
             AuthLifecycleError::UserInactive => formatter.write_str("user is inactive"),
+            AuthLifecycleError::TenantInactive => formatter.write_str("tenant is inactive"),
             AuthLifecycleError::AccountLocked => {
                 formatter.write_str("account is temporarily locked")
             }
@@ -201,6 +203,7 @@ impl From<AuthLifecycleError> for Error {
                 Error::Unauthorized("Invalid credentials".into())
             }
             AuthLifecycleError::UserInactive => Error::Unauthorized("User is inactive".into()),
+            AuthLifecycleError::TenantInactive => Error::NotFound,
             AuthLifecycleError::AccountLocked => {
                 Error::Unauthorized("Account is temporarily locked".into())
             }
@@ -674,6 +677,10 @@ impl AuthLifecycleService {
             Self::prepare_new_user(email, password, name, config.min_password_length).await?;
         rustok_auth::application_clock::admit_now(ctx.db()).await?;
         let tx = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
+        if !crate::services::auth_invite::lock_active_auth_tenant(&tx, tenant_id).await? {
+            tx.rollback().await.map_err(AuthLifecycleError::from)?;
+            return Err(AuthLifecycleError::TenantInactive);
+        }
         let user = Self::create_user_in_tx(
             &tx,
             tenant_id,
@@ -817,6 +824,10 @@ impl AuthLifecycleService {
         };
 
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
+        if !crate::services::auth_invite::lock_active_auth_tenant(&txn, tenant_id).await? {
+            txn.rollback().await.map_err(AuthLifecycleError::from)?;
+            return Err(AuthLifecycleError::TenantInactive);
+        }
         let locked_user = Self::find_user_for_login_in_tx(&txn, tenant_id, &email)
             .await?
             .ok_or(AuthLifecycleError::InvalidCredentials)?;
@@ -1158,7 +1169,19 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::SessionLineageMismatch);
         }
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
-        // All paths, including history-only recovery, use user -> session
+        if !crate::services::auth_invite::lock_active_auth_tenant(&txn, tenant_id).await? {
+            txn.rollback().await.map_err(AuthLifecycleError::from)?;
+            Self::detect_refresh_reuse_after_tenant_deactivation(
+                db,
+                config,
+                tenant_id,
+                &observed,
+                &token_hash,
+            )
+            .await?;
+            return Err(AuthLifecycleError::TenantInactive);
+        }
+        // All paths, including history-only recovery, use tenant -> user -> session
         // ordering and SQLite acquires its writer before transactional reads.
         let user = Self::find_user_for_update_in_tx(&txn, tenant_id, observed.user_id)
             .await?
@@ -1373,6 +1396,53 @@ impl AuthLifecycleService {
             let age = now.signed_duration_since(rotated_at.with_timezone(&Utc));
             age >= Duration::zero() && age < Duration::seconds(REFRESH_REUSE_GRACE_SECONDS)
         })
+    }
+
+    /// Tenant deactivation blocks new session credentials, but it must not
+    /// suppress replay revocation for a refresh request that passed preflight
+    /// while the tenant was active. This cleanup path deliberately omits the
+    /// tenant fence and retains the user -> session lock order.
+    async fn detect_refresh_reuse_after_tenant_deactivation(
+        db: &DatabaseConnection,
+        config: &AuthConfig,
+        tenant_id: uuid::Uuid,
+        observed: &sessions::Model,
+        token_hash: &str,
+    ) -> std::result::Result<(), AuthLifecycleError> {
+        if observed.token_hash == token_hash {
+            return Ok(());
+        }
+
+        let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
+        let Some(user) = Self::find_user_for_update_in_tx(&txn, tenant_id, observed.user_id).await?
+        else {
+            txn.rollback().await.map_err(AuthLifecycleError::from)?;
+            return Ok(());
+        };
+        let Some(session) = Self::find_session_record_for_update_in_tx(
+            &txn,
+            tenant_id,
+            observed.id,
+            true,
+        )
+        .await?
+        .filter(|session| session.user_id == user.id)
+        else {
+            txn.rollback().await.map_err(AuthLifecycleError::from)?;
+            return Ok(());
+        };
+
+        if session.token_hash == token_hash {
+            txn.rollback().await.map_err(AuthLifecycleError::from)?;
+            return Ok(());
+        }
+
+        // A result inside the retry grace window is intentionally not
+        // revoked. The tenant is inactive, so no recovery token is published;
+        // the caller still receives TenantInactive below.
+        let _ = Self::detect_refresh_reuse_in_tx(&txn, config, session, token_hash).await?;
+        txn.commit().await.map_err(AuthLifecycleError::from)?;
+        Ok(())
     }
 
     /// Read replay evidence only after acquiring the exact user and session
@@ -1853,6 +1923,10 @@ impl AuthLifecycleService {
     ) -> std::result::Result<AuthTokens, AuthLifecycleError> {
         rustok_auth::application_clock::admit_now(db).await?;
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
+        if !crate::services::auth_invite::lock_active_auth_tenant(&tx, tenant_id).await? {
+            tx.rollback().await.map_err(AuthLifecycleError::from)?;
+            return Err(AuthLifecycleError::TenantInactive);
+        }
         let prepared = Self::create_session_and_tokens_in_tx(
             &tx, config, tenant_id, user, ip_address, user_agent,
         )
@@ -2208,6 +2282,170 @@ mod tests {
         assert_eq!(snapshot.change_password_sessions_revoked_total, 0);
         assert_eq!(snapshot.flow_inconsistency_total, 0);
         assert_eq!(snapshot.login_inactive_user_attempt_total, 0);
+    }
+
+    #[tokio::test]
+    async fn inactive_tenant_blocks_registration_and_login_session_issuance() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Inactive auth tenant", "inactive-auth-tenant")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let password_hash = hash_password("Password123!").expect("hash password");
+        let user = users::ActiveModel::new(tenant.id, "inactive-login@example.com", &password_hash)
+            .insert(&db)
+            .await
+            .expect("user");
+        let mut inactive_tenant: tenants::ActiveModel = tenant.clone().into();
+        inactive_tenant.is_active = Set(false);
+        inactive_tenant.update(&db).await.expect("deactivate tenant");
+
+        let ctx = ServerRuntimeContext::new(db.clone(), Default::default());
+        let config = test_auth_config("inactive-auth-tenant-secret", 600, 3600);
+        let register = AuthLifecycleService::register_runtime(
+            &ctx,
+            &config,
+            tenant.id,
+            "new-inactive@example.com",
+            "Password123!",
+            None,
+        )
+        .await;
+        assert!(matches!(register, Err(AuthLifecycleError::TenantInactive)));
+
+        let login = AuthLifecycleService::login_with_config(
+            &ctx,
+            &config,
+            tenant.id,
+            &user.email,
+            "Password123!",
+            None,
+            None,
+            false,
+        )
+        .await;
+        assert!(matches!(login, Err(AuthLifecycleError::TenantInactive)));
+        assert_eq!(
+            users::Entity::find()
+                .filter(users::Column::TenantId.eq(tenant.id))
+                .count(&db)
+                .await
+                .expect("count users"),
+            1,
+            "registration must not create a user after tenant deactivation"
+        );
+        assert_eq!(
+            sessions::Entity::find()
+                .filter(sessions::Column::TenantId.eq(tenant.id))
+                .count(&db)
+                .await
+                .expect("count sessions"),
+            0,
+            "login must not issue a session after tenant deactivation"
+        );
+    }
+
+    #[tokio::test]
+    async fn inactive_tenant_blocks_refresh_but_does_not_suppress_stale_replay_revocation() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Refresh fence tenant", "refresh-fence-tenant")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let password_hash = hash_password("Password123!").expect("hash password");
+        let user = users::ActiveModel::new(tenant.id, "refresh-fence@example.com", &password_hash)
+            .insert(&db)
+            .await
+            .expect("user");
+        let config = test_auth_config("refresh-fence-tenant-secret", 600, 3600);
+        let ctx = ServerRuntimeContext::new(db.clone(), Default::default());
+        let (_, first) = AuthLifecycleService::login_with_config(
+            &ctx,
+            &config,
+            tenant.id,
+            &user.email,
+            "Password123!",
+            None,
+            None,
+            false,
+        )
+        .await
+        .expect("login");
+        let (_, rotated) = AuthLifecycleService::refresh_with_config_db(
+            &db,
+            &config,
+            tenant.id,
+            &first.refresh_token,
+            false,
+            None,
+            None,
+        )
+        .await
+        .expect("initial refresh rotation");
+        let first_hash = hash_refresh_token(&first.refresh_token);
+        let history = session_refresh_history::Entity::find_by_id(first_hash.clone())
+            .one(&db)
+            .await
+            .expect("load refresh history")
+            .expect("history row");
+        let session_id = history.session_id;
+
+        let mut aged_history: session_refresh_history::ActiveModel = history.into();
+        aged_history.rotated_at = Set(Some((Utc::now() - Duration::minutes(2)).into()));
+        age_history_fixture(&db, aged_history).await;
+
+        let mut inactive_tenant: tenants::ActiveModel = tenant.clone().into();
+        inactive_tenant.is_active = Set(false);
+        inactive_tenant.update(&db).await.expect("deactivate tenant");
+
+        let current_before = sessions::Entity::find_by_id(session_id)
+            .one(&db)
+            .await
+            .expect("load current session")
+            .expect("current session");
+        let current_attempt = AuthLifecycleService::refresh_with_config_db(
+            &db,
+            &config,
+            tenant.id,
+            &rotated.refresh_token,
+            false,
+            None,
+            Some(session_id),
+        )
+        .await;
+        assert!(matches!(
+            current_attempt,
+            Err(AuthLifecycleError::TenantInactive)
+        ));
+        let current_after = sessions::Entity::find_by_id(session_id)
+            .one(&db)
+            .await
+            .expect("reload current session")
+            .expect("current session");
+        assert_eq!(current_after.token_hash, current_before.token_hash);
+        assert!(current_after.revoked_at.is_none());
+
+        let stale_attempt = AuthLifecycleService::refresh_with_config_db(
+            &db,
+            &config,
+            tenant.id,
+            &first.refresh_token,
+            false,
+            None,
+            Some(session_id),
+        )
+        .await;
+        assert!(matches!(
+            stale_attempt,
+            Err(AuthLifecycleError::TenantInactive)
+        ));
+        let revoked = sessions::Entity::find_by_id(session_id)
+            .one(&db)
+            .await
+            .expect("reload revoked session")
+            .expect("session");
+        assert!(revoked.revoked_at.is_some());
+        assert!(revoked.previous_token_hash.is_none());
     }
 
     #[tokio::test]
