@@ -88,11 +88,29 @@ function nonEmptyString(value) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+// JavaScript stores UTF-16 code units while Rust String stores Unicode scalar values.
+// Reject lone surrogates, but keep valid pairs as ordinary non-BMP Unicode.
+function hasUnpairedSurrogate(value) {
+  for (var index = 0; index < value.length; index += 1) {
+    var code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      var next = value.charCodeAt(index + 1);
+      if (index + 1 >= value.length || next < 0xdc00 || next > 0xdfff) {
+        return true;
+      }
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function validPeerWriteField(value) {
   return typeof value === "string" &&
     value.length <= MAX_PEER_WRITE_FIELD_BYTES &&
     !/^\p{White_Space}*$/u.test(value) &&
-    !/[\uD800-\uDFFF]/u.test(value) &&
+    !hasUnpairedSurrogate(value) &&
     utf8ByteLength(value) <= MAX_PEER_WRITE_FIELD_BYTES;
 }
 

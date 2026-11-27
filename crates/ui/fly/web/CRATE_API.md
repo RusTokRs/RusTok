@@ -34,6 +34,7 @@ Framework-neutral browser runtime, geometric transforms, hit-testing, and iframe
 ## 3. Error Handling & Edge Cases
 - Degenerate rects, broken zoom, and out-of-range pointer coordinates gracefully clamp without panicking.
 - Inline edit request validation rejects NUL bytes, bidirectional overrides, and control characters.
+- Real-DOM inline-edit sequence advancement is checked; `SequenceExhausted` is returned before a request can reuse the final `u64` sequence.
 - Replay and sequence verification rejects out-of-order or duplicate iframe bridge envelopes.
 
 ## 4. Security & Isolation Invariants
