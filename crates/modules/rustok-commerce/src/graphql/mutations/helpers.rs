@@ -105,6 +105,7 @@ pub(crate) fn convert_create_product_input(
                 barcode: variant.barcode,
                 shipping_profile_slug: variant.shipping_profile_slug,
                 axis_values,
+                attribute_values: convert_product_attribute_batches(variant.attribute_values)?,
                 prices,
                 inventory_quantity: variant.inventory_quantity.unwrap_or(0),
                 inventory_policy: variant
@@ -174,6 +175,7 @@ pub(crate) fn convert_create_variant_input(
         barcode: input.barcode,
         shipping_profile_slug: input.shipping_profile_slug,
         axis_values,
+        attribute_values: convert_product_attribute_batches(input.attribute_values)?,
         prices,
         inventory_quantity: input.inventory_quantity.unwrap_or(0),
         inventory_policy: input.inventory_policy.unwrap_or_else(|| "deny".to_string()),
@@ -229,6 +231,7 @@ pub(crate) fn convert_update_variant_input(
         expected_inventory_quantity: input.expected_inventory_quantity,
         expected_revision: input.expected_revision,
         inventory_policy: input.inventory_policy,
+        attribute_values: convert_product_attribute_batches(input.attribute_values)?,
         weight: match graphql_patch(input.weight) {
             rustok_api::Patch::Keep => rustok_api::Patch::Keep,
             rustok_api::Patch::Clear => rustok_api::Patch::Clear,
