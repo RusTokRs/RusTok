@@ -16,8 +16,9 @@ HTML is `no-store`. GraphQL POST and WebSocket routes retain strict API CSP.
 Focused policy and template regressions were added. Maintainer verification
 remains pending: `cargo check -p rustok-server`,
 `cargo test -p rustok-server --lib graphql_playground_csp_is_dev_only_and_get_only`,
- `cargo test -p rustok-server --lib graphql_playground_html_nonces_inline_bootstrap_and_uses_https_cdn`,
-and `cargo test -p rustok-server --lib graphql_playground_is_dev_only_no_store_and_requires_nonce`.
+`cargo test -p rustok-server --lib graphql_playground_html_nonces_inline_bootstrap_and_uses_https_cdn`,
+and `cargo test -p rustok-server --lib graphql_playground_is_dev_only_no_store_and_requires_nonce`,
+and `cargo test -p rustok-server --lib graphql_playground_document_receives_nonce_from_security_middleware`.
 Tests and compilation were not run in this session.
 
 

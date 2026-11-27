@@ -830,6 +830,58 @@ mod tests {
         }
     }
 
+    async fn graphql_playground_test_page(
+        csp_nonce: Option<Extension<CspNonce>>,
+    ) -> axum::response::Html<String> {
+        let nonce = csp_nonce
+            .map(|Extension(nonce)| nonce.as_str().to_owned())
+            .unwrap_or_else(|| "missing".to_string());
+        axum::response::Html(format!("<script nonce=\"{}\"></script>", nonce))
+    }
+
+    #[tokio::test]
+    async fn graphql_playground_document_receives_nonce_from_security_middleware() {
+        let app = Router::new()
+            .route("/api/graphql", get(graphql_playground_test_page))
+            .layer(middleware::from_fn(security_headers));
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/graphql")
+                    .body(Body::empty())
+                    .expect("GraphQL Playground request"),
+            )
+            .await
+            .expect("GraphQL Playground response");
+        let policy = response
+            .headers()
+            .get("content-security-policy")
+            .expect("CSP header")
+            .to_str()
+            .expect("valid CSP")
+            .to_string();
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("GraphQL Playground body")
+                .to_vec(),
+        )
+        .expect("HTML response body");
+
+        if crate::common::settings::is_production_security_mode() {
+            assert_eq!(policy, API_CSP);
+            assert!(body.contains("nonce=\"missing\""));
+        } else {
+            let nonce = body
+                .strip_prefix("<script nonce=\"")
+                .and_then(|rest| rest.split_once('"').map(|(nonce, _)| nonce))
+                .expect("nonce-bearing GraphQL bootstrap");
+            assert!(policy.contains(&format!("'nonce-{nonce}'")), "{policy}");
+            assert!(policy.contains("https://cdn.jsdelivr.net"), "{policy}");
+            assert!(policy.contains("connect-src 'self' ws: wss:"), "{policy}");
+        }
+    }
+
     #[tokio::test]
     async fn outer_security_layer_shares_one_nonce_with_ui_handler_and_header() {
         let app =
