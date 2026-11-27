@@ -175,6 +175,37 @@ async fn terminal_intake_receipt_and_outbox_ack_commit_atomically() {
 }
 
 #[tokio::test]
+async fn terminal_outcome_replay_is_serialized_and_conflicting_legacy_pair_fails_closed() {
+    let db = setup().await;
+    let tenant_id = Uuid::new_v4();
+    insert_tenant(&db, tenant_id).await;
+    let event_id = Uuid::new_v4();
+    insert_outbox_event(&db, event_id, 1, serde_json::json!({
+        "tenant_id": tenant_id, "source_event_id": Uuid::new_v4(), "source_revision": 1
+    }), 1).await;
+    let worker = NotificationOutboxIntakeWorker::new(db.clone(), Arc::new(FakeDecoder), 8)
+        .unwrap();
+    let (first, second) = tokio::join!(
+        worker.process_outbox_event(event_id),
+        worker.process_outbox_event(event_id),
+    );
+    let first = first.unwrap();
+    let second = second.unwrap();
+    assert_ne!(first.replayed(), second.replayed());
+    let (NotificationOutboxIntakeOutcome::Accepted(first), NotificationOutboxIntakeOutcome::Accepted(second)) =
+        (first, second) else { panic!("both workers must replay the same acceptance") };
+    assert_eq!(first.source_inbox_id, second.source_inbox_id);
+    assert_eq!(source_inbox::Entity::find().count(&db).await.unwrap(), 1);
+    // Emulate contradictory state from a pre-fence deployment.
+    db.execute_unprepared(&format!(
+        "INSERT INTO notification_outbox_intake_rejections (outbox_event_id,event_type,schema_version,error_code,created_at) VALUES (X'{}','{EVENT_TYPE}',1,'NOTIFICATION_SOURCE_EVENT_INVALID','2026-07-23T12:00:00Z')",
+        event_id.simple()
+    )).await.unwrap();
+    let error = worker.process_outbox_event(event_id).await.unwrap_err();
+    assert_eq!(error.stable_code(), "NOTIFICATION_SOURCE_IDENTITY_CONFLICT");
+}
+
+#[tokio::test]
 async fn accepted_and_permanent_invalid_envelopes_leave_no_head_of_line_blocker() {
     let db = setup().await;
     let tenant_id = Uuid::new_v4();

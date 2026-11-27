@@ -411,3 +411,27 @@ These commands were not run while publishing
 - [forum-20al-open-graphql.md](./forum-20al-open-graphql.md) — source-ready owner note; runtime execution remains maintainer-owned.
 - [forum-20am-plan-sync.md](./forum-20am-plan-sync.md) — source-ready owner note; runtime execution remains maintainer-owned.
 - [forum-20an-group-state-graphql.md](./forum-20an-group-state-graphql.md) — source-ready owner note; runtime execution remains maintainer-owned.
+
+## Transaction-bound consumer effect admission (source only)
+
+Notifications intake serializes terminal acceptance and rejection on the
+canonical source row before reading either owner outcome. PostgreSQL uses
+READ COMMITTED and FOR UPDATE NOWAIT; SQLite reserves its writer before
+reading. Decode uses the locked source snapshot. Acceptance writes run in
+a savepoint, rolled back before a permanent rejection is persisted; retryable
+errors abort the whole transaction. An existing terminal outcome is replayed
+without another owner write. A legacy contradictory accepted/rejected pair
+fails closed and requires reviewed reconciliation. The terminal owner
+outcome, source inbox and generic retention ACK commit together. No broker
+or external I/O is allowed in this transaction.
+
+OutboxConsumer::reserve_effect_in_transaction exposes the existing exact
+consumer/event receipt insertion result as a transaction-local admission:
+true means a new receipt, false means an exact prior committed receipt
+(or one inserted earlier in the same transaction). Perform the SQL owner
+effect only on true and commit receipt and effect together; roll back on
+any error. It is not a reservation that can be committed separately and
+does not cover external effects, broker replay after event retention, or
+unregistered consumers. Existing late ACK/backfill semantics remain intact.
+This does not automatically make arbitrary module handlers idempotent.
+SQLite and PostgreSQL regression sources are authored, not executed.

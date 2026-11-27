@@ -201,9 +201,9 @@ async fn concurrent_consumer_ack_retries_without_waiting_for_the_source_row() ->
     consumer.register_required_event_types("consumer.first", &types).await?;
     consumer.register_required_event_types("consumer.second", &types).await?;
     let first_txn = db.begin().await?;
-    rustok_outbox::OutboxConsumer::acknowledge_in_transaction(
+    assert!(rustok_outbox::OutboxConsumer::reserve_effect_in_transaction(
         &first_txn, "consumer.first", envelope.id, &envelope.event_type,
-    ).await?;
+    ).await?);
 
     let second_txn = second.begin().await?;
     let blocked = tokio::time::timeout(
@@ -221,6 +221,11 @@ async fn concurrent_consumer_ack_retries_without_waiting_for_the_source_row() ->
         &retry_txn, "consumer.second", envelope.id, &envelope.event_type,
     ).await?;
     retry_txn.commit().await?;
+    let duplicate = second.begin().await?;
+    assert!(!rustok_outbox::OutboxConsumer::reserve_effect_in_transaction(
+        &duplicate, "consumer.first", envelope.id, &envelope.event_type,
+    ).await?);
+    duplicate.commit().await?;
     let receipts = db.query_one_raw(Statement::from_string(
         DatabaseBackend::Postgres,
         "SELECT COUNT(*) AS count FROM sys_event_consumer_receipts",

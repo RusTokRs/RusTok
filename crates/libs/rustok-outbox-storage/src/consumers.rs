@@ -224,6 +224,30 @@ impl OutboxConsumer {
             ));
         }
 
+        Self::acknowledge_on(txn, consumer_key, outbox_event_id, Some(event_type)).await.map(|_| ())
+    }
+
+    /// Reserve an exact consumer effect in the caller's SQL transaction.
+    /// True admits a new effect; false is an exact prior receipt. The caller
+    /// MUST commit the new receipt and owner writes together, and roll back
+    /// the whole transaction on any error. Never use for external I/O or
+    /// commit the reservation before the effect. Missing events fail closed.
+    pub async fn reserve_effect_in_transaction(
+        txn: &DatabaseTransaction,
+        consumer_key: &str,
+        outbox_event_id: Uuid,
+        event_type: &str,
+    ) -> std::result::Result<bool, sea_orm::DbErr> {
+        if consumer_key.trim().is_empty()
+            || consumer_key.trim() != consumer_key
+            || consumer_key.len() > 128
+            || outbox_event_id.is_nil()
+            || event_type.trim().is_empty()
+            || event_type.trim() != event_type
+            || event_type.len() > 255
+        {
+            return Err(sea_orm::DbErr::Custom("invalid outbox consumer effect identity".into()));
+        }
         Self::acknowledge_on(txn, consumer_key, outbox_event_id, Some(event_type)).await
     }
 
@@ -234,7 +258,7 @@ impl OutboxConsumer {
         consumer_key: &str,
         outbox_event_id: Uuid,
         expected_event_type: Option<&str>,
-    ) -> std::result::Result<(), sea_orm::DbErr> {
+    ) -> std::result::Result<bool, sea_orm::DbErr> {
         let backend = txn.get_database_backend();
         match backend {
             DatabaseBackend::Postgres => {
@@ -275,7 +299,7 @@ impl OutboxConsumer {
                     "outbox consumer is not registered".to_string(),
                 ));
             }
-            return Ok(());
+            return Ok(false);
         };
         let event_type = expected_event_type.unwrap_or(event.event_type.as_str());
         if event.event_type != event_type {
@@ -313,7 +337,7 @@ impl OutboxConsumer {
         .await?;
 
         if affected == 1 {
-            return Ok(());
+            return Ok(true);
         }
         if affected != 0 {
             return Err(sea_orm::DbErr::Custom(format!(
@@ -337,7 +361,7 @@ impl OutboxConsumer {
             ));
         }
 
-        Ok(())
+        Ok(false)
     }
 }
 
@@ -420,6 +444,30 @@ mod tests {
             .expect("row")
             .try_get::<i64>("", "count")
             .expect("count");
+        assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn effect_admission_rolls_back_with_owner_writes_and_replays_once() {
+        let db = test_db().await;
+        let consumer = OutboxConsumer::new(db.clone());
+        let tenant_id = Uuid::new_v4();
+        let envelope = EventEnvelope::new(tenant_id, None, DomainEvent::TenantUpdated { tenant_id });
+        let key = "consumer.effect";
+        consumer.register_required_event_types(key, &[envelope.event_type.clone()]).await.unwrap();
+        OutboxTransport::new(db.clone()).publish(envelope.clone()).await.unwrap();
+        db.execute_unprepared("CREATE TABLE test_effects (id INTEGER PRIMARY KEY)").await.unwrap();
+        for commit in [false, true] {
+            let txn = db.begin().await.unwrap();
+            assert!(OutboxConsumer::reserve_effect_in_transaction(&txn, key, envelope.id, &envelope.event_type).await.unwrap());
+            txn.execute_unprepared("INSERT INTO test_effects VALUES (1)").await.unwrap();
+            assert!(!OutboxConsumer::reserve_effect_in_transaction(&txn, key, envelope.id, &envelope.event_type).await.unwrap());
+            if commit { txn.commit().await.unwrap(); } else { txn.rollback().await.unwrap(); }
+        }
+        let txn = db.begin().await.unwrap();
+        assert!(!OutboxConsumer::reserve_effect_in_transaction(&txn, key, envelope.id, &envelope.event_type).await.unwrap());
+        txn.commit().await.unwrap();
+        let count = db.query_one_raw(sea_orm::Statement::from_string(db.get_database_backend(), "SELECT COUNT(*) AS count FROM test_effects")).await.unwrap().unwrap().try_get::<i64>("", "count").unwrap();
         assert_eq!(count, 1);
     }
 

@@ -5,7 +5,7 @@ use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, Condition, ConnectionTrait, DatabaseBackend, DatabaseConnection,
     DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
-    TransactionTrait, Value, sea_query::OnConflict,
+    TransactionTrait, Value, sea_query::{LockBehavior, LockType, OnConflict},
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -388,50 +388,66 @@ impl NotificationOutboxIntakeWorker {
                 "outbox event id cannot be nil".to_string(),
             ));
         }
-        let row = outbox_event::Entity::find_by_id(outbox_event_id)
-            .one(&self.db)
-            .await?
-            .ok_or(NotificationError::InvalidEvent)?;
+        let txn = self.db.begin().await?;
+        // Serialize the mutually exclusive terminal outcomes before either
+        // receipt lookup. This is the same source row fenced by retention
+        // and generic ACK. NOWAIT avoids holding owner locks on contention.
+        let query = outbox_event::Entity::find_by_id(outbox_event_id);
+        let row = match txn.get_database_backend() {
+            DatabaseBackend::Postgres => {
+                txn.execute_unprepared("SET TRANSACTION ISOLATION LEVEL READ COMMITTED").await?;
+                query.lock_with_behavior(LockType::Update, LockBehavior::Nowait).one(&txn).await?
+            }
+            DatabaseBackend::Sqlite => {
+                // Reserve SQLite's writer before establishing a read snapshot.
+                txn.execute_unprepared("UPDATE notification_outbox_intake_receipts SET event_type = event_type WHERE 1 = 0").await?;
+                query.one(&txn).await?
+            }
+            _ => return Err(NotificationError::Database(sea_orm::DbErr::Custom(
+                "unsupported notification outbox intake database".into(),
+            ))),
+        }.ok_or(NotificationError::InvalidEvent)?;
         let envelope = envelope_record(&row);
-
-        if let Some(existing) = intake_receipt::Entity::find_by_id(outbox_event_id)
-            .one(&self.db)
-            .await?
-        {
-            let source_event = self
-                .decoder
-                .decode(&envelope)
-                .map_err(|_| NotificationError::SourceIdentityConflict)?;
-            ensure_receipt_identity(&existing, outbox_event_id, &source_event)?;
-            self.acknowledge_existing_outbox_event(outbox_event_id, row.event_type.as_str())
-                .await?;
-            return Ok(NotificationOutboxIntakeOutcome::Accepted(intake_result(
-                existing, true,
-            )));
-        }
-        if let Some(existing) = intake_rejection::Entity::find_by_id(outbox_event_id)
-            .one(&self.db)
-            .await?
-        {
-            ensure_rejection_matches_outbox(&existing, &row)?;
-            self.acknowledge_existing_outbox_event(outbox_event_id, row.event_type.as_str())
-                .await?;
-            return Ok(NotificationOutboxIntakeOutcome::Rejected(rejection_result(
-                existing, true,
-            )));
-        }
-
-        let source_event = match self.decoder.decode(&envelope) {
-            Ok(source_event) => source_event,
-            Err(error) if error.is_retryable() => return Err(error),
-            Err(error) => return self.persist_rejection(&row, &error).await,
+        let accepted = intake_receipt::Entity::find_by_id(outbox_event_id).one(&txn).await?;
+        let rejected = intake_rejection::Entity::find_by_id(outbox_event_id).one(&txn).await?;
+        let outcome = match (accepted, rejected) {
+            (Some(_), Some(_)) => return Err(NotificationError::SourceIdentityConflict),
+            (Some(existing), None) => {
+                let source_event = self.decoder.decode(&envelope)
+                    .map_err(|_| NotificationError::SourceIdentityConflict)?;
+                ensure_receipt_identity(&existing, outbox_event_id, &source_event)?;
+                NotificationOutboxIntakeOutcome::Accepted(intake_result(existing, true))
+            }
+            (None, Some(existing)) => {
+                ensure_rejection_matches_outbox(&existing, &row)?;
+                NotificationOutboxIntakeOutcome::Rejected(rejection_result(existing, true))
+            }
+            (None, None) => {
+                match self.decoder.decode(&envelope) {
+                    Ok(source_event) => {
+                        // Preserve the outer source fence if acceptance fails
+                        // permanently after a partial owner write.
+                        let acceptance = txn.begin().await?;
+                        match self.accept_decoded(&acceptance, outbox_event_id, source_event).await {
+                            Ok(result) => {
+                                acceptance.commit().await?;
+                                NotificationOutboxIntakeOutcome::Accepted(result)
+                            }
+                            Err(error) => {
+                                acceptance.rollback().await?;
+                                if error.is_retryable() { return Err(error); }
+                                self.persist_rejection(&txn, &row, &error).await?
+                            }
+                        }
+                    }
+                    Err(error) if error.is_retryable() => return Err(error),
+                    Err(error) => self.persist_rejection(&txn, &row, &error).await?,
+                }
+            }
         };
-
-        match self.accept_decoded(outbox_event_id, source_event).await {
-            Ok(result) => Ok(NotificationOutboxIntakeOutcome::Accepted(result)),
-            Err(error) if error.is_retryable() => Err(error),
-            Err(error) => self.persist_rejection(&row, &error).await,
-        }
+        self.acknowledge_outbox_event_in_transaction(&txn, outbox_event_id, row.event_type.as_str()).await?;
+        txn.commit().await?;
+        Ok(outcome)
     }
 
     pub async fn process_next_batch(
@@ -466,35 +482,14 @@ impl NotificationOutboxIntakeWorker {
         Ok(result)
     }
 
+    // Called only under the source fence, after both terminal lookups.
     async fn accept_decoded(
         &self,
+        txn: &DatabaseTransaction,
         outbox_event_id: Uuid,
         source_event: NotificationSourceEventRef,
     ) -> NotificationResult<NotificationOutboxIntakeResult> {
         let source_revision = source_revision_i64(&source_event)?;
-        let txn = self.db.begin().await?;
-        if let Some(existing) = intake_receipt::Entity::find_by_id(outbox_event_id)
-            .one(&txn)
-            .await?
-        {
-            ensure_receipt_identity(&existing, outbox_event_id, &source_event)?;
-            self.acknowledge_outbox_event_in_transaction(
-                &txn,
-                outbox_event_id,
-                source_event.event_type().as_str(),
-            )
-            .await?;
-            txn.commit().await?;
-            return Ok(intake_result(existing, true));
-        }
-        if intake_rejection::Entity::find_by_id(outbox_event_id)
-            .one(&txn)
-            .await?
-            .is_some()
-        {
-            return Err(NotificationError::SourceIdentityConflict);
-        }
-
         let timestamp = now();
         source_inbox::Entity::insert(source_inbox::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -524,14 +519,14 @@ impl NotificationOutboxIntakeWorker {
             .do_nothing()
             .to_owned(),
         )
-        .exec_without_returning(&txn)
+        .exec_without_returning(txn)
         .await?;
 
         let inbox = source_inbox::Entity::find()
             .filter(source_inbox::Column::TenantId.eq(source_event.tenant_id()))
             .filter(source_inbox::Column::SourceSlug.eq(source_event.source().as_str()))
             .filter(source_inbox::Column::SourceEventId.eq(source_event.event_id()))
-            .one(&txn)
+            .one(txn)
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
         ensure_source_inbox_identity(&inbox, &source_event)?;
@@ -551,57 +546,24 @@ impl NotificationOutboxIntakeWorker {
                 .do_nothing()
                 .to_owned(),
         )
-        .exec_without_returning(&txn)
+        .exec_without_returning(txn)
         .await?;
 
         let receipt = intake_receipt::Entity::find_by_id(outbox_event_id)
-            .one(&txn)
+            .one(txn)
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
         ensure_receipt_identity(&receipt, outbox_event_id, &source_event)?;
-        self.acknowledge_outbox_event_in_transaction(
-            &txn,
-            outbox_event_id,
-            source_event.event_type().as_str(),
-        )
-        .await?;
-        txn.commit().await?;
         Ok(intake_result(receipt, false))
     }
 
     async fn persist_rejection(
         &self,
+        txn: &DatabaseTransaction,
         row: &outbox_event::Model,
         error: &NotificationError,
     ) -> NotificationResult<NotificationOutboxIntakeOutcome> {
         debug_assert!(!error.is_retryable());
-        let txn = self.db.begin().await?;
-        if let Some(existing) = intake_receipt::Entity::find_by_id(row.id).one(&txn).await? {
-            let source_event = self
-                .decoder
-                .decode(&envelope_record(row))
-                .map_err(|_| NotificationError::SourceIdentityConflict)?;
-            ensure_receipt_identity(&existing, row.id, &source_event)?;
-            self.acknowledge_outbox_event_in_transaction(&txn, row.id, row.event_type.as_str())
-                .await?;
-            txn.commit().await?;
-            return Ok(NotificationOutboxIntakeOutcome::Accepted(intake_result(
-                existing, true,
-            )));
-        }
-        if let Some(existing) = intake_rejection::Entity::find_by_id(row.id)
-            .one(&txn)
-            .await?
-        {
-            ensure_rejection_matches_outbox(&existing, row)?;
-            self.acknowledge_outbox_event_in_transaction(&txn, row.id, row.event_type.as_str())
-                .await?;
-            txn.commit().await?;
-            return Ok(NotificationOutboxIntakeOutcome::Rejected(rejection_result(
-                existing, true,
-            )));
-        }
-
         intake_rejection::Entity::insert(intake_rejection::ActiveModel {
             outbox_event_id: Set(row.id),
             event_type: Set(row.event_type.clone()),
@@ -614,17 +576,14 @@ impl NotificationOutboxIntakeWorker {
                 .do_nothing()
                 .to_owned(),
         )
-        .exec_without_returning(&txn)
+        .exec_without_returning(txn)
         .await?;
 
         let rejection = intake_rejection::Entity::find_by_id(row.id)
-            .one(&txn)
+            .one(txn)
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
         ensure_rejection_matches_outbox(&rejection, row)?;
-        self.acknowledge_outbox_event_in_transaction(&txn, row.id, row.event_type.as_str())
-            .await?;
-        txn.commit().await?;
         Ok(NotificationOutboxIntakeOutcome::Rejected(rejection_result(
             rejection, false,
         )))
@@ -650,20 +609,7 @@ impl NotificationOutboxIntakeWorker {
         Ok(())
     }
 
-    async fn acknowledge_existing_outbox_event(
-        &self,
-        outbox_event_id: Uuid,
-        event_type: &str,
-    ) -> NotificationResult<()> {
-        if self.receipt_port.is_none() {
-            return Ok(());
-        }
-        let transaction = self.db.begin().await?;
-        self.acknowledge_outbox_event_in_transaction(&transaction, outbox_event_id, event_type)
-            .await?;
-        transaction.commit().await?;
-        Ok(())
-    }
+
 }
 
 fn envelope_record(row: &outbox_event::Model) -> NotificationOutboxEnvelopeRecord {
