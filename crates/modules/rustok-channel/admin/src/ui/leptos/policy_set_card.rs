@@ -101,11 +101,8 @@ pub(super) fn PolicySetCard(
         "Save Rule",
     );
     let add_rule_label = t(ui_locale.as_deref(), "channel.policies.addRule", "Add Rule");
-    let edit_rule_label = StoredValue::new(t(
-        ui_locale.as_deref(),
-        "channel.policies.editRule",
-        "Edit",
-    ));
+    let edit_rule_label =
+        StoredValue::new(t(ui_locale.as_deref(), "channel.policies.editRule", "Edit"));
     let delete_rule_label = StoredValue::new(t(
         ui_locale.as_deref(),
         "channel.policies.deleteRule",

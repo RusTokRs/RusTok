@@ -3558,3 +3558,80 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
 - No atomic effect commit fence, independent worker liveness guarantee,
   channel/maintenance wiring or forced cancellation of in-flight external
   effects. Standalone non-server executor compositions are not claimed covered.
+
+### SQL capability credential and RBAC fences
+
+- Reuse the original direct credential and binding permission check inside the
+  structured-data and event-outbox transaction, with the current owner lock
+  order and a deadline check before commit. Prepare the clock before opening
+  the transaction. No nested pool checkout for credential authorization.
+- Authorize every structured commit, including read results and delete replay;
+  source regression exercises rollback and replay denial. Bind the events
+  broker to the resolved exact installation and tenant.
+- The host lease is still checked on all SQL effects; background work does not
+  impersonate users. Full effective-policy/readiness fences, event-outbox
+  integration evidence, independent compositions and non-SQL effects remain
+  outstanding. Tests and compilation are unrun.
+- Source-wired exact active installation and capability grant revalidation on
+  the SQL effect transaction using the existing platform/tenant activation
+  locks. The lease rejects changed installation facts or grant constraints.
+  Selection/grant regression authored; PostgreSQL concurrent lifecycle and
+  cross-owner lock-order verification remains outstanding. Full effective
+  policy, dependency closure and deployment readiness remain open.
+- Source-wired root release security revision in the execution lease and SQL
+  fence. Security transitions share the existing platform slug lock, even
+  for the implicit clear state. Quarantine/clear invalidates old leases,
+  registry unknown denies, and lifecycle calls also check security. SQLite
+  and opt-in PostgreSQL first-quarantine lock-wait regressions are authored,
+  not run. Registry writers, dependency security and global ordering remain
+  outstanding. Coordinate upgrade of security writers and effect consumers.
+
+- Source-wired serving artifact dependency/co-requisite closure capture from the
+  existing node readiness traversal. SQL effects acquire all artifact slug
+  locks before root locks and compare exact active identities, durable policy
+  availability and clear security revisions. Ordinary capability preflight
+  compares the same complete artifact closure. Lifecycle retains root-only
+  owner admission. Static lifecycle/composition, registry mutation, readiness,
+  installation ABA and cross-owner ordering remain open. Source regressions
+  authored; compilation and concurrent database verification remain pending.
+
+- Source-wired selection continuity generation on permanent platform/tenant
+  slug activation fences (migration 000095). Advance only successful serving
+  lifecycle writes and their receipts; no generation renewal on lock-only
+  checks, receipt replay or rollback of an uncommitted transaction. Capture
+  exact selections and generations in one owner snapshot, compare under
+  closure locks for SQL effects and compare fresh closure evidence for
+  preflight. Lifecycle retains root-only generation. Tenant mutation does
+  not invalidate unrelated tenants; platform mutation conservatively
+  invalidates every affected slug lease. Source regressions include actual
+  tenant disable/re-enable, receipt replay, rollback and an opt-in PostgreSQL
+  lock-wait scenario. Tests, compilation and migration execution remain
+  pending. Drain executions, stop old writers and coordinate migration and
+  deployment. Static dependency lifecycle/overrides and composition remain
+  separate outstanding authority.
+
+- Source-wired tenant lifecycle/override continuity for every visited module
+  in the serving closure, including native dependencies reached transitively.
+  Capture the canonical aggregate revision and compare optional override
+  intent against policy facts on the selection snapshot. Acquire all visited
+  platform slug locks in sorted order before SQL checks; artifact tenant
+  locks remain ordered per slug. Both override commit paths share the same
+  platform fence; existing settings commit fence is reused. Preserve Core
+  override semantics, inherited intent and separate lifecycle hook admission.
+  Source regression extends mixed closure with first native override, stale
+  policy denial and override-clear ABA. No new migration. Tests, compilation,
+  concurrent PostgreSQL and cross-owner lock-order evidence remain pending;
+  active composition, registry mutations and readiness are not fenced.
+
+- Source-wired active composition identity through the host serving policy
+  resolver from the same verified owner manifest (defaults/co-requisites).
+  Recheck the revision/hash after closure and readiness derivation and on
+  fresh capability preflight; SQL effects take the canonical shared active
+  composition row lock after mixed-closure fences. SQLite already has its
+  write reservation. Owner CAS replacement and effect admission serialize;
+  composition ABA and missing/corrupt state fail closed. Existing lifecycle
+  hook admission remains root-only. No additional migration. SQLite owner
+  ABA and opt-in PostgreSQL lock-wait tests in both directions added, unrun.
+  Cross-owner lock ordering, independent registry/readiness mutation fences,
+  contextual channel/maintenance authority, compiled registry consistency
+  and end-to-end runtime evidence remain open.

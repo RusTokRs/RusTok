@@ -10,9 +10,11 @@ use std::{
 
 use async_trait::async_trait;
 use rustok_modules::{
-    ArtifactBindingDispatchError, ArtifactCapabilityExecution, ArtifactEffectivePolicyResolver,
-    ArtifactExecutionLeaseGuard, ArtifactInstallationTarget, InstalledModuleArtifact,
-    ModuleRuntimeBinding, resolve_granted_artifact_capability,
+    ArtifactBindingDispatchError, ArtifactCapabilityExecution, ArtifactEffectivePolicyResolveError,
+    ArtifactExecutionLeaseGuard, InstalledModuleArtifact,
+    ModuleRuntimeBinding, ArtifactSqlEffectAuthorizer, ArtifactSqlEffectFence,
+    ArtifactSqlEffectCommitGuard, lock_granted_artifact_capability_on,
+    resolve_granted_artifact_capability, SeaOrmModuleArtifactSecurityResolver,
 };
 use rustok_sandbox::{
     CapabilityBroker, CapabilityCall, CapabilityCallContext, CapabilityGrant, CapabilityResponse,
@@ -20,7 +22,7 @@ use rustok_sandbox::{
 };
 use uuid::Uuid;
 
-use super::ServerArtifactEffectivePolicyResolver;
+use super::{ArtifactServingAuthority, ServerArtifactEffectivePolicyResolver};
 use crate::services::{
     auth_admin_mutation_provider::ServerAuthAdminMutationProvider,
     rbac_request_scope::CapturedArtifactRequestScope,
@@ -43,6 +45,10 @@ struct ExecutionLease {
     artifact: InstalledModuleArtifact,
     binding: ModuleRuntimeBinding,
     effective_revision: Option<String>,
+    security_revision: u64,
+    serving_authority: Option<ArtifactServingAuthority>,
+    lifecycle_generation: Option<rustok_modules::ArtifactSelectionGeneration>,
+    policy: SandboxPolicy,
     deadline: Instant,
     direct_scope: Option<CapturedArtifactRequestScope>,
 }
@@ -151,6 +157,33 @@ impl ExecutionAuthority {
         } else {
             None
         };
+        let security_revision = SeaOrmModuleArtifactSecurityResolver::new(resolver.db.clone())
+            .resolve(&artifact.release).await
+            .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?
+            .execution_revision()
+            .ok_or(ArtifactBindingDispatchError::AdmissionMismatch)?;
+        let serving_authority = if let Some(revision) = effective_revision {
+            let (current, authority) = resolver.resolve_with_closure(tenant_id, artifact).await?;
+            if current.policy_revision() != revision {
+                return Err(ArtifactBindingDispatchError::AdmissionMismatch);
+            }
+            let authority = authority.ok_or(ArtifactBindingDispatchError::AdmissionMismatch)?;
+            if authority.closure.root_security_revision(artifact) != Some(security_revision) {
+                return Err(ArtifactBindingDispatchError::AdmissionMismatch);
+            }
+            Some(authority)
+        } else {
+            // Owner lifecycle is not ordinary serving admission; its root
+            // security and exact installation remain mandatory.
+            None
+        };
+        let lifecycle_generation = if serving_authority.is_none() {
+            Some(rustok_modules::ArtifactSelectionGeneration::capture(
+                &resolver.db, tenant_id, &artifact.release.slug,
+            ).await.map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?)
+        } else {
+            None
+        };
         let mut lease = ExecutionLease {
             execution_id: context.execution_id,
             subject: SandboxSubject::ModuleArtifact {
@@ -163,6 +196,10 @@ impl ExecutionAuthority {
             artifact: artifact.clone(),
             binding: binding.clone(),
             effective_revision: effective_revision.map(str::to_owned),
+            security_revision,
+            serving_authority,
+            lifecycle_generation,
+            policy: policy.clone(),
             // The lease has not yet been registered. Set its non-renewable
             // monotonic deadline only after the last durable preflight.
             deadline: Instant::now(),
@@ -170,8 +207,9 @@ impl ExecutionAuthority {
         };
         // Last pre-execution policy and credential check, after resolving the
         // sandbox grant snapshot. No SQL transaction spans guest execution.
-        if !lease.credential_live() || !check_policy(resolver, &lease).await?
+        if !lease.credential_live()
             || !self.check_direct(&lease).await
+            || !check_security(resolver, &lease).await
         {
             return Err(lease.denial());
         }
@@ -207,19 +245,151 @@ impl ExecutionAuthority {
     }
 }
 
+async fn check_security(
+    resolver: &ServerArtifactEffectivePolicyResolver,
+    lease: &ExecutionLease,
+) -> bool {
+    SeaOrmModuleArtifactSecurityResolver::new(resolver.db.clone())
+        .resolve(&lease.artifact.release)
+        .await
+        .is_ok_and(|snapshot| snapshot.execution_revision() == Some(lease.security_revision))
+}
+
 async fn check_policy(
     resolver: &ServerArtifactEffectivePolicyResolver,
     lease: &ExecutionLease,
 ) -> Result<bool, rustok_modules::ArtifactEffectivePolicyResolveError> {
     let Some(revision) = lease.effective_revision.as_deref() else {
-        return Ok(lease.context.phase == ExecutionPhase::Lifecycle);
+        return Ok(lease.context.phase == ExecutionPhase::Lifecycle
+            && match &lease.lifecycle_generation {
+                Some(generation) => generation.is_current(&resolver.db).await
+                    .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?,
+                None => false,
+            });
     };
-    let policy = resolver.resolve(lease.tenant_id(), &lease.artifact).await?;
+    let (policy, authority) = resolver.resolve_with_closure(lease.tenant_id(), &lease.artifact).await?;
     Ok(policy.policy_revision() == revision
-        && policy.admit_artifact_execution(
-            lease.tenant_id(), &lease.artifact.release,
-            ArtifactInstallationTarget::ExactInstallation { installation_id: lease.artifact.installation_id },
-        ).is_some())
+        && authority.is_some()
+        && authority.as_ref() == lease.serving_authority.as_ref())
+}
+
+/// A bound call is produced from the live host registry, not the guest.
+struct SqlEffectFence {
+    authority: ExecutionAuthority,
+    lease: Arc<ExecutionLease>,
+    call: CapabilityCall,
+}
+
+struct SqlEffectCommitGuard {
+    fence: SqlEffectFence,
+    credential_deadline: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl SqlEffectFence {
+    fn ensure_live(&self) -> SandboxResult<()> {
+        let current = self.authority.lookup(&self.call)?;
+        if !Arc::ptr_eq(&current, &self.lease) {
+            return Err(SandboxError::CapabilityDenied(self.call.capability.clone()));
+        }
+        Ok(())
+    }
+
+    fn deny(&self) -> SandboxError {
+        SandboxError::CapabilityDenied(self.call.capability.clone())
+    }
+}
+
+#[async_trait]
+impl ArtifactSqlEffectAuthorizer for ExecutionAuthority {
+    async fn prepare(&self, call: &CapabilityCall) -> SandboxResult<Box<dyn ArtifactSqlEffectFence>> {
+        if !matches!(call.capability.as_str(), "platform.data" | "platform.events") {
+            return Err(SandboxError::CapabilityDenied(call.capability.clone()));
+        }
+        let lease = self.lookup(call)?;
+        if lease.direct_scope.is_some() {
+            let provider = self.provider.as_ref()
+                .ok_or_else(|| SandboxError::CapabilityDenied(call.capability.clone()))?;
+            provider.prepare_artifact_effect_authority().await
+                .map_err(|_| SandboxError::CapabilityDenied(call.capability.clone()))?;
+        }
+        let fence = SqlEffectFence { authority: self.clone(), lease, call: call.clone() };
+        fence.ensure_live()?;
+        Ok(Box::new(fence))
+    }
+}
+
+#[async_trait]
+impl ArtifactSqlEffectFence for SqlEffectFence {
+    async fn lock_on(&self, tx: &sea_orm::DatabaseTransaction) -> SandboxResult<Box<dyn ArtifactSqlEffectCommitGuard>> {
+        self.ensure_live()?;
+        let credential_deadline = if let Some(scope) = self.lease.direct_scope.as_ref() {
+            let provider = self.authority.provider.as_ref().ok_or_else(|| self.deny())?;
+            let actor_id = self.lease.context.actor_id.as_deref()
+                .and_then(|actor| Uuid::parse_str(actor).ok()).ok_or_else(|| self.deny())?;
+            // Same transaction as the effect. No independently committed
+            // credential or membership check and no second pool checkout.
+            let (keys, deadline) = scope.run(provider.lock_artifact_runtime_permission_keys_on(
+                tx, self.lease.tenant_id(), actor_id, &self.lease.artifact,
+            )).await.map_err(|_| self.deny())?;
+            if !keys.contains(&self.lease.binding.permission) {
+                return Err(self.deny());
+            }
+            Some(deadline)
+        } else {
+            // Durable work and lifecycle have distinct owner authority. This
+            // port does not manufacture a credential for an attributed actor.
+            None
+        };
+        // Acquire the complete artifact closure before taking any individual
+        // root lock. Overlapping serving closures use the same slug order.
+        if let Some(authority) = &self.lease.serving_authority {
+            authority.closure.require_current_on(tx).await.map_err(|_| self.deny())?;
+            // The closure already owns the SQLite write reservation; on
+            // PostgreSQL the shared composition row lock conflicts with CAS
+            // replacement. Retain it until the SQL effect commits.
+            authority.composition.require_current_in_transaction(tx)
+                .await.map_err(|_| self.deny())?;
+        } else {
+            self.lease.lifecycle_generation.as_ref().ok_or_else(|| self.deny())?
+                .require_current_on(tx).await.map_err(|_| self.deny())?;
+        }
+        // Keep exact selection and the owner grant in the effect transaction
+        // after the direct credential/RBAC fences, including background work.
+        let current_policy = lock_granted_artifact_capability_on(
+            tx, &self.lease.artifact, self.lease.tenant_id(), &self.call.capability,
+        ).await?;
+        SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
+            tx, &self.lease.artifact.release, self.lease.security_revision,
+        ).await.map_err(|_| self.deny())?;
+        let original = self.lease.policy.grant(&self.call.capability).ok_or_else(|| self.deny())?;
+        let current = current_policy.grant(&self.call.capability).ok_or_else(|| self.deny())?;
+        if current.constraints != original.constraints {
+            return Err(self.deny());
+        }
+        self.ensure_live()?;
+        Ok(Box::new(SqlEffectCommitGuard {
+            fence: SqlEffectFence {
+                authority: self.authority.clone(),
+                lease: Arc::clone(&self.lease),
+                call: self.call.clone(),
+            },
+            credential_deadline,
+        }))
+    }
+}
+
+#[async_trait]
+impl ArtifactSqlEffectCommitGuard for SqlEffectCommitGuard {
+    async fn check_before_commit(&self, tx: &sea_orm::DatabaseTransaction) -> SandboxResult<()> {
+        self.fence.ensure_live()?;
+        if let Some(deadline) = self.credential_deadline {
+            let provider = self.fence.authority.provider.as_ref()
+                .ok_or_else(|| self.fence.deny())?;
+            provider.check_artifact_effect_deadline_on(tx, deadline).await
+                .map_err(|_| self.fence.deny())?;
+        }
+        self.fence.ensure_live()
+    }
 }
 
 pub(super) struct FencedCapabilityBroker<B> {
@@ -239,7 +409,10 @@ impl<B: CapabilityBroker> CapabilityBroker for FencedCapabilityBroker<B> {
         let denied = || SandboxError::CapabilityDenied(call.capability.clone());
         let authority = &self.resolver.execution_authority;
         let lease = authority.lookup(call)?;
-        if grant.name != call.capability {
+        if grant.name != call.capability
+            || lease.policy.grant(&call.capability)
+                .is_none_or(|original| original.constraints != grant.constraints)
+        {
             return Err(denied());
         }
         // Resolve the live capability revision even for lifecycle hooks; a
@@ -255,6 +428,7 @@ impl<B: CapabilityBroker> CapabilityBroker for FencedCapabilityBroker<B> {
         if current != lease.artifact
             || !check_policy(&self.resolver, &lease).await.unwrap_or(false)
             || !authority.check_direct(&lease).await
+            || !check_security(&self.resolver, &lease).await
         {
             return Err(denied());
         }

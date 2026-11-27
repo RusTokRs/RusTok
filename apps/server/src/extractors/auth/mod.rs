@@ -401,7 +401,7 @@ async fn resolve_service_token_permissions(
     tenant_id: uuid::Uuid,
     subject_id: uuid::Uuid,
     client_id: uuid::Uuid,
-    claimed_role: UserRole,
+    claimed_role: &UserRole,
     token_scopes: &[String],
     access_token: &str,
     jti: Option<uuid::Uuid>,
@@ -453,7 +453,7 @@ async fn resolve_service_token_permissions(
     let effective_permissions =
         active_permissions_for_tenant(ctx, tenant_id, client_id, effective_permissions).await?;
     let inferred_role = infer_user_role_from_permissions(&effective_permissions);
-    if claimed_role != inferred_role {
+    if claimed_role != &inferred_role {
         RbacService::record_claim_role_mismatch();
         warn!(
             client_id = %client_id,
@@ -743,7 +743,7 @@ pub async fn resolve_current_user_from_access_token(
                     tenant_id,
                     claims.sub,
                     client_id,
-                    claims.role.clone(),
+                    &claims.role,
                     &claims.scopes,
                     access_token,
                     claims.jti,
@@ -923,7 +923,7 @@ async fn revalidate_admitted_authority(
                 tenant_id,
                 claims.sub,
                 client_id,
-                claims.role.clone(),
+                &claims.role,
                 &claims.scopes,
                 access_token,
                 claims.jti,

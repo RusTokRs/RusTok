@@ -168,6 +168,83 @@ pub async fn resolve_granted_artifact_capability(
     Ok(installation)
 }
 
+/// Lock the existing serving-selection fence, then resolve the exact
+/// admitted installation and grant on the effect transaction. Platform
+/// precedes tenant even for a tenant-scoped installation. The lifecycle
+/// journal mutation guard is not used here: lifecycle hooks have a distinct
+/// admission contract and may themselves own a durable journal claim.
+pub async fn lock_granted_artifact_capability_on(
+    tx: &sea_orm::DatabaseTransaction,
+    expected: &InstalledModuleArtifact,
+    tenant_id: Uuid,
+    capability: &CapabilityName,
+) -> SandboxResult<rustok_sandbox::SandboxPolicy> {
+    use crate::installation::{
+        ModuleInstallationScope, acquire_artifact_activation_lock,
+        resolve_active_many_in_transaction, resolve_sandbox_policy_on,
+    };
+    let denied = || SandboxError::CapabilityDenied(capability.clone());
+    if tenant_id.is_nil() || expected.installation_id.is_nil() {
+        return Err(denied());
+    }
+    crate::backend::set_tenant_scope(tx, tenant_id)
+        .await
+        .map_err(|_| denied())?;
+    acquire_artifact_activation_lock(tx, &ModuleInstallationScope::Platform, &expected.release.slug)
+        .await
+        .map_err(|_| denied())?;
+    acquire_artifact_activation_lock(
+        tx,
+        &ModuleInstallationScope::Tenant { tenant_id },
+        &expected.release.slug,
+    )
+    .await
+    .map_err(|_| denied())?;
+    let current = resolve_active_many_in_transaction(
+        tx, std::slice::from_ref(&expected.release), tenant_id,
+    )
+    .await
+    .map_err(|_| denied())?
+    .pop()
+    .ok_or_else(denied)?
+    .map_err(|_| denied())?;
+    if &current != expected || !current.descriptor.capabilities.contains(capability) {
+        return Err(denied());
+    }
+    let policy = resolve_sandbox_policy_on(tx, &current, tenant_id)
+        .await
+        .map_err(|_| denied())?;
+    if policy.grant(capability).is_none() {
+        return Err(denied());
+    }
+    Ok(policy)
+}
+
+/// Host-owned SQL effect authority. Prepare outside the owner transaction
+/// (e.g. verified credential clock); lock authority inside it, before effects.
+/// The guard rechecks the deadline immediately before commit. No guest code
+/// or independent pool checkout is allowed while the effect transaction lives.
+#[async_trait]
+pub trait ArtifactSqlEffectAuthorizer: Send + Sync {
+    async fn prepare(
+        &self, call: &CapabilityCall,
+    ) -> SandboxResult<Box<dyn ArtifactSqlEffectFence>>;
+}
+
+#[async_trait]
+pub trait ArtifactSqlEffectFence: Send + Sync {
+    async fn lock_on(
+        &self, tx: &sea_orm::DatabaseTransaction,
+    ) -> SandboxResult<Box<dyn ArtifactSqlEffectCommitGuard>>;
+}
+
+#[async_trait]
+pub trait ArtifactSqlEffectCommitGuard: Send + Sync {
+    async fn check_before_commit(
+        &self, tx: &sea_orm::DatabaseTransaction,
+    ) -> SandboxResult<()>;
+}
+
 /// Capability-name router for independently owned artifact capability
 /// resolvers. A deployment explicitly registers each owner; no resolver is
 /// selected by module slug, release, or a global fallback.

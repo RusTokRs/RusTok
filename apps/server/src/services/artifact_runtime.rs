@@ -69,14 +69,19 @@ struct ServerArtifactEffectivePolicyResolver {
     execution_authority: ExecutionAuthority,
 }
 
-#[async_trait]
-impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
-    async fn resolve(
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ArtifactServingAuthority {
+    closure: rustok_modules::ArtifactServingClosure,
+    composition: rustok_modules::ModuleCompositionIdentity,
+}
+
+impl ServerArtifactEffectivePolicyResolver {
+    async fn resolve_with_closure(
         &self,
         tenant_id: uuid::Uuid,
         artifact: &InstalledModuleArtifact,
-    ) -> Result<ModuleEffectivePolicy, ArtifactEffectivePolicyResolveError> {
-        let policy =
+    ) -> Result<(ModuleEffectivePolicy, Option<ArtifactServingAuthority>), ArtifactEffectivePolicyResolveError> {
+        let (policy, composition) =
             crate::services::effective_module_policy::EffectiveModulePolicyService::resolve_artifact_serving(
                 &self.db,
                 &self.registry,
@@ -97,10 +102,10 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
             )
             .is_none()
         {
-            return Ok(policy);
+            return Ok((policy, None));
         }
-        self.node_readiness
-            .require_active_policy_closure(tenant_id, artifact, &policy)
+        let closure = self.node_readiness
+            .capture_active_policy_closure(tenant_id, artifact, &policy)
             .await
             .map_err(|error| match error {
                 rustok_modules::ModuleArtifactNodeReconciliationError::Store(_) => {
@@ -108,7 +113,28 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
                 }
                 _ => ArtifactEffectivePolicyResolveError::NodeNotReady(error.to_string()),
             })?;
-        Ok(policy)
+        // The policy was built from one verified owner manifest. A change
+        // during policy/closure/readiness derivation must not authorize a
+        // mixed snapshot, even if the manifest hash returned to its old value.
+        if !composition.is_current_on(&self.db).await
+            .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?
+        {
+            return Err(ArtifactEffectivePolicyResolveError::Store(
+                "active composition changed during artifact serving admission".into(),
+            ));
+        }
+        Ok((policy, Some(ArtifactServingAuthority { closure, composition })))
+    }
+}
+
+#[async_trait]
+impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
+    async fn resolve(
+        &self,
+        tenant_id: uuid::Uuid,
+        artifact: &InstalledModuleArtifact,
+    ) -> Result<ModuleEffectivePolicy, ArtifactEffectivePolicyResolveError> {
+        self.resolve_with_closure(tenant_id, artifact).await.map(|(policy, _)| policy)
     }
 
     async fn begin_execution(
@@ -220,7 +246,6 @@ pub async fn compose_artifact_binding_executor(
     let node_readiness = control_plane
         .artifact_node_readiness(configured_artifact_node_id()?)
         .map_err(|error| Error::Message(format!("artifact node identity is invalid: {error}")))?;
-    let resolver = build_capability_resolver(ctx, &control_plane, &storage, &registry)?;
     let mut executors = ExecutorRegistry::new();
     if std::env::var("RUSTOK_SANDBOX_WORKER_ENDPOINT").is_ok() {
         let rhai = sandbox_rhai_executor(ctx).await?;
@@ -236,6 +261,7 @@ pub async fn compose_artifact_binding_executor(
         ctx.shared_get::<Arc<rustok_core::ModuleRuntimeExtensions>>()
             .and_then(|extensions| extensions.get::<Arc<super::auth_admin_mutation_provider::ServerAuthAdminMutationProvider>>().cloned()),
     );
+    let resolver = build_capability_resolver(ctx, &control_plane, &storage, &registry, Some(Arc::new(execution_authority.clone())))?;
     let supported_payload_kinds = [
         ArtifactPayloadKind::Rhai,
         ArtifactPayloadKind::WasmComponent,
@@ -294,6 +320,7 @@ fn build_capability_resolver(
     control_plane: &ModuleControlPlane,
     storage: &StorageRuntime,
     registry: &ModuleRegistry,
+    effect_authorizer: Option<Arc<dyn rustok_modules::ArtifactSqlEffectAuthorizer>>,
 ) -> Result<ArtifactCapabilityBrokerResolverRouter> {
     let data_capability = artifact_capability_name(ARTIFACT_CAPABILITY_ROUTES[0])?;
     let object_data_capability = artifact_capability_name(ARTIFACT_CAPABILITY_ROUTES[1])?;
@@ -307,10 +334,16 @@ fn build_capability_resolver(
         mcp_audit,
     );
     let secret_policy = control_plane.artifact_secret_handle_policy();
+    let mut data = control_plane.artifact_data_capability();
+    let mut events = control_plane.artifact_events_capability();
+    if let Some(authorizer) = effect_authorizer {
+        data = data.with_sql_effect_authorizer(Arc::clone(&authorizer));
+        events = events.with_sql_effect_authorizer(authorizer);
+    }
     ArtifactCapabilityBrokerResolverRouter::new()
         .route(
             data_capability,
-            Arc::new(control_plane.artifact_data_capability()),
+            Arc::new(data),
         )
         .and_then(|router| {
             router.route(
@@ -339,7 +372,7 @@ fn build_capability_resolver(
         .and_then(|router| {
             router.route(
                 events_capability,
-                Arc::new(control_plane.artifact_events_capability()),
+                Arc::new(events),
             )
         })
         .map_err(|error| Error::Message(format!("artifact capability route failed: {error}")))
@@ -491,7 +524,7 @@ fn build_pool_readiness_service(
     executors: ExecutorRegistry,
     identity: ExecutorPoolIdentity,
 ) -> Result<ExecutorReadinessService> {
-    let resolver = build_capability_resolver(ctx, control_plane, storage, registry)?;
+    let resolver = build_capability_resolver(ctx, control_plane, storage, registry, None)?;
     let sandbox = SandboxRuntime::new(
         executors,
         Arc::new(ResolvingArtifactCapabilityBroker::new(resolver)),

@@ -178,6 +178,21 @@ remain pending; a supplied-operation summary is not that authority.
 Owner-level and bounded SQLite/local-storage evidence does not establish
 production readiness. The documented implementation and operational gaps include:
 
+- Server SQL capability effects now recheck exact active installation and
+  durable grants under the existing platform/tenant activation locks in the
+  effect transaction. Exact release quarantine/revocation and security revision
+  are also fenced, including implicit clear and quarantine/clear ABA.
+  Artifact scope selection generations fence lifecycle ABA on the exact
+  serving closure. Migration 000095 requires coordinated writer/reader
+  cutover. Mixed native/artifact serving closures also fence tenant lifecycle
+  revision and optional override intent. The verified active composition
+  revision/hash is captured with the serving policy and checked under the
+  owner row lock in the SQL effect transaction. Full effective-policy,
+  contextual channel/maintenance, registry status, deployment readiness,
+  cross-owner lock ordering and external-effect fencing remain open; see the
+  [SQL capability authority contract](./docs/README.md#sql-capability-effect-authority).
+  Source regressions and compilation/concurrent PostgreSQL evidence remain unrun.
+
 - Sealed artifact subscription intake is now source-wired through the existing durable queue
   with original-envelope dedupe and unchanged root representation. Two new definitions are
   uncompiled/unrun; actual backend exact/wildcard delivery, worker/restart and transport recovery

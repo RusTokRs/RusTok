@@ -513,6 +513,13 @@ channels returned empty pages. The scenario also exercised an absent
 provider, conflicting tenant contexts, a locale without a copy and an invalid
 continuation cursor.
 
+The scaffold matrix builds the generated Leptos package for both CSR and
+hydration on `wasm32-unknown-unknown`. Both builds passed on Windows for a
+freshly generated persisted admin module. This exercises code generation of
+the actual table and editor, which can fail after `cargo check` succeeds.
+The generated package declares a crate-local recursion limit for Leptos
+hydration view code generation.
+
 - [ ] Close Blog reference-verifier drift and retain actual reference execution
   evidence before certifying it for propagation. Do not preserve obsolete source
   markers or copy confirmed FFA/localization defects into generated modules.
@@ -674,6 +681,14 @@ execution checks are in the [CLI scaffold guide](../README.md#attach-a-module-lo
   unchanged preview bytes, successful registration, refusal to replace an
   existing CLI, placeholder rejection, rollback after validation fails and
   recovery in a fresh process after an interrupted apply.
+- The matrix attaches a real `public-discovery` command to the generated
+  localized module. The CLI passes the explicit tenant ID to the owner's
+  discovery operation and returns its decision as structured output.
+  The supplied tests use the module control plane's settings reader and
+  migrations. Test-only workspace dependencies are declared separately.
+  In the generated module, both CLI provider tests passed against SQLite.
+  They exercised setting changes, tenant isolation, invalid input and the
+  missing database path. The generated registry matched its source declaration.
 - Use the [Blog CLI source layout](../../crates/modules/rustok-blog/cli/README.md#source-layout)
   as the existing reference and prove generation in a disposable checkout.
   Verify command discovery, a real owner call, typed failure and structured
@@ -688,8 +703,7 @@ validation. The generated adapter's Rust contract test passed. The platform
 CLI built with the generated registry and listed `blog canonical-post-route`.
 The command returned `{"route":"/modules/blog?slug=release-notes"}` as structured
 output. Invalid input and unsupported command `--dry-run` returned nonzero
-results with the expected typed errors. The scaffold matrix also generates
-and compiles an identity command for its headless fixture.
+results with the expected typed errors.
 
 ### 4. Owner implementation and optional publication — P2, per module
 

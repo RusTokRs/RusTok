@@ -274,13 +274,13 @@ export interface VariantAxisValue extends VariantAxisValueInput {
 
 export interface ProductVariant {
   axisValues: VariantAxisValue[];
-  combinationIdentity: string;
+  combinationIdentity: string | null;
   id: string;
   revision: string;
   sku: string | null;
   barcode: string | null;
   shippingProfileSlug: string | null;
-  title: string | null;
+  title: string;
   inventoryQuantity: number;
   inventoryPolicy: string;
   inStock: boolean;
@@ -396,9 +396,41 @@ export interface ProductListItem {
   publishedAt: string | null;
 }
 
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+export type ProductAttributeValueOutputKind =
+  | 'unset'
+  | 'text'
+  | 'integer'
+  | 'decimal'
+  | 'boolean'
+  | 'date'
+  | 'datetime'
+  | 'select'
+  | 'multiselect'
+  | 'json';
+
+export type ProductAttributeValueInputKind =
+  | 'CLEAR'
+  | 'TEXT'
+  | 'INTEGER'
+  | 'DECIMAL'
+  | 'BOOLEAN'
+  | 'DATE'
+  | 'DATETIME'
+  | 'SELECT'
+  | 'MULTISELECT'
+  | 'JSON';
+
 export interface ProductAttributeValueItem {
   attributeId: string;
-  kind: string;
+  kind: ProductAttributeValueOutputKind;
   text?: string | null;
   integer?: number | null;
   decimal?: string | null;
@@ -407,13 +439,13 @@ export interface ProductAttributeValueItem {
   datetime?: string | null;
   optionId?: string | null;
   optionIds?: string[] | null;
-  json?: string | null;
+  json?: JsonValue | null;
   detached: boolean;
 }
 
 export interface ProductAttributeValuePatch {
   attributeId: string;
-  kind: string;
+  kind: ProductAttributeValueInputKind;
   text?: string | null;
   integer?: number | null;
   decimal?: string | null;
@@ -422,7 +454,7 @@ export interface ProductAttributeValuePatch {
   datetime?: string | null;
   optionId?: string | null;
   optionIds?: string[] | null;
-  json?: string | null;
+  json?: JsonValue | null;
 }
 
 export type ProductRelationType =

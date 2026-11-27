@@ -261,12 +261,13 @@ pub use artifact::{
 };
 pub use artifact_capability_router::{
     ArtifactCapabilityBrokerResolver, ArtifactCapabilityBrokerResolverRouter,
-    ArtifactCapabilityExecution, ArtifactCapabilityScope, ResolvingArtifactCapabilityBroker,
-    resolve_granted_artifact_capability,
+    ArtifactCapabilityExecution, ArtifactCapabilityScope, ArtifactSqlEffectAuthorizer,
+    ArtifactSqlEffectFence, ArtifactSqlEffectCommitGuard, ResolvingArtifactCapabilityBroker,
+    lock_granted_artifact_capability_on, resolve_granted_artifact_capability,
 };
 pub use artifact_cas::StorageArtifactBlobStore;
 pub use artifact_node_reconciliation::{
-    MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS, ModuleArtifactNodeAgentPort,
+    ArtifactServingClosure, MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS, ModuleArtifactNodeAgentPort,
     ModuleArtifactNodeAssignment, ModuleArtifactNodeAssignmentClaimCommand,
     ModuleArtifactNodeAssignmentHeartbeatCommand, ModuleArtifactNodeAssignmentHeartbeatReceipt,
     ModuleArtifactNodeAssignmentReport, ModuleArtifactNodeAssignmentReportReceipt,
@@ -340,7 +341,7 @@ pub use composition::{
     ACTIVE_MODULE_COMPOSITION_ID, ModuleCompositionBuildAdmission,
     ModuleCompositionBuildEnqueueError, ModuleCompositionBuildEnqueueResult,
     ModuleCompositionBuildEnqueuer, ModuleCompositionBuildLease, ModuleCompositionBuildReceipt,
-    ModuleCompositionError, ModuleCompositionOperation, ModuleCompositionSnapshot,
+    ModuleCompositionError, ModuleCompositionIdentity, ModuleCompositionOperation, ModuleCompositionSnapshot,
     ModuleCompositionUpdate, STATIC_MODULE_REGISTRY_MAX_LIMIT, SeaOrmModuleCompositionService,
     SharedStaticInstalledModuleReader, SharedStaticModuleRegistryReader,
     StaticInstalledModuleReader, StaticInstalledModuleReaderError, StaticModuleRegistryQuery,
@@ -533,7 +534,7 @@ pub use installation::{
     ArtifactBlobStore, ArtifactDeactivationRequest, ArtifactDeactivationResult,
     ArtifactMigrationCheckpointRequest, ArtifactMigrationRollbackMode, ArtifactPayloadSource,
     ArtifactPermissionRegistrationStatus, ArtifactRegistry, ArtifactRollbackRequest,
-    ArtifactRollbackResult, ArtifactTenantDisableRequest, ArtifactTenantDisableResult,
+    ArtifactRollbackResult, ArtifactSelectionGeneration, ArtifactTenantDisableRequest, ArtifactTenantDisableResult,
     ArtifactTenantEnableRequest, ArtifactTenantEnableResult, ArtifactTenantLifecycleSnapshot,
     ArtifactUninstallRequest, ArtifactUninstallResult, ArtifactVerificationEvidence,
     DurableArtifactBlobStore, InstalledModuleArtifact, ModuleArtifactPackage,

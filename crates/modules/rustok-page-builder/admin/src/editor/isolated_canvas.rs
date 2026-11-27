@@ -35,6 +35,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                     controller.active_page_index(),
                     controller.revision_id(),
                     &controller.editor().revision().project_hash.hex(),
+                    controller.editor().revision().command_sequence,
                 )
             })
         }
@@ -121,6 +122,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                                 controller.active_page_index(),
                                 controller.revision_id(),
                                 &controller.editor().revision().project_hash.hex(),
+                                controller.editor().revision().command_sequence,
                             )
                         });
                         if current_instance != decoder_instance {
@@ -502,32 +504,30 @@ fn overlay_geometry(rect: Option<CanvasRect>, viewport: ViewportState) -> Option
     })
 }
 
+/// Changes after every document command, including undo/redo to a previous content hash.
 fn canvas_instance_id(
     page_id: &str,
     active_page_index: usize,
     revision_id: &str,
     project_hash: &str,
+    command_sequence: u64,
 ) -> String {
-    format!(
-        "fly-canvas-{}-{}-{}-{}",
-        dom_id(page_id),
-        active_page_index,
-        dom_id(revision_id),
-        project_hash
-    )
-}
+    fn hex(value: &str) -> String {
+        let mut encoded = String::with_capacity(value.len() * 2);
+        for byte in value.as_bytes() {
+            encoded.push_str(&format!("{byte:02x}"));
+        }
+        encoded
+    }
 
-fn dom_id(value: &str) -> String {
-    value
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
-                character
-            } else {
-                '-'
-            }
-        })
-        .collect()
+    format!(
+        "fly-canvas-{}-{}-{}-{}-{}",
+        hex(page_id),
+        active_page_index,
+        hex(revision_id),
+        project_hash,
+        command_sequence
+    )
 }
 
 #[cfg(test)]
@@ -536,11 +536,12 @@ mod tests {
 
     #[test]
     fn canvas_identity_tracks_active_page_and_document_snapshot() {
-        let first = canvas_instance_id("home", 0, "rev-1", "hash-1");
-        assert_ne!(first, canvas_instance_id("home", 1, "rev-1", "hash-1"));
-        assert_ne!(first, canvas_instance_id("home", 0, "rev-2", "hash-1"));
-        assert_ne!(first, canvas_instance_id("home", 0, "rev-1", "hash-2"));
-        assert_ne!(first, canvas_instance_id("about", 0, "rev-1", "hash-1"));
+        let first = canvas_instance_id("home", 0, "rev-1", "hash-1", 7);
+        assert_ne!(first, canvas_instance_id("home", 1, "rev-1", "hash-1", 7));
+        assert_ne!(first, canvas_instance_id("home", 0, "rev-2", "hash-1", 7));
+        assert_ne!(first, canvas_instance_id("home", 0, "rev-1", "hash-2", 7));
+        assert_ne!(first, canvas_instance_id("about", 0, "rev-1", "hash-1", 7));
+        assert_ne!(first, canvas_instance_id("home", 0, "rev-1", "hash-1", 8));
     }
 
     #[test]

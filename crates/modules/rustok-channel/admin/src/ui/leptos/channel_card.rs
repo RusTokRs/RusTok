@@ -34,12 +34,9 @@ pub(super) fn ChannelCard(
     let selected_oauth_query = use_route_query_value(AdminQueryKey::OauthAppId.as_str());
     let query_writer = use_route_query_writer();
     let common_cancel_label = t(ui_locale.as_deref(), "common.cancel", "Cancel");
-    let targets_cancel_label = StoredValue::new(common_cancel_label.clone());
-    let modules_cancel_label = StoredValue::new(common_cancel_label.clone());
-    let oauth_cancel_label = StoredValue::new(common_cancel_label);
+    let cancel_label = StoredValue::new(common_cancel_label);
     let common_edit_label = StoredValue::new(t(ui_locale.as_deref(), "common.edit", "Edit"));
-    let common_delete_label =
-        StoredValue::new(t(ui_locale.as_deref(), "common.delete", "Delete"));
+    let common_delete_label = StoredValue::new(t(ui_locale.as_deref(), "common.delete", "Delete"));
     let targets_edit_title = t(
         ui_locale.as_deref(),
         "channel.targets.editTitle",
@@ -261,9 +258,7 @@ pub(super) fn ChannelCard(
         let channel_id = channel_id.clone();
         move || selected_channel_query.get().as_deref() == Some(channel_id.as_str())
     });
-    let cancel_target_query_writer = query_writer.clone();
-    let cancel_module_query_writer = query_writer.clone();
-    let cancel_oauth_query_writer = query_writer.clone();
+    let cancel_query_writer = StoredValue::new(query_writer.clone());
     let select_channel_query_writer = query_writer.clone();
     let create_target_query_writer = query_writer.clone();
     let bind_module_query_writer = query_writer.clone();
@@ -547,6 +542,7 @@ pub(super) fn ChannelCard(
         let channel_id = lifecycle_channel_delete.clone();
         let channel_slug = lifecycle_slug_delete.clone();
         let ui_locale = lifecycle_locale_delete.clone();
+        let query_writer = lifecycle_clear_query.clone();
         busy.set(true);
         set_feedback.set(None);
         set_error.set(None);
@@ -560,7 +556,7 @@ pub(super) fn ChannelCard(
                         CHANNEL_DELETE_FEEDBACK.feedback_fallback,
                     )));
                     confirming_delete.set(false);
-                    lifecycle_clear_query.clear_key(AdminQueryKey::ChannelId.as_str());
+                    query_writer.clear_key(AdminQueryKey::ChannelId.as_str());
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(err.to_string())),
@@ -788,9 +784,6 @@ pub(super) fn ChannelCard(
         "channel.card.saveName",
         "Save name",
     ));
-    let lifecycle_cancel_label = t(ui_locale.as_deref(), "common.cancel", "Cancel");
-    let lifecycle_cancel_label_confirm = StoredValue::new(lifecycle_cancel_label.clone());
-    let lifecycle_cancel_label = StoredValue::new(lifecycle_cancel_label);
     let lifecycle_delete_label = StoredValue::new(t(
         ui_locale.as_deref(),
         "channel.card.delete",
@@ -921,7 +914,7 @@ pub(super) fn ChannelCard(
                                     class="text-muted-foreground"
                                     on_click=Box::new(move || renaming.set(false))
                                 >
-                                    {move || lifecycle_cancel_label.get_value()}
+                                    {move || cancel_label.get_value()}
                                 </Button>
                             </form>
                         </Show>
@@ -952,7 +945,7 @@ pub(super) fn ChannelCard(
                                     class="text-muted-foreground"
                                     on_click=Box::new(move || confirming_delete.set(false))
                                 >
-                                    {move || lifecycle_cancel_label_confirm.get_value()}
+                                    {move || cancel_label.get_value()}
                                 </Button>
                             </div>
                         </Show>
@@ -981,7 +974,7 @@ pub(super) fn ChannelCard(
                                         variant=ButtonVariant::Outline
                                         size=Size::Xs
                                         on_click=Box::new({
-                                            let query_writer = cancel_target_query_writer.clone();
+                                            let query_writer = cancel_query_writer.get_value();
                                             move || {
                                                 query_writer.clear_key(AdminQueryKey::TargetId.as_str());
                                                 editing_target_id.set(None);
@@ -991,7 +984,7 @@ pub(super) fn ChannelCard(
                                             }
                                         })
                                     >
-                                        {targets_cancel_label.get_value()}
+                                        {cancel_label.get_value()}
                                     </Button>
                                 </Show>
                             </div>
@@ -1193,7 +1186,7 @@ pub(super) fn ChannelCard(
                                         variant=ButtonVariant::Outline
                                         size=Size::Xs
                                         on_click=Box::new({
-                                            let query_writer = cancel_module_query_writer.clone();
+                                            let query_writer = cancel_query_writer.get_value();
                                             move || {
                                                 query_writer.clear_key(AdminQueryKey::ModuleSlug.as_str());
                                                 editing_module_slug.set(None);
@@ -1202,7 +1195,7 @@ pub(super) fn ChannelCard(
                                             }
                                         })
                                     >
-                                        {modules_cancel_label.get_value()}
+                                        {cancel_label.get_value()}
                                     </Button>
                                 </Show>
                             </div>
@@ -1385,7 +1378,7 @@ pub(super) fn ChannelCard(
                                         variant=ButtonVariant::Outline
                                         size=Size::Xs
                                         on_click=Box::new({
-                                            let query_writer = cancel_oauth_query_writer.clone();
+                                            let query_writer = cancel_query_writer.get_value();
                                             move || {
                                                 query_writer.clear_key(AdminQueryKey::OauthAppId.as_str());
                                                 editing_oauth_app_id.set(None);
@@ -1394,7 +1387,7 @@ pub(super) fn ChannelCard(
                                             }
                                         })
                                     >
-                                        {oauth_cancel_label.get_value()}
+                                        {cancel_label.get_value()}
                                     </Button>
                                 </Show>
                             </div>

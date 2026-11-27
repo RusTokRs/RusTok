@@ -43,14 +43,73 @@ mismatched identity or unavailable checks fail closed. No SQL lock or registry
 mutex spans external invocation. The original sandbox grant limits and
 independent owner effect checks still apply.
 
+For server-composed structured data and event outbox SQL effects, the owner
+transaction now takes the existing platform/tenant activation locks after
+direct credential/RBAC fences, resolves the current selection and grant
+through the canonical owner queries, and compares against the lease's exact
+installation and grant constraints. The transaction retains selection locks
+through commit, including for non-direct execution. The lease captures the
+root release's clear security revision and checks it for every host capability.
+SQL effects and security writers share the platform slug fence, including
+the implicit clear state. Quarantine/clear does not revive older leases.
+Lifecycle admission remains distinct from serving mutations but cannot bypass
+release security. Ordinary serving leases also bind the exact artifact dependency/co-requisite
+closure validated by readiness. SQL admission locks all artifact slug
+fences in ascending slug order (platform then tenant per slug) before
+reselecting and verifying the complete artifact set, its durable policies
+and clear security revisions. Non-SQL preflight compares fresh closure
+evidence without holding effect locks. Owner lifecycle remains root-only.
+Artifact selection identity is not continuity evidence: a tenant shadow or
+replacement may disappear and restore the same installation. Each artifact
+lease binds both scope selection generations on the existing permanent
+activation fence rows. The Modules owner advances only the affected scope on
+successful activation, deactivation, rollback, uninstall and tenant
+enable/disable, atomically with the mutation and receipt. Pure locks,
+idempotent replays and aborted transactions do not advance the generation.
+Capture generations with exact selected identities in one database snapshot;
+compare under the already-held sorted slug locks before SQL effects. Lifecycle
+captures its root generation. This conservative generation may invalidate
+leases even when a scope mutation does not change the effective winner.
+The serving closure also binds every visited module's canonical tenant
+lifecycle revision and policy-relevant override intent (including absent
+intent); Core continues to ignore overrides. Native and artifact override
+commits acquire the existing platform slug fence before the first state
+write. Static settings commits already acquire it. SQL admission locks
+every visited slug in ascending order (platform then artifact tenant),
+checks the revision and current intent, and retains locks through commit.
+Outstanding lifecycle claims are not treated as committed intent. No effect
+transaction spans guest execution. Settings changes may conservatively
+invalidate leases through the shared lifecycle revision.
+Serving policy derivation now retains the exact verified active owner
+composition revision/hash from which defaults and co-requisites were read.
+Reject a changed composition after closure/readiness derivation and compare
+its identity at each capability preflight. After mixed-closure fences, SQL
+admission takes the existing owner shared active-snapshot row lock (SQLite
+already owns its write reservation), revalidates the canonical stored hash
+and compares both revision and hash. Composition CAS writes conflict with
+this lock; restoration of the same manifest cannot renew an old lease.
+Missing composition must not be bootstrapped by revalidation. Unrelated
+composition replacements conservatively invalidate serving leases.
+Lifecycle hooks remain root-only. This does not fence independent compiled
+registry changes, contextual channel/maintenance, registry mutation,
+full effective-policy revision or deployment readiness. PostgreSQL
+cross-owner lock-order and runtime evidence remain required. Mixed-closure
+tenant intent and composition identity fencing require no additional
+migration; coordinate writers and readers.
+
 ## Context, events and migration
 
 Tenant, actor, phase, binding, release/installation, capability, execution ID,
 trace and idempotency identity remain bound. Channel and maintenance policy
 inputs still require owner wiring. Locale, currency and timezone do not
 participate. The lease is not an event or durable record; existing audit and
-idempotency/reconciliation semantics remain unchanged. No migration or RPC
-schema change is needed. Non-server compositions retain their explicit owner
+idempotency/reconciliation semantics remain unchanged. Migration 000095 adds
+a nonnegative selection generation to the permanent activation lock row.
+Existing rows and absent rows start at zero; this is a cutover baseline, not
+historical continuity evidence. Drain old leases, stop old lifecycle writers,
+apply the migration and deploy writers/consumers together; old writers do
+not advance the counter. Downgrade is denied. No RPC schema change is needed.
+Non-server compositions retain their explicit owner
 contracts and are not claimed covered by this lease.
 
 ## Failure semantics and non-goals

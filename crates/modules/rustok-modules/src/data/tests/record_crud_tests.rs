@@ -4,6 +4,74 @@
 use super::super::*;
 use super::fixtures::*;
 
+struct TestEffectFence {
+    deny_commit: bool,
+}
+
+struct TestEffectGuard {
+    deny_commit: bool,
+}
+
+#[async_trait]
+impl crate::ArtifactSqlEffectFence for TestEffectFence {
+    async fn lock_on(&self, tx: &DatabaseTransaction) -> SandboxResult<Box<dyn crate::ArtifactSqlEffectCommitGuard>> {
+        tx.execute_unprepared("INSERT INTO test_effect_authority (marker) VALUES (1)")
+            .await.expect("transaction-local authority marker");
+        Ok(Box::new(TestEffectGuard { deny_commit: self.deny_commit }))
+    }
+}
+
+#[async_trait]
+impl crate::ArtifactSqlEffectCommitGuard for TestEffectGuard {
+    async fn check_before_commit(&self, tx: &DatabaseTransaction) -> SandboxResult<()> {
+        let row = tx.query_one_raw(Statement::from_string(DbBackend::Sqlite,
+            "SELECT COUNT(*) AS n FROM test_effect_authority".to_string()))
+            .await.unwrap().unwrap();
+        assert!(row.try_get::<i64>("", "n").unwrap() > 0);
+        if self.deny_commit {
+            return Err(SandboxError::CapabilityDenied(CapabilityName::new("platform.data").unwrap()));
+        }
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn effect_fence_denial_rolls_back_structured_write_and_replay() {
+    let database = Database::connect("sqlite::memory:").await.unwrap();
+    rustok_outbox::SysEventsMigration
+        .up(&sea_orm_migration::SchemaManager::new(&database)).await.unwrap();
+    for migration in ModulesModule.migrations() {
+        migration.up(&sea_orm_migration::SchemaManager::new(&database)).await.unwrap();
+    }
+    database.execute_unprepared("CREATE TABLE test_effect_authority (marker INTEGER NOT NULL)")
+        .await.unwrap();
+    let scope = test_scope(Uuid::new_v4(), "sample_module");
+    setup_test_serving_namespace(&database, &scope).await;
+    let broker = SeaOrmArtifactDataBroker::new(database.clone(),
+        ExactArtifactDataAuthorizer { scope: scope.clone() }, AllowSchemaValidator);
+    let write = ArtifactDataWrite {
+        key: "state/current".into(), value: json!({"status":"active"}),
+        expected_revision: None, create_only: false, idempotency_key: Uuid::new_v4(),
+    };
+    let denied = broker.clone().with_effect_fence(Box::new(TestEffectFence { deny_commit: true }));
+    assert_eq!(denied.put(&scope, write.clone()).await.unwrap_err(), ArtifactDataError::PolicyDenied);
+    assert!(broker.get(&scope, &write.key).await.unwrap().is_none());
+    let row = database.query_one_raw(Statement::from_string(DbBackend::Sqlite,
+        "SELECT COUNT(*) AS n FROM test_effect_authority".to_string())).await.unwrap().unwrap();
+    assert_eq!(row.try_get::<i64>("", "n").unwrap(), 0);
+
+    let allowed = broker.clone().with_effect_fence(Box::new(TestEffectFence { deny_commit: false }));
+    let record = allowed.put(&scope, write).await.unwrap();
+    let request = ArtifactDataDeleteRequest {
+        key: record.key.clone(), expected_revision: record.revision, idempotency_key: Uuid::new_v4(),
+    };
+    assert_eq!(denied.delete(&scope, request.clone()).await.unwrap_err(), ArtifactDataError::PolicyDenied);
+    assert!(broker.get(&scope, &record.key).await.unwrap().is_some());
+    allowed.delete(&scope, request.clone()).await.unwrap();
+    // The idempotent early-return branch must still check the commit fence.
+    assert_eq!(denied.delete(&scope, request).await.unwrap_err(), ArtifactDataError::PolicyDenied);
+}
+
 #[tokio::test]
 async fn record_delete_is_revisioned_idempotent_and_removes_indexes() {
     let database = Database::connect("sqlite::memory:")

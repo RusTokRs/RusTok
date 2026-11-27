@@ -2722,6 +2722,7 @@ impl SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
 
+        advance_artifact_selection_generation(&transaction, &request.scope, &slug).await?;
         // A plain activation remains an immediate serving-selection
         // change whose durable activation operation is the receipt. A
         // governed activation has already advanced its checkpoint to
@@ -2953,6 +2954,7 @@ impl SeaOrmArtifactInstallationStore {
                 "installation became stale during deactivation".into(),
             ));
         }
+        advance_artifact_selection_generation(&transaction, &request.scope, &target_slug).await?;
         self.infrastructure
             .write_event(
                 &transaction,
@@ -3359,6 +3361,7 @@ impl SeaOrmArtifactInstallationStore {
             }
             1
         };
+        advance_artifact_selection_generation(&transaction, &scope, &descriptor.slug).await?;
         record_artifact_tenant_lifecycle_operation(
             &transaction,
             self.infrastructure.new_id(),
@@ -3567,6 +3570,7 @@ impl SeaOrmArtifactInstallationStore {
                 "installation became stale during uninstall".into(),
             ));
         }
+        advance_artifact_selection_generation(&transaction, &request.scope, &target_slug).await?;
         // Advance and retire the work generation and clear tenant intent in
         // the same transaction as the uninstall record: after this commit,
         // delivery admission must never admit work for the uninstalled
@@ -4016,6 +4020,7 @@ impl SeaOrmArtifactInstallationStore {
         RetentionHoldStore::release_holds_for_operation(&transaction, transition_operation_id)
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        advance_artifact_selection_generation(&transaction, &request.scope, &source_slug).await?;
         self.infrastructure
             .write_event(
                 &transaction,
@@ -5392,18 +5397,6 @@ impl ArtifactSandboxPolicyResolver for SeaOrmArtifactSandboxPolicyResolver {
         artifact: &InstalledModuleArtifact,
         tenant_id: Uuid,
     ) -> Result<SandboxPolicy, ArtifactSandboxPolicyResolveError> {
-        if artifact.installation_id.is_nil() || tenant_id.is_nil() {
-            return Err(ArtifactSandboxPolicyResolveError::InvalidRequest(
-                "artifact sandbox policy requires non-nil identities".to_string(),
-            ));
-        }
-        if matches!(&artifact.scope, ModuleInstallationScope::Tenant { tenant_id: scope_tenant } if *scope_tenant != tenant_id)
-        {
-            return Err(ArtifactSandboxPolicyResolveError::InvalidRequest(
-                "tenant-scoped artifact cannot execute for another tenant".to_string(),
-            ));
-        }
-
         let transaction = self
             .db
             .begin()
@@ -5412,94 +5405,117 @@ impl ArtifactSandboxPolicyResolver for SeaOrmArtifactSandboxPolicyResolver {
         configure_rls_scope(&transaction, &ModuleInstallationScope::Tenant { tenant_id })
             .await
             .map_err(|error| ArtifactSandboxPolicyResolveError::Store(error.to_string()))?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(|error| ArtifactSandboxPolicyResolveError::Store(error.to_string()))?;
-        let placeholders = match backend {
-            SupportedBackend::Postgres => ("$1", "$2", "$3", "$4", "$5"),
-            SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4", "?5"),
-        };
-        let policy_scope = match &artifact.scope {
-            ModuleInstallationScope::Platform => format!(
-                "(policy.tenant_id = {} OR policy.tenant_id IS NULL)",
-                placeholders.1
-            ),
-            ModuleInstallationScope::Tenant { .. } => {
-                format!("policy.tenant_id = {}", placeholders.1)
-            }
-        };
-        let lifecycle_enabled = match backend {
-            SupportedBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
-            SupportedBackend::Sqlite => "COALESCE(lifecycle.enabled, 1) = 1",
-        };
-        let row = transaction
-            .query_one_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                format!(
-                    "SELECT policy.capability_grant_revision, CAST(policy.policy AS TEXT) AS policy \
-                     FROM module_artifact_sandbox_policies policy \
-                     JOIN module_artifact_installations installation \
-                       ON installation.installation_id = policy.installation_id \
-                     JOIN module_artifact_admissions admission \
-                       ON admission.installation_id = installation.installation_id \
-                     LEFT JOIN module_artifact_tenant_lifecycle lifecycle \
-                       ON lifecycle.installation_id = installation.installation_id \
-                      AND lifecycle.tenant_id = {tenant} \
-                     WHERE policy.installation_id = {installation_id} \
-                       AND installation.slug = {slug} \
-                       AND installation.version = {version} \
-                       AND installation.payload_digest = {digest} \
-                       AND admission.status = 'active' \
-                       AND (installation.scope_kind = 'platform' \
-                            OR (installation.scope_kind = 'tenant' \
-                                AND installation.tenant_id = {tenant})) \
-                       AND {lifecycle_enabled} \
-                       AND {policy_scope} \
-                     ORDER BY CASE WHEN policy.tenant_id = {tenant} THEN 0 ELSE 1 END \
-                     LIMIT 1",
-                    installation_id = placeholders.0,
-                    tenant = placeholders.1,
-                    slug = placeholders.2,
-                    version = placeholders.3,
-                    digest = placeholders.4,
-                ),
-                vec![
-                    backend.uuid_value(artifact.installation_id),
-                    backend.uuid_value(tenant_id),
-                    artifact.release.slug.clone().into(),
-                    artifact.release.version.clone().into(),
-                    artifact.release.digest.clone().into(),
-                ],
-            ))
-            .await
-            .map_err(|error| ArtifactSandboxPolicyResolveError::Store(error.to_string()))?;
+        let policy = resolve_sandbox_policy_on(&transaction, artifact, tenant_id).await?;
         transaction
             .commit()
             .await
             .map_err(|error| ArtifactSandboxPolicyResolveError::Store(error.to_string()))?;
-        let row = row.ok_or(ArtifactSandboxPolicyResolveError::Unavailable)?;
-        let revision: i64 = row
-            .try_get("", "capability_grant_revision")
-            .map_err(|error| ArtifactSandboxPolicyResolveError::Invariant(error.to_string()))?;
-        let revision = u64::try_from(revision).map_err(|_| {
-            ArtifactSandboxPolicyResolveError::Invariant(
-                "sandbox policy revision is outside the supported range".to_string(),
-            )
-        })?;
-        if revision != artifact.capability_grant_revision {
-            return Err(ArtifactSandboxPolicyResolveError::RevisionMismatch);
-        }
-        let policy: SandboxPolicy =
-            serde_json::from_str(&row.try_get::<String>("", "policy").map_err(|error| {
-                ArtifactSandboxPolicyResolveError::Invariant(error.to_string())
-            })?)
-            .map_err(|_| {
-                ArtifactSandboxPolicyResolveError::Invariant(
-                    "sandbox policy is invalid".to_string(),
-                )
-            })?;
-        validate_sandbox_policy(artifact, &policy)?;
         Ok(policy)
     }
+}
+
+/// Canonical sandbox policy lookup on a caller-owned, tenant-scoped
+/// transaction. Effect callers must retain the serving selection locks.
+pub(crate) async fn resolve_sandbox_policy_on(
+    transaction: &DatabaseTransaction,
+    artifact: &InstalledModuleArtifact,
+    tenant_id: Uuid,
+) -> Result<SandboxPolicy, ArtifactSandboxPolicyResolveError> {
+    if artifact.installation_id.is_nil() || tenant_id.is_nil() {
+        return Err(ArtifactSandboxPolicyResolveError::InvalidRequest(
+            "artifact sandbox policy requires non-nil identities".to_string(),
+        ));
+    }
+    if matches!(&artifact.scope, ModuleInstallationScope::Tenant { tenant_id: scope_tenant } if *scope_tenant != tenant_id)
+    {
+        return Err(ArtifactSandboxPolicyResolveError::InvalidRequest(
+            "tenant-scoped artifact cannot execute for another tenant".to_string(),
+        ));
+    }
+
+    let backend = SupportedBackend::new(transaction.get_database_backend())
+        .map_err(|error| ArtifactSandboxPolicyResolveError::Store(error.to_string()))?;
+    let placeholders = match backend {
+        SupportedBackend::Postgres => ("$1", "$2", "$3", "$4", "$5"),
+        SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4", "?5"),
+    };
+    let policy_scope = match &artifact.scope {
+        ModuleInstallationScope::Platform => format!(
+            "(policy.tenant_id = {} OR policy.tenant_id IS NULL)",
+            placeholders.1
+        ),
+        ModuleInstallationScope::Tenant { .. } => {
+            format!("policy.tenant_id = {}", placeholders.1)
+        }
+    };
+    let lifecycle_enabled = match backend {
+        SupportedBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
+        SupportedBackend::Sqlite => "COALESCE(lifecycle.enabled, 1) = 1",
+    };
+    let row = transaction
+        .query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            format!(
+                "SELECT policy.capability_grant_revision, CAST(policy.policy AS TEXT) AS policy \
+                 FROM module_artifact_sandbox_policies policy \
+                 JOIN module_artifact_installations installation \
+                   ON installation.installation_id = policy.installation_id \
+                 JOIN module_artifact_admissions admission \
+                   ON admission.installation_id = installation.installation_id \
+                 LEFT JOIN module_artifact_tenant_lifecycle lifecycle \
+                   ON lifecycle.installation_id = installation.installation_id \
+                  AND lifecycle.tenant_id = {tenant} \
+                 WHERE policy.installation_id = {installation_id} \
+                   AND installation.slug = {slug} \
+                   AND installation.version = {version} \
+                   AND installation.payload_digest = {digest} \
+                   AND admission.status = 'active' \
+                   AND (installation.scope_kind = 'platform' \
+                        OR (installation.scope_kind = 'tenant' \
+                            AND installation.tenant_id = {tenant})) \
+                   AND {lifecycle_enabled} \
+                   AND {policy_scope} \
+                 ORDER BY CASE WHEN policy.tenant_id = {tenant} THEN 0 ELSE 1 END \
+                 LIMIT 1",
+                installation_id = placeholders.0,
+                tenant = placeholders.1,
+                slug = placeholders.2,
+                version = placeholders.3,
+                digest = placeholders.4,
+            ),
+            vec![
+                backend.uuid_value(artifact.installation_id),
+                backend.uuid_value(tenant_id),
+                artifact.release.slug.clone().into(),
+                artifact.release.version.clone().into(),
+                artifact.release.digest.clone().into(),
+            ],
+        ))
+        .await
+        .map_err(|error| ArtifactSandboxPolicyResolveError::Store(error.to_string()))?;
+    let row = row.ok_or(ArtifactSandboxPolicyResolveError::Unavailable)?;
+    let revision: i64 = row
+        .try_get("", "capability_grant_revision")
+        .map_err(|error| ArtifactSandboxPolicyResolveError::Invariant(error.to_string()))?;
+    let revision = u64::try_from(revision).map_err(|_| {
+        ArtifactSandboxPolicyResolveError::Invariant(
+            "sandbox policy revision is outside the supported range".to_string(),
+        )
+    })?;
+    if revision != artifact.capability_grant_revision {
+        return Err(ArtifactSandboxPolicyResolveError::RevisionMismatch);
+    }
+    let policy: SandboxPolicy =
+        serde_json::from_str(&row.try_get::<String>("", "policy").map_err(|error| {
+            ArtifactSandboxPolicyResolveError::Invariant(error.to_string())
+        })?)
+        .map_err(|_| {
+            ArtifactSandboxPolicyResolveError::Invariant(
+                "sandbox policy is invalid".to_string(),
+            )
+        })?;
+    validate_sandbox_policy(artifact, &policy)?;
+    Ok(policy)
 }
 
 #[async_trait]
@@ -7311,6 +7327,133 @@ pub(crate) async fn acquire_artifact_activation_lock<C: ConnectionTrait>(
         ))
         .await
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    Ok(())
+}
+
+/// A host-only continuity fence for effective selection. Installation and
+/// tenant lifecycle revisions still own their individual aggregates; this
+/// generation also detects a temporary shadow selection of another identity.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArtifactSelectionGeneration {
+    tenant_id: Uuid,
+    slug: String,
+    platform: u64,
+    tenant: u64,
+}
+
+impl ArtifactSelectionGeneration {
+    pub async fn capture(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        slug: &str,
+    ) -> Result<Self, ModuleInstallationError> {
+        Self::load_on(db, tenant_id, slug).await
+    }
+
+    pub(crate) async fn load_on(
+        db: &impl ConnectionTrait,
+        tenant_id: Uuid,
+        slug: &str,
+    ) -> Result<Self, ModuleInstallationError> {
+        if tenant_id.is_nil() || slug.is_empty() {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "selection generation requires a tenant and slug".into(),
+            ));
+        }
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let p1 = backend.placeholder(1);
+        let p2 = backend.placeholder(2);
+        let row = db.query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            format!(
+                "SELECT COALESCE(MAX(CASE WHEN scope_kind = 'platform' THEN selection_generation END), 0) AS platform_generation, \
+                 COALESCE(MAX(CASE WHEN scope_kind = 'tenant' THEN selection_generation END), 0) AS tenant_generation \
+                 FROM module_artifact_activation_locks WHERE slug = {p1} AND \
+                 ((scope_kind = 'platform' AND scope_tenant_key = 'platform') OR \
+                  (scope_kind = 'tenant' AND scope_tenant_key = {p2}))"
+            ),
+            vec![slug.to_string().into(), tenant_id.to_string().into()],
+        )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+            .ok_or_else(|| ModuleInstallationError::Store("selection generation query returned no row".into()))?;
+        let revision = |column: &str| -> Result<u64, ModuleInstallationError> {
+            let value: i64 = row.try_get("", column)
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            u64::try_from(value).map_err(|_| ModuleInstallationError::Store(
+                "negative artifact selection generation".into(),
+            ))
+        };
+        Ok(Self {
+            tenant_id, slug: slug.to_string(),
+            platform: revision("platform_generation")?,
+            tenant: revision("tenant_generation")?,
+        })
+    }
+
+    pub async fn is_current(
+        &self,
+        db: &DatabaseConnection,
+    ) -> Result<bool, ModuleInstallationError> {
+        Ok(Self::load_on(db, self.tenant_id, &self.slug).await? == *self)
+    }
+
+    pub(crate) async fn require_locked_on(
+        &self,
+        tx: &DatabaseTransaction,
+    ) -> Result<(), ModuleInstallationError> {
+        if Self::load_on(tx, self.tenant_id, &self.slug).await? != *self {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "artifact selection generation is stale".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Single-root owner lifecycle path. Serving closures lock all slugs
+    /// first in canonical order and call require_locked_on instead.
+    pub async fn require_current_on(
+        &self,
+        tx: &DatabaseTransaction,
+    ) -> Result<(), ModuleInstallationError> {
+        crate::backend::set_tenant_scope(tx, self.tenant_id).await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        acquire_artifact_activation_lock(tx, &ModuleInstallationScope::Platform, &self.slug).await?;
+        acquire_artifact_activation_lock(
+            tx, &ModuleInstallationScope::Tenant { tenant_id: self.tenant_id }, &self.slug,
+        ).await?;
+        self.require_locked_on(tx).await
+    }
+}
+
+/// Advance exactly the affected scope under its already-held activation lock.
+/// The caller commits it with the successful serving mutation and receipt.
+/// A lock-only read, idempotent replay, or rollback must never advance it.
+async fn advance_artifact_selection_generation(
+    tx: &DatabaseTransaction,
+    scope: &ModuleInstallationScope,
+    slug: &str,
+) -> Result<(), ModuleInstallationError> {
+    let backend = SupportedBackend::new(tx.get_database_backend())
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    let (scope_kind, scope_tenant_key) = match scope {
+        ModuleInstallationScope::Platform => ("platform", "platform".to_string()),
+        ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
+    };
+    let updated = tx.execute_raw(Statement::from_sql_and_values(
+        backend.db_backend(),
+        format!(
+            "UPDATE module_artifact_activation_locks SET selection_generation = selection_generation + 1 \
+             WHERE scope_kind = {} AND scope_tenant_key = {} AND slug = {} \
+             AND selection_generation < 9223372036854775807",
+            backend.placeholder(1), backend.placeholder(2), backend.placeholder(3),
+        ),
+        vec![scope_kind.into(), scope_tenant_key.into(), slug.to_string().into()],
+    )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    if updated.rows_affected() != 1 {
+        return Err(ModuleInstallationError::AdmissionRevisionConflict(
+            "artifact selection generation is missing or exhausted".into(),
+        ));
+    }
     Ok(())
 }
 
@@ -12092,6 +12235,330 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn selection_generation_is_scope_bound_and_transactional() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared("CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, selection_generation INTEGER NOT NULL DEFAULT 0 CHECK (selection_generation >= 0), PRIMARY KEY (scope_kind, scope_tenant_key, slug))").await.unwrap();
+        let tenant_id = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let slug = "sample_module";
+        let initial = ArtifactSelectionGeneration::capture(&db, tenant_id, slug).await.unwrap();
+        let other_initial = ArtifactSelectionGeneration::capture(&db, other, slug).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        initial.require_current_on(&tx).await.unwrap();
+        tx.commit().await.unwrap();
+        assert!(initial.is_current(&db).await.unwrap(), "lock-only must not advance generation");
+
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        let scope = ModuleInstallationScope::Tenant { tenant_id };
+        acquire_artifact_activation_lock(&tx, &scope, slug).await.unwrap();
+        advance_artifact_selection_generation(&tx, &scope, slug).await.unwrap();
+        tx.rollback().await.unwrap();
+        assert!(initial.is_current(&db).await.unwrap(), "rollback must not advance generation");
+
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        acquire_artifact_activation_lock(&tx, &scope, slug).await.unwrap();
+        advance_artifact_selection_generation(&tx, &scope, slug).await.unwrap();
+        tx.commit().await.unwrap();
+        assert!(!initial.is_current(&db).await.unwrap());
+        assert!(other_initial.is_current(&db).await.unwrap());
+
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        acquire_artifact_activation_lock(&tx, &ModuleInstallationScope::Platform, slug).await.unwrap();
+        advance_artifact_selection_generation(&tx, &ModuleInstallationScope::Platform, slug).await.unwrap();
+        tx.commit().await.unwrap();
+        assert!(!other_initial.is_current(&db).await.unwrap());
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        assert!(initial.require_current_on(&tx).await.is_err());
+        tx.rollback().await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_MODULES_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_selection_generation_is_rechecked_after_lock_wait() {
+        use std::time::Duration;
+        let db = Database::connect(std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").unwrap())
+            .await.unwrap();
+        assert_eq!(db.get_database_backend(), DbBackend::Postgres);
+        let schema = format!("selection_generation_{}", Uuid::new_v4().simple());
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
+        let setup = db.begin().await.unwrap();
+        setup.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        setup.execute_unprepared("CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, selection_generation BIGINT NOT NULL DEFAULT 0 CHECK (selection_generation >= 0), PRIMARY KEY (scope_kind, scope_tenant_key, slug))").await.unwrap();
+        setup.commit().await.unwrap();
+        let tenant = Uuid::new_v4();
+        let slug = "sample_module";
+        let writer = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        writer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        let generation = ArtifactSelectionGeneration::load_on(&writer, tenant, slug).await.unwrap();
+        acquire_artifact_activation_lock(&writer, &ModuleInstallationScope::Platform, slug).await.unwrap();
+        advance_artifact_selection_generation(&writer, &ModuleInstallationScope::Platform, slug).await.unwrap();
+        let worker_db = db.clone();
+        let worker_schema = schema.clone();
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let mut worker = tokio::spawn(async move {
+            let tx = crate::backend::begin_fenced_transaction(&worker_db).await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}")).await.unwrap();
+            ready_tx.send(()).unwrap();
+            let result = generation.require_current_on(&tx).await;
+            tx.rollback().await.unwrap();
+            result
+        });
+        ready_rx.await.unwrap();
+        assert!(tokio::time::timeout(Duration::from_millis(150), &mut worker).await.is_err());
+        writer.commit().await.unwrap();
+        assert!(matches!(worker.await.unwrap(), Err(ModuleInstallationError::AdmissionRevisionConflict(_))));
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn serving_closure_fences_corequisite_security_and_selection() {
+        use crate::policy::{
+            ModuleEffectivePolicyInstallationFact, ModuleEffectivePolicyQuery,
+            ModuleEffectivePolicyRuntimeInput,
+        };
+
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared("CREATE TABLE tenants (id TEXT PRIMARY KEY NOT NULL); CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants")
+            .await.unwrap();
+        rustok_outbox::SysEventsMigration.up(&SchemaManager::new(&db)).await.unwrap();
+        for migration in crate::ModulesModule.migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
+        let tenant_id = Uuid::new_v4();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite, "INSERT INTO tenants (id) VALUES (?1)",
+            vec![tenant_id.to_string().into()],
+        )).await.unwrap();
+
+        let store = SeaOrmArtifactInstallationStore::new(db.clone());
+        let mut selected = BTreeMap::new();
+        let mut catalog = crate::ModuleDefinitionCatalog::default();
+        let mut inputs = Vec::new();
+        // Root sorts after its co-requisite; insertion/traversal order must
+        // not determine the order of the transaction's selection locks.
+        for (slug, marker) in [("z_root", 'a'), ("a_provider", 'b')] {
+            let mut package = package(ArtifactPayloadKind::Rhai);
+            package.reference.repository = format!("modules/{slug}");
+            package.reference.digest = format!("sha256:{}", marker.to_string().repeat(64));
+            package.descriptor.slug = slug.to_string();
+            let mut command = admission_command(package.reference.clone(), ModuleInstallationScope::Platform);
+            command.sandbox_policy.grants = vec![CapabilityGrant {
+                name: CapabilityName::new("platform.events").unwrap(),
+                constraints: json!({}),
+            }];
+            let installation = ModuleInstaller::new(
+                FixtureRegistry(package), store.clone(), InMemoryArtifactBlobStore::default(),
+                trust_verifier(), trust_policy(), AllowArtifactPermissionRegistrar,
+            ).admit(command).await.unwrap();
+            db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_artifact_admissions SET status = 'active' WHERE installation_id = ?1",
+                vec![installation.installation_id.to_string().into()],
+            )).await.unwrap();
+            let item = crate::ArtifactInstallationResolver::resolve(&store, &installation.release, tenant_id)
+                .await.unwrap();
+            catalog.insert(crate::ModuleDefinition::from_artifact_descriptor(&item.descriptor)).unwrap();
+            inputs.push(ModuleEffectivePolicyRuntimeInput {
+                module_slug: slug.to_string(),
+                installation: Some(ModuleEffectivePolicyInstallationFact {
+                    installation_id: item.installation_id,
+                    scope: item.scope.clone(),
+                    release_digest: item.release.digest.clone(),
+                    payload_kind: item.descriptor.payload_kind,
+                    dependency_graph_revision: item.dependency_lock.graph_revision,
+                    dependency_graph_digest: item.dependency_lock.graph_digest.clone(),
+                    capability_grant_revision: item.capability_grant_revision,
+                }),
+                capability_policy_revision: Some(item.capability_grant_revision),
+                executor_available: true,
+                security: Some(crate::ModuleArtifactSecuritySnapshot {
+                    release: item.release.clone(), revision: 0,
+                    status: crate::ModuleArtifactSecurityStatus::Clear,
+                    registry_status: crate::ModuleArtifactRegistryReleaseStatus::Unlisted,
+                    policy_revision: None, reason_code: None, reason_detail: None,
+                }),
+            });
+            selected.insert(slug.to_string(), item);
+        }
+        catalog.insert(crate::ModuleDefinition {
+            slug: "native_provider".into(), version: "1.0.0".into(),
+            kind: crate::ModuleDefinitionKind::Optional,
+            source: crate::ModuleDefinitionSource::PlatformNative { distribution_version: "1.0.0".into() },
+            dependencies: vec![], permissions: vec![], settings_schema_digest: None,
+            schema_documents: vec![], bindings: vec![], ui: vec![], capabilities: vec![],
+        }).unwrap();
+        let policy = ModuleEffectivePolicyQuery::new(
+            &catalog, ["z_root".to_string(), "a_provider".to_string(), "native_provider".to_string()], [], inputs,
+        ).with_corequisites([crate::ModuleEffectivePolicyCoRequisite {
+            module_slug: "z_root".to_string(),
+            required_module_slug: "a_provider".to_string(),
+            version_requirement: "^1.0".to_string(),
+        }, crate::ModuleEffectivePolicyCoRequisite {
+            module_slug: "a_provider".into(),
+            required_module_slug: "native_provider".into(),
+            version_requirement: "^1.0".into(),
+        }]).execute().unwrap();
+        let root = &selected["z_root"];
+        let provider = &selected["a_provider"];
+        let closure = crate::ArtifactServingClosure::from_policy_selection(
+            &db, tenant_id, root, &policy, &selected,
+        ).await.unwrap();
+        assert_eq!(closure.root_security_revision(root), Some(0));
+        let mut missing = selected.clone();
+        missing.remove("a_provider");
+        assert!(crate::ArtifactServingClosure::from_policy_selection(
+            &db, tenant_id, root, &policy, &missing,
+        ).await.is_err());
+
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        closure.require_current_on(&tx).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        // Inherited native intent is absent at admission. Exercise the
+        // same owner aggregate/override primitives used by toggle commits.
+        for (revision, enabled) in [(0, Some(false)), (1, None)] {
+            let key = Uuid::new_v4();
+            let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+            acquire_artifact_activation_lock(&tx, &ModuleInstallationScope::Platform, "native_provider").await.unwrap();
+            crate::StaticTenantLifecycleStore::claim(&tx, tenant_id, "native_provider", revision, key).await.unwrap();
+            crate::recovery::apply_tenant_override_enabled(&tx, tenant_id, "native_provider", enabled).await.unwrap();
+            crate::StaticTenantLifecycleStore::advance(&tx, tenant_id, "native_provider", revision, key).await.unwrap();
+            crate::StaticTenantLifecycleStore::release(&tx, tenant_id, "native_provider", key).await.unwrap();
+            tx.commit().await.unwrap();
+            let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+            assert!(closure.require_current_on(&tx).await.is_err());
+            tx.rollback().await.unwrap();
+            if enabled == Some(false) {
+                assert!(crate::ArtifactServingClosure::from_policy_selection(
+                    &db, tenant_id, root, &policy, &selected,
+                ).await.is_err(), "stale policy must not authorize newly recorded override");
+            }
+        }
+        // Clearing the override restores inherited intent, but not the
+        // old revision. A new lease may use the restored native module.
+        let closure = crate::ArtifactServingClosure::from_policy_selection(
+            &db, tenant_id, root, &policy, &selected,
+        ).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        closure.require_current_on(&tx).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        // The root remains active while its co-requisite is quarantined.
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_artifact_security_states (module_slug, module_version, payload_digest, revision, status, policy_revision, reason_code, reason_detail, changed_by, changed_at) VALUES (?1, ?2, ?3, 1, 'quarantined', 'test', 'test', 'test', ?4, CURRENT_TIMESTAMP)",
+            vec![provider.release.slug.clone().into(), provider.release.version.clone().into(),
+                provider.release.digest.clone().into(), Uuid::new_v4().to_string().into()],
+        )).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        assert!(closure.require_current_on(&tx).await.is_err());
+        tx.rollback().await.unwrap();
+
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE module_artifact_security_states SET status = 'clear', revision = 2 WHERE module_slug = ?1",
+            vec![provider.release.slug.clone().into()],
+        )).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        assert!(closure.require_current_on(&tx).await.is_err(), "security ABA must not revive the lease");
+        tx.rollback().await.unwrap();
+
+        // Refresh the policy evidence for a new lease, then invalidate its
+        // exact dependency selection without changing the root.
+        let mut inputs = Vec::new();
+        for item in selected.values() {
+            let security = crate::SeaOrmModuleArtifactSecurityResolver::new(db.clone())
+                .resolve(&item.release).await.unwrap();
+            inputs.push(ModuleEffectivePolicyRuntimeInput {
+                module_slug: item.release.slug.clone(),
+                installation: Some(ModuleEffectivePolicyInstallationFact {
+                    installation_id: item.installation_id,
+                    scope: item.scope.clone(),
+                    release_digest: item.release.digest.clone(),
+                    payload_kind: item.descriptor.payload_kind,
+                    dependency_graph_revision: item.dependency_lock.graph_revision,
+                    dependency_graph_digest: item.dependency_lock.graph_digest.clone(),
+                    capability_grant_revision: item.capability_grant_revision,
+                }),
+                capability_policy_revision: Some(item.capability_grant_revision),
+                executor_available: true,
+                security: Some(security),
+            });
+        }
+        let policy = ModuleEffectivePolicyQuery::new(
+            &catalog, ["z_root".to_string(), "a_provider".to_string(), "native_provider".to_string()], [], inputs,
+        ).with_corequisites([crate::ModuleEffectivePolicyCoRequisite {
+            module_slug: "z_root".to_string(),
+            required_module_slug: "a_provider".to_string(),
+            version_requirement: "^1.0".to_string(),
+        }, crate::ModuleEffectivePolicyCoRequisite {
+            module_slug: "a_provider".into(),
+            required_module_slug: "native_provider".into(),
+            version_requirement: "^1.0".into(),
+        }]).execute().unwrap();
+        let refreshed = crate::ArtifactServingClosure::from_policy_selection(
+            &db, tenant_id, root, &policy, &selected,
+        ).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        refreshed.require_current_on(&tx).await.unwrap();
+        tx.rollback().await.unwrap();
+        // Real lifecycle owner writes: the exact installation and clear
+        // security revision return to the original values after re-enable.
+        let before_generation = ArtifactSelectionGeneration::capture(
+            &db, tenant_id, &provider.release.slug,
+        ).await.unwrap();
+        let other_tenant = Uuid::new_v4();
+        let other_generation = ArtifactSelectionGeneration::capture(
+            &db, other_tenant, &provider.release.slug,
+        ).await.unwrap();
+        let disable = ArtifactTenantDisableRequest {
+            installation_id: provider.installation_id,
+            tenant_id,
+            expected_revision: 1,
+            context: lifecycle_context(Some(tenant_id)),
+            reason: "generation regression".into(),
+        };
+        let disabled = store.disable_artifact_for_tenant(disable.clone()).await.unwrap();
+        let after_disable = ArtifactSelectionGeneration::capture(
+            &db, tenant_id, &provider.release.slug,
+        ).await.unwrap();
+        assert_ne!(before_generation, after_disable);
+        assert_eq!(store.disable_artifact_for_tenant(disable).await.unwrap(), disabled);
+        assert!(after_disable.is_current(&db).await.unwrap(), "receipt replay must not advance generation");
+        store.enable_artifact_for_tenant(ArtifactTenantEnableRequest {
+            installation_id: provider.installation_id,
+            tenant_id,
+            expected_revision: disabled.revision,
+            context: lifecycle_context(Some(tenant_id)),
+            reason: "generation regression".into(),
+        }).await.unwrap();
+        assert!(other_generation.is_current(&db).await.unwrap(), "tenant mutation must not invalidate another tenant");
+        let restored = crate::ArtifactInstallationResolver::resolve(
+            &store, &provider.release, tenant_id,
+        ).await.unwrap();
+        assert_eq!(&restored, provider);
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        assert!(refreshed.require_current_on(&tx).await.is_err(), "disable/enable ABA must not revive a lease");
+        tx.rollback().await.unwrap();
+
+        let renewed = crate::ArtifactServingClosure::from_policy_selection(
+            &db, tenant_id, root, &policy, &selected,
+        ).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        renewed.require_current_on(&tx).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE module_artifact_admissions SET status = 'inactive' WHERE installation_id = ?1",
+            vec![provider.installation_id.to_string().into()],
+        )).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        assert!(renewed.require_current_on(&tx).await.is_err());
+        tx.rollback().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn active_resolution_selects_scope_before_release_and_rejects_ambiguity() {
         let database = Database::connect("sqlite::memory:")
             .await
@@ -12138,6 +12605,11 @@ mod tests {
             (duplicate_package, ModuleInstallationScope::Platform),
         ] {
             let reference = package.reference.clone();
+            let mut command = admission_command(reference.clone(), scope);
+            command.sandbox_policy.grants = vec![CapabilityGrant {
+                name: CapabilityName::new("platform.events").expect("capability"),
+                constraints: json!({}),
+            }];
             let installation = ModuleInstaller::new(
                 FixtureRegistry(package),
                 store.clone(),
@@ -12146,7 +12618,7 @@ mod tests {
                 trust_policy(),
                 AllowArtifactPermissionRegistrar,
             )
-            .admit(admission_command(reference, scope))
+            .admit(command)
             .await
             .expect("admit fixture");
             installations.push(installation);
@@ -12187,6 +12659,47 @@ mod tests {
                 .await
                 .expect("tenant release selected");
         assert_eq!(selected.installation_id, installations[1].installation_id);
+
+        let capability = CapabilityName::new("platform.events").expect("capability");
+        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
+        assert!(crate::lock_granted_artifact_capability_on(
+            &tx, &selected, tenant_id, &capability,
+        ).await.is_ok());
+        tx.rollback().await.unwrap();
+
+        let mut stale_grant = selected.clone();
+        stale_grant.capability_grant_revision += 1;
+        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
+        assert!(crate::lock_granted_artifact_capability_on(
+            &tx, &stale_grant, tenant_id, &capability,
+        ).await.is_err());
+        tx.rollback().await.unwrap();
+
+        let mut stale_installation = selected.clone();
+        stale_installation.installation_id = installations[0].installation_id;
+        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
+        assert!(crate::lock_granted_artifact_capability_on(
+            &tx, &stale_installation, tenant_id, &capability,
+        ).await.is_err());
+        tx.rollback().await.unwrap();
+
+        // A committed grant-revision change must invalidate the
+        // original execution authority.
+        database.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE module_artifact_installations SET capability_grant_revision = capability_grant_revision + 1 WHERE installation_id = ?1",
+            vec![selected.installation_id.to_string().into()],
+        )).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
+        assert!(crate::lock_granted_artifact_capability_on(
+            &tx, &selected, tenant_id, &capability,
+        ).await.is_err());
+        tx.rollback().await.unwrap();
+        database.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE module_artifact_installations SET capability_grant_revision = capability_grant_revision - 1 WHERE installation_id = ?1",
+            vec![selected.installation_id.to_string().into()],
+        )).await.unwrap();
 
         // A catalog built before a tenant override must not acquire a
         // lifecycle claim for the now-shadowed platform release.
@@ -12335,6 +12848,11 @@ mod tests {
             .execute_raw(update_status(installations[1].installation_id, "inactive"))
             .await
             .expect("remove tenant selection");
+        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
+        assert!(crate::lock_granted_artifact_capability_on(
+            &tx, &selected, tenant_id, &capability,
+        ).await.is_err());
+        tx.rollback().await.unwrap();
         for release in [&platform_release, &duplicate_release] {
             assert!(matches!(
                 crate::ArtifactInstallationResolver::resolve(&store, release, tenant_id).await,

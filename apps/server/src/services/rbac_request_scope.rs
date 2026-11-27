@@ -174,7 +174,11 @@ impl CapturedArtifactRequestScope {
     }
 
     pub(crate) fn is_valid(&self) -> bool {
+        // A captured credential must share the Auth process clock fence as
+        // well as request invalidation; raw wall-clock checks alone could
+        // release output after a latched clock discontinuity.
         self.0.valid.load(Ordering::Acquire)
+            && rustok_auth::application_clock::check_local().is_ok()
     }
 
     pub(crate) fn expires_at(&self) -> DateTime<Utc> {

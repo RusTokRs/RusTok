@@ -1,5 +1,7 @@
 //! Leptos administration for the __SLUG__ record owner.
 #![doc = include_str!("../CRATE_API.md")]
+// Leptos expands the table and editor hydration views in the consuming crate.
+#![recursion_limit = "256"]
 
 mod core;
 mod i18n;

@@ -496,6 +496,7 @@ pub async fn dispatch_pages_browser_intent_with_store(
             intent: "save".to_string(),
             payload: json!({}),
             sequence: envelope.sequence.map(|sequence| sequence.saturating_add(1)),
+            command_sequence: Some(controller.editor().revision().command_sequence),
             page_id: Some(snapshot.page_id.clone()),
             revision: Some(controller.revision_id().to_string()),
             project_hash: Some(controller.editor().revision().project_hash.hex()),
@@ -967,6 +968,7 @@ async fn finish_prepared_save(
         intent: "save".to_string(),
         payload: json!({}),
         sequence: None,
+        command_sequence: Some(controller.editor().revision().command_sequence),
         page_id: Some(snapshot.page_id.clone()),
         revision: Some(controller.revision_id().to_string()),
         project_hash: Some(controller.editor().revision().project_hash.hex()),
@@ -1423,6 +1425,7 @@ mod tests {
             intent: intent.to_string(),
             payload,
             sequence: Some(1),
+            command_sequence: None,
             page_id: Some("home".to_string()),
             revision: Some("rev-1".to_string()),
             project_hash: None,
@@ -1778,6 +1781,13 @@ mod tests {
             "the id is a lookup key, not part of the request fingerprint"
         );
 
+        envelope.command_sequence = Some(5);
+        assert_ne!(
+            first,
+            browser_operation_request_hash(&envelope).expect("sequence-bound fingerprint")
+        );
+
+        envelope.command_sequence = None;
         envelope.payload = json!({ "block_id": "footer" });
         assert_ne!(
             first,

@@ -1471,3 +1471,83 @@ complete, and a post-launch denial preserves ambiguous-outcome semantics.
 Contextual channel/maintenance policy, external owner transactional authority,
 performance and actual worker callback verification remain open. See
 [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).
+
+### SQL capability effect authority
+
+The server composition injects an explicit SQL effect authorizer into the
+structured-data and event-outbox brokers. It captures the live execution lease
+before opening the owner transaction, reuses Auth/RBAC tenant/user/session/role
+fences on that transaction for direct user execution, and checks the locked
+credential deadline and lease membership before commit. All structured CRUD,
+list/index reads and the delete-receipt replay path use the same commit gate.
+An error rolls back the effect and its receipt; no new database connection or
+guest invocation is permitted under the fences. The events resolver also
+binds the complete installation subject and tenant, rejecting mismatched
+capability identity. Owner-only/background work preserves its separate
+admission contract and checks lease lifetime, without inventing user evidence.
+The SQL fence also acquires the existing platform-then-tenant artifact
+activation locks, reselects the exact installation after the lock wait and
+resolves its durable sandbox policy on that transaction. It rejects changed
+installation facts, capability revision, missing grants and changed grant
+constraints relative to the execution lease. Activation, deactivation,
+rollback and tenant artifact lifecycle writers use these same selection
+locks. Lifecycle hooks do not use the serving-mutation journal rejection.
+The lease also captures the exact release's clear security revision (zero
+for implicit clear). Every host capability rechecks it, including lifecycle
+calls. SQL effects verify it inside the transaction under the platform slug
+activation fence, shared by quarantine, clear and revoke writers. This fences
+first quarantine even without a security row, and quarantine followed by
+clear cannot revive an older lease. The registry status is sampled but its
+independent writers are not fenced by this increment. For ordinary serving, the same owner closure used by node readiness is
+captured in the lease, including exact artifact members reached through
+dependencies and co-requisites and their security revisions. Before any root
+selection lock, SQL admission takes all artifact slug locks in ascending
+order (platform then tenant per slug), reselects the complete artifact set,
+validates each durable sandbox policy and security revision, and keeps the
+locks through commit. Non-SQL calls compare fresh closure evidence but remain
+preflight-only. Lifecycle retains root-only owner authority. For serving,
+every visited module (native and artifact) also captures its canonical
+StaticTenantLifecycleStore revision and exact optional tenant override,
+including absent intent. Core overrides remain irrelevant to policy.
+The SQL effect takes platform slug locks for the entire mixed closure in
+ascending order (and the tenant selection lock for each artifact), then
+compares lifecycle revision and override on the same transaction. Both
+override commit paths take the same platform lock before writing intent,
+journal and aggregate revision; static settings commits already use it.
+A concurrent first override cannot bypass the absent-row fence, and
+disable/clear or disable/enable cannot revive the prior lifecycle revision.
+Settings changes conservatively invalidate leases because they advance the
+same owner revision. Active claims alone are not treated as committed
+intent changes; no lock spans guest hooks. The serving policy is now derived
+from one verified owner composition snapshot and carries that snapshot's
+revision/hash into the lease; a final nonlocking check rejects composition
+changes during derivation. Each fresh capability preflight compares the
+composition identity as well as closure evidence. SQL effects acquire the
+existing shared active-composition row lock after the mixed closure fences
+(SQLite already holds a write reservation) and compare both revision and
+hash without bootstrapping missing state. Owner CAS replacement serializes
+with this lock; returning to an identical manifest does not restore the
+old revision. The global composition fence conservatively invalidates a
+serving lease even for unrelated manifest edits. No extra migration is
+needed. This covers composition-derived defaults and co-requisites, not
+changes to an in-process native registry or independent deployment inputs.
+Contextual channel/maintenance inputs, registry writers and deployment
+readiness are not transactionally fenced. Each artifact lease also captures
+both platform and tenant selection generations on the permanent slug fences.
+Successful activation, deactivation, rollback, uninstall and explicit artifact
+tenant enable/disable advance the affected scope in the same transaction as
+the selection change and receipt. Lock acquisition and receipt replay do not
+advance generations. This rejects disable/enable, replacement/rollback and
+temporary tenant shadow ABA even if the exact installation returns unchanged.
+Capture exact selections and generations in one read snapshot; SQL effects
+compare generations after all closure locks. Lifecycle captures its root
+generation separately. This deliberately invalidates leases conservatively
+on scope mutations even when the effective winner does not change.
+Migration 000095 adds the generation column with baseline zero. Drain old
+executions, stop old selection/security writers, migrate and deploy all
+writers and effect consumers together; mixed-version writers can bypass the
+fence. No transport change is required. Cross-owner lock-order verification
+remains outstanding. Independent non-server broker
+compositions still need an explicitly supplied authority. External effects and
+objects/secrets/MCP/HTTP are not covered by this SQL commit guard.
+See [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).
