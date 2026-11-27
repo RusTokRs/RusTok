@@ -170,7 +170,8 @@ pub async fn update_channel(
                 payload,
                 rest_token,
                 rest_tenant,
-            ).await
+            )
+            .await
         },
     )
     .await
@@ -194,7 +195,8 @@ pub async fn set_channel_active(
                 &serde_json::json!({ "is_active": is_active }),
                 rest_token,
                 rest_tenant,
-            ).await
+            )
+            .await
         },
     )
     .await
@@ -216,7 +218,8 @@ pub async fn delete_channel(
                 &format!("/api/channels/{channel_id}"),
                 rest_token,
                 rest_tenant,
-            ).await
+            )
+            .await
         },
     )
     .await
@@ -238,7 +241,8 @@ pub async fn make_default_channel(
                 &serde_json::json!({}),
                 rest_token,
                 rest_tenant,
-            ).await
+            )
+            .await
         },
     )
     .await
@@ -279,7 +283,8 @@ pub async fn activate_resolution_policy_set(
                 &serde_json::json!({}),
                 rest_token,
                 rest_tenant,
-            ).await
+            )
+            .await
         },
     )
     .await
@@ -307,7 +312,8 @@ pub async fn create_resolution_rule(
                 payload,
                 rest_token,
                 rest_tenant,
-            ).await
+            )
+            .await
         },
     )
     .await
@@ -337,7 +343,8 @@ pub async fn update_resolution_rule(
                 payload,
                 rest_token,
                 rest_tenant,
-            ).await
+            )
+            .await
         },
     )
     .await
@@ -365,7 +372,8 @@ pub async fn reorder_resolution_rules(
                 payload,
                 rest_token,
                 rest_tenant,
-            ).await
+            )
+            .await
         },
     )
     .await
@@ -392,7 +400,8 @@ pub async fn delete_resolution_rule(
                 &format!("/api/channels/policies/{policy_set_id}/rules/{rule_id}"),
                 rest_token,
                 rest_tenant,
-            ).await
+            )
+            .await
         },
     )
     .await
@@ -420,7 +429,8 @@ pub async fn create_target(
                 payload,
                 rest_token,
                 rest_tenant,
-            ).await
+            )
+            .await
         },
     )
     .await
@@ -450,7 +460,8 @@ pub async fn update_target(
                 payload,
                 rest_token,
                 rest_tenant,
-            ).await
+            )
+            .await
         },
     )
     .await
@@ -477,7 +488,8 @@ pub async fn delete_target(
                 &format!("/api/channels/{channel_id}/targets/{target_id}"),
                 rest_token,
                 rest_tenant,
-            ).await
+            )
+            .await
         },
     )
     .await
@@ -505,7 +517,8 @@ pub async fn bind_module(
                 payload,
                 rest_token,
                 rest_tenant,
-            ).await
+            )
+            .await
         },
     )
     .await
@@ -532,7 +545,8 @@ pub async fn delete_module_binding(
                 &format!("/api/channels/{channel_id}/modules/{binding_id}"),
                 rest_token,
                 rest_tenant,
-            ).await
+            )
+            .await
         },
     )
     .await
@@ -560,7 +574,8 @@ pub async fn bind_oauth_app(
                 payload,
                 rest_token,
                 rest_tenant,
-            ).await
+            )
+            .await
         },
     )
     .await
@@ -587,7 +602,8 @@ pub async fn delete_oauth_app_binding(
                 &format!("/api/channels/{channel_id}/oauth-apps/{binding_id}"),
                 rest_token,
                 rest_tenant,
-            ).await
+            )
+            .await
         },
     )
     .await

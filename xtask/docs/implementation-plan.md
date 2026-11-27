@@ -703,8 +703,7 @@ validation. The generated adapter's Rust contract test passed. The platform
 CLI built with the generated registry and listed `blog canonical-post-route`.
 The command returned `{"route":"/modules/blog?slug=release-notes"}` as structured
 output. Invalid input and unsupported command `--dry-run` returned nonzero
-results with the expected typed errors. The scaffold matrix also generates
-and compiles an identity command for its headless fixture.
+results with the expected typed errors.
 
 ### 4. Owner implementation and optional publication — P2, per module
 

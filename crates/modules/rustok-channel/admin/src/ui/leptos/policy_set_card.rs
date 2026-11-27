@@ -70,11 +70,11 @@ pub(super) fn PolicySetCard(
         "Active",
     );
     let schema_label = t(ui_locale.as_deref(), "channel.policies.schema", "Schema");
-    let activate_label = t(
+    let activate_label = StoredValue::new(t(
         ui_locale.as_deref(),
         "channel.policies.activate",
         "Activate",
-    );
+    ));
     let empty_rules_title = t(
         ui_locale.as_deref(),
         "channel.policies.rules.emptyTitle",
@@ -101,34 +101,39 @@ pub(super) fn PolicySetCard(
         "Save Rule",
     );
     let add_rule_label = t(ui_locale.as_deref(), "channel.policies.addRule", "Add Rule");
-    let edit_rule_label = t(ui_locale.as_deref(), "channel.policies.editRule", "Edit");
-    let delete_rule_label = t(
+    let edit_rule_label =
+        StoredValue::new(t(ui_locale.as_deref(), "channel.policies.editRule", "Edit"));
+    let delete_rule_label = StoredValue::new(t(
         ui_locale.as_deref(),
         "channel.policies.deleteRule",
         "Delete",
-    );
-    let move_up_label = t(ui_locale.as_deref(), "channel.policies.moveUp", "Move Up");
-    let move_down_label = t(
+    ));
+    let move_up_label = StoredValue::new(t(
+        ui_locale.as_deref(),
+        "channel.policies.moveUp",
+        "Move Up",
+    ));
+    let move_down_label = StoredValue::new(t(
         ui_locale.as_deref(),
         "channel.policies.moveDown",
         "Move Down",
-    );
-    let enable_rule_label = t(
+    ));
+    let enable_rule_label = StoredValue::new(t(
         ui_locale.as_deref(),
         "channel.policies.enableRule",
         "Enable",
-    );
-    let disable_rule_label = t(
+    ));
+    let disable_rule_label = StoredValue::new(t(
         ui_locale.as_deref(),
         "channel.policies.disableRule",
         "Disable",
-    );
+    ));
     let inactive_rule_badge = t(
         ui_locale.as_deref(),
         "channel.policies.inactiveBadge",
         "Inactive",
     );
-    let cancel_label = t(ui_locale.as_deref(), "common.cancel", "Cancel");
+    let cancel_label = StoredValue::new(t(ui_locale.as_deref(), "common.cancel", "Cancel"));
     let any_surface_label = t(
         ui_locale.as_deref(),
         "channel.policies.surfaceAny",
@@ -380,7 +385,7 @@ pub(super) fn PolicySetCard(
                             });
                         })
                     >
-                        {activate_label.clone()}
+                        {activate_label.get_value()}
                     </Button>
                 </Show>
             </div>
@@ -473,7 +478,7 @@ pub(super) fn PolicySetCard(
                                                     }
                                                 })
                                             >
-                                                {edit_rule_label.clone()}
+                                                {edit_rule_label.get_value()}
                                             </Button>
                                             <Button
                                                 variant=ButtonVariant::Outline
@@ -521,7 +526,7 @@ pub(super) fn PolicySetCard(
                                                     });
                                                 })
                                             >
-                                                {move_up_label.clone()}
+                                                {move_up_label.get_value()}
                                             </Button>
                                             <Button
                                                 variant=ButtonVariant::Outline
@@ -569,7 +574,7 @@ pub(super) fn PolicySetCard(
                                                     });
                                                 })
                                             >
-                                                {move_down_label.clone()}
+                                                {move_down_label.get_value()}
                                             </Button>
                                             <Button
                                                 variant=ButtonVariant::Outline
@@ -628,9 +633,9 @@ pub(super) fn PolicySetCard(
                                                 })
                                             >
                                                 {if rule_is_active {
-                                                    disable_rule_label.clone()
+                                                    disable_rule_label.get_value()
                                                 } else {
-                                                    enable_rule_label.clone()
+                                                    enable_rule_label.get_value()
                                                 }}
                                             </Button>
                                             <Button
@@ -683,7 +688,7 @@ pub(super) fn PolicySetCard(
                                                     });
                                                 })
                                             >
-                                                {delete_rule_label.clone()}
+                                                {delete_rule_label.get_value()}
                                             </Button>
                                         </div>
                                     </div>
@@ -717,7 +722,7 @@ pub(super) fn PolicySetCard(
                                 }
                             })
                         >
-                            {cancel_label.clone()}
+                            {cancel_label.get_value()}
                         </Button>
                     </Show>
                 </div>
