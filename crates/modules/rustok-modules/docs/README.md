@@ -1538,9 +1538,10 @@ IPv4-compatible, well-known NAT64, 6to4 and ISATAP (RFC 5214) addresses are
 checked against their embedded IPv4 destination; ISATAP additionally requires
 a global-unicast IPv6 prefix.
 The RFC 8215 local-use NAT64 prefix is rejected outright because it is not
-globally reachable. Non-global IPv6 ranges and site-local, Teredo, benchmarking,
-documentation, discard-only, dummy, SRv6 and other non-globally-reachable
-special-purpose IPv6 ranges are rejected. More-specific
+globally reachable. Non-global IPv6 ranges, IANA-reserved global-unicast
+blocks, and site-local, Teredo, benchmarking, documentation, discard-only,
+dummy, SRv6 and other non-globally-reachable special-purpose IPv6 ranges are
+rejected. More-specific
 [IANA IPv6 special-purpose allocations](https://www.iana.org/assignments/iana-ipv6-special-registry)
 explicitly marked globally reachable remain available to an exact host grant.
 Redirects remain disabled and response bytes are streamed under an
