@@ -994,7 +994,10 @@ mod tests {
         assert_eq!(result.applied_bindings, 0);
         assert_eq!(result.unresolved_bindings, 1);
         assert_eq!(
-            result.document.component("title").and_then(|component| component.tag_name.as_deref()),
+            result
+                .document
+                .component("title")
+                .and_then(|component| component.tag_name.as_deref()),
             Some("span")
         );
         assert!(

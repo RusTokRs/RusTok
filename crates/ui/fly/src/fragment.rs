@@ -256,7 +256,9 @@ pub(crate) fn remap_fragment_asset_ids(
 
     let mut mapping = BTreeMap::new();
     for raw in assets {
-        let Some(asset) = AssetDescriptor::from_value(raw.clone()) else { continue };
+        let Some(asset) = AssetDescriptor::from_value(raw.clone()) else {
+            continue;
+        };
         reserved.insert(asset.id.clone());
         let conflicts_with_existing_record = existing_by_id
             .get(&asset.id)

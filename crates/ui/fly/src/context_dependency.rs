@@ -236,7 +236,12 @@ pub fn analyze_runtime_context_dependencies(
     diagnostics.extend(computed_diagnostics);
     let computed_evaluation_order = computed_order
         .into_iter()
-        .filter_map(|index| context.computed.get(index).map(|computed| computed.path.clone()))
+        .filter_map(|index| {
+            context
+                .computed
+                .get(index)
+                .map(|computed| computed.path.clone())
+        })
         .collect::<Vec<_>>();
 
     let declared_field_count = context.fields.len();
@@ -402,11 +407,9 @@ mod tests {
         }))
         .expect("document");
         let graph = analyze_runtime_context_dependencies(&document);
-        assert!(
-            graph.blocking_diagnostics().any(|diagnostic| {
-                diagnostic.code == "runtime_context_field_computed_target_overlap"
-            })
-        );
+        assert!(graph.blocking_diagnostics().any(|diagnostic| {
+            diagnostic.code == "runtime_context_field_computed_target_overlap"
+        }));
     }
 
     #[test]
@@ -451,7 +454,11 @@ mod tests {
         let graph = analyze_runtime_context_dependencies(&document);
         assert_eq!(graph.computed_evaluation_order, vec!["user", "label"]);
         let user_name = graph.node("user.name").expect("child dependency");
-        assert!(user_name.sources.contains(&RuntimeContextPathSource::Computed));
+        assert!(
+            user_name
+                .sources
+                .contains(&RuntimeContextPathSource::Computed)
+        );
         assert!(!user_name.is_external());
 
         let reverse = GrapesJsCodec::decode_value(json!({

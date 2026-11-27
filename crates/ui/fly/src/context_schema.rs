@@ -1882,10 +1882,26 @@ mod tests {
         };
 
         for (field_path, computed_path, expected_code) in [
-            ("user.name", "user", "runtime_context_field_computed_target_overlap"),
-            ("user", "user.name", "runtime_context_field_computed_target_overlap"),
-            ("$.user.name", "user.name", "runtime_context_path_shadowed_by_computed"),
-            ("items[0]", "items[00]", "runtime_context_path_shadowed_by_computed")
+            (
+                "user.name",
+                "user",
+                "runtime_context_field_computed_target_overlap",
+            ),
+            (
+                "user",
+                "user.name",
+                "runtime_context_field_computed_target_overlap",
+            ),
+            (
+                "$.user.name",
+                "user.name",
+                "runtime_context_path_shadowed_by_computed",
+            ),
+            (
+                "items[0]",
+                "items[00]",
+                "runtime_context_path_shadowed_by_computed",
+            ),
         ] {
             let document = make_document(field_path, computed_path);
             assert!(
@@ -1901,9 +1917,9 @@ mod tests {
 
         let disjoint = make_document("user", "username");
         assert!(
-            !validate_context_definitions(&disjoint)
-                .iter()
-                .any(|diagnostic| diagnostic.code == "runtime_context_field_computed_target_overlap")
+            !validate_context_definitions(&disjoint).iter().any(
+                |diagnostic| diagnostic.code == "runtime_context_field_computed_target_overlap"
+            )
         );
     }
 
