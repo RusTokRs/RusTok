@@ -1507,23 +1507,25 @@ impl FileSsrDraftSessionStore {
                         error = %error,
                         "unreadable draft session record outlived its TTL and is treated as expired"
                     );
-                    if self.collect_dead_record(&file_path, token, lock) == DeadRecord::Replaced {
-                        continue;
+                    match self.collect_dead_record(&file_path, token, lock)? {
+                        DeadRecord::Replaced => continue,
+                        DeadRecord::Removed | DeadRecord::Left => return Ok(None),
                     }
-                    return Ok(None);
                 }
             };
 
             record.validate_storage_key(token)?;
             if record.expires_at_unix_secs <= current_unix_secs() {
-                if self.collect_dead_record(&file_path, token, lock) == DeadRecord::Replaced {
-                    continue;
+                match self.collect_dead_record(&file_path, token, lock)? {
+                    DeadRecord::Replaced => continue,
+                    DeadRecord::Removed | DeadRecord::Left => return Ok(None),
                 }
-                return Ok(None);
             }
             return Ok(Some((file_path, record)));
         }
-        Ok(None)
+        Err(SsrDraftSessionError::Io(
+            "draft session changed repeatedly while loading; retry the request".to_string(),
+        ))
     }
 
     /// Deletes a record only if the exact generation and owner observed by a
@@ -1567,15 +1569,18 @@ impl FileSsrDraftSessionStore {
 
     /// Deletes the file of a session [`Self::read_located`] found to be over.
     /// A leftover is retried by the next read of the token or by `prune`.
-    fn collect_dead_record(&self, path: &Path, token: &str, lock: TokenLock) -> DeadRecord {
+    fn collect_dead_record(
+        &self,
+        path: &Path,
+        token: &str,
+        lock: TokenLock,
+    ) -> Result<DeadRecord, SsrDraftSessionError> {
         match lock {
-            TokenLock::Held => {
-                if discard_file(path, "expired record") {
-                    DeadRecord::Removed
-                } else {
-                    DeadRecord::Left
-                }
-            }
+            TokenLock::Held => Ok(if discard_file(path, "expired record") {
+                DeadRecord::Removed
+            } else {
+                DeadRecord::Left
+            }),
             TokenLock::NotHeld => self.remove_dead_record(path, token),
         }
     }
@@ -1586,12 +1591,16 @@ impl FileSsrDraftSessionStore {
     /// For callers that read the file without the token lock (`prune`, a
     /// plain load): the file is looked at again under the lock, so a commit
     /// that replaced the record after it was read is not deleted.
-    fn remove_dead_record(&self, path: &Path, token: &str) -> DeadRecord {
+    fn remove_dead_record(
+        &self,
+        path: &Path,
+        token: &str,
+    ) -> Result<DeadRecord, SsrDraftSessionError> {
         if !Self::is_safe_token(token) {
             // Not a record this store wrote.
-            return DeadRecord::Left;
+            return Ok(DeadRecord::Left);
         }
-        let outcome = self.with_lock(token, || {
+        self.with_lock(token, || {
             let dead = match fs::read_to_string(path) {
                 Ok(content) => match PersistentDraftSessionRecord::decode_str(&content) {
                     Ok(record) => record.expires_at_unix_secs <= current_unix_secs(),
@@ -1611,17 +1620,7 @@ impl FileSsrDraftSessionStore {
             } else {
                 DeadRecord::Left
             })
-        });
-        match outcome {
-            Ok(outcome) => outcome,
-            Err(error) => {
-                tracing::warn!(
-                    error = %error,
-                    "expired draft session record was not collected"
-                );
-                DeadRecord::Left
-            }
-        }
+        })
     }
 
     pub fn save_record(
@@ -1964,10 +1963,11 @@ impl FileSsrDraftSessionStore {
                     ));
                 }
                 // Expired or unreadable: decided again under the token lock.
-                _ => {
-                    if self.remove_dead_record(&path, token) == DeadRecord::Removed {
-                        pruned += 1;
-                    }
+                _ => match self.remove_dead_record(&path, token) {
+                    Ok(DeadRecord::Removed) => pruned += 1,
+                    Ok(DeadRecord::Replaced | DeadRecord::Left)
+                    | Err(SsrDraftSessionError::LockTimeout(_)) => {}
+                    Err(error) => return Err(error),
                 }
             }
         }
@@ -2537,7 +2537,7 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
     fn load_record(
         &self,
         token: &str,
-        _owner: Option<&DraftSessionOwner>,
+        owner: Option<&DraftSessionOwner>,
     ) -> Result<Option<PersistentDraftSessionRecord>, SsrDraftSessionError> {
         let token = token.trim();
         if token.is_empty() || !FileSsrDraftSessionStore::is_safe_token(token) {
@@ -2556,24 +2556,22 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
             // driver removes it when the TTL it was stored with runs out.
             let record = PersistentDraftSessionRecord::decode(&bytes)?;
             record.validate_storage_key(token)?;
+            ensure_session_owner(record.owner.as_ref(), owner)?;
             if record.expires_at_unix_secs > current_unix_secs() {
                 return Ok(Some(record));
             }
             match self.driver.compare_and_delete(&key, record.generation) {
                 Ok(true) => return Ok(None),
                 Ok(false) => continue,
-                // The record is expired whether or not the delete lands; the
-                // driver TTL and `prune` collect a leftover.
-                Err(err) => {
-                    tracing::warn!(
-                        error = %err,
-                        "expired draft session record could not be deleted"
-                    );
-                    return Ok(None);
-                }
+                // A failed conditional delete has an ambiguous outcome: a concurrent
+                // commit may have replaced the expired generation. Do not report the
+                // session as absent when the backend could not confirm the delete.
+                Err(error) => return Err(error),
             }
         }
-        Ok(None)
+        Err(SsrDraftSessionError::Io(
+            "draft session changed repeatedly while loading; retry the request".to_string(),
+        ))
     }
 
     fn save_record(
@@ -2662,14 +2660,20 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
         let mut scanned: HashMap<String, u64> = HashMap::new();
 
         for key in keys {
-            let record = self
-                .driver
-                .get(&key)
-                .ok()
-                .flatten()
-                .and_then(|bytes| PersistentDraftSessionRecord::decode(&bytes).ok());
-            if let Some(record) = record {
-                scanned.insert(key.clone(), record.generation);
+            let Some(bytes) = self.driver.get(&key)? else {
+                continue;
+            };
+            let record = match PersistentDraftSessionRecord::decode(&bytes) {
+                Ok(record) => record,
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        "unreadable draft session record was skipped during prune"
+                    );
+                    continue;
+                }
+            };
+            scanned.insert(key.clone(), record.generation);
                 if record.expires_at_unix_secs <= now_unix_secs {
                     deletions.insert(key);
                 } else {
@@ -3649,8 +3653,7 @@ enum DeadRecord {
     /// The file no longer holds a session that is over: a commit replaced
     /// the record after it was read.
     Replaced,
-    /// Nothing was deleted: the lock stayed busy, the delete failed, or the
-    /// file was already gone.
+    /// The record was expired, but deletion failed or the file was already gone.
     Left,
 }
 
@@ -6243,6 +6246,43 @@ mod tests {
     }
 
     #[test]
+    fn kv_backend_enforces_owner_on_direct_record_load() {
+        let driver = Arc::new(MemoryKvDriver::new());
+        let backend =
+            ExternalKvDraftSessionBackend::new(driver, Duration::from_secs(3600), 100);
+        let alice = owner("acme", "user-alice");
+        let bob = owner("acme", "user-bob");
+        let record = PersistentDraftSessionRecord {
+            format: DRAFT_SESSION_RECORD_FORMAT,
+            token: "tokOWN01".to_string(),
+            generation: 1,
+            controller: controller("home"),
+            runtime_context: json!({}),
+            owner: Some(alice.clone()),
+            expires_at_unix_secs: current_unix_secs() + 3600,
+            operation_receipts: Vec::new(),
+        };
+
+        assert!(
+            backend
+                .compare_and_save_record(None, &record)
+                .expect("seed owner-bound record")
+        );
+        assert!(matches!(
+            backend.load_record("tokOWN01", Some(&bob)),
+            Err(SsrDraftSessionError::OwnerMismatch)
+        ));
+        assert_eq!(
+            backend
+                .load_record("tokOWN01", Some(&alice))
+                .expect("owner load")
+                .expect("record")
+                .owner,
+            Some(alice)
+        );
+    }
+
+    #[test]
     fn kv_backend_compare_and_save_record_enforces_expected() {
         let driver = Arc::new(MemoryKvDriver::new());
         let backend = ExternalKvDraftSessionBackend::new(driver, Duration::from_secs(3600), 100);
@@ -7371,17 +7411,15 @@ mod tests {
             .join(UNATTRIBUTED_PARTITION)
             .join(format!("{}.json", created.token));
 
-        // A plain read holds no lock, and it could have read the file just
-        // before a commit replaced it. While a commit holds the lock the read
-        // cannot delete anything: it reports the session as gone and leaves
-        // the file alone.
+        // A plain read must not turn lock contention into a missing session:
+        // a writer may be replacing this expired generation while the reader waits.
         let lock = dir.join(LOCKS_DIR).join(format!("{}.lock", created.token));
         let held_lock = open_lock_file(&lock).expect("open held lock");
         held_lock.lock().expect("hold token lock");
-        assert_eq!(
-            store.load(&created.token, "home", None).expect("load"),
-            None
-        );
+        assert!(matches!(
+            store.load(&created.token, "home", None),
+            Err(SsrDraftSessionError::LockTimeout(_))
+        ));
         assert!(file.is_file());
 
         // With the OS lock released the same read collects the file.
@@ -7529,6 +7567,59 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    /// Key-value driver that simulates an ambiguous failure while deleting an
+    /// expired generation. Reads must surface the backend error rather than
+    /// treating the session as absent.
+    struct FailingCompareAndDeleteDriver {
+        inner: MemoryKvDriver,
+    }
+
+    impl DraftSessionKvDriver for FailingCompareAndDeleteDriver {
+        fn get(&self, key: &str) -> Result<Option<Vec<u8>>, SsrDraftSessionError> {
+            self.inner.get(key)
+        }
+
+        fn set(
+            &self,
+            key: &str,
+            value: &[u8],
+            cas: u64,
+            ttl_secs: u64,
+        ) -> Result<(), SsrDraftSessionError> {
+            self.inner.set(key, value, cas, ttl_secs)
+        }
+
+        fn compare_and_set(
+            &self,
+            key: &str,
+            expected_cas: Option<u64>,
+            value: &[u8],
+            cas: u64,
+            ttl_secs: u64,
+        ) -> Result<bool, SsrDraftSessionError> {
+            self.inner
+                .compare_and_set(key, expected_cas, value, cas, ttl_secs)
+        }
+
+        fn delete(&self, key: &str) -> Result<(), SsrDraftSessionError> {
+            self.inner.delete(key)
+        }
+
+        fn compare_and_delete(
+            &self,
+            _key: &str,
+            _expected_cas: u64,
+        ) -> Result<bool, SsrDraftSessionError> {
+            Err(SsrDraftSessionError::Io(
+                "injected compare-and-delete failure".to_string(),
+            ))
+        }
+
+        fn scan_keys(&self, prefix: &str) -> Result<Vec<String>, SsrDraftSessionError> {
+            self.inner.scan_keys(prefix)
+        }
+    }
+
     /// Key-value driver that runs a hook once, right before the first
     /// conditional delete reaches the store. That is where a commit of
     /// another pod can land after the backend has read an expired record.
@@ -7657,6 +7748,34 @@ mod tests {
                 .is_none()
         );
         assert!(driver.is_empty());
+    }
+
+    #[test]
+    fn kv_backend_surfaces_ambiguous_expired_record_cleanup_failures() {
+        let driver = Arc::new(FailingCompareAndDeleteDriver {
+            inner: MemoryKvDriver::new(),
+        });
+        kv_put(
+            &driver.inner,
+            "tokEXP03",
+            4,
+            current_unix_secs().saturating_sub(1),
+        );
+        let backend =
+            ExternalKvDraftSessionBackend::new(driver.clone(), Duration::from_secs(3600), 100);
+
+        assert!(matches!(
+            backend.load_record("tokEXP03", None),
+            Err(SsrDraftSessionError::Io(message))
+                if message == "injected compare-and-delete failure"
+        ));
+        assert!(
+            driver
+                .inner
+                .get(&kv_key("tokEXP03"))
+                .expect("record remains in the backend")
+                .is_some()
+        );
     }
 
     #[test]
