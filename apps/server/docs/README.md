@@ -2173,7 +2173,7 @@ locks; stale replay outside grace is still revoked, but no replacement token is
 issued. The replay check deliberately re-reads current session state rather
 than trusting a preflight hash snapshot. Logout and explicit revocation remain
 security-reducing operations and do not require an active tenant. See the
-[tenant admission fence ADR](../../DECISIONS/2026-11-28-auth-session-tenant-admission.md).
+[tenant admission fence ADR](../../../DECISIONS/2026-11-28-auth-session-tenant-admission.md).
 Regression cases authored; full Rust compilation and runtime tests remain
 unverified because the workspace check currently fails earlier in
 `rustok-outbox-storage`.
