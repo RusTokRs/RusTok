@@ -28,6 +28,7 @@ const files = {
   committed: "apps/server/src/services/rbac_committed_mutations.rs",
   roleMutation: "crates/modules/rustok-rbac/src/role_mutation.rs",
   generation: "crates/modules/rustok-rbac/src/invalidation_generation.rs",
+  staticGeneration: "crates/modules/rustok-rbac/src/m20261127_000207_couple_static_relation_generation.rs",
   testDb: "crates/utils/rustok-test-utils/src/db.rs",
   evidence:
     "crates/modules/rustok-rbac/contracts/evidence/rbac-postgres-concurrency-source.json",
@@ -82,10 +83,10 @@ for (const forbidden of [
 ]) forbidText(sources.harness, forbidden, `${files.harness}: shortcut`);
 
 for (const marker of [
-  "rustok_rbac::replace_persisted_user_role_on(&tx, *tenant_id, *user_id, role)",
-  "reserve_rbac_invalidation_generation(&tx)",
+  "rustok_rbac::replace_persisted_user_role_on(&tx, *tenant_id, *user_id, role.clone())",
+  "flush_rbac_static_relation_generation(&tx)",
   "tx.commit().await?",
-]) requireText(sources.committed, marker, `${files.committed}: production mutation path`);
+]) requireNormalizedText(sources.committed, marker, `${files.committed}: production mutation path`);
 
 for (const marker of [
   "pub async fn replace_persisted_user_role_on(",
@@ -99,9 +100,29 @@ for (const marker of [
   "db: &DatabaseTransaction",
   "UPDATE rbac_invalidation_state",
   "SET generation = generation + 1",
-  "if update.rows_affected() != 1",
+  "RETURNING generation",
+  ".ok_or(RbacInvalidationGenerationError::MissingOrExhausted)?",
+  "pub async fn flush_static_relation_invalidation_generation(",
+  "SET CONSTRAINTS {TRIGGERS} {timing}",
   "read_permission_invalidation_generation(db).await",
-]) requireText(sources.generation, marker, `${files.generation}: generation authority`);
+]) requireNormalizedText(sources.generation, marker, `${files.generation}: generation authority`);
+
+for (const marker of [
+  "CREATE FUNCTION rbac_advance_static_relation_generation()",
+  "LOCK TABLE rbac_invalidation_state IN ROW EXCLUSIVE MODE NOWAIT",
+  "FOR UPDATE NOWAIT",
+  "UPDATE rbac_invalidation_state SET generation = generation + 1",
+  "IF NOT FOUND THEN",
+  "CREATE CONSTRAINT TRIGGER rbac_static_membership_generation_change",
+  "CREATE CONSTRAINT TRIGGER rbac_static_grant_generation_change",
+  "CREATE CONSTRAINT TRIGGER rbac_static_role_identity_generation",
+  "RAISE EXCEPTION 'Static RBAC invalidation watermark busy' USING ERRCODE = '55P03'",
+  "typeof(generation) = 'integer'",
+]) requireNormalizedText(
+  sources.staticGeneration,
+  marker,
+  `${files.staticGeneration}: static relation generation authority`,
+);
 
 for (const marker of [
   "pub async fn connect_postgres",
