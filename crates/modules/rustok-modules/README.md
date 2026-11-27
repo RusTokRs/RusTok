@@ -235,10 +235,14 @@ production readiness. The documented implementation and operational gaps include
   static rollouts are missing. Installer seed enables fail closed because they
   cannot yet compose release-bound settings schemas, and recovery and retry
   paths need production evidence.
-- Artifact-data object migration and the physical namespace cutover still need
-  production fleet/job/write/recovery/retention fences, actual migration-object
-  copy publication, PostgreSQL crash/race evidence, a separate full-manifest
-  serving cutover, and safe orphan collection.
+- Server-composed `platform.data.objects` now uses the SQL capability effect
+  fence for object metadata, receipts, upload-session/chunk transitions and
+  replay paths; object-read output is revalidated after storage fetch. Physical
+  object-store bytes remain outside SQL transactions, so artifact-data object
+  migration and the physical namespace cutover still need production
+  fleet/job/write/recovery/retention fences, actual migration-object copy
+  publication, PostgreSQL crash/race evidence, a separate full-manifest
+  serving cutover, ambiguous-outcome reconciliation and safe orphan collection.
 - Structured namespace purge requires a direct operator's transaction-bound
   credential, live RBAC/module policy and admitted grant ceiling, acquired before
   installation locks and receipt reads. Every commit checks the credential
