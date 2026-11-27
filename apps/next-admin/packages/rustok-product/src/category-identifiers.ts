@@ -14,7 +14,7 @@ const MAX_CATEGORY_CODE_CHARACTERS = 128;
 function canonicalSlug(value: string): string {
   const normalized = value.normalize('NFC').toLowerCase();
   let slug = Array.from(normalized)
-    .filter((character) => /[\\p{L}\\p{N}\\- _]/u.test(character))
+    .filter((character) => /[\p{L}\p{N}\\- _]/u.test(character))
     .map((character) =>
       character === ' ' || character === '_' ? '-' : character
     )
@@ -78,7 +78,7 @@ export function categoryCodeFromName(value: string): string {
   if (!value.trim()) return '';
   const normalized = value.normalize('NFKD').toLowerCase();
   const ascii = normalized
-    .replace(/[\\p{M}]/gu, '')
+    .replace(/[\p{M}]/gu, '')
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
 
