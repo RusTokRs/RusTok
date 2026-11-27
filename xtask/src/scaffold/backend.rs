@@ -620,10 +620,7 @@ mod tests {
         assert!(file("src/module.rs").contains("Permission::new(Resource::Posts, Action::List)"));
         let manifest: toml::Table = toml::from_str(file("rustok-module.toml")).unwrap();
         let graphql = &manifest["provides"]["graphql"];
-        assert_eq!(
-            graphql["query"].as_str(),
-            Some("graphql::ExampleQuery")
-        );
+        assert_eq!(graphql["query"].as_str(), Some("graphql::ExampleQuery"));
         assert_eq!(
             graphql["mutation"].as_str(),
             Some("graphql::ExampleAdminMutation")

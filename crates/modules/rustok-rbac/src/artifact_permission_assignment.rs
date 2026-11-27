@@ -410,10 +410,17 @@ async fn role_exists(
 ) -> Result<bool, ArtifactPermissionAssignmentError> {
     let backend = transaction.get_database_backend();
     // Serialize against role deletion even for trusted owner-only callers.
-    let sql = placeholders(backend, match backend {
-        sea_orm::DbBackend::Postgres => "SELECT 1 FROM roles WHERE id = {role_id} AND tenant_id = {tenant_id} FOR UPDATE",
-        _ => "UPDATE roles SET id = id WHERE id = {role_id} AND tenant_id = {tenant_id} RETURNING id",
-    });
+    let sql = placeholders(
+        backend,
+        match backend {
+            sea_orm::DbBackend::Postgres => {
+                "SELECT 1 FROM roles WHERE id = {role_id} AND tenant_id = {tenant_id} FOR UPDATE"
+            }
+            _ => {
+                "UPDATE roles SET id = id WHERE id = {role_id} AND tenant_id = {tenant_id} RETURNING id"
+            }
+        },
+    );
     Ok(transaction
         .query_one_raw(Statement::from_sql_and_values(
             backend,

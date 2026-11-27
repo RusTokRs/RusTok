@@ -376,7 +376,11 @@ pub struct VariantDraft {
     pub shipping_profile_slug: Option<String>,
     #[serde(rename = "axisValues", default)]
     pub axis_values: Vec<VariantAxisValueDraft>,
-    #[serde(rename = "attributeValues", default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        rename = "attributeValues",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub attribute_values: Vec<ProductAttributeValueBatchDraft>,
     pub prices: Vec<VariantPriceDraft>,
     #[serde(rename = "inventoryQuantity")]
@@ -408,7 +412,11 @@ pub struct VariantUpdateDraft {
     pub weight_unit: rustok_api::Patch<String>,
     #[serde(rename = "axisValues", default)]
     pub axis_values: Vec<VariantAxisValueDraft>,
-    #[serde(rename = "attributeValues", default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        rename = "attributeValues",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub attribute_values: Vec<ProductAttributeValueBatchDraft>,
     #[serde(default)]
     pub prices: Vec<VariantPriceDraft>,
@@ -572,7 +580,10 @@ impl VariantUpdateDraft {
             || self.weight.is_changed()
             || self.weight_unit.is_changed()
             || !self.axis_values.is_empty()
-            || self.attribute_values.iter().any(|batch| !batch.patches.is_empty())
+            || self
+                .attribute_values
+                .iter()
+                .any(|batch| !batch.patches.is_empty())
             || self.prices_changed
             || self.inventory_quantity.is_some()
             || self.inventory_policy.is_some()

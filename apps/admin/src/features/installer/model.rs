@@ -95,7 +95,10 @@ impl InstallJobState {
     }
 
     pub fn should_load_receipts(self) -> bool {
-        matches!(self, Self::Succeeded | Self::Failed | Self::RecoveryRequired)
+        matches!(
+            self,
+            Self::Succeeded | Self::Failed | Self::RecoveryRequired
+        )
     }
 }
 
@@ -137,7 +140,6 @@ pub struct InstallReceiptRow {
     pub installer_version: String,
     pub created_at: DateTime<Utc>,
 }
-
 
 #[cfg(test)]
 mod tests {

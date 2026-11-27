@@ -155,7 +155,9 @@ mod tests {
         assert_eq!(domain.attribute_values.len(), 1);
         assert_eq!(domain.attribute_values[0].locale, "en");
         assert_eq!(
-            domain.attribute_values[0].patches[0].attribute_id.to_string(),
+            domain.attribute_values[0].patches[0]
+                .attribute_id
+                .to_string(),
             "00000000-0000-4000-8000-000000000003"
         );
         assert_eq!(

@@ -45,12 +45,12 @@ mod contract_tests;
 pub use module::AuthModule;
 
 pub use admin_mutations::{
+    AdminCredentialRequest, AuthAdminCredentialResolver, AuthAdminCredentialResolverHandle,
     AuthAdminMutationContext, AuthAdminMutationError, AuthorizedOAuthAppRecord,
-    AdminCredentialRequest, AuthAdminCredentialResolver, AuthAdminCredentialResolverHandle, CredentialAuthority, OAuthAdminCredentialEvidence,
-    CreateOAuthAppCommand, CreateUserCommand, IssueUserInviteCommand, IssuedUserInviteResult,
-    OAuthAdminPort, OAuthAdminRuntime, OAuthAppMutationRecord, OAuthAppSecretResult,
-    UpdateOAuthAppCommand, UpdateUserCommand, UserAdminMutationPort, UserAdminMutationRuntime,
-    UserInviteRecord, UserMutationRecord,
+    CreateOAuthAppCommand, CreateUserCommand, CredentialAuthority, IssueUserInviteCommand,
+    IssuedUserInviteResult, OAuthAdminCredentialEvidence, OAuthAdminPort, OAuthAdminRuntime,
+    OAuthAppMutationRecord, OAuthAppSecretResult, UpdateOAuthAppCommand, UpdateUserCommand,
+    UserAdminMutationPort, UserAdminMutationRuntime, UserInviteRecord, UserMutationRecord,
 };
 pub use backfill::AuthUserBackfillDbReader;
 pub use bootstrap::{AuthUserBootstrapDbWriter, AuthUserBootstrapRecord, AuthUserBootstrapRequest};

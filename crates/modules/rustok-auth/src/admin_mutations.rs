@@ -440,9 +440,13 @@ mod tests {
     fn credential_debug_never_exposes_registration_digest() {
         let authority = CredentialAuthority::ServiceOAuth {
             registration: OAuthAdminCredentialEvidence {
-                registration_id: Uuid::new_v4(), app_id: Uuid::new_v4(), client_id: Uuid::new_v4(),
-                token_hash: "private-registration-digest".into(), issued_at: Utc::now(),
-                consent_granted_at: None, scopes: vec!["settings:manage".into()],
+                registration_id: Uuid::new_v4(),
+                app_id: Uuid::new_v4(),
+                client_id: Uuid::new_v4(),
+                token_hash: "private-registration-digest".into(),
+                issued_at: Utc::now(),
+                consent_granted_at: None,
+                scopes: vec!["settings:manage".into()],
             },
             expires_at: Utc::now(),
         };

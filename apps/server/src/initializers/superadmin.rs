@@ -275,9 +275,10 @@ mod tests {
     #[tokio::test]
     async fn default_superadmin_bootstrap_publishes_registration_event() {
         let ctx = test_context().await;
-        let tenant = tenants::find_or_create(ctx.db(), "Bootstrap tenant", "bootstrap-tenant", None)
-            .await
-            .expect("tenant");
+        let tenant =
+            tenants::find_or_create(ctx.db(), "Bootstrap tenant", "bootstrap-tenant", None)
+                .await
+                .expect("tenant");
 
         ensure_configured_superadmin(
             &ctx,

@@ -512,13 +512,25 @@ async fn bind_admin_credential(
     locale: Option<String>,
 ) -> Result<rustok_auth::AuthAdminMutationContext, ServerFnError> {
     let principal = leptos_axum::extract::<rustok_api::AuthPrincipalContext>()
-        .await.map_err(|_| server_error("Authenticated principal context is required".to_string()))?;
-    let resolver = extensions.get::<rustok_auth::AuthAdminCredentialResolverHandle>()
+        .await
+        .map_err(|_| server_error("Authenticated principal context is required".to_string()))?;
+    let resolver = extensions
+        .get::<rustok_auth::AuthAdminCredentialResolverHandle>()
         .ok_or_else(|| server_error("Auth admin credential resolver is unavailable".to_string()))?;
-    resolver.0.bind(rustok_auth::AdminCredentialRequest {
-        tenant_id: auth.tenant_id, user_id: auth.user_id, session_id: auth.session_id,
-        client_id: auth.client_id, grant_type: &auth.grant_type, scopes: &auth.scopes,
-    }, principal.kind, locale)
+    resolver
+        .0
+        .bind(
+            rustok_auth::AdminCredentialRequest {
+                tenant_id: auth.tenant_id,
+                user_id: auth.user_id,
+                session_id: auth.session_id,
+                client_id: auth.client_id,
+                grant_type: &auth.grant_type,
+                scopes: &auth.scopes,
+            },
+            principal.kind,
+            locale,
+        )
         .map_err(|_| server_error("Auth admin credential binding failed".to_string()))
 }
 

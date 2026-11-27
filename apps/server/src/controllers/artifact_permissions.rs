@@ -13,6 +13,7 @@ use axum::{
 use rustok_api::{AuthContext, AuthPrincipalContext, Permission, has_effective_permission};
 use rustok_events::RbacArtifactPermissionEvent;
 use rustok_outbox::TransactionalEventBus;
+use rustok_rbac::graphql::{RbacGraphqlRoleWriteError, RbacMutationAuthorityHandle};
 use rustok_rbac::{
     ArtifactPermissionAssignmentError, ArtifactPermissionAssignmentScope,
     ArtifactPermissionEventPublisher, ArtifactRolePermissionAssignmentCommand,
@@ -21,7 +22,6 @@ use rustok_rbac::{
 };
 use rustok_web::json_response;
 use sea_orm::{DatabaseTransaction, TransactionTrait};
-use rustok_rbac::graphql::{RbacMutationAuthorityHandle, RbacGraphqlRoleWriteError};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -180,28 +180,47 @@ async fn assign(
         transactional_event_bus_from_context(ctx),
     ));
     let service = RbacArtifactPermissionAssignmentService::new(ctx.db_clone(), event_publisher);
-    let extensions = ctx.shared_get::<Arc<rustok_core::ModuleRuntimeExtensions>>()
+    let extensions = ctx
+        .shared_get::<Arc<rustok_core::ModuleRuntimeExtensions>>()
         .ok_or(Error::InternalServerError)?;
-    let authority = extensions.get::<RbacMutationAuthorityHandle>()
-        .cloned().ok_or(Error::InternalServerError)?;
+    let authority = extensions
+        .get::<RbacMutationAuthorityHandle>()
+        .cloned()
+        .ok_or(Error::InternalServerError)?;
     authority.0.prepare().await.map_err(map_authority_error)?;
     let tx = ctx.db().begin().await?;
-    let locked = authority.0.lock(&tx, tenant_id, actor_id, Some(role_id), &[Permission::MODULES_MANAGE])
-        .await.map_err(map_authority_error)?;
-    let result = service
-        .assign_in_transaction(&tx, ArtifactRolePermissionAssignmentCommand {
+    let locked = authority
+        .0
+        .lock(
+            &tx,
             tenant_id,
-            role_id,
-            scope: input.scope.into(),
-            installation_id: input.installation_id,
-            permission_key: input.permission_key,
             actor_id,
-            granted,
-            idempotency_key,
-        })
+            Some(role_id),
+            &[Permission::MODULES_MANAGE],
+        )
+        .await
+        .map_err(map_authority_error)?;
+    let result = service
+        .assign_in_transaction(
+            &tx,
+            ArtifactRolePermissionAssignmentCommand {
+                tenant_id,
+                role_id,
+                scope: input.scope.into(),
+                installation_id: input.installation_id,
+                permission_key: input.permission_key,
+                actor_id,
+                granted,
+                idempotency_key,
+            },
+        )
         .await
         .map_err(map_assignment_error)?;
-    authority.0.ensure_deadline(&tx, &locked).await.map_err(map_authority_error)?;
+    authority
+        .0
+        .ensure_deadline(&tx, &locked)
+        .await
+        .map_err(map_authority_error)?;
     tx.commit().await?;
     Ok(json_response(ArtifactRolePermissionAssignmentResponse {
         applied: result.applied,
@@ -239,7 +258,8 @@ fn ensure_modules_manage(permissions: &[Permission]) -> Result<()> {
 fn map_authority_error(error: RbacGraphqlRoleWriteError) -> Error {
     match error {
         RbacGraphqlRoleWriteError::Forbidden(_) => http_error(rustok_web::HttpError::forbidden(
-            "forbidden", "Current direct-session artifact permission authority required",
+            "forbidden",
+            "Current direct-session artifact permission authority required",
         )),
         RbacGraphqlRoleWriteError::NotFound(_) => Error::NotFound,
         _ => Error::InternalServerError,

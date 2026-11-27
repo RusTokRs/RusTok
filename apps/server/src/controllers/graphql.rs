@@ -784,9 +784,8 @@ async fn build_ws_connection_data(
             .await
             .map_err(|(_, message)| async_graphql::Error::new(message))?;
 
-    let request_scope = RbacRequestScope::authenticated(
-        &current_user, current_user.access_token_expires_at,
-    );
+    let request_scope =
+        RbacRequestScope::authenticated(&current_user, current_user.access_token_expires_at);
 
     let locale = resolve_ws_locale(&runtime_ctx, &tenant_ctx, payload.locale.as_deref()).await?;
     let channel_facts = crate::middleware::channel::build_request_facts_for_context(
