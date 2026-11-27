@@ -105,6 +105,7 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
                 "m20261126_000060_enforce_oauth_family_identity",
                 "m20250101_000004_create_sessions",
                 "m20261127_000011_session_evidence_integrity",
+                "m20261025_000003_add_session_reuse_detection",
             ],
         ),
         MigrationDependencyDescriptor::new(

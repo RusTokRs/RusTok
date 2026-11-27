@@ -1426,7 +1426,7 @@ async fn websocket_lease_revalidates_live_authority_and_fails_closed() {
         .await
         .expect("resolve initial authority");
     assert_eq!(current.access_token_expires_at, deadline);
-    let lease = WebSocketAuthLease::new(token, &current);
+    let lease = WebSocketAuthLease::new(token.clone(), &current);
     assert_eq!(lease.expires_at, deadline);
     assert!(lease.revalidate(&runtime).await.is_ok());
 
@@ -1441,11 +1441,14 @@ async fn websocket_lease_revalidates_live_authority_and_fails_closed() {
         Err(WebSocketAuthLeaseError::AuthorityChanged)
     );
     session.absolute_expires_at = Set(Some(deadline.into()));
-    session
-        .update(&db)
-        .await
-        .expect("restore original deadline");
-    assert!(lease.revalidate(&runtime).await.is_ok());
+    assert!(
+        session.update(&db).await.is_err(),
+        "a shortened absolute deadline cannot be restored"
+    );
+    assert_eq!(
+        lease.revalidate(&runtime).await,
+        Err(WebSocketAuthLeaseError::AuthorityChanged)
+    );
 
     let mut monotonic = lease.clone();
     monotonic.expired = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -1474,6 +1477,10 @@ async fn websocket_lease_revalidates_live_authority_and_fails_closed() {
         Err(WebSocketAuthLeaseError::Expired)
     );
 
+    let current = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await.expect("resolve shortened authority");
+    let lease = WebSocketAuthLease::new(token, &current);
+    assert!(lease.revalidate(&runtime).await.is_ok());
     rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(
         &db,
         tenant.id,

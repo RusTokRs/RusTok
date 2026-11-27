@@ -1232,14 +1232,17 @@ evidence cannot be rewritten to forge a rotation; a revoked consent retains
 its original grant and subject. The canonical grant writer always invalidates exact-subject tokens and codes,
 retires the active consent if present, and inserts a fresh UUID in the same
 transaction. It never selects or revives a historical row, even after repeated
-grants. Direct active consent updates are not yet forbidden by the schema. OAuth application reactivation is
+grants. Consent scopes and granted_at are immutable even while active. OAuth application reactivation is
 unchanged. SQLite prevents hidden-rowid replacement on tokens, codes and
 consents and implicit replacement of an active consent by another UUID.
 Issued OAuth token scopes/expiry and authorization-code subject, redirect,
 scopes, PKCE and creation/expiry claims cannot be modified after issuance.
-Pre-cutover removed identities, reuse of a consent epoch under a fresh UUID,
-direct session deadline mutation, and privileged DDL/restore remain outside
-this protection. Source regressions unrun.
+An explicit session absolute deadline may be shortened but not cleared or
+extended; NULL legacy deadlines can be materialized, and the runtime still
+applies the original creation-time cap. SQLite rejects ambiguous changes
+within its date comparison precision. Pre-cutover removed identities, reuse
+of a consent timestamp under a fresh UUID, sliding expiry manipulation, and
+privileged DDL/restore remain outside this protection. Source regressions unrun.
 
 ## OAuth consent revocation retry admission
 

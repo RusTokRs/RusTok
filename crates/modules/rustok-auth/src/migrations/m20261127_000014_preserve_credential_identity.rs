@@ -97,6 +97,7 @@ const TERMINAL_FIELDS: &[(&str, &str)] = &[
 // not a mutable request that can acquire new scopes or PKCE parameters.
 const ISSUED_CLAIMS: &[(&str, &[&str])] = &[
     ("oauth_tokens", &["scopes", "expires_at"]),
+    ("oauth_consents", &["scopes", "granted_at"]),
     ("oauth_authorization_codes", &[
         "app_id", "user_id", "tenant_id", "redirect_uri", "scopes",
         "code_challenge", "code_challenge_method", "expires_at", "created_at",
@@ -125,6 +126,17 @@ BEGIN
     RETURN NEW;
 END; $$;
 
+CREATE FUNCTION auth_guard_session_absolute_deadline() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.absolute_expires_at IS NOT NULL AND
+       (NEW.absolute_expires_at IS NULL OR NEW.absolute_expires_at > OLD.absolute_expires_at) THEN
+        RAISE EXCEPTION 'Session absolute deadline cannot be extended' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END; $$;
+CREATE TRIGGER auth_session_absolute_deadline_guard BEFORE UPDATE ON sessions
+FOR EACH ROW EXECUTE FUNCTION auth_guard_session_absolute_deadline();
+
 CREATE FUNCTION auth_guard_revoked_oauth_rotation() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     IF OLD.revoked_at IS NOT NULL AND NEW.last_used_at IS DISTINCT FROM OLD.last_used_at THEN
@@ -150,6 +162,18 @@ FOR EACH ROW EXECUTE FUNCTION auth_guard_consent_identity();
 "#;
 
 const SQLITE_TERMINAL: &str = r#"
+-- SQLite timestamp storage can include offsets and different text formats.
+-- A changed deadline must be strictly earlier at SQLite's available date
+-- precision; indistinguishable sub-millisecond changes fail closed.
+CREATE TRIGGER auth_session_absolute_deadline_guard BEFORE UPDATE ON sessions
+WHEN NEW.absolute_expires_at IS NOT OLD.absolute_expires_at AND (
+    NEW.absolute_expires_at IS NULL OR
+    julianday(NEW.absolute_expires_at) IS NULL OR
+    (OLD.absolute_expires_at IS NOT NULL AND
+        (julianday(OLD.absolute_expires_at) IS NULL OR
+         julianday(NEW.absolute_expires_at) >= julianday(OLD.absolute_expires_at))))
+BEGIN SELECT RAISE(ABORT, 'Session absolute deadline cannot be extended'); END;
+
 CREATE TRIGGER auth_oauth_rotation_evidence_guard BEFORE UPDATE ON oauth_tokens
 WHEN OLD.revoked_at IS NOT NULL AND NEW.last_used_at IS NOT OLD.last_used_at
 BEGIN SELECT RAISE(ABORT, 'OAuth terminal rotation evidence is immutable'); END;
@@ -401,6 +425,7 @@ mod tests {
              INSERT INTO oauth_tokens (id, token_hash, family_id, token_kind, revoked_at) VALUES ('{A}', 'old-token', '{A}', 'refresh', NULL);
              INSERT INTO oauth_authorization_codes (id, code_hash) VALUES ('{A}', 'old-code');
              ALTER TABLE sessions ADD COLUMN revoked_at TIMESTAMP;
+             ALTER TABLE sessions ADD COLUMN absolute_expires_at TIMESTAMP WITH TIME ZONE;
              ALTER TABLE oauth_tokens ADD COLUMN last_used_at TIMESTAMP;
              ALTER TABLE oauth_authorization_codes ADD COLUMN used_at TIMESTAMP;
              ALTER TABLE oauth_tokens ADD COLUMN scopes TEXT NOT NULL DEFAULT 'profile';
@@ -523,6 +548,8 @@ mod tests {
     fn issued_claim_writes() -> Vec<String> {
         vec![
             "UPDATE oauth_tokens SET scopes = 'other'".into(),
+            "UPDATE oauth_consents SET scopes = 'other'".into(),
+            "UPDATE oauth_consents SET granted_at = '2026-01-02'".into(),
             "UPDATE oauth_tokens SET expires_at = '2026-03-01'".into(),
             format!("UPDATE oauth_authorization_codes SET app_id = '{D}'"),
             format!("UPDATE oauth_authorization_codes SET user_id = '{D}'"),
@@ -533,6 +560,15 @@ mod tests {
             "UPDATE oauth_authorization_codes SET code_challenge_method = 'plain'".into(),
             "UPDATE oauth_authorization_codes SET expires_at = '2026-03-01'".into(),
             "UPDATE oauth_authorization_codes SET created_at = '2026-01-02'".into(),
+        ]
+    }
+
+    fn deadline_extensions() -> Vec<&'static str> {
+        vec![
+            "UPDATE sessions SET absolute_expires_at = NULL",
+            "UPDATE sessions SET absolute_expires_at = '2026-02-01'",
+            // Text looks earlier but the offset makes the instant later.
+            "UPDATE sessions SET absolute_expires_at = '2026-01-14 23:59:59-02:00'",
         ]
     }
 
@@ -562,15 +598,20 @@ mod tests {
         }
         db.execute_unprepared("UPDATE oauth_tokens SET scopes = scopes;
             UPDATE oauth_authorization_codes SET expires_at = expires_at").await.unwrap();
-        // Editing the scopes of an active consent remains legal.
-        db.execute_unprepared("UPDATE oauth_consents SET scopes = 'email'").await.unwrap();
+        db.execute_unprepared("UPDATE oauth_consents SET scopes = scopes").await.unwrap();
+        db.execute_unprepared("UPDATE sessions SET absolute_expires_at = '2026-02-01';
+            UPDATE sessions SET absolute_expires_at = '2026-01-15';
+            UPDATE sessions SET absolute_expires_at = absolute_expires_at").await.unwrap();
+        for sql in deadline_extensions() {
+            assert!(db.execute_unprepared(&sql).await.is_err(), "{sql}");
+        }
         assert!(db.execute_unprepared(&format!(
             "INSERT OR REPLACE INTO oauth_consents VALUES ('{D}', '{A}', '{B}', '{C}', 'other', '2026-01-02', NULL)"
         )).await.is_err());
         let tx = db.begin().await.unwrap();
         revoke_fixture(&tx).await;
         tx.rollback().await.unwrap();
-        db.execute_unprepared("UPDATE oauth_consents SET scopes = 'profile'").await.unwrap();
+        db.execute_unprepared("UPDATE oauth_consents SET scopes = scopes").await.unwrap();
         revoke_fixture(&db).await;
         for sql in terminal_writes().into_iter().chain([
             format!("INSERT OR REPLACE INTO oauth_tokens (rowid, id, token_hash, family_id, token_kind)
@@ -602,7 +643,16 @@ mod tests {
         fixture(&tx).await;
         seed_consent(&tx).await;
         Migration.up(&SchemaManager::new(&tx)).await.unwrap();
+        tx.execute_unprepared("UPDATE sessions SET absolute_expires_at = '2026-02-01';
+            UPDATE sessions SET absolute_expires_at = '2026-01-15';
+            UPDATE sessions SET absolute_expires_at = absolute_expires_at").await.unwrap();
         tx.commit().await.unwrap();
+        for sql in deadline_extensions() {
+            let tx = db.begin().await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+            assert!(tx.execute_unprepared(sql).await.is_err(), "{sql}");
+            tx.rollback().await.unwrap();
+        }
         // Verify the claims guard before revocation: a live credential
         // cannot acquire a different grant or a longer lifetime.
         for sql in issued_claim_writes() {

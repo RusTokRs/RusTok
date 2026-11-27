@@ -1282,11 +1282,17 @@ impl AuthLifecycleService {
             .insert(&txn)
             .await
             .map_err(AuthLifecycleError::from)?;
+            let materialize_absolute_deadline = session.absolute_expires_at.is_none();
             let mut session_model: sessions::ActiveModel = session.into();
             session_model.token_hash = Set(new_token_hash);
             session_model.previous_token_hash = Set(Some(replaced_token_hash));
             session_model.previous_token_revoked_at = Set(Some(now.into()));
-            session_model.absolute_expires_at = Set(Some(absolute_deadline.into()));
+            // A legacy NULL deadline is materialized once. Existing
+            // explicit caps need no rewrite: absolute_deadline() already
+            // clamps them to the original creation-time bound.
+            if materialize_absolute_deadline {
+                session_model.absolute_expires_at = Set(Some(absolute_deadline.into()));
+            }
             session_model.expires_at = Set(expires_at.into());
             session_model.last_used_at = Set(Some(now.into()));
             let persisted = session_model

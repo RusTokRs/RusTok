@@ -756,3 +756,10 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   instead of modifying an issued registration. Database regressions cover
   attempted live-claim mutation and no-op updates. Session deadline and
   durable consent epoch binding remain open. Source regressions unrun.
+
+- Consent grant claims are immutable after birth, including active grants.
+  Explicit session absolute deadlines only narrow; refresh materializes a
+  legacy NULL once and otherwise preserves the stored cap. SQLite rejects
+  ambiguous timestamp changes rather than allowing a possible extension.
+  Timestamp-independent consent binding and sliding expiry remain open.
+  Source regressions unrun.

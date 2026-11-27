@@ -361,3 +361,11 @@ under ordinary PostgreSQL and SQLite DML. Revocation and consumption remain
 permitted; existing token lineage guards remain authoritative. Runtime
 admission still validates claims to reject malformed legacy records and
 never relies solely on schema constraints. Source regressions unrun.
+
+Consent scope and granted_at claims are immutable even before revocation;
+canonical re-grant publishes a fresh consent row instead. Session absolute
+deadlines cannot be cleared or extended once explicitly stored; rotation
+materializes legacy NULL once, while runtime continues to clamp against the
+original creation-time cap. SQLite rejects ambiguous date comparisons.
+The UUID-based consent credential binding is still outstanding. Source
+regressions unrun.
