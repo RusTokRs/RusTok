@@ -236,3 +236,11 @@ keys; projection reads the corresponding persisted keys in order. Migration
 000016 rejects late PostgreSQL catalog FK parent waits and adds nonwaiting
 relation admission to artifact grant/receipt guards. SQLite retains its
 serialized writer and existing FKs. PostgreSQL regression authored, unrun.
+
+Migration 000017 couples actual artifact grant SQL changes to the existing
+RBAC watermark, including direct INSERT/DELETE and changed grant identity.
+PostgreSQL defers advancement to commit and rejects late role or watermark
+contention without waiting; SQLite advances under its writer reservation.
+The owner no longer explicitly reserves a second generation for artifact
+assignment. Cutover advances once to invalidate older continuity receipts.
+Static direct relation generation coupling and runtime verification remain open.

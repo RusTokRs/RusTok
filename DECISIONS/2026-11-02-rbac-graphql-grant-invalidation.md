@@ -133,3 +133,19 @@ and source tests alone do not prove distributed delivery or a revocation fence.
 Grant-edit operations now depend on generation storage and can cause global cache
 clears. Recovery is durable but eventual, with no promise of immediate denial
 for already admitted operations or snapshots.
+
+## Artifact grant database coupling extension (2026-11-27)
+
+Migration 000017 makes the existing artifact grant relation itself responsible
+for advancing the same recovery watermark on actual row births, removals and
+authority-tuple changes. PostgreSQL advances through deferred constraint
+triggers at commit by default and refuses a contended watermark without
+waiting; SQLite advances inside the serialized write. Raw grant DELETE and
+changed identity require nonwaiting affected-role fences. The artifact owner
+no longer separately reserves a generation; its receipt and event share the
+transaction, including a commit-time failure. Direct SQL does not synthesize
+owner events. This is per changed row, not a new counter or universal
+once-per-transaction protocol. Exact state no-ops and replays advance nothing.
+Drain old writers and advance once at cutover to invalidate old continuity
+receipts. Direct static relation generation coupling and general safe retry
+remain open; source regressions authored, unrun.

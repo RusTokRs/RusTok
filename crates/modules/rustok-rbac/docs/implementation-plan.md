@@ -535,3 +535,12 @@ exists.
   predecessor and exercise both artifact grant and operation receipt guards
   against all three FK parents (row and relation contention), exact tenant
   rejection and reentrant owner locks. No migration SQL change; unrun.
+
+- Artifact grant generation coupling: migration 000017 advances the existing
+  watermark on actual grant row changes, including direct SQL. PostgreSQL
+  uses deferred constraint triggers and NOWAIT for late watermark/role locks;
+  SQLite uses its serialized writer. Remove explicit duplicate owner
+  reservation; cutover advances once. Regression sources cover direct SQL,
+  rollback, no-ops, exhaustion and PostgreSQL commit/role contention. Drain
+  old writers. Static direct relation coupling, bulk ordering, retry and
+  execution evidence remain open.

@@ -365,3 +365,19 @@ The 000016 contention regression also installs the predecessor 000006
 triggers and exercises the grant and operation receipt guards against each
 actor, role and definition FK parent, with row/table contention and reentrant
 owner admission. Cross-tenant FK substitution is rejected; source only.
+
+## Artifact grant generation coupling
+
+Migration 000017 advances the existing recovery watermark once per actual
+artifact grant row birth, removal or authority-tuple update, independent of
+entrypoint. Exact retries and unchanged authority tuples do not advance it.
+PostgreSQL uses deferred constraint triggers and nonwaiting generation locks;
+raw grant deletion and changed identity also take the affected roles in UUID
+order with NOWAIT. SQLite uses immediate row triggers under its single writer.
+The owner assignment no longer performs a second explicit reservation; event,
+receipt, state and watermark roll back together on transaction failure. The
+migration invalidates pre-cutover continuity receipts by advancing once and
+requires a valid existing watermark. Drain old writers and deploy the matching
+owner together. Direct static relation writes still do not advance the global
+watermark; exact static reads/revisions remain separate. Arbitrary bulk SQL and
+whole-transaction retry policy remain open. Regression sources are unrun.

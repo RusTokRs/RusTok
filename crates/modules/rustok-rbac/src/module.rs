@@ -25,6 +25,7 @@ impl MigrationSource for RbacModule {
             Box::new(crate::m20261127_000012_fence_rbac_invalidation_generation::Migration),
             Box::new(crate::m20261127_000013_preserve_rbac_identity_witnesses::Migration),
             Box::new(crate::m20261127_000016_fence_artifact_catalog_parents::Migration),
+            Box::new(crate::m20261127_000017_couple_artifact_grant_generation::Migration),
         ]
     }
 }
