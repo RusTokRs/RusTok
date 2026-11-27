@@ -798,10 +798,13 @@ fn expand_opaque_symbol_node(
     stack: &mut Vec<String>,
     pending_styles: &mut Vec<Value>,
 ) -> FlyResult<()> {
-    let Some(object) = value.as_object() else {
+    if !value.is_object() {
         return Ok(());
-    };
-    let symbol_marker = object.get("symbolId").cloned();
+    }
+    let symbol_marker = value
+        .as_object()
+        .and_then(|object| object.get("symbolId"))
+        .cloned();
     match symbol_marker {
         Some(Value::String(symbol_id)) => {
             let component = serde_json::from_value::<ComponentObject>(value.clone()).map_err(
