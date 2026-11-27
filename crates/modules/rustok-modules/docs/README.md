@@ -1517,10 +1517,12 @@ calls). Only declared binding capabilities are eligible. Owner lifecycle and
 durable work retain their own admission; audit actor attribution does not
 create a direct credential. Scope and lease expiry are checked before launch
 and before returning output. The guard removes the lease on completion,
-failure or cancellation; the broker checks membership again after async reads.
-This is process-local admission, not an atomic external-effect fence or a
-continuous interrupt for capability-free computation. In-flight calls may
-complete, and a post-launch denial preserves ambiguous-outcome semantics.
+failure or cancellation; the host revalidates the exact lease, installation,
+policy, security and direct credential after every awaited capability broker
+invocation, not only after object reads. This is process-local admission, not
+an atomic external-effect fence or a continuous interrupt for capability-free
+computation. In-flight calls may complete, and a post-launch denial preserves
+ambiguous-outcome semantics.
 Operational maintenance operator authorization/transport and native serving, deferred/background channel context, external owner transactional authority,
 performance and actual worker callback verification remain open. See
 [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).
@@ -1531,14 +1533,31 @@ The `platform.http` broker disables process/system proxies on both its shared
 and DNS-pinned clients. Hostname resolution is bounded by the capability
 deadline, every returned address is screened before the first validated address
 is pinned, and the remaining deadline is shared by connection, request and
-response-body consumption. Redirects remain disabled and response bytes are
-streamed under an overflow-safe configured ceiling. Zero timeouts and zero
-response limits are rejected during construction.
+response-body consumption. IPv4-mapped, IPv4-translated (RFC 2765),
+IPv4-compatible, well-known NAT64, 6to4 and ISATAP (RFC 5214) addresses are
+checked against their embedded IPv4 destination; ISATAP additionally requires
+a global-unicast IPv6 prefix.
+The RFC 8215 local-use NAT64 prefix is rejected outright because it is not
+globally reachable. Non-global IPv6 ranges, IANA-reserved global-unicast
+blocks, and site-local, Teredo, benchmarking, documentation, discard-only,
+dummy, SRv6 and other non-globally-reachable special-purpose IPv6 ranges are
+rejected. More-specific
+[IANA IPv6 special-purpose allocations](https://www.iana.org/assignments/iana-ipv6-special-registry)
+explicitly marked globally reachable remain available to an exact host grant;
+the explicitly listed reserved blocks in the
+[IANA global-unicast assignments](https://www.iana.org/assignments/ipv6-unicast-address-assignments)
+are denied. Network-specific RFC 6052 NAT64 prefixes are not dynamically
+discovered; DNS64 deployments must not expose synthesized-only answers to this
+broker until prefix-aware screening is configured.
+Redirects remain disabled and response bytes are streamed under an
+overflow-safe configured ceiling. Zero timeouts and zero response limits are
+rejected during construction.
 
-This is an outbound transport and resource boundary only. It does not make a
-remote HTTP effect transactional, prove that a timed-out remote operation did
-not complete, or close the separate non-SQL execution-lease race described
-above.
+The host revalidates the execution lease after the request returns and
+before releasing the response to the guest. This is still an outbound
+transport/resource boundary, not a remote-effect transaction: it cannot cancel
+a request already sent or prove that a timed-out remote operation did not
+complete. A post-launch denial therefore remains an ambiguous outcome.
 
 ### SQL capability effect authority
 
@@ -1627,8 +1646,9 @@ separate root-only admission. This protects the durable ledger, not live
 executor availability or independent worker liveness. Contextual
 deferred/background channel context is not transactionally fenced. Operational serving maintenance now has a Modules-owned singleton revision and history (migration 000097), with global, tenant, module and tenant/module scopes combined by union. The owner replacement service requires an injected transaction-bound platform authorizer and predecessor CAS. Its normalized scope changes and command history commit together. The artifact resolver captures active or inactive maintenance evidence, includes it in the mixed policy and checks the exact revision through every serving lease and structured SQL effect. The shared row lock follows composition and Channel fences. Native/static serving, concrete operator authority and transport remain open; recovery/lifecycle remain separate owner paths. Drain old serving processes and leases before relying on the migration; downgrade is denied. HTTP channel resolution is now re-read from the owner without the TTL cache, bracketed by the durable generation and matched to the middleware-selected channel. The mixed serving policy evaluates its exact bindings for every closure member; unresolved HTTP context retains the generation as well. Capability preflight reuses the captured input and compares the generation. Structured SQL effects hold the Channel-owned generation row after readiness/composition fences until commit. No new migration is needed. Registry authority
 is checked under the sorted platform/tenant slug fences, before readiness and
-composition locks. Non-SQL effects remain preflight-only; lifecycle checks only
-the root. Drain old writers and leases before applying migration 000096; witness
+composition locks. Non-SQL effects remain preflight-only while in flight; the
+host revalidates every returned result before output release but cannot cancel
+an already-started external effect. Lifecycle checks only the root. Drain old writers and leases before applying migration 000096; witness
 downgrade is denied. Direct SQL maintenance must follow the canonical lock order;
 DDL/TRUNCATE, witness tampering and complete cross-owner ordering are outside
 this guarantee. Each artifact lease also captures

@@ -36,12 +36,13 @@ No bearer token, session evidence, or host lease is sent to guest or worker.
 Before a capability reaches its owner, require a matching active lease, declared
 binding capability, current exact installation/grant, tenant policy/readiness
 for non-lifecycle execution, and current direct binding permission where
-applicable. Recheck lease membership and expiry after asynchronous reads.
-Expiry/invalidation denies launch or successful output release; guard drop
-removes the execution on completion, error or cancellation. Missing evidence,
-mismatched identity or unavailable checks fail closed. No SQL lock or registry
-mutex spans external invocation. The original sandbox grant limits and
-independent owner effect checks still apply.
+applicable. Recheck lease membership and expiry after every awaited capability
+broker invocation, before releasing its result. Expiry/invalidation denies
+launch or successful output release; guard drop removes the execution on
+completion, error or cancellation. Missing evidence, mismatched identity or
+unavailable checks fail closed. No SQL lock or registry mutex spans external
+invocation. The original sandbox grant limits and independent owner effect
+checks still apply.
 
 For server-composed structured data and event outbox SQL effects, the owner
 transaction now takes the existing platform/tenant activation locks after
@@ -294,10 +295,13 @@ contracts and are not claimed covered by this lease.
 
 A pre-launch denial prevents execution. A post-launch denial may follow already
 committed guest effects; it is an ambiguous outcome, not authorization to
-auto-replay. This decision does not promise cancellation of already-admitted
-external calls, atomic domain effect authorization, durable lease recovery,
-or immediate interruption of capability-free computation. The next boundary
-is owner-transaction effect fencing, including independent service transports.
+auto-replay. Every awaited capability broker result is revalidated before its
+output is released, but that check cannot cancel or undo an external effect
+already accepted by its owner. This decision does not promise cancellation of
+already-admitted external calls, atomic domain effect authorization, durable
+lease recovery, or immediate interruption of capability-free computation.
+The next boundary is owner-transaction effect fencing, including independent
+service transports.
 
 ## Verification
 
@@ -305,8 +309,9 @@ Required: exact context and execution ID mismatch, binding capability absence,
 lease expiry and cancellation, captured request invalidation across tasks,
 revoked session/role/grant and changed policy/readiness, both Rhai worker and
 Wasm paths, owner background/lifecycle compatibility, concurrency and timing.
-Source regressions cover scope propagation/invalidation and pre/post launch
-lease checks; compilation and the remaining integration evidence are pending.
+Source regressions cover scope propagation/invalidation, pre/post-launch
+lease checks, and result/error fencing after awaited capability brokers;
+compilation and the remaining integration evidence are pending.
 
 Registry validation job claims (including invalid-work-item terminalization),
 remote stage claims, completion and requeue now acquire the request row before
