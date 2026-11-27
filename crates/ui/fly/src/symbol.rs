@@ -181,12 +181,10 @@ fn apply_symbol_command_inner(
                 .map(|(_, entry)| entry)
                 .collect();
             let before = entries.len();
-            let mut referenced = 0usize;
-            document.project().visit_components(|component, _, _| {
-                if component.symbol_id.as_deref() == Some(symbol_id.as_str()) {
-                    referenced += 1;
-                }
-            });
+            let referenced = symbol_instances_in_document(document)
+                .iter()
+                .filter(|instance| instance.symbol_id.as_deref() == Some(symbol_id.as_str()))
+                .count();
             if referenced > 0 {
                 return Err(FlyError::InvalidSymbolReference(format!(
                     "cannot remove symbol `{symbol_id}`; {referenced} instance(s) still reference it"
@@ -267,6 +265,139 @@ fn push_opaque_symbol_node_children<'a>(
     {
         push_opaque_symbol_children(children, pending);
     }
+}
+
+/// A symbol marker found on a typed or opaque component node.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SymbolInstanceInfo {
+    pub(crate) path: String,
+    pub(crate) component_id: Option<String>,
+    pub(crate) symbol_id: Option<String>,
+    pub(crate) has_children: bool,
+    pub(crate) malformed_symbol_id: bool,
+}
+
+fn collect_symbol_instances_from_components(
+    components: &[ComponentNode],
+    path: &str,
+    instances: &mut Vec<SymbolInstanceInfo>,
+) {
+    for (index, component) in components.iter().enumerate() {
+        collect_symbol_instances_from_node(
+            component,
+            &format!("{path}[{index}]"),
+            instances,
+        );
+    }
+}
+
+fn collect_symbol_instances_from_node(
+    component: &ComponentNode,
+    path: &str,
+    instances: &mut Vec<SymbolInstanceInfo>,
+) {
+    match component {
+        ComponentNode::Object(object) => {
+            if let Some(symbol_id) = object.symbol_id.as_ref() {
+                instances.push(SymbolInstanceInfo {
+                    path: path.to_string(),
+                    component_id: object.id.clone(),
+                    symbol_id: Some(symbol_id.clone()),
+                    has_children: !object.components.is_empty(),
+                    malformed_symbol_id: false,
+                });
+            }
+            match &object.components {
+                crate::ComponentChildren::Nodes(children) => {
+                    collect_symbol_instances_from_components(
+                        children,
+                        &format!("{path}.components"),
+                        instances,
+                    );
+                }
+                crate::ComponentChildren::Opaque(children) => {
+                    collect_opaque_symbol_instances(
+                        children,
+                        &format!("{path}.components"),
+                        instances,
+                    );
+                }
+            }
+        }
+        ComponentNode::Opaque(raw) => {
+            collect_opaque_symbol_instances(raw, path, instances);
+        }
+    }
+}
+
+fn collect_opaque_symbol_instances(
+    value: &Value,
+    path: &str,
+    instances: &mut Vec<SymbolInstanceInfo>,
+) {
+    match value {
+        Value::Array(children) => {
+            for (index, child) in children.iter().enumerate() {
+                collect_opaque_symbol_instances(
+                    child,
+                    &format!("{path}[{index}]"),
+                    instances,
+                );
+            }
+        }
+        Value::Object(object) => {
+            if let Some(marker) = object.get("symbolId").filter(|value| !value.is_null()) {
+                let symbol_id = marker.as_str().map(ToString::to_string);
+                let has_children = object.get("components").is_some_and(|children| match children {
+                    Value::Array(children) => !children.is_empty(),
+                    Value::Null => false,
+                    _ => true,
+                });
+                instances.push(SymbolInstanceInfo {
+                    path: path.to_string(),
+                    component_id: object
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .map(ToString::to_string),
+                    malformed_symbol_id: symbol_id.is_none(),
+                    symbol_id,
+                    has_children,
+                });
+            }
+            if let Some(children) = object.get("components") {
+                collect_opaque_symbol_instances(
+                    children,
+                    &format!("{path}.components"),
+                    instances,
+                );
+            }
+        }
+        _ => {}
+    }
+}
+
+pub(crate) fn symbol_instances_in_document(
+    document: &ProjectDocument,
+) -> Vec<SymbolInstanceInfo> {
+    let mut instances = Vec::new();
+    for (page_index, page) in document.project().pages.iter().enumerate() {
+        if let Some(root) = page.component.as_ref() {
+            collect_symbol_instances_from_node(
+                root,
+                &format!("pages[{page_index}].component"),
+                &mut instances,
+            );
+        }
+    }
+    instances
+}
+
+fn symbol_instance_facts_in_components(
+    components: &[ComponentNode],
+) -> Vec<SymbolInstanceInfo> {
+    let mut instances = Vec::new();
+    collect_symbol_instances_from_components(components, "components", &mut instances);
+    instances
 }
 
 pub(crate) fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()> {
@@ -360,6 +491,35 @@ pub(crate) fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()
                     descriptor.id
                 )));
             }
+        }
+    }
+    for instance in symbol_instance_facts_in_components(&descriptor.components) {
+        if instance.malformed_symbol_id {
+            return Err(FlyError::InvalidSymbolReference(format!(
+                "symbol `{}` has a non-string symbolId at {}",
+                descriptor.id, instance.path
+            )));
+        }
+        let Some(symbol_id) = instance.symbol_id.as_deref() else {
+            continue;
+        };
+        validate_identifier(symbol_id).map_err(|reason| {
+            FlyError::InvalidSymbolReference(format!(
+                "symbol `{}` reference id `{symbol_id}` is invalid: {reason}",
+                descriptor.id
+            ))
+        })?;
+        if instance.component_id.is_none() {
+            return Err(FlyError::InvalidSymbolReference(format!(
+                "symbol `{}` instance at {} must carry a component id",
+                descriptor.id, instance.path
+            )));
+        }
+        if instance.has_children {
+            return Err(FlyError::InvalidSymbolReference(format!(
+                "symbol `{}` instance at {} must be child-free",
+                descriptor.id, instance.path
+            )));
         }
     }
     Ok(())
@@ -483,11 +643,9 @@ pub fn resolve_symbol_instances(document: &ProjectDocument) -> FlyResult<Project
 
 /// True when a page contains at least one unresolved symbol instance.
 pub fn document_has_symbol_instances(document: &ProjectDocument) -> bool {
-    let mut found = false;
-    document.project().visit_components(|component, _, _| {
-        found = found || component.symbol_id.is_some();
-    });
-    found
+    symbol_instances_in_document(document)
+        .iter()
+        .any(|instance| instance.symbol_id.is_some() || instance.malformed_symbol_id)
 }
 
 fn strict_catalog(document: &ProjectDocument) -> FlyResult<BTreeMap<String, SymbolDescriptor>> {
@@ -560,25 +718,124 @@ fn expand_node(
     stack: &mut Vec<String>,
     pending_styles: &mut Vec<Value>,
 ) -> FlyResult<()> {
-    let ComponentNode::Object(object) = node else {
-        return Ok(());
-    };
-    if let Some(symbol_id) = object.symbol_id.clone() {
-        expand_instance(
-            object,
-            &symbol_id,
+    match node {
+        ComponentNode::Object(object) => {
+            if let Some(symbol_id) = object.symbol_id.clone() {
+                // `expand_instance` recursively resolves the cloned definition while its
+                // symbol is on the cycle-detection stack. Do not walk the expanded subtree twice.
+                return expand_instance(
+                    object,
+                    &symbol_id,
+                    catalog,
+                    identities,
+                    stack,
+                    pending_styles,
+                );
+            }
+            match &mut object.components {
+                crate::ComponentChildren::Nodes(children) => {
+                    for child in children {
+                        expand_node(child, catalog, identities, stack, pending_styles)?;
+                    }
+                }
+                crate::ComponentChildren::Opaque(children) => {
+                    expand_opaque_symbol_children(
+                        children,
+                        catalog,
+                        identities,
+                        stack,
+                        pending_styles,
+                    )?;
+                }
+            }
+            Ok(())
+        }
+        ComponentNode::Opaque(value) => expand_opaque_symbol_node(
+            value,
             catalog,
             identities,
             stack,
             pending_styles,
-        )?;
+        ),
     }
-    if let Some(children) = object.children_mut() {
-        for child in children.iter_mut() {
-            expand_node(child, catalog, identities, stack, pending_styles)?;
+}
+
+fn expand_opaque_symbol_children(
+    value: &mut Value,
+    catalog: &BTreeMap<String, SymbolDescriptor>,
+    identities: &mut SymbolIdentityReservations,
+    stack: &mut Vec<String>,
+    pending_styles: &mut Vec<Value>,
+) -> FlyResult<()> {
+    match value {
+        Value::Array(children) => {
+            for child in children {
+                expand_opaque_symbol_node(
+                    child,
+                    catalog,
+                    identities,
+                    stack,
+                    pending_styles,
+                )?;
+            }
+            Ok(())
         }
+        Value::Object(_) => expand_opaque_symbol_node(
+            value,
+            catalog,
+            identities,
+            stack,
+            pending_styles,
+        ),
+        _ => Ok(()),
     }
-    Ok(())
+}
+
+fn expand_opaque_symbol_node(
+    value: &mut Value,
+    catalog: &BTreeMap<String, SymbolDescriptor>,
+    identities: &mut SymbolIdentityReservations,
+    stack: &mut Vec<String>,
+    pending_styles: &mut Vec<Value>,
+) -> FlyResult<()> {
+    let Some(object) = value.as_object() else {
+        return Ok(());
+    };
+    match object.get("symbolId") {
+        Some(Value::String(symbol_id)) => {
+            let symbol_id = symbol_id.clone();
+            let component = serde_json::from_value::<ComponentObject>(value.clone()).map_err(
+                |error| {
+                    FlyError::InvalidSymbolReference(format!(
+                        "opaque symbol instance `{symbol_id}` cannot be decoded: {error}"
+                    ))
+                },
+            )?;
+            let mut node = ComponentNode::Object(Box::new(component));
+            expand_node(&mut node, catalog, identities, stack, pending_styles)?;
+            *value = serde_json::to_value(node)
+                .map_err(|error| FlyError::Encode(error.to_string()))?;
+            Ok(())
+        }
+        Some(Value::Null) | None => {
+            if let Some(children) = value
+                .as_object_mut()
+                .and_then(|object| object.get_mut("components"))
+            {
+                expand_opaque_symbol_children(
+                    children,
+                    catalog,
+                    identities,
+                    stack,
+                    pending_styles,
+                )?;
+            }
+            Ok(())
+        }
+        Some(_) => Err(FlyError::InvalidSymbolReference(
+            "opaque component symbolId must be a string".to_string(),
+        )),
+    }
 }
 
 fn expand_instance(
@@ -701,23 +958,10 @@ fn expand_instance(
 
 /// Ids of symbol definitions referenced by instances inside `components`.
 pub fn symbol_references(components: &[ComponentNode]) -> Vec<String> {
-    let mut references = Vec::new();
-    for component in components {
-        collect_instance_references(component, &mut references);
-    }
-    references
-}
-
-fn collect_instance_references(node: &ComponentNode, references: &mut Vec<String>) {
-    let ComponentNode::Object(object) = node else {
-        return;
-    };
-    if let Some(symbol_id) = object.symbol_id.as_ref() {
-        references.push(symbol_id.clone());
-    }
-    for child in object.children() {
-        collect_instance_references(child, references);
-    }
+    symbol_instance_facts_in_components(components)
+        .into_iter()
+        .filter_map(|instance| instance.symbol_id)
+        .collect()
 }
 
 fn detect_symbol_cycles(catalog: &BTreeMap<String, SymbolDescriptor>) -> Vec<String> {
