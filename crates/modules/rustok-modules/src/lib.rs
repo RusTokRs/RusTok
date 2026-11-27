@@ -681,7 +681,7 @@ pub use secrets::{
     SeaOrmArtifactSecretService, SeaOrmArtifactSecretUseService,
 };
 pub use security_state::{
-    ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecurityAuthorizer,
+    ArtifactRegistryExecutionAuthority, ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecurityAuthorizer,
     ModuleArtifactSecurityCommand, ModuleArtifactSecurityError, ModuleArtifactSecurityReceipt,
     ModuleArtifactSecuritySnapshot, ModuleArtifactSecurityStatus,
     SeaOrmModuleArtifactSecurityResolver, SeaOrmModuleArtifactSecurityService,

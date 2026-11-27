@@ -64,6 +64,96 @@ pub enum ModuleArtifactRegistryReleaseStatus {
     Unavailable,
 }
 
+/// Host-only registry continuity evidence, not a permission grant or a receipt.
+/// A permanent owner revision also distinguishes absent -> listed -> absent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArtifactRegistryExecutionAuthority {
+    release: ArtifactReleaseRef,
+    revision: u64,
+    status: ModuleArtifactRegistryReleaseStatus,
+}
+
+impl ArtifactRegistryExecutionAuthority {
+    pub async fn capture(
+        db: &DatabaseConnection,
+        release: &ArtifactReleaseRef,
+    ) -> Result<Self, ModuleArtifactSecurityError> {
+        Self::load_on(db, release).await
+    }
+
+    pub(crate) async fn load_on(
+        db: &impl ConnectionTrait,
+        release: &ArtifactReleaseRef,
+    ) -> Result<Self, ModuleArtifactSecurityError> {
+        validate_release(release)?;
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(store_error)?;
+        // A single statement observes the witness and exact registry status
+        // together, including when no matching release has ever been listed.
+        let row = db.query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            format!(
+                "SELECT authority.revision, listed.status, listed.slug AS listed_slug, listed.checksum_sha256
+                 FROM (SELECT CAST({} AS TEXT) AS slug, CAST({} AS TEXT) AS version) AS target
+                 LEFT JOIN registry_release_authority_revisions AS authority
+                   ON authority.slug = target.slug AND authority.version = target.version
+                 LEFT JOIN registry_module_releases AS listed
+                   ON listed.slug = target.slug AND listed.version = target.version",
+                backend.placeholder(1), backend.placeholder(2),
+            ),
+            vec![release.slug.clone().into(), release.version.clone().into()],
+        )).await.map_err(store_error)?
+            .ok_or_else(|| ModuleArtifactSecurityError::Store("registry authority query returned no row".into()))?;
+        let listed: Option<String> = row.try_get("", "listed_slug").map_err(store_error)?;
+        let revision: Option<i64> = row.try_get("", "revision").map_err(store_error)?;
+        let revision = match revision {
+            Some(value) if value > 0 => value as u64,
+            None if listed.is_none() => 0,
+            _ => return Err(ModuleArtifactSecurityError::Store("invalid registry release authority revision".into())),
+        };
+        let checksum: Option<String> = row.try_get("", "checksum_sha256").map_err(store_error)?;
+        let status: Option<String> = row.try_get("", "status").map_err(store_error)?;
+        let status = match (listed, status.as_deref()) {
+            (None, None) => ModuleArtifactRegistryReleaseStatus::Unlisted,
+            (Some(_), Some(value)) if checksum.as_deref() == Some(release.digest.trim_start_matches("sha256:")) =>
+                registry_release_status(value),
+            (Some(_), Some(_)) => ModuleArtifactRegistryReleaseStatus::Unlisted,
+            _ => return Err(ModuleArtifactSecurityError::Store("invalid registry release status".into())),
+        };
+        if status == ModuleArtifactRegistryReleaseStatus::Unavailable {
+            return Err(ModuleArtifactSecurityError::AuthorizationDenied(
+                "registry release is unavailable".into(),
+            ));
+        }
+        Ok(Self { release: release.clone(), revision, status })
+    }
+
+    pub(crate) fn status(&self) -> ModuleArtifactRegistryReleaseStatus {
+        self.status
+    }
+
+    pub async fn is_current(
+        &self,
+        db: &DatabaseConnection,
+    ) -> Result<bool, ModuleArtifactSecurityError> {
+        Ok(Self::load_on(db, &self.release).await? == *self)
+    }
+
+    pub async fn require_current_on(
+        &self,
+        tx: &DatabaseTransaction,
+    ) -> Result<(), ModuleArtifactSecurityError> {
+        crate::installation::acquire_artifact_activation_lock(
+            tx, &crate::ModuleInstallationScope::Platform, &self.release.slug,
+        ).await.map_err(store_error)?;
+        if Self::load_on(tx, &self.release).await? != *self {
+            return Err(ModuleArtifactSecurityError::AuthorizationDenied(
+                "registry release authority has changed".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModuleArtifactSecuritySnapshot {
@@ -615,14 +705,16 @@ async fn load_registry_status<C: ConnectionTrait>(
     let Some(row) = row else {
         return Ok(ModuleArtifactRegistryReleaseStatus::Unlisted);
     };
-    match row
-        .try_get::<String>("", "status")
-        .map_err(store_error)?
-        .as_str()
-    {
-        "active" => Ok(ModuleArtifactRegistryReleaseStatus::Active),
-        "yanked" => Ok(ModuleArtifactRegistryReleaseStatus::Yanked),
-        _ => Ok(ModuleArtifactRegistryReleaseStatus::Unavailable),
+    Ok(registry_release_status(
+        &row.try_get::<String>("", "status").map_err(store_error)?,
+    ))
+}
+
+fn registry_release_status(value: &str) -> ModuleArtifactRegistryReleaseStatus {
+    match value {
+        "active" => ModuleArtifactRegistryReleaseStatus::Active,
+        "yanked" => ModuleArtifactRegistryReleaseStatus::Yanked,
+        _ => ModuleArtifactRegistryReleaseStatus::Unavailable,
     }
 }
 

@@ -255,3 +255,21 @@ pub(crate) fn governance_request_snapshot(
         published_at: None,
     }
 }
+
+/// Exercise the real registry continuity migration in the minimal governance
+/// fixtures rather than duplicating its triggers or witness schema.
+pub(crate) async fn registry_authority_fixture(db: &DatabaseConnection) -> crate::ArtifactRegistryExecutionAuthority {
+    use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
+    db.execute_unprepared(
+        "CREATE TABLE module_artifact_activation_locks (
+            scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL,
+            PRIMARY KEY (scope_kind, scope_tenant_key, slug)
+         )"
+    ).await.unwrap();
+    crate::migrations::m20261127_000096_registry_release_authority::Migration
+        .up(&SchemaManager::new(db)).await.unwrap();
+    crate::ArtifactRegistryExecutionAuthority::capture(db, &ArtifactReleaseRef {
+        slug: "sample_module".into(), version: "1.0.0".into(),
+        digest: format!("sha256:{}", "a".repeat(64)),
+    }).await.unwrap()
+}

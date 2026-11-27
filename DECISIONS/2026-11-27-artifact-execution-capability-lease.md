@@ -102,11 +102,30 @@ assignment and observation revision. The ledger owner serializes requests,
 claims, heartbeats and reports using the exclusive state row lock. A restored
 head cannot revive an older revision. Fresh preflight compares the same
 evidence, not a tenant policy digest. This does not fence independent compiled
-registry changes, contextual channel/maintenance, registry mutation,
+registry changes, contextual channel/maintenance,
 full effective-policy revision or continuous worker/node liveness. PostgreSQL
 cross-owner lock-order and runtime evidence remain required. Mixed-closure
 tenant intent and composition identity fencing require no additional
 migration; coordinate writers and readers.
+
+Registry release authority is independent of emergency security revision.
+Migration 000096 introduces a permanent monotonic witness for each registry
+(slug, version), including release absence. Row insert, delete, status change
+and checksum change advance it atomically; unchanged metadata, rejected writes,
+transaction rollback and idempotent replay do not. Publication, yank and unyank
+take the platform activation fence before release/request row locks. The database
+mutation trigger also takes that fence. Direct SQL maintenance must use the
+same order; unrestricted administrative DDL, TRUNCATE and tampering with the
+witness are outside this runtime contract. Existing active/yanked/unlisted
+eligibility is retained; unavailable status denies admission. A fresh lease
+may admit a yanked release but an earlier lease is invalidated by the mutation.
+The witness is checked for the exact root and every artifact in the serving
+dependency/co-requisite closure, including non-SQL preflight. SQL admission
+checks it after sorted platform/tenant slug fences and before readiness and
+composition locks; lifecycle remains root-only. No lock is held across guest
+execution. Stop old writers and drain leases before migration and rollout;
+downgrade would discard continuity evidence and is rejected. PostgreSQL
+cross-owner ordering and execution tests remain required.
 
 ## Context, events and migration
 

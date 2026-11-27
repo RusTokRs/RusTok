@@ -11,6 +11,7 @@ use std::{
 use async_trait::async_trait;
 use rustok_modules::{
     ArtifactBindingDispatchError, ArtifactCapabilityExecution, ArtifactEffectivePolicyResolveError,
+    ArtifactRegistryExecutionAuthority,
     ArtifactExecutionLeaseGuard, InstalledModuleArtifact,
     ModuleRuntimeBinding, ArtifactSqlEffectAuthorizer, ArtifactSqlEffectFence,
     ArtifactSqlEffectCommitGuard, lock_granted_artifact_capability_on,
@@ -46,6 +47,7 @@ struct ExecutionLease {
     binding: ModuleRuntimeBinding,
     effective_revision: Option<String>,
     security_revision: u64,
+    registry_authority: ArtifactRegistryExecutionAuthority,
     serving_authority: Option<ArtifactServingAuthority>,
     lifecycle_generation: Option<rustok_modules::ArtifactSelectionGeneration>,
     policy: SandboxPolicy,
@@ -162,13 +164,17 @@ impl ExecutionAuthority {
             .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?
             .execution_revision()
             .ok_or(ArtifactBindingDispatchError::AdmissionMismatch)?;
+        let registry_authority = ArtifactRegistryExecutionAuthority::capture(&resolver.db, &artifact.release)
+            .await.map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?;
         let serving_authority = if let Some(revision) = effective_revision {
             let (current, authority) = resolver.resolve_with_closure(tenant_id, artifact).await?;
             if current.policy_revision() != revision {
                 return Err(ArtifactBindingDispatchError::AdmissionMismatch);
             }
             let authority = authority.ok_or(ArtifactBindingDispatchError::AdmissionMismatch)?;
-            if authority.closure.root_security_revision(artifact) != Some(security_revision) {
+            if authority.closure.root_security_revision(artifact) != Some(security_revision)
+                || authority.closure.root_registry_authority(artifact) != Some(&registry_authority)
+            {
                 return Err(ArtifactBindingDispatchError::AdmissionMismatch);
             }
             Some(authority)
@@ -197,6 +203,7 @@ impl ExecutionAuthority {
             binding: binding.clone(),
             effective_revision: effective_revision.map(str::to_owned),
             security_revision,
+            registry_authority,
             serving_authority,
             lifecycle_generation,
             policy: policy.clone(),
@@ -253,6 +260,7 @@ async fn check_security(
         .resolve(&lease.artifact.release)
         .await
         .is_ok_and(|snapshot| snapshot.execution_revision() == Some(lease.security_revision))
+        && lease.registry_authority.is_current(&resolver.db).await.unwrap_or(false)
 }
 
 async fn check_policy(
@@ -361,6 +369,7 @@ impl ArtifactSqlEffectFence for SqlEffectFence {
         SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
             tx, &self.lease.artifact.release, self.lease.security_revision,
         ).await.map_err(|_| self.deny())?;
+        self.lease.registry_authority.require_current_on(tx).await.map_err(|_| self.deny())?;
         let original = self.lease.policy.grant(&self.call.capability).ok_or_else(|| self.deny())?;
         let current = current_policy.grant(&self.call.capability).ok_or_else(|| self.deny())?;
         if current.constraints != original.constraints {

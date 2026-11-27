@@ -88,11 +88,17 @@ async fn release_yank_persists_release_and_audit_fact_together() {
         }),
         actor_can_manage_modules: true,
     };
+    let previous_authority = registry_authority_fixture(&database).await;
     let service = SeaOrmModuleGovernanceService::new(database.clone());
     service
         .yank_release(command.clone())
         .await
         .expect("yank release");
+    assert!(!previous_authority.is_current(&database).await.unwrap());
+    let authority = crate::ArtifactRegistryExecutionAuthority::capture(&database, &ArtifactReleaseRef {
+        slug: "sample_module".into(), version: "1.0.0".into(),
+        digest: format!("sha256:{}", "a".repeat(64)),
+    }).await.unwrap();
     service
         .yank_release(command.clone())
         .await
@@ -104,6 +110,7 @@ async fn release_yank_persists_release_and_audit_fact_together() {
         .yank_release(changed_replay)
         .await
         .expect("changed observability context replays yank");
+    assert!(authority.is_current(&database).await.unwrap());
     let release = database
         .query_one_raw(Statement::from_string(
             DbBackend::Sqlite,
@@ -231,16 +238,23 @@ async fn release_unyank_is_a_separate_idempotent_transition() {
         }),
         actor_can_manage_modules: true,
     };
+    let previous_authority = registry_authority_fixture(&database).await;
     let service = SeaOrmModuleGovernanceService::new(database.clone());
     let result = service
         .unyank_release(command.clone())
         .await
         .expect("un-yank release");
     assert_eq!(result.status, "active");
+    assert!(!previous_authority.is_current(&database).await.unwrap());
+    let authority = crate::ArtifactRegistryExecutionAuthority::capture(&database, &ArtifactReleaseRef {
+        slug: "sample_module".into(), version: "1.0.0".into(),
+        digest: format!("sha256:{}", "a".repeat(64)),
+    }).await.unwrap();
     service
         .unyank_release(command)
         .await
         .expect("exact un-yank replay");
+    assert!(authority.is_current(&database).await.unwrap());
 
     let release = database
         .query_one_raw(Statement::from_string(
