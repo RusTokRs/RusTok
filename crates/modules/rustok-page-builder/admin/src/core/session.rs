@@ -1022,9 +1022,22 @@ mod tests {
         let mut state = EditorSessionState::new(sample_controller(), "Missing", "Saved");
         state.prepare_server_preview_request().expect("preview");
 
+        let root_id = state
+            .controller
+            .editor()
+            .document()
+            .project()
+            .pages[0]
+            .component
+            .as_ref()
+            .and_then(fly::ComponentNode::id)
+            .expect("root id")
+            .to_string();
         state
-            .dispatch_intent(UiIntent::execute(fly::EditorCommand::Remove {
-                component_id: "hero".to_string(),
+            .dispatch_intent(UiIntent::execute(fly::EditorCommand::Patch {
+                component_id: root_id,
+                patch: fly::ComponentPatch::default()
+                    .set_attribute("data-preview-test", serde_json::json!("changed")),
             }))
             .expect("document mutation");
 
