@@ -149,7 +149,7 @@ pub(crate) fn check_production_environment(
         _ => {}
     }
 
-    if let Some((variable, password)) = configured_superadmin_password() {
+    if let Some((variable, password)) = configured_superadmin_password()? {
         let trimmed_password = password.trim();
         if known_sample_superadmin_password(trimmed_password).is_some()
             || trimmed_password.chars().count() < crate::auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS
@@ -224,19 +224,24 @@ pub(crate) fn sample_database_credentials_pattern(uri: &str) -> Option<&'static 
     })
 }
 
-fn configured_superadmin_password() -> Option<(&'static str, String)> {
-    for key in [
-        "SUPERADMIN_PASSWORD",
-        "SEED_ADMIN_PASSWORD",
-    ] {
-        if let Ok(value) = std::env::var(key) {
-            let value = value.trim().to_string();
-            if !value.is_empty() {
-                return Some((key, value));
+fn configured_superadmin_password() -> Result<Option<(&'static str, String)>> {
+    for key in ["SUPERADMIN_PASSWORD", "SEED_ADMIN_PASSWORD"] {
+        match std::env::var(key) {
+            Ok(value) => {
+                let value = value.trim().to_string();
+                if !value.is_empty() {
+                    return Ok(Some((key, value)));
+                }
+            }
+            Err(std::env::VarError::NotPresent) => {}
+            Err(std::env::VarError::NotUnicode(_)) => {
+                return Err(crate::error::Error::Message(format!(
+                    "FATAL: env var {key} must be valid UTF-8 in production."
+                )));
             }
         }
     }
-    None
+    Ok(None)
 }
 
 pub(crate) fn known_sample_superadmin_password(password: &str) -> Option<&'static str> {
@@ -419,7 +424,7 @@ mod tests {
 
     struct EnvGuard {
         _guard: std::sync::MutexGuard<'static, ()>,
-        vars: Vec<(&'static str, Option<String>)>,
+        vars: Vec<(&'static str, Option<std::ffi::OsString>)>,
     }
 
     impl EnvGuard {
@@ -427,7 +432,7 @@ mod tests {
             let guard = TEST_ENV_LOCK.lock().unwrap();
             let mut vars = Vec::new();
             for &k in keys {
-                vars.push((k, std::env::var(k).ok()));
+                vars.push((k, std::env::var_os(k)));
                 unsafe {
                     std::env::remove_var(k);
                 }
@@ -668,6 +673,31 @@ mod tests {
         let error = check_production_environment("aB3!zY7@qW8#eR2$".repeat(5).as_str(), uri, true)
             .expect_err("user:password credentials must be rejected");
         assert!(error.to_string().contains("known sample credentials"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn production_secret_validation_rejects_non_unicode_superadmin_password() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
+        unsafe {
+            std::env::set_var(
+                "SUPERADMIN_PASSWORD",
+                std::ffi::OsString::from_vec(vec![0xff]),
+            );
+        }
+        let error = check_production_environment(
+            &"aB3!zY7@qW8#eR2$".repeat(5),
+            "postgres://app:strong@db/rustok",
+            true,
+        )
+        .expect_err("non-UTF-8 superadmin secrets must fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("SUPERADMIN_PASSWORD must be valid UTF-8 in production")
+        );
     }
 
     #[test]
