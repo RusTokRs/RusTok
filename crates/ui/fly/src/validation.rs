@@ -447,20 +447,29 @@ fn walk_opaque_value(
         }
     }
 
-    if let Some(id) = object.get("id").and_then(Value::as_str) {
-        if !ids.insert(id.to_string()) {
-            report.diagnostics.push(diagnostic(
-                ValidationSeverity::Error,
-                "duplicate_component_id",
-                path,
-                format!("component id `{id}` is duplicated"),
-            ));
-        } else if let Err(reason) = validate_identifier(id) {
+    if let Some(raw_id) = object.get("id") {
+        if let Some(id) = raw_id.as_str() {
+            if !ids.insert(id.to_string()) {
+                report.diagnostics.push(diagnostic(
+                    ValidationSeverity::Error,
+                    "duplicate_component_id",
+                    path,
+                    format!("component id `{id}` is duplicated"),
+                ));
+            } else if let Err(reason) = validate_identifier(id) {
+                report.diagnostics.push(diagnostic(
+                    ValidationSeverity::Error,
+                    "invalid_component_id",
+                    format!("{path}.id"),
+                    format!("component id `{id}` is not a valid identifier: {reason}"),
+                ));
+            }
+        } else {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
                 "invalid_component_id",
                 format!("{path}.id"),
-                format!("component id `{id}` is not a valid identifier: {reason}"),
+                "component id must be a string when present",
             ));
         }
     }
@@ -1733,6 +1742,36 @@ mod tests {
 
         assert!(codes.contains(&"invalid_page_id"), "{codes:?}");
         assert!(codes.contains(&"invalid_component_id"), "{codes:?}");
+    }
+
+    #[test]
+    fn opaque_components_with_non_string_ids_are_validation_errors() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": 42,
+                        "type": "future-widget"
+                    }]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "invalid_component_id"
+                && diagnostic.path.ends_with("components[0].id")
+                && diagnostic.severity == ValidationSeverity::Error
+        }), "{:?}", report.diagnostics);
     }
 
     #[test]
