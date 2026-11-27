@@ -47,12 +47,30 @@ pub(crate) fn content_has_symbol_instances(content: &str) -> PagesResult<bool> {
     Ok(value.get("pages").is_some_and(value_has_symbol_instance))
 }
 
-fn value_has_symbol_instance(value: &Value) -> bool {
+fn value_has_symbol_instance(pages: &Value) -> bool {
+    let Value::Array(pages) = pages else {
+        return false;
+    };
+    pages.iter().any(|page| {
+        page.get("component")
+            .is_some_and(component_value_has_symbol_instance)
+    })
+}
+
+/// Traverse only the component tree's structural `components` slot. Provider
+/// payloads, attributes and arbitrary extensions may legitimately contain a
+/// `symbolId` key and are not symbol instances.
+fn component_value_has_symbol_instance(value: &Value) -> bool {
     match value {
-        Value::Object(map) => map
-            .iter()
-            .any(|(key, child)| key == "symbolId" || value_has_symbol_instance(child)),
-        Value::Array(items) => items.iter().any(value_has_symbol_instance),
+        Value::Array(children) => children.iter().any(component_value_has_symbol_instance),
+        Value::Object(object) => {
+            object
+                .get("symbolId")
+                .is_some_and(|marker| !marker.is_null())
+                || object
+                    .get("components")
+                    .is_some_and(component_value_has_symbol_instance)
+        }
         _ => false,
     }
 }
@@ -339,17 +357,28 @@ pub(crate) async fn lock_site_symbol_catalog_in_tx<C: ConnectionTrait>(
     Ok(())
 }
 
-fn value_has_symbol_instance_id(value: &Value, symbol_id: &str) -> bool {
+fn value_has_symbol_instance_id(pages: &Value, symbol_id: &str) -> bool {
+    let Value::Array(pages) = pages else {
+        return false;
+    };
+    pages.iter().any(|page| {
+        page.get("component").is_some_and(|component| {
+            component_value_has_symbol_instance_id(component, symbol_id)
+        })
+    })
+}
+
+fn component_value_has_symbol_instance_id(value: &Value, symbol_id: &str) -> bool {
     match value {
-        Value::Object(map) => {
-            map.get("symbolId").and_then(Value::as_str) == Some(symbol_id)
-                || map
-                    .values()
-                    .any(|child| value_has_symbol_instance_id(child, symbol_id))
-        }
-        Value::Array(items) => items
+        Value::Array(children) => children
             .iter()
-            .any(|child| value_has_symbol_instance_id(child, symbol_id)),
+            .any(|child| component_value_has_symbol_instance_id(child, symbol_id)),
+        Value::Object(object) => {
+            object.get("symbolId").and_then(Value::as_str) == Some(symbol_id)
+                || object.get("components").is_some_and(|children| {
+                    component_value_has_symbol_instance_id(children, symbol_id)
+                })
+        }
         _ => false,
     }
 }
@@ -481,15 +510,43 @@ fn content_references_any_symbol(
     ids: &std::collections::BTreeSet<String>,
 ) -> PagesResult<bool> {
     let value = parse_project_value(content)?;
-    Ok(value
-        .get("pages")
-        .is_some_and(|pages| ids.iter().any(|id| value_has_symbol_instance_id(pages, id))))
+    Ok(value.get("pages").is_some_and(|pages| {
+        let Value::Array(pages) = pages else {
+            return false;
+        };
+        pages.iter().any(|page| {
+            page.get("component").is_some_and(|component| {
+                component_value_has_any_symbol_instance_id(component, ids)
+            })
+        })
+    }))
 }
 
 fn content_references_symbol(content: &str, symbol_id: &str) -> PagesResult<bool> {
     Ok(parse_project_value(content)?
         .get("pages")
         .is_some_and(|pages| value_has_symbol_instance_id(pages, symbol_id)))
+}
+
+fn component_value_has_any_symbol_instance_id(
+    value: &Value,
+    symbol_ids: &std::collections::BTreeSet<String>,
+) -> bool {
+    match value {
+        Value::Array(children) => children
+            .iter()
+            .any(|child| component_value_has_any_symbol_instance_id(child, symbol_ids)),
+        Value::Object(object) => {
+            object
+                .get("symbolId")
+                .and_then(Value::as_str)
+                .is_some_and(|symbol_id| symbol_ids.contains(symbol_id))
+                || object.get("components").is_some_and(|children| {
+                    component_value_has_any_symbol_instance_id(children, symbol_ids)
+                })
+        }
+        _ => false,
+    }
 }
 
 fn parse_project_value(content: &str) -> PagesResult<Value> {
@@ -597,6 +654,61 @@ mod tests {
             root[FLY_SYMBOLS_FIELD] = symbols;
         }
         root.to_string()
+    }
+
+    #[test]
+    fn symbol_scans_ignore_unrelated_provider_and_extension_payloads() {
+        let content = json!({
+            "extensions": { "symbolId": "cta" },
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "attributes": { "data-provider": { "symbolId": "cta" } },
+                    "providerPayload": { "symbolId": "cta" },
+                    "components": []
+                }
+            }]
+        })
+        .to_string();
+
+        assert!(!content_has_symbol_instances(&content).expect("scan"));
+        assert!(!content_references_symbol(&content, "cta").expect("reference scan"));
+        assert!(
+            !content_references_any_symbol(
+                &content,
+                &std::collections::BTreeSet::from(["cta".to_string()])
+            )
+            .expect("usage scan")
+        );
+    }
+
+    #[test]
+    fn symbol_scans_follow_object_valued_component_children() {
+        let content = project_with(
+            None,
+            json!({
+                "id": "opaque-parent",
+                "components": {
+                    "id": "nested-slot",
+                    "type": "symbol",
+                    "symbolId": "cta",
+                    "components": []
+                }
+            }),
+        );
+        let pages = parse_project_value(&content).expect("project")["pages"].clone();
+
+        assert!(content_has_symbol_instances(&content).expect("scan"));
+        assert!(content_references_symbol(&content, "cta").expect("reference scan"));
+        assert!(value_has_symbol_instance_id(&pages, "cta"));
+        assert!(
+            content_references_any_symbol(
+                &content,
+                &std::collections::BTreeSet::from(["cta".to_string()])
+            )
+            .expect("usage scan")
+        );
     }
 
     #[test]
