@@ -87,7 +87,7 @@ fn should_initialize_default_superadmin_for_mode(
     )
 }
 
-fn check_production_environment(
+pub(crate) fn check_production_environment(
     mac_root: &str,
     database_uri: &str,
     production: bool,
@@ -105,9 +105,10 @@ fn check_production_environment(
     }
 
     let mac_root_bytes = mac_root
-        .bytes()
-        .filter(|byte| !byte.is_ascii_whitespace())
-        .count();
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .map(char::len_utf8)
+        .sum::<usize>();
     if mac_root_bytes < 64 {
         return Err(crate::error::Error::Message(
             "FATAL: MAC root must contain at least 64 non-whitespace bytes for production use."
@@ -129,6 +130,25 @@ fn check_production_environment(
         ));
     }
 
+    match std::env::var("RUSTOK_DEV_SEED_PASSWORD") {
+        Ok(value) if !value.trim().is_empty() => {
+            return Err(crate::error::Error::Message(
+                concat!(
+                    "FATAL: RUSTOK_DEV_SEED_PASSWORD is development-only; ",
+                    "use SUPERADMIN_PASSWORD or SEED_ADMIN_PASSWORD for production provisioning."
+                )
+                .to_string(),
+            ));
+        }
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err(crate::error::Error::Message(
+                "FATAL: RUSTOK_DEV_SEED_PASSWORD must be valid UTF-8 in production."
+                    .to_string(),
+            ));
+        }
+        _ => {}
+    }
+
     if let Some((variable, password)) = configured_superadmin_password() {
         let trimmed_password = password.trim();
         if known_sample_superadmin_password(trimmed_password).is_some()
@@ -143,6 +163,22 @@ fn check_production_environment(
     Ok(())
 }
 
+pub(crate) fn known_placeholder_fragment(value: &str) -> Option<&'static str> {
+    const PLACEHOLDER_FRAGMENTS: &[&str] = &[
+        "change_me",
+        "change-me",
+        "changeme",
+        "replace_me",
+        "replace-me",
+        "placeholder",
+    ];
+    let normalized = value.trim().to_ascii_lowercase();
+    PLACEHOLDER_FRAGMENTS
+        .iter()
+        .copied()
+        .find(|fragment| normalized.contains(fragment))
+}
+
 pub(crate) fn known_dev_mac_root_fragment(mac_root: &str) -> Option<&'static str> {
     const KNOWN_DEV_SUBSTRINGS: &[&str] = &[
         "dev-secret",
@@ -150,14 +186,14 @@ pub(crate) fn known_dev_mac_root_fragment(mac_root: &str) -> Option<&'static str
         "change-in-production",
         "dev_secret",
         "rustok-dev-secret",
-        "changeme",
-        "replace_me",
     ];
-    let normalized = mac_root.trim().to_ascii_lowercase();
-    KNOWN_DEV_SUBSTRINGS
-        .iter()
-        .copied()
-        .find(|fragment| normalized.contains(fragment))
+    known_placeholder_fragment(mac_root).or_else(|| {
+        let normalized = mac_root.trim().to_ascii_lowercase();
+        KNOWN_DEV_SUBSTRINGS
+            .iter()
+            .copied()
+            .find(|fragment| normalized.contains(fragment))
+    })
 }
 
 pub(crate) fn sample_database_credentials_pattern(uri: &str) -> Option<&'static str> {
@@ -171,19 +207,26 @@ pub(crate) fn sample_database_credentials_pattern(uri: &str) -> Option<&'static 
         "sqlite:",
         "localhost:5432/rustok_dev",
         "127.0.0.1:5432/rustok_dev",
+        ".example.com",
+        ".example.net",
+        ".example.org",
+        ".example",
+        ".invalid",
+        ".test",
     ];
     let normalized = uri.trim().to_ascii_lowercase();
-    SAMPLE_PATTERNS
-        .iter()
-        .copied()
-        .find(|pattern| normalized.contains(pattern))
+    known_placeholder_fragment(&normalized).or_else(|| {
+        SAMPLE_PATTERNS
+            .iter()
+            .copied()
+            .find(|pattern| normalized.contains(pattern))
+    })
 }
 
 fn configured_superadmin_password() -> Option<(&'static str, String)> {
     for key in [
         "SUPERADMIN_PASSWORD",
         "SEED_ADMIN_PASSWORD",
-        "RUSTOK_DEV_SEED_PASSWORD",
     ] {
         if let Ok(value) = std::env::var(key) {
             let value = value.trim().to_string();
@@ -211,6 +254,7 @@ pub(crate) fn known_sample_superadmin_password(password: &str) -> Option<&'stati
         .iter()
         .copied()
         .find(|candidate| normalized == *candidate)
+        .or_else(|| known_placeholder_fragment(&normalized))
 }
 
 /// Builds the fully composed HTTP router from explicit host-owned inputs.
@@ -503,6 +547,77 @@ mod tests {
     }
 
     #[test]
+    fn production_secret_validation_rejects_padded_placeholder_mac_root() {
+        let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
+        let secret = format!("CHANGE_ME{}", "x".repeat(64));
+        let error = check_production_environment(
+            &secret,
+            "postgres://app:strong@prod-db.internal/rustok_prod",
+            true,
+        )
+        .expect_err("padding a placeholder must not make it a valid production MAC root");
+        assert!(error.to_string().contains("known development value"));
+    }
+
+    #[test]
+    fn production_mac_root_does_not_count_unicode_whitespace_bytes() {
+        let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
+        let secret = format!("{}\u{00a0}", "x".repeat(63));
+        let error = check_production_environment(
+            &secret,
+            "postgres://app:strong@prod-db.internal/rustok_prod",
+            true,
+        )
+        .expect_err("Unicode whitespace must not satisfy the non-whitespace byte floor");
+        assert!(error.to_string().contains("64 non-whitespace bytes"));
+    }
+
+    #[test]
+    fn production_secret_validation_rejects_change_me_database_password() {
+        let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
+        let secret = "aB3!zY7@qW8#eR2$".repeat(5);
+        let error = check_production_environment(
+            &secret,
+            "postgres://rustok:CHANGE_ME@prod-db.internal:5432/rustok_prod",
+            true,
+        )
+        .expect_err("sample database password must be rejected");
+        assert!(error.to_string().contains("known sample credentials"));
+    }
+
+    #[test]
+    fn production_secret_validation_rejects_change_me_superadmin_password() {
+        let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
+        unsafe {
+            std::env::set_var("SUPERADMIN_PASSWORD", "CHANGE_ME");
+        }
+        let secret = "aB3!zY7@qW8#eR2$".repeat(5);
+        let error = check_production_environment(
+            &secret,
+            "postgres://app:strong@prod-db.internal:5432/rustok_prod",
+            true,
+        )
+        .expect_err("placeholder superadmin password must be rejected");
+        assert!(error.to_string().contains("weak or known sample"));
+    }
+
+    #[test]
+    fn production_secret_validation_rejects_development_seed_password_variable() {
+        let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
+        unsafe {
+            std::env::set_var("RUSTOK_DEV_SEED_PASSWORD", "a-strong-but-development-only-password");
+        }
+        let secret = "aB3!zY7@qW8#eR2$".repeat(5);
+        let error = check_production_environment(
+            &secret,
+            "postgres://app:strong@prod-db.internal:5432/rustok_prod",
+            true,
+        )
+        .expect_err("development-only seed variable must not be accepted in production");
+        assert!(error.to_string().contains("RUSTOK_DEV_SEED_PASSWORD"));
+    }
+
+    #[test]
     fn production_secret_validation_rejects_empty_and_whitespace_database_uri() {
         let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
         let secret = "aB3!zY7@qW8#eR2$".repeat(5);
@@ -606,6 +721,14 @@ mod tests {
             Some("changeme")
         );
         assert_eq!(
+            known_dev_mac_root_fragment("prefix-CHANGE_ME-suffix"),
+            Some("change_me")
+        );
+        assert_eq!(
+            known_dev_mac_root_fragment("prefix-change-me-suffix"),
+            Some("change-me")
+        );
+        assert_eq!(
             sample_database_credentials_pattern("postgres://postgres:postgres@db/rustok"),
             Some("://postgres:postgres@")
         );
@@ -618,12 +741,32 @@ mod tests {
             Some("sqlite:")
         );
         assert_eq!(
+            sample_database_credentials_pattern(
+                "postgres://rustok:CHANGE_ME@db.example.com:5432/rustok_prod"
+            ),
+            Some("change_me")
+        );
+        assert_eq!(
+            sample_database_credentials_pattern(
+                "postgres://app:strong@db.example.com:5432/rustok_prod"
+            ),
+            Some(".example.com")
+        );
+        assert_eq!(
             known_sample_superadmin_password("dev-password-123"),
             Some("dev-password-123")
         );
         assert_eq!(
             known_sample_superadmin_password("ADMIN12345"),
             Some("admin12345")
+        );
+        assert_eq!(
+            known_sample_superadmin_password("CHANGE_ME"),
+            Some("change_me")
+        );
+        assert_eq!(
+            known_sample_superadmin_password("prefix-replace-me-suffix"),
+            Some("replace-me")
         );
     }
 }

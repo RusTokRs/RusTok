@@ -20,7 +20,10 @@ use crate::{
     routes::ServerRouter,
     services::{
         app_lifecycle::shutdown_runtime_workers,
-        server_bootstrap::{bootstrap_application_router, initialize_server_context},
+        server_bootstrap::{
+            bootstrap_application_router, check_production_environment,
+            initialize_server_context, known_placeholder_fragment,
+        },
         server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext},
     },
 };
@@ -155,6 +158,7 @@ pub async fn run() -> Result<()> {
     let production = crate::common::is_production_security_mode();
     validate_database_deployment(&database_uri, production)?;
     validate_database_runtime_policy(&config.database, production)?;
+    check_production_environment(&config.auth.jwt.mac_root, &database_uri, production)?;
     validate_https_deployment(production, hsts_enabled())?;
 
     // Validate all settings-derived policy before connecting to the database or
@@ -554,10 +558,14 @@ fn validate_database_deployment(database_uri: &str, production: bool) -> Result<
         "user" => password.starts_with("password"),
         _ => false,
     };
+    let uses_placeholder_credentials = known_placeholder_fragment(&username).is_some()
+        || known_placeholder_fragment(&password).is_some();
 
     let host = parsed
         .host_str()
         .unwrap_or_default()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
         .trim_end_matches('.')
         .to_ascii_lowercase();
     let host_is_local = host == "localhost"
@@ -565,7 +573,16 @@ fn validate_database_deployment(database_uri: &str, production: bool) -> Result<
         || host.ends_with(".localhost")
         || host
             .parse::<std::net::IpAddr>()
-            .is_ok_and(|address| address.is_loopback());
+            .is_ok_and(|address| address.is_loopback() || address.is_unspecified());
+    let host_is_placeholder = matches!(
+        host.as_str(),
+        "example.com" | "example.net" | "example.org"
+    ) || host.ends_with(".example.com")
+        || host.ends_with(".example.net")
+        || host.ends_with(".example.org")
+        || host.ends_with(".example")
+        || host.ends_with(".invalid")
+        || host.ends_with(".test");
     let database_name = decode_percent_encoded_component(parsed.path().trim_matches('/'))
         .ok_or_else(|| {
             Error::BadRequest(
@@ -576,7 +593,9 @@ fn validate_database_deployment(database_uri: &str, production: bool) -> Result<
         host_is_local && database_name.eq_ignore_ascii_case("rustok_dev");
 
     if uses_development_credentials
+        || uses_placeholder_credentials
         || uses_local_development_database
+        || host_is_placeholder
         || parsed.scheme().eq_ignore_ascii_case("sqlite")
     {
         return Err(Error::BadRequest(
@@ -1569,6 +1588,41 @@ mod tests {
             true,
         )
         .expect("strong production credentials should pass");
+    }
+
+    #[test]
+    fn production_rejects_placeholder_database_credentials_before_connecting() {
+        for uri in [
+            "postgres://app_user:CHANGE_ME@prod-db.internal:5432/rustok_prod",
+            "postgres://app_user:CHANGE%5FME@prod-db.internal:5432/rustok_prod",
+        ] {
+            let error = super::validate_database_deployment(uri, true)
+                .expect_err("placeholder credentials must fail even when percent-encoded");
+            assert!(error.to_string().contains("development credentials"));
+        }
+    }
+
+    #[test]
+    fn production_rejects_reserved_example_database_hosts() {
+        let error = super::validate_database_deployment(
+            "postgres://app_user:strong-secret@db.example.com:5432/rustok_prod",
+            true,
+        )
+        .expect_err("reserved example domains are documentation placeholders");
+        assert!(error.to_string().contains("local placeholders"));
+    }
+
+    #[test]
+    fn production_rejects_unspecified_database_addresses() {
+        for uri in [
+            "postgres://app_user:strong-secret@0.0.0.0:5432/rustok_prod",
+            "postgres://app_user:strong-secret@[::]:5432/rustok_prod",
+            "postgres://app_user:strong-secret@[::1]:5432/rustok_prod",
+        ] {
+            let error = super::validate_database_deployment(uri, true)
+                .expect_err("unspecified addresses are not production database endpoints");
+            assert!(error.to_string().contains("local placeholders"));
+        }
     }
 
     #[test]

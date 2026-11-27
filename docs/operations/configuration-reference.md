@@ -49,7 +49,7 @@ The executable has no separate `server.host` or `RUSTOK_BASE_URL` setting. The p
 
 | Key | Environment Variable | Default (Dev) | Description |
 | :--- | :--- | :--- | :--- |
-| `database.uri` | `DATABASE_URL` | `postgres://rustok:rustok@localhost:5432/rustok_dev` | Connection string for PostgreSQL or SQLite (`sqlite://rustok.db?mode=rwc`). |
+| `database.uri` | `DATABASE_URL` | `postgres://rustok:rustok@localhost:5432/rustok_dev` | Connection string for PostgreSQL or SQLite (`sqlite://rustok.db?mode=rwc`). Production rejects placeholder credentials, reserved example domains, local/unspecified hosts, and SQLite. |
 | `database.min_connections` | `DATABASE_MIN_CONNECTIONS` | `5` | Minimum idle connections retained in the pool. |
 | `database.max_connections` | `DATABASE_MAX_CONNECTIONS` | `30` | Maximum concurrent connections allowed by SeaORM pool. |
 | `database.connect_timeout` | `DATABASE_CONNECT_TIMEOUT` | `10000` | Connection/acquisition timeout in milliseconds; positive values are honored up to 300000 ms, while zero selects the 10-second default. |
