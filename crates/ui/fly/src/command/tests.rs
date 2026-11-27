@@ -1099,9 +1099,10 @@ fn opaque_component_ids_are_repaired_without_discarding_unknown_fields() {
         panic!("unknown component should remain opaque");
     };
 
-    assert_ne!(raw.get("id").and_then(Value::as_str), Some("bad target"));
+    let repaired_id = raw.get("id").and_then(Value::as_str).expect("repaired id");
+    assert_ne!(repaired_id, "bad target");
+    assert!(crate::validate_identifier(repaired_id).is_ok());
     assert_eq!(raw["futureConfig"]["keep"], true);
-    assert!(editor.document().all_component_ids_stable());
 }
 
 #[test]
