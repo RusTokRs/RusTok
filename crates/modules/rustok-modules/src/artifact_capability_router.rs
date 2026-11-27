@@ -264,6 +264,11 @@ pub(crate) async fn begin_artifact_capability_effect(
         .context
         .tenant_id
         .ok_or_else(|| SandboxError::CapabilityDenied(call.capability.clone()))?;
+    // Prepare may consult the credential provider or other independent
+    // authority sources, so it must finish before the owner transaction is
+    // checked out. Only the returned fence is allowed to touch that
+    // transaction.
+    let fence = authorizer.prepare(call).await?;
     let transaction = crate::backend::begin_fenced_transaction(db)
         .await
         .map_err(|_| SandboxError::HostCapability {
@@ -273,7 +278,6 @@ pub(crate) async fn begin_artifact_capability_effect(
     crate::backend::set_tenant_scope(&transaction, tenant_id)
         .await
         .map_err(|_| SandboxError::CapabilityDenied(call.capability.clone()))?;
-    let fence = authorizer.prepare(call).await?;
     let guard = fence.lock_on(&transaction).await?;
     Ok((transaction, guard))
 }
