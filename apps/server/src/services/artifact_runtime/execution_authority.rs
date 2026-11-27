@@ -217,6 +217,7 @@ impl ExecutionAuthority {
         if !lease.credential_live()
             || !self.check_direct(&lease).await
             || !check_security(resolver, &lease).await
+            || !check_policy(resolver, &lease).await.unwrap_or(false)
         {
             return Err(lease.denial());
         }
@@ -275,7 +276,8 @@ async fn check_policy(
                 None => false,
             });
     };
-    let (policy, authority) = resolver.resolve_with_closure(lease.tenant_id(), &lease.artifact).await?;
+    let channel = lease.serving_authority.as_ref().and_then(|authority| authority.channel.clone());
+    let (policy, authority) = resolver.resolve_with_channel(lease.tenant_id(), &lease.artifact, channel).await?;
     Ok(policy.policy_revision() == revision
         && authority.is_some()
         && authority.as_ref() == lease.serving_authority.as_ref())
@@ -357,6 +359,9 @@ impl ArtifactSqlEffectFence for SqlEffectFence {
             // replacement. Retain it until the SQL effect commits.
             authority.composition.require_current_in_transaction(tx)
                 .await.map_err(|_| self.deny())?;
+            if let Some(channel) = &authority.channel {
+                channel.require_current_on(tx).await.map_err(|_| self.deny())?;
+            }
         } else {
             self.lease.lifecycle_generation.as_ref().ok_or_else(|| self.deny())?
                 .require_current_on(tx).await.map_err(|_| self.deny())?;

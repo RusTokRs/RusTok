@@ -42,6 +42,7 @@ pub use error::{ChannelError, ChannelResult};
 pub use index_identity::PostgresChannelIndexIdentity;
 pub use invalidation_generation::{
     CHANNEL_RESOLUTION_INVALIDATION_SCOPE, read_resolution_invalidation_generation,
+    require_resolution_invalidation_generation_on,
 };
 pub use module::{ChannelModule, ChannelRuntimeSelected};
 pub use policy::{

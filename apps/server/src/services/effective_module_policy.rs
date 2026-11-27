@@ -213,6 +213,7 @@ impl EffectiveModulePolicyService {
         registry: &ModuleRegistry,
         tenant_id: uuid::Uuid,
         supported_payload_kinds: &[rustok_modules::ArtifactPayloadKind],
+        channel: Option<ModuleEffectivePolicyChannelInput>,
     ) -> Result<(ModuleEffectivePolicy, rustok_modules::ModuleCompositionIdentity), PlatformCompositionError> {
         let owner_snapshot = PlatformCompositionService::active_owner_snapshot(db).await?;
         let composition = owner_snapshot.identity();
@@ -221,7 +222,7 @@ impl EffectiveModulePolicyService {
         let policy = ModuleControlPlane::new(db.clone())
             .lifecycle(registry, manifest.settings.default_enabled)
             .with_corequisites(co_requisites)
-            .artifact_serving_policy(tenant_id, supported_payload_kinds)
+            .artifact_serving_policy_for_context(tenant_id, supported_payload_kinds, channel, None)
             .await
             .map_err(map_effective_policy_error)?;
         Ok((policy, composition))

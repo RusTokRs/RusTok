@@ -1468,7 +1468,7 @@ failure or cancellation; the broker checks membership again after async reads.
 This is process-local admission, not an atomic external-effect fence or a
 continuous interrupt for capability-free computation. In-flight calls may
 complete, and a post-launch denial preserves ambiguous-outcome semantics.
-Contextual channel/maintenance policy, external owner transactional authority,
+Operational maintenance policy, deferred/background channel context, external owner transactional authority,
 performance and actual worker callback verification remain open. See
 [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).
 
@@ -1553,7 +1553,7 @@ whose state revision changed. Fresh non-SQL preflight compares the same
 readiness evidence without an effect lock. Lifecycle hooks retain their
 separate root-only admission. This protects the durable ledger, not live
 executor availability or independent worker liveness. Contextual
-channel/maintenance inputs are not transactionally fenced. Registry authority
+maintenance inputs and deferred/background channel context are not transactionally fenced. HTTP channel resolution is now re-read from the owner without the TTL cache, bracketed by the durable generation and matched to the middleware-selected channel. The mixed serving policy evaluates its exact bindings for every closure member; unresolved HTTP context retains the generation as well. Capability preflight reuses the captured input and compares the generation. Structured SQL effects hold the Channel-owned generation row after readiness/composition fences until commit. No new migration is needed. Registry authority
 is checked under the sorted platform/tenant slug fences, before readiness and
 composition locks. Non-SQL effects remain preflight-only; lifecycle checks only
 the root. Drain old writers and leases before applying migration 000096; witness
