@@ -1514,6 +1514,21 @@ Operational maintenance operator authorization/transport and native serving, def
 performance and actual worker callback verification remain open. See
 [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).
 
+### Outbound HTTP capability SSRF boundary
+
+The `platform.http` broker disables process/system proxies on both its shared
+and DNS-pinned clients. Hostname resolution is bounded by the capability
+deadline, every returned address is screened before the first validated address
+is pinned, and the remaining deadline is shared by connection, request and
+response-body consumption. Redirects remain disabled and response bytes are
+streamed under an overflow-safe configured ceiling. Zero timeouts and zero
+response limits are rejected during construction.
+
+This is an outbound transport and resource boundary only. It does not make a
+remote HTTP effect transactional, prove that a timed-out remote operation did
+not complete, or close the separate non-SQL execution-lease race described
+above.
+
 ### SQL capability effect authority
 
 The server composition injects an explicit SQL effect authorizer into the
