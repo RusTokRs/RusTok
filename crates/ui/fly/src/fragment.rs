@@ -973,6 +973,109 @@ mod tests {
     }
 
     #[test]
+    fn fragment_carries_and_remaps_runtime_catalog_entries() {
+        let source = GrapesJsCodec::decode_value(json!({
+            "flyRuntimeBindings": [{
+                "id": "binding-1",
+                "component_id": "hero",
+                "path": "user.name",
+                "target": "attribute",
+                "name": "aria-label"
+            }],
+            "flyRuntimeConditions": [{
+                "id": "condition-1",
+                "component_id": "hero",
+                "path": "user.vip",
+                "operator": "truthy"
+            }],
+            "flyRuntimeRepeaters": [{
+                "id": "repeater-1",
+                "component_id": "hero",
+                "path": "products"
+            }],
+            "pages": [{
+                "component": {
+                    "id": "source-root",
+                    "type": "wrapper",
+                    "components": [{ "id": "hero", "type": "section" }]
+                }
+            }]
+        }))
+        .expect("source");
+        let fragment = ProjectFragment::from_component(&source, "hero").expect("fragment");
+        assert_eq!(fragment.extensions["flyRuntimeBindings"][0]["component_id"], "hero");
+        assert_eq!(fragment.extensions["flyRuntimeConditions"][0]["component_id"], "hero");
+        assert_eq!(fragment.extensions["flyRuntimeRepeaters"][0]["component_id"], "hero");
+
+        let target = GrapesJsCodec::decode_value(json!({
+            "flyRuntimeBindings": [{
+                "id": "binding-1",
+                "component_id": "existing",
+                "path": "user.role",
+                "target": "attribute",
+                "name": "data-role"
+            }],
+            "flyRuntimeConditions": [{
+                "id": "condition-1",
+                "component_id": "existing",
+                "path": "user.active",
+                "operator": "truthy"
+            }],
+            "flyRuntimeRepeaters": [{
+                "id": "repeater-1",
+                "component_id": "existing",
+                "path": "offers"
+            }],
+            "pages": [{
+                "component": {
+                    "id": "target-root",
+                    "type": "wrapper",
+                    "components": [{ "id": "existing", "type": "section" }]
+                }
+            }]
+        }))
+        .expect("target");
+        let mut editor = FlyEditor::new(target, RegistrySet::with_builtins());
+        let inserted = fragment
+            .insert(&mut editor, Some("target-root".to_string()), 1)
+            .expect("paste");
+        let pasted_component_id = inserted[0].as_str();
+
+        let bindings = crate::BindingCatalog::from_document(editor.document());
+        assert_eq!(bindings.bindings.len(), 2);
+        let pasted_binding = bindings
+            .bindings
+            .iter()
+            .find(|binding| binding.component_id == pasted_component_id)
+            .expect("pasted binding");
+        assert_ne!(pasted_binding.id, "binding-1");
+        assert_eq!(
+            bindings
+                .bindings
+                .iter()
+                .find(|binding| binding.component_id == "existing")
+                .map(|binding| binding.id.as_str()),
+            Some("binding-1")
+        );
+
+        let dynamics = crate::DynamicCatalog::from_document(editor.document());
+        assert_eq!(dynamics.conditions.len(), 2);
+        let pasted_condition = dynamics
+            .conditions
+            .iter()
+            .find(|condition| condition.component_id == pasted_component_id)
+            .expect("pasted condition");
+        assert_ne!(pasted_condition.id, "condition-1");
+        assert_eq!(dynamics.repeaters.len(), 2);
+        let pasted_repeater = dynamics
+            .repeaters
+            .iter()
+            .find(|repeater| repeater.component_id == pasted_component_id)
+            .expect("pasted repeater");
+        assert_ne!(pasted_repeater.id, "repeater-1");
+    }
+
+    #[test]
     fn fragment_carries_and_remaps_assets_and_styles_in_opaque_subtrees() {
         let source = GrapesJsCodec::decode_value(json!({
             "assets": [{ "id": "shared", "src": "/source.webp" }],
