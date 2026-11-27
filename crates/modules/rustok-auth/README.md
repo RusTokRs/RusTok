@@ -100,6 +100,18 @@ it never provisions a service or adds grants. Human transport authentication is 
 
 ### Known Limitations / Pending Implementation
 
+User-administration transactions (create/update/deactivate user and
+issue/revoke invite, including RBAC role assignment through the user port)
+carry the admitted HTTP/WS credential deadline and account recovery
+revision in the host request scope. Direct session credentials lock the
+initiating session after ordered user locks, validate the exact subject and
+live absolute/sliding deadlines, and recheck time after policy/role locks
+and before commit. Grant-only internal scopes do not claim credential
+authority. Delegated registration/consent fencing, OAuth administration,
+RBAC role-definition mutations, artifact authority and cross-module
+PostgreSQL deadlock evidence remain open. Compilation and runtime
+verification are pending for this slice.
+
 OAuth authorization rechecks the locked direct-session/access deadline after
 consent and code writes, and code consumption rejects future-dated and expired
 codes using one admission timestamp. Service and delegated token exchanges

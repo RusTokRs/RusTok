@@ -89,11 +89,9 @@ impl WebSocketAuthLease {
         Self {
             tenant_id: current_user.user.tenant_id,
             access_token,
-            initial_scope: crate::services::rbac_request_scope::RbacRequestScope::new(
-                current_user.user.tenant_id,
-                current_user.user.id,
-                current_user.permissions.clone(),
-                current_user.inferred_role.clone(),
+            initial_scope: crate::services::rbac_request_scope::RbacRequestScope::authenticated(
+                current_user,
+                current_user.access_token_expires_at,
             ),
             expires_at: current_user.access_token_expires_at,
             monotonic_deadline: started.checked_add(remaining).unwrap_or(started),
@@ -164,11 +162,9 @@ impl WebSocketAuthLease {
         if user.access_token_expires_at < self.expires_at {
             return Err(WebSocketAuthLeaseError::AuthorityChanged);
         }
-        let scope = crate::services::rbac_request_scope::RbacRequestScope::new(
-            user.user.tenant_id,
-            user.user.id,
-            user.permissions,
-            user.inferred_role,
+        let scope = crate::services::rbac_request_scope::RbacRequestScope::authenticated(
+            &user,
+            self.expires_at,
         );
         if scope != self.initial_scope {
             return Err(WebSocketAuthLeaseError::AuthorityChanged);

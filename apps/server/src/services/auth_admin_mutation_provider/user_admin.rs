@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use rustok_api::Permission;
+use rustok_api::{AuthPrincipalKind, Permission};
 use rustok_cache::CacheService;
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, IssueUserInviteCommand,
@@ -33,7 +33,7 @@ use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::rbac_cache_invalidation::publish_user_rbac_invalidation;
 use crate::services::rbac_invalidation_generation::reserve_rbac_invalidation_generation;
-use crate::services::rbac_request_scope::{permissions_for, role_for};
+use crate::services::rbac_request_scope::{credential_for, permissions_for, role_for};
 use crate::services::rbac_service::RbacService;
 
 use super::{
@@ -282,6 +282,84 @@ impl ServerAuthAdminMutationProvider {
         })
     }
 
+    /// The actor user row is already locked. Acquire the direct session fence
+    /// in the same user -> session order as refresh and recovery.
+    async fn lock_user_admin_credential(
+        &self,
+        tx: &sea_orm::DatabaseTransaction,
+        context: &AuthAdminMutationContext,
+        actor: &users::Model,
+    ) -> Result<Option<DateTime<Utc>>, AuthAdminMutationError> {
+        let evidence = credential_for(&context.tenant_id, &context.actor_id)
+            .ok_or(AuthAdminMutationError::Unauthorized)?;
+        if context.principal_kind == Some(AuthPrincipalKind::Service) {
+            return Err(AuthAdminMutationError::Forbidden(
+                "user administration requires a user actor".to_string(),
+            ));
+        }
+        // An explicit grant-only internal scope has no bearer credential.
+        // Authenticated HTTP/WS constructors always carry evidence.
+        let Some(evidence) = evidence else {
+            return Ok(None);
+        };
+        if evidence.principal_kind == AuthPrincipalKind::Service
+            || context.principal_kind.is_some_and(|kind| kind != evidence.principal_kind)
+            || actor.id != context.actor_id
+            || actor.tenant_id != context.tenant_id
+            || actor.recovery_revision < 0
+            || actor.recovery_revision != evidence.recovery_revision
+        {
+            return Err(AuthAdminMutationError::Unauthorized);
+        }
+        let mut deadline = evidence.expires_at;
+        if evidence.principal_kind == AuthPrincipalKind::DirectUser {
+            let session = AuthLifecycleService::find_session_by_id_for_update_in_tx(
+                tx, context.tenant_id, evidence.session_id,
+            ).await.map_err(super::internal_admin_error)?
+                .filter(|session| session.user_id == context.actor_id)
+                .ok_or(AuthAdminMutationError::Unauthorized)?;
+            deadline = deadline.min(session.expires_at.with_timezone(&Utc))
+                .min(session.absolute_deadline());
+            let now = self.user_admin_credential_now(tx).await?;
+            if !session.is_active_at(now) || now >= deadline {
+                return Err(AuthAdminMutationError::Unauthorized);
+            }
+        } else {
+            // Registration and consent fencing require their own app/user
+            // lock protocol. For now enforce the admitted deadline and
+            // recovery revision without claiming an OAuth revocation fence.
+            self.ensure_user_admin_credential_deadline(tx, Some(deadline)).await?;
+        }
+        Ok(Some(deadline))
+    }
+
+    async fn user_admin_credential_now(
+        &self,
+        tx: &sea_orm::DatabaseTransaction,
+    ) -> Result<DateTime<Utc>, AuthAdminMutationError> {
+        let verified = rustok_auth::application_clock::verified_now(tx).await
+            .map_err(super::internal_admin_error)?;
+        let live = self.auth_config.credential_now()
+            .map_err(super::internal_admin_error)?;
+        let decision = rustok_auth::application_clock::decision_time(verified, live)
+            .map_err(super::internal_admin_error)?;
+        // A later live sample may deny admission, never extend the deadline.
+        Ok(decision.max(live))
+    }
+
+    async fn ensure_user_admin_credential_deadline(
+        &self,
+        tx: &sea_orm::DatabaseTransaction,
+        deadline: Option<DateTime<Utc>>,
+    ) -> Result<(), AuthAdminMutationError> {
+        if let Some(deadline) = deadline {
+            if self.user_admin_credential_now(tx).await? >= deadline {
+                return Err(AuthAdminMutationError::Unauthorized);
+            }
+        }
+        Ok(())
+    }
+
     /// Lock all existing users before module and role state. Request evidence
     /// remains a ceiling; the independently resolved live actor must also
     /// authorize the operation. The target is returned from its locked read.
@@ -293,7 +371,7 @@ impl ServerAuthAdminMutationProvider {
         requested_builtin: Option<&UserRole>,
         requested_slug: Option<&str>,
         required: &[Permission],
-    ) -> Result<(Option<users::Model>, UserRole, Vec<Permission>), AuthAdminMutationError> {
+    ) -> Result<(Option<users::Model>, UserRole, Vec<Permission>, Option<DateTime<Utc>>), AuthAdminMutationError> {
         // A service principal's subject is an app ID, never a persisted user
         // administrator, even if an unrelated user happens to share its UUID.
         if context.principal_kind == Some(rustok_api::AuthPrincipalKind::Service) {
@@ -308,18 +386,23 @@ impl ServerAuthAdminMutationProvider {
         ids.sort_unstable();
         ids.dedup();
         let mut target = None;
+        let mut actor = None;
         for id in ids {
             let locked = AuthLifecycleService::lock_user_for_mutation(tx, context.tenant_id, id)
                 .await.map_err(super::internal_admin_error)?;
-            if id == context.actor_id && !locked.as_ref().is_some_and(|actor| actor.is_active()) {
-                return Err(AuthAdminMutationError::Forbidden(
-                    "active user administrator is required".to_string(),
-                ));
+            if id == context.actor_id {
+                actor = Some(locked.as_ref().filter(|actor| actor.is_active()).cloned()
+                    .ok_or_else(|| AuthAdminMutationError::Forbidden(
+                        "active user administrator is required".to_string(),
+                    ))?);
             }
             if target_id == Some(id) {
                 target = Some(locked.ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))?);
             }
         }
+
+        let actor = actor.ok_or(AuthAdminMutationError::Unauthorized)?;
+        let credential_deadline = self.lock_user_admin_credential(tx, context, &actor).await?;
 
         let (_, availability) = crate::services::rbac_module_availability::lock_invite_module_policy(
             &self.db, tx, self.invite_registry.as_ref(), context.tenant_id,
@@ -351,7 +434,8 @@ impl ServerAuthAdminMutationProvider {
         let role = RbacService::get_user_role_authoritative(
             tx, &context.tenant_id, &context.actor_id,
         ).await.map_err(super::internal_admin_error)?;
-        Ok((target, role, permissions))
+        self.ensure_user_admin_credential_deadline(tx, credential_deadline).await?;
+        Ok((target, role, permissions, credential_deadline))
     }
 
     async fn user_role<C>(
@@ -519,7 +603,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         ).await.map_err(super::internal_admin_error)?;
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
         let target_slug = custom_slug.clone().unwrap_or_else(|| role.to_string());
-        let (_, current_role, current_permissions) = self.lock_user_admin_authority(
+        let (_, current_role, current_permissions, credential_deadline) = self.lock_user_admin_authority(
             &tx, context, None,
             if custom_slug.is_none() { Some(&role) } else { None },
             Some(&target_slug), required,
@@ -584,6 +668,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             DomainEvent::UserAccountRegistered { user_id: user.id },
         )
         .await?;
+        self.ensure_user_admin_credential_deadline(&tx, credential_deadline).await?;
         tx.commit().await.map_err(super::internal_admin_error)?;
         Ok(ServerAuthAdminMutationProvider::user_record(
             user,
@@ -707,7 +792,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             &self.db, self.invite_registry.as_ref(),
         ).await.map_err(super::internal_admin_error)?;
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
-        let (locked_user, live_actor_role, live_permissions) = self.lock_user_admin_authority(
+        let (locked_user, live_actor_role, live_permissions, credential_deadline) = self.lock_user_admin_authority(
             &tx, context, Some(command.id), requested_role.as_ref(),
             requested_slug.as_deref(), required,
         ).await?;
@@ -985,6 +1070,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                 self.user_role_slug(&tx, context.tenant_id, user.id).await?
             }
         };
+        self.ensure_user_admin_credential_deadline(&tx, credential_deadline).await?;
         tx.commit().await.map_err(super::internal_admin_error)?;
         if let Some(durable_generation) = durable_generation {
             publish_committed_user_invalidation(&self.cache_service, context.tenant_id, user.id, durable_generation)
@@ -1015,7 +1101,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         ).await.map_err(super::internal_admin_error)?;
         let event_bus = &self.event_bus;
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
-        let (user, live_actor_role, _) = self.lock_user_admin_authority(
+        let (user, live_actor_role, _, credential_deadline) = self.lock_user_admin_authority(
             &tx, context, Some(user_id), None, None, &[Permission::USERS_MANAGE],
         ).await?;
         let user = user.ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))?;
@@ -1068,6 +1154,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                 "durable user deletion invalidation is unavailable".to_string(),
             ));
         }
+        self.ensure_user_admin_credential_deadline(&tx, credential_deadline).await?;
         tx.commit().await.map_err(super::internal_admin_error)?;
         publish_committed_user_invalidation(&self.cache_service, context.tenant_id, user.id, durable_generation).await;
         Ok(())
@@ -1111,6 +1198,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         .ok_or_else(|| AuthAdminMutationError::Forbidden(
             "active invitation issuer is required".to_string(),
         ))?;
+        let credential_deadline = self.lock_user_admin_credential(&tx, context, &issuer).await?;
         let (module_policy_binding, availability) =
             crate::services::rbac_module_availability::lock_invite_module_policy(
                 &self.db, &tx, self.invite_registry.as_ref(), context.tenant_id,
@@ -1163,6 +1251,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         .await
         .map_err(super::super_admin_guard::persistence_error)?;
 
+        self.ensure_user_admin_credential_deadline(&tx, credential_deadline).await?;
         // Start the signed lifetime after account and delegation checks.
         let now = rustok_auth::application_clock::verified_now(&tx).await
             .map_err(super::internal_admin_error)?;
@@ -1214,6 +1303,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         // Do not publish an invitation signed by a key that became unusable
         // while the ledger and outbox writes were waiting.
         invite_expiration_from_token(&self.auth_config, &token)?;
+        self.ensure_user_admin_credential_deadline(&tx, credential_deadline).await?;
         tx.commit().await.map_err(super::internal_admin_error)?;
 
         Ok(IssuedUserInviteResult {
@@ -1264,13 +1354,14 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         // -> ordered role grants. Revoking an invite does not require its
         // original issuer or destination role to remain valid.
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
-        AuthLifecycleService::lock_user_for_mutation(
+        let actor = AuthLifecycleService::lock_user_for_mutation(
             &tx, context.tenant_id, context.actor_id,
         ).await.map_err(super::internal_admin_error)?
             .filter(|actor| actor.is_active())
             .ok_or_else(|| AuthAdminMutationError::Forbidden(
                 "active invitation administrator is required".to_string(),
             ))?;
+        let credential_deadline = self.lock_user_admin_credential(&tx, context, &actor).await?;
         let invite = lock_invite_for_mutation(
             &tx,
             context.tenant_id,
@@ -1301,6 +1392,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             ));
         }
 
+        self.ensure_user_admin_credential_deadline(&tx, credential_deadline).await?;
+
         // Do not disclose whether the invite exists to an actor whose
         // current permission was removed after request admission.
         let invite = invite.ok_or_else(|| AuthAdminMutationError::NotFound("user invite".to_string()))?;
@@ -1309,6 +1402,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         // revocation prevents acceptance, and an accepted invite cannot
         // emit a subsequent revocation event.
         if invite.revoked_at.is_some() {
+            self.ensure_user_admin_credential_deadline(&tx, credential_deadline).await?;
             tx.commit().await.map_err(super::internal_admin_error)?;
             return Ok(invite_record(invite));
         }
@@ -1342,6 +1436,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             },
         )
         .await?;
+        self.ensure_user_admin_credential_deadline(&tx, credential_deadline).await?;
         tx.commit().await.map_err(super::internal_admin_error)?;
 
         Ok(invite_record(updated))
@@ -1498,6 +1593,45 @@ mod tests {
             provider.create_user(&context, create("allowed@example.test")).await
         }).await.unwrap();
         assert_eq!(created.role, "customer");
+
+        // The authenticated path must not accept a stale or substituted session.
+        let session = crate::models::sessions::ActiveModel::new(
+            tenant.id, actor.id, "admin-session-test-digest".to_string(),
+            chrono::Utc::now() + chrono::Duration::hours(1), None, None,
+        ).insert(&db).await.unwrap();
+        let current = crate::extractors::auth::CurrentUser {
+            user: actor.clone(),
+            session_id: session.id,
+            permissions: vec![Permission::USERS_MANAGE],
+            inferred_role: UserRole::Admin,
+            actor_kind: rustok_core::SecurityActorKind::User,
+            principal_kind: AuthPrincipalKind::DirectUser,
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "direct".to_string(),
+            access_token_expires_at: chrono::Utc::now() + chrono::Duration::minutes(10),
+        };
+        let authenticated = |deadline| RbacRequestScope::authenticated(&current, deadline);
+        let allowed = with_rbac_request_scope(Some(authenticated(current.access_token_expires_at)), async {
+            provider.create_user(&context, create("session-allowed@example.test")).await
+        }).await;
+        assert!(allowed.is_ok(), "{allowed:?}");
+        let expired = with_rbac_request_scope(Some(authenticated(chrono::Utc::now())), async {
+            provider.create_user(&context, create("jwt-expired@example.test")).await
+        }).await;
+        assert!(matches!(expired, Err(AuthAdminMutationError::Unauthorized)));
+        crate::models::sessions::ActiveModel {
+            id: Set(session.id),
+            revoked_at: Set(Some(chrono::Utc::now().into())),
+            ..Default::default()
+        }.update(&db).await.unwrap();
+        let revoked = with_rbac_request_scope(Some(authenticated(current.access_token_expires_at)), async {
+            provider.create_user(&context, create("session-revoked@example.test")).await
+        }).await;
+        assert!(matches!(revoked, Err(AuthAdminMutationError::Unauthorized)));
+        for email in ["jwt-expired@example.test", "session-revoked@example.test"] {
+            assert!(users::Entity::find_by_email(&db, tenant.id, email).await.unwrap().is_none());
+        }
 
         // A live user with a stale request is no longer an administrator.
         let tx = db.begin().await.unwrap();

@@ -36,10 +36,9 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
                     tenant_id: *tenant_id,
                     request_id: None,
                     locale: None,
-                    // Host-internal RBAC composition invokes the port
-                    // without a request principal; self-service operations
-                    // that require DirectUser fail closed on None.
-                    principal_kind: None,
+                    // The GraphQL control plane admits direct users only.
+                    // The host scope independently binds the actual credential.
+                    principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
                 },
                 UpdateUserCommand {
                     id: *user_id,
@@ -75,10 +74,9 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
                     tenant_id: *tenant_id,
                     request_id: None,
                     locale: None,
-                    // Host-internal RBAC composition invokes the port
-                    // without a request principal; self-service operations
-                    // that require DirectUser fail closed on None.
-                    principal_kind: None,
+                    // The GraphQL control plane admits direct users only.
+                    // The host scope independently binds the actual credential.
+                    principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
                 },
                 UpdateUserCommand {
                     id: *user_id,

@@ -196,11 +196,9 @@ pub async fn resolve_optional(
                 return auth_error_response(StatusCode::FORBIDDEN, message);
             }
 
-            rbac_scope = Some(RbacRequestScope::new(
-                current_user.user.tenant_id,
-                current_user.user.id,
-                current_user.permissions.clone(),
-                current_user.inferred_role.clone(),
+            rbac_scope = Some(RbacRequestScope::authenticated(
+                &current_user,
+                current_user.access_token_expires_at,
             ));
             let principal_context = AuthPrincipalContext::new(current_user.principal_kind);
             parts

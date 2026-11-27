@@ -125,6 +125,13 @@ deletes or hides roles or their grants — the module's grants become
 
 ## Known Limitations / Pending Implementation
 
+The GraphQL role-assignment adapter forwards its direct-user principal to
+the Auth user-administration port; the host request scope carries admitted
+session identity and credential deadline into that transaction. Role
+definition create/update/delete and artifact permission changes still need
+transaction-bound credential and live policy authorization; inter-module
+lock ordering and runtime verification remain pending.
+
 - **Role assignment replaces all tenant memberships with a single role.**
   `assign_user_role` accepts a built-in role enum (`role`) or any
   tenant-persisted role slug (`roleSlug`), including custom roles. Built-in
