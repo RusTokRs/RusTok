@@ -132,12 +132,12 @@ where
             None => None,
         };
         let objects = match effect_fence.as_ref() {
-            Some(fence) => objects.clone().with_effect_fence(Arc::clone(fence)),
-            None => objects.clone(),
+            Some(fence) => self.objects.clone().with_effect_fence(Arc::clone(fence)),
+            None => self.objects.clone(),
         };
         let uploads = match effect_fence.as_ref() {
-            Some(fence) => uploads.clone().with_effect_fence(Arc::clone(fence)),
-            None => uploads.clone(),
+            Some(fence) => self.uploads.clone().with_effect_fence(Arc::clone(fence)),
+            None => self.uploads.clone(),
         };
         match decoded {
             ObjectDataCapabilityCall::GetMetadata { name } => {
