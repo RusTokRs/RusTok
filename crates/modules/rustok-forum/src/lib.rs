@@ -283,7 +283,8 @@ pub use services::{
     SetForumCategoryModerationAudiencePolicyInput, SetForumCategoryReplyCreateAudiencePolicyInput,
     SetForumCategoryTopicCreateAudiencePolicyInput, SetForumCategoryVisibilityPolicyInput,
     SetForumTopicAudiencePolicyInput, SetForumTopicReplyCreateAudiencePolicyInput,
-    SetForumUserTrustInput, SharedForumPostingPolicyOwnerFactPort, SplitForumTopicRepliesInput,
+    SetForumUserTrustInput, SharedForumPostingPolicyFactsComposer,
+    SharedForumPostingPolicyOwnerFactPort, SplitForumTopicRepliesInput,
     SubscriptionService, TopicService, UserStatsService, VoteService,
 };
 pub use services::{

@@ -53,6 +53,8 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-11-27](./2026-11-27-forum-posting-policy-window-enforcement.md) | Forum posting policy window enforcement on create writes | Accepted | In progress | Extends [Posting rate limits](./2026-10-09-forum-posting-rate-limits.md); Rust verification pending |
+| [2026-11-27](./2026-11-27-forum-closed-topic-visibility.md) | Forum closed-topic visibility and lifecycle semantics | Accepted | Implemented | Documents existing publication-state behavior |
 | [2026-11-27](./2026-11-27-artifact-execution-capability-lease.md) | Execution-bound host capability authority | Accepted | In progress | Extends [Deployment readiness authority](./2026-11-27-artifact-deployment-readiness-authority.md) |
 | [2026-11-27](./2026-11-27-artifact-deployment-readiness-authority.md) | Deployment readiness is independent of tenant serving policy | Accepted | In progress | Extends [Node reconciliation ledger](./2026-08-14-module-node-reconciliation-ledger.md) and [Effective module policy](./2026-07-22-effective-module-policy-decision.md); supersedes their implicit shared revision identity |
 | [2026-11-27](./2026-11-27-auth-invite-module-policy-binding.md) | Invite static module policy binding | Accepted | In progress | Extends [Effective module policy](./2026-07-22-effective-module-policy-decision.md) |

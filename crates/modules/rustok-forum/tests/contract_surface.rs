@@ -136,3 +136,66 @@ fn module_manifest_declares_optional_forum_widget_catalog_contract() {
         );
     }
 }
+
+#[test]
+fn posting_policy_manifest_windows_are_optional_and_match_dto_bounds() {
+    use rustok_forum::dto::{ForumModuleSettings, ForumPostingWindowLimitSettings};
+
+    let manifest: toml::Value =
+        toml::from_str(include_str!("../rustok-module.toml")).expect("valid manifest");
+    let schema = manifest.get("settings").expect("settings schema");
+    for key in [
+        "posting_policy_topic_create_limit",
+        "posting_policy_reply_create_limit",
+    ] {
+        let spec = schema.get(key).expect("window rule must be configurable");
+        assert_eq!(
+            spec.get("type").and_then(toml::Value::as_str),
+            Some("object")
+        );
+        assert!(spec.get("default").is_none(), "absent means disabled");
+        assert_ne!(
+            spec.get("required").and_then(toml::Value::as_bool),
+            Some(true)
+        );
+        let properties = spec.get("properties").expect("bounded window properties");
+        assert_eq!(properties.as_table().expect("properties table").len(), 2);
+        for (field, maximum) in [("maximum_count", 1_000_000), ("window_seconds", 2_592_000)] {
+            let property = properties.get(field).expect("window property");
+            assert_eq!(
+                property.get("type").and_then(toml::Value::as_str),
+                Some("integer")
+            );
+            assert_eq!(
+                property.get("required").and_then(toml::Value::as_bool),
+                Some(true)
+            );
+            assert_eq!(
+                property.get("min").and_then(toml::Value::as_integer),
+                Some(1)
+            );
+            assert_eq!(
+                property.get("max").and_then(toml::Value::as_integer),
+                Some(maximum)
+            );
+            for value in [0, 1, maximum, maximum + 1] {
+                let mut limit = ForumPostingWindowLimitSettings {
+                    maximum_count: 1,
+                    window_seconds: 1,
+                };
+                if field == "maximum_count" {
+                    limit.maximum_count = u32::try_from(value).expect("bounded count");
+                } else {
+                    limit.window_seconds = u32::try_from(value).expect("bounded duration");
+                }
+                let mut settings = ForumModuleSettings::default();
+                if key == "posting_policy_topic_create_limit" {
+                    settings.posting_policy_topic_create_limit = Some(limit);
+                } else {
+                    settings.posting_policy_reply_create_limit = Some(limit);
+                }
+                assert_eq!(settings.validate().is_ok(), (1..=maximum).contains(&value));
+            }
+        }
+    }
+}

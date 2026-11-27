@@ -1,0 +1,129 @@
+name: Forum Posting Policy
+
+on:
+  push:
+    branches:
+      - main
+      - "arena/**"
+    paths:
+      - "crates/modules/rustok-forum/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/forum-posting-policy.yml"
+  pull_request:
+    paths:
+      - "crates/modules/rustok-forum/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/forum-posting-policy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  SQLX_OFFLINE: "true"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  posting-policy:
+    name: Forum scoped Rust verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      checks: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        env:
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+      - name: Check Forum formatting
+        id: format
+        run: cargo +1.96.0 fmt -p rustok-forum -- --check 2>&1 | tee "$RUNNER_TEMP/forum-format.log"
+      - name: Compile Forum library
+        id: compile
+        if: ${{ !cancelled() }}
+        run: cargo +1.96.0 check --locked -p rustok-forum --lib 2>&1 | tee "$RUNNER_TEMP/forum-compile.log"
+      - name: Lint Forum library
+        id: clippy
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        run: cargo +1.96.0 clippy --locked -p rustok-forum --lib --no-deps -- -D warnings 2>&1 | tee "$RUNNER_TEMP/forum-clippy.log"
+      - name: Test posting policy units and settings
+        id: units
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        run: cargo +1.96.0 test --locked -p rustok-forum --lib posting_policy 2>&1 | tee "$RUNNER_TEMP/forum-units.log"
+      - name: Test manifest and DTO bound parity
+        id: manifest
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        run: cargo +1.96.0 test --locked -p rustok-forum --test contract_surface posting_policy 2>&1 | tee "$RUNNER_TEMP/forum-manifest.log"
+      - name: Test persisted create-window admission and refusal
+        id: creates
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        run: cargo +1.96.0 test --locked -p rustok-forum --test posting_limits_sqlite posting_policy_ 2>&1 | tee "$RUNNER_TEMP/forum-creates.log"
+      - name: Test topic visibility and SEO contracts
+        id: seo
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        run: cargo +1.96.0 test --locked -p rustok-forum --test canonical_route_seo_policy_contract 2>&1 | tee "$RUNNER_TEMP/forum-seo.log"
+      # Publish bounded diagnostics through the GitHub API, since Actions log
+      # downloads can be inaccessible from restricted authoring environments.
+      # This reports actual step outcomes and cannot turn a failed job green.
+      - name: Publish scoped check diagnostics
+        if: ${{ always() && github.event_name == 'push' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVIDENCE_SHA: ${{ github.sha }}
+          EVIDENCE_REPOSITORY: ${{ github.repository }}
+          STEP_OUTCOMES: ${{ toJSON(steps) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          steps = json.loads(os.environ["STEP_OUTCOMES"])
+          for key in ("format", "compile", "clippy", "units", "manifest", "creates", "seo"):
+              outcome = steps.get(key, {}).get("outcome", "skipped")
+              log = pathlib.Path(os.environ["RUNNER_TEMP"]) / f"forum-{key}.log"
+              text = log.read_text(errors="replace") if log.exists() else "Command did not run."
+              payload = {
+                  "name": f"Forum evidence: {key}",
+                  "head_sha": os.environ["EVIDENCE_SHA"],
+                  "status": "completed",
+                  "conclusion": outcome if outcome in ("success", "failure", "cancelled", "skipped") else "failure",
+                  "output": {
+                      "title": f"Forum {key}: {outcome}",
+                      "summary": f"Exact SHA: {os.environ['EVIDENCE_SHA']}; step outcome: {outcome}.",
+                      "text": text.encode("utf-8")[-55000:].decode("utf-8", errors="replace"),
+                  },
+              }
+              subprocess.run([
+                  "gh", "api", "--method", "POST",
+                  f"repos/{os.environ['EVIDENCE_REPOSITORY']}/check-runs", "--input", "-",
+              ], input=json.dumps(payload), text=True, check=True, stdout=subprocess.DEVNULL)
+          PY
+      - name: Upload scoped logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: forum-posting-policy-${{ github.sha }}
+          path: ${{ runner.temp }}/forum-*.log
+          if-no-files-found: ignore
+          retention-days: 7

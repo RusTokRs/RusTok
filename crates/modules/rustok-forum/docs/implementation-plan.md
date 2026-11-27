@@ -883,9 +883,21 @@ Findings are ordered by risk and by dependency (owner correctness before transpo
    tenant checks and write-failure propagation are unchanged; mutations
    do not leak hidden content. Confirm
    clients, schema and authorization races in the maintainer runtime run.
-7. **P2, outstanding:** Wire the canonical posting policy evaluator and its
-   window facts into create transactions (not only cooldown). Verify
-   concurrent writers, temporal boundaries, failure modes and actor exemption.
+7. **P2, source-ready in this branch:** The canonical posting policy evaluator
+   and its window facts are wired into topic/reply create transactions
+   alongside the cooldown: opt-in window rules come from the
+   `posting_policy_topic_create_limit` / `posting_policy_reply_create_limit`
+   module settings (absent = evaluator inert), facts are composed before the
+   transaction, and the decision is enforced after authorization and the
+   cooldown with the same system/service actor exemption as `posting_rate`
+   (see `DECISIONS/2026-11-27-forum-posting-policy-window-enforcement.md`).
+   Three authored SQLite service tests (`posting_limits_sqlite::posting_policy_*`)
+   cover real window providers, denials without persisted side effects,
+   author isolation, expiry and missing dependencies; they remain unexecuted.
+   Concurrent-writer precision, temporal boundaries and failure modes are
+   reasoned in source but unverified — no cargo ran in this pass; edits,
+   bumps, non-window rules, distributed reservation and policy administration
+   remain open.
 8. **P2, outstanding:** Add report rate limits through the Moderation owner,
    category/topic/reply report UI, and operator-friendly feedback. Avoid
    duplicating automatic Moderation policy in Forum.
@@ -1512,7 +1524,7 @@ is deferred to the final production-validation phase.
 | `FORUM-23` | `in_progress` | Search projection/filtering, ordering, owner revisions and repair exist; maintainer PostgreSQL/Iggy plus LINK-FORUM-03 runtime evidence remain. |
 | `FORUM-24` | `in_progress` | A-S plus descriptor correction provide category/topic routes, transports, mounts, SEO/hreflang and Search URLs. Execute registered-host, HTTP, browser and reindex evidence. |
 | `FORUM-25` | `done` | Category backend/Translation implementation is complete: canonical Category copy/routes/hierarchy are Taxonomy-owned, the duplicate Forum provider/cursor/progress runtime and legacy donor storage are retired, and Arabic/admin/storefront locale boundaries are source-ready. Mounted multilingual/RTL browser execution is deferred to the final production-validation phase and does not keep FORUM-25 open; topic/reply UGC translation remains opt-in rather than an automatic provider. |
-| `FORUM-26` | `in_progress` | FORUM-26A-J provide authoritative Forum trust state/facts, posting-policy contracts, evaluation/composition, account-age, topics-read, approved-post and topic/reply create-window facts, plus pre-enforcement author/query-plan hardening. Active flags/moderation history, reputation, edit windows, bump age, policy persistence, owner enforcement, shared rate-limit execution, duplicate hashing, optional scoring, transports, UI and maintainer runtime evidence remain. |
+| `FORUM-26` | `in_progress` | FORUM-26A-J provide authoritative Forum trust state/facts, posting-policy contracts, evaluation/composition, account-age, topics-read, approved-post and topic/reply create-window facts, plus pre-enforcement author/query-plan hardening; create transactions now compose and evaluate configured window rules beside the cooldown. Active flags/moderation history, reputation, edit windows, bump age, policy persistence, edit/bump owner enforcement, shared rate-limit execution, duplicate hashing, optional scoring, transports, UI and maintainer runtime evidence remain. |
 | `FORUM-27` | `planned` | Compose Profiles directory/profile with Forum stats/activity and permitted reputation/achievements. |
 | `FORUM-28` | `in_progress` | Canonical storage, renderer, projections, shared editor runtime, Leptos and Next topic create/edit and reply composition, native SSR/hydrate plus GraphQL CSR reply writes, owner content-locale/direction/spellcheck propagation and dynamic read-only state are implemented. Dirty locale switching is now fail-closed for category/topic editors, fallback-only localized form state is scrubbed before writes, unsaved reply drafts block locale changes, and unchanged Taxonomy tag attachments are preserved. Complete owner-copy i18n and mounted save/reload/browser parity evidence. |
 | `FORUM-29` | `planned` | Shared realtime transport with Forum cursors/revisions and canonical reload. |
@@ -3247,7 +3259,9 @@ index migrations changes only query performance, not fact semantics.
 - publish edit-window and topic-target bump-age facts only after exact editing
   actor and target identity are represented in the owner history and fact request;
 - persist and administer bounded policy configuration with versioned audit;
-- enforce the composed decision in topic, reply, edit and bump owner commands;
+- enforce the composed decision for edit and bump owner commands (topic and
+  reply creates are wired for configured window rules, see
+  `DECISIONS/2026-11-27-forum-posting-policy-window-enforcement.md`);
 - reserve, commit and release distributed rate-limit capacity through the shared
   capability without making it Forum persistence;
 - add retained duplicate-content fingerprints and optional external/AI scoring;

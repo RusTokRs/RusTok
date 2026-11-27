@@ -26,6 +26,8 @@ min_post_body_length = { type = "integer", default = 1, description = "Minimum c
 max_post_body_length = { type = "integer", default = 60000, description = "Maximum character length allowed for post body text (0 = no maximum)." }
 rate_limit_new_topic_seconds = { type = "integer", default = 10, description = "Cooldown in seconds between two topics by the same author (0 = disabled)." }
 rate_limit_new_reply_seconds = { type = "integer", default = 5, description = "Cooldown in seconds between two replies by the same author (0 = disabled)." }
+posting_policy_topic_create_limit = { type = "object", description = "Optional per-author topic create window. Omit to disable; configured limits also enforce the flat cooldown.", properties = { maximum_count = { type = "integer", required = true, min = 1, max = 1000000 }, window_seconds = { type = "integer", required = true, min = 1, max = 2592000 } } }
+posting_policy_reply_create_limit = { type = "object", description = "Optional per-author reply create window. Omit to disable; configured limits also enforce the flat cooldown.", properties = { maximum_count = { type = "integer", required = true, min = 1, max = 1000000 }, window_seconds = { type = "integer", required = true, min = 1, max = 2592000 } } }
 allow_user_content_deletion = { type = "boolean", default = false, description = "Allow topic and reply authors to delete their own content. Moderators and administrators are not affected by this setting." }
 
 # Pagination & Display

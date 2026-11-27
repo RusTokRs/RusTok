@@ -53,6 +53,14 @@ impl ReplyService {
         self
     }
 
+    pub fn with_posting_policy_facts(
+        mut self,
+        composer: crate::SharedForumPostingPolicyFactsComposer,
+    ) -> Self {
+        self.inner = self.inner.with_posting_policy_facts(composer);
+        self
+    }
+
     pub fn with_taxonomy_port(
         mut self,
         port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,

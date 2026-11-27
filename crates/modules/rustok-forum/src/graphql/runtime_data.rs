@@ -19,7 +19,8 @@ use crate::{
     ForumCategoryAudienceReadService, ForumReadModelService, ForumReplyAudienceReadService,
     ForumSettingsProviders, ForumStorefrontReadStateService, ForumTopicAudienceListService,
     ForumTopicAudienceReadService, ForumVisibilityScopedReadStateService, ModerationService,
-    ReplyService, SharedForumAudienceFactsPort, SubscriptionService, TopicService, VoteService,
+    ReplyService, SharedForumAudienceFactsPort, SharedForumPostingPolicyFactsComposer,
+    SubscriptionService, TopicService, VoteService,
 };
 
 /// Manifest-attached Forum GraphQL runtime capabilities.
@@ -31,6 +32,7 @@ use crate::{
 #[derive(Clone, Default)]
 pub struct ForumGraphqlRuntimeData {
     audience_facts: Option<SharedForumAudienceFactsPort>,
+    posting_policy_facts: Option<SharedForumPostingPolicyFactsComposer>,
     moderation_report: Option<SharedForumModerationReportPort>,
     settings_providers: ForumSettingsProviders,
     attachment_hold_media: Option<Arc<dyn MediaAssetReadPort>>,
@@ -77,6 +79,7 @@ pub fn attach_schema_data(
 
     Ok(ForumGraphqlRuntimeData {
         audience_facts: inputs.shared_get::<SharedForumAudienceFactsPort>(),
+        posting_policy_facts: inputs.shared_get::<SharedForumPostingPolicyFactsComposer>(),
         moderation_report: inputs.shared_get::<SharedForumModerationReportPort>(),
         settings_providers,
         attachment_hold_media,
@@ -168,7 +171,11 @@ impl ForumGraphqlRuntimeData {
         if let Some(taxonomy) = self.taxonomy_port.clone() {
             service = service.with_taxonomy_port(taxonomy);
         }
-        service.with_settings_providers(self.settings_providers.clone())
+        let service = service.with_settings_providers(self.settings_providers.clone());
+        match self.posting_policy_facts.clone() {
+            Some(composer) => service.with_posting_policy_facts(composer),
+            None => service,
+        }
     }
 
     pub(crate) fn moderation_report_service(
@@ -231,7 +238,11 @@ impl ForumGraphqlRuntimeData {
             Some(port) => service.with_taxonomy_port(port),
             None => service,
         };
-        service.with_settings_providers(self.settings_providers.clone())
+        let service = service.with_settings_providers(self.settings_providers.clone());
+        match self.posting_policy_facts.clone() {
+            Some(composer) => service.with_posting_policy_facts(composer),
+            None => service,
+        }
     }
 
     pub(crate) fn reply_audience_read_service(

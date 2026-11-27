@@ -41,6 +41,7 @@ mod pending_visibility;
 mod posting_policy;
 mod posting_policy_approved_facts;
 mod posting_policy_create_window_facts;
+mod posting_policy_enforcement;
 mod posting_policy_evaluator;
 mod posting_policy_facts;
 mod posting_policy_reading_facts;
@@ -191,7 +192,8 @@ pub use posting_policy_facts::{
     ForumPostingPolicyCompositionRequest, ForumPostingPolicyFactsComposer,
     ForumPostingPolicyOwnerFactPort, ForumPostingPolicyOwnerFactRequest,
     ForumPostingPolicyOwnerFactResponse, ForumPostingPolicyOwnerFactValue,
-    ForumPostingTrustFactPort, SharedForumPostingPolicyOwnerFactPort,
+    ForumPostingTrustFactPort, SharedForumPostingPolicyFactsComposer,
+    SharedForumPostingPolicyOwnerFactPort,
 };
 pub use posting_policy_reading_facts::ForumTopicReadPostingFactPort;
 pub use public_discovery::ForumPublicDiscoveryService;

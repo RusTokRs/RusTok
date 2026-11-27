@@ -1,10 +1,14 @@
-//! Length limits for user-authored topic titles and bodies, and the posting rate-limit intervals.
+//! Length limits for user-authored topic titles and bodies, the posting rate-limit
+//! intervals, and the opt-in posting-policy window rules.
 //!
 //! Limits come from the tenant's Forum module settings. A maximum of `0` means
 //! "no maximum"; a minimum of `0` means "no minimum" (the empty-title check in
 //! `validate_topic_title` still applies). Lengths are counted in Unicode scalar
 //! values (`chars().count()`), and titles are measured after trimming. A rate-limit
 //! interval of `0` disables that limit. The rate check itself lives in `posting_rate`.
+//! The window rules feed the posting policy evaluator and are absent unless the
+//! tenant configures them; see
+//! `DECISIONS/2026-11-27-forum-posting-policy-window-enforcement.md`.
 //!
 //! Imports and UGC translation apply intentionally do not use these limits;
 //! see `DECISIONS/2026-10-09-forum-soft-default-settings.md`.
@@ -14,6 +18,7 @@ use uuid::Uuid;
 
 use crate::error::{ForumError, ForumResult};
 use crate::services::engagement_mode::{ForumSettings, ForumSettingsProviders};
+use crate::services::posting_policy_evaluator::{ForumPostingPolicyRules, ForumPostingWindowLimit};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct ForumContentLimits {
@@ -23,6 +28,8 @@ pub(crate) struct ForumContentLimits {
     max_body_chars: u32,
     new_topic_rate_limit_seconds: u32,
     new_reply_rate_limit_seconds: u32,
+    posting_policy_topic_create_limit: Option<ForumPostingWindowLimit>,
+    posting_policy_reply_create_limit: Option<ForumPostingWindowLimit>,
 }
 
 impl ForumContentLimits {
@@ -53,6 +60,18 @@ impl ForumContentLimits {
             max_body_chars: settings.max_post_body_length,
             new_topic_rate_limit_seconds: settings.rate_limit_new_topic_seconds,
             new_reply_rate_limit_seconds: settings.rate_limit_new_reply_seconds,
+            posting_policy_topic_create_limit: settings
+                .posting_policy_topic_create_limit
+                .map(|limit| ForumPostingWindowLimit {
+                    maximum_count: limit.maximum_count,
+                    window_seconds: limit.window_seconds,
+                }),
+            posting_policy_reply_create_limit: settings
+                .posting_policy_reply_create_limit
+                .map(|limit| ForumPostingWindowLimit {
+                    maximum_count: limit.maximum_count,
+                    window_seconds: limit.window_seconds,
+                }),
         }
     }
 
@@ -62,6 +81,18 @@ impl ForumContentLimits {
 
     pub(crate) fn new_reply_rate_limit_seconds(self) -> u32 {
         self.new_reply_rate_limit_seconds
+    }
+
+    /// Rules handed to the posting policy evaluator for create actions. Only the
+    /// window rules are tenant-configurable today; every other rule kind stays at
+    /// its default (`None`) until its owner slice lands. Default rules require no
+    /// facts, so the evaluator allows without any fact composition.
+    pub(crate) fn posting_policy_rules(self) -> ForumPostingPolicyRules {
+        ForumPostingPolicyRules {
+            topic_create_limit: self.posting_policy_topic_create_limit,
+            reply_create_limit: self.posting_policy_reply_create_limit,
+            ..ForumPostingPolicyRules::default()
+        }
     }
 
     pub(crate) fn validate_title(self, title: &str) -> ForumResult<()> {

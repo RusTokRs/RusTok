@@ -374,6 +374,7 @@ mod tests {
             db,
             event_bus,
             audience_facts: None,
+            posting_policy_facts: None,
             settings_providers: crate::services::ForumSettingsProviders::default(),
             taxonomy_port: std::sync::Arc::new(crate::ports::taxonomy::NoopForumTaxonomyPort),
         };

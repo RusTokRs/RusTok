@@ -1,11 +1,16 @@
-//! Posting policy evaluator — **not yet active on write paths**.
+//! Posting policy contract — **wired into topic/reply create transactions**
+//! for tenant-configured window rules (see
+//! `DECISIONS/2026-11-27-forum-posting-policy-window-enforcement.md`).
 //!
-//! The runtime posting limit is currently [`crate::services::posting_rate`]
-//! (simple cooldown from `ForumModuleSettings`). This module implements the
-//! future window-count policy (FORUM-12x) with 11 facts; it is intentionally
-//! kept behind the scenes until wired. Do not fix posting limits here —
-//! fix `posting_rate.rs` — and do not delete this file until ADR
-//! `2026-10-09-forum-posting-rate-limits.md` is superseded.
+//! The flat per-author cooldown remains [`crate::services::posting_rate`]
+//! (from `ForumModuleSettings`); this module owns the normalized action, rule,
+//! fact and decision shapes consumed by `posting_policy_evaluator.rs`.
+//! Create-path enforcement lives in `posting_policy_enforcement.rs`: window
+//! rules come from the `posting_policy_topic_create_limit` /
+//! `posting_policy_reply_create_limit` module settings, are absent by default,
+//! and keep the evaluator inert until a tenant opts in. Do not fix posting
+//! limits here — fix `posting_rate.rs` — and do not delete this file while ADR
+//! `2026-10-09-forum-posting-rate-limits.md` documents the cooldown.
 
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -564,14 +569,27 @@ fn normalize_reason_code(reason_code: String) -> ForumResult<String> {
 }
 
 #[cfg(test)]
-mod write_path_cut_tests {
+mod write_path_wiring_tests {
     #[test]
-    fn topic_and_reply_creates_use_posting_rate_not_the_policy_evaluator() {
+    fn topic_and_reply_creates_keep_the_cooldown_and_evaluate_the_policy() {
         let topic = include_str!("topic.rs");
         let reply = include_str!("reply_owner.rs");
+        // The flat cooldown stays authoritative for interval limits (ADR
+        // 2026-10-09) while the canonical evaluator runs alongside it for
+        // configured window rules.
         assert!(topic.contains("posting_rate::enforce_new_topic_rate_in_tx"));
-        assert!(!topic.contains("ForumPostingPolicyEvaluator"));
+        assert!(
+            topic.contains("posting_policy_enforcement::prepare_topic_create_posting_policy")
+        );
+        assert!(
+            topic.contains("posting_policy_enforcement::enforce_prepared_create_posting_policy")
+        );
         assert!(reply.contains("posting_rate::enforce_new_reply_rate_in_tx"));
-        assert!(!reply.contains("ForumPostingPolicyEvaluator"));
+        assert!(
+            reply.contains("posting_policy_enforcement::prepare_reply_create_posting_policy")
+        );
+        assert!(
+            reply.contains("posting_policy_enforcement::enforce_prepared_create_posting_policy")
+        );
     }
 }
