@@ -7,16 +7,26 @@ use rustok_modules::{
     ModuleArtifactSecurityCommand, ModuleArtifactSecurityError, ModuleArtifactSecurityReceipt,
     ModuleArtifactSecuritySnapshot, ModuleArtifactSecurityStatus, ModuleCommandContext,
 };
-use rustok_rbac::{RbacControlPlanePrincipal, require_direct_control_plane_user};
 use crate::services::{
     auth_admin_mutation_provider::ServerAuthAdminMutationProvider,
     rbac_runtime::{authorize_request, AuthorizationCheck},
     server_runtime_context::ServerRuntimeContext,
 };
-use rustok_auth::AuthAdminMutationError;
+use rustok_api::{
+    AuthContext, AuthPrincipalContext, AuthPrincipalKind, Permission, has_effective_permission,
+};
+use rustok_auth::{
+    AdminCredentialRequest, AuthAdminCredentialResolver, AuthAdminMutationError,
+};
+use rustok_modules::{
+    ArtifactReleaseRef, ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecurityAuthorizer,
+    ModuleArtifactSecurityCommand, ModuleArtifactSecurityError, ModuleArtifactSecurityReceipt,
+    ModuleArtifactSecuritySnapshot, ModuleArtifactSecurityStatus, ModuleCommandContext,
+};
+use rustok_rbac::{RbacControlPlanePrincipal, require_direct_control_plane_user};
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
-use std::sync::Arc;
 use serde::Serialize;
+use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -62,8 +72,8 @@ fn validate_direct_operator(
     Ok(())
 }
 
-/// Check both the authenticated permission snapshot and the current effective
-/// tenant grant through the server's canonical RBAC resolver.
+/// Resolve the request-scoped effective tenant permission through the
+/// canonical RBAC engine. Mutations use the transaction-bound authority below.
 async fn current_modules_manage_permission(
     db: &DatabaseConnection,
     tenant_id: &Uuid,
@@ -168,6 +178,23 @@ impl ServerArtifactSecurityAuthorizer {
         tenant_id: Uuid,
     ) -> Result<Self, ArtifactSecurityAuthorizationError> {
         validate_direct_operator(auth, principal, tenant_id)?;
+        // Bind the transport's exact session identity to the current admitted
+        // request scope; the transaction check below then revalidates that same
+        // credential while holding its user/session fences.
+        provider
+            .bind(
+                AdminCredentialRequest {
+                    tenant_id,
+                    user_id: auth.user_id,
+                    session_id: auth.session_id,
+                    client_id: auth.client_id,
+                    grant_type: &auth.grant_type,
+                    scopes: &auth.scopes,
+                },
+                principal.kind,
+                None,
+            )
+            .map_err(|_| ArtifactSecurityAuthorizationError::DirectSessionRequired)?;
         // Admit the Auth application clock before the owner opens a transaction.
         provider
             .prepare_artifact_effect_authority()
