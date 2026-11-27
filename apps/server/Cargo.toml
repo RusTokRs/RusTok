@@ -262,7 +262,7 @@ sea-orm.workspace = true
 async-graphql = { workspace = true, features = ["dataloader"] }
 async-graphql-value.workspace = true
 serde.workspace = true
-serde_json.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
 serde_yaml.workspace = true
 tera.workspace = true
 toml.workspace = true

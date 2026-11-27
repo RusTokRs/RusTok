@@ -18,6 +18,7 @@ No violation in this document is an automatic allowlist request. The preferred r
 - Endpoint: `POST /api/security/csp-report` on the main RusToK server host.
 - Accepted formats: legacy `application/csp-report`, Reporting API `application/reports+json`, and JSON-compatible test traffic. A missing Content-Type remains accepted for JSON-compatible traffic; multiple Content-Type header fields, even identical ones, are rejected with HTTP 415.
 - Legacy reports may include both `effective-directive` and `violated-directive`; the collector prefers the nonblank effective directive and uses the violated directive only as a fallback. Both fields are decoded independently.
+- Duplicate known fields in a legacy envelope, inspected Reporting API envelope or CSP violation body are rejected with HTTP 422, even when equal or spelled using different aliases. Unknown fields remain ignored, as do unrelated report types with unambiguous envelopes. No reports are recorded if a processed entry is invalid. Malformed JSON returns HTTP 400.
 - Maximum request body: 64 KiB.
 - Maximum processed Reporting API entries: 20 per request.
 - The outer security middleware handles the endpoint before tenant and authentication routing.

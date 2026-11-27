@@ -5,7 +5,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, value::RawValue};
 
 pub(crate) const CSP_REPORT_PATH: &str = "/api/security/csp-report";
 const MAX_CSP_REPORT_BYTES: usize = 64 * 1024;
@@ -114,38 +114,63 @@ fn content_type_is_supported(request: &Request) -> bool {
     )
 }
 
-fn parse_reports(body: &[u8]) -> Result<Vec<ParsedCspReport>, CspReportParseError> {
-    let value: Value =
-        serde_json::from_slice(body).map_err(|_| CspReportParseError::InvalidJson)?;
+#[derive(Deserialize)]
+struct LegacyReport<'a> {
+    #[serde(rename = "csp-report", borrow)]
+    report: &'a RawValue,
+}
 
-    if let Some(report) = value.get("csp-report") {
-        let violation = parse_violation(report)?;
+#[derive(Deserialize)]
+struct ReportingApiEntry<'a> {
+    #[serde(rename = "type", default)]
+    report_type: Option<Value>,
+    #[serde(default, borrow)]
+    body: Option<&'a RawValue>,
+}
+
+fn parse_reports(body: &[u8]) -> Result<Vec<ParsedCspReport>, CspReportParseError> {
+    // Validate the JSON syntax without collapsing duplicate object fields.
+    // Direct deserialization of the relevant envelopes and violation bodies
+    // then rejects repeated known fields (including aliases).
+    let raw: &RawValue =
+        serde_json::from_slice(body).map_err(|_| CspReportParseError::InvalidJson)?;
+    let json = raw.get().trim_start();
+
+    if json.starts_with('{') {
+        let envelope: LegacyReport<'_> =
+            serde_json::from_str(json).map_err(|_| CspReportParseError::UnsupportedShape)?;
         return Ok(vec![ParsedCspReport {
             format: "legacy",
-            violation,
+            violation: parse_violation(envelope.report)?,
         }]);
     }
 
-    let Some(entries) = value.as_array() else {
+    if !json.starts_with('[') {
         return Err(CspReportParseError::UnsupportedShape);
-    };
+    }
+    let entries: Vec<&RawValue> =
+        serde_json::from_str(json).map_err(|_| CspReportParseError::UnsupportedShape)?;
 
     let mut reports = Vec::new();
     // The reporting API may mix deprecation, intervention, and CSP entries.
-    // Apply the bounded budget to CSP reports, not to unrelated entries at
-    // the front of the batch, which could otherwise hide every CSP report.
-    for entry in entries
-        .iter()
-        .filter(|entry| entry.get("type").and_then(Value::as_str) == Some("csp-violation"))
-        .take(MAX_REPORTS_PER_REQUEST)
-    {
-        let body = entry
-            .get("body")
-            .ok_or(CspReportParseError::UnsupportedShape)?;
-        let violation = parse_violation(body)?;
+    // Apply the bounded budget to CSP reports, not to unrelated entries.
+    for entry in entries {
+        if reports.len() == MAX_REPORTS_PER_REQUEST {
+            break;
+        }
+        let json = entry.get().trim_start();
+        if !json.starts_with('{') {
+            continue;
+        }
+        let entry: ReportingApiEntry<'_> =
+            serde_json::from_str(json).map_err(|_| CspReportParseError::UnsupportedShape)?;
+        if entry.report_type.as_ref().and_then(Value::as_str) != Some("csp-violation") {
+            continue;
+        }
+        let body = entry.body.ok_or(CspReportParseError::UnsupportedShape)?;
         reports.push(ParsedCspReport {
             format: "reporting_api",
-            violation,
+            violation: parse_violation(body)?,
         });
     }
 
@@ -156,14 +181,15 @@ fn parse_reports(body: &[u8]) -> Result<Vec<ParsedCspReport>, CspReportParseErro
     Ok(reports)
 }
 
-fn parse_violation(value: &Value) -> Result<CspViolation, CspReportParseError> {
+fn parse_violation(value: &RawValue) -> Result<CspViolation, CspReportParseError> {
     // Serde structs also accept positional sequences. Browser reports are
     // objects, and a payload without a directive is not evidence of a violation.
-    if !value.is_object() {
+    let json = value.get().trim_start();
+    if !json.starts_with('{') {
         return Err(CspReportParseError::UnsupportedShape);
     }
     let violation: CspViolation =
-        serde_json::from_value(value.clone()).map_err(|_| CspReportParseError::UnsupportedShape)?;
+        serde_json::from_str(json).map_err(|_| CspReportParseError::UnsupportedShape)?;
     if selected_directive(&violation).is_none() {
         return Err(CspReportParseError::UnsupportedShape);
     }
@@ -185,7 +211,7 @@ fn record_report(report: ParsedCspReport) {
         line = report.violation.line_number,
         column = report.violation.column_number,
         status = report.violation.status_code,
-        "CSP report-only policy violation"
+        "CSP policy violation reported"
     );
 }
 
@@ -513,6 +539,47 @@ mod tests {
             parse_reports(br#"{"csp-report":{"effective-directive":"script-src-future"}}"#)
                 .expect("unknown directive remains observable");
         assert_eq!(report_directive(&reports[0].violation), "other");
+    }
+
+    #[tokio::test]
+    async fn rejects_duplicate_report_fields_before_collecting_telemetry() {
+        use axum::body::Body;
+
+        for body in [
+            r#"{"csp-report":{"effective-directive":"script-src"},"csp-report":{"effective-directive":"img-src"}}"#,
+            r#"{"csp-report":{"effective-directive":"script-src","effective-directive":"script-src"}}"#,
+            r#"{"csp-report":{"effective-directive":"script-src","effectiveDirective":"img-src"}}"#,
+            r#"[{"type":"deprecation","type":"csp-violation","body":{"effectiveDirective":"script-src"}}]"#,
+            r#"[{"type":"csp-violation","body":{"effectiveDirective":"img-src"},"body":{"effectiveDirective":"script-src"}}]"#,
+            r#"[{"type":"csp-violation","body":{"effectiveDirective":"script-src","effectiveDirective":"img-src"}}]"#,
+        ] {
+            assert_eq!(
+                parse_reports(body.as_bytes()).expect_err("ambiguous report"),
+                CspReportParseError::UnsupportedShape
+            );
+            let request = axum::http::Request::builder()
+                .method(Method::POST)
+                .uri(CSP_REPORT_PATH)
+                .header(CONTENT_TYPE, "application/json")
+                .body(Body::from(body))
+                .expect("report request");
+            assert_eq!(
+                handle(request).await.status(),
+                StatusCode::UNPROCESSABLE_ENTITY
+            );
+        }
+    }
+
+    #[test]
+    fn distinguishes_invalid_json_from_unsupported_report_shape() {
+        assert_eq!(
+            parse_reports(br#"{"csp-report": "#).expect_err("invalid JSON"),
+            CspReportParseError::InvalidJson
+        );
+        assert_eq!(
+            parse_reports(br#"{"csp-report":null}"#).expect_err("missing violation"),
+            CspReportParseError::UnsupportedShape
+        );
     }
 
     #[test]
