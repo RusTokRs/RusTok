@@ -189,3 +189,15 @@ Retry uses equal jitter between half the capped exponential delay and the cap
 (with a one millisecond floor). Startup validates relay configuration before
 connecting broker transports. Waves deliberately trade some utilization for
 bounded reservation; a slower event can delay the next wave.
+
+## Strict owner-operation lease expiry
+
+Owner-operation receipts now enforce a strict five-minute half-open live
+interval. A matching token cannot renew, lock, finalize or release an expired
+receipt. Sample SQL time after acquiring the receipt write lock, recheck
+expiry on reclaim and restamp fresh admission after unique-index contention.
+Completion and failure use a transaction or an owner-transaction savepoint;
+owner errors require rollback of the entire owner transaction. Expired release
+preserves the request fingerprint for exact-request reclamation. Owners must
+renew before expiry and keep owner transactions bounded; a row lock alone
+does not extend the lease. External effects need owner-specific idempotency.
