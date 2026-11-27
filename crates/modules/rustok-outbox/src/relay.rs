@@ -1194,6 +1194,25 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct CountUnexpectedPublish(AtomicU64);
+
+    #[async_trait]
+    impl EventTransport for CountUnexpectedPublish {
+        async fn publish(&self, _envelope: EventEnvelope) -> Result<()> {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            Err(Error::External("unexpected transport invocation".into()))
+        }
+
+        fn reliability_level(&self) -> ReliabilityLevel {
+            ReliabilityLevel::InMemory
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
     struct CaptureContractPublish {
         event_types: Mutex<Vec<String>>,
     }
@@ -1290,8 +1309,10 @@ mod tests {
             db.execute_unprepared(&format!(
                 "CREATE TRIGGER suppress_admission BEFORE INSERT ON {table} BEGIN SELECT RAISE(IGNORE); END"
             )).await.unwrap();
-            let relay = OutboxRelay::new(db.clone(), Arc::new(RejectUnexpectedPublish));
+            let transport = Arc::new(CountUnexpectedPublish::default());
+            let relay = OutboxRelay::new(db.clone(), transport.clone());
             assert!(relay.process_pending_once(None).await.is_err(), "{table}");
+            assert_eq!(transport.0.load(Ordering::Relaxed), 0, "{table}");
             let event = entity::Entity::find_by_id(id).one(&db).await.unwrap().unwrap();
             assert_eq!(event.status, SysEventStatus::Pending);
             assert_eq!(event.retry_count, 0);
