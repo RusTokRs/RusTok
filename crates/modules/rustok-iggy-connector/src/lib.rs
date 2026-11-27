@@ -410,7 +410,7 @@ pub trait ConsumerCursor: Send {
 /// needed by higher transport layers for offset tracking, retries, DLQ and
 /// replay coordination. It does not define retry limits, DLQ routing, replay
 /// policy or any other transport-level behavior.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubscriberMessageMetadata {
     /// Stream the message was read from.
     pub stream: String,
@@ -426,6 +426,20 @@ pub struct SubscriberMessageMetadata {
     pub delivery_attempt: Option<u32>,
     /// Opaque connector-owned acknowledgement token.
     pub ack_token: Option<String>,
+}
+
+impl std::fmt::Debug for SubscriberMessageMetadata {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SubscriberMessageMetadata")
+            .field("stream", &self.stream)
+            .field("topic", &self.topic)
+            .field("partition", &self.partition)
+            .field("offset", &self.offset)
+            .field("message_id", &self.message_id)
+            .field("delivery_attempt", &self.delivery_attempt)
+            .field("ack_token_configured", &self.ack_token.is_some())
+            .finish()
+    }
 }
 
 impl SubscriberMessageMetadata {
@@ -499,7 +513,7 @@ impl SubscriberMessageMetadata {
 /// Tokens stay opaque to transport users, but connector implementations keep a
 /// structured builder/parser internally so simulated and real SDK subscribers
 /// validate stream/topic/partition/offset scope before acknowledging.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum ConnectorAckToken {
     /// Canonical no-SDK simulation token used by legacy subscriber test doubles.
     Simulated {
@@ -520,6 +534,41 @@ pub enum ConnectorAckToken {
         offset: u64,
         consumer_id: String,
     },
+}
+
+impl std::fmt::Debug for ConnectorAckToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Simulated {
+                mode,
+                stream,
+                topic,
+                partition,
+                offset,
+            } => f
+                .debug_struct("ConnectorAckToken::Simulated")
+                .field("mode", mode)
+                .field("stream", stream)
+                .field("topic", topic)
+                .field("partition", partition)
+                .field("offset", offset)
+                .finish(),
+            Self::IggySdk {
+                stream,
+                topic,
+                partition,
+                offset,
+                consumer_id,
+            } => f
+                .debug_struct("ConnectorAckToken::IggySdk")
+                .field("stream", stream)
+                .field("topic", topic)
+                .field("partition", partition)
+                .field("offset", offset)
+                .field("consumer_id_configured", &!consumer_id.is_empty())
+                .finish(),
+        }
+    }
 }
 
 impl ConnectorAckToken {
@@ -1651,6 +1700,24 @@ mod tests {
         ] {
             assert!(!debug.contains(secret), "Debug output leaked {secret}: {debug}");
         }
+    }
+
+    #[test]
+    fn acknowledgement_debug_output_keeps_opaque_tokens_redacted() {
+        let metadata = SubscriberMessageMetadata::new("stream", "topic", 1)
+            .with_ack_token("opaque-ack-secret");
+        let metadata_debug = format!("{metadata:?}");
+        assert!(!metadata_debug.contains("opaque-ack-secret"));
+
+        let token = ConnectorAckToken::IggySdk {
+            stream: "stream".to_string(),
+            topic: "topic".to_string(),
+            partition: 1,
+            offset: 42,
+            consumer_id: "consumer-id-secret".to_string(),
+        };
+        let token_debug = format!("{token:?}");
+        assert!(!token_debug.contains("consumer-id-secret"));
     }
 
     #[test]
