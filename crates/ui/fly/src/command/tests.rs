@@ -1014,6 +1014,11 @@ fn stable_ids_fast_path_leaves_valid_documents_untouched() {
 #[test]
 fn repairing_invalid_component_ids_remaps_action_and_aria_references() {
     let document = GrapesJsCodec::decode_value(json!({
+        "styles": [{
+            "flyComponentId": "bad target",
+            "selectors": ["#bad target"],
+            "style": { "color": "red" }
+        }],
         "pages": [{
             "id": "home",
             "component": {
@@ -1056,6 +1061,10 @@ fn repairing_invalid_component_ids_remaps_action_and_aria_references() {
     let second_target_id = root.children()[2].id().expect("second repaired target");
     assert_ne!(first_target_id, second_target_id);
     assert_eq!(repaired_id, first_target_id);
+    assert_eq!(
+        editor.document().project().styles[0]["flyComponentId"],
+        repaired_id
+    );
     assert_eq!(
         trigger
             .attributes
