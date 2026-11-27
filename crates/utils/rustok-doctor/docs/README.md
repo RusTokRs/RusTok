@@ -23,8 +23,20 @@ working-tree files have since changed. Git selectors require Git.
 ## Hygiene findings
 
 The hygiene catalog owns the meaning and confidence of rules. The scanner
-examines lexical source and reports candidates for owner review. It does not
-resolve Rust types or execute database and application behavior.
+combines lexical checks with a best-effort syn AST pass and reports candidates
+for owner review. It does not resolve Rust types, expand macros, run rustc, or
+follow interprocedural data flow. If a file cannot be parsed as a complete Rust
+source file, AST-only checks are skipped and lexical checks continue.
+
+The AST pass currently emits heuristic findings for cancellation-unsafe method
+calls in select! branch futures (excluding generic read/write names because
+those also identify cancellation-safe I/O methods), manual unsafe Send/Sync
+impls, panic-capable operations in non-unwinding extern functions, and reversed
+self-field lock acquisition order across methods in one impl. The lock-order
+check only models direct top-level local guard bindings and explicit
+drop(guard); it does not prove lock types or overlapping lifetimes. Test-only
+files, build scripts, vendored files, and inline test scopes are excluded from
+these production findings.
 
 The column-filtered update-trigger heuristic inspects migration SQL literals.
 It cannot establish which migrations are active, whether a BEFORE trigger

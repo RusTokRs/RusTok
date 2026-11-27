@@ -1923,6 +1923,17 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-GRPC-DEADLINE-STATUS` | Transport timeouts | gRPC error mapping treats `Code::Cancelled` alongside `Code::DeadlineExceeded` as timeout | High: match arm with `Code::DeadlineExceeded` missing `Code::Cancelled` |
 | `P-SLOP-COMMENT` | Code clarity | Comments explain non-obvious domain invariants rather than restating adjacent code | Medium: mechanical captain-obvious comment prefixes (`// create a new ...`, `// helper function to ...`, etc.) |
 
+| `P-RUST-SELECT-CANCEL-UNSAFE` | Async cancellation | Dropped select branches do not lose progress or queue position | Heuristic AST: known cancellation-unsafe methods in branch futures |
+| `P-RUST-UNSAFE-SEND-SYNC-CONTRACT` | Memory safety | Manual Send/Sync implementations uphold ownership, aliasing and synchronization invariants | Heuristic AST: every manual unsafe Send/Sync impl requires owner review |
+| `P-RUST-FFI-UNWIND-BOUNDARY` | FFI reliability | Rust panics and foreign exceptions respect the selected ABI unwind contract | Heuristic AST: direct panic-capable operation inside non-unwinding ABI function |
+| `P-RUST-LOCK-ORDER-CYCLE` | Concurrency | Shared locks are acquired in one canonical order while guards overlap | Heuristic AST: reversed self-field lock order across methods in one impl |
+| `P-RUST-BLOCKING-TASK-CANCELLATION` | Task lifecycle | Timeout/abort does not imply a started spawn_blocking operation stopped | Manual: trace JoinHandle ownership and cooperative cancellation |
+| `P-RUST-UNBOUNDED-CHANNEL` | Resource bounds | Producer admission and queue growth are bounded under slow consumers | Manual: inspect unbounded channels and end-to-end backpressure |
+| `P-RUST-POISON-RECOVERY` | State integrity | Mutex poison recovery revalidates or restores protected invariants | Manual: inspect PoisonError recovery and post-panic state |
+| `P-RUST-LOSSY-NUMERIC-CAST` | Numeric integrity | Numeric conversions preserve range, sign and precision | External: Clippy cast lints plus owner-level range review |
+| `P-RUST-SERDE-REQUIRED-DEFAULT` | Serialization contract | Required authority and domain fields cannot silently default when absent | Manual: compare Serde defaults with the owning schema contract |
+| `P-RUST-DROP-BLOCKING` | Resource lifecycle | Destructors do not block, wait indefinitely or attempt async shutdown | Manual: inspect Drop bodies and prefer explicit close/shutdown
+
 ---
 
 ## 4. Periodic Domain Hygiene & Code Cleanup Utility
@@ -3224,3 +3235,109 @@ and [RBAC role fences](../../crates/modules/rustok-rbac/src/role_grant_revision.
 - **Regression:** Populate each nested secret-bearing field with a unique sentinel (including URL user-info/query tokens, bundled arguments/environment values, raw host settings and opaque ack tokens), format the outermost runtime configuration with `Debug`, and assert that every sentinel is absent. Add focused tests for independently formatted nested types.
 - **Fast detection:** `rg -n 'derive\\(.*Debug|password|secret|token|api_key|redis_url|endpoint_url|environment|arguments|uri' apps/server/src crates/modules/rustok-iggy/src crates/modules/rustok-iggy-connector/src crates/utils/rustok-storage/src`; manually inspect every match where a derived Debug type contains a credential, URL or opaque token.
 - **Evidence:** [Server settings](../../apps/server/src/common/settings.rs), [Host config](../../apps/server/src/host.rs), [Iggy config](../../crates/modules/rustok-iggy/src/config.rs), [Iggy connector](../../crates/modules/rustok-iggy-connector/src/lib.rs), [Storage config](../../crates/utils/rustok-storage/src/runtime.rs). Source regressions authored; compilation and execution remain maintainer verification.
+
+
+## 5. Rust-Specific Semantic Hygiene
+
+These rules cover language and runtime failure modes that are not fully represented
+by the existing cross-platform patterns. They are general review rules, not
+claims that the corresponding defects currently exist in RusToK. A Doctor
+finding is a syntactic candidate; confirm the owning type, runtime contract,
+and reachable behavior before classifying it as a defect.
+
+### P-RUST-SELECT-CANCEL-UNSAFE — Do not lose progress when a select branch is cancelled
+
+- **Category:** Async lifecycle and concurrency. **Logic dimensions:** branch completeness, side-effect completeness, and progress ownership.
+- **Failure:** tokio::select! (and equivalent selection macros) drops losing branch futures when one branch completes. A loop that recreates a non-cancellation-safe future can lose partial I/O progress or its place in a fairness queue.
+- **Known Tokio candidates:** AsyncReadExt::{read_exact, read_to_end, read_to_string}, AsyncWriteExt::write_all, Mutex::lock, RwLock::{read, write}, Semaphore::acquire, and Notify::notified. The Tokio list is not exhaustive and method names alone do not prove the receiver type.
+- **Canonical remediation:** use a cancellation-safe primitive; retain an explicit byte/record offset when partial progress is possible; or move the operation into an owned task whose lifecycle and result are controlled independently of the selection loop. Cancellation during final shutdown may be intentional when losing progress is acceptable.
+- **Doctor detection:** implemented as a best-effort syn AST check. It inspects the future-expression token range before each branch's =>, including optional if preconditions, and does not inspect handler expressions. It recognizes read_exact, read_to_end, read_to_string, write_all, lock, acquire, and notified without resolving receiver types, expanding macros, or following aliases. It intentionally omits generic read/write names because those also identify cancellation-safe AsyncReadExt::read and AsyncWriteExt::write; RwLock read/write remain owner-review candidates until type resolution is available. Confidence is heuristic.
+- **Regression:** a branch containing write_all or read_exact is reported; recv, a safe read/write primitive, and a handler-only call are not. Include optional branch preconditions and multiple branches. Verify that comments and string literals do not trigger a finding.
+
+Reference: [Tokio select! cancellation safety](https://docs.rs/tokio/latest/tokio/macro.select.html).
+
+### P-RUST-UNSAFE-SEND-SYNC-CONTRACT — Prove manual thread-safety implementations
+
+- **Category:** Memory safety. **Logic dimensions:** ownership, aliasing, and synchronization.
+- **Failure:** unsafe impl Send or unsafe impl Sync overrides compiler-derived auto-trait behavior. An unsound implementation can permit data races, invalid aliasing, use-after-free, or invalid destruction across threads.
+- **Canonical remediation:** prefer compiler-derived auto traits. If a manual implementation is necessary, document the complete invariant: ownership and lifetime of every pointer, aliasing rules, mutation synchronization, thread-affine resources, and destruction behavior. Test the public bounds and use Miri/Loom where their models apply. A SAFETY comment is evidence of intent, not proof.
+- **Doctor detection:** implemented as a best-effort AST check for every positive unsafe impl Send and unsafe impl Sync outside test-only scopes. The finding is deliberately heuristic: a sound implementation still requires owner review.
+- **Regression:** both Send and Sync impls are reported; ordinary trait impls and impls inside cfg(test) modules are excluded.
+
+Reference: [Rustonomicon — Send and Sync](https://doc.rust-lang.org/nomicon/send-and-sync.html).
+
+### P-RUST-FFI-UNWIND-BOUNDARY — Keep panics within the declared ABI contract
+
+- **Category:** FFI reliability. **Logic dimensions:** failure propagation and boundary completeness.
+- **Failure:** a Rust panic reaching a non-unwinding ABI such as C or system aborts the process when panic unwinding is enabled. A foreign exception unwinding into Rust through a non-unwinding ABI is undefined behavior. An -unwind ABI permits unwinding but still requires compatible runtime contracts.
+- **Canonical remediation:** return an explicit status/error across a non-unwinding boundary. If panic containment is required, define and test the recovery contract at the boundary; do not assume catch_unwind makes arbitrary foreign unwinding safe.
+- **Doctor detection:** implemented as a best-effort AST check for direct panic!, assert!, todo!, unimplemented!, unreachable!, panic_any, .unwrap(), or .expect() inside a non-unwinding extern function. It excludes the Rust ABI and ABI names ending in -unwind. It does not follow callees, prove reachability, recognize catch_unwind containment, or inspect nested closure/async/function bodies. Confidence is heuristic.
+- **Regression:** a direct panic-capable operation in extern "C" is reported; equivalent code in extern "C-unwind" and extern "Rust" is not.
+
+References: [Rust Reference — function unwinding](https://doc.rust-lang.org/reference/items/functions.html#unwinding) and [Rust Reference — FFI panic behavior](https://doc.rust-lang.org/reference/panic.html#unwinding-across-ffi-boundaries).
+
+### P-RUST-LOCK-ORDER-CYCLE — Use a canonical order for overlapping locks
+
+- **Category:** Concurrency. **Logic dimensions:** order and concurrency, and resource lifecycle.
+- **Failure:** two concurrent operations acquire the same locks in opposite orders. If their guards overlap, each operation can wait forever for the lock held by the other.
+- **Canonical remediation:** define one canonical order for acquiring a set of locks and apply it at every call site. Release a guard before acquiring another lock when the operation does not require an atomic multi-lock section. Do not hold locks across unrelated I/O.
+- **Doctor detection:** implemented as a best-effort AST heuristic. Within one impl, it compares direct top-level local guard bindings rooted at self and recognizes lock, read, write, and their common try-lock variants. Explicit drop(guard) ends the tracked lifetime. It does not resolve lock types, inspect nested control-flow blocks, follow helper calls, or prove that both guards overlap on a concurrent path. Confidence is heuristic.
+- **Regression:** opposite self.first/self.second acquisition order across two methods is reported; one consistent order and a first guard explicitly dropped before the second acquisition are not.
+
+### P-RUST-BLOCKING-TASK-CANCELLATION — Do not mistake a timed-out blocking task for a stopped task
+
+- **Category:** Task lifecycle. **Logic dimensions:** cancellation, side-effect completeness, and ownership.
+- **Failure:** once a spawn_blocking closure has started, aborting its JoinHandle does not stop the closure. A timeout around the handle can stop waiting while the blocking operation continues and commits external side effects.
+- **Canonical remediation:** use cooperative cancellation inside the closure, make the side effect idempotent or explicitly owned, and supervise completion during shutdown. Do not report an operation as cancelled merely because its waiter timed out.
+- **Doctor detection:** not implemented. A reliable detector needs data-flow tracking from spawn_blocking through handle storage, timeout/abort, and result ownership; a text match would be too noisy.
+- **Regression:** delay a started blocking closure, time out its waiter, and verify the owner still observes or reconciles the eventual side effect.
+
+Reference: [Tokio spawn_blocking](https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html).
+
+### P-RUST-UNBOUNDED-CHANNEL — Bound producer pressure and queued memory
+
+- **Category:** Resource bounds. **Logic dimensions:** preconditions, capacity, and side-effect completeness.
+- **Failure:** an unbounded channel can accumulate messages without backpressure when producers outpace the consumer. A slow or stalled consumer can turn an otherwise healthy workload into unbounded memory growth.
+- **Canonical remediation:** use bounded channels with an explicit full-queue policy, admission control, and observable backpressure. Keep an unbounded channel only when an independent and enforceable bound exists.
+- **Doctor detection:** not implemented. unbounded_channel() alone is not a defect; the detector must establish producer rates, message lifetime, and an external capacity bound before reporting.
+- **Regression:** sustain producers faster than a deliberately slow consumer and verify bounded memory, rejection/backpressure behavior, and shutdown drainage.
+
+### P-RUST-POISON-RECOVERY — Revalidate invariants after mutex poisoning
+
+- **Category:** State integrity. **Logic dimensions:** state integrity and recovery.
+- **Failure:** PoisonError::into_inner() returns access to the protected value; it does not repair an invariant that may have been interrupted by a panic. Continuing as though the value were valid can spread partial state.
+- **Canonical remediation:** validate and restore the protected invariant before resuming, or fail closed and rebuild the state. Treat poisoning as an advisory signal: it is not proof that data is corrupt, and it is not guaranteed to detect every interrupted mutation.
+- **Doctor detection:** not implemented. A method-name match for into_inner() cannot establish that the value came from a poisoned standard mutex or whether recovery is valid.
+- **Regression:** panic during a multi-step mutation, then verify the chosen recovery path restores a valid state or refuses further use.
+
+Reference: [std::sync::Mutex poisoning](https://doc.rust-lang.org/std/sync/struct.Mutex.html#poisoning).
+
+### P-RUST-LOSSY-NUMERIC-CAST — Preserve range, sign, and precision
+
+- **Category:** Numeric integrity. **Logic dimensions:** calculation and boundary validation.
+- **Failure:** as conversions can truncate integer width, change signedness, wrap values, or lose floating-point precision. The impact is especially serious for money, limits, timestamps, IDs, pagination, and protocol fields.
+- **Canonical remediation:** use TryFrom/TryInto for fallible range changes, checked arithmetic for operations that can overflow, and domain-appropriate decimal or integer representations for exact values.
+- **Doctor detection:** no dedicated AST rule yet. Run the relevant Clippy cast lints (cast_possible_truncation, cast_sign_loss, cast_possible_wrap, and cast_precision_loss) and review the source/target range at the owning boundary. This is distinct from P-TRY-FROM-LEN-PANIC, which targets panicking conversions from lengths, and P-LOSSY-JSON-NUMBER, which is specific to JSON number precision.
+- **Regression:** cover minimum, maximum, negative, out-of-range, and precision-boundary values for each externally supplied numeric field.
+
+Reference: [Rust Reference — numeric casts](https://doc.rust-lang.org/reference/expressions/operator-expr.html#numeric-cast).
+
+### P-RUST-SERDE-REQUIRED-DEFAULT — Do not default required authority or domain fields
+
+- **Category:** Serialization contract. **Logic dimensions:** preconditions, fail-closed behavior, and state integrity.
+- **Failure:** serde(default) can turn a missing field into a valid-looking value. On tenant/owner identity, permissions, currency, amount, status, or security configuration, that can silently widen access or change business meaning.
+- **Canonical remediation:** keep required fields required. Use defaults only for genuinely optional compatibility fields, versioned formats, or values with an explicit owner-approved default. Validate cross-field invariants after deserialization.
+- **Doctor detection:** not implemented. Field names alone cannot establish whether a default is semantically safe; the rule requires the owning schema and compatibility contract.
+- **Regression:** omit each required field, supply null, wrong types, and unknown fields, and verify deserialization fails or follows the documented versioned migration.
+
+Reference: [Serde field attributes](https://serde.rs/field-attrs.html).
+
+### P-RUST-DROP-BLOCKING — Keep destructors non-blocking and non-failing
+
+- **Category:** Resource lifecycle. **Logic dimensions:** lifecycle and failure-path completeness.
+- **Failure:** Drop cannot be async. Blocking I/O, thread::sleep, JoinHandle::join, block_on, or indefinite lock waits in a destructor can stall an executor or shutdown path. Panicking in Drop during an existing unwind can abort the process.
+- **Canonical remediation:** provide explicit close/shutdown methods that return a result and can be awaited. Keep Drop as a short, best-effort, non-blocking fallback that does not panic.
+- **Doctor detection:** not implemented. A safe detector must distinguish genuinely blocking calls from bounded, non-blocking cleanup and account for platform-specific behavior.
+- **Regression:** verify explicit shutdown waits and reports failures, while dropping an unclosed value does not block an executor thread or panic.
+
+Reference: [Rust API Guidelines — destructors](https://rust-lang.github.io/api-guidelines/dependability.html#c-dtor-block-c-dtor-fail).
