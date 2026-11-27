@@ -561,6 +561,12 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             role.to_string()
         };
         let tenant_name = self.tenant_name(&tx, context.tenant_id).await?;
+        self.publish_admin_event_in_tx(
+            &tx,
+            context,
+            DomainEvent::UserAccountRegistered { user_id: user.id },
+        )
+        .await?;
         tx.commit().await.map_err(super::internal_admin_error)?;
         Ok(ServerAuthAdminMutationProvider::user_record(
             user,
@@ -1331,6 +1337,7 @@ mod tests {
         use rustok_auth::{AuthAdminMutationContext, CreateUserCommand, UserAdminMutationPort};
         use rustok_migrations::SqliteTestMigrator;
         use rustok_test_utils::db::setup_test_db_with_migrations;
+        use rustok_outbox_storage::entity as sys_events;
         use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
         use uuid::Uuid;
 
@@ -1382,6 +1389,17 @@ mod tests {
             .filter(user_roles::Column::UserId.eq(created.id)).all(&db).await.unwrap();
         assert_eq!(memberships.len(), 1);
         assert_eq!(memberships[0].role_id, target_role.id);
+        let registration_events = sys_events::Entity::find()
+            .filter(sys_events::Column::TenantId.eq(tenant.id))
+            .filter(sys_events::Column::EventType.eq("user.account_registered"))
+            .all(&db)
+            .await
+            .unwrap();
+        assert_eq!(
+            registration_events.len(),
+            1,
+            "admin-created accounts must publish exactly one registration event"
+        );
         assert!(roles::Entity::find().filter(roles::Column::TenantId.eq(tenant.id))
             .filter(roles::Column::Slug.eq("customer")).one(&db).await.unwrap().is_none());
         let tx = db.begin().await.unwrap();
