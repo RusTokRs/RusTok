@@ -83,7 +83,7 @@ for (const forbidden of [
 ]) forbidText(sources.harness, forbidden, `${files.harness}: shortcut`);
 
 for (const marker of [
-  "rustok_rbac::replace_persisted_user_role_on(&tx, *tenant_id, *user_id, role.clone())",
+  "rustok_rbac::replace_persisted_user_role_on( &tx, *tenant_id, *user_id, role.clone(), )",
   "flush_rbac_static_relation_generation(&tx)",
   "tx.commit().await?",
 ]) requireNormalizedText(sources.committed, marker, `${files.committed}: production mutation path`);
