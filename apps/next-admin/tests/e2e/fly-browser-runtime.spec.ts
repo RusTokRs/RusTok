@@ -264,15 +264,16 @@ test('leaving the iframe cancels a host-owned drag instead of leaving it armed',
 
   const target = page.frameLocator('#canvas-a-frame').locator('#drop-target');
   const bounds = await target.boundingBox();
-  if (!bounds) throw new Error('Drop target unavailable');
+  const iframeBounds = await page.locator('#canvas-a-frame').boundingBox();
+  if (!bounds || !iframeBounds) throw new Error('Drag geometry unavailable');
   await page.mouse.move(
     bounds.x + bounds.width / 2,
     bounds.y + bounds.height / 2
   );
   await page.mouse.down();
   await page.mouse.move(
-    bounds.x + bounds.width + 40,
-    bounds.y + bounds.height + 40
+    iframeBounds.x + iframeBounds.width + 20,
+    iframeBounds.y + iframeBounds.height / 2
   );
 
   await expect(root).not.toHaveAttribute('data-fly-dragging', 'block');
