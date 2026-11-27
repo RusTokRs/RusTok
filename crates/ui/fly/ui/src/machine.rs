@@ -55,8 +55,8 @@ pub enum UiIntent {
 }
 
 impl UiIntent {
-    /// True when dispatching the intent can change the authored document or submit it.
-    /// View-state intents remain available when a peer tab has fenced this editor.
+    /// True when dispatching the intent can change the authored document.
+    /// View-state and persistence intents do not mutate the document itself.
     pub fn mutates_document(&self) -> bool {
         match self {
             Self::Execute(command) => {
@@ -66,10 +66,15 @@ impl UiIntent {
             | Self::CutSelection
             | Self::PasteClipboard
             | Self::Undo
-            | Self::Redo
-            | Self::RequestSave => true,
+            | Self::Redo => true,
             _ => false,
         }
+    }
+
+    /// A peer-write conflict fences document mutations and persistence requests, but not
+    /// navigation, selection, preview, or other view-only interactions.
+    pub fn requires_write_fence(&self) -> bool {
+        self.mutates_document() || matches!(self, Self::RequestSave)
     }
 }
 
