@@ -809,6 +809,58 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires RUSTOK_AUTH_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_invite_tenant_fence_serializes_deactivation() {
+        use sea_orm::{Database, Statement};
+        use std::time::Duration;
+
+        let db = Database::connect(
+            std::env::var("RUSTOK_AUTH_TEST_DATABASE_URL").unwrap(),
+        ).await.unwrap();
+        assert_eq!(db.get_database_backend(), DbBackend::Postgres);
+        let schema = format!("auth_invite_tenant_{}", uuid::Uuid::new_v4().simple());
+        let tenant_id = uuid::Uuid::new_v4();
+        db.execute_unprepared(&format!(
+            "CREATE SCHEMA {schema};
+             CREATE TABLE {schema}.tenants (id UUID PRIMARY KEY, is_active BOOLEAN NOT NULL);
+             INSERT INTO {schema}.tenants VALUES ('{tenant_id}', TRUE)"
+        )).await.unwrap();
+
+        let admission = db.begin().await.unwrap();
+        admission.execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await.unwrap();
+        assert!(lock_active_auth_tenant(&admission, tenant_id).await.unwrap());
+
+        let deactivation = db.begin().await.unwrap();
+        deactivation.execute_unprepared("SET LOCAL lock_timeout = '100ms'").await.unwrap();
+        let error = tokio::time::timeout(
+            Duration::from_secs(3),
+            deactivation.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                format!("UPDATE {schema}.tenants SET is_active = FALSE WHERE id = $1"),
+                [tenant_id.into()],
+            )),
+        ).await.expect("bounded lock timeout").unwrap_err();
+        assert_eq!(
+            rustok_core::resilience::retry::PostgresTransactionConflict::classify(
+                DbBackend::Postgres, &error,
+            ),
+            Some(rustok_core::resilience::retry::PostgresTransactionConflict::LockUnavailable),
+        );
+        deactivation.rollback().await.unwrap();
+        admission.rollback().await.unwrap();
+
+        db.execute_unprepared(&format!("UPDATE {schema}.tenants SET is_active = FALSE"))
+            .await.unwrap();
+        let retry = db.begin().await.unwrap();
+        retry.execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await.unwrap();
+        assert!(!lock_active_auth_tenant(&retry, tenant_id).await.unwrap());
+        retry.rollback().await.unwrap();
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+    }
+
+    #[tokio::test]
     async fn acceptance_rereads_invite_after_locking_observed_issuer() {
         use crate::models::tenants;
         use rustok_migrations::SqliteTestMigrator;

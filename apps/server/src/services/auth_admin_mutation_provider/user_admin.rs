@@ -1594,22 +1594,21 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
     ) -> Result<IssuedUserInviteResult, AuthAdminMutationError> {
         // Preserve the authenticated request's ceiling even if persisted
         // authority has expanded since this request was admitted.
-        let (role, custom_slug) =
-            parse_requested_role(command.role.as_deref().unwrap_or("customer"))?;
-        let email = rustok_auth::normalize_email(&command.email)
-            .map_err(|error| AuthAdminMutationError::Validation(error.to_string()))?;
-
         let mut attempt = 1;
         loop {
             // A discarded attempt never publishes its token or ledger identity.
             let request_permissions = self.request_permissions(context)?;
             let request_role = self.actor_role(context).await?;
+            let (role, custom_slug) =
+                parse_requested_role(command.role.as_deref().unwrap_or("customer"))?;
             if !issuer_may_issue_invite(&request_permissions, &role, custom_slug.is_some()) {
                 return Err(AuthAdminMutationError::Forbidden(
                     "current invitation permission is required".to_string(),
                 ));
             }
 
+            let email = rustok_auth::normalize_email(&command.email)
+                .map_err(|error| AuthAdminMutationError::Validation(error.to_string()))?;
             let tx = self.prepare_admin_transaction(true).await?;
             let delegated_app = self.lock_admin_oauth_apps(&tx, context, None).await?.1;
             // Membership and account-status writers serialize on this user

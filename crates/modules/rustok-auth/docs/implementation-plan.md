@@ -649,7 +649,10 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   checks. Argon2 remains outside retries; abandoned tokens/receipts are never
   published. Acceptance and admin share an active-tenant fence before actor
   locks. Source regressions cover disabled tenant and synthetic SQLSTATE
-  rejection. Other statement errors, PostgreSQL credential revocation between
+  rejection. An opt-in PostgreSQL test (RUSTOK_AUTH_TEST_DATABASE_URL) checks
+  that deactivation hits lock_timeout while the shared tenant fence is held,
+  then a fresh admission denies the disabled tenant. Other statement errors,
+  PostgreSQL credential revocation between
   attempts and end-to-end event/rollback verification remain open.
 
 - All user-admin mutations now use the same pre-transaction clock admission
