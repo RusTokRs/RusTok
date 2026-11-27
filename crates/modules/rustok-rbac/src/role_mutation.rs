@@ -500,7 +500,6 @@ pub async fn ensure_user_authority_continuity_on(
     user_id: Uuid,
     change: &RbacUserAuthorityChange,
 ) -> Result<(), RbacRolePersistenceError> {
-    use sea_orm::ConnectionTrait;
     let active = lock_target_authority_on(db, tenant_id, user_id).await? == UserStatus::Active;
     let remains = !change.deleting
         && change
