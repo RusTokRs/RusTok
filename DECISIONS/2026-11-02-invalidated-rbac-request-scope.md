@@ -269,3 +269,23 @@ after restoration; compilation and execution remain pending.
 Existing WebSocket lease revalidation uses the same JWT admission resolver in
 non-initializing mode. Only fresh credential admission retains the bootstrap
 path. A missing active composition cannot be recreated by a lease recheck.
+
+### Durable lifecycle cursor in request module authority (2026-11-27)
+
+The host retains the Modules owner's exact optional `module.lifecycle`
+cursor state (digest and monotonic sequence), plus the active composition
+revision and verified manifest hash. An uncached policy observation brackets
+its evaluation with composition and cursor reads; drift or unreadable evidence
+fails closed. The read-only cursor port sets transaction-local tenant scope,
+never inserts a cursor or locks a writer row, and distinguishes missing from
+issued zero state. The original authenticated scope, including WebSocket lease
+and captured clones, compares the complete owner observation. A canonical
+lifecycle transition/resync ABA is detected even if the final policy digest and
+grants equal those admitted earlier. Conservative invalidation is intentional
+for unrelated tenant lifecycle transitions and first cursor creation.
+
+This is not a transaction-spanning revocation fence. Raw SQL bypass of owner
+transition writers or deletion/recreation of owner generations is not covered
+by the sequence contract; database-level enforcement and PostgreSQL contention
+verification remain open. SQLite source regressions cover read-only absence,
+rollback and cursor ABA without notification; execution is pending.

@@ -1791,6 +1791,62 @@ async fn admitted_scope_rejects_module_policy_drift_without_notification() {
 
 #[tokio::test]
 #[serial_test::serial]
+async fn admitted_scope_rejects_restored_lifecycle_cursor_without_notification() {
+    use crate::services::rbac_request_scope::{
+        RbacRequestScope, ensure_scope_authority, with_rbac_request_scope,
+    };
+    use rustok_modules::SeaOrmModulePolicyRevisionConsumer;
+
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let runtime = test_auth_runtime(db.clone());
+    runtime.runtime_ctx().shared_insert(crate::modules::build_registry());
+    let tenant = tenants::ActiveModel::new(
+        "Lifecycle authority", &format!("tenant-{}", Uuid::new_v4()),
+    ).insert(&db).await.unwrap();
+    let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+    rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+        &db, tenant.id, user.id, UserRole::Manager,
+    ).await.unwrap();
+    let token = encode_access_token(
+        runtime.require_auth_config().unwrap(), user.id, tenant.id, UserRole::Manager, session_id,
+    ).unwrap();
+
+    // Exercise the canonical cursor owner, without delivering cache events.
+    // The effective grant and policy projection stay identical throughout.
+    let owner = SeaOrmModulePolicyRevisionConsumer::new(db.clone());
+    let initial = owner.cursor_state(tenant.id, "module.lifecycle").await.unwrap();
+    let a = format!("sha256:{}", "a".repeat(64));
+    let b = format!("sha256:{}", "b".repeat(64));
+    let issued = owner.resync_if_current(tenant.id, "module.lifecycle", &initial, &a)
+        .await.unwrap();
+    let admitted = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await.unwrap();
+    let scope = RbacRequestScope::authenticated(&admitted, admitted.access_token_expires_at);
+    let lease = super::WebSocketAuthLease::new(token.clone(), &admitted);
+    with_rbac_request_scope(Some(scope), async {
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &user.id).await.is_ok());
+        let changed = owner.resync_if_current(tenant.id, "module.lifecycle", &issued, &b)
+            .await.unwrap();
+        let restored = owner.resync_if_current(tenant.id, "module.lifecycle", &changed, &a)
+            .await.unwrap();
+        assert_eq!(issued.current_revision, restored.current_revision);
+        assert!(restored.current_sequence > issued.current_sequence);
+        // Neither check observed the intermediate state.
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &user.id).await.is_err());
+        assert!(lease.revalidate(&runtime).await.is_err());
+        assert!(RbacService::get_user_permissions(&db, &tenant.id, &user.id).await.is_err());
+    }).await;
+    let fresh = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await.unwrap();
+    assert_eq!(fresh.permissions, admitted.permissions);
+    let scope = RbacRequestScope::authenticated(&fresh, fresh.access_token_expires_at);
+    with_rbac_request_scope(Some(scope), async {
+        assert!(ensure_scope_authority(Some(&db), &tenant.id, &user.id).await.is_ok());
+    }).await;
+}
+
+#[tokio::test]
+#[serial_test::serial]
 async fn admitted_service_scope_rejects_grant_loss_and_registration_revocation() {
     use crate::services::rbac_request_scope::{
         RbacRequestScope, ensure_scope_authority, with_rbac_request_scope,

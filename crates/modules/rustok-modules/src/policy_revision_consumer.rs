@@ -87,7 +87,9 @@ impl SeaOrmModulePolicyRevisionConsumer {
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         ensure_cursor_row(transaction, backend, tenant_id, consumer_key).await?;
-        load_cursor_state(transaction, backend, tenant_id, consumer_key).await
+        load_cursor_state(transaction, backend, tenant_id, consumer_key, true)
+            .await?
+            .ok_or(ModulePolicyRevisionConsumerError::CursorLost)
     }
 
     /// Locks the lifecycle policy cursor and resolves the static registry policy
@@ -278,6 +280,27 @@ impl SeaOrmModulePolicyRevisionConsumer {
             .current_revision)
     }
 
+    /// Read the lifecycle owner's durable cursor without inserting a row or
+    /// acquiring the writer fence. Absence is distinct from an issued zero
+    /// state. The transaction keeps PostgreSQL tenant RLS scope local.
+    /// This is an observation, not authority to perform a mutation.
+    pub async fn observe_lifecycle_cursor(
+        &self,
+        tenant_id: Uuid,
+    ) -> Result<Option<ModulePolicyRevisionCursorState>, ModulePolicyRevisionConsumerError> {
+        const CONSUMER: &str = "module.lifecycle";
+        validate_request(tenant_id, CONSUMER)?;
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, tenant_id)
+            .await
+            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        let state = load_cursor_state(&transaction, backend, tenant_id, CONSUMER, false).await?;
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(state)
+    }
+
     pub async fn cursor_state(
         &self,
         tenant_id: Uuid,
@@ -377,8 +400,9 @@ async fn load_cursor_state<C: ConnectionTrait>(
     backend: SupportedBackend,
     tenant_id: Uuid,
     consumer_key: &str,
-) -> Result<ModulePolicyRevisionCursorState, ModulePolicyRevisionConsumerError> {
-    let lock = if backend == SupportedBackend::Postgres {
+    lock_row: bool,
+) -> Result<Option<ModulePolicyRevisionCursorState>, ModulePolicyRevisionConsumerError> {
+    let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
@@ -409,6 +433,9 @@ async fn load_cursor_state<C: ConnectionTrait>(
         ))
         .await
         .map_err(storage_error)?;
+    if rows.is_empty() && !lock_row {
+        return Ok(None);
+    }
     if rows.len() != 1 {
         return Err(ModulePolicyRevisionConsumerError::Storage(
             "policy revision cursor has missing or conflicting tenant identities".to_string(),
@@ -428,10 +455,10 @@ async fn load_cursor_state<C: ConnectionTrait>(
     // Reuse the gate invariant at the storage boundary so malformed durable
     // state fails closed instead of becoming a transition predecessor.
     ModulePolicyRevisionGate::with_sequence(current_revision.clone(), current_sequence)?;
-    Ok(ModulePolicyRevisionCursorState {
+    Ok(Some(ModulePolicyRevisionCursorState {
         current_revision,
         current_sequence,
-    })
+    }))
 }
 
 async fn persist_cursor_state<C: ConnectionTrait>(
@@ -616,10 +643,16 @@ mod invite_policy_epoch_tests {
         let tenant = Uuid::new_v4();
         let a = format!("sha256:{}", "a".repeat(64));
         let b = format!("sha256:{}", "b".repeat(64));
+        assert_eq!(owner.observe_lifecycle_cursor(tenant).await.unwrap(), None);
+        assert_eq!(owner.observe_lifecycle_cursor(tenant).await.unwrap(), None);
         let initial = owner
             .cursor_state(tenant, "module.lifecycle")
             .await
             .unwrap();
+        assert_eq!(
+            owner.observe_lifecycle_cursor(tenant).await.unwrap(),
+            Some(initial.clone())
+        );
         let issued = owner
             .resync_if_current(tenant, "module.lifecycle", &initial, &a)
             .await
@@ -634,6 +667,14 @@ mod invite_policy_epoch_tests {
             .unwrap();
         assert_eq!(issued.current_revision, restored.current_revision);
         assert!(restored.current_sequence > issued.current_sequence);
+        assert_eq!(
+            owner.observe_lifecycle_cursor(tenant).await.unwrap(),
+            Some(restored.clone())
+        );
+        assert_eq!(
+            owner.observe_lifecycle_cursor(Uuid::new_v4()).await.unwrap(),
+            None
+        );
         let tx = db.begin().await.unwrap();
         let transient = owner
             .resync_if_current_in_transaction(&tx, tenant, "module.lifecycle", &restored, &b)
@@ -647,6 +688,10 @@ mod invite_policy_epoch_tests {
                 .await
                 .unwrap(),
             restored
+        );
+        assert_eq!(
+            owner.observe_lifecycle_cursor(tenant).await.unwrap(),
+            Some(restored)
         );
     }
 }

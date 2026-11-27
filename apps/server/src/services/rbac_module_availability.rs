@@ -13,7 +13,7 @@ use rustok_core::ModuleRegistry;
 use rustok_modules::ModuleControlPlane;
 use rustok_rbac::PermissionAvailability;
 
-use super::effective_module_policy::EffectiveModulePolicyService;
+use super::effective_module_policy::{EffectiveModulePolicyService, ModulePolicyAuthorityRevision};
 use super::server_runtime_context::ServerRuntimeContext;
 use crate::error::{Error, Result};
 
@@ -87,7 +87,7 @@ pub async fn permission_availability_for(
 pub(crate) struct RequestModulePolicyAuthority {
     registry: ModuleRegistry,
     ownership: Arc<BTreeMap<String, String>>,
-    composition_revision: i64,
+    revision: ModulePolicyAuthorityRevision,
     identity: rustok_modules::EffectivePolicyCacheIdentity,
     availability: PermissionAvailability,
 }
@@ -96,7 +96,7 @@ impl std::fmt::Debug for RequestModulePolicyAuthority {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("RequestModulePolicyAuthority")
-            .field("composition_revision", &self.composition_revision)
+            .field("revision", &self.revision)
             .field("identity", &self.identity)
             .finish_non_exhaustive()
     }
@@ -104,7 +104,7 @@ impl std::fmt::Debug for RequestModulePolicyAuthority {
 
 impl PartialEq for RequestModulePolicyAuthority {
     fn eq(&self, other: &Self) -> bool {
-        self.composition_revision == other.composition_revision
+        self.revision == other.revision
             && self.identity == other.identity
             && self.availability == other.availability
     }
@@ -120,7 +120,7 @@ impl RequestModulePolicyAuthority {
         tenant_id: uuid::Uuid,
         initialize: bool,
     ) -> Result<Self> {
-        let (composition_revision, snapshot) =
+        let (revision, snapshot) =
             EffectiveModulePolicyService::resolve_authority_snapshot(
                 db, &registry, tenant_id, initialize,
             )
@@ -131,7 +131,7 @@ impl RequestModulePolicyAuthority {
         Ok(Self {
             registry,
             ownership,
-            composition_revision,
+            revision,
             identity: snapshot.cache_identity,
             availability,
         })

@@ -8,6 +8,7 @@ use rustok_modules::{
     ModuleEffectivePolicyCache, ModuleEffectivePolicyChannelInput,
     ModuleEffectivePolicyMaintenanceInput, ModuleEffectivePolicyReader,
     ModuleEffectivePolicyReaderError, ModuleLifecycleDbWriterError,
+    ModulePolicyRevisionCursorState, SeaOrmModulePolicyRevisionConsumer,
     SharedModuleEffectivePolicyReader, SharedStaticModuleLifecycleReader,
     StaticModuleLifecycleReader, StaticModuleLifecycleReaderError, TenantModuleOverrideSnapshot,
 };
@@ -19,6 +20,15 @@ pub struct EffectiveModulePolicySnapshot {
     pub policy: ModuleEffectivePolicy,
     pub cache_identity: EffectivePolicyCacheIdentity,
     pub default_enabled_modules: Vec<String>,
+}
+
+/// Coherent optimistic owner observation. The lifecycle cursor is optional
+/// only for tenants that have not yet issued a lifecycle revision.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct ModulePolicyAuthorityRevision {
+    pub composition_revision: i64,
+    pub composition_hash: String,
+    pub lifecycle_cursor: Option<ModulePolicyRevisionCursorState>,
 }
 
 pub struct EffectiveModulePolicyService;
@@ -187,16 +197,37 @@ impl EffectiveModulePolicyService {
         registry: &ModuleRegistry,
         tenant_id: uuid::Uuid,
         initialize: bool,
-    ) -> Result<(i64, EffectiveModulePolicySnapshot), PlatformCompositionError> {
+    ) -> Result<(ModulePolicyAuthorityRevision, EffectiveModulePolicySnapshot), PlatformCompositionError> {
+        let owner = ModuleControlPlane::new(db.clone()).composition();
         let composition = if initialize {
             PlatformCompositionService::active_snapshot(db).await?
         } else {
-            let owner = ModuleControlPlane::new(db.clone()).composition();
             PlatformCompositionService::snapshot_from_owner(owner.active_snapshot().await?)?
         };
-        let revision = composition.revision;
+        let cursor_owner = SeaOrmModulePolicyRevisionConsumer::new(db.clone());
+        let observe_cursor = || async {
+            cursor_owner.observe_lifecycle_cursor(tenant_id).await
+                .map_err(|error| PlatformCompositionError::EffectivePolicy(error.to_string()))
+        };
+        let revision = ModulePolicyAuthorityRevision {
+            composition_revision: composition.revision,
+            composition_hash: composition.manifest_hash.clone(),
+            lifecycle_cursor: observe_cursor().await?,
+        };
         let snapshot =
             Self::resolve_snapshot_from_composition(db, registry, tenant_id, composition).await?;
+        // Bracket the policy evaluation with both owner observations. Do not
+        // attach a newer generation to older overrides or manifest inputs.
+        let live_cursor = observe_cursor().await?;
+        let live_composition = owner.active_snapshot().await?;
+        if live_cursor != revision.lifecycle_cursor
+            || live_composition.revision != revision.composition_revision
+            || live_composition.manifest_hash != revision.composition_hash
+        {
+            return Err(PlatformCompositionError::EffectivePolicy(
+                "module policy authority changed during observation".to_string(),
+            ));
+        }
         Ok((revision, snapshot))
     }
 
