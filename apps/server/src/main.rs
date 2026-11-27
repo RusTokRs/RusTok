@@ -253,10 +253,12 @@ mod tests {
 
     #[test]
     fn resolve_otel_config_propagates_enabled_and_resolved_service_name() {
-        assert!(resolve_otel_config(None, "custom-svc", || {
-            panic!("base builder must not run when OTEL is disabled");
-        })
-        .is_none());
+        assert!(
+            resolve_otel_config(None, "custom-svc", || {
+                panic!("base builder must not run when OTEL is disabled");
+            })
+            .is_none()
+        );
 
         let resolved = resolve_otel_config(Some("yes"), "custom-svc", || {
             rustok_telemetry::otel::OtelConfig {

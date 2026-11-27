@@ -167,14 +167,31 @@ pub async fn lock_user_admin_role_grants_on(
     let backend = tx.get_database_backend();
     let continuity_slug = target_id.map(|_| rustok_core::UserRole::SuperAdmin.to_string());
     let sql = match backend {
-        DatabaseBackend::Postgres => "SELECT r.id, r.slug, r.grant_revision FROM roles r WHERE r.tenant_id = $1 AND (r.slug = $2 OR r.slug = $5 OR EXISTS (SELECT 1 FROM user_roles ur WHERE (ur.user_id = $3 OR ur.user_id = $4) AND ur.role_id = r.id)) ORDER BY r.id FOR UPDATE OF r",
-        DatabaseBackend::Sqlite => "SELECT r.id, r.slug, r.grant_revision FROM roles r WHERE r.tenant_id = ?1 AND (r.slug = ?2 OR r.slug = ?5 OR EXISTS (SELECT 1 FROM user_roles ur WHERE (ur.user_id = ?3 OR ur.user_id = ?4) AND ur.role_id = r.id)) ORDER BY r.id",
-        _ => return Err(DbErr::Custom("unsupported RBAC grant revision backend".into())),
+        DatabaseBackend::Postgres => {
+            "SELECT r.id, r.slug, r.grant_revision FROM roles r WHERE r.tenant_id = $1 AND (r.slug = $2 OR r.slug = $5 OR EXISTS (SELECT 1 FROM user_roles ur WHERE (ur.user_id = $3 OR ur.user_id = $4) AND ur.role_id = r.id)) ORDER BY r.id FOR UPDATE OF r"
+        }
+        DatabaseBackend::Sqlite => {
+            "SELECT r.id, r.slug, r.grant_revision FROM roles r WHERE r.tenant_id = ?1 AND (r.slug = ?2 OR r.slug = ?5 OR EXISTS (SELECT 1 FROM user_roles ur WHERE (ur.user_id = ?3 OR ur.user_id = ?4) AND ur.role_id = r.id)) ORDER BY r.id"
+        }
+        _ => {
+            return Err(DbErr::Custom(
+                "unsupported RBAC grant revision backend".into(),
+            ));
+        }
     };
-    let rows = tx.query_all_raw(Statement::from_sql_and_values(
-        backend, sql, [tenant_id.into(), requested_slug.map(str::to_owned).into(),
-            actor_id.into(), target_id.into(), continuity_slug.into()],
-    )).await?;
+    let rows = tx
+        .query_all_raw(Statement::from_sql_and_values(
+            backend,
+            sql,
+            [
+                tenant_id.into(),
+                requested_slug.map(str::to_owned).into(),
+                actor_id.into(),
+                target_id.into(),
+                continuity_slug.into(),
+            ],
+        ))
+        .await?;
     let mut found_requested = requested_slug.is_none();
     for row in rows {
         let id: Uuid = row.try_get("", "id")?;

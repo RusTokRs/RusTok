@@ -103,6 +103,7 @@ async fn main() {
                         "Page Builder intent requires a valid CSRF token",
                     ));
                 }
+            }
         };
         let verified_user =
             rustok_auth_ui::transport::fetch_current_user(token.clone(), tenant_slug.clone())
