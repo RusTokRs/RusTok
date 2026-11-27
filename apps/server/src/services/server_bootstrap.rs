@@ -149,13 +149,14 @@ pub(crate) fn check_production_environment(
         _ => {}
     }
 
-    if let Some((variable, password)) = configured_superadmin_password() {
+    if let Some((variable, password)) = configured_superadmin_password()? {
         let trimmed_password = password.trim();
         if known_sample_superadmin_password(trimmed_password).is_some()
-            || trimmed_password.len() < 8
+            || trimmed_password.chars().count() < crate::auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS
         {
             return Err(crate::error::Error::Message(format!(
-                "FATAL: env var {variable} contains a weak or known sample superadmin password. Set a unique secret of at least 8 characters before starting the release build."
+                "FATAL: env var {variable} contains a weak or known sample superadmin password. Set a unique secret of at least {} characters before starting the release build.",
+                crate::auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS
             )));
         }
     }
@@ -207,35 +208,57 @@ pub(crate) fn sample_database_credentials_pattern(uri: &str) -> Option<&'static 
         "sqlite:",
         "localhost:5432/rustok_dev",
         "127.0.0.1:5432/rustok_dev",
-        ".example.com",
-        ".example.net",
-        ".example.org",
-        ".example",
-        ".invalid",
-        ".test",
     ];
     let normalized = uri.trim().to_ascii_lowercase();
-    known_placeholder_fragment(&normalized).or_else(|| {
-        SAMPLE_PATTERNS
-            .iter()
-            .copied()
-            .find(|pattern| normalized.contains(pattern))
-    })
+    known_placeholder_fragment(&normalized)
+        .or_else(|| {
+            SAMPLE_PATTERNS
+                .iter()
+                .copied()
+                .find(|pattern| normalized.contains(pattern))
+        })
+        .or_else(|| {
+            let host = url::Url::parse(uri.trim())
+                .ok()?
+                .host_str()?
+                .trim_end_matches('.')
+                .to_ascii_lowercase();
+            let reserved_domain = [
+                ("example.com", ".example.com"),
+                ("example.net", ".example.net"),
+                ("example.org", ".example.org"),
+            ]
+            .into_iter()
+            .find_map(|(suffix, pattern)| {
+                (host == suffix || host.ends_with(&format!(".{suffix}"))).then_some(pattern)
+            });
+            reserved_domain.or_else(|| match host.rsplit('.').next()? {
+                "example" => Some(".example"),
+                "invalid" => Some(".invalid"),
+                "test" => Some(".test"),
+                _ => None,
+            })
+        })
 }
 
-fn configured_superadmin_password() -> Option<(&'static str, String)> {
-    for key in [
-        "SUPERADMIN_PASSWORD",
-        "SEED_ADMIN_PASSWORD",
-    ] {
-        if let Ok(value) = std::env::var(key) {
-            let value = value.trim().to_string();
-            if !value.is_empty() {
-                return Some((key, value));
+fn configured_superadmin_password() -> Result<Option<(&'static str, String)>> {
+    for key in ["SUPERADMIN_PASSWORD", "SEED_ADMIN_PASSWORD"] {
+        match std::env::var(key) {
+            Ok(value) => {
+                let value = value.trim().to_string();
+                if !value.is_empty() {
+                    return Ok(Some((key, value)));
+                }
+            }
+            Err(std::env::VarError::NotPresent) => {}
+            Err(std::env::VarError::NotUnicode(_)) => {
+                return Err(crate::error::Error::Message(format!(
+                    "FATAL: env var {key} must be valid UTF-8 in production."
+                )));
             }
         }
     }
-    None
+    Ok(None)
 }
 
 pub(crate) fn known_sample_superadmin_password(password: &str) -> Option<&'static str> {
@@ -418,7 +441,7 @@ mod tests {
 
     struct EnvGuard {
         _guard: std::sync::MutexGuard<'static, ()>,
-        vars: Vec<(&'static str, Option<String>)>,
+        vars: Vec<(&'static str, Option<std::ffi::OsString>)>,
     }
 
     impl EnvGuard {
@@ -426,7 +449,7 @@ mod tests {
             let guard = TEST_ENV_LOCK.lock().unwrap();
             let mut vars = Vec::new();
             for &k in keys {
-                vars.push((k, std::env::var(k).ok()));
+                vars.push((k, std::env::var_os(k)));
                 unsafe {
                     std::env::remove_var(k);
                 }
@@ -669,6 +692,31 @@ mod tests {
         assert!(error.to_string().contains("known sample credentials"));
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn production_secret_validation_rejects_non_unicode_superadmin_password() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
+        unsafe {
+            std::env::set_var(
+                "SUPERADMIN_PASSWORD",
+                std::ffi::OsString::from_vec(vec![0xff]),
+            );
+        }
+        let error = check_production_environment(
+            &"aB3!zY7@qW8#eR2$".repeat(5),
+            "postgres://app:strong@db/rustok",
+            true,
+        )
+        .expect_err("non-UTF-8 superadmin secrets must fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("SUPERADMIN_PASSWORD must be valid UTF-8 in production")
+        );
+    }
+
     #[test]
     fn production_secret_validation_rejects_weak_or_short_superadmin_password() {
         let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
@@ -681,6 +729,19 @@ mod tests {
                 .expect_err("short superadmin password must fail");
         assert!(
             error_short
+                .to_string()
+                .contains("weak or known sample superadmin password")
+        );
+
+        let multibyte_short = "🔐".repeat(crate::auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS - 1);
+        unsafe {
+            std::env::set_var("SUPERADMIN_PASSWORD", &multibyte_short);
+        }
+        let error_multibyte =
+            check_production_environment(&secret, "postgres://app:strong@db/rustok", true)
+                .expect_err("passwords below the character limit must fail regardless of UTF-8 byte length");
+        assert!(
+            error_multibyte
                 .to_string()
                 .contains("weak or known sample superadmin password")
         );
@@ -751,6 +812,26 @@ mod tests {
                 "postgres://app:strong@db.example.com:5432/rustok_prod"
             ),
             Some(".example.com")
+        );
+        assert_eq!(
+            sample_database_credentials_pattern(
+                "postgres://app:strong@db.test:5432/rustok_prod"
+            ),
+            Some(".test")
+        );
+        assert_eq!(
+            sample_database_credentials_pattern(
+                "postgres://app:strong@db.testnet.internal:5432/rustok_prod"
+            ),
+            None,
+            "a host label that merely starts with a reserved suffix must not be rejected"
+        );
+        assert_eq!(
+            sample_database_credentials_pattern(
+                "postgres://app:strong@db.testing:5432/rustok_prod"
+            ),
+            None,
+            "the testing label is not the reserved .test TLD"
         );
         assert_eq!(
             known_sample_superadmin_password("dev-password-123"),
