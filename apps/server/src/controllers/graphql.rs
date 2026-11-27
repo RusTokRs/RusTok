@@ -1016,7 +1016,7 @@ mod tests {
         GRAPHQL_HTTP_PATH, WS_CONNECTION_INIT_TIMEOUT, WS_CONNECTION_INIT_TIMEOUT_CLOSE,
         WS_CONNECTION_INIT_TIMEOUT_REASON, WS_INCOMING_QUEUE_CAPACITY, WS_MAX_FRAME_SIZE,
         WS_MAX_MESSAGE_SIZE, GraphQLPlaygroundConfig, graphql_http_response,
-        graphql_permissions, nonce_graphql_playground_html,
+        graphql_permissions, graphql_playground, nonce_graphql_playground_html, CspNonce,
     };
     use crate::{
         common::settings::RustokSettings, middleware::tenant,
@@ -1053,6 +1053,35 @@ mod tests {
     #[test]
     fn graphql_playground_template_changes_fail_closed() {
         assert!(nonce_graphql_playground_html("<html></html>", "test-nonce").is_none());
+    }
+
+    #[tokio::test]
+    async fn graphql_playground_is_dev_only_no_store_and_requires_nonce() {
+        if crate::common::settings::is_production_security_mode() {
+            let response = graphql_playground(None).await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+            assert_eq!(
+                response
+                    .headers()
+                    .get(header::CACHE_CONTROL)
+                    .and_then(|value| value.to_str().ok()),
+                Some("no-store")
+            );
+            return;
+        }
+
+        let missing_nonce = graphql_playground(None).await;
+        assert_eq!(missing_nonce.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        let response = graphql_playground(Some(axum::Extension(CspNonce::generate()))).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store")
+        );
     }
 
     #[test]

@@ -9,14 +9,15 @@ remained exposed in release/production builds despite being a developer tool.
 It is now disabled whenever production security mode is active. In
 non-production mode, the GET route receives a dedicated CSP with a nonce for
 the inline bootstrap, fixed jsDelivr/Google Fonts origins, same-origin HTTP and
-WebSocket connections, and no inline script allowance. Protocol-relative CDN
+WebSocket connections, and no blanket `unsafe-inline` script allowance. Protocol-relative CDN
 URLs are normalized to HTTPS, template drift fails closed, and the nonce-bearing
 HTML is `no-store`. GraphQL POST and WebSocket routes retain strict API CSP.
 
 Focused policy and template regressions were added. Maintainer verification
 remains pending: `cargo check -p rustok-server`,
 `cargo test -p rustok-server --lib graphql_playground_csp_is_dev_only_and_get_only`,
-and `cargo test -p rustok-server --lib graphql_playground_html_nonces_inline_bootstrap_and_uses_https_cdn`.
+ `cargo test -p rustok-server --lib graphql_playground_html_nonces_inline_bootstrap_and_uses_https_cdn`,
+and `cargo test -p rustok-server --lib graphql_playground_is_dev_only_no_store_and_requires_nonce`.
 Tests and compilation were not run in this session.
 
 
