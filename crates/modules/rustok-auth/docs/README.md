@@ -1149,3 +1149,12 @@ SQLite retains its serialized writer and existing guards. PostgreSQL regression
 source covers contention, canonical reuse, metadata and user cascade; compile,
 migration and runtime verification are pending. Session/history and broader
 bulk revocation, administrative receipt and outbox ordering remain open.
+
+SQLite migration 000008 implements the missing token user-delete cascade
+(the original SQLite token table has no user FK; PostgreSQL already has the
+composite user FK). The AFTER DELETE user trigger deletes exact tenant/user
+non-root members before roots, retaining NULL-subject service credentials
+and other users. Legacy orphan or cross-tenant lineage blocks the migration
+without deleting evidence. Physical deletion only; normal deactivation and
+revocation contracts remain unchanged. SQLite source regressions for cascade,
+rollback, tenant deletion, identity recreation and dirty preflight are unrun.

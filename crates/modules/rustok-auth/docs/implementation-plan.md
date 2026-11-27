@@ -694,3 +694,9 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   PostgreSQL contention, successful retry and user cascade regression authored,
   unrun. Session refresh history, bulk parent deletes, all owner receipt/outbox
   and global cross-owner lock order remain separate open boundaries.
+
+- SQLite physical user deletion parity: migration 000008 adds the missing
+  token user cascade, deleting descendants before roots and preserving
+  unrelated credentials. Existing orphan/cross-tenant rows block cutover;
+  no automatic cleanup. Source tests authored, unrun. PostgreSQL existing
+  composite FK is unchanged.

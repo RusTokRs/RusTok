@@ -274,3 +274,12 @@ owner mutation and credential clock checks remain necessary. SQLite retains
 its serialized writer and existing lineage guards. Deploy the migration with
 coordinated writer rollout; PostgreSQL runtime/compile and cross-owner ordering
 remain unverified.
+
+SQLite migration 000008 implements the user-delete cascade absent from its
+original OAuth token table. The existing insert/update tenant guards cannot
+prevent a parent deletion from orphaning lineage. Delete exact tenant/user
+descendants before roots in the user deletion transaction, preserving other
+users and NULL-subject service credentials. PostgreSQL retains the composite
+user FK cascade. Reject existing orphan/cross-tenant lineage at migration;
+operator reconciliation is required instead of silently removing history.
+SQLite downgrade is denied. Source regression tests remain unrun.

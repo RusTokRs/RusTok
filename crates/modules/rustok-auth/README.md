@@ -355,3 +355,8 @@ roots and invite/recovery children. Existing FK and immutable lineage guards
 remain authoritative. Direct late writes reject busy parents (55P03) instead
 of waiting; retry only from a new transaction. PostgreSQL runtime and broader
 session/identity and cross-owner lock ordering remain unverified.
+
+Migration 000008 closes the SQLite token/user deletion parity gap: physical
+user deletion removes delegated descendants before roots, preserving service
+and other-user credentials. Existing orphan/cross-tenant lineage blocks
+migration for explicit reconciliation. Source tests unrun.
