@@ -291,12 +291,7 @@ impl FlyUiStateMachine {
                             capability.as_str().to_string(),
                         ));
                     }
-                    if !matches!(
-                        command.as_ref(),
-                        EditorCommand::Batch { commands } if commands.is_empty()
-                    ) {
-                        self.mark_dirty()?;
-                    }
+                    self.mark_dirty()?;
                 }
                 vec![UiEffect::Command(command)]
             }
