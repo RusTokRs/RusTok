@@ -224,17 +224,32 @@ pub(crate) fn remap_fragment_asset_ids(
 
     let mut reserved = existing_by_id.keys().cloned().collect::<BTreeSet<_>>();
     reserved.extend(existing_asset_references.iter().cloned());
-    let mut seen = BTreeSet::new();
+
+    // A remapped id must not capture a different, currently unresolved reference
+    // inside the fragment itself. This matters when a deterministic generator
+    // happens to emit the same id as a dangling reference in the source subtree.
+    let mut source_asset_ids = BTreeSet::new();
+    for raw in assets.iter() {
+        if let Some(asset) = AssetDescriptor::from_value(raw.clone()) {
+            if !source_asset_ids.insert(asset.id.clone()) {
+                return Err(FlyError::InvalidAssetReference(format!(
+                    "fragment contains duplicate asset id `{}`",
+                    asset.id
+                )));
+            }
+        }
+    }
+    let mut dangling_source_references = BTreeSet::new();
+    for component in components.iter() {
+        collect_component_asset_ids(component, &mut dangling_source_references);
+    }
+    dangling_source_references.retain(|id| !source_asset_ids.contains(id));
+    reserved.extend(dangling_source_references);
+
     let mut mapping = BTreeMap::new();
     for raw in assets {
         let Some(asset) = AssetDescriptor::from_value(raw.clone()) else {
             continue;
-        };
-        if !seen.insert(asset.id.clone()) {
-            return Err(FlyError::InvalidAssetReference(format!(
-                "fragment contains duplicate asset id `{}`",
-                asset.id
-            )));
         }
         reserved.insert(asset.id.clone());
         let conflicts_with_existing_record = existing_by_id
@@ -925,6 +940,62 @@ mod tests {
             inserted_component.attributes["src"],
             "/source.webp"
         );
+    }
+
+    #[test]
+    fn remapped_assets_do_not_capture_dangling_references_inside_the_fragment() {
+        let mut assets = vec![json!({
+            "id": "shared",
+            "src": "/source.webp"
+        })];
+        let mut components = vec![
+            serde_json::from_value(json!({
+                "id": "source-image",
+                "type": "image",
+                "attributes": {
+                    "data-fly-asset-id": "shared"
+                }
+            }))
+            .expect("source image"),
+            serde_json::from_value(json!({
+                "id": "legacy-image",
+                "type": "image",
+                "attributes": {
+                    "data-fly-asset-id": "fly-symbol-asset-asset-1"
+                }
+            }))
+            .expect("legacy image"),
+        ];
+        let existing_assets = vec![json!({
+            "id": "shared",
+            "src": "/target.webp"
+        })];
+        let mut generator = crate::SequentialIdGenerator::new("fly-symbol-asset");
+
+        let mapping = remap_fragment_asset_ids(
+            &mut assets,
+            &mut components,
+            &existing_assets,
+            &BTreeSet::new(),
+            &mut generator,
+        )
+        .expect("remap colliding source asset");
+
+        assert_eq!(
+            mapping.get("shared").map(String::as_str),
+            Some("fly-symbol-asset-asset-2")
+        );
+        assert_eq!(
+            components[0].as_object().expect("source image").attributes
+                ["data-fly-asset-id"],
+            "fly-symbol-asset-asset-2"
+        );
+        assert_eq!(
+            components[1].as_object().expect("legacy image").attributes
+                ["data-fly-asset-id"],
+            "fly-symbol-asset-asset-1"
+        );
+        assert_eq!(assets[0]["id"], "fly-symbol-asset-asset-2");
     }
 
     #[test]
