@@ -857,6 +857,25 @@ fn validate_assets(document: &ProjectDocument, report: &mut ValidationReport) {
             format!("asset id `{duplicate}` is duplicated"),
         ));
     }
+    for asset in &catalog.assets {
+        let invalid_reason = if asset.id.trim().is_empty() {
+            Some("must not be empty")
+        } else if asset.id.len() > 256 {
+            Some("must be 256 bytes or fewer")
+        } else if asset.id.chars().any(char::is_control) {
+            Some("must not contain control characters")
+        } else {
+            None
+        };
+        if let Some(reason) = invalid_reason {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "invalid_asset_id",
+                "assets",
+                format!("asset id {reason}"),
+            ));
+        }
+    }
     if !catalog.unknown_entries.is_empty() {
         report.diagnostics.push(diagnostic(
             ValidationSeverity::Info,
@@ -1216,6 +1235,36 @@ mod tests {
         assert_eq!(report.page_count, 1);
         assert_eq!(report.asset_count, 2);
         assert_eq!(report.style_rule_count, 1);
+    }
+
+    #[test]
+    fn rejects_blank_oversized_and_control_character_asset_ids() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "assets": [
+                { "id": "", "src": "/blank.png" },
+                { "id": "bad\\u0001id", "src": "/control.png" },
+                { "id": "x".repeat(257), "src": "/large.png" }
+            ],
+            "pages": [{
+                "id": "home",
+                "component": { "id": "root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert_eq!(
+            report
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == "invalid_asset_id")
+                .count(),
+            3
+        );
     }
 
     #[test]
