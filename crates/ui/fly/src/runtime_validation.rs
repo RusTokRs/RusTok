@@ -227,6 +227,56 @@ mod tests {
     }
 
     #[test]
+    fn symbol_actions_and_internal_links_are_validated_in_page_context() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [{
+                "id": "cta",
+                "components": [{
+                    "id": "missing-link",
+                    "type": "link",
+                    "flyPageLink": { "page_id": "missing" }
+                }, {
+                    "id": "missing-submit",
+                    "type": "button",
+                    "flyAction": {
+                        "kind": "submit_form",
+                        "form_id": "missing"
+                    }
+                }]
+            }],
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": { "slug": "home" },
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "cta-instance",
+                        "type": "symbol",
+                        "symbolId": "cta"
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "internal_page_link_target_missing"
+                && diagnostic.severity == crate::ValidationSeverity::Error
+        }));
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "action_definition_invalid"
+                && diagnostic.severity == crate::ValidationSeverity::Error
+        }));
+    }
+
+    #[test]
     fn invalid_action_and_form_contracts_block_publish_validation() {
         let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
