@@ -2362,7 +2362,7 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
                         // A stale temporary file may contain a draft. Remove
                         // it only while the old layout's token lock is held.
                         match try_with_legacy_flat_token_lock(&self.dir, token, || {
-                            if !file_is_older_than(&path, self.ttl) {
+                            if !file_is_older_than(&path, TEMP_FILE_STALE_AFTER) {
                                 return Ok(false);
                             }
                             match fs::remove_file(&path) {
@@ -7346,12 +7346,18 @@ mod tests {
             assert!(dir.join(name).is_file(), "{name} must survive");
         }
 
-        let long_ago = SystemTime::now() - store.ttl() - Duration::from_secs(5);
+        let expired_record = SystemTime::now() - store.ttl() - Duration::from_secs(5);
+        let stale_temp = SystemTime::now() - TEMP_FILE_STALE_AFTER - Duration::from_secs(5);
         for name in legacy.iter().chain(&foreign) {
+            let modified = if name.contains(".tmp.") {
+                stale_temp
+            } else {
+                expired_record
+            };
             fs::File::options()
                 .write(true)
                 .open(dir.join(name))
-                .and_then(|file| file.set_modified(long_ago))
+                .and_then(|file| file.set_modified(modified))
                 .expect("backdate");
         }
         // Records and temp payloads are removed under their old token lock.
@@ -7376,14 +7382,18 @@ mod tests {
         let lock_path = dir.join(format!("{token}.lock"));
         fs::write(&record, "{}").expect("record");
         fs::write(&temporary, "{}").expect("temporary");
-        let long_ago = SystemTime::now() - store.ttl() - Duration::from_secs(5);
-        for path in [&record, &temporary] {
-            fs::File::options()
-                .write(true)
-                .open(path)
-                .and_then(|file| file.set_modified(long_ago))
-                .expect("backdate");
-        }
+        let expired_record = SystemTime::now() - store.ttl() - Duration::from_secs(5);
+        let stale_temp = SystemTime::now() - TEMP_FILE_STALE_AFTER - Duration::from_secs(5);
+        fs::File::options()
+            .write(true)
+            .open(&record)
+            .and_then(|file| file.set_modified(expired_record))
+            .expect("backdate record");
+        fs::File::options()
+            .write(true)
+            .open(&temporary)
+            .and_then(|file| file.set_modified(stale_temp))
+            .expect("backdate temporary");
 
         let held_lock = open_lock_file(&lock_path).expect("open legacy lock");
         held_lock.lock().expect("hold legacy lock");
