@@ -728,7 +728,11 @@ impl ModuleWorkHandler for ArtifactEventDeliveryWorkAdapter {
                     },
                 }),
                 phase: ExecutionPhase::Event,
-                context: crate::ArtifactBindingExecutionContext::default(),
+                context: crate::ArtifactBindingExecutionContext {
+                    actor_id: None,
+                    trace_id: Some(format!("artifact-event:{}", payload.delivery_id)),
+                    idempotency_key: Some(payload.delivery_id),
+                },
             })
             .await
         {
