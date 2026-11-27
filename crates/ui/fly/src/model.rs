@@ -352,7 +352,7 @@ impl ProjectDocument {
         let mut seen = std::collections::HashSet::new();
         for page in &self.project.pages {
             let Some(root) = page.component.as_ref() else {
-                return false;
+                continue;
             };
             if !check_component_ids_stable(root, &mut seen) {
                 return false;
