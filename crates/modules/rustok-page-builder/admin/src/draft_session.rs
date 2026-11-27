@@ -1620,11 +1620,17 @@ impl FileSsrDraftSessionStore {
         }
         self.with_lock(token, || {
             let content = match fs::File::open(path) {
-                Ok(file) => read_bounded_record(file).ok(),
+                Ok(file) => match read_bounded_record(file) {
+                    Ok(content) => Some(content),
+                    // An oversized stale record may be collected after its TTL, but an
+                    // actual read failure is not evidence that the session is expired.
+                    Err(SsrDraftSessionError::RecordTooLarge { .. }) => None,
+                    Err(error) => return Err(error),
+                },
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                     return Ok(DeadRecord::Left);
                 }
-                Err(_) => None,
+                Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
             };
             let dead = match content {
                 Some(content) => match PersistentDraftSessionRecord::decode_str(&content) {
@@ -7735,6 +7741,32 @@ mod tests {
             .expect("commit after expiry");
         assert_ne!(fresh.token, created.token);
         assert_eq!(fresh.generation, 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn file_store_prune_does_not_delete_old_records_when_reading_fails() {
+        let dir = temp_store_dir();
+        let store = file_store(&dir);
+        let created = store
+            .commit(None, None, controller("home"), None)
+            .expect("create");
+        let file = dir
+            .join(UNATTRIBUTED_PARTITION)
+            .join(format!("{}.json", created.token));
+        fs::write(&file, [0xff]).expect("write invalid UTF-8");
+        let old = SystemTime::now() - store.ttl() - Duration::from_secs(5);
+        fs::File::options()
+            .write(true)
+            .open(&file)
+            .and_then(|handle| handle.set_modified(old))
+            .expect("backdate unreadable record");
+
+        assert!(matches!(
+            store.remove_dead_record(&file, &created.token),
+            Err(SsrDraftSessionError::Io(_))
+        ));
+        assert!(file.is_file(), "a read failure must not delete the record");
         let _ = fs::remove_dir_all(&dir);
     }
 
