@@ -329,11 +329,14 @@ impl CatalogService {
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
         validate_product_brands(&input.brands)?;
+        let shipping_profile_slug = resolve_shipping_profile_slug(
+            input.shipping_profile_slug.as_deref(),
+            &input.metadata,
+        );
         self.validate_shipping_profiles(
             tenant_id,
             actor_id,
-            input
-                .shipping_profile_slug
+            shipping_profile_slug
                 .iter()
                 .map(String::as_str)
                 .chain(
@@ -396,7 +399,7 @@ impl CatalogService {
             .unwrap_or_else(|| serde_json::json!({}));
         let (normalized_metadata, normalized_tags) = normalize_create_product_metadata(
             input.tags.clone(),
-            input.shipping_profile_slug.clone(),
+            input.shipping_profile_slug.clone().or_else(|| shipping_profile_slug.clone()),
             product_metadata,
         );
 
@@ -419,10 +422,7 @@ impl CatalogService {
             seller_id: Set(normalize_seller_id(input.seller_id.as_deref())),
             vendor: Set(input.vendor.clone()),
             product_type: Set(input.product_type.clone()),
-            shipping_profile_slug: Set(input
-                .shipping_profile_slug
-                .as_deref()
-                .and_then(normalize_shipping_profile_slug)),
+            shipping_profile_slug: Set(shipping_profile_slug.clone()),
             primary_category_id: Set(input.primary_category_id),
             metadata: Set(normalized_metadata),
             created_at: Set(now.into()),
@@ -742,9 +742,33 @@ impl CatalogService {
         if let Some(brands) = input.brands.as_deref() {
             validate_product_brands(brands)?;
         }
+        let metadata_shipping_profile_slug = if matches!(
+            &input.shipping_profile_slug,
+            Patch::Keep
+        ) {
+            if let Some(metadata) = input.metadata.as_ref() {
+                let existing = entities::product::Entity::find_by_id(product_id)
+                    .filter(entities::product::Column::TenantId.eq(tenant_id))
+                    .one(&self.db)
+                    .await?
+                    .ok_or(CommerceError::ProductNotFound(product_id))?;
+                if existing.shipping_profile_slug.is_none() {
+                    let requested = resolve_shipping_profile_slug(None, metadata);
+                    let current = resolve_shipping_profile_slug(None, &existing.metadata);
+                    if requested != current { requested } else { None }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         let shipping_slug = match &input.shipping_profile_slug {
             Patch::Set(slug) => Some(slug.as_str()),
-            Patch::Keep | Patch::Clear => None,
+            Patch::Keep => metadata_shipping_profile_slug.as_deref(),
+            Patch::Clear => None,
         };
         self.validate_shipping_profiles(tenant_id, actor_id, shipping_slug)
             .await?;
@@ -840,11 +864,18 @@ impl CatalogService {
         let shipping_profile_patch = input.shipping_profile_slug.clone();
         let shipping_profile_input = match &shipping_profile_patch {
             Patch::Set(slug) => Some(slug.clone()),
-            Patch::Keep | Patch::Clear => None,
+            Patch::Clear => None,
+            Patch::Keep => {
+                let metadata = input.metadata.as_ref().unwrap_or(&existing_product.metadata);
+                resolve_shipping_profile_slug(
+                    existing_product.shipping_profile_slug.as_deref(),
+                    metadata,
+                )
+            }
         };
         let mut metadata_update = normalize_update_product_metadata(
             input.tags.clone(),
-            shipping_profile_input,
+            shipping_profile_input.clone(),
             prepared_custom_fields
                 .as_ref()
                 .and_then(|(prepared, _)| prepared.metadata.clone()),
@@ -884,6 +915,10 @@ impl CatalogService {
                 Patch::Set(slug) => Set(normalize_shipping_profile_slug(slug)),
                 Patch::Keep | Patch::Clear => Set(None),
             };
+        } else if metadata_update.is_some() && input.metadata.is_some() && existing_product.shipping_profile_slug.is_none() {
+            // A legacy metadata-only binding is promoted to the typed owner column
+            // when its metadata document is next written.
+            product_active.shipping_profile_slug = Set(shipping_profile_input.clone());
         }
         let primary_category_changed = match &input.primary_category_id {
             Patch::Keep => false,

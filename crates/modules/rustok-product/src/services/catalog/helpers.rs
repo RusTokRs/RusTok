@@ -462,6 +462,18 @@ pub fn extract_shipping_profile_slug(metadata: &Value) -> Option<String> {
         })
 }
 
+/// Resolves the effective shipping profile without allowing a legacy metadata mirror
+/// to override an explicitly supplied typed field.
+pub fn resolve_shipping_profile_slug(
+    typed_slug: Option<&str>,
+    metadata: &Value,
+) -> Option<String> {
+    match typed_slug {
+        Some(value) => normalize_shipping_profile_slug(value),
+        None => extract_shipping_profile_slug(metadata),
+    }
+}
+
 pub fn apply_shipping_profile_to_metadata(
     mut metadata: Value,
     shipping_profile_slug: Option<String>,
@@ -1004,6 +1016,33 @@ mod product_metadata_tests {
         );
         assert_eq!(normalize_variant_sku(Some(" \t ")), None);
         assert_eq!(normalize_variant_sku(None), None);
+    }
+
+    #[test]
+    fn shipping_profile_resolution_prefers_typed_value_and_supports_legacy_metadata() {
+        let metadata = json!({
+            "shipping_profile": { "slug": "legacy-nested" },
+            "shipping_profile_slug": "legacy-flat"
+        });
+        assert_eq!(
+            super::resolve_shipping_profile_slug(Some(" EXPRESS "), &metadata),
+            Some("express".to_string())
+        );
+        assert_eq!(
+            super::resolve_shipping_profile_slug(None, &metadata),
+            Some("legacy-nested".to_string())
+        );
+        assert_eq!(
+            super::resolve_shipping_profile_slug(
+                None,
+                &json!({"shipping_profile_slug": "  legacy-flat  "})
+            ),
+            Some("legacy-flat".to_string())
+        );
+        assert_eq!(
+            super::resolve_shipping_profile_slug(Some("  "), &metadata),
+            None
+        );
     }
 
     #[test]
