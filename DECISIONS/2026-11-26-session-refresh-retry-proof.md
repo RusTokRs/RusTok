@@ -251,3 +251,12 @@ credential logout. No broader lookup is permitted after the user lock.
 Known expired credentials still revoke; revoked/unknown behavior and the
 expected-ID history retry contract remain unchanged. SQLite lock-order probe
 source extended; runtime and PostgreSQL contention remain unverified.
+
+Platform migration 000010 adds PostgreSQL nonblocking session tenant/user FK
+and history session parent guards. History INSERT/UPDATE/DELETE retain the
+session parent if present; the session delete cascade still removes its
+history. Missing insert parents reject and late contention is 55P03, requiring
+a fresh transaction. Metadata-only session writes do not acquire new parent
+locks. SQLite retains its single writer and existing FK. This is a lock-order
+fence, not a complete direct-SQL history immutability or tenant-integrity
+contract; PostgreSQL test source is unrun.

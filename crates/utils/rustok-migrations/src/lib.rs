@@ -73,6 +73,7 @@ mod composition {
     mod m20261124_000001_quarantine_stale_installer_http_jobs;
     mod m20261125_000001_create_session_refresh_history;
     mod m20261126_000050_add_user_recovery_revision;
+    mod m20261127_000010_fence_session_history_parents;
 
     #[cfg(test)]
     mod contract_tests;
@@ -516,6 +517,9 @@ mod composition {
         ));
         all.push(Box::new(
             m20261126_000050_add_user_recovery_revision::Migration,
+        ));
+        all.push(Box::new(
+            m20261127_000010_fence_session_history_parents::Migration,
         ));
         all
     }

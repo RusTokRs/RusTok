@@ -1165,3 +1165,11 @@ and re-check the exact linked identity and digest. Replay history is read only
 after the session fence; logout preserves existing expiry/revocation and
 expected-lineage semantics. SQLite user-before-session probe added; PostgreSQL
 contention and compile checks remain unrun.
+
+Platform migration 000010 fences PostgreSQL session tenant/user FK and
+refresh-history session FK writes with KEY SHARE NOWAIT. History updates and
+deletes also retain the parent when present, so retention holding a session
+row cannot wait on a history writer that needs that same session. The existing
+cascade remains authoritative; this does not enforce history immutability or
+add a composite session tenant/user FK. SQLite is unchanged. Source regression
+covers contention and owner cascade; runtime verification remains open.
