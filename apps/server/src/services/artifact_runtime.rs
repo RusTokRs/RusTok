@@ -508,35 +508,24 @@ fn build_capability_resolver(
     let secret_policy = control_plane.artifact_secret_handle_policy();
     let mut data = control_plane.artifact_data_capability();
     let mut object_data = control_plane.artifact_data_object_capability(storage.clone());
+    let mut secret = control_plane.artifact_secret_capability(secret_policy);
+    let mut mcp = control_plane.artifact_mcp_capability(mcp_invoker);
+    let mut http = control_plane.artifact_http_capability()?;
     let mut events = control_plane.artifact_events_capability();
-    if let Some(authorizer) = effect_authorizer {
-        data = data.with_sql_effect_authorizer(Arc::clone(&authorizer));
-        object_data = object_data.with_sql_effect_authorizer(Arc::clone(&authorizer));
-        events = events.with_sql_effect_authorizer(authorizer);
+    if let Some(authorizer) = effect_authorizer.as_ref() {
+        data = data.with_sql_effect_authorizer(Arc::clone(authorizer));
+        object_data = object_data.with_sql_effect_authorizer(Arc::clone(authorizer));
+        secret = secret.with_sql_effect_authorizer(Arc::clone(authorizer));
+        mcp = mcp.with_sql_effect_authorizer(Arc::clone(authorizer));
+        http = http.with_sql_effect_authorizer(Arc::clone(authorizer));
+        events = events.with_sql_effect_authorizer(Arc::clone(authorizer));
     }
     ArtifactCapabilityBrokerResolverRouter::new()
         .route(data_capability, Arc::new(data))
-        .and_then(|router| {
-            router.route(object_data_capability, Arc::new(object_data))
-        })
-        .and_then(|router| {
-            router.route(
-                secret_capability,
-                Arc::new(control_plane.artifact_secret_capability(secret_policy)),
-            )
-        })
-        .and_then(|router| {
-            router.route(
-                mcp_capability,
-                Arc::new(control_plane.artifact_mcp_capability(mcp_invoker)),
-            )
-        })
-        .and_then(|router| {
-            router.route(
-                http_capability,
-                Arc::new(control_plane.artifact_http_capability()?),
-            )
-        })
+        .and_then(|router| router.route(object_data_capability, Arc::new(object_data)))
+        .and_then(|router| router.route(secret_capability, Arc::new(secret)))
+        .and_then(|router| router.route(mcp_capability, Arc::new(mcp)))
+        .and_then(|router| router.route(http_capability, Arc::new(http)))
         .and_then(|router| router.route(events_capability, Arc::new(events)))
         .map_err(|error| Error::Message(format!("artifact capability route failed: {error}")))
 }
