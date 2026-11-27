@@ -315,3 +315,9 @@ binaries must be stopped/drained before migration
 spans broker I/O. This is not an exactly-once guarantee, a complete
 per-handler receipt system, or a proof that the broker retained an accepted
 message. Source regression tests are authored, not executed.
+
+Relay route configuration is validated before acquiring any event claim or
+entering the polling loop. A wrapper cannot disable checkpointing after a
+primary confirmation has been persisted for that event; the relay rejects
+that invocation before primary I/O, preserving the existing checkpoint.
+Focused source regressions cover both paths; execution remains unverified.

@@ -473,3 +473,9 @@ Checkpoint-enabled primary publication refuses without its relay task scope;
 the test-only uncheckpointed transport retains ordinary direct behavior.
 The server regression exercises local failure, relay reconstruction and
 confirmed-primary skipping with a transport double (not a live broker).
+
+Relay route configuration is validated before acquiring any event claim or
+entering the polling loop. A wrapper cannot disable checkpointing after a
+primary confirmation has been persisted for that event; the relay rejects
+that invocation before primary I/O, preserving the existing checkpoint.
+Focused source regressions cover both paths; execution remains unverified.

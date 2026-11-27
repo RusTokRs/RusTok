@@ -350,7 +350,7 @@ impl OutboxRelay {
     }
 
     pub async fn run(&self) -> Result<()> {
-        self.config.validate()?;
+        self.validate_config()?;
         loop {
             match self.process_pending_once(None).await {
                 Ok(count) => {
@@ -374,7 +374,7 @@ impl OutboxRelay {
         &self,
         max_batch_hint: Option<u64>,
     ) -> Result<OutboxRelayRunOnceProjection> {
-        self.config.validate()?;
+        self.validate_config()?;
         if max_batch_hint == Some(0) {
             return Err(Error::Validation(
                 "outbox max_batch_hint must be greater than zero".to_string(),
@@ -459,9 +459,15 @@ impl OutboxRelay {
         Ok(report)
     }
 
-    #[cfg(test)]
     fn validate_config(&self) -> Result<()> {
-        self.config.validate()
+        self.config.validate()?;
+        if self.delivery_route.is_empty()
+            || self.delivery_route.len() > 128
+            || self.delivery_route.trim() != self.delivery_route
+        {
+            return Err(Error::Validation("invalid outbox delivery route key".into()));
+        }
+        Ok(())
     }
 
     async fn claim_batch(
@@ -828,9 +834,6 @@ impl OutboxRelay {
 
 
     async fn bind_delivery_route(&self, txn: &DatabaseTransaction, model: &entity::Model) -> Result<bool> {
-        if self.delivery_route.is_empty() || self.delivery_route.len() > 128 || self.delivery_route.trim() != self.delivery_route {
-            return Err(Error::Validation("invalid outbox delivery route key".into()));
-        }
         if let Some(row) = checkpoints::Entity::find_by_id(model.id).one(txn).await? {
             if row.route_key != self.delivery_route {
                 return Ok(false);
@@ -880,7 +883,12 @@ impl OutboxRelay {
                 .exec(&txn).await?;
             self.ensure_claim_owned(scope.model.id, result.rows_affected)?;
         }
-        let skip = checkpoint_enabled && row.primary_confirmed_at.is_some();
+        // A confirmed primary is durable evidence. A misconfigured wrapper
+        // must not bypass that evidence by disabling checkpointing on retry.
+        if !checkpoint_enabled && row.primary_confirmed_at.is_some() {
+            return Err(Error::Validation("outbox primary checkpoint cannot be disabled after confirmation".into()));
+        }
+        let skip = row.primary_confirmed_at.is_some();
         txn.commit().await?;
         Ok(skip)
     }
@@ -1208,6 +1216,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn invalid_delivery_route_is_rejected_before_claiming_events() {
+        let db = database().await;
+        let envelope = EventEnvelope::new(
+            Uuid::new_v4(),
+            None,
+            rustok_events::DomainEvent::UserLoggedIn { user_id: Uuid::new_v4() },
+        );
+        let id = envelope.id;
+        crate::OutboxTransport::new(db.clone()).publish(envelope).await.unwrap();
+
+        for route in [String::new(), " padded ".into(), "x".repeat(129)] {
+            let relay = OutboxRelay::new(db.clone(), Arc::new(RejectUnexpectedPublish))
+                .with_delivery_route(route);
+            assert!(matches!(relay.process_pending_once(None).await, Err(Error::Validation(_))));
+            assert!(matches!(relay.run().await, Err(Error::Validation(_))));
+            let row = entity::Entity::find_by_id(id).one(&db).await.unwrap().unwrap();
+            assert_eq!(row.status, SysEventStatus::Pending);
+            assert!(row.claimed_by.is_none());
+            assert!(row.claimed_at.is_none());
+            assert_eq!(row.retry_count, 0);
+            assert!(checkpoints::Entity::find_by_id(id).one(&db).await.unwrap().is_none());
+        }
+    }
+
+    #[tokio::test]
     async fn backoff_reaches_cap_without_overflow_or_fixed_exponent_ceiling() {
         let relay = OutboxRelay::new(database().await, Arc::new(RejectUnexpectedPublish))
             .with_config(RelayConfig {
@@ -1438,6 +1471,7 @@ mod tests {
         let scope = DeliveryScope { relay: restarted.clone(), model: renewed.clone(), attempt_id };
         DELIVERY_SCOPE.scope(scope, async {
             assert!(publish_primary_with_checkpoint(event_id, false, true, async { Ok(()) }).await.is_err());
+            assert!(publish_primary_with_checkpoint(event_id, true, false, async { Ok(()) }).await.is_err());
             publish_primary_with_checkpoint(event_id, true, true, async {
                 Err(Error::External("confirmed primary must not be invoked again".into()))
             }).await.unwrap();
