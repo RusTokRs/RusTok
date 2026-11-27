@@ -10,7 +10,10 @@ use rustok_sandbox::{
     ExecutionPhase, SandboxError, SandboxResult, SandboxSubject,
 };
 
-use crate::artifact_capability_router::artifact_capability_scope_for_execution;
+use crate::artifact_capability_router::{
+    artifact_capability_scope_for_execution, begin_artifact_capability_effect,
+    commit_artifact_capability_effect,
+  };
 use crate::{
     ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution, ArtifactCapabilityScope,
     resolve_granted_artifact_capability,
@@ -54,6 +57,8 @@ pub trait ArtifactMcpInvoker: Send + Sync {
 pub struct ArtifactMcpCapabilityBroker<I> {
     invoker: I,
     scope: ArtifactCapabilityScope,
+    db: Option<sea_orm::DatabaseConnection>,
+    effect_authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>,
 }
 
 impl<I> ArtifactMcpCapabilityBroker<I>
@@ -61,7 +66,22 @@ where
     I: ArtifactMcpInvoker,
 {
     pub fn new(invoker: I, scope: ArtifactCapabilityScope) -> Self {
-        Self { invoker, scope }
+        Self {
+            invoker,
+            scope,
+            db: None,
+            effect_authorizer: None,
+        }
+    }
+
+    pub(crate) fn with_sql_effect_authorizer(
+        mut self,
+        db: sea_orm::DatabaseConnection,
+        authorizer: Arc<dyn crate::ArtifactSqlEffectAuthorizer>,
+    ) -> Self {
+        self.db = Some(db);
+        self.effect_authorizer = Some(authorizer);
+        self
     }
 }
 
@@ -84,6 +104,13 @@ where
         }
 
         let target = decode_mcp_capability_call(call)?;
+        let (db, authorizer) = match (&self.db, &self.effect_authorizer) {
+            (Some(db), Some(authorizer)) => (db, authorizer),
+            _ => return Err(SandboxError::CapabilityDenied(call.capability.clone())),
+        };
+        let (transaction, guard) =
+            begin_artifact_capability_effect(db, call, authorizer.as_ref()).await?;
+        commit_artifact_capability_effect(transaction, guard, &call.capability).await?;
         let output = self
             .invoker
             .invoke_artifact_mcp(ArtifactMcpCallRequest {
@@ -120,6 +147,7 @@ where
 pub struct ArtifactMcpCapabilityBrokerResolver<I> {
     db: sea_orm::DatabaseConnection,
     invoker: I,
+    effect_authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>,
 }
 
 impl<I> ArtifactMcpCapabilityBrokerResolver<I>
@@ -127,7 +155,19 @@ where
     I: ArtifactMcpInvoker + Clone,
 {
     pub fn new(db: sea_orm::DatabaseConnection, invoker: I) -> Self {
-        Self { db, invoker }
+        Self {
+            db,
+            invoker,
+            effect_authorizer: None,
+        }
+    }
+
+    pub fn with_sql_effect_authorizer(
+        mut self,
+        authorizer: Arc<dyn crate::ArtifactSqlEffectAuthorizer>,
+    ) -> Self {
+        self.effect_authorizer = Some(authorizer);
+        self
     }
 }
 
@@ -147,10 +187,15 @@ where
         let installation =
             resolve_granted_artifact_capability(&self.db, execution, capability).await?;
         let scope = artifact_capability_scope_for_execution(&installation, execution, capability)?;
-        Ok(Arc::new(ArtifactMcpCapabilityBroker::new(
-            self.invoker.clone(),
-            scope,
-        )))
+        let authorizer = self
+            .effect_authorizer
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| SandboxError::CapabilityDenied(capability.clone()))?;
+        Ok(Arc::new(
+            ArtifactMcpCapabilityBroker::new(self.invoker.clone(), scope)
+                .with_sql_effect_authorizer(self.db.clone(), authorizer),
+        ))
     }
 }
 
