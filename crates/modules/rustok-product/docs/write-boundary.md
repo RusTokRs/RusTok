@@ -196,8 +196,8 @@ is refused with a validation error and must use Pricing commands. Contextual sto
 base edits and clears unchanged. Product and Variant deletion still delete all owned prices. ProductPricingPort
 write calls carry the initiating actor and shared transactional outbox: initial rows publish
 PriceUpdated with no predecessor, and replacement rows publish exact persisted predecessor and
-successor minor-unit amounts. Product/Variant aggregate events cover full base-price clears and
-price-row deletion because PriceUpdated has no deletion payload.
+successor minor-unit amounts. Product VariantUpdated covers currencies removed by replacement and full base-price clears;
+VariantDeleted/ProductDeleted cover aggregate deletion because PriceUpdated has no deletion payload.
 Initial creation retains the existing bootstrap contract, including explicitly supplied channels;
 subsequent contextual edits are Pricing-owned.
 

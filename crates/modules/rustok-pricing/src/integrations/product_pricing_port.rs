@@ -308,10 +308,7 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
         if prices.iter().any(|price| {
             price.variant_id != variant_id
                 || price.channel_id.is_some()
-                || price
-                    .channel_slug
-                    .as_deref()
-                    .is_some_and(|slug| !slug.trim().is_empty())
+                || price.channel_slug.is_some()
         }) {
             return Err(ProductError::Validation(
                 "Catalog base-price replacement accepts only unscoped prices for its Variant"
@@ -320,17 +317,20 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
         }
         validate_catalog_price_precision(&prices)?;
 
-        let existing = BootstrapService::load_catalog_base_prices_for_variants(txn, &[variant_id])
-            .await
-            .map_err(ProductError::from)?;
         let mut old_amounts = HashMap::new();
-        for saved in existing {
-            let currency = saved.currency_code.clone();
-            let amount = price_event_predecessor(&saved)?;
-            if old_amounts.insert(currency, amount).is_some() {
-                return Err(ProductError::Conflict(
-                    "Ambiguous stored base prices prevent catalog replacement".to_owned(),
-                ));
+        if !prices.is_empty() {
+            let existing =
+                BootstrapService::load_catalog_base_prices_for_variants(txn, &[variant_id])
+                    .await
+                    .map_err(ProductError::from)?;
+            for saved in existing {
+                let currency = saved.currency_code.clone();
+                let amount = price_event_predecessor(&saved)?;
+                if old_amounts.insert(currency, amount).is_some() {
+                    return Err(ProductError::Conflict(
+                        "Ambiguous stored base prices prevent catalog replacement".to_owned(),
+                    ));
+                }
             }
         }
 
