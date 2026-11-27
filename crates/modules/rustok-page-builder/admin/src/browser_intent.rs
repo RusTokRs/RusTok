@@ -72,10 +72,17 @@ pub fn dispatch_browser_intent(
     // controller operations (selection hint + insert, duplicate copy + paste,
     // create/move page + activate). A later failure must not commit only the
     // first steps. Read-only hot paths without hints keep their clone-free path.
-    let snapshot = (mutating || envelope.payload.get("selected_component_id").is_some())
-        .then(|| controller.clone());
+    let applies_selection_hint = envelope.payload.get("selected_component_id").is_some()
+        && !intent_skips_selection_hint(&envelope.intent);
+    let snapshot = (mutating || applies_selection_hint).then(|| controller.clone());
     let dispatched = (|| {
-        apply_selection_hint(controller, &envelope.payload)?;
+        if applies_selection_hint {
+            apply_selection_hint(
+                controller,
+                &envelope.payload,
+                !intent_requires_selection_context(&envelope.intent),
+            )?;
+        }
         let effects = dispatch_named_intent(controller, &envelope.intent, &envelope.payload)?;
         // Read-only intents return lightweight snapshots; mutating ones include
         // the full document for the consumer's current response contract.
@@ -629,9 +636,33 @@ fn is_mutating_intent(envelope: &BrowserIntentEnvelope) -> bool {
         )
 }
 
+fn intent_skips_selection_hint(intent: &str) -> bool {
+    matches!(
+        intent,
+        "select" | "focus_requested" | "activate_page" | "create_page" | "resolve_operation"
+    )
+}
+
+fn intent_requires_selection_context(intent: &str) -> bool {
+    matches!(
+        intent,
+        "insert_block"
+            | "begin_selected_move"
+            | "remove_selected"
+            | "move_selected_up"
+            | "move_selected_down"
+            | "copy"
+            | "cut"
+            | "paste"
+            | "duplicate"
+            | "patch_selected"
+    )
+}
+
 fn apply_selection_hint(
     controller: &mut AdminCanvasController,
     payload: &Value,
+    ignore_missing_component: bool,
 ) -> Result<(), BrowserIntentDispatchError> {
     let Some(component_id) = payload
         .get("selected_component_id")
@@ -641,6 +672,14 @@ fn apply_selection_hint(
     else {
         return Ok(());
     };
+    if controller.editor().document().component(component_id).is_none() {
+        if ignore_missing_component {
+            return Ok(());
+        }
+        return Err(BrowserIntentDispatchError::Authoring(format!(
+            "selected component `{component_id}` does not exist on the active page"
+        )));
+    }
     controller.dispatch(UiIntent::Select(Some(component_id.to_string())))?;
     Ok(())
 }
