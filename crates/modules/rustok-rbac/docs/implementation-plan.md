@@ -492,3 +492,6 @@ exists.
   read query. Source regressions authored; compile, PostgreSQL query parity
   and performance evidence remain pending. Raw-DML generation coupling,
   request-snapshot revocation and relation incarnation continuity remain open.
+  Added an opt-in PostgreSQL exact-set regression covering both directions of
+  comparison, tenant isolation and FK cascades, and extended the SQLite
+  regression for raw static-grant deletion/reinsertion. Tests remain unrun.

@@ -602,6 +602,28 @@ mod tests {
             .await.expect("validate warm cache");
         assert!(hit.cache_hit);
         assert_eq!(hit.permissions, vec![Permission::MODULES_MANAGE]);
+
+        // Revoke the static grant without touching membership or notifying
+        // the cache, then restore it while the empty result is cached.
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "DELETE FROM role_permissions WHERE permission_id = ?1",
+            vec![permission_id.into()],
+        )).await.unwrap();
+        let grant_revoked = resolve_permissions_with_cache(&store, &cache, &tenant_id, &user_id)
+            .await.expect("refresh after direct grant removal");
+        assert!(!grant_revoked.cache_hit);
+        assert!(grant_revoked.permissions.is_empty());
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO role_permissions VALUES (?1, ?2)",
+            vec![role_id.into(), permission_id.into()],
+        )).await.unwrap();
+        let grant_restored = resolve_permissions_with_cache(&store, &cache, &tenant_id, &user_id)
+            .await.expect("refresh after direct grant insertion");
+        assert!(!grant_restored.cache_hit);
+        assert_eq!(grant_restored.permissions, vec![Permission::MODULES_MANAGE]);
+
         for (tenant, user) in [
             (tenant_id, foreign_user_id),
             (foreign_tenant_id, foreign_user_id),
@@ -690,6 +712,58 @@ mod tests {
             resolve_permissions_with_cache(&store, &cache, &tenant_id, &user_id).await,
             Err(PermissionCacheResolutionError::Store(_))
         ), "a warm cache must not hide unavailable persisted authority");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_RBAC_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_cached_grant_equivalence_observes_raw_writes_and_cascades() {
+        use sea_orm::{ConnectionTrait, Database, DbBackend, TransactionTrait};
+        let db = Database::connect(std::env::var("RUSTOK_RBAC_TEST_DATABASE_URL").unwrap())
+            .await.unwrap();
+        assert_eq!(db.get_database_backend(), DbBackend::Postgres);
+        let tx = db.begin().await.unwrap();
+        let schema = format!("rbac_cache_equivalence_{}", uuid::Uuid::new_v4().simple());
+        tx.execute_unprepared(&format!("CREATE SCHEMA {schema}; SET LOCAL search_path TO {schema}"))
+            .await.unwrap();
+        tx.execute_unprepared(
+            "CREATE TABLE users (id UUID PRIMARY KEY, tenant_id UUID NOT NULL);
+             CREATE TABLE roles (id UUID PRIMARY KEY, tenant_id UUID NOT NULL);
+             CREATE TABLE permissions (id UUID PRIMARY KEY, tenant_id UUID NOT NULL, resource TEXT NOT NULL, action TEXT NOT NULL);
+             CREATE TABLE user_roles (user_id UUID REFERENCES users(id) ON DELETE CASCADE, role_id UUID REFERENCES roles(id) ON DELETE CASCADE);
+             CREATE TABLE role_permissions (role_id UUID REFERENCES roles(id) ON DELETE CASCADE, permission_id UUID REFERENCES permissions(id) ON DELETE CASCADE)"
+        ).await.unwrap();
+        let tenant = uuid::Uuid::new_v4();
+        let user = uuid::Uuid::new_v4();
+        let role = uuid::Uuid::new_v4();
+        let permission = uuid::Uuid::new_v4();
+        tx.execute_unprepared(&format!(
+            "INSERT INTO users VALUES ('{user}', '{tenant}');
+             INSERT INTO roles VALUES ('{role}', '{tenant}');
+             INSERT INTO permissions VALUES ('{permission}', '{tenant}', 'modules', 'manage');
+             INSERT INTO user_roles VALUES ('{user}', '{role}');
+             INSERT INTO role_permissions VALUES ('{role}', '{permission}')"
+        )).await.unwrap();
+        let store = super::ConnectionRelationPermissionStore { db: &tx };
+        let expected = [Permission::MODULES_MANAGE];
+        assert!(store.cached_grants_match(&tenant, &user, &expected).await.unwrap());
+        assert!(!store.cached_grants_match(&tenant, &user, &[]).await.unwrap());
+        assert!(!store.cached_grants_match(&tenant, &user, &[Permission::USERS_READ]).await.unwrap());
+        assert!(!store.cached_grants_match(&uuid::Uuid::new_v4(), &user, &expected).await.unwrap());
+
+        tx.execute_unprepared(&format!("DELETE FROM permissions WHERE id = '{permission}'"))
+            .await.unwrap();
+        assert!(!store.cached_grants_match(&tenant, &user, &expected).await.unwrap());
+        assert!(store.cached_grants_match(&tenant, &user, &[]).await.unwrap());
+        tx.execute_unprepared(&format!(
+            "INSERT INTO permissions VALUES ('{permission}', '{tenant}', 'modules', 'manage');
+             INSERT INTO role_permissions VALUES ('{role}', '{permission}')"
+        )).await.unwrap();
+        assert!(store.cached_grants_match(&tenant, &user, &expected).await.unwrap());
+        tx.execute_unprepared(&format!("DELETE FROM roles WHERE id = '{role}'")).await.unwrap();
+        assert!(!store.cached_grants_match(&tenant, &user, &expected).await.unwrap());
+        assert!(store.cached_grants_match(&tenant, &user, &[]).await.unwrap());
+        // Transactional DDL keeps the disposable test schema out of the database.
+        tx.rollback().await.unwrap();
     }
 
     #[tokio::test]
