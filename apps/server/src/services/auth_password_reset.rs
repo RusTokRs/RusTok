@@ -46,11 +46,11 @@ impl AuthLifecycleService {
             )?;
             let service = email_service_from_ctx(ctx, locale)?;
             let url = password_reset_url(ctx, &token)?;
-            Ok::<_, crate::error::Error>((service, url))
+            Ok::<_, crate::error::Error>((service, url, token))
         })();
         match prepared {
-            Ok((service, url)) => {
-                let _task = spawn_password_reset_email(ctx, service, user.email, url);
+            Ok((service, url, token)) => {
+                let _task = spawn_password_reset_email(ctx, service, user.email, url, config, token);
             }
             Err(_) => {
                 tracing::warn!(
@@ -87,7 +87,9 @@ impl AuthLifecycleService {
             .one(ctx.db())
             .await
             .map_err(AuthLifecycleError::from)?
-            .filter(|user| user.email == claims.sub && user.recovery_revision == claims.recovery_revision)
+            .filter(|user| user.matches_recovery_identity(
+                tenant_id, claims.user_id, &claims.sub, claims.recovery_revision,
+            ))
             .ok_or(AuthLifecycleError::InvalidResetToken)?;
         if !user.is_active() {
             return Err(AuthLifecycleError::UserInactive);
@@ -117,9 +119,11 @@ impl AuthLifecycleService {
         // Hashing runs outside the transaction. Recheck the account, mailbox,
         // status and original credential after the user lock and expiry check.
         if !current.is_active()
-            || current.email != user.email
+            || !current.matches_recovery_identity(
+                tenant_id, claims.user_id, &claims.sub, claims.recovery_revision,
+            )
             || current.password_hash != user.password_hash
-            || current.recovery_revision != claims.recovery_revision
+            || decode_password_reset_token(config, token).is_err()
             || !update_password_if_active(&tx, &current, &new_hash, now).await?
         {
             tx.rollback().await.map_err(AuthLifecycleError::from)?;
@@ -164,7 +168,12 @@ impl AuthLifecycleService {
         )
         .await?;
 
-        if rustok_auth::application_clock::verified_now(&tx).await? >= claims.expires_at {
+        // Recheck the live signing authority after the final async observation.
+        // A key retired or a local JWT gate fenced during this transaction
+        // must not authorize a password replacement.
+        if rustok_auth::application_clock::verified_now(&tx).await? >= claims.expires_at
+            || decode_password_reset_token(config, token).is_err()
+        {
             tx.rollback().await.map_err(AuthLifecycleError::from)?;
             return Err(AuthLifecycleError::InvalidResetToken);
         }

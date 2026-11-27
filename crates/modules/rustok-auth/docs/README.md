@@ -63,6 +63,38 @@ transaction that persists a replacement refresh token. The former controller-loc
 and `OAuthAppService` token issuance paths have been deleted, so router middleware
 ordering cannot re-enable a non-transactional replay path.
 
+Administrative custom-role provisioning now validates both request-bound and
+current persisted delegation under actor, module-policy and ordered role-grant
+fences, then uses the same direct role creation path as invitation acceptance.
+The target account has no temporary Customer membership; metadata, localized
+values and response projection stay inside the transaction. Existing-account
+role replacement retains its separate continuity checks. Built-in admin
+provisioning still uses its previous request-authority contract. Source
+regression unrun; PostgreSQL contention remains unverified.
+
+Custom-role invitation acceptance inserts the account and assigns only the
+already-authorized persisted target role inside the consumption transaction.
+It does not bootstrap, assign or remove a temporary Customer membership, so
+one new membership advances the membership revision once. The shared account
+insertion preserves duplicate-email handling; the existing RBAC writer owns
+assignment and continuity checks. Missing role or assignment failure rolls back
+the account and receipt. Source regression unrun; admin provisioning is a
+separate path, and PostgreSQL contention evidence remains pending.
+
+Invite acceptance uses an unlocked ledger lookup only to locate the issuer,
+then locks the issuer before the exact invitation and revalidates the digest,
+account epoch and revocation under those fences. This avoids the inverse
+issuer-delete/FK SET NULL lock order; committed consumption is rejected before
+module/RBAC locks, with the unique receipt insert retained as final authority.
+SQLite starts with the user write fence. PostgreSQL contention is unverified.
+
+Administrative invite revocation checks the request permission ceiling and
+re-reads the active revoker and current module-filtered static `users:manage`
+under actor -> invite -> module policy -> ordered actor-role fences. The
+original issuer or target role need not exist. Current authority is required
+even for idempotent retries. The shared ledger fence and transactional event
+preserve acceptance/revocation exclusivity; source regressions are unrun.
+
 Invite acceptance and administrative revocation serialize on the same
 `auth_invites` issuance row. PostgreSQL/MySQL use a locking read; SQLite acquires
 its write fence before rereading the row. A revocation committed first makes
@@ -804,11 +836,33 @@ timestamps and does not rewrite previously revoked rows.
 
 ## Account recovery revision
 
+Before dispatching a recovery email, the tracked host task independently
+admits application time after account/challenge reads, then revalidates
+reset/verification JWTs using the live keyring or checks the committed
+email-change validity window (inclusive creation, exclusive expiry). The earlier local latch check does not substitute
+for the final durable admission. Expired credentials,
+clock failures and invalid JWTs skip the sender and count as skipped sends.
+Old-mailbox security notifications are not credential-gated. This is a
+best-effort pre-sender check, not delivery-time validity or durable email
+recovery. Before invoking the email sender, the host re-reads the active account and
+checks the JWT's exact recipient, tenant, user and recovery revision. Reset
+also checks its password-hash MAC; already-verified accounts skip verification
+mail. Email-change dispatch reads the exact tenant/user/target/digest challenge
+and its owner in one statement, reuses the confirmation binding, and never
+extends the committed expiry. No account locks are held during SMTP; a change
+after the read can still make a link stale. Confirmation remains authoritative.
+Source regressions are unrun.
+
 All JWT issuers, including reset, verification and invite, sample the live
 credential clock before preparing claims and recheck it after RSA signing.
 Reject backward time or an elapsed exclusive signed whole-second expiry;
 this does not extend the deadline or replace application-clock admission.
-No claim or key format changes; regression authored, unrun.
+Reset, verification and invitation acceptance revalidate the JWT against the
+live keyring after blocking work and before commit; issuance also revalidates
+its invite JWT before commit. This is not atomic with key revocation or commit.
+Future-dated invite ledger rows and opaque email-change challenges fail closed.
+Already consumed invitations are rejected before password hashing and again
+under the ledger fence. No claim or key format changes; regressions authored, unrun.
 
 Password-reset and email-verification JWT subjects bind the exact account ID,
 mailbox and database-owned monotonic `recovery_revision`. Password reset also
@@ -833,8 +887,9 @@ cleanup remains with the retention worker. Reset, verification, email change and
 acceptance recheck deadlines after transactional side effects and before
 requesting commit; email-change confirmation also rechecks the proving
 session. Recovery now uses the shared corroborated application clock and
-commits an independent admission sample; later checks are not independently
-durable and do not guarantee database commit-time deadlines.
+commits an independent admission sample; later checks also persist their
+observations when the independent application clock writer is configured.
+Neither mode guarantees database commit-time deadlines.
 Source regressions and PostgreSQL/SQLite migration execution remain pending.
 
 ## Direct session refresh history and recovery
@@ -1017,7 +1072,8 @@ remain unverified; this is not distributed atomic cookie delivery.
 The existing authenticated rollback-witness checkpoint now includes a
 nonnegative authority DB millisecond floor. Checked authority reads
 commit its advance before returning; time-sensitive mutations recheck
-under both locks, while emergency key revocation preserves the floor
+under both locks. Checked zero-row CAS operations retain the clock evidence
+without incrementing the ledger revision, while emergency key revocation preserves the floor
 without relying on clock health. The independent clock latch still
 fences installed leases. Stop old binaries and drain leases before
 first use of the extended checkpoint format. See the clock and witness
@@ -1029,10 +1085,51 @@ regression evidence; WAL and contention costs remain unmeasured.
 
 The host and session cleanup CLI configure a dedicated clock writer pool on
 the same PostgreSQL primary; late verified observations commit separately
-from domain transactions. SQLite optionally uses an offline-bound distinct
-persistent file, never another writer to the application file. Unbound
+from domain transactions. PostgreSQL pins the startup routing identity and
+checks the source floor before sampling; routing mismatch or observed DB
+rollback fences locally. SQLite optionally uses an offline-bound distinct
+persistent file, never another writer to the application file. The actual
+sidecar transaction requires FULL/EXTRA sync and persistent journal or WAL;
+MEMORY/OFF journaling is refused. Unbound
 SQLite and unmanaged embedders retain admission-only durability. See the
 [clock ADR](../../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md) for
 sidecar provisioning, fail-closed behavior and limits. Exact commit-time
 expiry, full request-path JWT and WebSocket observation coverage, clock-store
 rollback, throughput and runtime evidence remain open.
+
+## Final credential publication fences (source only)
+
+Direct session responses retain original signed and persisted deadlines and refresh-recovery grace through REST, cookie and lifecycle provider adapters. Revalidate the exact access JWT against current key eligibility and recompute remaining TTL before publication; never extend a previously computed TTL. OAuth publication also checks prepared refresh lifetime. Common access admission revalidates the original JWT after asynchronous policy resolution. GraphQL WebSocket uses the earlier wall/monotonic deadline, latches observed expiration, and checks local key eligibility before publishing connection authority or sending data. These are observed checks, not atomic cancellation of in-flight socket writes or already committed mutations. Compilation and runtime evidence remain pending.
+
+## Cross-replica access admission (source only)
+
+The common direct/delegated/service resolver no longer uses the process-local
+module-policy TTL cache for credential admission. It obtains current module
+availability from the owner. Direct/delegated reads bracket permission and
+hierarchy resolution with the RBAC-owned static membership/grant revision
+snapshot and reject a changed epoch, including ABA. After policy and clock IO,
+admission rechecks current tenant, account recovery revision, session or OAuth
+registration and consent, and refuses lost effective capabilities. Service
+credentials re-resolve current app/registration/scoped capabilities. The
+original deadline cannot be extended. These are optimistic bounded observations,
+not a transaction spanning all authority owners, a fence for downstream
+in-flight writes, or rollback protection for the authority stores. Source
+regression authored; compilation, real contention and cache-bypass evidence
+remain pending.
+
+## Transactional user administration authority (source only)
+
+User creation (built-in and custom), update and deletion now lock the persisted
+actor and any existing target in ascending UUID order, resolve current module
+policy under the owner fence and lock the union of actor/target roles, requested
+role and (for existing targets) the continuity role in role UUID order. Both the
+request ceiling and live grants/hierarchy must authorize the operation; a
+missing or inactive actor, or a service principal, is refused. Delegated user
+requests retain their original scoped permission ceiling. Missing built-in
+roles are materialized in the transaction before checking exact persisted
+role grants; absent destination after the role fence is rejected. Existing
+last-active-SuperAdmin continuity and transactional event publication remain
+in force. This does not bind the initiating session/JWT or delegated access
+registration to the write: the current admin port lacks that evidence. Other
+RBAC writers, artifact grants and cross-owner lock order still require audit.
+Source regressions authored; compilation and PostgreSQL contention unverified.

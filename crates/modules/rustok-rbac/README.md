@@ -143,3 +143,21 @@ deletes or hides roles or their grants — the module's grants become
 - **`SecurityContext::system()` is a trusted-runtime-only constructor.** It
   carries the static super-admin bootstrap set and must only be built by
   platform composition code, never from request data.
+
+### Read-only static authority revisions
+
+The owner exposes a single-statement membership/role-grant revision snapshot
+for admission checks that span multiple relation reads. This is an optimistic
+change detector, not an acquisition of the role/user mutation locks or an
+authorization decision. Missing/invalid epochs fail closed; membership and
+role-grant ABA remain visible. Artifact grants and module policy are separate
+authority domains.
+
+### User administration role lock set
+
+The host user-admin transaction can lock actor and target membership roles,
+requested destination and existing SuperAdmin continuity role in one
+UUID-ordered owner query. Existing users must be locked first; SQLite callers
+must hold the write fence. The result indicates whether the requested role
+exists in the locked set. This is not itself authorization and does not
+establish a universal lock order for all RBAC or artifact writers.

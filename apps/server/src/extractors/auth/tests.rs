@@ -973,7 +973,13 @@ async fn websocket_lease_revalidates_live_authority_and_fails_closed() {
     session.update(&db).await.expect("restore original deadline");
     assert!(lease.revalidate(&runtime).await.is_ok());
 
+    let mut monotonic = lease.clone();
+    monotonic.expired = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    assert!(monotonic.remaining_at(deadline - Duration::seconds(1), monotonic.monotonic_deadline).is_zero());
+    assert!(monotonic.remaining_at(deadline - Duration::seconds(2), monotonic.monotonic_deadline - std::time::Duration::from_secs(1)).is_zero());
+
     let mut expired = lease.clone();
+    expired.expired = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     expired.expires_at = Utc::now() - Duration::seconds(1);
     assert_eq!(
         expired.revalidate(&runtime).await,
@@ -1076,4 +1082,48 @@ async fn websocket_lease_rejects_a_disabled_tenant() {
         lease.revalidate(&runtime).await,
         Err(WebSocketAuthLeaseError::ResolutionFailed)
     );
+}
+
+#[tokio::test]
+async fn final_authority_check_rejects_membership_aba_and_revoked_session() {
+    use sea_orm::EntityTrait;
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let runtime = test_auth_runtime(db.clone());
+    let tenant = tenants::ActiveModel::new("Final admission", &format!("tenant-{}", Uuid::new_v4()))
+        .insert(&db).await.unwrap();
+    let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+    rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+        &db, tenant.id, user.id, UserRole::Manager,
+    ).await.unwrap();
+    let config = runtime.require_auth_config().unwrap();
+    let token = encode_access_token(config, user.id, tenant.id, UserRole::Manager, session_id).unwrap();
+    let claims = crate::auth::decode_access_token(config, &token).unwrap();
+    let current = resolve_current_user_from_access_token(&runtime, tenant.id, &token).await.unwrap();
+    let session = sessions::Entity::find_by_id(session_id).one(&db).await.unwrap().unwrap();
+    let durable_deadline = session.expires_at.with_timezone(&Utc).min(session.absolute_deadline());
+    let initial = super::read_static_authority_revision(&db, tenant.id, user.id).await.unwrap();
+    macro_rules! revalidate {
+        ($revision:expr) => {
+            super::revalidate_admitted_authority(
+                &runtime, tenant.id, &claims, &token, &current.user, &current.permissions,
+                &current.inferred_role, AuthPrincipalKind::DirectUser, None, durable_deadline,
+                Utc::now(), Some($revision),
+            )
+        };
+    }
+    assert!(revalidate!(&initial).await.is_ok());
+    rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(
+        &db, tenant.id, user.id, UserRole::Customer,
+    ).await.unwrap();
+    rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(
+        &db, tenant.id, user.id, UserRole::Manager,
+    ).await.unwrap();
+    let restored = super::read_static_authority_revision(&db, tenant.id, user.id).await.unwrap();
+    assert_ne!(initial, restored, "membership ABA must retain history");
+    assert!(revalidate!(&initial).await.is_err());
+    assert!(revalidate!(&restored).await.is_ok());
+    let mut session: sessions::ActiveModel = session.into();
+    session.revoked_at = Set(Some(Utc::now().into()));
+    session.update(&db).await.unwrap();
+    assert!(revalidate!(&restored).await.is_err());
 }

@@ -266,6 +266,28 @@ impl Witness {
         Ok(())
     }
 
+    /// Finish a clock-only observation without changing the domain revision.
+    /// A zero-row CAS has no authority state to publish, but its verified
+    /// time evidence must survive exactly like an ordinary checked read.
+    async fn commit_clock_observation(
+        &self, authority: DatabaseTransaction, witness: DatabaseTransaction,
+        binding: &AuthorityBinding, mut checkpoint: Checkpoint, observed_ms: i64,
+    ) -> Result<()> {
+        if observed_ms > checkpoint.clock_floor_ms {
+            checkpoint.clock_floor_ms = observed_ms;
+            self.write_checkpoint(&witness, binding, checkpoint.revision, &checkpoint).await?;
+            self.healthy()?;
+            let outcome = CommitOutcomeGuard::new(self);
+            witness.commit().await.map_err(|_| unavailable())?;
+            authority.commit().await.map_err(|_| unavailable())?;
+            outcome.confirm();
+        } else {
+            witness.commit().await.map_err(|_| unavailable())?;
+            authority.commit().await.map_err(|_| unavailable())?;
+        }
+        self.healthy()
+    }
+
     /// Time-sensitive reads durably checkpoint the checked authority time
     /// before releasing either lock and returning it to an expiry decision.
     pub(super) async fn read_checked(
@@ -279,22 +301,10 @@ impl Witness {
             error
         })?;
         let witness = begin_write(&self.db).await?;
-        let mut checkpoint = self.checkpoint(&witness, binding).await?;
+        let checkpoint = self.checkpoint(&witness, binding).await?;
         self.compare(&initial, &checkpoint)?;
         let stored = self.sample_locked_clock(fence, &authority, &checkpoint, before).await?;
-        if stored.now_ms > checkpoint.clock_floor_ms {
-            checkpoint.clock_floor_ms = stored.now_ms;
-            self.write_checkpoint(&witness, binding, checkpoint.revision, &checkpoint).await?;
-            self.healthy()?;
-            let outcome = CommitOutcomeGuard::new(self);
-            witness.commit().await.map_err(|_| unavailable())?;
-            authority.commit().await.map_err(|_| unavailable())?;
-            outcome.confirm();
-        } else {
-            witness.commit().await.map_err(|_| unavailable())?;
-            authority.commit().await.map_err(|_| unavailable())?;
-        }
-        self.healthy()?;
+        self.commit_clock_observation(authority, witness, binding, checkpoint, stored.now_ms).await?;
         Ok(stored)
     }
 
@@ -347,6 +357,9 @@ impl Witness {
             (authority.execute_raw(statement).await.map_err(|_| unavailable())?.rows_affected(), None)
         };
         if affected == 0 {
+            if time_sensitive {
+                self.commit_clock_observation(authority, witness, binding, checkpoint, clock_floor_ms).await?;
+            }
             return Ok((0, None));
         }
         if affected != 1 {
@@ -614,6 +627,33 @@ mod tests {
         assert!(fence.load().await.is_err());
         assert!(!publisher.lease_readiness().unwrap().is_ready());
         assert!(fence.witness.as_ref().unwrap().initialize(&fence, ROOT).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn zero_row_checked_cas_preserves_clock_evidence_without_advancing_revision() {
+        let (authority, witness_db, _, fence) = deployment().await;
+        let witness = fence.witness.as_ref().unwrap();
+        let binding = Witness::binding(&fence).unwrap();
+        // Model the authenticated pre-clock-floor format without waiting for
+        // a wall-clock tick. Do not call load(), which itself persists time.
+        let tx = witness_db.begin().await.unwrap();
+        let mut checkpoint = witness.checkpoint(&tx, binding).await.unwrap();
+        checkpoint.clock_floor_ms = 0;
+        witness.write_checkpoint(&tx, binding, checkpoint.revision, &checkpoint).await.unwrap();
+        tx.commit().await.unwrap();
+        let statement = fence.statement(DbBackend::Sqlite,
+            "UPDATE auth_jwt_generation_fence SET drain_until_ms = ?1 WHERE id = 1 AND generation = -1",
+            vec![42_i64.into()]).unwrap();
+        assert_eq!(fence.execute_checked(statement, checkpoint.revision).await.unwrap(), 0);
+        let tx = witness_db.begin().await.unwrap();
+        let mut after = witness.checkpoint(&tx, binding).await.unwrap();
+        assert!(after.clock_floor_ms > 0);
+        after.clock_floor_ms = 0;
+        assert_eq!(after, checkpoint);
+        tx.rollback().await.unwrap();
+        let stored = fence.read_on(&authority, true, false).await.unwrap();
+        assert_eq!(stored.revision, checkpoint.revision);
+        assert_eq!(stored.drain_until_ms, checkpoint.drain_until_ms);
     }
 
     #[tokio::test]

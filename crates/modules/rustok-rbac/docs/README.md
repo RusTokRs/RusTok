@@ -35,6 +35,9 @@ documentation for this module must live inside the crate, not spread across
   the requested role in stable identity order and returns their canonical
   revision binding. Static grants and role identity changes advance the role
   epoch transactionally; see the [role epoch ADR](../../../../DECISIONS/2026-11-27-rbac-role-grant-revision.md).
+  `lock_actor_role_grants_on` uses the same ordered static-role fence as
+  invitation grant binding, without requiring a destination role. The caller
+  holds the actor user fence and owns the subsequent permission decision.
 - `load_role_user_ids_on` owns exact persisted role-membership reads and excludes
   cross-tenant subjects even when malformed membership rows exist;
 - authenticated request snapshots are inputs to the owner `PermissionResolver`

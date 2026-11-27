@@ -15,6 +15,15 @@ impl Model {
         self.email_verified_at.is_some()
     }
 
+    /// Exact recovery identity; callers separately apply active-status and
+    /// purpose-specific requirements (including verification idempotency).
+    pub(crate) fn matches_recovery_identity(
+        &self, tenant_id: Uuid, user_id: Uuid, email: &str, revision: i64,
+    ) -> bool {
+        self.tenant_id == tenant_id && self.id == user_id
+            && self.email == email && self.recovery_revision == revision && revision >= 0
+    }
+
     /// Fail closed for delegated OAuth credentials minted at or before the last
     /// password change. Callers pass the persisted authorization-code, refresh-
     /// token, or access-row creation time so subsecond ordering is preserved.

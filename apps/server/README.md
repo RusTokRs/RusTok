@@ -319,6 +319,40 @@ worker/backlog/history/recovery preflight. Original job/lease metadata grants no
 
 ## Recovery deadline and revision fence (2026-11-26)
 
+Administrative custom-role provisioning now validates both request-bound and
+current persisted delegation under actor, module-policy and ordered role-grant
+fences, then uses the same direct role creation path as invitation acceptance.
+The target account has no temporary Customer membership; metadata, localized
+values and response projection stay inside the transaction. Existing-account
+role replacement retains its separate continuity checks. Built-in admin
+provisioning still uses its previous request-authority contract. Source
+regression unrun; PostgreSQL contention remains unverified.
+
+Custom-role invitation acceptance inserts the account and assigns only the
+already-authorized persisted target role inside the consumption transaction.
+It does not bootstrap, assign or remove a temporary Customer membership, so
+one new membership advances the membership revision once. The shared account
+insertion preserves duplicate-email handling; the existing RBAC writer owns
+assignment and continuity checks. Missing role or assignment failure rolls back
+the account and receipt. Source regression unrun; admin provisioning is a
+separate path, and PostgreSQL contention evidence remains pending.
+
+Invite acceptance uses an unlocked ledger lookup only to locate the issuer,
+then locks the issuer before the exact invitation and revalidates the digest,
+account epoch and revocation under those fences. This avoids the inverse
+issuer-delete/FK SET NULL lock order; committed consumption is rejected before
+module/RBAC locks, with the unique receipt insert retained as final authority.
+SQLite starts with the user write fence. PostgreSQL contention is unverified.
+
+Before invoking the email sender, the host re-reads the active account and
+checks the JWT's exact recipient, tenant, user and recovery revision. Reset
+also checks its password-hash MAC; already-verified accounts skip verification
+mail. Email-change dispatch reads the exact tenant/user/target/digest challenge
+and its owner in one statement, reuses the confirmation binding, and never
+extends the committed expiry. No account locks are held during SMTP; a change
+after the read can still make a link stale. Confirmation remains authoritative.
+Source regressions are unrun.
+
 Stored email-change challenges use the account recovery revision in addition
 to their existing mailbox and password timestamp binding. Stop old binaries,
 apply the platform and Auth migrations, then deploy current readers and

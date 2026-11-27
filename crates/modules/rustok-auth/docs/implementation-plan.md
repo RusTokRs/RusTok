@@ -562,6 +562,17 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 
 ## Recovery lifecycle continuation (2026-11-26)
 
+- Recovery revision follow-up: complete RBAC user ActiveModel fixtures now leave the database-owned recovery revision unset, so inserts use the migration default. Source-only inspection; compilation and execution remain unverified.
+
+- Invite revocation revalidates active actor and current module-filtered `users:manage` under actor/invite/module/ordered actor-role fences, including idempotent retries. Issuer and target-role validity are not prerequisites. Shared RBAC role-row query retains the invitation binding format. Source regression covers stale authority, event failure rollback, successful retry, idempotence and accepted receipt conflict; unrun. PostgreSQL contention and artifact/runtime grant fences remain open.
+
+- Admin custom-role provisioning uses the shared direct creation path after checking active actor and both request/persisted delegation under module and ordered role locks. No temporary Customer. Source regression covers stale request grants and exact final membership/revision; unrun. Built-in admin creation and cross-owner contention remain open.
+
+- Custom-role invite acceptance assigns the locked persisted target directly, sharing validated account insertion with built-in creation. No intermediate Customer membership or role bootstrap; the receipt, user and final role remain atomic. Source regression checks exact membership, single revision increment, absent Customer and rollback on missing role; unrun. Admin provisioning and full PostgreSQL contention are separate open paths.
+
+- Invite acceptance locates the issuer outside its transaction, locks issuer before invite (matching issuer deletion/FK SET NULL order), and revalidates current ledger digest, issuer epoch and revocation. A committed receipt short-circuits before module/RBAC locks; the unique digest insert remains authoritative. Stale-locator and revocation source regressions authored, unrun; PostgreSQL lock contention and remaining cross-owner lock order unverified.
+
+- Tracked recovery email dispatch independently admits application time, revalidates signed reset/verification JWTs against the live keyring, and carries the committed opaque email-change deadline. Clock/expiry/credential denial skips the sender with a fixed diagnostic and skipped metric; old-mailbox notifications are unaffected. Source deadline, dispatch and stored-expiry regressions authored, unrun. Dispatch now also re-reads current account identity and reset MAC, skips already-verified accounts, and checks the exact pending email-change challenge and owner in one statement. Source regressions cover recipient mismatch, password/mailbox ABA, verification completion, replacement and tenant isolation. Durable admission now runs after account/challenge reads; JWTs are revalidated after that final wait. The missing-clock fixture retains a valid account/token, and opaque dispatch tests both deadline sources and deletion. SMTP latency, changes after the read and durable delivery remain separate open boundaries.
 - Reset, verification and invite JWT issuance now share the access-token post-signing live-clock and signed NumericDate deadline check. A deterministic regression covers fractional-second expiry, equality, backwards observation and epoch-zero issuance. Source regression unrun; application-domain publication and commit-time guarantees remain separate.
 - Email-change issuance and confirmation bind the existing user recovery revision; the Auth migration invalidates pre-cutover pending challenges. Mailbox ABA and stale issuance source regressions are authored.
 - Reset, verification, email change and invite acceptance recheck credential deadlines after transactional writes, immediately before requesting commit; authenticated email change also rechecks the locked proving session. Invite acceptance checks signed and ledger expiry.
@@ -585,7 +596,7 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 
 ## Witnessed authority durable expiry fence (2026-11-26)
 
-- Time-sensitive independent authority reads durably advance the authenticated witness DB clock floor before returning; mutations recheck under both locks and preserve it. Clock-only updates keep the ledger revision and use the uncertain-commit guard. Emergency revocation and offline recovery preserve the floor without relying on expiry decisions.
+- Time-sensitive independent authority reads durably advance the authenticated witness DB clock floor before returning; mutations recheck under both locks and preserve it. Zero-row checked CAS operations persist their observed floor too. Clock-only updates keep the ledger revision and use the uncertain-commit guard. Emergency revocation and offline recovery preserve the floor without relying on expiry decisions.
 - PostgreSQL application admission forces synchronous commit. No new DDL for the witness format extension; offline old-writer/lease drain and trusted-clock legacy enrollment required.
 - Source regression covers restarted authority refusing a lower DB clock while emergency revocation retains the floor. Compilation, PostgreSQL multi-pool/failover/cancellation and WAL/latency evidence remain unrun.
 - Application late observations, request-path JWT host timestamps, unwitnessed development mode, witness/application-store rollback and cross-replica contention optimization remain open. No production readiness promotion.
@@ -593,6 +604,25 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 ## Independently committed application late observations (2026-11-26)
 
 - Server host and session-cleanup CLI configure a separate clock writer pool. PostgreSQL samples the source and same primary writer under the singleton lock and commits the floor before returning the decision sample; a domain rollback cannot erase it. Uncertain clock commits trip the process latch.
-- SQLite can use an offline-bound persistent sidecar with FULL/EXTRA sync, exact copied floor and matching UUID. No same-file writer, automatic reseed, or bound-file fallback. Unbound SQLite and unmanaged embedders retain admission-only protection.
+- PostgreSQL pins the startup routing identity and checks the source floor before the first clock sample; an observed source rollback fences before the independent write. SQLite can use an offline-bound persistent sidecar with FULL/EXTRA sync, persistent journal or WAL, exact copied floor and matching UUID. MEMORY/OFF journals fail closed on the actual writer connection. No same-file writer, automatic reseed, or bound-file fallback. Unbound SQLite and unmanaged embedders retain admission-only protection.
 - Late session, password/email recovery, access-registration, OAuth-family and retention observations use the durable path when configured. Access extraction checks deadline crossing during commit; exact domain commit/publication instant, in-memory JWT and WebSocket timers remain separate.
-- Source regressions authored for independent rollback survival, restart, binding and uncertain commit. Compilation, real-file SQLite, PostgreSQL multi-pool/failover, cancellation injection and throughput evidence remain unrun. No production readiness promotion. See the clock ADR for deployment and recovery constraints.
+- Source regressions authored for independent rollback survival, restart, binding, unsafe sidecar journaling, source-floor rollback, zero-row witness CAS and uncertain commit. Compilation, real-file SQLite, PostgreSQL multi-pool/failover, cancellation injection and throughput evidence remain unrun. No production readiness promotion. See the clock ADR for deployment and recovery constraints.
+
+## Final credential publication and WebSocket fencing (2026-11-27)
+
+- Direct session service and REST/cookie/lifecycle adapters revalidate exact JWT eligibility and original deadlines, including proof-bound recovery grace. OAuth checks signed access eligibility and all prepared token deadlines at response. No compensating revocation of an already committed rotation.
+- Common access extraction checks exact JWT eligibility after asynchronous policy IO; WebSocket caps lease by wall and monotonic deadlines, latches expiry, and checks local authority before connection publication and send.
+- Source regression for monotonic expiry; tests, compilation, live rotation and blocked socket writes remain unverified. Post-commit observations are not all durably persisted; no readiness promotion.
+
+## Cross-replica authority admission (2026-11-27)
+
+- Common access admission resolves module policy without the local TTL cache.
+- Read static membership/grant revision in a single RBAC-owner query before and after user policy resolution; reject changed authority (including membership ABA).
+- Recheck current tenant/account/session or OAuth app, access registration and consent after asynchronous policy and clock work; never extend the original observed deadline or restore lost capabilities.
+- Regression covers final admission after membership ABA and session revocation. Compilation, PostgreSQL contention, cross-replica runtime, exact atomic admission and downstream mutation fences remain open.
+
+## Transactional user administration authority (2026-11-27)
+
+- Built-in/custom create, update and delete independently revalidate the persisted active user actor and current module-filtered grants/hierarchy under user, module and ordered role locks. Preserve request permission/role ceilings and the existing last-active-SuperAdmin continuity guard. A service principal is not a user actor, even with a colliding subject ID.
+- Materialize missing built-in destinations in the owner transaction before checking exact persisted grants; deny a missing requested role after the lock. Existing user locks are UUID ordered and deduplicated; static role locks cover actor and target memberships, destination and continuity role.
+- Source regression covers stale request after demotion, disabled actor, service UUID collision and allowed built-in creation. Compilation, live PostgreSQL contention and other mutation paths remain open. The admin context does not carry proving session or OAuth registration evidence; no end-to-end credential mutation fence is claimed.

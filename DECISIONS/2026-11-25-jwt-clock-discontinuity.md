@@ -154,7 +154,9 @@ the existing bounded host observation and compare it to the authenticated
 witness clock floor. A lower DB timestamp trips the shared authority clock
 latch. A higher verified timestamp is durably written to the existing
 witness checkpoint before returning the observation for an expiry decision,
-including read-only decisions and refusals. The checkpoint field belongs
+including read-only decisions and refusals. A checked CAS that affects zero
+rows persists its newly observed floor through the same clock-only commit
+path, without advancing the ledger revision. The checkpoint field belongs
 to the independent witness, not to the restored authority row. Clock-only
 writes retain the ledger revision; domain CAS mutations still advance it.
 Time-sensitive mutations recheck time after both locks and carry the
@@ -203,8 +205,11 @@ reading. A bounded commit interval and the live credential gate are still
 required. A failed or cancelled clock commit trips the process-local sticky
 clock guard; no unknown commit outcome authorizes a domain decision.
 
-The PostgreSQL primary identity comparison is a routing sanity check, not a
-cryptographic identity or independent backup witness. All hosts must connect
+The PostgreSQL primary identity comparison is pinned to the startup sample
+for the process; a changed identity refuses admission and fences the local
+clock. Read the source floor before sampling so an observed rollback cannot
+be hidden by the independent writer catching up. This is a routing sanity
+check, not a cryptographic identity or independent backup witness. All hosts must connect
 to the same trusted primary, use the same schema, and reserve one additional
 database connection per host/CLI process. Restart only after clock remediation;
 do not lower the floor or replace the primary with stale state.
@@ -231,7 +236,10 @@ CREATE TABLE auth_application_clock_sidecar_binding (
 -- Insert id=1 and the same operator-generated UUID in both files.
 ```
 
-Use FULL or EXTRA synchronous SQLite commits. The host refuses the same
+Use FULL or EXTRA synchronous SQLite commits and a persistent journal mode
+(DELETE, TRUNCATE, PERSIST or WAL). MEMORY and OFF are refused even with
+FULL sync. Both settings are checked on the actual sidecar transaction
+connection; the runtime does not repair a changed journal. The host refuses the same
 canonical file, Unix hard-link aliases, absent/incorrect bindings, missing
 clock rows, sidecar floors below the original application floors, or a
 sidecar containing application user/session tables. Provisioning is manual,

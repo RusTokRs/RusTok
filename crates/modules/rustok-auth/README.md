@@ -187,6 +187,41 @@ and cross-replica verification pending.
 
 ## Recovery credential lifecycle (2026-11-26)
 
+Administrative custom-role provisioning now validates both request-bound and
+current persisted delegation under actor, module-policy and ordered role-grant
+fences, then uses the same direct role creation path as invitation acceptance.
+The target account has no temporary Customer membership; metadata, localized
+values and response projection stay inside the transaction. Existing-account
+role replacement retains its separate continuity checks. Built-in admin
+provisioning still uses its previous request-authority contract. Source
+regression unrun; PostgreSQL contention remains unverified.
+
+Custom-role invitation acceptance inserts the account and assigns only the
+already-authorized persisted target role inside the consumption transaction.
+It does not bootstrap, assign or remove a temporary Customer membership, so
+one new membership advances the membership revision once. The shared account
+insertion preserves duplicate-email handling; the existing RBAC writer owns
+assignment and continuity checks. Missing role or assignment failure rolls back
+the account and receipt. Source regression unrun; admin provisioning is a
+separate path, and PostgreSQL contention evidence remains pending.
+
+Invite acceptance uses an unlocked ledger lookup only to locate the issuer,
+then locks the issuer before the exact invitation and revalidates the digest,
+account epoch and revocation under those fences. This avoids the inverse
+issuer-delete/FK SET NULL lock order; committed consumption is rejected before
+password hashing and again under the ledger fence before module/RBAC locks,
+with the unique receipt insert retained as final authority.
+SQLite starts with the user write fence. PostgreSQL contention is unverified.
+
+Before invoking the email sender, the host re-reads the active account and
+checks the JWT's exact recipient, tenant, user and recovery revision. Reset
+also checks its password-hash MAC; already-verified accounts skip verification
+mail. Email-change dispatch reads the exact tenant/user/target/digest challenge
+and its owner in one statement, reuses the confirmation binding, and never
+extends the committed expiry. No account locks are held during SMTP; a change
+after the read can still make a link stale. Confirmation remains authoritative.
+Source regressions are unrun.
+
 All JWT issuers, including reset, verification and invite, sample the live
 credential clock before preparing claims and recheck it after RSA signing.
 Reject backward time or an elapsed exclusive signed whole-second expiry;
@@ -197,7 +232,13 @@ Email-change challenges bind the database-owned account recovery revision,
 like reset and verification JWTs. Legacy pending email changes are removed
 at migration; no revision backfill or compatibility reader is provided.
 Recovery mutations recheck credential expiry before requesting commit and
-roll back late transitions; this does not establish durable clock safety.
+roll back late transitions. Reset, verification and invite also repeat live JWT
+validation after blocking work and at the final observation; invite issuance
+revalidates its signed token before commit. Email-change confirmation and
+background dispatch reject future-dated challenges; invite acceptance rejects
+future-dated ledger rows. These are observed boundaries, not a guarantee of
+validity at the database commit instant or durable clock safety. Source
+regressions for future-dated credentials and early invite replay are unrun.
 Verification records the corroborated post-lock timestamp. Email-change
 confirmation uses the unique mailbox index as the conflict authority and a
 savepoint to consume a conflicting challenge without changing the account.
@@ -220,7 +261,8 @@ contention and restart/runtime evidence remain open. See the [clock ADR](../../.
 
 Witnessed authority reads and mutations now maintain an authenticated
 DB-time floor in the existing witness payload, with synchronous commit
-before exposing checked time. Emergency revocation preserves it. Stop
+before exposing checked time, including a zero-row checked CAS without a
+ledger revision change. Emergency revocation preserves it. Stop
 old writers and drain leases before format cutover; never strip the floor.
 Application late observations and request-path clock durability remain
 open. See the [clock ADR](../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md).
@@ -229,8 +271,11 @@ open. See the [clock ADR](../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.
 
 Host and session-cleanup CLI wire a dedicated PostgreSQL clock writer pool.
 Late verified samples commit independently of domain rollback; uncertain
-commit outcomes fence the process. SQLite can use a separately provisioned,
-bound persistent clock file, otherwise remains admission-only. See the
+commit outcomes fence the process. PostgreSQL routing identity is pinned
+at startup and source rollback is checked before the independent write.
+SQLite can use a separately provisioned, bound persistent clock file with
+FULL/EXTRA sync and a persistent rollback journal or WAL, otherwise remains
+admission-only when unbound. See the
 [clock ADR](../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md) for
 configuration, recovery and limits. Source implementation only; runtime,
 contention and failover evidence remain pending.

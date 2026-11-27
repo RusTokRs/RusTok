@@ -38,6 +38,23 @@ pub struct AuthTokens {
     /// backend will enforce for the session. Display-level only: request
     /// authorization re-resolves per-request.
     pub permissions: Vec<String>,
+    access_deadline: chrono::DateTime<Utc>,
+    refresh_deadline: chrono::DateTime<Utc>,
+    recovery_rotation: Option<chrono::DateTime<chrono::FixedOffset>>,
+}
+
+impl AuthTokens {
+    /// Recheck the exact access JWT and original deadlines at publication.
+    pub(crate) fn revalidate_for_publication(&mut self, config: &AuthConfig) -> Result<(), AuthLifecycleError> {
+        rustok_auth::application_clock::check_local()?;
+        crate::auth::decode_access_token(config, &self.access_token)
+            .map_err(|_| AuthLifecycleError::Internal(Error::InternalServerError))?;
+        let now = AuthLifecycleService::response_now(config)?;
+        AuthLifecycleService::ensure_refresh_recovery_within_grace(self.recovery_rotation, now)?;
+        self.expires_in = self.expires_in.min(AuthLifecycleService::remaining_refresh_lifetime(self.access_deadline, now)?);
+        self.refresh_expires_in = self.refresh_expires_in.min(AuthLifecycleService::remaining_refresh_lifetime(self.refresh_deadline, now)?);
+        Ok(())
+    }
 }
 
 // Keep the durable deadline until the last fallible step before commit;
@@ -58,6 +75,12 @@ impl PreparedSessionTokens {
         Ok(())
     }
 
+    fn finish_live(self, config: &AuthConfig) -> Result<AuthTokens, AuthLifecycleError> {
+        let mut tokens = self.finish(AuthLifecycleService::response_now(config)?)?;
+        tokens.revalidate_for_publication(config)?;
+        Ok(tokens)
+    }
+
     fn finish(self, now: chrono::DateTime<Utc>) -> Result<AuthTokens, AuthLifecycleError> {
         let refresh_expires_in =
             AuthLifecycleService::remaining_refresh_lifetime(self.refresh_deadline, now)?;
@@ -70,6 +93,9 @@ impl PreparedSessionTokens {
             refresh_expires_in,
             effective_role: self.effective_role,
             permissions: self.permissions,
+            access_deadline: self.access_deadline,
+            refresh_deadline: self.refresh_deadline,
+            recovery_rotation: None,
         })
     }
 }
@@ -452,6 +478,47 @@ impl AuthLifecycleService {
     where
         C: ConnectionTrait,
     {
+        let user = Self::insert_new_user_in_tx(db, tenant_id, prepared, status).await?;
+        RbacService::replace_user_role(db, &user.id, &tenant_id, role)
+            .await
+            .map_err(AuthLifecycleError::from)?;
+        Ok(user)
+    }
+
+    /// Create an account directly with a previously authorized, locked custom
+    /// role. The caller owns the transaction and must roll it back on error.
+    /// Never materialize or assign an unrelated built-in role as a baseline.
+    pub(super) async fn create_user_with_custom_role_in_tx(
+        tx: &DatabaseTransaction,
+        tenant_id: uuid::Uuid,
+        prepared: PreparedNewUser,
+        role_slug: &str,
+        status: Option<rustok_core::UserStatus>,
+    ) -> std::result::Result<users::Model, AuthLifecycleError> {
+        if role_slug.parse::<rustok_core::UserRole>().is_ok() {
+            return Err(AuthLifecycleError::Internal(Error::InternalServerError));
+        }
+        let user = Self::insert_new_user_in_tx(tx, tenant_id, prepared, status).await?;
+        rustok_rbac::replace_persisted_user_role_by_slug_on(tx, tenant_id, user.id, role_slug)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "New account custom role assignment failed");
+                AuthLifecycleError::Internal(Error::InternalServerError)
+            })?;
+        Ok(user)
+    }
+
+    /// Shared validated account insertion. Only role-assigning creation
+    /// methods expose this operation to other lifecycle paths.
+    async fn insert_new_user_in_tx<C>(
+        db: &C,
+        tenant_id: uuid::Uuid,
+        prepared: PreparedNewUser,
+        status: Option<rustok_core::UserStatus>,
+    ) -> std::result::Result<users::Model, AuthLifecycleError>
+    where
+        C: ConnectionTrait,
+    {
         if users::Entity::find()
             .filter(users::Column::TenantId.eq(tenant_id))
             .filter(users::Column::Email.eq(prepared.email.as_str()))
@@ -486,10 +553,6 @@ impl AuthLifecycleService {
                 return Err(AuthLifecycleError::from(err));
             }
         };
-
-        RbacService::replace_user_role(db, &user.id, &tenant_id, role)
-            .await
-            .map_err(AuthLifecycleError::from)?;
 
         Ok(user)
     }
@@ -608,7 +671,7 @@ impl AuthLifecycleService {
         prepared_tokens.ensure_live(Self::credential_now(&tx, config).await?)?;
         tx.commit().await.map_err(AuthLifecycleError::from)?;
 
-        Ok((user, prepared_tokens.finish(Self::response_now(config)?)?))
+        Ok((user, prepared_tokens.finish_live(config)?))
     }
 
     pub async fn login_runtime(
@@ -776,7 +839,7 @@ impl AuthLifecycleService {
         prepared_tokens.ensure_live(Self::credential_now(&txn, config).await?)?;
         txn.commit().await.map_err(AuthLifecycleError::from)?;
 
-        Ok((user, prepared_tokens.finish(Self::response_now(config)?)?))
+        Ok((user, prepared_tokens.finish_live(config)?))
     }
 
     #[cfg(test)]
@@ -1227,7 +1290,10 @@ impl AuthLifecycleService {
         txn.commit().await.map_err(AuthLifecycleError::from)?;
         let committed_at = Self::response_now(config)?;
         Self::ensure_refresh_recovery_within_grace(recovery_rotation, committed_at)?;
-        Ok((user, tokens.finish(committed_at)?))
+        let mut tokens = tokens.finish(committed_at)?;
+        tokens.recovery_rotation = recovery_rotation;
+        tokens.revalidate_for_publication(config)?;
+        Ok((user, tokens))
     }
 
     fn ensure_refresh_recovery_within_grace(
@@ -1699,7 +1765,7 @@ impl AuthLifecycleService {
         ).await?;
         prepared.ensure_live(Self::credential_now(&tx, config).await?)?;
         tx.commit().await.map_err(AuthLifecycleError::from)?;
-        prepared.finish(Self::response_now(config)?)
+        prepared.finish_live(config)
     }
 
     async fn create_session_and_tokens_in_tx<C>(
@@ -2391,6 +2457,57 @@ mod tests {
             !resolved_permissions.contains(&rustok_api::Permission::USERS_MANAGE),
             "manager role should not get admin-only permissions"
         );
+    }
+
+    #[tokio::test]
+    async fn custom_role_creation_has_one_membership_transition_and_no_customer_role() {
+        use crate::models::_entities::roles;
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Custom role tenant", "direct-custom-role")
+            .insert(&db).await.unwrap();
+        let role = roles::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant.id),
+            name: Set("Content editor".to_string()),
+            slug: Set("content_editor".to_string()),
+            description: Set(None),
+            is_system: Set(false),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        }.insert(&db).await.unwrap();
+
+        let prepared = AuthLifecycleService::prepare_new_user(
+            "custom@example.com", "Password123!", None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
+        ).await.unwrap();
+        let tx = db.begin().await.unwrap();
+        let user = AuthLifecycleService::create_user_with_custom_role_in_tx(
+            &tx, tenant.id, prepared, &role.slug, Some(UserStatus::Active),
+        ).await.unwrap();
+        let memberships = user_roles::Entity::find()
+            .filter(user_roles::Column::UserId.eq(user.id))
+            .all(&tx).await.unwrap();
+        assert_eq!(memberships.len(), 1);
+        assert_eq!(memberships[0].role_id, role.id);
+        assert_eq!(rustok_rbac::read_user_membership_revision_on(&tx, tenant.id, user.id)
+            .await.unwrap(), 1);
+        assert!(roles::Entity::find()
+            .filter(roles::Column::TenantId.eq(tenant.id))
+            .filter(roles::Column::Slug.eq("customer"))
+            .one(&tx).await.unwrap().is_none());
+        tx.commit().await.unwrap();
+
+        let prepared = AuthLifecycleService::prepare_new_user(
+            "missing-role@example.com", "Password123!", None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
+        ).await.unwrap();
+        let tx = db.begin().await.unwrap();
+        assert!(AuthLifecycleService::create_user_with_custom_role_in_tx(
+            &tx, tenant.id, prepared, "missing_role", None,
+        ).await.is_err());
+        tx.rollback().await.unwrap();
+        assert!(users::Entity::find_by_email(&db, tenant.id, "missing-role@example.com")
+            .await.unwrap().is_none());
     }
 
     #[tokio::test]
