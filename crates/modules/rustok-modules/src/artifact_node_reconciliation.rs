@@ -507,7 +507,9 @@ impl SeaOrmArtifactNodeReadiness {
         policy: &crate::ModuleEffectivePolicy,
     ) -> Result<ArtifactServingClosure, ModuleArtifactNodeReconciliationError> {
         let before = load_state(&self.db, false).await?;
-        before.converged_id().ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
+        before
+            .converged_id()
+            .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
         let selected = crate::SeaOrmArtifactInstallationStore::new(self.db.clone())
             .list_active_for_tenant(tenant_id)
             .await
@@ -518,14 +520,21 @@ impl SeaOrmArtifactNodeReadiness {
             .collect::<BTreeMap<_, _>>();
         let mut closure = ArtifactServingClosure::from_policy_selection(
             &self.db, tenant_id, artifact, policy, &selected,
-        ).await?;
-        let members = closure.artifacts.values()
+        )
+        .await?;
+        let members = closure
+            .artifacts
+            .values()
             .map(|(item, _)| Ok((item.installation_id, runtime_installation_identity(item)?)))
             .collect::<Result<Vec<_>, ModuleArtifactNodeReconciliationError>>()?;
         // Digest, head and observations must come from one consistent
         // owner snapshot. Do not attach a newer deployment to an older read.
-        let tx = crate::backend::begin_snapshot_transaction(&self.db).await.map_err(store_error)?;
-        crate::backend::set_tenant_scope(&tx, tenant_id).await.map_err(store_error)?;
+        let tx = crate::backend::begin_snapshot_transaction(&self.db)
+            .await
+            .map_err(store_error)?;
+        crate::backend::set_tenant_scope(&tx, tenant_id)
+            .await
+            .map_err(store_error)?;
         let readiness = ServingDeploymentReadiness::capture_on(&tx, self.node_id, &members).await?;
         if readiness.state != before {
             return Err(ModuleArtifactNodeReconciliationError::StaleReconciliation);
@@ -548,7 +557,8 @@ impl SeaOrmArtifactNodeReadiness {
         policy_revision: &str,
     ) -> Result<(), ModuleArtifactNodeReconciliationError> {
         let identity = runtime_installation_identity(artifact)?;
-        self.require_active_identity(artifact.installation_id, &identity, policy_revision).await
+        self.require_active_identity(artifact.installation_id, &identity, policy_revision)
+            .await
     }
 
     async fn require_active_identity(
@@ -557,8 +567,15 @@ impl SeaOrmArtifactNodeReadiness {
         identity: &InstallationIdentity,
         policy_revision: &str,
     ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-        require_active_identity_on(&self.db, self.node_id, installation_id, identity, policy_revision)
-            .await.map(|_| ())
+        require_active_identity_on(
+            &self.db,
+            self.node_id,
+            installation_id,
+            identity,
+            policy_revision,
+        )
+        .await
+        .map(|_| ())
     }
 }
 
@@ -568,9 +585,7 @@ fn runtime_installation_identity(
     let identity = InstallationIdentity {
         installation_scope: match artifact.scope {
             ModuleInstallationScope::Platform => ModuleArtifactNodeInstallationScope::Platform,
-            ModuleInstallationScope::Tenant { .. } => {
-                ModuleArtifactNodeInstallationScope::Tenant
-            }
+            ModuleInstallationScope::Tenant { .. } => ModuleArtifactNodeInstallationScope::Tenant,
         },
         release_digest: artifact.reference.digest.clone(),
         payload_digest: artifact.descriptor.artifact_digest.clone(),
@@ -717,20 +732,31 @@ impl ServingDeploymentReadiness {
         required: &[(Uuid, InstallationIdentity)],
     ) -> Result<Self, ModuleArtifactNodeReconciliationError> {
         let state = load_state(tx, false).await?;
-        let head = state.converged_id()
+        let head = state
+            .converged_id()
             .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
         let deployment_revision = load_deployment_readiness_revision(tx, head).await?;
         let mut members = BTreeMap::new();
         for (id, identity) in required {
-            let observation = require_active_identity_on(tx, node_id, *id, identity, &deployment_revision).await?;
-            if members.insert(*id, (identity.clone(), observation)).is_some() {
+            let observation =
+                require_active_identity_on(tx, node_id, *id, identity, &deployment_revision)
+                    .await?;
+            if members
+                .insert(*id, (identity.clone(), observation))
+                .is_some()
+            {
                 return Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable);
             }
         }
         if members.is_empty() {
             return Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable);
         }
-        Ok(Self { state, node_id, deployment_revision, members })
+        Ok(Self {
+            state,
+            node_id,
+            deployment_revision,
+            members,
+        })
     }
 
     /// The selection closure already holds its slug fences (and SQLite
@@ -744,15 +770,21 @@ impl ServingDeploymentReadiness {
         if current != self.state {
             return Err(ModuleArtifactNodeReconciliationError::StaleReconciliation);
         }
-        let head = current.converged_id()
+        let head = current
+            .converged_id()
             .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
         if load_deployment_readiness_revision(tx, head).await? != self.deployment_revision {
             return Err(ModuleArtifactNodeReconciliationError::StaleReconciliation);
         }
         for (id, (identity, expected_observation)) in &self.members {
             let current_observation = require_active_identity_on(
-                tx, self.node_id, *id, identity, &self.deployment_revision,
-            ).await?;
+                tx,
+                self.node_id,
+                *id,
+                identity,
+                &self.deployment_revision,
+            )
+            .await?;
             if current_observation != *expected_observation {
                 return Err(ModuleArtifactNodeReconciliationError::StaleReconciliation);
             }
@@ -824,7 +856,8 @@ impl ServingOverrideIntent {
     ) -> Result<(), ModuleArtifactNodeReconciliationError> {
         if let Self::Exact(expected) = self {
             let current = crate::recovery::read_tenant_override_enabled(tx, tenant_id, slug)
-                .await.map_err(store_error)?;
+                .await
+                .map_err(store_error)?;
             if &current != expected {
                 return Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable);
             }
@@ -844,19 +877,28 @@ impl ArtifactServingClosure {
         let (required, visited) = serving_artifact_closure(tenant_id, root, policy, selected)?;
         let mut artifacts = BTreeMap::new();
         for item in required {
-            let decision = policy.get_decision(&item.release.slug)
+            let decision = policy
+                .get_decision(&item.release.slug)
                 .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
             let revision = clear_security_revision(&decision.facts)?;
             artifacts.insert(item.release.slug.clone(), (item.clone(), revision));
         }
         // Read selection and its generations in one owner snapshot. If
         // selection changed since policy/readiness projection, fail closed.
-        let tx = crate::backend::begin_snapshot_transaction(db).await.map_err(store_error)?;
-        crate::backend::set_tenant_scope(&tx, tenant_id).await.map_err(store_error)?;
-        let releases = artifacts.values().map(|(item, _)| item.release.clone()).collect::<Vec<_>>();
-        let current = crate::installation::resolve_active_many_in_transaction(
-            &tx, &releases, tenant_id,
-        ).await.map_err(store_error)?;
+        let tx = crate::backend::begin_snapshot_transaction(db)
+            .await
+            .map_err(store_error)?;
+        crate::backend::set_tenant_scope(&tx, tenant_id)
+            .await
+            .map_err(store_error)?;
+        let releases = artifacts
+            .values()
+            .map(|(item, _)| item.release.clone())
+            .collect::<Vec<_>>();
+        let current =
+            crate::installation::resolve_active_many_in_transaction(&tx, &releases, tenant_id)
+                .await
+                .map_err(store_error)?;
         if current.len() != artifacts.len() {
             return Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable);
         }
@@ -866,28 +908,43 @@ impl ArtifactServingClosure {
                 return Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable);
             }
             let generation = crate::ArtifactSelectionGeneration::load_on(&tx, tenant_id, slug)
-                .await.map_err(store_error)?;
+                .await
+                .map_err(store_error)?;
             generations.insert(slug.clone(), generation);
         }
         let mut tenant_intents = BTreeMap::new();
         for slug in visited {
-            let decision = policy.get_decision(&slug)
+            let decision = policy
+                .get_decision(&slug)
                 .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
             let override_intent = ServingOverrideIntent::from_policy_facts(&decision.facts)?;
-            override_intent.require_current_on(&tx, tenant_id, &slug).await?;
+            override_intent
+                .require_current_on(&tx, tenant_id, &slug)
+                .await?;
             let lifecycle = crate::StaticTenantLifecycleStore::snapshot(&tx, tenant_id, &slug)
-                .await.map_err(store_error)?;
-            tenant_intents.insert(slug, ServingTenantIntent {
-                lifecycle_revision: lifecycle.revision,
-                override_intent,
-            });
+                .await
+                .map_err(store_error)?;
+            tenant_intents.insert(
+                slug,
+                ServingTenantIntent {
+                    lifecycle_revision: lifecycle.revision,
+                    override_intent,
+                },
+            );
         }
         tx.commit().await.map_err(store_error)?;
-        Ok(Self { tenant_id, artifacts, generations, tenant_intents, readiness: None })
+        Ok(Self {
+            tenant_id,
+            artifacts,
+            generations,
+            tenant_intents,
+            readiness: None,
+        })
     }
 
     pub fn root_security_revision(&self, root: &InstalledModuleArtifact) -> Option<u64> {
-        self.artifacts.get(&root.release.slug)
+        self.artifacts
+            .get(&root.release.slug)
             .filter(|(item, _)| item == root)
             .map(|(_, revision)| *revision)
     }
@@ -899,7 +956,9 @@ impl ArtifactServingClosure {
         &self,
         tx: &DatabaseTransaction,
     ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-        let readiness = self.readiness.as_ref()
+        let readiness = self
+            .readiness
+            .as_ref()
             .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
         self.require_selection_current_on(tx).await?;
         readiness.require_current_on(tx).await
@@ -919,39 +978,64 @@ impl ArtifactServingClosure {
         if self.tenant_id.is_nil() || self.artifacts.is_empty() {
             return Err(denied());
         }
-        crate::backend::set_tenant_scope(tx, self.tenant_id).await.map_err(store_error)?;
+        crate::backend::set_tenant_scope(tx, self.tenant_id)
+            .await
+            .map_err(store_error)?;
         // All visited slugs share the platform lock with native/artifact
         // override writers, even when neither aggregate nor override exists.
         // Keep the same ordering for mixed native/artifact closures.
         for slug in self.tenant_intents.keys() {
             acquire_artifact_activation_lock(tx, &ModuleInstallationScope::Platform, slug)
-                .await.map_err(store_error)?;
+                .await
+                .map_err(store_error)?;
             if self.artifacts.contains_key(slug) {
                 acquire_artifact_activation_lock(
-                    tx, &ModuleInstallationScope::Tenant { tenant_id: self.tenant_id }, slug,
-                ).await.map_err(store_error)?;
+                    tx,
+                    &ModuleInstallationScope::Tenant {
+                        tenant_id: self.tenant_id,
+                    },
+                    slug,
+                )
+                .await
+                .map_err(store_error)?;
             }
         }
         for (slug, intent) in &self.tenant_intents {
             let current = crate::StaticTenantLifecycleStore::snapshot(tx, self.tenant_id, slug)
-                .await.map_err(store_error)?;
+                .await
+                .map_err(store_error)?;
             if current.revision != intent.lifecycle_revision {
                 return Err(denied());
             }
-            intent.override_intent.require_current_on(tx, self.tenant_id, slug).await?;
+            intent
+                .override_intent
+                .require_current_on(tx, self.tenant_id, slug)
+                .await?;
         }
         if self.generations.len() != self.artifacts.len()
-            || self.artifacts.keys().any(|slug| !self.tenant_intents.contains_key(slug)) {
+            || self
+                .artifacts
+                .keys()
+                .any(|slug| !self.tenant_intents.contains_key(slug))
+        {
             return Err(denied());
         }
         for slug in self.artifacts.keys() {
-            self.generations.get(slug).ok_or_else(denied)?
-                .require_locked_on(tx).await.map_err(store_error)?;
+            self.generations
+                .get(slug)
+                .ok_or_else(denied)?
+                .require_locked_on(tx)
+                .await
+                .map_err(store_error)?;
         }
-        let releases = self.artifacts.values()
-            .map(|(item, _)| item.release.clone()).collect::<Vec<_>>();
+        let releases = self
+            .artifacts
+            .values()
+            .map(|(item, _)| item.release.clone())
+            .collect::<Vec<_>>();
         let current = resolve_active_many_in_transaction(tx, &releases, self.tenant_id)
-            .await.map_err(store_error)?;
+            .await
+            .map_err(store_error)?;
         if current.len() != self.artifacts.len() {
             return Err(denied());
         }
@@ -963,10 +1047,15 @@ impl ArtifactServingClosure {
             // A matching installation revision alone cannot prove that its
             // durable policy is still present and decodable.
             resolve_sandbox_policy_on(tx, &actual, self.tenant_id)
-                .await.map_err(store_error)?;
+                .await
+                .map_err(store_error)?;
             crate::SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
-                tx, &actual.release, *revision,
-            ).await.map_err(store_error)?;
+                tx,
+                &actual.release,
+                *revision,
+            )
+            .await
+            .map_err(store_error)?;
         }
         Ok(())
     }
@@ -976,15 +1065,20 @@ fn clear_security_revision(
     facts: &[crate::ModuleEffectivePolicyFact],
 ) -> Result<u64, ModuleArtifactNodeReconciliationError> {
     use crate::{
-        ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecurityStatus, ModuleEffectivePolicyFact,
+        ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecurityStatus,
+        ModuleEffectivePolicyFact,
     };
     let denied = || ModuleArtifactNodeReconciliationError::AssignmentUnavailable;
     let mut security = None;
     let mut registry = None;
     for fact in facts {
         match fact {
-            ModuleEffectivePolicyFact::ArtifactSecurity { revision, status, .. } => {
-                if *status != ModuleArtifactSecurityStatus::Clear || security.replace(*revision).is_some() {
+            ModuleEffectivePolicyFact::ArtifactSecurity {
+                revision, status, ..
+            } => {
+                if *status != ModuleArtifactSecurityStatus::Clear
+                    || security.replace(*revision).is_some()
+                {
                     return Err(denied());
                 }
             }
@@ -1009,7 +1103,10 @@ pub(crate) fn serving_artifact_closure<'a>(
     root: &InstalledModuleArtifact,
     policy: &crate::ModuleEffectivePolicy,
     selected: &'a BTreeMap<String, InstalledModuleArtifact>,
-) -> Result<(Vec<&'a InstalledModuleArtifact>, BTreeSet<String>), ModuleArtifactNodeReconciliationError> {
+) -> Result<
+    (Vec<&'a InstalledModuleArtifact>, BTreeSet<String>),
+    ModuleArtifactNodeReconciliationError,
+> {
     use crate::{ArtifactInstallationTarget, ModuleDefinitionSource, ModuleEffectivePolicyFact};
     let denied = || ModuleArtifactNodeReconciliationError::AssignmentUnavailable;
     if selected.get(&root.release.slug) != Some(root) {
@@ -2541,7 +2638,15 @@ async fn load_state<C: ConnectionTrait>(
     connection: &C,
     lock_row: bool,
 ) -> Result<ModuleDesiredObservedState, ModuleArtifactNodeReconciliationError> {
-    load_state_with_lock(connection, if lock_row { StateLock::Exclusive } else { StateLock::None }).await
+    load_state_with_lock(
+        connection,
+        if lock_row {
+            StateLock::Exclusive
+        } else {
+            StateLock::None
+        },
+    )
+    .await
 }
 
 async fn load_state_with_lock<C: ConnectionTrait>(
@@ -3548,20 +3653,47 @@ mod tests {
             ModuleArtifactSecurityStatus as SecurityStatus, ModuleEffectivePolicyFact as Fact,
         };
         let clear = Fact::ArtifactSecurity {
-            revision: 2, status: SecurityStatus::Clear, policy_revision: None, reason_code: None,
+            revision: 2,
+            status: SecurityStatus::Clear,
+            policy_revision: None,
+            reason_code: None,
         };
-        let registry = Fact::RegistryRelease { status: RegistryStatus::Unlisted };
-        assert_eq!(clear_security_revision(&[clear.clone(), registry.clone()]).unwrap(), 2);
+        let registry = Fact::RegistryRelease {
+            status: RegistryStatus::Unlisted,
+        };
+        assert_eq!(
+            clear_security_revision(&[clear.clone(), registry.clone()]).unwrap(),
+            2
+        );
         assert!(clear_security_revision(&[clear.clone()]).is_err());
         assert!(clear_security_revision(&[registry.clone()]).is_err());
-        assert!(clear_security_revision(&[clear.clone(), clear.clone(), registry.clone()]).is_err());
-        assert!(clear_security_revision(&[clear.clone(), registry.clone(), registry.clone()]).is_err());
-        assert!(clear_security_revision(&[clear, Fact::RegistryRelease {
-            status: RegistryStatus::Unavailable,
-        }]).is_err());
-        assert!(clear_security_revision(&[Fact::ArtifactSecurity {
-            revision: 1, status: SecurityStatus::Quarantined, policy_revision: None, reason_code: None,
-        }, registry]).is_err());
+        assert!(
+            clear_security_revision(&[clear.clone(), clear.clone(), registry.clone()]).is_err()
+        );
+        assert!(
+            clear_security_revision(&[clear.clone(), registry.clone(), registry.clone()]).is_err()
+        );
+        assert!(
+            clear_security_revision(&[
+                clear,
+                Fact::RegistryRelease {
+                    status: RegistryStatus::Unavailable,
+                }
+            ])
+            .is_err()
+        );
+        assert!(
+            clear_security_revision(&[
+                Fact::ArtifactSecurity {
+                    revision: 1,
+                    status: SecurityStatus::Quarantined,
+                    policy_revision: None,
+                    reason_code: None,
+                },
+                registry
+            ])
+            .is_err()
+        );
     }
 
     #[derive(Clone)]
@@ -3631,55 +3763,92 @@ mod tests {
     #[ignore = "requires RUSTOK_MODULES_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
     async fn postgres_readiness_state_shared_fence_serializes_owner_head_writes() {
         use std::time::Duration;
-        let db = Database::connect(std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").unwrap()).await.unwrap();
+        let db = Database::connect(std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").unwrap())
+            .await
+            .unwrap();
         assert_eq!(db.get_database_backend(), DbBackend::Postgres);
         let schema = format!("readiness_fence_{}", Uuid::new_v4().simple());
-        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}"))
+            .await
+            .unwrap();
         let setup = db.begin().await.unwrap();
-        setup.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        setup
+            .execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .unwrap();
         setup.execute_unprepared("CREATE TABLE module_artifact_node_reconciliation_state (state_id TEXT PRIMARY KEY, revision BIGINT NOT NULL, desired_reconciliation_id UUID, observed_reconciliation_id UUID, updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP); INSERT INTO module_artifact_node_reconciliation_state (state_id, revision) VALUES ('current', 0)").await.unwrap();
         setup.commit().await.unwrap();
 
         let effect = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        effect.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
-        let original = load_state_with_lock(&effect, StateLock::Shared).await.unwrap();
+        effect
+            .execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .unwrap();
+        let original = load_state_with_lock(&effect, StateLock::Shared)
+            .await
+            .unwrap();
         let worker_db = db.clone();
         let worker_schema = schema.clone();
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
         let mut writer = tokio::spawn(async move {
-            let tx = crate::backend::begin_fenced_transaction(&worker_db).await.unwrap();
-            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}")).await.unwrap();
+            let tx = crate::backend::begin_fenced_transaction(&worker_db)
+                .await
+                .unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}"))
+                .await
+                .unwrap();
             ready_tx.send(()).unwrap();
             let state = load_state(&tx, true).await.unwrap();
-            advance_state(&tx, state.revision, state.revision + 1, None, None).await.unwrap();
+            advance_state(&tx, state.revision, state.revision + 1, None, None)
+                .await
+                .unwrap();
             tx.commit().await.unwrap();
         });
         ready_rx.await.unwrap();
-        assert!(tokio::time::timeout(Duration::from_millis(150), &mut writer).await.is_err());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(150), &mut writer)
+                .await
+                .is_err()
+        );
         effect.commit().await.unwrap();
         writer.await.unwrap();
 
         let writer = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        writer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        writer
+            .execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .unwrap();
         let state = load_state(&writer, true).await.unwrap();
-        advance_state(&writer, state.revision, state.revision + 1, None, None).await.unwrap();
+        advance_state(&writer, state.revision, state.revision + 1, None, None)
+            .await
+            .unwrap();
         let worker_db = db.clone();
         let worker_schema = schema.clone();
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
         let mut effect = tokio::spawn(async move {
-            let tx = crate::backend::begin_fenced_transaction(&worker_db).await.unwrap();
-            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}")).await.unwrap();
+            let tx = crate::backend::begin_fenced_transaction(&worker_db)
+                .await
+                .unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}"))
+                .await
+                .unwrap();
             ready_tx.send(()).unwrap();
             let state = load_state_with_lock(&tx, StateLock::Shared).await.unwrap();
             tx.rollback().await.unwrap();
             state
         });
         ready_rx.await.unwrap();
-        assert!(tokio::time::timeout(Duration::from_millis(150), &mut effect).await.is_err());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(150), &mut effect)
+                .await
+                .is_err()
+        );
         writer.commit().await.unwrap();
         let current = effect.await.unwrap();
         assert_eq!(current.revision, original.revision + 2);
-        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -4062,38 +4231,91 @@ mod tests {
             .require_active_identity(installation_id, &identity, &policy_revision)
             .await
             .expect("converged identity is executable");
-        let tx = crate::backend::begin_snapshot_transaction(&service.db).await.unwrap();
+        let tx = crate::backend::begin_snapshot_transaction(&service.db)
+            .await
+            .unwrap();
         let proof = ServingDeploymentReadiness::capture_on(
-            &tx, node_id, &[(installation_id, identity.clone())],
-        ).await.unwrap();
-        assert!(ServingDeploymentReadiness::capture_on(
-            &tx, Uuid::new_v4(), &[(installation_id, identity.clone())],
-        ).await.is_err());
-        assert!(ServingDeploymentReadiness::capture_on(
-            &tx, node_id, &[(installation_id, identity.clone()), (Uuid::new_v4(), identity.clone())],
-        ).await.is_err(), "a ready root cannot substitute for a missing dependency assignment");
+            &tx,
+            node_id,
+            &[(installation_id, identity.clone())],
+        )
+        .await
+        .unwrap();
+        assert!(
+            ServingDeploymentReadiness::capture_on(
+                &tx,
+                Uuid::new_v4(),
+                &[(installation_id, identity.clone())],
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            ServingDeploymentReadiness::capture_on(
+                &tx,
+                node_id,
+                &[
+                    (installation_id, identity.clone()),
+                    (Uuid::new_v4(), identity.clone())
+                ],
+            )
+            .await
+            .is_err(),
+            "a ready root cannot substitute for a missing dependency assignment"
+        );
         tx.commit().await.unwrap();
 
         // SQLite already owns its write reservation at the serving fence.
-        let tx = crate::backend::begin_fenced_transaction(&service.db).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&service.db)
+            .await
+            .unwrap();
         tx.execute_unprepared("UPDATE module_artifact_node_reconciliation_state SET revision = revision WHERE state_id = 'current'").await.unwrap();
         proof.require_current_on(&tx).await.unwrap();
         tx.rollback().await.unwrap();
 
         // Reject a changed observation even when its head/digest are intact.
-        let tx = crate::backend::begin_fenced_transaction(&service.db).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&service.db)
+            .await
+            .unwrap();
         tx.execute_unprepared("UPDATE module_artifact_node_reconciliation_assignments SET observation_revision = observation_revision + 1").await.unwrap();
         assert!(proof.require_current_on(&tx).await.is_err());
         tx.rollback().await.unwrap();
 
         // Simulate head divergence and restoration while retaining the
         // original assignment digest. The old lease cannot be renewed.
-        let tx = crate::backend::begin_fenced_transaction(&service.db).await.unwrap();
-        advance_state(&tx, proof.state.revision, proof.state.revision + 1, None, proof.state.observed_id).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&service.db)
+            .await
+            .unwrap();
+        advance_state(
+            &tx,
+            proof.state.revision,
+            proof.state.revision + 1,
+            None,
+            proof.state.observed_id,
+        )
+        .await
+        .unwrap();
         assert!(proof.require_current_on(&tx).await.is_err());
-        advance_state(&tx, proof.state.revision + 1, proof.state.revision + 2, proof.state.desired_id, proof.state.observed_id).await.unwrap();
-        assert!(matches!(proof.require_current_on(&tx).await, Err(ModuleArtifactNodeReconciliationError::StaleReconciliation)));
-        let renewed = ServingDeploymentReadiness::capture_on(&tx, node_id, &[(installation_id, identity.clone())]).await.unwrap();
+        advance_state(
+            &tx,
+            proof.state.revision + 1,
+            proof.state.revision + 2,
+            proof.state.desired_id,
+            proof.state.observed_id,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            proof.require_current_on(&tx).await,
+            Err(ModuleArtifactNodeReconciliationError::StaleReconciliation)
+        ));
+        let renewed = ServingDeploymentReadiness::capture_on(
+            &tx,
+            node_id,
+            &[(installation_id, identity.clone())],
+        )
+        .await
+        .unwrap();
         renewed.require_current_on(&tx).await.unwrap();
         tx.rollback().await.unwrap();
 

@@ -372,12 +372,13 @@ mod tests {
         assert!(problem.required.is_empty());
         assert!(problem.missing.is_empty());
 
-        let sequence_error = PagesBrowserIntentAccessError::Pages(
-            PagesBrowserIntentError::Dispatch(BrowserIntentDispatchError::CommandSequenceConflict {
-                expected: 8,
-                actual: 7,
-            }),
-        );
+        let sequence_error =
+            PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Dispatch(
+                BrowserIntentDispatchError::CommandSequenceConflict {
+                    expected: 8,
+                    actual: 7,
+                },
+            ));
         let sequence_problem = PagesBrowserIntentProblem::from(&sequence_error);
         assert_eq!(sequence_problem.status, HTTP_CONFLICT);
         assert_eq!(
@@ -385,14 +386,13 @@ mod tests {
             Some(BROWSER_REVISION_CONFLICT_CODE)
         );
 
-        let capability_sequence_error = PagesBrowserIntentAccessError::Capability(
-            BrowserCapabilityAccessError::Dispatch(
+        let capability_sequence_error =
+            PagesBrowserIntentAccessError::Capability(BrowserCapabilityAccessError::Dispatch(
                 BrowserIntentDispatchError::CommandSequenceConflict {
                     expected: 8,
                     actual: 7,
                 },
-            ),
-        );
+            ));
         assert_eq!(
             stable_code_for_error(&capability_sequence_error),
             Some(BROWSER_REVISION_CONFLICT_CODE)

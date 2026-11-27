@@ -142,7 +142,6 @@ pub fn DioxusIsolatedCanvas(
         );
     }));
 
-    #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     let next_resize_context = (instance_is_current && selected_can_resize)
         .then(|| selected_id.clone().zip(selected_rect))
         .flatten()
@@ -704,7 +703,6 @@ pub fn DioxusIsolatedCanvas(
     }
 }
 
-#[cfg(any(all(target_arch = "wasm32", feature = "dioxus-web"), test))]
 #[derive(Debug, Clone, PartialEq)]
 struct DioxusResizeContext {
     instance_id: String,
@@ -713,7 +711,6 @@ struct DioxusResizeContext {
     zoom: f64,
 }
 
-#[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
 fn live_resize_context(
     session: Signal<EditorSessionState>,
     geometry: Signal<BTreeMap<String, CanvasComponentGeometry>>,
@@ -757,7 +754,6 @@ fn live_resize_context(
     })
 }
 
-#[cfg(any(all(target_arch = "wasm32", feature = "dioxus-web"), test))]
 fn resize_context_is_current(
     captured: &DioxusResizeContext,
     current: Option<&DioxusResizeContext>,
@@ -1023,7 +1019,6 @@ fn update_drag_candidates(
         .hit_candidates(position, geometries);
     on_ui_intent.call(UiIntent::UpdateHitTest(candidates));
 }
-
 
 #[cfg(test)]
 mod tests {

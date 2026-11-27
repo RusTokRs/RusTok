@@ -527,6 +527,7 @@ fn endpoint_admits(intent: &str, capabilities: CapabilityState) -> bool {
             intent: intent.to_string(),
             payload,
             sequence: Some(1),
+            command_sequence: None,
             page_id: Some("home".to_string()),
             revision: Some("rev-forms-1".to_string()),
             project_hash: None,

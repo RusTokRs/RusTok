@@ -584,7 +584,6 @@ mod tests {
         .expect("grant")
     }
 
-
     #[test]
     fn inline_edit_sequence_advancement_fails_closed_instead_of_reusing_maximum() {
         assert_eq!(next_inline_edit_sequence(0), Ok(1));

@@ -164,7 +164,10 @@ impl std::fmt::Debug for RegistryRemoteExecutorSettings {
             .field("enabled", &self.enabled)
             .field(
                 "shared_token_configured",
-                &self.shared_token.as_ref().is_some_and(|value| !value.trim().is_empty()),
+                &self
+                    .shared_token
+                    .as_ref()
+                    .is_some_and(|value| !value.trim().is_empty()),
             )
             .field("lease_ttl_ms", &self.lease_ttl_ms)
             .field("requeue_scan_interval_ms", &self.requeue_scan_interval_ms)
@@ -177,7 +180,10 @@ impl std::fmt::Debug for CacheSettings {
         f.debug_struct("CacheSettings")
             .field(
                 "redis_url_configured",
-                &self.redis_url.as_ref().is_some_and(|value| !value.trim().is_empty()),
+                &self
+                    .redis_url
+                    .as_ref()
+                    .is_some_and(|value| !value.trim().is_empty()),
             )
             .finish()
     }
@@ -188,10 +194,16 @@ impl std::fmt::Debug for EmailSettings {
         f.debug_struct("EmailSettings")
             .field("enabled", &self.enabled)
             .field("provider", &self.provider)
-            .field("allow_disabled_in_production", &self.allow_disabled_in_production)
+            .field(
+                "allow_disabled_in_production",
+                &self.allow_disabled_in_production,
+            )
             .field("smtp", &self.smtp)
             .field("from_configured", &!self.from.trim().is_empty())
-            .field("reset_base_url_configured", &!self.reset_base_url.trim().is_empty())
+            .field(
+                "reset_base_url_configured",
+                &!self.reset_base_url.trim().is_empty(),
+            )
             .finish()
     }
 }
@@ -215,7 +227,10 @@ impl std::fmt::Debug for SearchSettings {
             .field("url_configured", &!self.url.trim().is_empty())
             .field(
                 "api_key_configured",
-                &self.api_key.as_ref().is_some_and(|value| !value.trim().is_empty()),
+                &self
+                    .api_key
+                    .as_ref()
+                    .is_some_and(|value| !value.trim().is_empty()),
             )
             .field("index_prefix", &self.index_prefix)
             .field("reindex", &self.reindex)
@@ -1606,7 +1621,12 @@ mod tests {
         settings.search.api_key = Some("search-api-secret".to_string());
         settings.events.iggy.external.username = "iggy-user-secret".to_string();
         settings.events.iggy.external.password = "iggy-password-secret".to_string();
-        settings.events.iggy.bundled.arguments.push("--token=bundled-argument-secret".to_string());
+        settings
+            .events
+            .iggy
+            .bundled
+            .arguments
+            .push("--token=bundled-argument-secret".to_string());
         settings.events.iggy.bundled.environment.insert(
             "PRIVATE_ENV".to_string(),
             "bundled-environment-secret".to_string(),
@@ -1627,7 +1647,10 @@ mod tests {
             "bundled-argument-secret",
             "bundled-environment-secret",
         ] {
-            assert!(!debug.contains(secret), "Debug output leaked {secret}: {debug}");
+            assert!(
+                !debug.contains(secret),
+                "Debug output leaked {secret}: {debug}"
+            );
         }
     }
 

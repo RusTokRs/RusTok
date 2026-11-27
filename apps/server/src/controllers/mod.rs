@@ -1,7 +1,7 @@
 pub mod admin_events;
 pub mod artifact_http;
-pub mod artifact_security;
 pub mod artifact_permissions;
+pub mod artifact_security;
 pub mod auth;
 pub mod channel;
 pub mod flex;

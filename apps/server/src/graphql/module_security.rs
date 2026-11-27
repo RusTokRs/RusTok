@@ -42,7 +42,9 @@ impl ModuleGraphqlField {
                 | "activeBuild"
                 | "buildHistory",
             ) => ModuleAuthority::Read,
-            (OperationType::Query, "marketplaceRegistryFreshness" | "moduleArtifactSecurity") => ModuleAuthority::Manage,
+            (OperationType::Query, "marketplaceRegistryFreshness" | "moduleArtifactSecurity") => {
+                ModuleAuthority::Manage
+            }
             (OperationType::Mutation, "executeArtifactUiAction") => ModuleAuthority::Read,
             (
                 OperationType::Mutation,
@@ -555,7 +557,12 @@ mod tests {
             .expect("artifact security policy should be attached");
 
         assert_eq!(policy.0.len(), 4);
-        assert!(policy.0.iter().all(|field| field.authority == ModuleAuthority::Manage));
+        assert!(
+            policy
+                .0
+                .iter()
+                .all(|field| field.authority == ModuleAuthority::Manage)
+        );
         for name in [
             "moduleArtifactSecurity",
             "quarantineModuleArtifact",

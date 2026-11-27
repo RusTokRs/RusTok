@@ -52,11 +52,13 @@ impl CapabilityBroker for ArtifactEventCapabilityBroker {
         call: &CapabilityCall,
         grant: &CapabilityGrant,
     ) -> SandboxResult<CapabilityResponse> {
-        if call.capability.as_str() != "platform.events" || grant.name != call.capability
+        if call.capability.as_str() != "platform.events"
+            || grant.name != call.capability
             || call.context.tenant_id.is_none_or(|tenant| tenant.is_nil())
             || !matches!(&call.subject, rustok_sandbox::SandboxSubject::ModuleArtifact { slug, .. } if slug == &self.module_slug)
             || self.scope.as_ref().is_some_and(|scope| {
-                !scope.matches_subject(&call.subject) || call.context.tenant_id != Some(scope.tenant_id)
+                !scope.matches_subject(&call.subject)
+                    || call.context.tenant_id != Some(scope.tenant_id)
             })
         {
             return Err(SandboxError::CapabilityDenied(call.capability.clone()));
@@ -156,10 +158,17 @@ impl SeaOrmArtifactEventCapabilityBrokerResolver {
         db: DatabaseConnection,
         infrastructure: ControlPlaneInfrastructure,
     ) -> Self {
-        Self { db, infrastructure, effect_authorizer: None }
+        Self {
+            db,
+            infrastructure,
+            effect_authorizer: None,
+        }
     }
 
-    pub fn with_sql_effect_authorizer(mut self, authorizer: Arc<dyn crate::ArtifactSqlEffectAuthorizer>) -> Self {
+    pub fn with_sql_effect_authorizer(
+        mut self,
+        authorizer: Arc<dyn crate::ArtifactSqlEffectAuthorizer>,
+    ) -> Self {
         self.effect_authorizer = Some(authorizer);
         self
     }
@@ -175,12 +184,17 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactEventCapabilityBrokerRes
         if capability.as_str() != "platform.events" {
             return Err(SandboxError::CapabilityDenied(capability.clone()));
         }
-        let installation = resolve_granted_artifact_capability(&self.db, execution, capability).await?;
+        let installation =
+            resolve_granted_artifact_capability(&self.db, execution, capability).await?;
         let scope = crate::artifact_capability_router::artifact_capability_scope_for_execution(
-            &installation, execution, capability,
+            &installation,
+            execution,
+            capability,
         )?;
         let mut broker = ArtifactEventCapabilityBroker::new(
-            self.db.clone(), self.infrastructure.clone(), execution.slug.clone(),
+            self.db.clone(),
+            self.infrastructure.clone(),
+            execution.slug.clone(),
         );
         broker.scope = Some(scope);
         broker.effect_authorizer = self.effect_authorizer.clone();

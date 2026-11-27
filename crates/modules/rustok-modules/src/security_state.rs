@@ -803,8 +803,8 @@ mod tests {
     use super::{
         ModuleArtifactSecurityAuthorizer, ModuleArtifactSecurityCommand,
         ModuleArtifactSecurityError, ModuleArtifactSecurityStatus,
-        SeaOrmModuleArtifactSecurityResolver, SeaOrmModuleArtifactSecurityService,
-        SecurityAction, lock_security_snapshot_on, persist_state, validate_command, validate_transition,
+        SeaOrmModuleArtifactSecurityResolver, SeaOrmModuleArtifactSecurityService, SecurityAction,
+        lock_security_snapshot_on, persist_state, validate_command, validate_transition,
     };
     use crate::{
         ArtifactReleaseRef, ControlPlaneInfrastructure, ModuleCommandContext, ModulesModule,
@@ -883,10 +883,16 @@ mod tests {
         );
         let command = command();
 
-        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&database)
+            .await
+            .unwrap();
         SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
-            &tx, &command.release, 0,
-        ).await.expect("implicit clear revision admitted");
+            &tx,
+            &command.release,
+            0,
+        )
+        .await
+        .expect("implicit clear revision admitted");
         tx.rollback().await.unwrap();
 
         let initial = service
@@ -966,24 +972,48 @@ mod tests {
             .await
             .expect("changed observability context replays quarantine");
 
-        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
-        assert!(SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
-            &tx, &command.release, 0,
-        ).await.is_err());
+        let tx = crate::backend::begin_fenced_transaction(&database)
+            .await
+            .unwrap();
+        assert!(
+            SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
+                &tx,
+                &command.release,
+                0,
+            )
+            .await
+            .is_err()
+        );
         tx.rollback().await.unwrap();
 
         let mut clear = command.clone();
         clear.expected_revision = 1;
         clear.context.idempotency_key = Uuid::new_v4();
-        let cleared = service.clear_quarantine(clear).await.expect("clear quarantine");
+        let cleared = service
+            .clear_quarantine(clear)
+            .await
+            .expect("clear quarantine");
         assert_eq!(cleared.snapshot.execution_revision(), Some(2));
-        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
-        assert!(SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
-            &tx, &command.release, 0,
-        ).await.is_err(), "clearing quarantine must not revive the original lease");
+        let tx = crate::backend::begin_fenced_transaction(&database)
+            .await
+            .unwrap();
+        assert!(
+            SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
+                &tx,
+                &command.release,
+                0,
+            )
+            .await
+            .is_err(),
+            "clearing quarantine must not revive the original lease"
+        );
         SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
-            &tx, &command.release, 2,
-        ).await.expect("new revision admitted");
+            &tx,
+            &command.release,
+            2,
+        )
+        .await
+        .expect("new revision admitted");
         tx.rollback().await.unwrap();
 
         let mut revoke = command.clone();
@@ -991,10 +1021,18 @@ mod tests {
         revoke.context.idempotency_key = Uuid::new_v4();
         let revoked = service.revoke(revoke).await.expect("revoke");
         assert_eq!(revoked.snapshot.execution_revision(), None);
-        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
-        assert!(SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
-            &tx, &command.release, 2,
-        ).await.is_err());
+        let tx = crate::backend::begin_fenced_transaction(&database)
+            .await
+            .unwrap();
+        assert!(
+            SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
+                &tx,
+                &command.release,
+                2,
+            )
+            .await
+            .is_err()
+        );
         tx.rollback().await.unwrap();
     }
 
@@ -1007,9 +1045,14 @@ mod tests {
         let db = Database::connect(url).await.unwrap();
         assert_eq!(db.get_database_backend(), DbBackend::Postgres);
         let schema = format!("security_fence_test_{}", Uuid::new_v4().simple());
-        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}"))
+            .await
+            .unwrap();
         let setup = db.begin().await.unwrap();
-        setup.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        setup
+            .execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .unwrap();
         setup.execute_unprepared(
             "CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, PRIMARY KEY (scope_kind, scope_tenant_key, slug));
              CREATE TABLE registry_module_releases (slug TEXT, version TEXT, checksum_sha256 TEXT, status TEXT);
@@ -1019,67 +1062,120 @@ mod tests {
 
         let command = command();
         let writer = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        writer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
-        let initial = lock_security_snapshot_on(&writer, &command.release).await.unwrap();
+        writer
+            .execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .unwrap();
+        let initial = lock_security_snapshot_on(&writer, &command.release)
+            .await
+            .unwrap();
         assert_eq!(initial.execution_revision(), Some(0));
         // The same owner primitives used by the security command, before
         // its transaction commits the new state and outbox.
-        persist_state(&writer, ModuleArtifactSecurityStatus::Quarantined, 1, &command)
-            .await.unwrap();
+        persist_state(
+            &writer,
+            ModuleArtifactSecurityStatus::Quarantined,
+            1,
+            &command,
+        )
+        .await
+        .unwrap();
 
         let worker_db = db.clone();
         let worker_schema = schema.clone();
         let release = command.release.clone();
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
         let mut worker = tokio::spawn(async move {
-            let tx = crate::backend::begin_fenced_transaction(&worker_db).await.unwrap();
-            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}")).await.unwrap();
+            let tx = crate::backend::begin_fenced_transaction(&worker_db)
+                .await
+                .unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}"))
+                .await
+                .unwrap();
             ready_tx.send(()).unwrap();
             let result = SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
                 &tx, &release, 0,
-            ).await;
+            )
+            .await;
             tx.rollback().await.unwrap();
             result
         });
         ready_rx.await.unwrap();
-        assert!(tokio::time::timeout(Duration::from_millis(150), &mut worker).await.is_err());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(150), &mut worker)
+                .await
+                .is_err()
+        );
         writer.commit().await.unwrap();
-        assert!(matches!(worker.await.unwrap(),
-            Err(ModuleArtifactSecurityError::AuthorizationDenied(_))));
+        assert!(matches!(
+            worker.await.unwrap(),
+            Err(ModuleArtifactSecurityError::AuthorizationDenied(_))
+        ));
         // Reverse order: the effect wins admission first. A writer cannot
         // publish a new security decision until that effect commits.
         let mut clear = command.clone();
         clear.expected_revision = 1;
         let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
-        assert_eq!(lock_security_snapshot_on(&tx, &clear.release).await.unwrap().revision, 1);
-        persist_state(&tx, ModuleArtifactSecurityStatus::Clear, 2, &clear).await.unwrap();
+        tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .unwrap();
+        assert_eq!(
+            lock_security_snapshot_on(&tx, &clear.release)
+                .await
+                .unwrap()
+                .revision,
+            1
+        );
+        persist_state(&tx, ModuleArtifactSecurityStatus::Clear, 2, &clear)
+            .await
+            .unwrap();
         tx.commit().await.unwrap();
 
         let effect = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        effect.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        effect
+            .execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .unwrap();
         SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
-            &effect, &command.release, 2,
-        ).await.unwrap();
+            &effect,
+            &command.release,
+            2,
+        )
+        .await
+        .unwrap();
         let worker_db = db.clone();
         let worker_schema = schema.clone();
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
         let mut writer = tokio::spawn(async move {
-            let tx = crate::backend::begin_fenced_transaction(&worker_db).await.unwrap();
-            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}")).await.unwrap();
+            let tx = crate::backend::begin_fenced_transaction(&worker_db)
+                .await
+                .unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}"))
+                .await
+                .unwrap();
             ready_tx.send(()).unwrap();
-            let snapshot = lock_security_snapshot_on(&tx, &command.release).await.unwrap();
+            let snapshot = lock_security_snapshot_on(&tx, &command.release)
+                .await
+                .unwrap();
             assert_eq!(snapshot.execution_revision(), Some(2));
             let mut revoke = command;
             revoke.expected_revision = 2;
-            persist_state(&tx, ModuleArtifactSecurityStatus::Revoked, 3, &revoke).await.unwrap();
+            persist_state(&tx, ModuleArtifactSecurityStatus::Revoked, 3, &revoke)
+                .await
+                .unwrap();
             tx.commit().await.unwrap();
         });
         ready_rx.await.unwrap();
-        assert!(tokio::time::timeout(Duration::from_millis(150), &mut writer).await.is_err());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(150), &mut writer)
+                .await
+                .is_err()
+        );
         effect.commit().await.unwrap();
         writer.await.unwrap();
-        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
+            .await
+            .unwrap();
     }
 
     #[test]

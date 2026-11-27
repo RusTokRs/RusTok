@@ -144,7 +144,10 @@ impl std::fmt::Debug for BundledConfig {
         f.debug_struct("BundledConfig")
             .field("executable", &self.executable)
             .field("arguments_count", &self.arguments.len())
-            .field("environment_keys", &self.environment.keys().collect::<Vec<_>>())
+            .field(
+                "environment_keys",
+                &self.environment.keys().collect::<Vec<_>>(),
+            )
             .field("data_dir", &self.data_dir)
             .field("tcp_port", &self.tcp_port)
             .field("http_port", &self.http_port)
@@ -298,12 +301,14 @@ mod tests {
     #[test]
     fn debug_output_redacts_external_and_bundled_credentials() {
         let mut config = IggyConfig::default();
-        config.external.addresses = vec![
-            "iggy://address-user:address-password@broker.example:8090".to_string(),
-        ];
+        config.external.addresses =
+            vec!["iggy://address-user:address-password@broker.example:8090".to_string()];
         config.external.username = "iggy-user-secret".to_string();
         config.external.password = "iggy-password-secret".to_string();
-        config.bundled.arguments.push("--token=bundled-argument-secret".to_string());
+        config
+            .bundled
+            .arguments
+            .push("--token=bundled-argument-secret".to_string());
         config.bundled.environment.insert(
             "PRIVATE_ENV".to_string(),
             "bundled-environment-secret".to_string(),
@@ -318,7 +323,10 @@ mod tests {
             "bundled-argument-secret",
             "bundled-environment-secret",
         ] {
-            assert!(!debug.contains(secret), "Debug output leaked {secret}: {debug}");
+            assert!(
+                !debug.contains(secret),
+                "Debug output leaked {secret}: {debug}"
+            );
         }
     }
 

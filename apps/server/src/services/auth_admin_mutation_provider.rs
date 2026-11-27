@@ -569,14 +569,16 @@ impl ServerAuthAdminMutationProvider {
     ) -> Result<Vec<String>, AuthAdminMutationError> {
         self.prepare_artifact_effect_authority().await?;
         let tx = self.db.begin().await.map_err(internal_admin_error)?;
-        let (keys, _) = self.lock_artifact_runtime_permission_keys_on(
-            &tx, tenant_id, actor_id, installation,
-        ).await?;
+        let (keys, _) = self
+            .lock_artifact_runtime_permission_keys_on(&tx, tenant_id, actor_id, installation)
+            .await?;
         tx.commit().await.map_err(internal_admin_error)?;
         Ok(keys)
     }
 
-    pub(crate) async fn prepare_artifact_effect_authority(&self) -> Result<(), AuthAdminMutationError> {
+    pub(crate) async fn prepare_artifact_effect_authority(
+        &self,
+    ) -> Result<(), AuthAdminMutationError> {
         self.prepare_admin_authority(false).await
     }
 
@@ -635,7 +637,8 @@ impl ServerAuthAdminMutationProvider {
         tx: &sea_orm::DatabaseTransaction,
         deadline: chrono::DateTime<chrono::Utc>,
     ) -> Result<(), AuthAdminMutationError> {
-        self.ensure_user_admin_credential_deadline(tx, Some(deadline)).await
+        self.ensure_user_admin_credential_deadline(tx, Some(deadline))
+            .await
     }
 
     async fn lock_rbac_control_plane(

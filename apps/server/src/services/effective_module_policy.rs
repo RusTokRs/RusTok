@@ -213,7 +213,13 @@ impl EffectiveModulePolicyService {
         registry: &ModuleRegistry,
         tenant_id: uuid::Uuid,
         supported_payload_kinds: &[rustok_modules::ArtifactPayloadKind],
-    ) -> Result<(ModuleEffectivePolicy, rustok_modules::ModuleCompositionIdentity), PlatformCompositionError> {
+    ) -> Result<
+        (
+            ModuleEffectivePolicy,
+            rustok_modules::ModuleCompositionIdentity,
+        ),
+        PlatformCompositionError,
+    > {
         let owner_snapshot = PlatformCompositionService::active_owner_snapshot(db).await?;
         let composition = owner_snapshot.identity();
         let manifest = PlatformCompositionService::snapshot_from_owner(owner_snapshot)?.manifest;

@@ -1,3 +1,4 @@
+use crate::services::rbac_service::RbacService;
 use async_trait::async_trait;
 use rustok_api::{
     AuthContext, AuthPrincipalContext, AuthPrincipalKind, Permission, has_effective_permission,
@@ -7,7 +8,7 @@ use rustok_modules::{
     ModuleArtifactSecurityCommand, ModuleArtifactSecurityError, ModuleArtifactSecurityReceipt,
     ModuleArtifactSecuritySnapshot, ModuleArtifactSecurityStatus, ModuleCommandContext,
 };
-use rustok_rbac::{RbacControlPlanePrincipal, RbacService, require_direct_control_plane_user};
+use rustok_rbac::{RbacControlPlanePrincipal, require_direct_control_plane_user};
 use sea_orm::DatabaseConnection;
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -65,14 +66,10 @@ pub async fn authorize_artifact_security_operator(
 ) -> Result<(), ArtifactSecurityAuthorizationError> {
     validate_direct_operator(auth, principal, tenant_id)?;
 
-    let allowed = RbacService::has_permission(
-        db,
-        &tenant_id,
-        &auth.user_id,
-        &Permission::MODULES_MANAGE,
-    )
-    .await
-    .map_err(|_| ArtifactSecurityAuthorizationError::PermissionCheckFailed)?;
+    let allowed =
+        RbacService::has_permission(db, &tenant_id, &auth.user_id, &Permission::MODULES_MANAGE)
+            .await
+            .map_err(|_| ArtifactSecurityAuthorizationError::PermissionCheckFailed)?;
 
     if !allowed {
         return Err(ArtifactSecurityAuthorizationError::ModulesManageRequired);

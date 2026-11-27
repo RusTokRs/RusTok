@@ -1475,9 +1475,8 @@ mod tests {
             db,
             settings.clone(),
         );
-        let auth_config = crate::auth::test_auth_config(
-            "test-secret-must-be-at-least-32-bytes-long".to_string(),
-        );
+        let auth_config =
+            crate::auth::test_auth_config("test-secret-must-be-at-least-32-bytes-long".to_string());
         let runtime = super::bootstrap_app_runtime(runtime_ctx, auth_config)
             .await
             .expect("registry-only runtime should bootstrap");

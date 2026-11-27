@@ -80,7 +80,10 @@ impl ServerArtifactEffectivePolicyResolver {
         &self,
         tenant_id: uuid::Uuid,
         artifact: &InstalledModuleArtifact,
-    ) -> Result<(ModuleEffectivePolicy, Option<ArtifactServingAuthority>), ArtifactEffectivePolicyResolveError> {
+    ) -> Result<
+        (ModuleEffectivePolicy, Option<ArtifactServingAuthority>),
+        ArtifactEffectivePolicyResolveError,
+    > {
         let (policy, composition) =
             crate::services::effective_module_policy::EffectiveModulePolicyService::resolve_artifact_serving(
                 &self.db,
@@ -104,7 +107,8 @@ impl ServerArtifactEffectivePolicyResolver {
         {
             return Ok((policy, None));
         }
-        let closure = self.node_readiness
+        let closure = self
+            .node_readiness
             .capture_active_policy_closure(tenant_id, artifact, &policy)
             .await
             .map_err(|error| match error {
@@ -116,14 +120,22 @@ impl ServerArtifactEffectivePolicyResolver {
         // The policy was built from one verified owner manifest. A change
         // during policy/closure/readiness derivation must not authorize a
         // mixed snapshot, even if the manifest hash returned to its old value.
-        if !composition.is_current_on(&self.db).await
+        if !composition
+            .is_current_on(&self.db)
+            .await
             .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?
         {
             return Err(ArtifactEffectivePolicyResolveError::Store(
                 "active composition changed during artifact serving admission".into(),
             ));
         }
-        Ok((policy, Some(ArtifactServingAuthority { closure, composition })))
+        Ok((
+            policy,
+            Some(ArtifactServingAuthority {
+                closure,
+                composition,
+            }),
+        ))
     }
 }
 
@@ -134,7 +146,9 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
         tenant_id: uuid::Uuid,
         artifact: &InstalledModuleArtifact,
     ) -> Result<ModuleEffectivePolicy, ArtifactEffectivePolicyResolveError> {
-        self.resolve_with_closure(tenant_id, artifact).await.map(|(policy, _)| policy)
+        self.resolve_with_closure(tenant_id, artifact)
+            .await
+            .map(|(policy, _)| policy)
     }
 
     async fn begin_execution(
@@ -144,9 +158,14 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
         context: &rustok_sandbox::SandboxContext,
         policy: &rustok_sandbox::SandboxPolicy,
         effective_revision: Option<&str>,
-    ) -> std::result::Result<Option<Box<dyn rustok_modules::ArtifactExecutionLeaseGuard>>, rustok_modules::ArtifactBindingDispatchError> {
-        self.execution_authority.begin(self, artifact, binding, context, policy, effective_revision)
-            .await.map(Some)
+    ) -> std::result::Result<
+        Option<Box<dyn rustok_modules::ArtifactExecutionLeaseGuard>>,
+        rustok_modules::ArtifactBindingDispatchError,
+    > {
+        self.execution_authority
+            .begin(self, artifact, binding, context, policy, effective_revision)
+            .await
+            .map(Some)
     }
 }
 
@@ -261,13 +280,23 @@ pub async fn compose_artifact_binding_executor(
         ctx.shared_get::<Arc<rustok_core::ModuleRuntimeExtensions>>()
             .and_then(|extensions| extensions.get::<Arc<super::auth_admin_mutation_provider::ServerAuthAdminMutationProvider>>().cloned()),
     );
-    let resolver = build_capability_resolver(ctx, &control_plane, &storage, &registry, Some(Arc::new(execution_authority.clone())))?;
+    let resolver = build_capability_resolver(
+        ctx,
+        &control_plane,
+        &storage,
+        &registry,
+        Some(Arc::new(execution_authority.clone())),
+    )?;
     let supported_payload_kinds = [
         ArtifactPayloadKind::Rhai,
         ArtifactPayloadKind::WasmComponent,
-    ].into_iter()
-        .filter(|kind| kind.sandbox_executor().is_some_and(|executor| executors.contains(executor)))
-        .collect();
+    ]
+    .into_iter()
+    .filter(|kind| {
+        kind.sandbox_executor()
+            .is_some_and(|executor| executors.contains(executor))
+    })
+    .collect();
     let policy_resolver = ServerArtifactEffectivePolicyResolver {
         db: ctx.db_clone(),
         registry,
@@ -341,10 +370,7 @@ fn build_capability_resolver(
         events = events.with_sql_effect_authorizer(authorizer);
     }
     ArtifactCapabilityBrokerResolverRouter::new()
-        .route(
-            data_capability,
-            Arc::new(data),
-        )
+        .route(data_capability, Arc::new(data))
         .and_then(|router| {
             router.route(
                 object_data_capability,
@@ -369,12 +395,7 @@ fn build_capability_resolver(
                 Arc::new(control_plane.artifact_http_capability()?),
             )
         })
-        .and_then(|router| {
-            router.route(
-                events_capability,
-                Arc::new(events),
-            )
-        })
+        .and_then(|router| router.route(events_capability, Arc::new(events)))
         .map_err(|error| Error::Message(format!("artifact capability route failed: {error}")))
 }
 

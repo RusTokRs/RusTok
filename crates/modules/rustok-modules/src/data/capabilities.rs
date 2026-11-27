@@ -71,7 +71,10 @@ where
         }
     }
 
-    fn with_effect_authorizer(mut self, authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>) -> Self {
+    fn with_effect_authorizer(
+        mut self,
+        authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>,
+    ) -> Self {
         self.effect_authorizer = authorizer;
         self
     }
@@ -99,7 +102,10 @@ where
         }
         let decoded = decode_data_capability_call(call)?;
         let data = match self.effect_authorizer.as_ref() {
-            Some(authorizer) => self.data.clone().with_effect_fence(authorizer.prepare(call).await?),
+            Some(authorizer) => self
+                .data
+                .clone()
+                .with_effect_fence(authorizer.prepare(call).await?),
             None => self.data.clone(),
         };
         match decoded {
@@ -186,10 +192,17 @@ impl SeaOrmArtifactDataCapabilityBrokerResolver {
         db: DatabaseConnection,
         quota_policy: Arc<dyn ArtifactDataQuotaPolicy>,
     ) -> Self {
-        Self { db, quota_policy, effect_authorizer: None }
+        Self {
+            db,
+            quota_policy,
+            effect_authorizer: None,
+        }
     }
 
-    pub fn with_sql_effect_authorizer(mut self, authorizer: Arc<dyn crate::ArtifactSqlEffectAuthorizer>) -> Self {
+    pub fn with_sql_effect_authorizer(
+        mut self,
+        authorizer: Arc<dyn crate::ArtifactSqlEffectAuthorizer>,
+    ) -> Self {
         self.effect_authorizer = Some(authorizer);
         self
     }
@@ -247,14 +260,17 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataCapabilityBrokerReso
         };
         let schema_validator =
             SeaOrmArtifactDataSchemaValidator::new(self.db.clone(), execution.installation_id);
-        Ok(Arc::new(SeaOrmArtifactDataCapabilityBroker::with_quota(
-            self.db.clone(),
-            authorizer,
-            schema_validator,
-            scope,
-            indexes,
-            quota,
-        ).with_effect_authorizer(self.effect_authorizer.clone())))
+        Ok(Arc::new(
+            SeaOrmArtifactDataCapabilityBroker::with_quota(
+                self.db.clone(),
+                authorizer,
+                schema_validator,
+                scope,
+                indexes,
+                quota,
+            )
+            .with_effect_authorizer(self.effect_authorizer.clone()),
+        ))
     }
 }
 

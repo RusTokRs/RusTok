@@ -163,9 +163,7 @@ impl ArtifactSecurityMutation {
     }
 }
 
-fn authorized_request(
-    ctx: &Context<'_>,
-) -> Result<(AuthContext, AuthPrincipalContext, Uuid)> {
+fn authorized_request(ctx: &Context<'_>) -> Result<(AuthContext, AuthPrincipalContext, Uuid)> {
     let auth = ctx
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
@@ -318,9 +316,7 @@ fn map_artifact_security_error(error: ModuleArtifactSecurityError) -> FieldError
                 error_code = "module_artifact_security_store_failed",
                 "Artifact security owner operation failed"
             );
-            <FieldError as GraphQLError>::internal_error(
-                "Artifact security operation failed",
-            )
+            <FieldError as GraphQLError>::internal_error("Artifact security operation failed")
         }
     }
 }

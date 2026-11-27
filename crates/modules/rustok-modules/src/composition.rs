@@ -60,8 +60,12 @@ impl ModuleCompositionIdentity {
         &self,
         connection: &C,
     ) -> Result<bool, ModuleCompositionError> {
-        Ok(SeaOrmModuleCompositionService::active_snapshot_on(connection)
-            .await?.identity() == *self)
+        Ok(
+            SeaOrmModuleCompositionService::active_snapshot_on(connection)
+                .await?
+                .identity()
+                == *self,
+        )
     }
 
     /// Retain the owner row's shared lock through the effect commit.
@@ -71,8 +75,9 @@ impl ModuleCompositionIdentity {
         &self,
         transaction: &DatabaseTransaction,
     ) -> Result<(), ModuleCompositionError> {
-        let current = SeaOrmModuleCompositionService::lock_active_snapshot_in_transaction(transaction)
-            .await?;
+        let current =
+            SeaOrmModuleCompositionService::lock_active_snapshot_in_transaction(transaction)
+                .await?;
         if current.revision != self.revision {
             return Err(ModuleCompositionError::RevisionConflict {
                 expected: self.revision,
@@ -781,20 +786,24 @@ mod tests {
     async fn composition_identity_rejects_aba_and_does_not_bootstrap_missing_state() {
         let database = setup_database().await;
         let service = SeaOrmModuleCompositionService::new(database.clone());
-        let initial = service.ensure_active_snapshot(
-            &serde_json::json!({"default_enabled": ["a"]}), "bootstrap",
-        ).await.unwrap();
+        let initial = service
+            .ensure_active_snapshot(&serde_json::json!({"default_enabled": ["a"]}), "bootstrap")
+            .await
+            .unwrap();
         let original = initial.identity();
-        let enqueuer = RecordingEnqueuer { calls: AtomicUsize::new(0) };
+        let enqueuer = RecordingEnqueuer {
+            calls: AtomicUsize::new(0),
+        };
         for (revision, manifest) in [
             (1, serde_json::json!({"default_enabled": ["b"]})),
             (2, initial.manifest.clone()),
         ] {
             let command = operation(revision, Uuid::new_v4());
             let lease = admit_recording_operation(&service, &command, &manifest).await;
-            service.replace_active_snapshot_and_enqueue(
-                update(command, manifest), &enqueuer, lease,
-            ).await.unwrap();
+            service
+                .replace_active_snapshot_and_enqueue(update(command, manifest), &enqueuer, lease)
+                .await
+                .unwrap();
             assert!(!original.is_current_on(&database).await.unwrap());
         }
         let restored = service.active_snapshot().await.unwrap();
@@ -802,22 +811,34 @@ mod tests {
         assert_eq!(restored.revision, 3);
         let renewed = restored.identity();
         // Model the already-held SQLite owner write reservation.
-        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&database)
+            .await
+            .unwrap();
         tx.execute_unprepared("UPDATE platform_state SET revision = revision WHERE id = 'active'")
-            .await.unwrap();
+            .await
+            .unwrap();
         assert!(matches!(
             original.require_current_in_transaction(&tx).await,
-            Err(ModuleCompositionError::RevisionConflict { expected: 1, current: 3 })
+            Err(ModuleCompositionError::RevisionConflict {
+                expected: 1,
+                current: 3
+            })
         ));
         renewed.require_current_in_transaction(&tx).await.unwrap();
         tx.rollback().await.unwrap();
 
-        database.execute_unprepared("DELETE FROM platform_state WHERE id = 'active'").await.unwrap();
+        database
+            .execute_unprepared("DELETE FROM platform_state WHERE id = 'active'")
+            .await
+            .unwrap();
         assert!(matches!(
             renewed.is_current_on(&database).await,
             Err(ModuleCompositionError::MissingActiveComposition)
         ));
-        assert!(matches!(service.active_snapshot().await, Err(ModuleCompositionError::MissingActiveComposition)));
+        assert!(matches!(
+            service.active_snapshot().await,
+            Err(ModuleCompositionError::MissingActiveComposition)
+        ));
     }
 
     #[tokio::test]
@@ -825,63 +846,119 @@ mod tests {
     async fn postgres_composition_identity_fences_owner_replacement_in_both_directions() {
         use std::time::Duration;
         let db = Database::connect(std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").unwrap())
-            .await.unwrap();
+            .await
+            .unwrap();
         assert_eq!(db.get_database_backend(), DbBackend::Postgres);
         let schema = format!("composition_fence_{}", Uuid::new_v4().simple());
-        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}"))
+            .await
+            .unwrap();
         let setup = db.begin().await.unwrap();
-        setup.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        setup
+            .execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .unwrap();
         setup.execute_unprepared("CREATE TABLE platform_state (id TEXT PRIMARY KEY, revision BIGINT NOT NULL, manifest_json JSONB NOT NULL, manifest_hash TEXT NOT NULL, updated_by TEXT, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL)").await.unwrap();
         let initial = SeaOrmModuleCompositionService::ensure_active_snapshot_on(
-            &setup, &serde_json::json!({"default_enabled": ["a"]}), "bootstrap",
-        ).await.unwrap().identity();
+            &setup,
+            &serde_json::json!({"default_enabled": ["a"]}),
+            "bootstrap",
+        )
+        .await
+        .unwrap()
+        .identity();
         setup.commit().await.unwrap();
 
         // An effect that already owns the shared row lock precedes the CAS.
         let effect = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        effect.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
-        initial.require_current_in_transaction(&effect).await.unwrap();
+        effect
+            .execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .unwrap();
+        initial
+            .require_current_in_transaction(&effect)
+            .await
+            .unwrap();
         let worker_db = db.clone();
         let worker_schema = schema.clone();
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
         let mut writer = tokio::spawn(async move {
-            let tx = crate::backend::begin_fenced_transaction(&worker_db).await.unwrap();
-            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}")).await.unwrap();
+            let tx = crate::backend::begin_fenced_transaction(&worker_db)
+                .await
+                .unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}"))
+                .await
+                .unwrap();
             ready_tx.send(()).unwrap();
             let updated = SeaOrmModuleCompositionService::replace_active_snapshot_on(
-                &tx, update(operation(1, Uuid::new_v4()), serde_json::json!({"default_enabled": ["b"]})),
-            ).await.unwrap();
+                &tx,
+                update(
+                    operation(1, Uuid::new_v4()),
+                    serde_json::json!({"default_enabled": ["b"]}),
+                ),
+            )
+            .await
+            .unwrap();
             tx.commit().await.unwrap();
             updated.identity()
         });
         ready_rx.await.unwrap();
-        assert!(tokio::time::timeout(Duration::from_millis(150), &mut writer).await.is_err());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(150), &mut writer)
+                .await
+                .is_err()
+        );
         effect.commit().await.unwrap();
         let second = writer.await.unwrap();
 
         // A replacement that holds the row first invalidates the waiting
         // effect even when the manifest returns to its original hash.
         let writer = crate::backend::begin_fenced_transaction(&db).await.unwrap();
-        writer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        writer
+            .execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .unwrap();
         SeaOrmModuleCompositionService::replace_active_snapshot_on(
-            &writer, update(operation(2, Uuid::new_v4()), serde_json::json!({"default_enabled": ["a"]})),
-        ).await.unwrap();
+            &writer,
+            update(
+                operation(2, Uuid::new_v4()),
+                serde_json::json!({"default_enabled": ["a"]}),
+            ),
+        )
+        .await
+        .unwrap();
         let worker_db = db.clone();
         let worker_schema = schema.clone();
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
         let mut effect = tokio::spawn(async move {
-            let tx = crate::backend::begin_fenced_transaction(&worker_db).await.unwrap();
-            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}")).await.unwrap();
+            let tx = crate::backend::begin_fenced_transaction(&worker_db)
+                .await
+                .unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}"))
+                .await
+                .unwrap();
             ready_tx.send(()).unwrap();
             let result = second.require_current_in_transaction(&tx).await;
             tx.rollback().await.unwrap();
             result
         });
         ready_rx.await.unwrap();
-        assert!(tokio::time::timeout(Duration::from_millis(150), &mut effect).await.is_err());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(150), &mut effect)
+                .await
+                .is_err()
+        );
         writer.commit().await.unwrap();
-        assert!(matches!(effect.await.unwrap(), Err(ModuleCompositionError::RevisionConflict { expected: 2, current: 3 })));
-        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+        assert!(matches!(
+            effect.await.unwrap(),
+            Err(ModuleCompositionError::RevisionConflict {
+                expected: 2,
+                current: 3
+            })
+        ));
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

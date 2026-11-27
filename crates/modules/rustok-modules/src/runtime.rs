@@ -219,7 +219,8 @@ where
         input: ArtifactBindingDispatchEnvelope,
         policy: SandboxPolicy,
     ) -> Result<SandboxOutcome, ArtifactRuntimeError> {
-        self.execute_binding_with_lease(artifact, binding, context, input, policy, None).await
+        self.execute_binding_with_lease(artifact, binding, context, input, policy, None)
+            .await
     }
 
     async fn execute_binding_with_lease(
@@ -726,14 +727,28 @@ where
         context.trace_id = dispatch.context.trace_id.clone();
         context.idempotency_key = dispatch.context.idempotency_key;
         context.audit_label = Some(dispatch.binding.id.clone());
-        let lease = self.effective_policy.begin_execution(
-            &artifact, dispatch.binding, &context, &policy, effective_revision.as_deref(),
-        ).await?;
+        let lease = self
+            .effective_policy
+            .begin_execution(
+                &artifact,
+                dispatch.binding,
+                &context,
+                &policy,
+                effective_revision.as_deref(),
+            )
+            .await?;
         let input =
             ArtifactBindingDispatchEnvelope::new(dispatch.binding, dispatch.phase, dispatch.input);
         Ok(self
             .runtime
-            .execute_binding_with_lease(&artifact, dispatch.binding, context, input, policy, lease.as_deref())
+            .execute_binding_with_lease(
+                &artifact,
+                dispatch.binding,
+                context,
+                input,
+                policy,
+                lease.as_deref(),
+            )
             .await?
             .output)
     }
@@ -1387,21 +1402,36 @@ mod tests {
         struct CheckBudget(std::sync::atomic::AtomicUsize);
         impl ArtifactExecutionLeaseGuard for CheckBudget {
             fn is_live(&self) -> bool {
-                self.0.fetch_update(
-                    std::sync::atomic::Ordering::SeqCst,
-                    std::sync::atomic::Ordering::SeqCst,
-                    |remaining| remaining.checked_sub(1),
-                ).is_ok()
+                self.0
+                    .fetch_update(
+                        std::sync::atomic::Ordering::SeqCst,
+                        std::sync::atomic::Ordering::SeqCst,
+                        |remaining| remaining.checked_sub(1),
+                    )
+                    .is_ok()
             }
         }
         for budget in [0, 1] {
             let lease = CheckBudget(std::sync::atomic::AtomicUsize::new(budget));
-            let error = runtime.execute_binding_with_lease(
-                &installed, &binding, SandboxContext::new(ExecutionPhase::Event),
-                ArtifactBindingDispatchEnvelope::new(&binding, ExecutionPhase::Event, json!({"id": 1})),
-                SandboxPolicy::default(), Some(&lease),
-            ).await.expect_err("expired execution lease");
-            assert!(matches!(error, ArtifactRuntimeError::Sandbox(SandboxError::Cancelled)));
+            let error = runtime
+                .execute_binding_with_lease(
+                    &installed,
+                    &binding,
+                    SandboxContext::new(ExecutionPhase::Event),
+                    ArtifactBindingDispatchEnvelope::new(
+                        &binding,
+                        ExecutionPhase::Event,
+                        json!({"id": 1}),
+                    ),
+                    SandboxPolicy::default(),
+                    Some(&lease),
+                )
+                .await
+                .expect_err("expired execution lease");
+            assert!(matches!(
+                error,
+                ArtifactRuntimeError::Sandbox(SandboxError::Cancelled)
+            ));
             assert_eq!(observed.lock().unwrap().is_some(), budget == 1);
             *observed.lock().unwrap() = None;
         }

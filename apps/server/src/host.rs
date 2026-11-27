@@ -1038,8 +1038,16 @@ mod tests {
         };
 
         let debug = format!("{config:?}");
-        for secret in ["db-user", "db-password", "jwt-secret-value", "settings-secret"] {
-            assert!(!debug.contains(secret), "Debug output leaked {secret}: {debug}");
+        for secret in [
+            "db-user",
+            "db-password",
+            "jwt-secret-value",
+            "settings-secret",
+        ] {
+            assert!(
+                !debug.contains(secret),
+                "Debug output leaked {secret}: {debug}"
+            );
         }
     }
 
