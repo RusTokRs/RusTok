@@ -2207,3 +2207,17 @@ re-read a removed header and rejects duplicate token headers.
 Focused source regressions cover password/tenant side effects, runner media type,
 path classification, verified-authority propagation and duplicate token headers.
 Compilation, formatting and tests were not run at the maintainer's request.
+
+## Debug-safe configuration and connector diagnostics (2026-11-27)
+
+Secret-bearing runtime configuration no longer prints raw values through Rust
+Debug formatting. Redis URLs, SMTP credentials, registry runner tokens, search
+URLs/API keys, Iggy external credentials, bundled process arguments/environment
+values, database URIs, raw host settings JSON, and S3 endpoint/public URLs are
+represented only by configured-state metadata. Opaque connector acknowledgement
+tokens and Iggy consumer identifiers are also redacted. Focused regression tests
+assert that representative secret values do not appear in Debug output.
+
+The changes preserve Debug support for diagnostics while avoiding accidental
+credential disclosure in logs or assertion output. Compilation, formatting and
+tests remain unrun at the maintainer's request.
