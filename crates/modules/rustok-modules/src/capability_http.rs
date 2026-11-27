@@ -87,12 +87,17 @@ fn is_disallowed_ipv4(ipv4: Ipv4Addr) -> bool {
         || octets[0] >= 240
 }
 
-/// Extracts the IPv4 address embedded in transition-mechanism prefixes
-/// whose traffic is ultimately delivered to that IPv4 destination:
-/// NAT64 well-known prefix `64:ff9b::/96` and 6to4 `2002::/16`.
+/// Extracts the IPv4 address embedded in transition/compatibility prefixes
+/// whose traffic can be delivered to that IPv4 destination: the NAT64
+/// well-known prefix `64:ff9b::/96`, the RFC 8215 local-use prefix
+/// `64:ff9b:1::/48`, deprecated IPv4-compatible `::/96`, and 6to4
+/// `2002::/16`.
 fn embedded_ipv4(ipv6: std::net::Ipv6Addr) -> Option<Ipv4Addr> {
     let segments = ipv6.segments();
-    if segments[..6] == [0x0064, 0xff9b, 0, 0, 0, 0] {
+    if segments[..6] == [0x0064, 0xff9b, 0, 0, 0, 0]
+        || segments[..3] == [0x0064, 0xff9b, 0x0001]
+        || segments[..6] == [0; 6]
+    {
         return Some(Ipv4Addr::from(
             u32::from(segments[6]) << 16 | u32::from(segments[7]),
         ));
@@ -119,12 +124,19 @@ fn is_disallowed_ip(ip: IpAddr) -> bool {
             if let Some(ipv4) = embedded_ipv4(ipv6) {
                 return is_disallowed_ipv4(ipv4);
             }
+            let segments = ipv6.segments();
             ipv6.is_loopback()
                 || ipv6.is_unspecified()
                 || ipv6.is_multicast()
-                || (ipv6.segments()[0] & 0xfe00) == 0xfc00
-                || (ipv6.segments()[0] & 0xffc0) == 0xfe80
-                || (ipv6.segments()[0] == 0x2001 && ipv6.segments()[1] == 0x0db8)
+                || (segments[0] & 0xfe00) == 0xfc00
+                || (segments[0] & 0xffc0) == 0xfe80
+                // Deprecated site-local unicast remains locally routable on
+                // networks that still configure it.
+                || (segments[0] & 0xffc0) == 0xfec0
+                // 2001::/23 is reserved for IETF protocol assignments,
+                // including Teredo and benchmarking/ORCHID ranges.
+                || (segments[0] == 0x2001 && (segments[1] & 0xfe00) == 0)
+                || (segments[0] == 0x2001 && segments[1] == 0x0db8)
         }
     }
 }
@@ -553,6 +565,28 @@ mod tests {
         ));
         assert!(!is_disallowed_ip(
             "2002:0808:0808::".parse().expect("6to4 public address")
+        ));
+        // RFC 8215 local-use NAT64 must screen its embedded IPv4 too.
+        assert!(is_disallowed_ip(
+            "64:ff9b:1::a9fe:a9fe".parse().expect("local-use nat64 private address")
+        ));
+        assert!(!is_disallowed_ip(
+            "64:ff9b:1::808:808".parse().expect("local-use nat64 public address")
+        ));
+        // Deprecated IPv4-compatible addresses cannot bypass IPv4 screening.
+        assert!(is_disallowed_ip(
+            "::a9fe:a9fe".parse().expect("ipv4-compatible metadata address")
+        ));
+        assert!(!is_disallowed_ip(
+            "::808:808".parse().expect("ipv4-compatible public address")
+        ));
+        // Deprecated site-local and IETF special-purpose IPv6 ranges are not
+        // valid public destinations (the latter includes Teredo).
+        assert!(is_disallowed_ip("fec0::1".parse().expect("site-local ipv6")));
+        assert!(is_disallowed_ip(
+            "2001:0:4136:e378:8000:63bf:3fff:fdd2"
+                .parse()
+                .expect("teredo ipv6")
         ));
         // Ordinary public IPv6 is unaffected.
         assert!(!is_disallowed_ip(
