@@ -238,3 +238,23 @@ This is a source-level implementation, not evidence of global deadlock
 freedom. PostgreSQL tenant key-share protects FK ordering, not all changes
 to tenant activity; the latter and RBAC/artifact transaction authority still
 need cross-module verification. Compile and regression tests remain unrun.
+
+## Typed Auth administration credential context (2026-11-27)
+
+The owner context requires CredentialAuthority with distinct direct-session,
+delegated registration, service registration and non-bearer internal variants.
+The shared host resolver corroborates tenant/actor and transport identity
+with the admitted scope before producing the context. GraphQL and Native
+adapters use the trusted AuthPrincipalContext instead of inferring principal
+classification again. The RBAC host bridge constructs the same direct-session
+context. Exact evidence equality with the currently valid host scope remains
+mandatory at the provider boundary; a typed DTO alone confers no authority.
+Grant-only contexts fail closed in production. TrustedInternal is explicit,
+not a fallback, and accepted only by server unit SQL fixtures; maintenance
+uses separate trusted owner APIs. Explicit nested absent scopes mask outer
+authority. OAuth registration digest is omitted from Debug. No bearer JWT
+is carried in the owner context.
+
+The host still depends on its request scope for provenance, permission ceiling
+and invalidation. A fully scope-independent capability and inter-owner
+lock verification are separate remaining work. Compilation and tests unrun.

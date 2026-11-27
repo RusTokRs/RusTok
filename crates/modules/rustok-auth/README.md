@@ -122,9 +122,17 @@ secret preparation remains outside SQL transactions. RBAC role-definition
 mutations and artifact grant/revoke REST handlers now invoke the same
 direct-session authority fence on their RBAC-owned transaction, including
 live module/static role permission checks and final credential expiry.
-Fully typed owner context, artifact-runtime entitlement and global
-PostgreSQL deadlock evidence remain open. Compilation and runtime
-verification are pending.
+The Auth admin port now requires a typed CredentialAuthority (direct
+session, delegated registration, service registration, or explicit
+non-bearer internal intent). Host credential resolution binds the exact
+admitted evidence to GraphQL and Native admin contexts and the RBAC
+bridge; production authenticated ports reject internal/grant-only
+authority. The host still corroborates the typed evidence with the
+valid request scope to preserve invalidation and prevent substitution.
+Explicit nested unauthenticated scopes mask outer credentials.
+Artifact-runtime entitlement, remaining scope-independent owner
+contract work and global PostgreSQL deadlock evidence remain open.
+Compilation and runtime verification are pending.
 
 OAuth authorization rechecks the locked direct-session/access deadline after
 consent and code writes, and code consumption rejects future-dated and expired

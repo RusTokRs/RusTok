@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::{DateTime, Utc};
 use rustok_api::{AuthPrincipalKind, Permission};
+use rustok_auth::{AuthAdminMutationContext, AuthAdminMutationError, CredentialAuthority, OAuthAdminCredentialEvidence};
 use rustok_core::UserRole;
 use uuid::Uuid;
 
@@ -25,46 +26,43 @@ pub(crate) struct RequestCredentialAuthority {
     pub(crate) oauth: Option<OAuthCredentialEvidence>,
 }
 
-/// Identity of the exact durable access registration admitted by the JWT
-/// extractor. Never accept these facts from a command payload or rederive
-/// them from a later consent grant.
-#[derive(Clone, PartialEq, Eq)]
-pub(crate) struct OAuthCredentialEvidence {
-    pub(crate) registration_id: Uuid,
-    pub(crate) app_id: Uuid,
-    pub(crate) client_id: Uuid,
-    pub(crate) token_hash: String,
-    pub(crate) issued_at: DateTime<Utc>,
-    pub(crate) consent_granted_at: Option<sea_orm::prelude::DateTimeWithTimeZone>,
-    pub(crate) scopes: Vec<String>,
-}
+/// Compatibility name for the single owner DTO; construction stays in the
+/// host JWT extractor, not in module transports.
+pub(crate) type OAuthCredentialEvidence = OAuthAdminCredentialEvidence;
 
-impl std::fmt::Debug for OAuthCredentialEvidence {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OAuthCredentialEvidence")
-            .field("registration_id", &self.registration_id)
-            .field("app_id", &self.app_id)
-            .field("client_id", &self.client_id)
-            .field("issued_at", &self.issued_at)
-            .field("consent_granted_at", &self.consent_granted_at)
-            .finish_non_exhaustive()
+pub(crate) fn oauth_credential_from_registration(
+    row: &crate::models::oauth_tokens::Model,
+    client_id: Uuid,
+    scopes: &[String],
+) -> OAuthCredentialEvidence {
+    OAuthCredentialEvidence {
+        registration_id: row.id,
+        app_id: row.app_id,
+        client_id,
+        token_hash: row.token_hash.clone(),
+        issued_at: row.created_at.with_timezone(&Utc),
+        consent_granted_at: row.consent_granted_at,
+        scopes: scopes.to_vec(),
     }
 }
 
-impl OAuthCredentialEvidence {
-    pub(crate) fn from_registration(
-        row: &crate::models::oauth_tokens::Model,
-        client_id: Uuid,
-        scopes: &[String],
-    ) -> Self {
-        Self {
-            registration_id: row.id,
-            app_id: row.app_id,
-            client_id,
-            token_hash: row.token_hash.clone(),
-            issued_at: row.created_at.with_timezone(&Utc),
-            consent_granted_at: row.consent_granted_at,
-            scopes: scopes.to_vec(),
+impl RequestCredentialAuthority {
+    pub(crate) fn typed(&self) -> Option<CredentialAuthority> {
+        match self.principal_kind {
+            AuthPrincipalKind::DirectUser if !self.session_id.is_nil() && self.oauth.is_none() => {
+                Some(CredentialAuthority::DirectSession {
+                    session_id: self.session_id, expires_at: self.expires_at,
+                    recovery_revision: self.recovery_revision,
+                })
+            }
+            AuthPrincipalKind::DelegatedUser => Some(CredentialAuthority::DelegatedOAuth {
+                registration: self.oauth.clone()?, expires_at: self.expires_at,
+                recovery_revision: self.recovery_revision,
+            }),
+            AuthPrincipalKind::Service => Some(CredentialAuthority::ServiceOAuth {
+                registration: self.oauth.clone()?, expires_at: self.expires_at,
+            }),
+            _ => None,
         }
     }
 }
@@ -109,6 +107,10 @@ impl RbacRequestScope {
         scope
     }
 
+    pub(crate) fn admin_credential(&self) -> Option<CredentialAuthority> {
+        self.credential.as_ref()?.typed()
+    }
+
     fn matches(&self, tenant_id: &Uuid, actor_id: &Uuid) -> bool {
         self.tenant_id == *tenant_id && self.actor_id == *actor_id
     }
@@ -133,28 +135,23 @@ impl RbacRequestScopeState {
 }
 
 tokio::task_local! {
-    static CURRENT_RBAC_SCOPE: RbacRequestScopeState;
+    static CURRENT_RBAC_SCOPE: Option<RbacRequestScopeState>;
 }
 
 pub async fn with_rbac_request_scope<F>(scope: Option<RbacRequestScope>, future: F) -> F::Output
 where
     F: Future,
 {
-    match scope {
-        Some(scope) => {
-            CURRENT_RBAC_SCOPE
-                .scope(RbacRequestScopeState::new(scope), future)
-                .await
-        }
-        None => future.await,
-    }
+    // An explicit unauthenticated nested boundary must mask any outer
+    // authenticated request. Never inherit its credential by accident.
+    CURRENT_RBAC_SCOPE.scope(scope.map(RbacRequestScopeState::new), future).await
 }
 
 pub fn permissions_for(tenant_id: &Uuid, actor_id: &Uuid) -> Option<Vec<Permission>> {
     CURRENT_RBAC_SCOPE
         .try_with(|state| {
-            state
-                .matches_valid(tenant_id, actor_id)
+            let state = state.as_ref()?;
+            state.matches_valid(tenant_id, actor_id)
                 .then(|| state.scope.permissions.clone())
         })
         .ok()
@@ -170,19 +167,49 @@ pub(crate) fn credential_for(
 ) -> Option<Option<RequestCredentialAuthority>> {
     CURRENT_RBAC_SCOPE
         .try_with(|state| {
-            state
-                .matches_valid(tenant_id, actor_id)
+            let state = state.as_ref()?;
+            state.matches_valid(tenant_id, actor_id)
                 .then(|| state.scope.credential.clone())
         })
         .ok()
         .flatten()
 }
 
+/// Explicit command evidence must match the currently valid admitted scope.
+/// The grant-only constructor is not a production administrative capability.
+pub(crate) fn credential_for_admin(
+    context: &AuthAdminMutationContext,
+) -> Result<Option<RequestCredentialAuthority>, AuthAdminMutationError> {
+    let scoped = credential_for(&context.tenant_id, &context.actor_id)
+        .ok_or(AuthAdminMutationError::Unauthorized)?;
+    match scoped {
+        Some(evidence) if evidence.typed().as_ref() == Some(&context.credential_authority)
+            && context.principal_kind == Some(evidence.principal_kind) => Ok(Some(evidence)),
+        #[cfg(test)]
+        None if context.credential_authority == CredentialAuthority::TrustedInternal => Ok(None),
+        _ => Err(AuthAdminMutationError::Unauthorized),
+    }
+}
+
+pub(crate) fn bind_admin_context(
+    tenant_id: Uuid, actor_id: Uuid, principal_kind: AuthPrincipalKind,
+    locale: Option<String>,
+) -> Result<AuthAdminMutationContext, AuthAdminMutationError> {
+    let evidence = credential_for(&tenant_id, &actor_id).flatten()
+        .filter(|e| e.principal_kind == principal_kind)
+        .ok_or(AuthAdminMutationError::Unauthorized)?;
+    Ok(AuthAdminMutationContext {
+        tenant_id, actor_id, request_id: None, locale,
+        principal_kind: Some(principal_kind),
+        credential_authority: evidence.typed().ok_or(AuthAdminMutationError::Unauthorized)?,
+    })
+}
+
 pub fn role_for(tenant_id: &Uuid, actor_id: &Uuid) -> Option<UserRole> {
     CURRENT_RBAC_SCOPE
         .try_with(|state| {
-            state
-                .matches_valid(tenant_id, actor_id)
+            let state = state.as_ref()?;
+            state.matches_valid(tenant_id, actor_id)
                 .then(|| state.scope.role.clone())
         })
         .ok()
@@ -200,7 +227,7 @@ pub(crate) fn ensure_scope_not_invalidated(
 ) -> crate::error::Result<()> {
     let invalidated = CURRENT_RBAC_SCOPE
         .try_with(|state| {
-            state.scope.matches(tenant_id, actor_id) && !state.valid.load(Ordering::Acquire)
+            state.as_ref().is_some_and(|state| state.scope.matches(tenant_id, actor_id) && !state.valid.load(Ordering::Acquire))
         })
         .unwrap_or(false);
     if invalidated {
@@ -218,7 +245,7 @@ pub(crate) fn ensure_scope_not_invalidated(
 /// request-wide or transaction-spanning revocation fence.
 pub(crate) fn invalidate_current_rbac_request_scope(tenant_id: &Uuid, actor_id: &Uuid) {
     if let Err(error) = CURRENT_RBAC_SCOPE.try_with(|state| {
-        if state.scope.matches(tenant_id, actor_id) {
+        if let Some(state) = state.as_ref().filter(|state| state.scope.matches(tenant_id, actor_id)) {
             state.valid.store(false, Ordering::Release);
         }
     }) {
@@ -228,7 +255,11 @@ pub(crate) fn invalidate_current_rbac_request_scope(tenant_id: &Uuid, actor_id: 
 
 /// Invalidate the snapshot in this task for a full-cache invalidation.
 pub(crate) fn invalidate_current_rbac_request_scope_for_all() {
-    if let Err(error) = CURRENT_RBAC_SCOPE.try_with(|state| state.valid.store(false, Ordering::Release)) {
+    if let Err(error) = CURRENT_RBAC_SCOPE.try_with(|state| {
+        if let Some(state) = state {
+            state.valid.store(false, Ordering::Release);
+        }
+    }) {
         tracing::trace!(%error, "Current task has no active task-local RBAC scope to invalidate");
     }
 }
@@ -375,6 +406,47 @@ mod tests {
             assert_eq!(credential_for(&tenant, &actor), None);
         }).await;
         assert_eq!(credential_for(&tenant, &actor), None);
+    }
+
+    #[tokio::test]
+    async fn explicit_admin_credential_rejects_substitution_grant_only_and_nested_absence() {
+        let tenant = Uuid::new_v4();
+        let actor = Uuid::new_v4();
+        let mut scope = RbacRequestScope::new(tenant, actor, vec![Permission::USERS_MANAGE], UserRole::Admin);
+        scope.credential = Some(RequestCredentialAuthority {
+            principal_kind: AuthPrincipalKind::DirectUser,
+            session_id: Uuid::new_v4(),
+            expires_at: Utc::now() + chrono::Duration::minutes(5),
+            recovery_revision: 1,
+            oauth: None,
+        });
+        with_rbac_request_scope(Some(scope), async {
+            let context = bind_admin_context(tenant, actor, AuthPrincipalKind::DirectUser, Some("en".into())).unwrap();
+            assert!(credential_for_admin(&context).unwrap().is_some());
+            let mut wrong = context.clone();
+            if let CredentialAuthority::DirectSession { session_id, .. } = &mut wrong.credential_authority {
+                *session_id = Uuid::new_v4();
+            }
+            assert!(matches!(credential_for_admin(&wrong), Err(AuthAdminMutationError::Unauthorized)));
+            wrong = context.clone();
+            wrong.principal_kind = Some(AuthPrincipalKind::Service);
+            assert!(credential_for_admin(&wrong).is_err());
+            wrong = context.clone();
+            wrong.credential_authority = CredentialAuthority::TrustedInternal;
+            assert!(credential_for_admin(&wrong).is_err());
+            with_rbac_request_scope(None, async {
+                assert!(permissions_for(&tenant, &actor).is_none());
+                assert!(credential_for_admin(&context).is_err());
+            }).await;
+            let grant_only = RbacRequestScope::new(tenant, actor, vec![Permission::USERS_MANAGE], UserRole::Admin);
+            with_rbac_request_scope(Some(grant_only), async {
+                assert!(credential_for_admin(&context).is_err());
+                assert!(bind_admin_context(tenant, actor, AuthPrincipalKind::DirectUser, None).is_err());
+            }).await;
+            assert!(credential_for_admin(&context).is_ok());
+            invalidate_current_rbac_request_scope_for_all();
+            assert!(credential_for_admin(&context).is_err());
+        }).await;
     }
 
     #[test]

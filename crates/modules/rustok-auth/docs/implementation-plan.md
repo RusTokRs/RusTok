@@ -661,8 +661,17 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   before commit (including artifact idempotent retries). Owner SQL fixtures
   explicitly inject a test-only authority adapter. Host/session and owner
   rollback regressions are authored, not executed.
-- Pending: extend the owner mutation context to all transports, account for
+- Typed Auth admin context source slice: CredentialAuthority distinguishes
+  direct session, delegated registration, service registration and explicit
+  internal intent. Host resolver binds the admitted facts to GraphQL User
+  and OAuth admin and Native adapters; RBAC host bridge binds direct
+  evidence at its port boundary. Exact equality with the currently valid
+  host scope rejects substituted credentials and retains invalidation.
+  Grant-only production mutations are denied; explicitly marked owner SQL
+  unit fixtures retain test-only compatibility. A nested absent scope masks
+  the outer request. No raw bearer token enters the port.
+- Pending: remove remaining ambient request dependence where a fully
+  explicit host capability can preserve invalidation; account for
   artifact-runtime authority and prove cross-module lock ordering (including
-  tenant active state and all bulk credential revocation paths). Grant-only
-  internal user scopes remain an explicit compatibility boundary. Compile
+  tenant active state and all bulk credential revocation paths). Compile
   and PostgreSQL contention/revocation tests remain unrun.

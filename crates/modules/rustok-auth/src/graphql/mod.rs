@@ -59,19 +59,17 @@ fn auth_runtime(ctx: &Context<'_>) -> Result<AuthLifecycleRuntime> {
         })
 }
 
-fn mutation_context(ctx: &Context<'_>, auth: &AuthContext) -> AuthAdminMutationContext {
+fn mutation_context(ctx: &Context<'_>, auth: &AuthContext) -> Result<AuthAdminMutationContext> {
     let locale = ctx.data::<Locale>().copied().unwrap_or_default();
-    let principal_kind = ctx
-        .data::<AuthPrincipalContext>()
-        .ok()
-        .map(|context| context.kind);
-    AuthAdminMutationContext {
-        actor_id: auth.user_id,
-        tenant_id: auth.tenant_id,
-        request_id: None,
-        locale: Some(locale.as_str().to_string()),
-        principal_kind,
-    }
+    let principal_kind = ctx.data::<AuthPrincipalContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?.kind;
+    let extensions = ctx.data::<Arc<ModuleRuntimeExtensions>>()?;
+    let resolver = extensions.get::<crate::AuthAdminCredentialResolverHandle>()
+        .ok_or_else(|| <FieldError as GraphQLError>::internal_error("Auth admin credential resolver is unavailable"))?;
+    resolver.0.bind(crate::AdminCredentialRequest {
+        tenant_id: auth.tenant_id, user_id: auth.user_id, session_id: auth.session_id,
+        client_id: auth.client_id, grant_type: &auth.grant_type, scopes: &auth.scopes,
+    }, principal_kind, Some(locale.as_str().to_string())).map_err(map_error)
 }
 
 fn auth_lifecycle_context(

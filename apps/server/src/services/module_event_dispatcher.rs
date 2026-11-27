@@ -812,6 +812,7 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         ).with_invite_module_registry(registry.clone()),
     );
     extensions.insert(rustok_rbac::graphql::RbacMutationAuthorityHandle(auth_admin_provider.clone()));
+    extensions.insert(rustok_auth::AuthAdminCredentialResolverHandle(auth_admin_provider.clone()));
     let oauth_admin_provider = Arc::new(
         crate::services::oauth_admin_guard::GuardedOAuthAdminProvider::new(
             db.clone(),

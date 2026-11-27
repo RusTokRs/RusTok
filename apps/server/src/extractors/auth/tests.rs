@@ -834,6 +834,7 @@ async fn delegated_user_admin_rejects_revoked_registration_and_consent_epoch() {
     let context = AuthAdminMutationContext {
         actor_id: actor.id, tenant_id: tenant.id, request_id: None,
         locale: Some("en".into()), principal_kind: Some(AuthPrincipalKind::DelegatedUser),
+        credential_authority: scope().admin_credential().unwrap(),
     };
     let create = |email: &str| CreateUserCommand {
         email: email.into(), password: "Password123!Strong".into(), name: None,
@@ -884,6 +885,7 @@ async fn oauth_admin_mutations_reject_revoked_direct_session() {
     let context = AuthAdminMutationContext {
         actor_id: actor.id, tenant_id: tenant.id, request_id: None,
         locale: Some("en".into()), principal_kind: Some(AuthPrincipalKind::DirectUser),
+        credential_authority: scope().admin_credential().unwrap(),
     };
     let create = |slug: &str| CreateOAuthAppCommand {
         name: "OAuth target".into(), slug: slug.into(), description: None, app_type: "third_party".into(),
@@ -956,6 +958,7 @@ async fn oauth_admin_rejects_revoked_service_registration() {
     let context = AuthAdminMutationContext {
         actor_id: issuer.id, tenant_id: tenant.id, request_id: None, locale: Some("en".into()),
         principal_kind: Some(AuthPrincipalKind::Service),
+        credential_authority: scope().admin_credential().unwrap(),
     };
     let provider = ServerAuthAdminMutationProvider::new(runtime.runtime_ctx(), runtime.require_auth_config().unwrap().clone());
     // Service identity is an app, not a persisted user. A live service
