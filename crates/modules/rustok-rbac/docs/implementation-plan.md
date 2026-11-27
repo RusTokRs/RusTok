@@ -503,3 +503,7 @@ exists.
   different-ID natural-key replacement, other credential/tenant identities and
   revision-based cache optimization remain open. Source regressions authored;
   migration and PostgreSQL contention evidence unrun.
+  Additional regression exercises tenant FK cascades, rollback and rejection
+  of UUID reuse with the same revision in another tenant. The PostgreSQL
+  contention assertion requires the exact witness-busy error. Owner migration
+  registration is guarded; execution remains pending.

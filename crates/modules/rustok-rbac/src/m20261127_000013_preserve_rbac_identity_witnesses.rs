@@ -236,6 +236,60 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sqlite_cascades_cannot_discard_identity_or_revive_old_revisions() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared("PRAGMA foreign_keys = ON").await.unwrap();
+        db.execute_unprepared("PRAGMA recursive_triggers = OFF").await.unwrap();
+        let tenant = "20000000-0000-0000-0000-000000000001";
+        let new_tenant = "20000000-0000-0000-0000-000000000002";
+        db.execute_unprepared(&format!(
+            "CREATE TABLE tenants (id UUID PRIMARY KEY NOT NULL);
+             CREATE TABLE users (id UUID PRIMARY KEY NOT NULL, tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE);
+             CREATE TABLE roles (id UUID PRIMARY KEY NOT NULL, tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, slug TEXT NOT NULL, is_system BOOLEAN NOT NULL);
+             CREATE TABLE permissions (id UUID PRIMARY KEY NOT NULL, tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, resource TEXT NOT NULL, action TEXT NOT NULL);
+             CREATE TABLE user_roles (id UUID PRIMARY KEY NOT NULL, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE);
+             CREATE TABLE role_permissions (id UUID PRIMARY KEY NOT NULL, role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE, permission_id UUID NOT NULL REFERENCES permissions(id) ON DELETE CASCADE);
+             INSERT INTO tenants VALUES ('{tenant}'), ('{new_tenant}');
+             INSERT INTO users VALUES ('{A}', '{tenant}');
+             INSERT INTO roles VALUES ('{B}', '{tenant}', 'manager', TRUE);
+             INSERT INTO permissions VALUES ('{C}', '{tenant}', 'users', 'read');"
+        )).await.unwrap();
+        let tx = db.begin().await.unwrap();
+        let manager = SchemaManager::new(&tx);
+        crate::m20261127_000001_create_rbac_membership_revision::Migration.up(&manager).await.unwrap();
+        crate::m20261127_000003_create_rbac_role_grant_revision::Migration.up(&manager).await.unwrap();
+        Migration.up(&manager).await.unwrap();
+        tx.execute_unprepared(&format!(
+            "INSERT INTO user_roles VALUES ('{A}', '{A}', '{B}');
+             INSERT INTO role_permissions VALUES ('{B}', '{B}', '{C}');"
+        )).await.unwrap();
+        tx.commit().await.unwrap();
+
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared(&format!("DELETE FROM tenants WHERE id = '{tenant}'")).await.unwrap();
+        assert_eq!(witnesses(&tx).await, 3);
+        tx.rollback().await.unwrap();
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared(&format!("DELETE FROM tenants WHERE id = '{tenant}'")).await.unwrap();
+        tx.commit().await.unwrap();
+        assert_eq!(witnesses(&db).await, 3);
+        for table in ["users", "roles", "permissions", "user_roles", "role_permissions"] {
+            let row = db.query_one_raw(Statement::from_string(DatabaseBackend::Sqlite,
+                format!("SELECT COUNT(*) AS count FROM {table}"))).await.unwrap().unwrap();
+            assert_eq!(row.try_get::<i64>("", "count").unwrap(), 0);
+        }
+        // Recreating the same authority UUID in another tenant is also denied.
+        for sql in [
+            format!("INSERT INTO users (id, tenant_id, rbac_membership_revision) VALUES ('{A}', '{new_tenant}', 1)"),
+            format!("INSERT INTO roles (id, tenant_id, slug, is_system, grant_revision) VALUES ('{B}', '{new_tenant}', 'manager', TRUE, 1)"),
+            format!("INSERT INTO permissions VALUES ('{C}', '{new_tenant}', 'users', 'read')"),
+        ] {
+            assert!(db.execute_unprepared(&sql).await.is_err(), "{sql}");
+        }
+        assert_eq!(witnesses(&db).await, 3);
+    }
+
+    #[tokio::test]
     async fn sqlite_backfill_rejects_aliases_and_rolls_back() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         setup(&db).await;
@@ -280,7 +334,8 @@ mod tests {
         let result = tokio::time::timeout(Duration::from_secs(3),
             contender.execute_unprepared(&format!("INSERT INTO users VALUES ('{B}', 'new')")))
             .await.expect("late witness must not wait");
-        assert!(result.is_err());
+        let error = result.expect_err("competing witness must reject the birth");
+        assert!(error.to_string().contains("RBAC identity witness busy"), "{error}");
         contender.rollback().await.unwrap();
         holder.rollback().await.unwrap();
 
