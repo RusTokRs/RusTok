@@ -2282,7 +2282,7 @@ full unsigned 64-bit owner revision without numeric rounding.
 Both transports require a direct authenticated user session and the effective
 modules:manage permission in the resolved tenant. Delegated and service
 principals are rejected. The permission is checked against both the authenticated
-permission snapshot and persisted RBAC state. Successful commands clear the
+permission snapshot and the server's canonical RBAC resolver, including request-scope invalidation. Successful commands clear the
 process-local effective module-policy cache across all tenants, because the
 security aggregate is global to the release. The owner-side SQL execution fence
 remains authoritative for already-running artifact work.
