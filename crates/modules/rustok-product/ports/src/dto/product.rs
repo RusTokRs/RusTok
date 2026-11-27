@@ -386,6 +386,19 @@ mod tests {
         assert_eq!(input.locale, "pt-BR");
         assert!(input.validate().is_ok());
 
+        let whitespace_title = ProductTranslationInput {
+            locale: "en".to_string(),
+            title: " \t\n".to_string(),
+            handle: None,
+            description: None,
+            meta_title: None,
+            meta_description: None,
+        };
+        assert!(
+            whitespace_title.validate().is_err(),
+            "whitespace-only titles must not create rows that block locale migrations"
+        );
+
         let invalid: Result<ProductTranslationInput, _> = serde_json::from_value(json!({
             "locale": "und",
             "title": "Title",
