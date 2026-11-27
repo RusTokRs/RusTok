@@ -12,7 +12,7 @@ use rustok_core::ModuleRegistry;
 use rustok_modules::{
     ArtifactBlobStore, ArtifactCapabilityBrokerResolverRouter, ArtifactEffectivePolicyResolveError,
     ArtifactEffectivePolicyResolver, ArtifactRuntime, ArtifactRuntimeLifecycleExecutor,
-    ArtifactRuntimeReadinessProbe, ExecutorPoolIdentity, ExecutorPoolRegistration,
+    ArtifactPayloadKind, ArtifactRuntimeReadinessProbe, ExecutorPoolIdentity, ExecutorPoolRegistration,
     ExecutorReadinessService, InstalledModuleArtifact, MODULE_BUILD_RUNTIME_ABI,
     ModuleControlPlane, ModuleEffectivePolicy, OwnerPlacementPolicy,
     ResolvingArtifactCapabilityBroker, RuntimeFingerprint, SeaOrmArtifactNodeReadiness,
@@ -62,6 +62,7 @@ struct ServerArtifactEffectivePolicyResolver {
     db: DatabaseConnection,
     registry: ModuleRegistry,
     node_readiness: SeaOrmArtifactNodeReadiness,
+    supported_payload_kinds: Vec<ArtifactPayloadKind>,
 }
 
 #[async_trait]
@@ -72,13 +73,24 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
         artifact: &InstalledModuleArtifact,
     ) -> Result<ModuleEffectivePolicy, ArtifactEffectivePolicyResolveError> {
         let policy =
-            crate::services::effective_module_policy::EffectiveModulePolicyService::resolve(
+            crate::services::effective_module_policy::EffectiveModulePolicyService::resolve_artifact_serving(
                 &self.db,
                 &self.registry,
                 tenant_id,
+                &self.supported_payload_kinds,
             )
             .await
             .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?;
+        // A policy denial remains a policy denial; readiness cannot turn it
+        // into an infrastructure error or authorize a disabled installation.
+        if policy.admit_artifact_execution(
+            tenant_id, &artifact.release,
+            rustok_modules::ArtifactInstallationTarget::ExactInstallation {
+                installation_id: artifact.installation_id,
+            },
+        ).is_none() {
+            return Ok(policy);
+        }
         self.node_readiness
             .require_active(artifact, policy.policy_revision())
             .await
@@ -87,6 +99,26 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
             })?;
         Ok(policy)
     }
+}
+
+/// HTTP/GraphQL admission and the sandbox boundary use the same configured
+/// owner resolver and exact node-readiness check, with no TTL cache.
+pub(crate) async fn resolve_serving_artifact_policy(
+    ctx: &ServerRuntimeContext,
+    tenant_id: uuid::Uuid,
+    artifact: &InstalledModuleArtifact,
+) -> Result<ModuleEffectivePolicy> {
+    let resolver = ctx.shared_get::<ServerArtifactEffectivePolicyResolver>()
+        .ok_or(Error::InternalServerError)?;
+    resolver.resolve(tenant_id, artifact).await.map_err(|error| {
+        tracing::warn!(%error, "artifact serving policy unavailable");
+        match error {
+            ArtifactEffectivePolicyResolveError::NodeNotReady(_) => crate::error::http_error(
+                rustok_web::HttpError::forbidden("module_policy_denied", "Artifact node is not ready for the current policy"),
+            ),
+            _ => Error::InternalServerError,
+        }
+    })
 }
 
 pub const DEFAULT_DEV_ARTIFACT_NODE_ID: uuid::Uuid =
@@ -181,15 +213,22 @@ pub async fn compose_artifact_binding_executor(
     )
     .map_err(|error| Error::Message(format!("artifact node cache is invalid: {error}")))?;
     let runtime = ArtifactRuntime::new(artifact_cache, sandbox);
+    let supported_payload_kinds = [ArtifactPayloadKind::Rhai, ArtifactPayloadKind::WasmComponent]
+        .into_iter()
+        .filter(|kind| runtime.supports_payload_kind(*kind))
+        .collect();
+    let policy_resolver = ServerArtifactEffectivePolicyResolver {
+        db: ctx.db_clone(),
+        registry,
+        node_readiness,
+        supported_payload_kinds,
+    };
+    ctx.shared_insert(policy_resolver.clone());
     Ok(Arc::new(ArtifactRuntimeLifecycleExecutor::new(
         runtime,
         control_plane.installation(),
         control_plane.artifact_sandbox_policy(),
-        ServerArtifactEffectivePolicyResolver {
-            db: ctx.db_clone(),
-            registry,
-            node_readiness,
-        },
+        policy_resolver,
     )))
 }
 

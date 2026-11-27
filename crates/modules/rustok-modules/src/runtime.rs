@@ -648,7 +648,11 @@ where
                 .effective_policy
                 .resolve(dispatch.tenant_id, &artifact)
                 .await?;
-            if policy
+            // An effective-policy token issued before a durable policy
+            // transition must not silently gain authority from a new one.
+            // Owner-revalidation dispatch has no prior revision to compare.
+            if dispatch.admission.policy_revision().is_some_and(|revision| revision != policy.policy_revision())
+                || policy
                 .admit_artifact_execution(
                     dispatch.tenant_id,
                     &artifact.release,
@@ -1096,6 +1100,65 @@ mod tests {
             error,
             ArtifactBindingDispatchError::DeniedByPolicy { .. }
         ));
+    }
+
+    #[tokio::test]
+    async fn runtime_rejects_stale_admission_even_if_current_policy_allows_target() {
+        let installed = installed(&package());
+        let binding = installed.descriptor.bindings[0].clone();
+        let tenant_id = Uuid::new_v4();
+        let target = crate::ArtifactInstallationTarget::ExactInstallation {
+            installation_id: installed.installation_id,
+        };
+        let revision = format!("sha256:{}", "b".repeat(64));
+        let policy: ModuleEffectivePolicy = serde_json::from_value(json!({
+            "policy_revision": revision.clone(),
+            "enabled_modules": [installed.release.slug.clone()],
+            "decisions": {
+                "sample_module": {
+                    "module_slug": "sample_module",
+                    "enabled": true,
+                    "policy_revision": revision.clone(),
+                    "facts": [
+                        {"kind": "definition", "version": installed.release.version.clone(),
+                         "module_kind": "optional", "source": {
+                            "kind": "artifact", "release": installed.release.clone()
+                         }},
+                        {"kind": "artifact_installation", "installation_id": installed.installation_id,
+                         "scope": installed.scope.clone(), "release_digest": installed.release.digest.clone(),
+                         "dependency_graph_revision": installed.dependency_lock.graph_revision,
+                         "dependency_graph_digest": installed.dependency_lock.graph_digest.clone(),
+                         "capability_grant_revision": installed.capability_grant_revision}
+                    ],
+                    "denial_reasons": []
+                }
+            }
+        })).expect("valid current policy");
+        assert!(policy.admit_artifact_execution(tenant_id, &installed.release, target).is_some());
+        let executor = ArtifactRuntimeLifecycleExecutor::new(
+            ArtifactRuntime::new(
+                InMemoryArtifactBlobStore::default(),
+                SandboxRuntime::new(ExecutorRegistry::new(), Arc::new(DenyBroker)),
+            ),
+            FixedInstallation(installed.clone()),
+            DeniedSandboxPolicy,
+            FixedEffectivePolicy(policy),
+        );
+        let error = executor.dispatch_binding(ArtifactBindingDispatch {
+            release: &installed.release,
+            binding: &binding,
+            target,
+            tenant_id,
+            admission: crate::ArtifactExecutionAdmission::effective_policy(
+                tenant_id, &installed.release, target, format!("sha256:{}", "a".repeat(64)),
+            ),
+            input: json!({"id": 1}),
+            phase: ExecutionPhase::Event,
+            context: crate::ArtifactBindingExecutionContext::default(),
+        }).await.expect_err("stale policy must deny before capability resolution");
+        assert!(matches!(error, ArtifactBindingDispatchError::DeniedByPolicy {
+            policy_revision, ..
+        } if policy_revision == revision));
     }
 
     #[tokio::test]

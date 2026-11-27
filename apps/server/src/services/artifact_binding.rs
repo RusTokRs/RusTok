@@ -6,7 +6,6 @@
 //! enumeration surface.
 
 use axum::http::StatusCode;
-use rustok_core::ModuleRegistry;
 use rustok_modules::{
     ArtifactBindingDispatchError, ArtifactBindingExecutionContext, ArtifactBindingIdempotencyClaim,
     ArtifactBindingIdempotencyError, ArtifactBindingIdempotencyRequest, ArtifactExecutionAdmission,
@@ -205,19 +204,9 @@ async fn artifact_policy_admission(
     tenant_id: Uuid,
     installation: &InstalledModuleArtifact,
 ) -> Result<ArtifactExecutionAdmission> {
-    let registry = ctx.shared_get::<ModuleRegistry>().ok_or_else(|| {
-        Error::Message("artifact dispatch requires the initialized module registry".to_string())
-    })?;
-    let policy = crate::services::effective_module_policy::EffectiveModulePolicyService::resolve(
-        ctx.db(),
-        &registry,
-        tenant_id,
-    )
-    .await
-    .map_err(|error| {
-        tracing::error!(%error, "artifact dispatch effective-policy resolution failed");
-        Error::InternalServerError
-    })?;
+    let policy = crate::services::artifact_runtime::resolve_serving_artifact_policy(
+        ctx, tenant_id, installation,
+    ).await?;
     policy
         .admit_artifact_execution(
             tenant_id,

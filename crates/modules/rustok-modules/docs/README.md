@@ -237,10 +237,19 @@ an oversight — churning the durable revision on every worker flap would
 invalidate every revision-keyed cache and transition consumer cluster-wide.
 A cached decision can lag both recovery and loss; a revision match does not
 prove current executor availability. Dispatch checks do not protect earlier
-authorization consumers such as server guards and RBAC. The current server
-policy path builds its catalog from the static registry and does not wire an
-artifact executor into that lifecycle reader; executor kind support is not a
-worker health probe. Do not infer live artifact-worker health from that path.
+authorization consumers such as server guards and RBAC. The static server
+policy path deliberately remains independent of sandbox availability. Artifact
+HTTP/command/UI/audit admission and non-lifecycle execution now share the
+uncached mixed-catalog owner policy. It combines compiled definitions and the
+bounded RLS-scoped active artifact selection, never overriding a native slug,
+and treats active tenant-enabled installations as dynamic activation intent
+while honoring explicit tenant override denials. The actual composed executor's
+payload-kind support supplies the availability input; it is not a worker
+health probe. Exact durable node readiness is still required for the resulting
+policy revision. The reconciliation producer must observe that revision before
+serving; mismatches fail closed. Contextual channel/maintenance owner inputs,
+the reconciliation producer's full revision parity and atomic runtime fences
+remain outstanding.
 The active installation resolver chooses the effective tenant/platform scope by
 slug before checking release identity, including when the two scopes have
 selected different versions. Disabled and uninstalled installations do not
@@ -317,11 +326,13 @@ tests and PostgreSQL/RLS and concurrency verification remain outstanding.
 Artifact binding admission requires an enabled artifact definition for the exact
 release and a matching installation fact; the non-lifecycle executor rechecks
 both against its resolved installation. A static definition with the same slug
-cannot grant artifact execution. Because the current server resolver is
-static-only, artifact bindings using it fail closed until artifact-aware policy
-composition is wired. Lifecycle hooks have a separate admission path. These
-checks still depend on owner provenance, and are not a transactional lock over
-subsequent execution.
+cannot grant artifact execution. Host and sandbox now use the same
+artifact-aware serving resolver. A prior effective-policy admission is rejected
+if the freshly resolved policy revision differs, even when the target remains
+enabled. Owner-revalidation work has no prior revision and must independently
+pass the current policy. Lifecycle hooks have a separate admission path.
+These checks still depend on owner provenance, and are not a transactional
+lock over subsequent execution.
 The server's `get_latest` cache hit does not check an independently obtained
 current owner revision. It exposes only policy; consumers requiring both policy
 and defaults use an uncached resolution that supplies the same manifest defaults

@@ -1338,6 +1338,52 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             .await
     }
 
+    /// Uncached serving policy for the mixed native/artifact composition.
+    /// Only owner-selected active installations contribute definitions and
+    /// activation intent. A native slug collision is an invariant error,
+    /// never an artifact override of a compiled implementation.
+    ///
+    /// The host supplies support from its actual composed executor registry,
+    /// not a caller or artifact assertion. Node readiness is checked by the
+    /// host against the resulting policy revision, separately from support.
+    pub async fn artifact_serving_policy(
+        &self,
+        tenant_id: Uuid,
+        supported_payload_kinds: &[crate::ArtifactPayloadKind],
+    ) -> Result<ModuleEffectivePolicy, ModuleLifecycleDbWriterError> {
+        let installations = SeaOrmArtifactInstallationStore::with_infrastructure(
+            self.db.clone(),
+            self.infrastructure.clone(),
+        );
+        let artifacts = installations.list_active_for_tenant(tenant_id).await
+            .map_err(database_error)?;
+        let mut catalog = (*self.definition_catalog()?).clone();
+        let mut defaults = self.default_enabled_modules.clone();
+        for artifact in &artifacts {
+            catalog.insert(crate::ModuleDefinition::from_artifact_descriptor(&artifact.descriptor))
+                .map_err(ModuleLifecycleDbWriterError::Definition)?;
+            // The active, tenant-enabled selection is the dynamic owner
+            // intent. Explicit tenant overrides can still deny it.
+            defaults.push(artifact.release.slug.clone());
+        }
+        let mut inputs = Vec::with_capacity(artifacts.len());
+        for artifact in artifacts {
+            let supported = supported_payload_kinds.contains(&artifact.descriptor.payload_kind);
+            inputs.push(self.runtime_policy_input_for_artifact(artifact, tenant_id, supported).await?);
+        }
+        ModuleEffectivePolicyQuery::new_with_context(
+            &catalog,
+            defaults,
+            self.overrides(tenant_id).await?,
+            inputs,
+            None,
+            None,
+        )
+        .with_corequisites(self.co_requisites.iter().cloned())
+        .execute()
+        .map_err(ModuleLifecycleDbWriterError::Policy)
+    }
+
     /// Resolves availability using a channel-owner snapshot. Channel lookup
     /// and channel-table access remain outside this module owner; only the
     /// canonical tenant-safe input is evaluated here.
@@ -1449,8 +1495,6 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             self.db.clone(),
             self.infrastructure.clone(),
         );
-        let policies = SeaOrmArtifactSandboxPolicyResolver::new(self.db.clone());
-        let security = SeaOrmModuleArtifactSecurityResolver::new(self.db.clone());
         // Resolve every artifact definition's active installation in one
         // batched owner query (one transaction/RLS scope per policy
         // resolve) instead of one transaction per module.
@@ -1471,7 +1515,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             .await
             .map_err(database_error)?;
         let mut inputs = Vec::new();
-        for ((definition, release), resolved) in
+        for ((definition, _release), resolved) in
             artifact_definitions.into_iter().zip(resolved_installations)
         {
             // Only genuine absence is a policy fact. Storage failures and
@@ -1496,45 +1540,58 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 }
                 Err(error) => return Err(database_error(error)),
             };
-            // The sandbox resolver itself enforces that the stored capability
-            // grant revision matches the installation's, so `Ok` implies the
-            // effective revision is the artifact's. Absence/mismatch are
-            // policy states; storage and invariant failures propagate.
-            let capability_policy_revision =
-                match ArtifactSandboxPolicyResolver::resolve(&policies, &artifact, tenant_id).await
-                {
-                    Ok(_) => Some(artifact.capability_grant_revision),
-                    Err(
-                        ArtifactSandboxPolicyResolveError::Unavailable
-                        | ArtifactSandboxPolicyResolveError::RevisionMismatch,
-                    ) => None,
-                    Err(error) => return Err(database_error(error)),
-                };
             let executor_available = self.artifact_executor.is_some_and(|executor| {
                 executor.supports_payload_kind(artifact.descriptor.payload_kind)
             });
-            // The security resolver returns an explicit `Clear` snapshot when
-            // no security row exists, so every `Err` is a genuine storage or
-            // validation failure and must propagate instead of silently
-            // downgrading the module to a policy denial.
-            let security = Some(security.resolve(release).await?);
-            inputs.push(ModuleEffectivePolicyRuntimeInput {
-                module_slug: definition.slug.clone(),
-                installation: Some(ModuleEffectivePolicyInstallationFact {
-                    installation_id: artifact.installation_id,
-                    scope: artifact.scope,
-                    release_digest: artifact.release.digest,
-                    payload_kind: artifact.descriptor.payload_kind,
-                    dependency_graph_revision: artifact.dependency_lock.graph_revision,
-                    dependency_graph_digest: artifact.dependency_lock.graph_digest,
-                    capability_grant_revision: artifact.capability_grant_revision,
-                }),
-                capability_policy_revision,
-                executor_available,
-                security,
-            });
+            inputs.push(self.runtime_policy_input_for_artifact(artifact, tenant_id, executor_available).await?);
         }
         Ok(inputs)
+    }
+
+    /// Canonical capability/security evidence shared by lifecycle and serving
+    /// policy; absence is a denial fact, storage failure is not absence.
+    async fn runtime_policy_input_for_artifact(
+        &self,
+        artifact: crate::InstalledModuleArtifact,
+        tenant_id: Uuid,
+        executor_available: bool,
+    ) -> Result<ModuleEffectivePolicyRuntimeInput, ModuleLifecycleDbWriterError> {
+        let policies = SeaOrmArtifactSandboxPolicyResolver::new(self.db.clone());
+        let security = SeaOrmModuleArtifactSecurityResolver::new(self.db.clone());
+        // The sandbox resolver itself enforces that the stored capability
+        // grant revision matches the installation's, so `Ok` implies the
+        // effective revision is the artifact's. Absence/mismatch are
+        // policy states; storage and invariant failures propagate.
+        let capability_policy_revision =
+            match ArtifactSandboxPolicyResolver::resolve(&policies, &artifact, tenant_id).await
+            {
+                Ok(_) => Some(artifact.capability_grant_revision),
+                Err(
+                    ArtifactSandboxPolicyResolveError::Unavailable
+                    | ArtifactSandboxPolicyResolveError::RevisionMismatch,
+                ) => None,
+                Err(error) => return Err(database_error(error)),
+            };
+        // The security resolver returns an explicit `Clear` snapshot when
+        // no security row exists, so every `Err` is a genuine storage or
+        // validation failure and must propagate instead of silently
+        // downgrading the module to a policy denial.
+        let security = Some(security.resolve(&artifact.release).await?);
+        Ok(ModuleEffectivePolicyRuntimeInput {
+            module_slug: artifact.release.slug.clone(),
+            installation: Some(ModuleEffectivePolicyInstallationFact {
+                installation_id: artifact.installation_id,
+                scope: artifact.scope,
+                release_digest: artifact.release.digest,
+                payload_kind: artifact.descriptor.payload_kind,
+                dependency_graph_revision: artifact.dependency_lock.graph_revision,
+                dependency_graph_digest: artifact.dependency_lock.graph_digest,
+                capability_grant_revision: artifact.capability_grant_revision,
+            }),
+            capability_policy_revision,
+            executor_available,
+            security,
+        })
     }
 
     async fn recovery_policy_context(

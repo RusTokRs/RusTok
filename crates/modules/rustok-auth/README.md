@@ -144,7 +144,10 @@ reads and durable receipt replay. SQL locks are not held across sandbox
 execution; policy/installation and external execution are not atomically
 fenced by this slice. A claimed operation denied at recheck requires the
 existing reconciliation flow.
-Artifact-runtime entitlement, remaining scope-independent owner
+The artifact-aware serving resolver is now source-wired from owner-selected
+active installations and actual executor support, with exact node readiness
+and policy-revision revalidation. Contextual policy and readiness producer
+parity, post-admission runtime entitlement, remaining scope-independent owner
 contract work and global PostgreSQL deadlock evidence remain open.
 Compilation and runtime verification are pending.
 
