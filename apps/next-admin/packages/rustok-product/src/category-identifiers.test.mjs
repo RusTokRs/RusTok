@@ -8,7 +8,10 @@ import {
 function utf8Length(value) {
   return Array.from(value).reduce((total, character) => {
     const point = character.codePointAt(0) ?? 0;
-    return total + (point <= 0x7f ? 1 : point <= 0x7ff ? 2 : point <= 0xffff ? 3 : 4);
+    return (
+      total +
+      (point <= 0x7f ? 1 : point <= 0x7ff ? 2 : point <= 0xffff ? 3 : 4)
+    );
   }, 0);
 }
 
@@ -27,7 +30,10 @@ test('category slugs remain canonical and within the Taxonomy route byte limit',
 });
 
 test('category codes are valid and bounded for ASCII and Unicode names', () => {
-  assert.equal(categoryCodeFromName('Mechanical Keyboards'), 'mechanical_keyboards');
+  assert.equal(
+    categoryCodeFromName('Mechanical Keyboards'),
+    'mechanical_keyboards'
+  );
   assert.match(categoryCodeFromName('Красный чай'), /^u_[a-f0-9_]+$/);
   assert.ok(categoryCodeFromName('分類'.repeat(100)).length <= 128);
   assert.match(categoryCodeFromName('分類'.repeat(100)), /^[a-z0-9_-]+$/);

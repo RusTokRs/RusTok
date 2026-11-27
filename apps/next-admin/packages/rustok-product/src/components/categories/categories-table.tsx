@@ -35,7 +35,7 @@ export function CategoriesTable({ categories }: CategoriesTableProps) {
     [categories]
   );
   const hierarchyById = React.useMemo(
-    () => new Map(hierarchy.map((item) => [item.id, item])),
+    () => new Map(hierarchy.map((item) => [item.id, item] as const)),
     [hierarchy]
   );
 

@@ -75,7 +75,7 @@ export function ProductCategoryCard({
   const categoryOptions = React.useMemo(() => {
     const hierarchy = buildCategoryHierarchyOptions(categories);
     const labelById = new Map(
-      hierarchy.map((category) => [category.id, category.label])
+      hierarchy.map((category) => [category.id, category.label] as const)
     );
     const structural = categories
       .filter((category) => category.kind === 'structural')

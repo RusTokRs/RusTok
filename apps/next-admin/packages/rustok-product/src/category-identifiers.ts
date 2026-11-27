@@ -75,6 +75,7 @@ function stableNameHash(value: string): string {
 
 /** Produces a bounded lowercase-ASCII category code, including for Unicode names. */
 export function categoryCodeFromName(value: string): string {
+  if (!value.trim()) return '';
   const normalized = value.normalize('NFKD').toLowerCase();
   const ascii = normalized
     .replace(/[\\p{M}]/gu, '')
