@@ -204,6 +204,7 @@ mod patch_tests {
             barcode: None,
             shipping_profile_slug: None,
             axis_values,
+            attribute_values: Vec::new(),
             prices: Vec::new(),
             inventory_quantity: 0,
             inventory_policy: "deny".to_owned(),
@@ -247,6 +248,7 @@ mod patch_tests {
             barcode: None,
             shipping_profile_slug: None,
             axis_values: Vec::new(),
+            attribute_values: Vec::new(),
             prices,
             inventory_quantity: 0,
             inventory_policy: "deny".to_owned(),
@@ -362,6 +364,25 @@ mod patch_tests {
 
         assert!(input.has_changes());
         assert!(input.has_catalog_changes());
+    }
+
+    #[test]
+    fn variant_attribute_value_batches_are_catalog_changes() {
+        let input = UpdateVariantInput {
+            attribute_values: vec![ProductAttributeValueBatch {
+                locale: "en".to_owned(),
+                patches: vec![super::product::ProductAttributeValuePatch {
+                    attribute_id: Uuid::from_u128(1),
+                    value: super::product::ProductAttributeValuePatchValue::Text(
+                        "Blue".to_owned(),
+                    ),
+                }],
+            }],
+            ..Default::default()
+        };
+
+        assert!(input.has_catalog_changes());
+        assert!(input.has_changes());
     }
 
     #[test]

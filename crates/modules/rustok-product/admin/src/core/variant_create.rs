@@ -425,6 +425,7 @@ mod tests {
                 attribute_id: id(4),
                 option_id: id(5),
             }],
+            attribute_values: Vec::new(),
             prices: vec![VariantPriceDraft {
                 currency_code: "USD".into(),
                 amount: "12.000001".into(),
