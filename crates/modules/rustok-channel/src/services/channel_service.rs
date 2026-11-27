@@ -1630,7 +1630,7 @@ impl ChannelService {
         tenant_id: Uuid,
         channel_id: Uuid,
     ) -> ChannelResult<()> {
-        let now = chrono::Utc::now().into();
+        let now = chrono::Utc::now().fixed_offset();
         let txn = self.db.begin().await?;
 
         channel::Entity::update_many()
@@ -1683,7 +1683,7 @@ impl ChannelService {
         tenant_id: Uuid,
         policy_set_id: Uuid,
     ) -> ChannelResult<()> {
-        let now = chrono::Utc::now().into();
+        let now = chrono::Utc::now().fixed_offset();
 
         channel_resolution_policy_set::Entity::update_many()
             .col_expr(

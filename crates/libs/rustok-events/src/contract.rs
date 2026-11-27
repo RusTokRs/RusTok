@@ -8,10 +8,10 @@ use uuid::Uuid;
 use crate::{
     BlogCommentsDelegationScheduleAuditEvent, CheckoutOperationEvent, DomainEvent, EventEnvelope,
     EventValidationError, FormSubmissionEvent, ForumMentionEvent, ForumSearchProjectionEvent,
-    InventoryReservationEvent, InventorySourceEvent, MarketplaceListingEvent,
-    MarketplaceSellerEvent, ProductIndexRefreshEvent, RbacArtifactPermissionEvent,
-    RbacRoleMutationEvent, ReactionsEvent, SocialGraphRelationEvent, TranslationWorkflowEvent,
-    ValidateEvent,
+    InventoryReservationEvent, InventorySourceEvent, LocalizedIndexRefreshEvent,
+    MarketplaceListingEvent, MarketplaceSellerEvent, ProductIndexRefreshEvent,
+    RbacArtifactPermissionEvent, RbacRoleMutationEvent, ReactionsEvent, SocialGraphRelationEvent,
+    TranslationWorkflowEvent, ValidateEvent,
 };
 
 pub(crate) mod sealed {
@@ -69,6 +69,8 @@ pub enum ContractEventPayload {
     InventoryReservation(InventoryReservationEvent),
     #[serde(rename = "inventory_source")]
     InventorySource(InventorySourceEvent),
+    #[serde(rename = "localized_index_refresh")]
+    LocalizedIndexRefresh(LocalizedIndexRefreshEvent),
 }
 
 impl ContractEventPayload {
@@ -77,7 +79,9 @@ impl ContractEventPayload {
     pub const fn requires_module_delivery(&self) -> bool {
         matches!(
             self,
-            Self::InventoryReservation(_) | Self::InventorySource(_)
+            Self::InventoryReservation(_)
+                | Self::InventorySource(_)
+                | Self::LocalizedIndexRefresh(_)
         )
     }
 
@@ -99,6 +103,7 @@ impl ContractEventPayload {
             Self::TranslationWorkflow(event) => event.event_type(),
             Self::InventoryReservation(event) => event.event_type(),
             Self::InventorySource(event) => event.event_type(),
+            Self::LocalizedIndexRefresh(event) => event.event_type(),
         }
     }
 
@@ -120,6 +125,7 @@ impl ContractEventPayload {
             Self::TranslationWorkflow(event) => event.schema_version(),
             Self::InventoryReservation(event) => event.schema_version(),
             Self::InventorySource(event) => event.schema_version(),
+            Self::LocalizedIndexRefresh(event) => event.schema_version(),
         }
     }
 }
@@ -143,6 +149,7 @@ impl ValidateEvent for ContractEventPayload {
             Self::TranslationWorkflow(event) => event.validate(),
             Self::InventoryReservation(event) => event.validate(),
             Self::InventorySource(event) => event.validate(),
+            Self::LocalizedIndexRefresh(event) => event.validate(),
         }
     }
 }

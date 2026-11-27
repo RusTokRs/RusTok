@@ -79,7 +79,8 @@ pub struct UpdateVariantInput {
     pub inventory_quantity: Option<i32>,
     /// Quantity snapshot observed by the caller when inventory_quantity was read.
     pub expected_inventory_quantity: Option<i32>,
-    /// ProductVariant business revision observed by the caller; distinct from the Index watermark.
+    /// ProductVariant business revision for catalog changes; inventory-only writes use their own
+    /// quantity snapshot.
     pub expected_revision: Option<String>,
     #[validate(length(
         min = 1,
@@ -100,17 +101,24 @@ pub struct UpdateVariantInput {
 }
 
 impl UpdateVariantInput {
-    /// Whether the caller supplied any mutation rather than an empty keep-all patch.
-    pub fn has_changes(&self) -> bool {
+    /// Whether the caller supplied a Product-owned catalog mutation.
+    ///
+    /// Inventory quantity is deliberately excluded: it uses its own expected quantity
+    /// snapshot and must not advance ProductVariant business or Index revisions.
+    pub fn has_catalog_changes(&self) -> bool {
         self.sku.is_changed()
             || self.barcode.is_changed()
             || self.shipping_profile_slug.is_changed()
             || self.prices.is_some()
-            || self.inventory_quantity.is_some()
             || self.inventory_policy.is_some()
             || self.weight.is_changed()
             || self.weight_unit.is_changed()
             || self.axis_values.is_some()
+    }
+
+    /// Whether the caller supplied any owner mutation rather than an empty keep-all patch.
+    pub fn has_changes(&self) -> bool {
+        self.has_catalog_changes() || self.inventory_quantity.is_some()
     }
 }
 
@@ -317,6 +325,31 @@ mod patch_tests {
         ] {
             assert_eq!(json.get(field), Some(&serde_json::Value::Null));
         }
+    }
+
+    #[test]
+    fn inventory_only_update_does_not_count_as_a_catalog_mutation() {
+        let input = UpdateVariantInput {
+            inventory_quantity: Some(12),
+            expected_inventory_quantity: Some(9),
+            ..Default::default()
+        };
+
+        assert!(input.has_changes());
+        assert!(!input.has_catalog_changes());
+    }
+
+    #[test]
+    fn mixed_catalog_and_inventory_update_counts_as_both_owner_mutations() {
+        let input = UpdateVariantInput {
+            sku: Patch::Set("SKU-UPDATED".to_owned()),
+            inventory_quantity: Some(12),
+            expected_inventory_quantity: Some(9),
+            ..Default::default()
+        };
+
+        assert!(input.has_changes());
+        assert!(input.has_catalog_changes());
     }
 
     #[test]

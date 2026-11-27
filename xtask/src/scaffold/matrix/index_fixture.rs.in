@@ -5,7 +5,7 @@ use rustok_index::{
     IndexSourceLoadRequest, IndexSourceScanRequest, IndexValue, LocaleKey, ModuleName,
     MutationApplyOutcome, MutationDelivery, PostgresMutationStore, PostgresSchemaRegistrationStore,
     SchemaRef, SchemaVersion, SharedIndexSchemaRegistry, SharedIndexSourceRegistry,
-    materialize_postgres_index_sources,
+    materialize_index_source_registry, materialize_postgres_index_sources,
 };
 use rustok_scaffold_matrix_localized::{
     ProductService, SaveProductTitle, ScaffoldMatrixLocalizedModule,
@@ -87,7 +87,9 @@ async fn assert_index_replay(db: DatabaseConnection) {
     let registry = rustok_distribution::build_registry();
     let mut extensions = rustok_distribution::build_runtime_extensions(&registry).unwrap();
     materialize_postgres_index_sources(&mut extensions, db.clone()).unwrap();
-    let sources = extensions.get::<SharedIndexSourceRegistry>().unwrap();
+    let sources: SharedIndexSourceRegistry = materialize_index_source_registry(&extensions)
+        .unwrap()
+        .unwrap();
     let schemas = extensions
         .get::<SharedIndexSchemaRegistry>()
         .unwrap()
@@ -151,6 +153,30 @@ async fn assert_index_replay(db: DatabaseConnection) {
         IndexValue::String("Русский".into())
     );
     let russian = record.key.clone();
+    let scoped = sources
+        .scan(
+            IndexSourceScanRequest::for_locale(
+                tenant,
+                reference.clone(),
+                LocaleKey::new("ru").unwrap(),
+                None,
+                1,
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(scoped.is_complete());
+    assert_eq!(scoped.mutations(), second.mutations());
+    let crossed_cursor = IndexSourceScanRequest::for_locale(
+        tenant,
+        reference.clone(),
+        LocaleKey::new("ru").unwrap(),
+        first.next_cursor().cloned(),
+        1,
+    )
+    .unwrap();
+    assert!(sources.scan(crossed_cursor).await.is_err());
     let missing = EntityKey {
         locale: Some(LocaleKey::new("de").unwrap()),
         ..russian.clone()

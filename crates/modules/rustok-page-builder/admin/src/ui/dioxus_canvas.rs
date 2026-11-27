@@ -5,6 +5,7 @@ use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind};
 use fly_dioxus::FlyCanvasIframe;
 use fly_ui::{CanvasRect, ResizeHandle, ResizeResult, ResizeSession, UiIntent, ViewportState};
 
+use super::dioxus::canvas_instance_id;
 use crate::core::{page_builder_resize_policy, session::EditorSessionState};
 use crate::editor::{CanvasComponentGeometry, CanvasResourceLimit};
 
@@ -33,7 +34,7 @@ const RESIZE_HANDLES: [ResizeHandle; 8] = [
 #[component]
 pub fn DioxusIsolatedCanvas(
     srcdoc: String,
-    /// Per-document iframe identity. It changes whenever the document or its revision changes.
+    /// Per-document iframe identity. It changes whenever the document, revision or active page changes.
     instance_id: String,
     /// Stable page identity used for server-side browser intents.
     intent_instance_id: String,
@@ -154,6 +155,18 @@ pub fn DioxusIsolatedCanvas(
         let expected_instance = instance_id.clone();
         let intent_instance = intent_instance_id.clone();
         move |payload: String| {
+            let current_instance = {
+                let current = session.read();
+                canvas_instance_id(
+                    current.controller.page_id(),
+                    current.controller.active_page_index(),
+                    current.controller.revision_id(),
+                    &current.controller.editor().revision().project_hash.hex(),
+                )
+            };
+            if current_instance != expected_instance {
+                return;
+            }
             #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
             if let Some((_, message)) = decode_canvas_message(&payload, &expected_instance, None) {
                 handle_canvas_message(
@@ -556,7 +569,7 @@ pub fn DioxusIsolatedCanvas(
                                         aria_label: "Resize {name}",
                                         aria_keyshortcuts: "ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowUp Shift+ArrowDown Shift+ArrowLeft Shift+ArrowRight",
                                         class: format!(
-                                            "pointer-events-auto fill-white stroke-violet-700 stroke-2 {}",
+                                            "pointer-events-auto touch-none select-none fill-white stroke-violet-700 stroke-2 {}",
                                             cursor
                                         ),
                                         onkeydown: {

@@ -8,6 +8,7 @@ use rustok_api::localized_index::{
 };
 use rustok_api::{PortError, TenantLocale};
 use rustok_core::ModuleRuntimeExtensions;
+use rustok_core::search_projection::MAX_SEARCH_PROJECTION_DOCUMENTS_PER_ENTITY;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
     SelectTwo,
@@ -32,6 +33,21 @@ struct RecordIndexReader {
 
 #[async_trait]
 impl LocalizedIndexReader for RecordIndexReader {
+    async fn load_record(&self, tenant_id: Uuid, id: Uuid) -> Result<Vec<LocalizedIndexRow>, PortError> {
+        if tenant_id.is_nil() || id.is_nil() {
+            return Err(invalid_scope());
+        }
+        let copies = scoped_copies(tenant_id)
+            .filter(translation::Column::RecordId.eq(id))
+            .order_by_asc(translation::Column::Locale)
+            .limit((MAX_SEARCH_PROJECTION_DOCUMENTS_PER_ENTITY + 1) as u64)
+            .all(&self.db).await.map_err(|error| storage_unavailable(tenant_id, error))?;
+        if copies.len() > MAX_SEARCH_PROJECTION_DOCUMENTS_PER_ENTITY {
+            return Err(invalid_record());
+        }
+        map_rows(copies)
+    }
+
     async fn scan(
         &self,
         tenant_id: Uuid,

@@ -1741,6 +1741,8 @@ impl CatalogService {
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
+        let has_catalog_changes = input.has_catalog_changes();
+        let has_changes = input.has_changes();
         if input.inventory_quantity.is_some() != input.expected_inventory_quantity.is_some() {
             return Err(CommerceError::Validation(
                 "inventory quantity changes require the quantity snapshot that was read".into(),
@@ -1781,7 +1783,9 @@ impl CatalogService {
         }
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
-        lock_schema_for_product_write(&txn, tenant_id).await?;
+        if has_catalog_changes {
+            lock_schema_for_product_write(&txn, tenant_id).await?;
+        }
 
         let observed_variant = entities::product_variant::Entity::find_by_id(variant_id)
             .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
@@ -1792,147 +1796,153 @@ impl CatalogService {
         let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
         ensure_variant_parent_matches(product_id, variant.product_id)?;
-        if input.has_changes() {
+        if has_catalog_changes {
             ensure_expected_variant_revision(&variant, input.expected_revision.as_deref())?;
         }
-        if !input.has_changes() {
+        if !has_changes {
             let result = self.get_variant_in(&txn, tenant_id, variant_id).await?;
             record_product_operation_result(&result);
             txn.commit().await?;
             return Ok(result);
         }
-        let mut active: entities::product_variant::ActiveModel = variant.into();
-        active.updated_at = Set(Utc::now().into());
+        if has_catalog_changes {
+            let mut active: entities::product_variant::ActiveModel = variant.into();
+            active.updated_at = Set(Utc::now().into());
 
-        // Keep leaves the loaded ActiveValue untouched; Clear and blank Set write SQL NULL.
-        let requested_sku = match &input.sku {
-            Patch::Keep => None,
-            Patch::Clear => Some(None),
-            Patch::Set(value) => Some(super::helpers::normalize_variant_sku(Some(value.as_str()))),
-        };
-        if let Some(sku) = &requested_sku {
-            active.sku = Set(sku.clone());
-        }
-        match input.barcode {
-            Patch::Keep => {}
-            Patch::Clear => active.barcode = Set(None),
-            Patch::Set(value) => active.barcode = Set(Some(value)),
-        }
-        match input.shipping_profile_slug {
-            Patch::Keep => {}
-            Patch::Clear => active.shipping_profile_slug = Set(None),
-            Patch::Set(value) => {
-                active.shipping_profile_slug = Set(normalize_shipping_profile_slug(&value))
-            }
-        }
-        if let Some(inventory_policy) = input.inventory_policy {
-            active.inventory_policy = Set(normalize_variant_inventory_policy(&inventory_policy)?);
-        }
-        match input.weight {
-            Patch::Keep => {}
-            Patch::Clear => active.weight = Set(None),
-            Patch::Set(value) => active.weight = Set(Some(value)),
-        }
-        match input.weight_unit {
-            Patch::Keep => {}
-            Patch::Clear => active.weight_unit = Set(None),
-            Patch::Set(value) => active.weight_unit = Set(Some(value)),
-        }
-        let requested_sku_for_unique_error = requested_sku.as_ref().and_then(|sku| sku.as_deref());
-        let _updated_variant = active.update(&txn).await.map_err(|error| {
-            map_product_unique_violation(error, "", "", requested_sku_for_unique_error)
-        })?;
-
-        if let Some(sku) = requested_sku {
-            self.inventory()
-                .sync_variant_sku_in_tx(&txn, tenant_id, actor_id, variant_id, sku)
-                .await?;
-        }
-
-        if let Some(ref axis_values) = input.axis_values {
-            let configured_axes =
-                load_variant_axis_configuration_in(&txn, tenant_id, product_id).await?;
-            validate_variant_axis_values_against_configuration(
-                axis_values.as_slice(),
-                configured_axes.as_slice(),
-            )?;
-            let configured_axis_attribute_ids = configured_axes
-                .iter()
-                .map(|axis| axis.attribute_id)
-                .collect::<Vec<_>>();
-
-            let title_snapshot =
-                VariantAutoTitleSnapshot::capture(&txn, tenant_id, product_id, &[variant_id])
-                    .await?;
-
-            if !configured_axis_attribute_ids.is_empty() {
-                let backend = txn.get_database_backend();
-                let placeholders = (0..configured_axis_attribute_ids.len())
-                    .map(|index| sql_placeholder(backend, index + 3))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let query = format!(
-                    "SELECT id FROM product_variant_attribute_values WHERE tenant_id = {tenant_ph} AND variant_id = {variant_ph} AND attribute_id IN ({placeholders})",
-                    tenant_ph = sql_placeholder(backend, 1),
-                    variant_ph = sql_placeholder(backend, 2),
-                );
-                let mut params = vec![tenant_id.into(), variant_id.into()];
-                for aid in configured_axis_attribute_ids {
-                    params.push(aid.into());
+            // Keep leaves the loaded ActiveValue untouched; Clear and blank Set write SQL NULL.
+            let requested_sku = match &input.sku {
+                Patch::Keep => None,
+                Patch::Clear => Some(None),
+                Patch::Set(value) => {
+                    Some(super::helpers::normalize_variant_sku(Some(value.as_str())))
                 }
-                let existing_vals: Vec<IdRow> = IdRow::find_by_statement(
-                    Statement::from_sql_and_values(backend, &query, params),
-                )
-                .all(&txn)
-                .await?;
-                for ev in existing_vals {
-                    txn.execute_raw(Statement::from_sql_and_values(
-                        backend,
-                        format!(
-                            "DELETE FROM product_variant_attribute_value_options WHERE tenant_id = {tenant_ph} AND value_id = {value_ph}",
-                            tenant_ph = sql_placeholder(backend, 1),
-                            value_ph = sql_placeholder(backend, 2),
-                        ),
-                        vec![tenant_id.into(), ev.id.into()],
-                    ))
-                    .await?;
-                    txn.execute_raw(Statement::from_sql_and_values(
-                        backend,
-                        format!(
-                            "DELETE FROM product_variant_attribute_values WHERE tenant_id = {tenant_ph} AND id = {value_ph}",
-                            tenant_ph = sql_placeholder(backend, 1),
-                            value_ph = sql_placeholder(backend, 2),
-                        ),
-                        vec![tenant_id.into(), ev.id.into()],
-                    ))
-                    .await?;
+            };
+            if let Some(sku) = &requested_sku {
+                active.sku = Set(sku.clone());
+            }
+            match input.barcode {
+                Patch::Keep => {}
+                Patch::Clear => active.barcode = Set(None),
+                Patch::Set(value) => active.barcode = Set(Some(value)),
+            }
+            match input.shipping_profile_slug {
+                Patch::Keep => {}
+                Patch::Clear => active.shipping_profile_slug = Set(None),
+                Patch::Set(value) => {
+                    active.shipping_profile_slug = Set(normalize_shipping_profile_slug(&value))
                 }
             }
-
-            assign_variant_axis_values_in_tx(&txn, tenant_id, variant_id, axis_values).await?;
-
-            title_snapshot.refresh(&txn, tenant_id, product_id).await?;
-        }
-
-        if let Some(prices) = input.prices {
-            let mut initial_prices = Vec::new();
-            for price_input in &prices {
-                initial_prices.push(InitialPrice {
-                    variant_id,
-                    channel_id: price_input.channel_id,
-                    channel_slug: normalize_public_channel_slug(
-                        price_input.channel_slug.as_deref(),
-                    ),
-                    currency_code: price_input.currency_code.trim().to_ascii_uppercase(),
-                    amount: price_input.amount,
-                    compare_at_amount: price_input.compare_at_amount,
-                });
+            if let Some(inventory_policy) = input.inventory_policy {
+                active.inventory_policy =
+                    Set(normalize_variant_inventory_policy(&inventory_policy)?);
             }
-            self.pricing_port
-                .as_ref()
-                .ok_or_else(pricing_port_unavailable)?
-                .replace_catalog_base_prices_in_tx(&txn, tenant_id, variant_id, initial_prices)
-                .await?;
+            match input.weight {
+                Patch::Keep => {}
+                Patch::Clear => active.weight = Set(None),
+                Patch::Set(value) => active.weight = Set(Some(value)),
+            }
+            match input.weight_unit {
+                Patch::Keep => {}
+                Patch::Clear => active.weight_unit = Set(None),
+                Patch::Set(value) => active.weight_unit = Set(Some(value)),
+            }
+            let requested_sku_for_unique_error =
+                requested_sku.as_ref().and_then(|sku| sku.as_deref());
+            let _updated_variant = active.update(&txn).await.map_err(|error| {
+                map_product_unique_violation(error, "", "", requested_sku_for_unique_error)
+            })?;
+
+            if let Some(sku) = requested_sku {
+                self.inventory()
+                    .sync_variant_sku_in_tx(&txn, tenant_id, actor_id, variant_id, sku)
+                    .await?;
+            }
+
+            if let Some(ref axis_values) = input.axis_values {
+                let configured_axes =
+                    load_variant_axis_configuration_in(&txn, tenant_id, product_id).await?;
+                validate_variant_axis_values_against_configuration(
+                    axis_values.as_slice(),
+                    configured_axes.as_slice(),
+                )?;
+                let configured_axis_attribute_ids = configured_axes
+                    .iter()
+                    .map(|axis| axis.attribute_id)
+                    .collect::<Vec<_>>();
+
+                let title_snapshot =
+                    VariantAutoTitleSnapshot::capture(&txn, tenant_id, product_id, &[variant_id])
+                        .await?;
+
+                if !configured_axis_attribute_ids.is_empty() {
+                    let backend = txn.get_database_backend();
+                    let placeholders = (0..configured_axis_attribute_ids.len())
+                        .map(|index| sql_placeholder(backend, index + 3))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let query = format!(
+                        "SELECT id FROM product_variant_attribute_values WHERE tenant_id = {tenant_ph} AND variant_id = {variant_ph} AND attribute_id IN ({placeholders})",
+                        tenant_ph = sql_placeholder(backend, 1),
+                        variant_ph = sql_placeholder(backend, 2),
+                    );
+                    let mut params = vec![tenant_id.into(), variant_id.into()];
+                    for aid in configured_axis_attribute_ids {
+                        params.push(aid.into());
+                    }
+                    let existing_vals: Vec<IdRow> = IdRow::find_by_statement(
+                        Statement::from_sql_and_values(backend, &query, params),
+                    )
+                    .all(&txn)
+                    .await?;
+                    for ev in existing_vals {
+                        txn.execute_raw(Statement::from_sql_and_values(
+                            backend,
+                            format!(
+                                "DELETE FROM product_variant_attribute_value_options WHERE tenant_id = {tenant_ph} AND value_id = {value_ph}",
+                                tenant_ph = sql_placeholder(backend, 1),
+                                value_ph = sql_placeholder(backend, 2),
+                            ),
+                            vec![tenant_id.into(), ev.id.into()],
+                        ))
+                        .await?;
+                        txn.execute_raw(Statement::from_sql_and_values(
+                            backend,
+                            format!(
+                                "DELETE FROM product_variant_attribute_values WHERE tenant_id = {tenant_ph} AND id = {value_ph}",
+                                tenant_ph = sql_placeholder(backend, 1),
+                                value_ph = sql_placeholder(backend, 2),
+                            ),
+                            vec![tenant_id.into(), ev.id.into()],
+                        ))
+                        .await?;
+                    }
+                }
+
+                assign_variant_axis_values_in_tx(&txn, tenant_id, variant_id, axis_values).await?;
+
+                title_snapshot.refresh(&txn, tenant_id, product_id).await?;
+            }
+
+            if let Some(prices) = input.prices {
+                let mut initial_prices = Vec::new();
+                for price_input in &prices {
+                    initial_prices.push(InitialPrice {
+                        variant_id,
+                        channel_id: price_input.channel_id,
+                        channel_slug: normalize_public_channel_slug(
+                            price_input.channel_slug.as_deref(),
+                        ),
+                        currency_code: price_input.currency_code.trim().to_ascii_uppercase(),
+                        amount: price_input.amount,
+                        compare_at_amount: price_input.compare_at_amount,
+                    });
+                }
+                self.pricing_port
+                    .as_ref()
+                    .ok_or_else(pricing_port_unavailable)?
+                    .replace_catalog_base_prices_in_tx(&txn, tenant_id, variant_id, initial_prices)
+                    .await?;
+            }
         }
 
         if let Some(quantity) = input.inventory_quantity {
@@ -1950,15 +1960,17 @@ impl CatalogService {
                 .await?;
         }
 
-        txn.publish_in_tx(
-            tenant_id,
-            Some(actor_id),
-            DomainEvent::VariantUpdated {
-                variant_id,
-                product_id,
-            },
-        )
-        .await?;
+        if has_catalog_changes {
+            txn.publish_in_tx(
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::VariantUpdated {
+                    variant_id,
+                    product_id,
+                },
+            )
+            .await?;
+        }
 
         let result = self.get_variant_in(&txn, tenant_id, variant_id).await?;
         record_product_operation_result(&result);

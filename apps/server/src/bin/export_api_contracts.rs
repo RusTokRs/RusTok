@@ -21,7 +21,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("Usage: export_api_contracts [--output-dir PATH]");
         return Ok(());
     };
-    fs::create_dir_all(&output_dir)?;
 
     let settings = RustokSettings::default();
     if settings.runtime.is_registry_only() {
@@ -33,7 +32,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let openapi = rustok_server::controllers::swagger::build_openapi_document(&settings);
     let openapi_json = serde_json::to_string_pretty(&openapi)?;
-    write_contract(&output_dir.join("openapi.json"), &openapi_json)?;
 
     let graphql_schema = Schema::build(
         Query::default(),
@@ -41,7 +39,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         Subscription::default(),
     )
     .finish();
-    write_contract(&output_dir.join("schema.graphql"), &graphql_schema.sdl())?;
+    let graphql_sdl = graphql_schema.sdl();
+
+    fs::create_dir_all(&output_dir)?;
+    write_contract(&output_dir.join("openapi.json"), &openapi_json)?;
+    write_contract(&output_dir.join("schema.graphql"), &graphql_sdl)?;
 
     println!("exported API contracts to {}", output_dir.display());
     Ok(())

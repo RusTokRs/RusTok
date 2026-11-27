@@ -89,7 +89,10 @@ For the relational Index, the localized record owner exposes tenant-scoped
 keyset replay and exact-locale point loads. Distribution adapts the declared
 schema, preserving source revision and locale identity and converting unpublished
 rows to revisioned tombstones. This contract supplies internal replay independently
-of Search and does not establish public Index serving or incremental delivery.
+of Search. Publication, withdrawal and edits of published titles also append
+the sealed Index refresh fact in the same owner transaction. The Index listener
+stores the latest exact locale copies or tombstones before acknowledging the
+event. Public Index serving requires independent admission.
 
 ## Failure semantics
 

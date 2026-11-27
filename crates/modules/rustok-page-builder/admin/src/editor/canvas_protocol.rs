@@ -59,6 +59,9 @@ pub struct CanvasBridgeEnvelope {
 impl CanvasBridgeEnvelope {
     pub fn is_accepted(&self, expected_instance_id: &str, last_sequence: Option<u64>) -> bool {
         self.protocol == FLY_IFRAME_PROTOCOL
+            && self.sequence > 0
+            && !self.instance_id.trim().is_empty()
+            && !expected_instance_id.trim().is_empty()
             && self.instance_id == expected_instance_id
             && last_sequence.is_none_or(|sequence| self.sequence > sequence)
     }
@@ -97,6 +100,25 @@ mod tests {
         assert!(decode_canvas_message(&payload, "canvas-a", Some(3)).is_some());
         assert!(decode_canvas_message(&payload, "canvas-a", Some(4)).is_none());
         assert!(decode_canvas_message(&payload, "canvas-b", None).is_none());
+        assert!(decode_canvas_message(&payload, "", None).is_none());
+
+        let blank_identity = serde_json::to_string(&CanvasBridgeEnvelope {
+            protocol: FLY_IFRAME_PROTOCOL.to_string(),
+            instance_id: "  ".to_string(),
+            sequence: 1,
+            message: CanvasBridgeMessage::Ready,
+        })
+        .expect("serialize blank identity");
+        assert!(decode_canvas_message(&blank_identity, "  ", None).is_none());
+
+        let zero_sequence = serde_json::to_string(&CanvasBridgeEnvelope {
+            protocol: FLY_IFRAME_PROTOCOL.to_string(),
+            instance_id: "canvas-a".to_string(),
+            sequence: 0,
+            message: CanvasBridgeMessage::Ready,
+        })
+        .expect("serialize zero sequence");
+        assert!(decode_canvas_message(&zero_sequence, "canvas-a", None).is_none());
     }
 
     #[test]

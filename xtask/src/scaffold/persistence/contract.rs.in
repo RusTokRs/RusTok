@@ -7,7 +7,10 @@ use rustok_core::search_projection::{
 use rustok_core::{
     MigrationSource, ModuleRuntimeExtensions, RusToKModule, SecurityContext, UserRole,
 };
-use rustok_events::{DomainEvent, EventEnvelope};
+use rustok_events::{
+    ContractEventEnvelope, ContractEventPayload, DomainEvent, EventEnvelope,
+    LOCALIZED_INDEX_REFRESH_EVENT_TYPE,
+};
 use rustok_outbox_storage::{SysEvents, SysEventsMigration};
 use rustok_search::SearchAudienceRegistry;
 use rustok_test_utils::db::{
@@ -251,7 +254,7 @@ async fn assert_owner_contract(db: DatabaseConnection) {
             .unwrap(),
         published
     );
-    assert_eq!(SysEvents::find().count(&db).await.unwrap(), 1);
+    assert_eq!(SysEvents::find().count(&db).await.unwrap(), 2);
     let public = owner
         .get_published(tenant, first.id, "fr", None)
         .await
@@ -378,15 +381,31 @@ async fn assert_owner_contract(db: DatabaseConnection) {
         Err(RecordError::NotFound)
     ));
     let rows = SysEvents::find().all(&db).await.unwrap();
-    assert_eq!(rows.len(), 3);
+    assert_eq!(rows.len(), 6);
+    let mut index_versions = Vec::new();
     for row in rows {
-        let envelope: EventEnvelope = serde_json::from_value(row.payload).unwrap();
-        assert_eq!(envelope.tenant_id, tenant);
-        assert!(
-            matches!(envelope.event, DomainEvent::ReindexRequested { target_type, target_id }
-            if target_type == format!("{SOURCE_REINDEX_TARGET_PREFIX}__SLUG__") && target_id == Some(first.id))
-        );
+        if row.event_type == LOCALIZED_INDEX_REFRESH_EVENT_TYPE {
+            let envelope: ContractEventEnvelope = serde_json::from_value(row.payload).unwrap();
+            assert_eq!(envelope.tenant_id(), tenant);
+            let ContractEventPayload::LocalizedIndexRefresh(event) = envelope.payload().unwrap()
+            else {
+                panic!("expected a localized Index refresh event");
+            };
+            assert_eq!(event.module_slug, "__SLUG__");
+            assert_eq!(event.entity_type, "__ENTITY_SLUG__");
+            assert_eq!(event.record_id, first.id);
+            index_versions.push(event.source_version);
+        } else {
+            let envelope: EventEnvelope = serde_json::from_value(row.payload).unwrap();
+            assert_eq!(envelope.tenant_id, tenant);
+            assert!(
+                matches!(envelope.event, DomainEvent::ReindexRequested { target_type, target_id }
+                if target_type == format!("{SOURCE_REINDEX_TARGET_PREFIX}__SLUG__") && target_id == Some(first.id))
+            );
+        }
     }
+    index_versions.sort_unstable();
+    assert_eq!(index_versions, [4, 5, 6]);
     if let Some(search) = &search {
         assert!(search.find_visible(tenant, "fr", "Modifié").await.items.is_empty());
         assert!(
@@ -428,7 +447,7 @@ async fn translation_failure_rolls_back_the_base_revision() {
 }
 
 #[tokio::test]
-async fn outbox_failure_rolls_back_publication() {
+async fn search_outbox_failure_rolls_back_publication_and_index_fact() {
     let db = setup_test_db().await;
     let (tenant, _) = seed(&db).await;
     let owner = __ENTITY__Service::new(db.clone(), Resource::Posts);
@@ -438,7 +457,7 @@ async fn outbox_failure_rolls_back_publication() {
         .await
         .unwrap();
     db.execute_unprepared(
-        "CREATE TRIGGER reject_outbox BEFORE INSERT ON sys_events BEGIN SELECT RAISE(ABORT, 'test outbox failure'); END",
+        "CREATE TRIGGER reject_outbox BEFORE INSERT ON sys_events WHEN NEW.event_type = 'index.reindex_requested' BEGIN SELECT RAISE(ABORT, 'test outbox failure'); END",
     ).await.unwrap();
     assert!(matches!(
         owner

@@ -47,7 +47,7 @@ fn main() -> eyre::Result<()> {
     if has_otel {
         runtime.block_on(rustok_telemetry::otel::shutdown());
     }
-    Ok(result?)
+    result.map_err(Into::into)
 }
 
 fn is_validate_jwt_keyring_command(args: &[String]) -> bool {
@@ -89,6 +89,28 @@ fn resolve_service_name(otel_name: Option<String>, rustok_name: Option<String>) 
         .to_string()
 }
 
+fn parse_otel_enabled(raw: Option<&str>) -> bool {
+    matches!(
+        raw.map(|s| s.trim().to_ascii_lowercase()).as_deref(),
+        Some("true" | "1" | "yes" | "on")
+    )
+}
+
+fn resolve_otel_config(
+    otel_enabled_raw: Option<&str>,
+    service_name: &str,
+    build_base: impl FnOnce() -> rustok_telemetry::otel::OtelConfig,
+) -> Option<rustok_telemetry::otel::OtelConfig> {
+    if !parse_otel_enabled(otel_enabled_raw) {
+        return None;
+    }
+
+    let mut config = build_base();
+    config.enabled = true;
+    config.service_name = service_name.to_string();
+    Some(config)
+}
+
 fn telemetry_config() -> TelemetryConfig {
     let log_format = parse_log_format(std::env::var("RUSTOK_LOG_FORMAT").ok().as_deref());
     let metrics = parse_metrics_enabled(std::env::var("RUSTOK_METRICS").ok().as_deref());
@@ -96,19 +118,12 @@ fn telemetry_config() -> TelemetryConfig {
         std::env::var("OTEL_SERVICE_NAME").ok(),
         std::env::var("RUSTOK_SERVICE_NAME").ok(),
     );
-
-    // Check if OpenTelemetry is enabled
-    let otel = if std::env::var("OTEL_ENABLED")
-        .map(|v| {
-            let s = v.trim().to_ascii_lowercase();
-            s == "true" || s == "1" || s == "yes" || s == "on"
-        })
-        .unwrap_or(false)
-    {
-        Some(rustok_telemetry::otel::OtelConfig::from_env())
-    } else {
-        None
-    };
+    let otel_enabled_raw = std::env::var("OTEL_ENABLED").ok();
+    let otel = resolve_otel_config(
+        otel_enabled_raw.as_deref(),
+        &service_name,
+        rustok_telemetry::otel::OtelConfig::from_env,
+    );
 
     TelemetryConfig {
         service_name,
@@ -146,6 +161,9 @@ mod tests {
     fn thread_stack_size_enforces_bounds() {
         // Less than 2MB falls back to default
         assert_eq!(parse_thread_stack_size(Some("1048576")), DEFAULT_STACK_SIZE);
+        // Exact lower and upper inclusive bounds are accepted
+        assert_eq!(parse_thread_stack_size(Some("2097152")), MIN_STACK_SIZE);
+        assert_eq!(parse_thread_stack_size(Some("67108864")), MAX_STACK_SIZE);
         // Between 2MB and 64MB is accepted
         assert_eq!(parse_thread_stack_size(Some("4194304")), 4 * 1024 * 1024);
         assert_eq!(
@@ -216,5 +234,40 @@ mod tests {
             "rustok-server"
         );
         assert_eq!(resolve_service_name(None, None), "rustok-server");
+    }
+
+    #[test]
+    fn otel_enabled_parsing_normalizes_truthy_values() {
+        assert!(parse_otel_enabled(Some("true")));
+        assert!(parse_otel_enabled(Some("  TRUE  ")));
+        assert!(parse_otel_enabled(Some("1")));
+        assert!(parse_otel_enabled(Some("yes")));
+        assert!(parse_otel_enabled(Some("on")));
+
+        assert!(!parse_otel_enabled(None));
+        assert!(!parse_otel_enabled(Some("")));
+        assert!(!parse_otel_enabled(Some("false")));
+        assert!(!parse_otel_enabled(Some("0")));
+        assert!(!parse_otel_enabled(Some("no")));
+    }
+
+    #[test]
+    fn resolve_otel_config_propagates_enabled_and_resolved_service_name() {
+        assert!(resolve_otel_config(None, "custom-svc", || {
+            panic!("base builder must not run when OTEL is disabled");
+        })
+        .is_none());
+
+        let resolved = resolve_otel_config(Some("yes"), "custom-svc", || {
+            rustok_telemetry::otel::OtelConfig {
+                service_name: "stale-default".to_string(),
+                enabled: false,
+                ..Default::default()
+            }
+        })
+        .expect("OTEL should be enabled for 'yes'");
+
+        assert!(resolved.enabled);
+        assert_eq!(resolved.service_name, "custom-svc");
     }
 }

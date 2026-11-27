@@ -116,7 +116,11 @@ advances its watermark. Direct Pricing base-price writes touch the Product-owned
 Variant row and record the exact Index refresh cause in the same transaction, so
 stale catalog replacements conflict. Inventory quantity remains a separate
 Inventory-owned snapshot checked with `expected_inventory_quantity`; it does not
-reuse either ProductVariant counter.
+reuse either ProductVariant counter. An inventory-only `UpdateVariant` therefore does
+not write the ProductVariant row, acquire the Product schema write fence, advance either
+ProductVariant counter, or publish `VariantUpdated`; Inventory publishes its own
+`InventoryUpdated` event in the shared transaction. A mixed catalog/quantity patch
+executes both owner mutations atomically and requires both predecessor snapshots.
 
 ## Value and Translation lock order
 

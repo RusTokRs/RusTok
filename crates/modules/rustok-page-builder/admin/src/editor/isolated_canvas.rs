@@ -26,16 +26,23 @@ struct ViewportSvgGeometry {
 
 #[component]
 pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
-    let instance_seed = runtime.controller.with(|controller| {
-        format!(
-            "{}-{}-{}",
-            dom_id(controller.page_id()),
-            dom_id(controller.revision_id()),
-            controller.editor().revision().project_hash.hex()
-        )
+    let instance_id = Memo::new({
+        let runtime = runtime.clone();
+        move |_| {
+            runtime.controller.with(|controller| {
+                canvas_instance_id(
+                    controller.page_id(),
+                    controller.active_page_index(),
+                    controller.revision_id(),
+                    &controller.editor().revision().project_hash.hex(),
+                )
+            })
+        }
     });
-    let instance_id = format!("fly-canvas-{instance_seed}");
-    let iframe_id = format!("{instance_id}-frame");
+    let iframe_id = Memo::new({
+        let instance_id = instance_id.clone();
+        move |_| format!("{}-frame", instance_id.get())
+    });
     #[cfg(target_arch = "wasm32")]
     let geometry = RwSignal::new(BTreeMap::<String, CanvasComponentGeometry>::new());
     let geometry_limit = RwSignal::new(None::<CanvasResourceLimit>);
@@ -47,6 +54,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
         let runtime = runtime.clone();
         let instance_id = instance_id.clone();
         move |_| {
+            let instance_id = instance_id.get();
             let context = runtime.runtime_context.get();
             runtime.controller.with(|controller| {
                 let mut active_document = controller.editor().document().clone();
@@ -78,6 +86,10 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
         let iframe_id = iframe_id.clone();
         let expected_instance_id = instance_id.clone();
         move |_| {
+            let iframe_id = iframe_id.get_untracked();
+            #[cfg(target_arch = "wasm32")]
+            let identity_runtime = runtime.clone();
+            let expected_instance_id = expected_instance_id.get_untracked();
             ready.set(false);
             pointer.set(None);
             geometry_limit.set(None);
@@ -93,6 +105,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                     runtime.dispatch(UiIntent::CancelDrag);
                 }
                 bridge_subscription.set_value(None);
+                let identity_runtime = identity_runtime.clone();
                 let decoder_instance = expected_instance_id.clone();
                 let message_runtime = runtime.clone();
                 match fly_leptos::IframeJsonSubscription::subscribe_by_element_id(
@@ -102,6 +115,17 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                     // opaque origin, so this side must accept exactly that value.
                     crate::ui::browser_adapter::PAGE_BUILDER_CANVAS_EXPECTED_ORIGIN,
                     move |payload, last_sequence| {
+                        let current_instance = identity_runtime.controller.with(|controller| {
+                            canvas_instance_id(
+                                controller.page_id(),
+                                controller.active_page_index(),
+                                controller.revision_id(),
+                                &controller.editor().revision().project_hash.hex(),
+                            )
+                        });
+                        if current_instance != decoder_instance {
+                            return None;
+                        }
                         decode_canvas_message(payload, &decoder_instance, last_sequence)
                     },
                     move |message| {
@@ -172,7 +196,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                     >
                         <div class="h-full w-full overflow-hidden bg-white">
                             <iframe
-                                id=iframe_id
+                                id=move || iframe_id.get()
                                 title="Fly page canvas"
                                 // `allow-scripts` without `allow-same-origin` gives the srcdoc
                                 // document an opaque origin, which is why the browser adapter is
@@ -478,6 +502,21 @@ fn overlay_geometry(rect: Option<CanvasRect>, viewport: ViewportState) -> Option
     })
 }
 
+fn canvas_instance_id(
+    page_id: &str,
+    active_page_index: usize,
+    revision_id: &str,
+    project_hash: &str,
+) -> String {
+    format!(
+        "fly-canvas-{}-{}-{}-{}",
+        dom_id(page_id),
+        active_page_index,
+        dom_id(revision_id),
+        project_hash
+    )
+}
+
 fn dom_id(value: &str) -> String {
     value
         .chars()
@@ -494,6 +533,15 @@ fn dom_id(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn canvas_identity_tracks_active_page_and_document_snapshot() {
+        let first = canvas_instance_id("home", 0, "rev-1", "hash-1");
+        assert_ne!(first, canvas_instance_id("home", 1, "rev-1", "hash-1"));
+        assert_ne!(first, canvas_instance_id("home", 0, "rev-2", "hash-1"));
+        assert_ne!(first, canvas_instance_id("home", 0, "rev-1", "hash-2"));
+        assert_ne!(first, canvas_instance_id("about", 0, "rev-1", "hash-1"));
+    }
 
     #[test]
     fn viewport_geometry_preserves_source_dimensions_and_applies_zoom() {

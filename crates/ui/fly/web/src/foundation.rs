@@ -508,6 +508,7 @@ impl IframeBridgeEnvelope {
     /// them into editor intents.
     pub fn is_accepted(&self, expected_instance_id: &str, last_sequence: Option<u64>) -> bool {
         self.protocol == FLY_IFRAME_PROTOCOL
+            && self.sequence > 0
             && !self.instance_id.trim().is_empty()
             && !expected_instance_id.trim().is_empty()
             && self.instance_id == expected_instance_id
@@ -806,6 +807,9 @@ mod tests {
 
         let blank = IframeBridgeEnvelope::new("  ", 5, IframeBridgeMessage::Ready);
         assert!(!blank.is_accepted("  ", None));
+
+        let zero_sequence = IframeBridgeEnvelope::new("canvas-a", 0, IframeBridgeMessage::Ready);
+        assert!(!zero_sequence.is_accepted("canvas-a", None));
         assert_eq!(
             normalize_iframe_instance_id(" canvas-a "),
             Some("canvas-a".to_string())

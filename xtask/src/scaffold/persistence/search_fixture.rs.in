@@ -75,6 +75,9 @@ impl SearchFixture {
         // has to change without replaying lifecycle events or rebuilding Search.
         let source_target = format!("{SOURCE_REINDEX_TARGET_PREFIX}__SLUG__");
         for row in SysEvents::find().all(&self.db).await.unwrap() {
+            if row.event_type != "index.reindex_requested" {
+                continue;
+            }
             let envelope: EventEnvelope = serde_json::from_value(row.payload).unwrap();
             if matches!(&envelope.event, DomainEvent::ReindexRequested { target_type, .. } if target_type == &source_target) {
                 assert!(self.handler.handles(&envelope.event));

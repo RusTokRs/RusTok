@@ -15351,6 +15351,7 @@ dependencies = [
  "rustok-deal",
  "rustok-docs",
  "rustok-email",
+ "rustok-events",
  "rustok-events-module",
  "rustok-finance",
  "rustok-forms",

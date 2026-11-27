@@ -153,3 +153,37 @@ pub async fn read_static_actor_authority_revision_on(
     grants.dedup();
     Ok(StaticActorAuthorityRevision { membership, grants })
 }
+
+/// Lock the union of actor and managed-user memberships, requested role and
+/// continuity role in one deterministic order. Both existing users must be
+/// locked first by the transaction owner (SQLite: write fence).
+pub async fn lock_user_admin_role_grants_on(
+    tx: &DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    target_id: Option<Uuid>,
+    requested_slug: Option<&str>,
+) -> Result<bool, DbErr> {
+    let backend = tx.get_database_backend();
+    let continuity_slug = target_id.map(|_| rustok_core::UserRole::SuperAdmin.to_string());
+    let sql = match backend {
+        DatabaseBackend::Postgres => "SELECT r.id, r.slug, r.grant_revision FROM roles r WHERE r.tenant_id = $1 AND (r.slug = $2 OR r.slug = $5 OR EXISTS (SELECT 1 FROM user_roles ur WHERE (ur.user_id = $3 OR ur.user_id = $4) AND ur.role_id = r.id)) ORDER BY r.id FOR UPDATE OF r",
+        DatabaseBackend::Sqlite => "SELECT r.id, r.slug, r.grant_revision FROM roles r WHERE r.tenant_id = ?1 AND (r.slug = ?2 OR r.slug = ?5 OR EXISTS (SELECT 1 FROM user_roles ur WHERE (ur.user_id = ?3 OR ur.user_id = ?4) AND ur.role_id = r.id)) ORDER BY r.id",
+        _ => return Err(DbErr::Custom("unsupported RBAC grant revision backend".into())),
+    };
+    let rows = tx.query_all_raw(Statement::from_sql_and_values(
+        backend, sql, [tenant_id.into(), requested_slug.map(str::to_owned).into(),
+            actor_id.into(), target_id.into(), continuity_slug.into()],
+    )).await?;
+    let mut found_requested = requested_slug.is_none();
+    for row in rows {
+        let id: Uuid = row.try_get("", "id")?;
+        let revision: i64 = row.try_get("", "grant_revision")?;
+        let slug: String = row.try_get("", "slug")?;
+        found_requested |= requested_slug == Some(slug.as_str());
+        if id.is_nil() || revision < 0 {
+            return Err(DbErr::Custom("invalid RBAC role grant revision".into()));
+        }
+    }
+    Ok(found_requested)
+}

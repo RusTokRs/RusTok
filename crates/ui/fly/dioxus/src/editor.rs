@@ -435,14 +435,19 @@ pub(crate) fn decode_fly_canvas_envelope(
     expected_instance: &str,
     last_sequence: Option<u64>,
 ) -> Option<(u64, String)> {
+    if expected_instance.trim().is_empty() {
+        return None;
+    }
     let envelope = serde_json::from_str::<serde_json::Value>(payload).ok()?;
+    let instance_id = envelope.get("instance_id")?.as_str()?;
     if envelope.get("protocol")?.as_str()? != fly_web::FLY_IFRAME_PROTOCOL
-        || envelope.get("instance_id")?.as_str()? != expected_instance
+        || instance_id.trim().is_empty()
+        || instance_id != expected_instance
     {
         return None;
     }
     let sequence = envelope.get("sequence")?.as_u64()?;
-    if last_sequence.is_some_and(|last| sequence <= last) {
+    if sequence == 0 || last_sequence.is_some_and(|last| sequence <= last) {
         return None;
     }
     Some((sequence, payload.to_string()))
@@ -1071,6 +1076,13 @@ mod controlled_workspace_regression_tests {
         );
         assert!(decode_fly_canvas_envelope(&payload, "canvas-a", Some(7)).is_none());
         assert!(decode_fly_canvas_envelope(&payload, "canvas-b", None).is_none());
+        assert!(decode_fly_canvas_envelope(&payload, "", None).is_none());
+
+        let blank_identity = payload.replace("canvas-a", "  ");
+        assert!(decode_fly_canvas_envelope(&blank_identity, "  ", None).is_none());
+
+        let zero_sequence = payload.replace("\"sequence\":7", "\"sequence\":0");
+        assert!(decode_fly_canvas_envelope(&zero_sequence, "canvas-a", None).is_none());
 
         let wrong_protocol = payload.replace(fly_web::FLY_IFRAME_PROTOCOL, "fly/other");
         assert!(decode_fly_canvas_envelope(&wrong_protocol, "canvas-a", None).is_none());

@@ -1,13 +1,19 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashSet},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use rustok_api::{
     PortError,
     localized_index::{
         LocalizedIndexKey, LocalizedIndexReader, LocalizedIndexRow, LocalizedIndexSource,
+        MAX_LOCALIZED_INDEX_LOAD,
     },
 };
-use rustok_core::ModuleRuntimeExtensions;
+use rustok_core::{
+    ModuleEventListenerContext, ModuleEventListenerRegistry, ModuleRuntimeExtensions,
+};
 use rustok_index::{
     EntityKey, FieldName, IndexMutation, IndexRecord, IndexSource, IndexSourceCursor,
     IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage,
@@ -24,6 +30,15 @@ pub(super) struct Factory {
     pub name: String,
 }
 
+impl Factory {
+    pub(super) fn source(&self, db: DatabaseConnection) -> Source {
+        Source {
+            reader: (self.owner.build)(db),
+            schema: self.reference.clone(),
+        }
+    }
+}
+
 impl PostgresIndexSourceFactory for Factory {
     fn register_source(
         &self,
@@ -35,16 +50,21 @@ impl PostgresIndexSourceFactory for Factory {
             self.owner.module_slug,
             self.name.clone(),
             [self.reference.clone()],
-            Source {
-                reader: (self.owner.build)(db),
-                schema: self.reference.clone(),
-            },
+            self.source(db),
         )?;
         Ok(())
     }
+
+    fn register_event_listeners(
+        &self,
+        registry: &mut ModuleEventListenerRegistry,
+        context: &ModuleEventListenerContext<'_>,
+    ) {
+        registry.register(super::consumer::Consumer::new(self, context));
+    }
 }
 
-struct Source {
+pub(super) struct Source {
     reader: Arc<dyn LocalizedIndexReader>,
     schema: SchemaRef,
 }
@@ -121,6 +141,40 @@ impl IndexSource for Source {
 }
 
 impl Source {
+    pub(super) async fn refresh(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        minimum_revision: u64,
+    ) -> Result<Vec<IndexMutation>, IndexSourceFailure> {
+        let rows = self
+            .reader
+            .load_record(tenant_id, id)
+            .await
+            .map_err(owner_failure)?;
+        let first = rows
+            .first()
+            .ok_or_else(|| permanent("localized_index.owner_record_missing"))?;
+        if first.revision.get() < minimum_revision {
+            return Err(
+                IndexSourceFailure::retryable("localized_index.owner_revision_not_ready")
+                    .expect("static localized Index failure code"),
+            );
+        }
+        let mut locales = HashSet::with_capacity(rows.len().min(MAX_LOCALIZED_INDEX_LOAD));
+        if rows.len() > MAX_LOCALIZED_INDEX_LOAD
+            || rows.iter().any(|row| {
+                row.key.id != id
+                    || row.revision != first.revision
+                    || row.published_title.is_some() != first.published_title.is_some()
+                    || !locales.insert(&row.key.locale)
+            })
+        {
+            return Err(permanent("localized_index.refresh_invalid"));
+        }
+        self.mutations(tenant_id, rows)
+    }
+
     fn require_schema(&self, schema: &SchemaRef) -> Result<(), IndexSourceFailure> {
         if &self.schema != schema {
             return Err(permanent("localized_index.schema_mismatch"));
