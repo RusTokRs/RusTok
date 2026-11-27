@@ -279,3 +279,10 @@ the exclusive security epoch before reserving a new operation receipt. Exact
 replay still requires current host authorization, but does not advance or
 lock the epoch. The PostgreSQL lock-order regression is authored, unrun;
 global deadlock freedom is not established.
+
+Registry continuity witness migration 000101 protects permanent identities and
+strict integer successors from direct SQL resets or deletion (including SQLite
+replacement). PostgreSQL release triggers fail rather than wait for contended
+activation/witness relation locks or an existing witness row. This is a DML
+integrity fence, not protection against privileged DDL or database restoration.
+Source regressions are unrun.

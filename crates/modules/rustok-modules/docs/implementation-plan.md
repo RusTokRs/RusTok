@@ -3681,3 +3681,14 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   probes the same receipt key from a separate transaction. No migration;
   compilation and runtime verification are pending, as is the remaining
   cross-owner receipt/FK and global generation lock audit.
+
+- Registry authority witness integrity: migration 000101 rejects direct witness
+  removal, identity changes and non-successor revisions; SQLite additionally
+  rejects non-integer storage and replacement of an existing witness even
+  without recursive delete triggers. PostgreSQL release mutation checks
+  nonblocking relation and witness row locks, and raw witness DML takes the
+  same nonblocking slug gate. No destructive repair of existing corrupt
+  SQLite state; drain writers for coordinated upgrade. SQLite and opt-in
+  PostgreSQL regressions authored; compilation, migration execution and
+  contention evidence remain pending. Privileged DDL/restore and remaining
+  cross-owner lock ordering are not covered by this change.

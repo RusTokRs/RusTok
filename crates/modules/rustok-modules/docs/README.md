@@ -1163,7 +1163,15 @@ concurrency cost. On PostgreSQL, migration 000098 requires the transaction
 advisory gate before the permanent platform activation row. The registry
 BEFORE ROW guard tries the same gate and uses NOWAIT on an existing row;
 a competing late writer fails with SQLSTATE 55P03 and must roll back.
-The AFTER trigger advances only the exact registry witness. Multi-slug SQL
+The AFTER trigger advances only the exact registry witness. Migration 000101
+also makes witness identities permanent and their integer revisions strictly
+successive; deletion, truncation, regression, and SQLite REPLACE of existing
+witnesses fail closed. Direct monotonic witness advancement can only invalidate
+old evidence; it is not a supported release writer. PostgreSQL raw witness
+writes share the nonblocking slug advisory gate. The release guards also
+acquire their required table locks and existing witness row without waiting.
+Privileged DDL, disabled triggers and restoration are outside this DML guard.
+Multi-slug SQL
 maintenance must pre-acquire gates and rows in sorted slug order, and TRUNCATE
 of releases is rejected. No witness changes on metadata-only updates,
 failed writes or rollback. Drain old writers/leases before the coordinated
