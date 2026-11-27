@@ -394,7 +394,7 @@ where
                 .await?,
         }
         if let Some(receipt) =
-            reserve_operation(&transaction, &command.context, action, &request_digest).await?
+            admit_security_operation(&transaction, &command, action, &request_digest).await?
         {
             self.authorizer
                 .ensure_authority_at_commit(&transaction, &command)
@@ -402,14 +402,8 @@ where
             transaction.commit().await.map_err(store_error)?;
             return Ok(receipt);
         }
-        // Receipt admission is private to this command table. Take the
-        // slug and then the global epoch before any security-state row lock.
-        crate::installation::acquire_artifact_activation_lock(
-            &transaction, &crate::ModuleInstallationScope::Platform, &command.release.slug,
-        ).await.map_err(store_error)?;
-        if matches!(action, SecurityAction::Quarantine | SecurityAction::Revoke) {
-            SeaOrmSecurityEpochStore::lock_for_advance(&transaction).await.map_err(store_error)?;
-        }
+        // Admission already holds the platform slug, the exclusive epoch
+        // (when advancing it), and this command's receipt.
         let current = load_snapshot(&transaction, &command.release, true).await?;
         if current.revision != command.expected_revision {
             return Err(ModuleArtifactSecurityError::RevisionConflict {
@@ -770,6 +764,36 @@ fn snapshot_from_row(
     })
 }
 
+/// Admit a new security operation in the same order as governed transition
+/// finalization: platform slug -> security epoch -> receipt -> state.
+/// Read completed receipts without reserving a new receipt or advancing the
+/// epoch; the caller still performs its transaction-bound authorization.
+async fn admit_security_operation(
+    transaction: &DatabaseTransaction,
+    command: &ModuleArtifactSecurityCommand,
+    action: SecurityAction,
+    request_digest: &str,
+) -> Result<Option<ModuleArtifactSecurityReceipt>, ModuleArtifactSecurityError> {
+    crate::installation::acquire_artifact_activation_lock(
+        transaction,
+        &crate::ModuleInstallationScope::Platform,
+        &command.release.slug,
+    )
+    .await
+    .map_err(store_error)?;
+    if let Some(receipt) =
+        load_operation(transaction, &command.context, action, request_digest).await?
+    {
+        return Ok(Some(receipt));
+    }
+    if matches!(action, SecurityAction::Quarantine | SecurityAction::Revoke) {
+        SeaOrmSecurityEpochStore::lock_for_advance(transaction)
+            .await
+            .map_err(store_error)?;
+    }
+    reserve_operation(transaction, &command.context, action, request_digest).await
+}
+
 async fn reserve_operation(
     transaction: &DatabaseTransaction,
     context: &ModuleCommandContext,
@@ -805,7 +829,13 @@ async fn reserve_operation(
     if inserted.rows_affected() == 1 {
         return Ok(None);
     }
-    load_operation(transaction, context, action, request_digest).await
+    // A conflicting key must resolve to a committed exact receipt. A missing
+    // row (for example, concurrent unsupported receipt deletion) cannot be
+    // interpreted as successful reservation by this transaction.
+    load_operation(transaction, context, action, request_digest)
+        .await?
+        .map(Some)
+        .ok_or(ModuleArtifactSecurityError::OperationInProgress)
 }
 
 async fn load_operation<C: ConnectionTrait>(
@@ -1518,6 +1548,98 @@ mod tests {
         db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_MODULES_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_security_receipt_is_not_reserved_while_waiting_for_earlier_fences() {
+        use std::time::Duration;
+        use sea_orm::{DatabaseConnection, DatabaseTransaction};
+        use super::{admit_security_operation, reserve_operation};
+
+        async fn transaction(db: &DatabaseConnection, schema: &str) -> DatabaseTransaction {
+            let tx = crate::backend::begin_fenced_transaction(db).await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+                .await.unwrap();
+            tx
+        }
+
+        let db = Database::connect(std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").unwrap())
+            .await.unwrap();
+        assert_eq!(db.get_database_backend(), DbBackend::Postgres);
+        let schema = format!("security_receipt_order_{}", Uuid::new_v4().simple());
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
+        let setup = transaction(&db, &schema).await;
+        setup.execute_unprepared(
+            "CREATE TABLE module_artifact_activation_locks (
+                scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL,
+                PRIMARY KEY (scope_kind, scope_tenant_key, slug));
+             CREATE TABLE module_security_epoch (
+                singleton_id INTEGER PRIMARY KEY, epoch BIGINT NOT NULL);
+             INSERT INTO module_security_epoch VALUES (1, 1);
+             CREATE TABLE module_artifact_security_operations (
+                idempotency_key UUID PRIMARY KEY, operation_kind TEXT NOT NULL,
+                request_digest TEXT NOT NULL, principal_id UUID NOT NULL,
+                trace_id TEXT NOT NULL, correlation_id UUID NOT NULL, receipt_json TEXT);"
+        ).await.unwrap();
+        setup.commit().await.unwrap();
+
+        for hold_slug in [true, false] {
+            let command = command();
+            let digest = format!("sha256:{}", "b".repeat(64));
+            let holder = transaction(&db, &schema).await;
+            if hold_slug {
+                crate::installation::acquire_artifact_activation_lock(
+                    &holder, &crate::ModuleInstallationScope::Platform, &command.release.slug,
+                ).await.unwrap();
+            } else {
+                crate::SeaOrmSecurityEpochStore::lock_for_advance(&holder).await.unwrap();
+            }
+
+            let worker_db = db.clone();
+            let worker_schema = schema.clone();
+            let worker_command = command.clone();
+            let worker_digest = digest.clone();
+            let (pid_tx, pid_rx) = tokio::sync::oneshot::channel();
+            let worker = tokio::spawn(async move {
+                let tx = transaction(&worker_db, &worker_schema).await;
+                let row = tx.query_one_raw(Statement::from_string(
+                    DbBackend::Postgres, "SELECT pg_backend_pid() AS pid",
+                )).await.unwrap().unwrap();
+                pid_tx.send(row.try_get::<i32>("", "pid").unwrap()).unwrap();
+                let result = admit_security_operation(
+                    &tx, &worker_command, SecurityAction::Quarantine, &worker_digest,
+                ).await;
+                tx.rollback().await.unwrap();
+                result
+            });
+            let pid = pid_rx.await.unwrap();
+            // Observe an actual PostgreSQL lock wait, not merely a scheduled task.
+            let probe = transaction(&db, &schema).await;
+            tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let row = probe.query_one_raw(Statement::from_string(
+                        DbBackend::Postgres,
+                        format!("SELECT cardinality(pg_blocking_pids({pid})) AS blockers"),
+                    )).await.unwrap().unwrap();
+                    if row.try_get::<i32>("", "blockers").unwrap() > 0 {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            }).await.expect("worker must reach the earlier fence");
+            // If admission had reserved the key first, this insert would wait
+            // on its uncommitted unique-index entry. Roll back the probe.
+            probe.execute_unprepared("SET LOCAL lock_timeout = '1s'").await.unwrap();
+            assert!(reserve_operation(
+                &probe, &command.context, SecurityAction::Quarantine, &digest,
+            ).await.unwrap().is_none());
+            probe.rollback().await.unwrap();
+            holder.rollback().await.unwrap();
+            assert!(tokio::time::timeout(Duration::from_secs(5), worker)
+                .await.unwrap().unwrap().unwrap().is_none());
+        }
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
     }
 
     #[test]

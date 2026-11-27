@@ -3671,3 +3671,13 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   lock. Source regressions are authored, unrun. Auth/OAuth/RBAC and other
   cross-owner FK edges, full service contention, runtime and rollout evidence
   remain open.
+
+- Security operation receipt ordering: new quarantine/revoke commands acquire
+  the platform slug and exclusive security epoch before receipt reservation,
+  matching governed finalization. Completed exact receipts are read after the
+  slug fence without taking the epoch; authorization is still checked at
+  commit. Missing receipts after unique-key conflict deny admission. An opt-in
+  PostgreSQL regression observes actual waits on both earlier fences and
+  probes the same receipt key from a separate transaction. No migration;
+  compilation and runtime verification are pending, as is the remaining
+  cross-owner receipt/FK and global generation lock audit.

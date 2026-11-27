@@ -273,3 +273,9 @@ nonblocking FK admission boundary to review/validation/evidence receipts,
 request staging, admissions, release artifacts and owner transfer receipts.
 PostgreSQL contention and migration verification remain pending; the broader
 Auth/RBAC and cross-owner FK order is not certified.
+
+Security-state operations now acquire platform slug and (for quarantine/revoke)
+the exclusive security epoch before reserving a new operation receipt. Exact
+replay still requires current host authorization, but does not advance or
+lock the epoch. The PostgreSQL lock-order regression is authored, unrun;
+global deadlock freedom is not established.
