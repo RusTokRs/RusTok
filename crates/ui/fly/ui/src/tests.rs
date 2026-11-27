@@ -900,6 +900,13 @@ fn contribution_filtering_is_capability_driven() {
 }
 
 #[test]
+fn save_requests_are_write_fenced_without_being_document_mutations() {
+    let intent = UiIntent::RequestSave;
+    assert!(!intent.mutates_document());
+    assert!(intent.requires_write_fence());
+}
+
+#[test]
 fn a_read_only_session_accepts_an_empty_batch_as_a_noop() {
     // FlyEditor verifies empty batches without adding history or advancing the revision, so
     // they do not need edit capability and must not dirty a read-only session.
