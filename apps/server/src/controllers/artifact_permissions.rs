@@ -106,7 +106,7 @@ pub(crate) struct ArtifactRolePermissionAssignmentResponse {
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Direct session user with modules:manage required"),
         (status = 404, description = "Role or permission in the requested explicit scope not found"),
-        (status = 409, description = "Idempotency command conflict or operation in progress")
+        (status = 409, description = "Idempotency command conflict, retired receipt or operation in progress")
     )
 )]
 async fn grant_artifact_permission(
@@ -135,7 +135,7 @@ async fn grant_artifact_permission(
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Direct session user with modules:manage required"),
         (status = 404, description = "Role or permission in the requested explicit scope not found"),
-        (status = 409, description = "Idempotency command conflict or operation in progress")
+        (status = 409, description = "Idempotency command conflict, retired receipt or operation in progress")
     )
 )]
 async fn revoke_artifact_permission(
@@ -289,6 +289,13 @@ fn map_assignment_error(error: ArtifactPermissionAssignmentError) -> Error {
                 StatusCode::CONFLICT,
                 "idempotency_conflict",
                 "Idempotency key was already used for a different artifact permission command",
+            ))
+        }
+        ArtifactPermissionAssignmentError::OperationRetired => {
+            http_error(rustok_web::HttpError::new(
+                StatusCode::CONFLICT,
+                "idempotency_receipt_retired",
+                "The original operation receipt is no longer available; the key cannot be reused",
             ))
         }
         ArtifactPermissionAssignmentError::OperationBusy => {

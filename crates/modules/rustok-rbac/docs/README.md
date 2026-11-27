@@ -513,3 +513,18 @@ Final admission and existing WebSocket lease revalidation do not bootstrap
 missing composition. This is observation-based, not a commit-time fence;
 undetected tenant lifecycle ABA, raw-DML continuity and sync-only consumers
 remain open. Source regression authored; compilation and execution pending.
+
+### Permanent artifact operation key witnesses
+
+Migration m20261127_000206_preserve_artifact_operation_witnesses retains the tenant/key identity independently of
+cleanup of the detailed receipt and its actor/role/definition FKs. Existing
+receipts are backfilled under a writer fence; previously deleted receipts
+cannot be reconstructed. Receipt updates and truncation are rejected, while
+ordinary cleanup DELETE remains legal. PostgreSQL raw receipt inserts/deletes
+participate in the same nonwaiting advisory fence as owner writers. SQLite
+uses canonical UUID witnesses, serialized writes and explicit ABORT guards
+against REPLACE/IGNORE. A live receipt can still answer an exact retry; a
+retired key rejects with HTTP 409 idempotency_receipt_retired, not a new effect.
+Witnesses are permanent and contain the exact tenant/key, not full payload or
+response; do not put secrets in idempotency keys. No automatic commit replay.
+Privileged DDL/restore and previously lost history remain outside this guarantee.

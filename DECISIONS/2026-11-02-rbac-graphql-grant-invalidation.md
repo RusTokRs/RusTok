@@ -179,3 +179,17 @@ payload mismatch. The owner and HTTP transaction adapters explicitly roll back
 on pre-commit errors. The unique constraint remains authoritative; raw receipt
 DML that bypasses this advisory fence and receipt retention are separate gaps.
 No uncertain commit is replayed. Regression sources are unrun.
+
+## Artifact operation witness retention
+
+A separate permanent key witness, with no FK to the deletable detailed receipt,
+consumes each tenant/idempotency-key on actual receipt insertion in the same
+transaction. Historical receipts are backfilled; history deleted before cutover
+is unavailable. Detailed receipt updates are forbidden; cleanup may delete them
+but cannot release the key. Retired keys fail closed (HTTP 409), rather than
+reapply an old grant. PostgreSQL guards raw receipt writers with the existing
+try-advisory namespace; SQLite explicitly rejects conflict-algorithm bypasses.
+The witness is not a full response receipt and is not a commit-recovery API.
+It retains exact keys permanently; keys must not contain secrets. Drain old
+writers before applying the additive migration, which cannot be downgraded
+safely. Privileged DDL/restore is outside ordinary DML guarantees.

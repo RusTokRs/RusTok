@@ -91,6 +91,10 @@ async fn setup_database() -> DatabaseConnection {
         .find(|migration| migration.name() == "m20261127_000017_couple_artifact_grant_generation")
         .expect("artifact grant generation migration registered");
     migration.up(&sea_orm_migration::SchemaManager::new(&db)).await.unwrap();
+    let migration = rustok_rbac::RbacModule.migrations().into_iter()
+        .find(|migration| migration.name() == "m20261127_000206_preserve_artifact_operation_witnesses")
+        .expect("operation witness migration registered");
+    migration.up(&sea_orm_migration::SchemaManager::new(&db)).await.unwrap();
     db
 }
 
@@ -690,4 +694,33 @@ async fn direct_artifact_grant_sql_advances_generation_and_rollback_does_not() {
     db.execute_unprepared("UPDATE rbac_invalidation_state SET generation = 9223372036854775807").await.unwrap();
     assert!(db.execute_unprepared("DELETE FROM rbac_artifact_role_permissions").await.is_err());
     assert_eq!(table_count(&db, "rbac_artifact_role_permissions").await, 1);
+}
+
+
+#[tokio::test]
+async fn retired_receipt_never_reapplies_old_grant() {
+    let db = setup_database().await;
+    let tenant = Uuid::new_v4();
+    let role = Uuid::new_v4();
+    let actor = Uuid::new_v4();
+    let installation = Uuid::new_v4();
+    let key = "sample.events.handle";
+    insert_role_and_actor(&db, tenant, role, actor).await;
+    insert_definition(&db, &format!("tenant:{tenant}"), installation, key).await;
+    let service = RbacArtifactPermissionAssignmentService::new(
+        db.clone(), Arc::new(SqliteArtifactPermissionEventPublisher { fail: false }),
+    );
+    let grant = command(tenant, role, ArtifactPermissionAssignmentScope::Tenant,
+        installation, key, actor, true, "old-grant");
+    assert!(service.assign(grant.clone()).await.unwrap().applied);
+    assert!(!service.assign(grant.clone()).await.unwrap().applied);
+    let mut revoke = grant.clone();
+    revoke.granted = false;
+    revoke.idempotency_key = "revoke".into();
+    assert!(service.assign(revoke).await.unwrap().applied);
+    db.execute_unprepared("DELETE FROM rbac_artifact_role_permission_operations WHERE idempotency_key = 'old-grant'").await.unwrap();
+    assert_eq!(service.assign(grant).await, Err(ArtifactPermissionAssignmentError::OperationRetired));
+    assert_eq!(table_count(&db, "rbac_artifact_role_permissions").await, 0);
+    assert_eq!(table_count(&db, "rbac_artifact_permission_events").await, 2);
+    assert_eq!(table_count(&db, "rbac_artifact_operation_witnesses").await, 2);
 }

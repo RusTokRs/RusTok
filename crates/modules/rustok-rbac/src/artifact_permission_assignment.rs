@@ -55,6 +55,8 @@ pub enum ArtifactPermissionAssignmentError {
     IdempotencyConflict,
     #[error("artifact permission operation is currently in progress; retry with the same key")]
     OperationBusy,
+    #[error("artifact permission operation key was consumed but its receipt is no longer available")]
+    OperationRetired,
     #[error("role does not exist in the requested tenant")]
     RoleNotFound,
     #[error("artifact permission is not registered for the requested explicit scope")]
@@ -151,6 +153,10 @@ impl RbacArtifactPermissionAssignmentService {
         lock_operation_key(transaction, &command).await?;
         if let Some(existing) = find_operation(transaction, &command).await? {
             return match_operation(existing, &artifact_permission, &command);
+        }
+
+        if operation_key_consumed(transaction, &command).await? {
+            return Err(ArtifactPermissionAssignmentError::OperationRetired);
         }
 
         let operation_id = match insert_operation(transaction, &artifact_permission, &command)
@@ -416,6 +422,22 @@ async fn lock_operation_key(
         return Err(ArtifactPermissionAssignmentError::OperationBusy);
     }
     Ok(())
+}
+
+async fn operation_key_consumed(
+    tx: &DatabaseTransaction,
+    command: &ArtifactRolePermissionAssignmentCommand,
+) -> Result<bool, ArtifactPermissionAssignmentError> {
+    let backend = tx.get_database_backend();
+    let tenant: sea_orm::Value = match backend {
+        DbBackend::Postgres => command.tenant_id.into(),
+        _ => command.tenant_id.simple().to_string().into(),
+    };
+    Ok(tx.query_one_raw(Statement::from_sql_and_values(
+        backend,
+        placeholders(backend, "SELECT 1 FROM rbac_artifact_operation_witnesses WHERE tenant_id = {tenant_id} AND idempotency_key = {idempotency_key} LIMIT 1"),
+        vec![tenant, command.idempotency_key.clone().into()],
+    )).await.map_err(database_error)?.is_some())
 }
 
 async fn find_operation(

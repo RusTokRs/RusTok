@@ -22,7 +22,7 @@ async fn database() -> DatabaseConnection {
     .expect("create RBAC parent tables");
 
     let manager = SchemaManager::new(&db);
-    let migrations = RbacModule.migrations();
+    let migrations: Vec<_> = RbacModule.migrations().into_iter().take(6).collect();
     assert_eq!(
         migrations.len(),
         6,

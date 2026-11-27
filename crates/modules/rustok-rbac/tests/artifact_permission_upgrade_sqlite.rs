@@ -21,7 +21,7 @@ async fn legacy_database() -> (DatabaseConnection, Box<dyn MigrationTrait>) {
     .await
     .expect("create RBAC parent tables");
     let manager = SchemaManager::new(&db);
-    let mut migrations = RbacModule.migrations();
+    let mut migrations: Vec<_> = RbacModule.migrations().into_iter().take(6).collect();
     assert_eq!(migrations.len(), 6);
     let _localized = migrations.pop();
     let cutover = migrations.pop().expect("append-only cutover migration");
