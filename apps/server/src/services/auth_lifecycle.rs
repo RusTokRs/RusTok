@@ -2466,7 +2466,10 @@ mod tests {
 
         let mut inactive_tenant: tenants::ActiveModel = tenant.clone().into();
         inactive_tenant.is_active = Set(false);
-        inactive_tenant.update(&db).await.expect("deactivate tenant");
+        inactive_tenant
+            .update(&db)
+            .await
+            .expect("deactivate tenant");
 
         let current_before = sessions::Entity::find_by_id(session_id)
             .one(&db)
