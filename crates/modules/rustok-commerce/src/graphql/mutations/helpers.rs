@@ -105,6 +105,7 @@ pub(crate) fn convert_create_product_input(
                 barcode: variant.barcode,
                 shipping_profile_slug: variant.shipping_profile_slug,
                 axis_values,
+                attribute_values: convert_product_attribute_batches(variant.attribute_values)?,
                 prices,
                 inventory_quantity: variant.inventory_quantity.unwrap_or(0),
                 inventory_policy: variant
@@ -174,6 +175,7 @@ pub(crate) fn convert_create_variant_input(
         barcode: input.barcode,
         shipping_profile_slug: input.shipping_profile_slug,
         axis_values,
+        attribute_values: convert_product_attribute_batches(input.attribute_values)?,
         prices,
         inventory_quantity: input.inventory_quantity.unwrap_or(0),
         inventory_policy: input.inventory_policy.unwrap_or_else(|| "deny".to_string()),
@@ -229,6 +231,7 @@ pub(crate) fn convert_update_variant_input(
         expected_inventory_quantity: input.expected_inventory_quantity,
         expected_revision: input.expected_revision,
         inventory_policy: input.inventory_policy,
+        attribute_values: convert_product_attribute_batches(input.attribute_values)?,
         weight: match graphql_patch(input.weight) {
             rustok_api::Patch::Keep => rustok_api::Patch::Keep,
             rustok_api::Patch::Clear => rustok_api::Patch::Clear,
@@ -862,6 +865,47 @@ mod variant_patch_tests {
     fn decode(value: serde_json::Value) -> UpdateVariantInput {
         UpdateVariantInput::parse(Some(async_graphql::Value::from_json(value).unwrap()))
             .unwrap_or_else(|_| panic!("Invalid Variant input fixture"))
+    }
+
+    fn decode_create(value: serde_json::Value) -> CreateVariantInput {
+        CreateVariantInput::parse(Some(async_graphql::Value::from_json(value).unwrap()))
+            .unwrap_or_else(|_| panic!("Invalid CreateVariant input fixture"))
+    }
+
+    #[test]
+    fn graphql_variant_create_and_update_forward_typed_eav_batches() {
+        let batch = serde_json::json!({
+            "locale": "en",
+            "patches": [{
+                "attributeId": "00000000-0000-4000-8000-000000000003",
+                "kind": "TEXT",
+                "text": "Blue"
+            }]
+        });
+        let create = convert_create_variant_input(decode_create(serde_json::json!({
+            "prices": [],
+            "attributeValues": [batch.clone()]
+        })))
+        .unwrap();
+        let update = convert_update_variant_input(decode(serde_json::json!({
+            "attributeValues": [batch]
+        })))
+        .unwrap();
+
+        for batches in [&create.attribute_values, &update.attribute_values] {
+            assert_eq!(batches.len(), 1);
+            assert_eq!(batches[0].locale, "en");
+            assert_eq!(
+                batches[0].patches[0].attribute_id,
+                Uuid::parse_str("00000000-0000-4000-8000-000000000003").unwrap()
+            );
+            assert_eq!(
+                batches[0].patches[0].value,
+                rustok_product::services::ProductAttributeValuePatchValue::Text(
+                    "Blue".to_owned()
+                )
+            );
+        }
     }
 
     #[test]

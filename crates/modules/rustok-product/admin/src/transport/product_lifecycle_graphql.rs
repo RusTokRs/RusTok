@@ -191,6 +191,8 @@ struct UpdateVariantInput {
     weight_unit: rustok_api::Patch<String>,
     #[serde(rename = "axisValues", skip_serializing_if = "Option::is_none")]
     axis_values: Option<Vec<VariantAxisValueInput>>,
+    #[serde(rename = "attributeValues", skip_serializing_if = "Vec::is_empty")]
+    attribute_values: Vec<crate::model::ProductAttributeValueBatchDraft>,
     prices: Option<Vec<PriceInput>>,
     #[serde(rename = "inventoryQuantity")]
     inventory_quantity: Option<i32>,
@@ -282,6 +284,8 @@ struct CreateVariantInput {
     shipping_profile_slug: Option<String>,
     #[serde(rename = "axisValues", skip_serializing_if = "Option::is_none")]
     axis_values: Option<Vec<VariantAxisValueInput>>,
+    #[serde(rename = "attributeValues", skip_serializing_if = "Vec::is_empty")]
+    attribute_values: Vec<crate::model::ProductAttributeValueBatchDraft>,
     prices: Vec<PriceInput>,
     #[serde(rename = "inventoryQuantity")]
     inventory_quantity: Option<i32>,
@@ -667,6 +671,9 @@ pub(crate) async fn update_product_variant(
                     .collect(),
             )
         },
+        attribute_values: crate::product_schema_graphql::normalize_product_attribute_batches(
+            draft.attribute_values.clone(),
+        ),
         prices,
         inventory_quantity: draft.inventory_quantity,
         expected_inventory_quantity: draft.expected_inventory_quantity,
@@ -896,6 +903,9 @@ fn build_create_variant_input(draft: crate::model::VariantDraft) -> CreateVarian
                     .collect(),
             )
         },
+        attribute_values: crate::product_schema_graphql::normalize_product_attribute_batches(
+            draft.attribute_values.clone(),
+        ),
         prices: draft
             .prices
             .into_iter()
@@ -946,6 +956,7 @@ fn build_create_product_input(draft: ProductDraft) -> CreateProductInput {
                     barcode: optional_text(draft.barcode.as_str()),
                     shipping_profile_slug: None,
                     axis_values: None,
+                    attribute_values: Vec::new(),
                     prices: vec![PriceInput {
                         currency_code: if draft.currency_code.trim().is_empty() {
                             "USD".to_string()
@@ -1005,6 +1016,7 @@ mod tests {
             weight: draft.weight,
             weight_unit: draft.weight_unit,
             axis_values: None,
+            attribute_values: Vec::new(),
             prices: None,
             inventory_quantity: None,
             expected_inventory_quantity: draft.expected_inventory_quantity,
