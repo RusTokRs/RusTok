@@ -821,3 +821,12 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   authored for re-observation after an in-flight tenant deactivation commits;
   scoped compilation and all runtime evidence remain unrun. Global lock
   hierarchy is not closed.
+
+- Cross-owner bulk revocation continuation: session bulk updates require an
+  explicit owner transaction, prelock only live matching sessions in UUID
+  order and exclude the proving session. Session and OAuth bulk revocation
+  reserve PostgreSQL ROW EXCLUSIVE table modes with NOWAIT before row probes;
+  a row-only NOWAIT does not cover implicit UPDATE relation locks. Authored
+  PostgreSQL row/table contention, isolation and repeat-revocation regressions.
+  No new retries or external effects; compilation and runtime evidence unrun.
+  Administrative receipt/FK and full cross-owner ordering remain open.

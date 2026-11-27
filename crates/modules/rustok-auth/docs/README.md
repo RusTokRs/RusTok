@@ -1208,8 +1208,13 @@ changes) and app credential revocation prelock exact token and pending-code
 rows in UUID order with PostgreSQL NOWAIT; app revocation also prelocks
 consents. No new app lock is acquired after a user lock. Existing mutation
 scope and transaction rollback semantics remain; SQLite serializes writers.
-The new PostgreSQL regression covers token/code contention and unrelated
-user isolation; compile/runtime verification remains pending.
+Session bulk revocation now uses the same late-lock discipline: reserve the
+relation in ROW EXCLUSIVE NOWAIT mode and lock live tenant/user sessions in
+UUID order with FOR UPDATE NOWAIT, excluding the proving session if requested.
+OAuth bulk revocation also reserves the required relation mode before each
+row probe. Contention aborts the owner transaction instead of waiting under
+earlier locks. PostgreSQL regressions cover row and relation contention,
+scope isolation and repeat revocation; compile/runtime verification remains pending.
 
 ### Permanent credential identity evidence
 

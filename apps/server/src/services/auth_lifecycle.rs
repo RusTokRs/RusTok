@@ -1994,15 +1994,43 @@ impl AuthLifecycleService {
         limit.clamp(1, MAX_SESSION_LIST_LIMIT)
     }
 
-    pub(crate) async fn revoke_user_sessions_db_with_connection<C>(
-        db: &C,
+    /// Revoke sessions under the caller's user mutation fence. A late
+    /// session lock must not wait while the transaction holds other owner
+    /// identities (including RBAC roles during administrative changes).
+    pub(crate) async fn revoke_user_sessions_db_with_connection(
+        db: &DatabaseTransaction,
         tenant_id: uuid::Uuid,
         user_id: uuid::Uuid,
         except_session_id: Option<uuid::Uuid>,
-    ) -> std::result::Result<u64, AuthLifecycleError>
-    where
-        C: sea_orm::ConnectionTrait,
-    {
+    ) -> std::result::Result<u64, AuthLifecycleError> {
+        match db.get_database_backend() {
+            DatabaseBackend::Postgres => {
+                // Reserve the table mode needed by UPDATE before the row
+                // probe: row NOWAIT does not cover implicit relation locks.
+                db.execute_unprepared("LOCK TABLE sessions IN ROW EXCLUSIVE MODE NOWAIT")
+                    .await?;
+                let mut values: Vec<sea_orm::Value> = vec![tenant_id.into(), user_id.into()];
+                let exclusion = if let Some(session_id) = except_session_id {
+                    values.push(session_id.into());
+                    " AND id <> $3"
+                } else {
+                    ""
+                };
+                db.query_all_raw(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    format!(
+                        "SELECT id FROM sessions WHERE tenant_id = $1 AND user_id = $2 \
+                         AND revoked_at IS NULL{exclusion} ORDER BY id FOR UPDATE NOWAIT"
+                    ),
+                    values,
+                ))
+                .await?;
+            }
+            DatabaseBackend::Sqlite => {}
+            _ => return Err(sea_orm::DbErr::Custom(
+                "unsupported session revocation database".into(),
+            ).into()),
+        }
         let now = Utc::now();
         let mut query = sessions::Entity::update_many()
             .col_expr(sessions::Column::RevokedAt, Expr::value(now))
@@ -4479,6 +4507,89 @@ mod tests {
             .expect("read")
             .expect("session");
         assert!(persisted.is_active());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_AUTH_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_bulk_session_revocation_rejects_busy_rows_and_tables() {
+        use sea_orm::{Database, DatabaseBackend};
+        use std::time::Duration as StdDuration;
+
+        let db = Database::connect(std::env::var("RUSTOK_AUTH_TEST_DATABASE_URL").unwrap())
+            .await.unwrap();
+        assert_eq!(db.get_database_backend(), DatabaseBackend::Postgres);
+        let schema = format!("auth_session_bulk_{}", Uuid::new_v4().simple());
+        let tenant = Uuid::new_v4();
+        let user = Uuid::new_v4();
+        let other_user = Uuid::new_v4();
+        let target = Uuid::new_v4();
+        let excluded = Uuid::new_v4();
+        let unrelated = Uuid::new_v4();
+        db.execute_unprepared(&format!(
+            "CREATE SCHEMA {schema};
+             CREATE TABLE {schema}.sessions (
+                 id UUID PRIMARY KEY, tenant_id UUID NOT NULL, user_id UUID NOT NULL,
+                 revoked_at TIMESTAMPTZ, updated_at TIMESTAMPTZ);
+             INSERT INTO {schema}.sessions VALUES
+                 ('{target}', '{tenant}', '{user}', NULL, NULL),
+                 ('{excluded}', '{tenant}', '{user}', NULL, NULL),
+                 ('{unrelated}', '{tenant}', '{other_user}', NULL, NULL)"
+        )).await.unwrap();
+
+        for lock in [
+            format!("SELECT id FROM {schema}.sessions WHERE id = '{target}' FOR UPDATE"),
+            format!("LOCK TABLE {schema}.sessions IN SHARE MODE"),
+        ] {
+            let holder = db.begin().await.unwrap();
+            holder.execute_unprepared(&lock).await.unwrap();
+            let writer = db.begin().await.unwrap();
+            writer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+                .await.unwrap();
+            let error = tokio::time::timeout(
+                StdDuration::from_secs(3),
+                AuthLifecycleService::revoke_user_sessions_db_with_connection(
+                    &writer, tenant, user, Some(excluded),
+                ),
+            ).await.expect("late session fence must not wait").unwrap_err();
+            let AuthLifecycleError::Internal(Error::Database(error)) = error else {
+                panic!("expected typed database contention");
+            };
+            assert_eq!(
+                rustok_core::resilience::retry::PostgresTransactionConflict::classify(
+                    DatabaseBackend::Postgres, &error,
+                ),
+                Some(rustok_core::resilience::retry::PostgresTransactionConflict::LockUnavailable),
+            );
+            writer.rollback().await.unwrap();
+            holder.rollback().await.unwrap();
+        }
+
+        let holder = db.begin().await.unwrap();
+        holder.execute_unprepared(&format!(
+            "SELECT id FROM {schema}.sessions WHERE id IN ('{excluded}', '{unrelated}') FOR UPDATE"
+        )).await.unwrap();
+        let writer = db.begin().await.unwrap();
+        writer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await.unwrap();
+        assert_eq!(AuthLifecycleService::revoke_user_sessions_db_with_connection(
+            &writer, tenant, user, Some(excluded),
+        ).await.unwrap(), 1);
+        writer.commit().await.unwrap();
+        holder.rollback().await.unwrap();
+
+        let retry = db.begin().await.unwrap();
+        retry.execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await.unwrap();
+        assert_eq!(AuthLifecycleService::revoke_user_sessions_db_with_connection(
+            &retry, tenant, user, Some(excluded),
+        ).await.unwrap(), 0);
+        retry.rollback().await.unwrap();
+        let row = db.query_one_raw(sea_orm::Statement::from_string(
+            DatabaseBackend::Postgres,
+            format!("SELECT COUNT(*) AS remaining FROM {schema}.sessions WHERE revoked_at IS NULL"),
+        )).await.unwrap().unwrap();
+        assert_eq!(row.try_get::<i64>("", "remaining").unwrap(), 2);
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
     }
 
     #[tokio::test]

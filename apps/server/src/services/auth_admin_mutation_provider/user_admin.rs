@@ -745,14 +745,11 @@ impl ServerAuthAdminMutationProvider {
     }
 }
 
-async fn revoke_active_sessions<C>(
-    db: &C,
+async fn revoke_active_sessions(
+    db: &sea_orm::DatabaseTransaction,
     tenant_id: Uuid,
     user_id: Uuid,
-) -> Result<(), AuthAdminMutationError>
-where
-    C: ConnectionTrait,
-{
+) -> Result<(), AuthAdminMutationError> {
     let now = Utc::now();
     AuthLifecycleService::revoke_user_sessions_db_with_connection(db, tenant_id, user_id, None)
         .await

@@ -1192,6 +1192,10 @@ pub(crate) async fn lock_bulk_oauth_credentials<C: ConnectionTrait>(
         ("oauth_consents", "revoked_at IS NULL".to_owned()),
     ] {
         if table == "oauth_consents" && !include_consents { continue; }
+        // FOR UPDATE NOWAIT only covers tuple locks. Reserve the relation
+        // mode needed by the subsequent UPDATE, also without waiting.
+        db.execute_unprepared(&format!("LOCK TABLE {table} IN ROW EXCLUSIVE MODE NOWAIT"))
+            .await?;
         db.query_all_raw(sea_orm::Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!("SELECT id FROM {table} WHERE tenant_id = $1 AND {scope_predicate} AND {predicate} ORDER BY id FOR UPDATE NOWAIT"),
@@ -3185,9 +3189,13 @@ mod tests {
         setup.commit().await.unwrap();
 
         for (table, id) in [("oauth_tokens", token), ("oauth_authorization_codes", code), ("oauth_consents", consent)] {
+          for lock in [
+            format!("SELECT id FROM {table} WHERE id = '{id}' FOR UPDATE"),
+            format!("LOCK TABLE {table} IN SHARE MODE"),
+          ] {
             let owner = db.begin().await.unwrap();
             owner.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
-            owner.execute_unprepared(&format!("SELECT id FROM {table} WHERE id = '{id}' FOR UPDATE")).await.unwrap();
+            owner.execute_unprepared(&lock).await.unwrap();
             let mut scopes = vec![
                 super::BulkOAuthRevocationScope::Application(app),
                 super::BulkOAuthRevocationScope::Consent { app_id: app, user_id: user },
@@ -3210,6 +3218,7 @@ mod tests {
                 assert!(rustok_core::resilience::retry::rollback_for_transaction_retry(writer, &error, 1).await.unwrap());
             }
             owner.rollback().await.unwrap();
+          }
         }
 
         let owner = db.begin().await.unwrap();
