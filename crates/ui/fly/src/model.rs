@@ -74,9 +74,10 @@ fn ensure_opaque_node_stable_ids(
     let Some(object) = value.as_object_mut() else {
         return;
     };
-    if let Some(original_id) = object.get("id").and_then(Value::as_str).map(str::to_string) {
+    if let Some(raw_id) = object.get("id") {
+        let original_id = raw_id.as_str().map(str::to_string);
         let current_id = original_id
-            .as_str()
+            .as_deref()
             .filter(|id| validate_identifier(id).is_ok());
         let needs_new_id = current_id.is_none_or(|id| !seen.insert(id.to_string()));
         if needs_new_id {
@@ -88,7 +89,9 @@ fn ensure_opaque_node_stable_ids(
                 .to_string();
             let id = crate::id_reference::allocate_generated_id(generator, &hint, reserved);
             seen.insert(id.clone());
-            if validate_identifier(&original_id).is_err() {
+            if let Some(original_id) =
+                original_id.filter(|original_id| validate_identifier(original_id).is_err())
+            {
                 remapped_component_ids
                     .entry(original_id)
                     .or_insert_with(|| id.clone());
@@ -406,10 +409,13 @@ fn check_opaque_node_ids_stable<'a>(
     let Some(object) = value.as_object() else {
         return true;
     };
-    if let Some(id) = object.get("id").and_then(Value::as_str)
-        && (validate_identifier(id).is_err() || !seen.insert(id))
-    {
-        return false;
+    if let Some(raw_id) = object.get("id") {
+        let Some(id) = raw_id.as_str() else {
+            return false;
+        };
+        if validate_identifier(id).is_err() || !seen.insert(id) {
+            return false;
+        }
     }
     object
         .get("components")
@@ -1483,6 +1489,37 @@ mod tests {
         let repaired_id = nested["id"].as_str().expect("repaired nested id");
         assert_ne!(repaired_id, "invalid nested id");
         assert_eq!(parent["flyAction"]["target_id"], repaired_id);
+        assert!(validate_identifier(repaired_id).is_ok());
+    }
+
+    #[test]
+    fn opaque_nodes_with_non_string_ids_are_repaired_instead_of_skipped_by_fast_path() {
+        let mut document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": 42,
+                        "type": "future-widget"
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+
+        document.ensure_stable_ids(&mut crate::SequentialIdGenerator::new("repair"));
+
+        let root = document.project.pages[0]
+            .component
+            .as_ref()
+            .and_then(ComponentNode::as_object)
+            .expect("root");
+        let ComponentNode::Opaque(raw) = &root.children()[0] else {
+            panic!("numeric component id must keep the component opaque")
+        };
+        let repaired_id = raw["id"].as_str().expect("repaired string id");
+        assert_eq!(repaired_id, "repair-future-widget-1");
         assert!(validate_identifier(repaired_id).is_ok());
     }
 
