@@ -1811,12 +1811,20 @@ preflight`, `install apply`, `install status`, and `seed apply`; apply uses
 
 ## Shared richtext frame assets
 
-When the server hosts the Leptos admin static fallback, `/richtext/frame` and
-`/richtext/frame/<hashed-asset>` are immutable capability assets copied from
-`@rustok/richtext`. The security middleware recognizes this narrow path and
-uses the frame CSP, `X-Frame-Options: SAMEORIGIN`, `no-referrer`, and disabled
-browser capabilities. It does not create a second editor bundle or pass auth,
-tenant, locale, or document data to the frame URL.
+When the server hosts the Leptos admin static fallback, it exposes the
+content-owned `/richtext/frame` router at the site root. An admin-only host
+mounts this router directly; when a storefront is also embedded, the storefront
+composition supplies it once. This is required because the admin shell loads
+`/richtext/frame/leptos-adapter.mjs` as a root-relative URL.
+
+The frame document uses `Cache-Control: no-store`; the stable Leptos adapter
+and asset manifest are revalidated, while only content-addressed frame JS/CSS
+assets receive a one-year immutable cache. The admin fallback applies the same
+rule to its own assets: stable names such as `output.css` are revalidated and
+fingerprinted files may be cached immutably. The security middleware recognizes
+the frame path and uses the frame CSP, `X-Frame-Options: SAMEORIGIN`,
+`no-referrer`, and disabled browser capabilities. It does not create a second
+editor bundle or pass auth, tenant, locale, or document data to the frame URL.
 
 ## Health and runtime guardrails
 

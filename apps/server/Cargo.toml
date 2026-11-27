@@ -76,7 +76,7 @@ default = [
     "ai-translation",
 ]
 redis-cache = []
-embed-admin = ["dep:rustok-admin", "embed-admin-assets"]
+embed-admin = ["dep:rustok-admin", "embed-admin-assets", "richtext-assets"]
 embed-admin-assets = ["dep:rust-embed"]
 embed-storefront = ["dep:rustok-storefront"]
 richtext-assets = ["mod-content", "rustok-content/richtext-assets"]

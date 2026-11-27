@@ -142,6 +142,24 @@ fn header_value(raw: &str, fallback: &'static str) -> axum::http::HeaderValue {
 }
 
 #[cfg(feature = "embed-admin-assets")]
+fn is_content_fingerprinted_asset(path: &str) -> bool {
+    let Some(file_name) = path.rsplit('/').next() else {
+        return false;
+    };
+    let Some((stem, extension)) = file_name.rsplit_once('.') else {
+        return false;
+    };
+    if extension.is_empty() {
+        return false;
+    }
+
+    stem.split(|character| matches!(character, '-' | '_' | '.'))
+        .any(|segment| {
+            segment.len() >= 8 && segment.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
+}
+
+#[cfg(feature = "embed-admin-assets")]
 fn admin_asset_response(
     path: &str,
     bytes: std::borrow::Cow<'static, [u8]>,
@@ -181,7 +199,7 @@ fn admin_asset_response(
     // expected branch.
 
     let mime = mime_guess::from_path(path).first_or_octet_stream();
-    let cache_control = if is_document {
+    let cache_control = if is_document || !is_content_fingerprinted_asset(path) {
         "no-cache"
     } else {
         "public, max-age=31536000, immutable"
@@ -281,6 +299,22 @@ pub fn build_storefront_router(_runtime: HostRuntimeContext) -> AxumRouter {
             "Storefront UI is disabled. Rebuild server with feature `embed-storefront`.",
         )
     })
+}
+
+#[cfg(feature = "richtext-assets")]
+fn mount_admin_only_richtext_assets(
+    router: AxumRouter,
+    embed_admin: bool,
+    embed_storefront: bool,
+) -> AxumRouter {
+    // The embedded admin shell references the shared frame path from the site
+    // root. When there is no storefront router to contribute the content-owned
+    // frame routes, mount them here exactly once.
+    if embed_admin && !embed_storefront {
+        router.merge(rustok_content::richtext_assets::router())
+    } else {
+        router
+    }
 }
 
 pub fn mount_application_shell(
@@ -590,6 +624,13 @@ pub fn compose_application_router(
                 ))
             })?;
 
+    #[cfg(feature = "richtext-assets")]
+    let router = mount_admin_only_richtext_assets(
+        router,
+        runtime.deployment_surfaces.embed_admin,
+        runtime.deployment_surfaces.embed_storefront,
+    );
+
     let router = mount_application_shell(
         router.route(
             "/api/fn/{*fn_name}",
@@ -674,7 +715,7 @@ mod admin_asset_path_tests {
     #[test]
     fn spa_navigation_paths_remain_spa_routes_but_missing_assets_do_not() {
         for asset in [
-            "pkg/app.js",
+            "pkg/app-0123456789abcdef.js",
             "pkg/app_bg.wasm",
             "assets/logo.svg",
             "favicon.ico",
@@ -698,6 +739,8 @@ mod admin_asset_path_tests {
 #[cfg(test)]
 mod tests {
     use super::mount_application_shell;
+    #[cfg(feature = "richtext-assets")]
+    use super::mount_admin_only_richtext_assets;
     use axum::Router as AxumRouter;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
@@ -710,6 +753,50 @@ mod tests {
     use super::nonce_trusted_admin_elements;
     #[cfg(feature = "embed-admin-assets")]
     use rustok_web::CspNonce;
+
+    #[cfg(feature = "richtext-assets")]
+    #[tokio::test]
+    async fn admin_only_profile_serves_root_richtext_frame_assets() {
+        use axum::http::header::CACHE_CONTROL;
+
+        let app = mount_admin_only_richtext_assets(AxumRouter::new(), true, false);
+        let frame = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/richtext/frame")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(frame.status(), StatusCode::OK);
+        assert_eq!(
+            frame
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store")
+        );
+
+        let adapter = app
+            .oneshot(
+                Request::builder()
+                    .uri("/richtext/frame/leptos-adapter.mjs")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(adapter.status(), StatusCode::OK);
+        assert_eq!(
+            adapter
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("public, max-age=0, must-revalidate")
+        );
+    }
 
     #[tokio::test]
     async fn index_native_json_routes_enforce_request_scope_without_embedded_admin() {
@@ -1091,7 +1178,7 @@ mod tests {
 
         let content = b"console.log('asset');";
         let ok_res = admin_asset_response(
-            "pkg/app.js",
+            "pkg/app-0123456789abcdef.js",
             std::borrow::Cow::Borrowed(content),
             None,
             None,
@@ -1101,7 +1188,7 @@ mod tests {
         let etag = ok_res.headers().get(ETAG).unwrap().to_str().unwrap();
 
         let not_modified_res = admin_asset_response(
-            "pkg/app.js",
+            "pkg/app-0123456789abcdef.js",
             std::borrow::Cow::Borrowed(content),
             None,
             Some(etag),
@@ -1124,6 +1211,56 @@ mod tests {
     }
 
     #[cfg(feature = "embed-admin-assets")]
+    #[test]
+    fn stable_name_admin_assets_are_revalidated_after_deployments() {
+        use super::admin_asset_response;
+        use axum::http::header::{CACHE_CONTROL, ETAG};
+
+        let content = b"stable asset";
+        for path in [
+            "output.css",
+            "richtext/frame/leptos-adapter.mjs",
+            "richtext/frame/asset-manifest.json",
+        ] {
+            let response = admin_asset_response(
+                path,
+                std::borrow::Cow::Borrowed(content),
+                None,
+                None,
+                false,
+            );
+            let headers = response.headers();
+            assert_eq!(
+                headers
+                    .get(CACHE_CONTROL)
+                    .and_then(|value| value.to_str().ok()),
+                Some("no-cache"),
+                "{path}"
+            );
+            let etag = headers
+                .get(ETAG)
+                .and_then(|value| value.to_str().ok())
+                .expect("stable assets retain a content validator");
+            let revalidated = admin_asset_response(
+                path,
+                std::borrow::Cow::Borrowed(content),
+                None,
+                Some(etag),
+                false,
+            );
+            assert_eq!(revalidated.status(), StatusCode::NOT_MODIFIED, "{path}");
+            assert_eq!(
+                revalidated
+                    .headers()
+                    .get(CACHE_CONTROL)
+                    .and_then(|value| value.to_str().ok()),
+                Some("no-cache"),
+                "{path}"
+            );
+        }
+    }
+
+    #[cfg(feature = "embed-admin-assets")]
     #[tokio::test]
     async fn admin_asset_head_response_preserves_get_length_without_a_body() {
         use super::admin_asset_response;
@@ -1131,14 +1268,14 @@ mod tests {
 
         let content = b"console.log('head');";
         let get_response = admin_asset_response(
-            "pkg/app.js",
+            "pkg/app-0123456789abcdef.js",
             std::borrow::Cow::Borrowed(content),
             None,
             None,
             false,
         );
         let head_response = admin_asset_response(
-            "pkg/app.js",
+            "pkg/app-0123456789abcdef.js",
             std::borrow::Cow::Borrowed(content),
             None,
             None,
