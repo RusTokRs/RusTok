@@ -730,7 +730,12 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   SQLite rejects alternate refresh-family REPLACE; normal rotation and
   rollback remain supported. Source regressions authored, unrun; incremental
   migration, lock contention and storage growth require verification. Tenant
-  identity and terminal state transitions remain open.
+  identity and terminal state transitions remain open only at other
+  boundaries: sessions, OAuth tokens, codes and consents now reject changes
+  to a recorded terminal timestamp. Revoked token rotation evidence and
+  revoked consent grant/subject are immutable; consent UUIDs are permanent.
+  Fresh consent epoch continuity and other nonterminal claim mutations
+  remain open. Source regressions unrun.
 
 - Transaction retry authority first consumer: consent revocation prelocks
   exact credential scope and preserves typed statement failures. Confirmed

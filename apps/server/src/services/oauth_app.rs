@@ -5368,26 +5368,31 @@ mod tests {
             "manifest sync must not overwrite runtime-owned usage timestamps"
         );
 
-        // Simulate an inactive managed app left by an older server version:
-        // the app is disabled, but a dependent token, consent, and code remain live.
+        // Model an inconsistent disabled app with separate live dependent
+        // credentials. Never rewrite the recorded terminal history.
+        let legacy_consent_id = Uuid::new_v4();
         let mut legacy_consent: oauth_consents::ActiveModel = revoked_orphan_consent.clone().into();
+        legacy_consent.id = Set(legacy_consent_id);
         legacy_consent.revoked_at = Set(None);
+        legacy_consent.granted_at = Set(Utc::now().into());
         legacy_consent
-            .update(&db)
+            .insert(&db)
             .await
-            .expect("restore legacy active consent fixture");
+            .expect("insert legacy active consent fixture");
+        let legacy_code_id =
+            insert_pending_authorization_code(&db, orphan_app.id, orphan_user.id, tenant.id).await;
+        let legacy_token_id = Uuid::new_v4();
         let mut legacy_token: oauth_tokens::ActiveModel = token.clone().into();
+        legacy_token.id = Set(legacy_token_id);
+        legacy_token.family_id = Set(legacy_token_id);
+        legacy_token.authorization_code_id = Set(Some(legacy_code_id));
+        legacy_token.token_hash = Set(format!("legacy-{legacy_token_id}"));
         legacy_token.revoked_at = Set(None);
+        legacy_token.last_used_at = Set(None);
         legacy_token
-            .update(&db)
+            .insert(&db)
             .await
-            .expect("restore legacy active token fixture");
-        let mut legacy_code: oauth_authorization_codes::ActiveModel = orphan_code.clone().into();
-        legacy_code.used_at = Set(None);
-        legacy_code
-            .update(&db)
-            .await
-            .expect("restore legacy pending code fixture");
+            .expect("insert legacy active token fixture");
 
         manifest.build.storefront.push(
             serde_json::from_value(serde_json::json!({
@@ -5435,6 +5440,15 @@ mod tests {
             .expect("load code after app reactivation")
             .expect("authorization-code history remains present");
         assert!(code_after_reactivation.used_at.is_some());
+        let legacy_consent = oauth_consents::Entity::find_by_id(legacy_consent_id)
+            .one(&db).await.unwrap().unwrap();
+        let legacy_token = oauth_tokens::Entity::find_by_id(legacy_token_id)
+            .one(&db).await.unwrap().unwrap();
+        let legacy_code = oauth_authorization_codes::Entity::find_by_id(legacy_code_id)
+            .one(&db).await.unwrap().unwrap();
+        assert!(legacy_consent.revoked_at.is_some());
+        assert!(legacy_token.revoked_at.is_some());
+        assert!(legacy_code.used_at.is_some());
     }
 
     #[tokio::test]

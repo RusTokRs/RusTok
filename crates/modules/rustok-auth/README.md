@@ -376,8 +376,8 @@ See the RBAC owner documentation. Source regressions unrun.
 ### Permanent credential identity evidence
 
 Auth migration 000014 preserves UUID birth claims for sessions, OAuth apps,
-client IDs, token registrations (including family roots), and authorization
-codes. Session refresh and OAuth token/code digests are consumed permanently:
+client IDs, token registrations (including family roots), authorization
+codes and consent rows. Session refresh and OAuth token/code digests are consumed permanently:
 hard deletion
 and a fresh UUID cannot revive a previously registered digest. These claims
 have no foreign keys, survive cleanup and cascade, and roll back with failed
@@ -392,9 +392,16 @@ retains its existing grace-window and cleanup semantics.
 The SQLite witness table uses WITHOUT ROWID so a hidden row identity cannot
 be used to replace an unrelated consumed credential claim.
 Witness storage grows with credential births; no plaintext is retained.
-Pre-cutover removed identities, in-place terminal timestamp regression,
-tenant identity and privileged DDL/restore are not
-covered by this migration. Source regressions unrun.
+Terminal revocation timestamps on sessions, tokens and consents, and used_at
+on authorization codes, are immutable once set. Revoked OAuth token last-use
+evidence cannot be rewritten to forge a rotation; a revoked consent retains
+its original grant and subject. An active consent may be updated and a new
+consent may be inserted after revocation. OAuth application reactivation is
+unchanged. SQLite prevents hidden-rowid replacement on tokens, codes and
+consents and implicit replacement of an active consent by another UUID.
+Pre-cutover removed identities, reuse of a consent epoch under a fresh UUID,
+direct mutation of nonterminal credential claims, and privileged DDL/restore
+remain outside this protection. Source regressions unrun.
 
 Authenticated OAuth consent revocation prelocks exact token/code/consent
 rows in the existing stable order. On a typed PostgreSQL statement conflict,

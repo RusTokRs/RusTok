@@ -329,3 +329,18 @@ before commit. No retry is allowed after a failed rollback or commit request,
 for authorization errors, or for an unclassified database error. No external
 side effect is included. Other owner writes retain their current contracts;
 commit recovery and end-to-end contention evidence remain open.
+
+## Terminal credential evidence (2026-11-27)
+
+Auth migration 000014 forbids clearing or rewriting a recorded session/token/
+consent revocation or authorization-code consumption timestamp. Once an OAuth
+token is revoked its last-use timestamp cannot be changed independently to
+manufacture committed rotation evidence. Rotation sets both timestamps in the
+original conditional write. Consent subjects are immutable and revoked consent
+rows retain their grant; a new grant after revocation uses a fresh UUID with a
+permanent birth witness. Updating an active consent and reactivating an OAuth
+application remain supported. SQLite guards hidden rowid replacement of tokens,
+codes and consents and replacement through the active consent unique key.
+These are ordinary DML integrity constraints, not a proof of fresh consent
+epochs, complete nonterminal claim integrity, or privileged restore protection.
+Source regressions authored, unrun.
