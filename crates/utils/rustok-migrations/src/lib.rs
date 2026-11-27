@@ -79,6 +79,7 @@ mod composition {
     mod m20261127_000201_create_outbox_execution_policy;
     mod m20261127_000202_fence_outbox_execution_policy;
     mod m20261127_000203_fence_outbox_temporal_clock;
+    mod m20261127_000204_create_outbox_dispatch_attempts;
 
     #[cfg(test)]
     mod contract_tests;
@@ -540,6 +541,9 @@ mod composition {
         ));
         all.push(Box::new(
             m20261127_000203_fence_outbox_temporal_clock::Migration,
+        ));
+        all.push(Box::new(
+            m20261127_000204_create_outbox_dispatch_attempts::Migration,
         ));
         all
     }

@@ -254,3 +254,31 @@ direct standalone setup. PostgreSQL duplicate DDL errors are handled
 within SQL, not by continuing an aborted transaction. SQLite and
 PostgreSQL regression sources are authored; compilation, migration
 lifecycle and contention evidence remain pending.
+
+## Crash-safe dispatch attempt ledger (source only)
+
+Before invoking a transport, the relay persists an `outbox_dispatch_attempts`
+intent in a short transaction under the exact pending event claim. The attempt
+UUID is local diagnostic identity; the original event UUID remains the stable
+broker publication identity. At most one open attempt exists per event.
+The ledger records `open`, `confirmed`, `uncertain` and `not_started`.
+A transport error or timeout is uncertain, not proof of non-delivery.
+Completion and event ACK/retry/DLQ are atomic. A lost claim cannot finalize
+its successor. If the process dies after the intent commit, the next relay
+claim closes that open attempt as uncertain, charges one retry failure and
+schedules ordinary backoff or DLQ before another publish. Recovery itself is
+not another external effect. A proven pre-call lease-budget failure closes the
+intent as not_started and releases the claim without charging retry budget.
+Invalid envelopes still go directly to DLQ without a transport intent.
+
+Migration `m20261127_000204_create_outbox_dispatch_attempts` adds the owner
+schema with event FK cascade and an indexed single-open-attempt invariant.
+Retained event history includes its attempts; event retention cascades them.
+DLQ replay resets the event retry budget, not the historical attempt rows.
+This is conservative at-least-once: a crash after intent but before invocation
+is indistinguishable from a crash after broker acceptance. The journal does
+not establish exactly-once, broker acknowledgement durability, per-consumer
+success, or protection against arbitrary privileged DML. Stop/drain old relays
+before migrating and do not mix old writers with ledger-aware relays.
+Regression sources are authored; compilation, SQL lifecycle and crash/remote
+effect evidence remain pending.

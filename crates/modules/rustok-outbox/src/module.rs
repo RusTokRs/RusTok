@@ -12,14 +12,14 @@ use async_trait::async_trait;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
-use crate::migration::{OutboxExecutionPolicyIntegrityMigration, OutboxExecutionPolicyMigration, OutboxTemporalClockIntegrityMigration, OutboxTemporalClockMigration, SysEventsMigration};
+use crate::migration::{OutboxDispatchAttemptsMigration, OutboxExecutionPolicyIntegrityMigration, OutboxExecutionPolicyMigration, OutboxTemporalClockIntegrityMigration, OutboxTemporalClockMigration, SysEventsMigration};
 
 /// Core outbox module — transactional event persistence and relay infrastructure.
 pub struct OutboxModule;
 
 impl MigrationSource for OutboxModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        vec![Box::new(SysEventsMigration), Box::new(OutboxTemporalClockMigration), Box::new(OutboxExecutionPolicyMigration), Box::new(OutboxExecutionPolicyIntegrityMigration), Box::new(OutboxTemporalClockIntegrityMigration)]
+        vec![Box::new(SysEventsMigration), Box::new(OutboxTemporalClockMigration), Box::new(OutboxExecutionPolicyMigration), Box::new(OutboxExecutionPolicyIntegrityMigration), Box::new(OutboxTemporalClockIntegrityMigration), Box::new(OutboxDispatchAttemptsMigration)]
     }
 }
 

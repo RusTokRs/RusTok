@@ -29,6 +29,7 @@
 //!   dispatched events based on tenant or platform retention windows.
 //! - **Module Entry Point**: [`OutboxModule`] exposes canonical module metadata and migrations.
 
+mod attempts;
 pub mod module;
 pub mod ports;
 pub mod relay;

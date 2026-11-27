@@ -26,10 +26,12 @@ impl MigrationTrait for SysEventsMigration {
         create_outbox_execution_policy(manager).await?;
         create_outbox_execution_policy_integrity(manager).await?;
         create_outbox_temporal_clock_integrity(manager).await?;
+        create_outbox_dispatch_attempts(manager).await?;
         txn.commit().await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        drop_outbox_dispatch_attempts(manager).await?;
         drop_outbox_execution_policy(manager).await?;
         drop_outbox_temporal_clock(manager).await?;
         drop_sys_event_consumer_tables(manager).await?;
@@ -1120,5 +1122,49 @@ impl MigrationTrait for OutboxTemporalClockIntegrityMigration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         drop_outbox_temporal_clock_integrity(manager).await
+    }
+}
+
+/// Durable transport intents. The event remains the owner of retention and
+/// its UUID remains the remote publication identity.
+pub async fn create_outbox_dispatch_attempts(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let db = manager.get_connection();
+    db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS outbox_dispatch_attempts (
+            id UUID NOT NULL PRIMARY KEY,
+            event_id UUID NOT NULL REFERENCES sys_events(id) ON DELETE CASCADE,
+            claim_token VARCHAR(128) NOT NULL,
+            started_at TIMESTAMP WITH TIME ZONE NOT NULL,
+            finished_at TIMESTAMP WITH TIME ZONE,
+            state VARCHAR(32) NOT NULL CHECK (state IN ('open', 'confirmed', 'uncertain', 'not_started')),
+            CHECK ((state = 'open') = (finished_at IS NULL)),
+            CHECK (finished_at IS NULL OR finished_at >= started_at),
+            UNIQUE (event_id, claim_token)
+        )",
+    ).await?;
+    db.execute_unprepared(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_outbox_dispatch_attempts_open ON outbox_dispatch_attempts (event_id) WHERE state = 'open'",
+    ).await?;
+    Ok(())
+}
+
+pub async fn drop_outbox_dispatch_attempts(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager.get_connection().execute_unprepared("DROP TABLE IF EXISTS outbox_dispatch_attempts").await?;
+    Ok(())
+}
+
+#[derive(DeriveMigrationName)]
+pub struct OutboxDispatchAttemptsMigration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for OutboxDispatchAttemptsMigration {
+    fn use_transaction(&self) -> Option<bool> { Some(true) }
+
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        create_outbox_dispatch_attempts(manager).await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        drop_outbox_dispatch_attempts(manager).await
     }
 }
