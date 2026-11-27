@@ -275,7 +275,9 @@ Single-role seed and grant paths order shared permission vocabulary keys by
 (resource, action). Repair seeds only its own successful role insertion;
 a concurrent winning persisted system role is left unchanged. The RBAC
 generation reservation rejects non-integer SQLite storage and exhausted
-counters, and returns the exact assigned successor. SQLite regressions and
+counters, and returns the exact assigned successor. PostgreSQL reservation
+uses nonwaiting table and singleton fences, matching the artifact grant trigger;
+contention requires rollback and fresh admission, not a partial retry. SQLite regressions and
 an opt-in PostgreSQL reservation contention test
 (`RUSTOK_RBAC_TEST_DATABASE_URL`) are authored, not run. Full bulk
 role/permission ordering and FK/trigger auditing remain open.

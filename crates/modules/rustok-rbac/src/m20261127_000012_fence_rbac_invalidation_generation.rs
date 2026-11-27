@@ -147,7 +147,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires RUSTOK_RBAC_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
-    async fn postgres_generation_dml_cannot_reset_watermark_and_reservation_serializes() {
+    async fn postgres_generation_dml_cannot_reset_watermark_and_reservation_rejects_contention() {
         use std::time::Duration;
         let db = Database::connect(std::env::var("RUSTOK_RBAC_TEST_DATABASE_URL").unwrap()).await.unwrap();
         assert_eq!(db.get_database_backend(), DatabaseBackend::Postgres);
@@ -165,31 +165,19 @@ mod tests {
         }
         let first = transaction(&db, &schema).await;
         assert_eq!(reserve_permission_invalidation_generation(&first).await.unwrap(), 2);
-        let worker_db = db.clone();
-        let worker_schema = schema.clone();
-        let (pid_tx, pid_rx) = tokio::sync::oneshot::channel();
-        let worker = tokio::spawn(async move {
-            let tx = transaction(&worker_db, &worker_schema).await;
-            let row = tx.query_one_raw(Statement::from_string(DatabaseBackend::Postgres, "SELECT pg_backend_pid() AS pid")).await.unwrap().unwrap();
-            pid_tx.send(row.try_get::<i32>("", "pid").unwrap()).unwrap();
-            let generation = reserve_permission_invalidation_generation(&tx).await.unwrap();
-            tx.commit().await.unwrap();
-            generation
-        });
-        let pid = pid_rx.await.unwrap();
-        let probe = transaction(&db, &schema).await;
-        tokio::time::timeout(Duration::from_secs(5), async {
-            loop {
-                let row = probe.query_one_raw(Statement::from_string(DatabaseBackend::Postgres,
-                    format!("SELECT cardinality(pg_blocking_pids({pid})) AS blockers")
-                )).await.unwrap().unwrap();
-                if row.try_get::<i32>("", "blockers").unwrap() > 0 { break; }
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
-        }).await.expect("reservation must wait for the existing generation writer");
-        probe.rollback().await.unwrap();
+        let contender = transaction(&db, &schema).await;
+        let error = tokio::time::timeout(
+            Duration::from_secs(3),
+            reserve_permission_invalidation_generation(&contender),
+        )
+        .await.expect("late generation fence must not wait").unwrap_err();
+        assert!(matches!(error, crate::RbacInvalidationGenerationError::Database(_)));
+        contender.rollback().await.unwrap();
         first.rollback().await.unwrap();
-        assert_eq!(tokio::time::timeout(Duration::from_secs(5), worker).await.unwrap().unwrap(), 2);
+
+        let retry = transaction(&db, &schema).await;
+        assert_eq!(reserve_permission_invalidation_generation(&retry).await.unwrap(), 2);
+        retry.commit().await.unwrap();
         let verify = transaction(&db, &schema).await;
         assert_eq!(read_permission_invalidation_generation(&verify).await.unwrap(), 2);
         verify.rollback().await.unwrap();

@@ -7,7 +7,9 @@ RBAC invalidation generation with a supplied grant replacement. The server clear
 its local permission cache and attempts namespace-wide fan-out after commit.
 Metadata-only updates do not reserve a generation; identical supplied grant sets
 are still rewritten and advance it. Missing/exhausted generation storage aborts
-the edit. An optional legacy host callback still needs its own generation
+the edit. PostgreSQL late reservation also rejects a contended table or row
+with NOWAIT; caller rollback is required, and automatic whole-transaction retry
+is not established for every caller. An optional legacy host callback still needs its own generation
 reconciliation. Added owner/host regressions have not been compiled or executed.
 
 This is a durable watermark plus eventual watchdog reconciliation, not an outbox,

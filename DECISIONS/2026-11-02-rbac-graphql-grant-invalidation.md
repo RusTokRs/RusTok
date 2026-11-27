@@ -70,7 +70,11 @@ transaction. The generation row serializes reservations. On the inspected
 role-edit, user-admin, committed role replacement and artifact-assignment
 paths it is a late write fence, after tenant/credential/user/role and
 grant/receipt identities; subsequent outbox or deadline checks must not
-acquire a new earlier-ranked identity. Reserve by UPDATE RETURNING, reject
+acquire a new earlier-ranked identity. PostgreSQL reserves ROW EXCLUSIVE table
+and FOR UPDATE singleton fences with NOWAIT, consistent with the artifact grant
+trigger, so a late reservation cannot wait on either lock. Contention fails the
+owner transaction; any retry must start with fresh authorization and must not
+replay an uncertain commit. Reserve by UPDATE RETURNING, reject
 invalid or exhausted integer storage without mutating it, and publish only
 the assigned committed generation. Do not use this global watermark as a
 per-role authorization fence. The seeded singleton is permanent under ordinary

@@ -17,13 +17,30 @@ pub enum RbacInvalidationGenerationError {
 /// Reserve the next durable permission invalidation generation inside the
 /// caller-owned authorization transaction. Acquire this global row only
 /// after all required tenant, credential, user, role, grant and receipt
-/// fences. Do not acquire a new earlier-ranked identity after reservation.
+/// fences. PostgreSQL must not wait for this late global fence. On contention,
+/// roll back the entire owner transaction; never retry only the reservation.
+/// Do not acquire a new earlier-ranked identity after reservation.
 /// This is a cache recovery watermark, not an authorization grant.
 pub async fn reserve_permission_invalidation_generation(
     db: &DatabaseTransaction,
 ) -> Result<u64, RbacInvalidationGenerationError> {
     let backend = db.get_database_backend();
     let storage_guard = integer_storage_guard(backend)?;
+    if backend == DbBackend::Postgres {
+        // NOWAIT on the row alone does not protect against a conflicting
+        // table lock. Reserve the strongest table mode needed by the UPDATE
+        // first, then fence the exact existing singleton without waiting.
+        db.execute_unprepared("LOCK TABLE rbac_invalidation_state IN ROW EXCLUSIVE MODE NOWAIT")
+            .await
+            .map_err(database_error)?;
+        db.query_one_raw(Statement::from_string(
+            backend,
+            format!("SELECT generation FROM rbac_invalidation_state WHERE scope = '{RBAC_PERMISSION_INVALIDATION_SCOPE}' FOR UPDATE NOWAIT"),
+        ))
+        .await
+        .map_err(database_error)?
+        .ok_or(RbacInvalidationGenerationError::MissingOrExhausted)?;
+    }
     let row = db
         .query_one_raw(Statement::from_string(
             backend,
@@ -150,7 +167,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires RUSTOK_RBAC_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
-    async fn postgres_generation_reservations_serialize_and_rollback_reuses_uncommitted_successor() {
+    async fn postgres_generation_reservations_reject_contention_and_rollback_reuses_uncommitted_successor() {
         use sea_orm::{DatabaseConnection, DatabaseTransaction, DbBackend, IsolationLevel};
         use std::time::Duration;
 
@@ -173,26 +190,41 @@ mod tests {
 
         for (commit_first, expected) in [(false, 1_u64), (true, 3_u64)] {
             let first = transaction(&db, &schema).await;
-            assert_eq!(reserve_permission_invalidation_generation(&first).await.unwrap(), if commit_first { 2 } else { 1 });
-            let second_db = db.clone();
-            let second_schema = schema.clone();
-            let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
-            let mut second = tokio::spawn(async move {
-                let tx = transaction(&second_db, &second_schema).await;
-                ready_tx.send(()).unwrap();
-                let generation = reserve_permission_invalidation_generation(&tx).await.unwrap();
-                tx.commit().await.unwrap();
-                generation
-            });
-            ready_rx.await.unwrap();
-            assert!(tokio::time::timeout(Duration::from_millis(150), &mut second).await.is_err());
+            assert_eq!(
+                reserve_permission_invalidation_generation(&first).await.unwrap(),
+                if commit_first { 2 } else { 1 }
+            );
+            let second = transaction(&db, &schema).await;
+            let error = tokio::time::timeout(
+                Duration::from_secs(3),
+                reserve_permission_invalidation_generation(&second),
+            )
+            .await.expect("late generation fence must not wait").unwrap_err();
+            assert!(matches!(error, super::RbacInvalidationGenerationError::Database(_)));
+            second.rollback().await.unwrap();
             if commit_first {
                 first.commit().await.unwrap();
             } else {
                 first.rollback().await.unwrap();
             }
-            assert_eq!(tokio::time::timeout(Duration::from_secs(5), second).await.unwrap().unwrap(), expected);
+            let retry = transaction(&db, &schema).await;
+            assert_eq!(reserve_permission_invalidation_generation(&retry).await.unwrap(), expected);
+            retry.commit().await.unwrap();
         }
+
+        // A row-level NOWAIT alone would still wait on this table lock.
+        let holder = transaction(&db, &schema).await;
+        holder.execute_unprepared("LOCK TABLE rbac_invalidation_state IN SHARE MODE").await.unwrap();
+        let writer = transaction(&db, &schema).await;
+        let error = tokio::time::timeout(
+            Duration::from_secs(3),
+            reserve_permission_invalidation_generation(&writer),
+        )
+        .await.expect("late generation table fence must not wait").unwrap_err();
+        assert!(matches!(error, super::RbacInvalidationGenerationError::Database(_)));
+        writer.rollback().await.unwrap();
+        holder.rollback().await.unwrap();
+
         let verify = transaction(&db, &schema).await;
         assert_eq!(read_permission_invalidation_generation(&verify).await.unwrap(), 3);
         verify.rollback().await.unwrap();

@@ -110,7 +110,9 @@ its compatibility default calls the legacy membership callback. Recovery is
 eventual and depends on healthy generation watchers; this is not a transactional
 outbox or a revocation fence. Metadata-only edits do not advance the generation.
 The reservation is a late transaction-held row write returning its exact
-successor and rejecting invalid or exhausted integer storage. Never acquire
+successor and rejecting invalid or exhausted integer storage. PostgreSQL
+reserves its table and singleton with NOWAIT: contention aborts the owner
+transaction instead of waiting below earlier domain locks. Never acquire
 new earlier-ranked tenant/credential/user/role/grant/receipt identities after
 reserving it. Bulk lock-order verification remains open.
 [ADR](../../../DECISIONS/2026-11-02-rbac-graphql-grant-invalidation.md).
