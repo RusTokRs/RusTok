@@ -4,6 +4,7 @@
 
 use std::{
     collections::HashMap,
+    future::Future,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -340,6 +341,56 @@ async fn check_policy(
         && authority.as_ref() == lease.serving_authority.as_ref())
 }
 
+/// Revalidates the exact lease and all mutable authority after an awaited
+/// capability broker operation. This protects response release even when the
+/// owner performs an external operation outside the SQL effect transaction.
+async fn revalidate_capability_authority(
+    resolver: &ServerArtifactEffectivePolicyResolver,
+    authority: &ExecutionAuthority,
+    call: &CapabilityCall,
+    lease: &Arc<ExecutionLease>,
+) -> SandboxResult<()> {
+    let denied = || SandboxError::CapabilityDenied(call.capability.clone());
+    let current = authority.lookup(call)?;
+    if !Arc::ptr_eq(&current, lease) {
+        return Err(denied());
+    }
+    let current_installation = resolve_granted_artifact_capability(
+        &resolver.db,
+        &ArtifactCapabilityExecution {
+            installation_id: lease.artifact.installation_id,
+            tenant_id: lease.tenant_id(),
+            slug: lease.artifact.release.slug.clone(),
+            version: lease.artifact.release.version.clone(),
+            digest: lease.artifact.release.digest.clone(),
+        },
+        &call.capability,
+    )
+    .await?;
+    if current_installation != lease.artifact
+        || !check_policy(resolver, lease).await.unwrap_or(false)
+        || !authority.check_direct(lease).await
+        || !check_security(resolver, lease).await
+    {
+        return Err(denied());
+    }
+    let current = authority.lookup(call)?;
+    if !Arc::ptr_eq(&current, lease) {
+        return Err(denied());
+    }
+    Ok(())
+}
+
+/// Releases either a broker response or its error only after the awaited
+/// authority check succeeds.
+async fn release_capability_result<T>(
+    result: SandboxResult<T>,
+    authority_check: impl Future<Output = SandboxResult<()>>,
+) -> SandboxResult<T> {
+    authority_check.await?;
+    result
+}
+
 /// A bound call is produced from the live host registry, not the guest.
 struct SqlEffectFence {
     authority: ExecutionAuthority,
@@ -580,69 +631,63 @@ impl<B: CapabilityBroker> CapabilityBroker for FencedCapabilityBroker<B> {
         {
             return Err(denied());
         }
-        // Resolve the live capability revision even for lifecycle hooks; a
-        // revoked or replaced installation/grant cannot inherit an old lease.
-        let current = resolve_granted_artifact_capability(
-            &self.resolver.db,
-            &ArtifactCapabilityExecution {
-                installation_id: lease.artifact.installation_id,
-                tenant_id: lease.tenant_id(),
-                slug: lease.artifact.release.slug.clone(),
-                version: lease.artifact.release.version.clone(),
-                digest: lease.artifact.release.digest.clone(),
-            },
-            &call.capability,
+        revalidate_capability_authority(&self.resolver, authority, call, &lease).await?;
+        // The owner broker may perform an external operation outside the SQL
+        // effect transaction. Revalidate every capability result before
+        // releasing output: expiry, cancellation, installation replacement,
+        // policy changes, or credential revocation during the await must deny
+        // the response. This does not cancel an already-completed remote effect;
+        // a post-launch denial therefore remains an ambiguous outcome.
+        let result = self.inner.invoke(call, grant).await;
+        // Apply the same output-release fence to errors: a revoked execution
+        // must not receive broker diagnostics from an operation that was
+        // still awaiting when its authority expired or was invalidated.
+        release_capability_result(
+            result,
+            revalidate_capability_authority(&self.resolver, authority, call, &lease),
         )
-        .await?;
-        if current != lease.artifact
-            || !check_policy(&self.resolver, &lease).await.unwrap_or(false)
-            || !authority.check_direct(&lease).await
-            || !check_security(&self.resolver, &lease).await
-        {
-            return Err(denied());
-        }
-        // The independent owner broker still performs its own capability
-        // grant and transactional effect checks. Recheck lease membership
-        // after all awaits: cancellation may have removed the execution.
-        let live = authority.lookup(call)?;
-        if !Arc::ptr_eq(&live, &lease) {
-            return Err(denied());
-        }
-        let response = self.inner.invoke(call, grant).await?;
-        if call.capability.as_str() == "platform.data.objects" {
-            // Object bytes are fetched after the metadata transaction commits.
-            // Revalidate before releasing them (and before acknowledging a
-            // completed external object-store operation). Mutations carry
-            // durable owner receipts so a denied response can be replayed
-            // under a fresh, still-authorized execution.
-            let current = authority.lookup(call)?;
-            if !Arc::ptr_eq(&current, &lease) {
-                return Err(denied());
-            }
-            let current_installation = resolve_granted_artifact_capability(
-                &self.resolver.db,
-                &ArtifactCapabilityExecution {
-                    installation_id: lease.artifact.installation_id,
-                    tenant_id: lease.tenant_id(),
-                    slug: lease.artifact.release.slug.clone(),
-                    version: lease.artifact.release.version.clone(),
-                    digest: lease.artifact.release.digest.clone(),
-                },
-                &call.capability,
-            )
-            .await?;
-            if current_installation != lease.artifact
-                || !check_policy(&self.resolver, &lease).await.unwrap_or(false)
-                || !authority.check_direct(&lease).await
-                || !check_security(&self.resolver, &lease).await
-            {
-                return Err(denied());
-            }
-            let current = authority.lookup(call)?;
-            if !Arc::ptr_eq(&current, &lease) {
-                return Err(denied());
-            }
-        }
-        Ok(response)
+        .await
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use rustok_sandbox::{CapabilityName, SandboxError};
+
+    use super::release_capability_result;
+
+    #[tokio::test]
+    async fn broker_results_and_errors_are_both_fenced_before_release() {
+        let capability = CapabilityName::new("platform.http").expect("capability");
+        let successful = release_capability_result(
+            Ok("response"),
+            async { Err(SandboxError::CapabilityDenied(capability.clone())) },
+        )
+        .await;
+        assert!(matches!(
+            successful,
+            Err(SandboxError::CapabilityDenied(name)) if name == capability
+        ));
+
+        let owner_error = release_capability_result::<&str>(
+            Err(SandboxError::InvalidRequest("owner failure".to_string())),
+            async { Ok(()) },
+        )
+        .await;
+        assert!(matches!(
+            owner_error,
+            Err(SandboxError::InvalidRequest(message)) if message == "owner failure"
+        ));
+
+        let revoked_owner_error = release_capability_result::<&str>(
+            Err(SandboxError::InvalidRequest("owner failure".to_string())),
+            async { Err(SandboxError::CapabilityDenied(capability.clone())) },
+        )
+        .await;
+        assert!(matches!(
+            revoked_owner_error,
+            Err(SandboxError::CapabilityDenied(name)) if name == capability
+        ));
     }
 }
