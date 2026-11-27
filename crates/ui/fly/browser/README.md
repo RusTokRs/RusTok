@@ -15,6 +15,8 @@ SSR-first browser adapter assets and protocol contracts for Fly editors.
   [the decision](../../../../DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md).
 - Reconcile accepted server responses back into the local selection mirror. A server-originated
   selection change emits `fly:select` for SSR form retargeting without posting a duplicate select.
+- Do not attach selection hints to page activation/creation or receipt lookup. For other
+  intents, preserve a valid selection but ignore stale IDs on non-component-scoped operations.
 - Resolve classic SSR drop edges from the canvas layout axis and direction (flex, grid, inline,
   writing mode and reverse flow), not from a vertical-only assumption.
 - Cancel host-owned drags when the pointer leaves the iframe; mouse pointer-up outside the child

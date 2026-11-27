@@ -19,6 +19,13 @@ const PEER_WRITE_CHANNEL_NAME = "fly:page-authoring-writes:v1";
 // Match fly-web/src/peer_write.rs: bounds are UTF-8 bytes, not UTF-16 units.
 const MAX_PEER_WRITE_FIELD_BYTES = 256;
 const MAX_PEER_WRITE_MESSAGE_BYTES = 1024;
+const SELECTION_HINT_FREE_INTENTS = new Set([
+  "select",
+  "focus_requested",
+  "activate_page",
+  "create_page",
+  "resolve_operation",
+]);
 const INTENT_REQUEST_TIMEOUT_CODE = "INTENT_REQUEST_TIMEOUT";
 const INTENT_REQUEST_ABORTED_CODE = "INTENT_REQUEST_ABORTED";
 const NETWORK_ERROR_CODE = "NETWORK_ERROR";
@@ -883,12 +890,9 @@ function normalizedIntent(adapter, input) {
       : {};
   delete payload.type;
   const commandSequence = Number(adapter.root.dataset.flyCommandSequence);
-  if (
-    intent !== "select" &&
-    intent !== "focus_requested" &&
-    adapter.selectedId &&
-    !payload.selected_component_id
-  ) {
+  if (SELECTION_HINT_FREE_INTENTS.has(intent)) {
+    delete payload.selected_component_id;
+  } else if (adapter.selectedId && !payload.selected_component_id) {
     payload.selected_component_id = adapter.selectedId;
   }
   return {

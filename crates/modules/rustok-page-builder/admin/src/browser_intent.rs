@@ -908,6 +908,46 @@ mod tests {
     }
 
     #[test]
+    fn stale_selection_hints_are_optional_only_for_non_component_intents() {
+        let mut controller = controller();
+        let about = intent_for(
+            &controller,
+            "activate_page",
+            json!({ "page_index": 1, "page_id": "about" }),
+        );
+        dispatch_browser_intent(&mut controller, about).expect("activate about page");
+        let stale = json!({ "selected_component_id": "hero" });
+
+        assert!(apply_selection_hint(&mut controller, &stale, true).is_ok());
+        assert!(apply_selection_hint(&mut controller, &stale, false).is_err());
+    }
+
+    #[test]
+    fn page_navigation_ignores_a_stale_component_selection_hint() {
+        let mut controller = controller();
+        let about = intent_for(
+            &controller,
+            "activate_page",
+            json!({ "page_index": 1, "page_id": "about" }),
+        );
+        dispatch_browser_intent(&mut controller, about).expect("activate about page");
+        assert_eq!(controller.active_page_index(), 1);
+
+        let home = intent_for(
+            &controller,
+            "activate_page",
+            json!({
+                "page_index": 0,
+                "page_id": "home",
+                "selected_component_id": "hero"
+            }),
+        );
+        dispatch_browser_intent(&mut controller, home)
+            .expect("stale selection hint must not block page navigation");
+        assert_eq!(controller.active_page_index(), 0);
+    }
+
+    #[test]
     fn style_rule_scope_resolves_builtin_breakpoint_ids_to_media_queries() {
         let breakpoint = fly_ui::builtin_responsive_breakpoints()
             .into_iter()
