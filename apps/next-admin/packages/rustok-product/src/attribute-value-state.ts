@@ -23,6 +23,22 @@ export type ProductAttributeValueDraftState = {
 const compareStrings = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
 
+const attributeValueInputKindByOutputKind: Record<
+  ProductAttributeValueItem['kind'],
+  ProductAttributeValuePatch['kind']
+> = {
+  unset: 'CLEAR',
+  text: 'TEXT',
+  integer: 'INTEGER',
+  decimal: 'DECIMAL',
+  boolean: 'BOOLEAN',
+  date: 'DATE',
+  datetime: 'DATETIME',
+  select: 'SELECT',
+  multiselect: 'MULTISELECT',
+  json: 'JSON'
+};
+
 export function toProductAttributeValueMap(
   values: readonly ProductAttributeValueItem[]
 ): Record<string, ProductAttributeValuePatch> {
@@ -30,7 +46,8 @@ export function toProductAttributeValueMap(
   for (const value of values) {
     result[value.attributeId] = {
       attributeId: value.attributeId,
-      kind: value.kind,
+      // GraphQL output kinds are lower-case; mutation input uses an enum.
+      kind: attributeValueInputKindByOutputKind[value.kind],
       text: value.text,
       integer: value.integer,
       decimal: value.decimal,

@@ -141,7 +141,7 @@ test('server value records map to editable patches without detached metadata', (
   const values = toProductAttributeValueMap([
     {
       attributeId: 'material',
-      kind: 'TEXT',
+      kind: 'text',
       text: 'Cotton',
       detached: false
     }
@@ -160,5 +160,26 @@ test('server value records map to editable patches without detached metadata', (
       optionIds: undefined,
       json: undefined
     }
+  });
+});
+
+
+test('unset GraphQL value records become explicit CLEAR mutation patches', () => {
+  const values = toProductAttributeValueMap([
+    { attributeId: 'material', kind: 'unset', detached: false }
+  ]);
+
+  assert.deepEqual(values.material, {
+    attributeId: 'material',
+    kind: 'CLEAR',
+    text: undefined,
+    integer: undefined,
+    decimal: undefined,
+    boolean: undefined,
+    date: undefined,
+    datetime: undefined,
+    optionId: undefined,
+    optionIds: undefined,
+    json: undefined
   });
 });
