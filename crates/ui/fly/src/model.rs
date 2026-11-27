@@ -43,26 +43,24 @@ fn ensure_opaque_children_stable_ids(
     seen: &mut BTreeSet<String>,
     remapped_component_ids: &mut BTreeMap<String, String>,
 ) {
-    match value {
-        Value::Array(children) => {
-            for child in children {
-                ensure_opaque_node_stable_ids(
-                    child,
-                    generator,
-                    reserved,
-                    seen,
-                    remapped_component_ids,
-                );
-            }
+    if let Some(children) = value.as_array_mut() {
+        for child in children {
+            ensure_opaque_node_stable_ids(
+                child,
+                generator,
+                reserved,
+                seen,
+                remapped_component_ids,
+            );
         }
-        Value::Object(_) => ensure_opaque_node_stable_ids(
+    } else if value.is_object() {
+        ensure_opaque_node_stable_ids(
             value,
             generator,
             reserved,
             seen,
             remapped_component_ids,
-        ),
-        _ => {}
+        );
     }
 }
 
@@ -307,10 +305,10 @@ impl ProjectDocument {
     /// validation rejects it and every command runs validation. Self-healing here mirrors how
     /// duplicate ids have always been handled.
     pub fn ensure_stable_ids(&mut self, generator: &mut impl IdGenerator) {
-        // Fast path: a document whose ids are all present, valid, and unique needs no
-        // repair. This runs on every editor command, so it borrows ids instead of
-        // cloning them into sets, and skips the mutating walk entirely — the common
-        // case for patch/style commands on an already-stable document.
+        // Fast path: typed components must have valid ids, while opaque nodes may omit
+        // ids but any ids they do carry must be valid and unique. This runs on every editor
+        // command, so it borrows ids instead of cloning them into sets and skips the mutating
+        // walk entirely for an already-stable document.
         if self.all_component_ids_stable() {
             return;
         }
