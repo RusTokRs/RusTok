@@ -322,8 +322,19 @@ where
                 .transpose()?
                 .ok_or(ArtifactDataError::ObjectIntegrity)?;
             commit_artifact_data_effect(transaction, guard).await?;
-            return Ok(ArtifactDataObjectUploadCompletion::Completed {
+            let expected_revision: Option<i64> =
+                row.try_get("", "expected_revision").map_err(storage_error)?;
+            let session = StoredArtifactDataObjectUploadSession {
+                name,
+                content_type: row.try_get("", "content_type").map_err(storage_error)?,
+                expected_revision: expected_revision
+                    .map(|value| u64::try_from(value).map_err(|_| ArtifactDataError::RevisionConflict))
+                    .transpose()?,
                 idempotency_key,
+            };
+            commit_artifact_data_effect(transaction, guard).await?;
+            return Ok(ArtifactDataObjectUploadCompletion::Completed {
+                session,
                 completed_revision,
             });
         }
@@ -380,7 +391,7 @@ where
         &self,
         scope: &ArtifactDataScope,
         idempotency_key: Uuid,
-    ) -> Result<ArtifactDataObject, ArtifactDataError> {
+    ) -> Result<(ArtifactDataObject, Option<u64>), ArtifactDataError> {
         let (transaction, guard) =
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
         let backend =
@@ -389,9 +400,11 @@ where
         let operation =
             find_artifact_data_object_operation(&transaction, scope, idempotency_key).await?;
         commit_artifact_data_effect(transaction, guard).await?;
-        operation.map(|(stored, _)| stored.object).ok_or_else(|| {
-            ArtifactDataError::Storage("completed upload result is unavailable".to_string())
-        })
+        operation
+            .map(|(stored, expected_revision)| (stored.object, expected_revision))
+            .ok_or_else(|| {
+                ArtifactDataError::Storage("completed upload result is unavailable".to_string())
+            })
     }
 
 }
@@ -406,7 +419,7 @@ pub(crate) struct StoredArtifactDataObjectUploadSession {
 pub(crate) enum ArtifactDataObjectUploadCompletion {
     Active(StoredArtifactDataObjectUploadSession),
     Completed {
-        idempotency_key: Uuid,
+        session: StoredArtifactDataObjectUploadSession,
         completed_revision: u64,
     },
 }
