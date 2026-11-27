@@ -6,19 +6,24 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use reqwest::{Client, Method};
-use sea_orm::DatabaseConnection;
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, Statement, TransactionTrait, Value as SqlValue,
+};
 use serde_json::{Value, json};
 use url::Url;
 
 use rustok_sandbox::{
     CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityName, CapabilityResponse,
-    SandboxError, SandboxResult,
+    SandboxError, SandboxResult, SandboxSubject,
 };
 
 use crate::artifact_capability_router::{
     ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution,
+    begin_artifact_capability_effect, commit_artifact_capability_effect,
     resolve_granted_artifact_capability,
 };
+use crate::backend::SupportedBackend;
+use uuid::Uuid;
 
 pub const DEFAULT_MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024; // 10 MB
 
@@ -31,6 +36,8 @@ pub struct ArtifactHttpCapabilityBroker {
     client: Client,
     timeout: Duration,
     max_response_bytes: usize,
+    db: Option<DatabaseConnection>,
+    effect_authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>,
 }
 
 impl ArtifactHttpCapabilityBroker {
@@ -51,8 +58,6 @@ impl ArtifactHttpCapabilityBroker {
                 "HTTP capability timeout and response limit must be positive".to_string(),
             ));
         }
-        // Process/system proxies must not redirect a DNS-pinned request through
-        // a proxy that performs its own destination lookup.
         let capability = CapabilityName::new("platform.http")?;
         let client = restricted_http_client_builder(timeout)
             .build()
@@ -64,7 +69,37 @@ impl ArtifactHttpCapabilityBroker {
             client,
             timeout,
             max_response_bytes,
+            db: None,
+            effect_authorizer: None,
         })
+    }
+
+    fn with_database(db: DatabaseConnection, timeout: Duration) -> SandboxResult<Self> {
+        let mut broker = Self::with_timeout(timeout)?;
+        broker.db = Some(db);
+        Ok(broker)
+    }
+
+    fn effect_dependencies(
+        &self,
+        call: &CapabilityCall,
+    ) -> SandboxResult<(&DatabaseConnection, &dyn crate::ArtifactSqlEffectAuthorizer)> {
+        let db = self
+            .db
+            .as_ref()
+            .ok_or_else(|| SandboxError::CapabilityDenied(call.capability.clone()))?;
+        let authorizer = self
+            .effect_authorizer
+            .as_deref()
+            .ok_or_else(|| SandboxError::CapabilityDenied(call.capability.clone()))?;
+        Ok((db, authorizer))
+    }
+
+    async fn authorize_dispatch(&self, call: &CapabilityCall) -> SandboxResult<()> {
+        let (db, authorizer) = self.effect_dependencies(call)?;
+        let (transaction, guard) =
+            begin_artifact_capability_effect(db, call, authorizer).await?;
+        commit_artifact_capability_effect(transaction, guard, &call.capability).await
     }
 }
 
