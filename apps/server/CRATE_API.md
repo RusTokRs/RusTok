@@ -34,7 +34,8 @@
   resolution error is returned to the caller rather than treated as "no
   module permissions".
 - Direct session issuance (registration, login and refresh) takes the active
-  tenant row lock before user/session locks and holds it through commit. A
+  tenant row lock before user/session locks or user/session inserts and holds
+  it through commit. A
   refresh request that loses tenant admission may perform replay-only session
   revocation after re-reading the locked lineage, but it must never issue a
   replacement token. Logout and explicit revocation remain available while a
