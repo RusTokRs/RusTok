@@ -1,5 +1,33 @@
 # Server App — Implementation Plan
 
+## Admin-only RichText routing and static asset cache correctness (2026-11-27)
+
+The embedded admin shell requests the shared RichText adapter from the
+root-relative `/richtext/frame` path. The server previously mounted the
+content-owned router only through storefront composition, leaving admin-only
+profiles without that route. `embed-admin` now enables `richtext-assets`, and
+the host mounts the owner router exactly once when no storefront is embedded.
+
+Admin static assets now receive a one-year immutable cache only when their
+filenames carry a content fingerprint. Stable names such as `output.css`,
+`leptos-adapter.mjs`, and `asset-manifest.json` use ETag-backed revalidation;
+conditional 304 responses preserve that policy. Focused route and cache
+regressions were added. Maintainer verification remains pending:
+`cargo check -p rustok-server` and targeted `cargo test -p rustok-server --lib
+app_router`. Tests and compilation were not run in this session.
+
+## Nonzero host listener port validation (2026-11-27)
+
+The host previously accepted port zero from YAML and `PORT`/`RUSTOK_PORT`
+because it is a valid `u16`, even though TCP interprets it as a request for an
+ephemeral listener. Both environment overrides and the final resolved
+`server.port` now reject zero and require `1..=65535`. Regression sources
+cover the environment parser and configured endpoint. Maintainer verification
+remains pending: `cargo check -p rustok-server` and targeted
+`cargo test -p rustok-server --lib host`. Tests and compilation were not run
+in this session.
+
+
 ## GraphQL system diagnostic authority parity (2026-11-27)
 
 `sessionStats` now uses verified Auth application time and the same tenant,

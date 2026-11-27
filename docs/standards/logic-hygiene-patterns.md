@@ -256,6 +256,9 @@ without evidence of a failure is recorded separately below.
 | `P-RBAC-GENERATION-READ-FAILURE-CACHE` | RBAC lag recovery and periodic generation reads returned errors before fencing stale permission snapshots; the watchdog likewise retained the cache on database read failure. Use a shared recovery read that clears the local permission cache and rejects pre-failure fills on error, without advancing the durable checkpoint or swallowing the error. The request-local snapshot and cross-replica delivery contracts are unchanged. Detect `rg -n read_rbac_invalidation_generation_for_cache_recovery apps/server/src/services`. Source regression authored, unrun. | [Generation watchdog](../../apps/server/src/services/rbac_invalidation_generation.rs), [Listener](../../apps/server/src/services/rbac_cache_invalidation.rs) |
 | `P-RBAC-INVALIDATION-PROCESS-GLOBAL-CACHE` | RBAC mutation publishers resolved their `CacheService` through a process-global `Lazy<RwLock<Option<CacheService>>>`, even though `ensure_cache_service` owns a distinct local invalidation bus and Redis client per `ServerRuntimeContext`. Starting another runtime overwrote the publisher owner, so mutations could fan out through the wrong runtime and rely on delayed durable-generation reconciliation. Publishers now receive the originating runtime cache explicitly; auth-admin and GraphQL writers share the context-owned service, and a two-owner regression plus architecture guard protects the boundary. | [RBAC invalidation](../../apps/server/src/services/rbac_cache_invalidation.rs), [Cache runtime](../../apps/server/src/services/cache_runtime.rs), [Auth admin provider](../../apps/server/src/services/auth_admin_mutation_provider.rs), [GraphQL RBAC writer](../../apps/server/src/graphql/rbac_runtime.rs) |
 | `P-DEBUG-CONFIG-SECRET-REDACTION` | Derived or nested `Debug` output exposed Redis/SMTP/search credentials, runner tokens, Iggy addresses/passwords and process arguments/environment values, database URIs, raw host settings, S3 credential-bearing URLs, and opaque acknowledgement tokens. Remove derived `Debug` from secret-bearing types and implement explicit redacted diagnostics using configured-state flags; every nested type must redact independently. Populate nested configurations with sentinel secrets and assert none appear in formatted output. Detect with `rg -n 'derive\\(.*Debug|password|secret|token|api_key|redis_url|endpoint_url|environment|arguments|uri' apps/server/src crates/modules/rustok-iggy/src crates/modules/rustok-iggy-connector/src crates/utils/rustok-storage/src`. Category: diagnostic confidentiality; dimension: side-effect completeness and redaction. Source regressions authored, unrun. | [Server settings](../../apps/server/src/common/settings.rs), [Host config](../../apps/server/src/host.rs), [Iggy config](../../crates/modules/rustok-iggy/src/config.rs), [Iggy connector](../../crates/modules/rustok-iggy-connector/src/lib.rs), [Storage config](../../crates/utils/rustok-storage/src/runtime.rs) |
+| `P-HOST-DELIVERY` | The embedded admin shell loads the shared RichText adapter from a root-relative `/richtext/frame/...` URL, but the server mounted the content-owned router only through the storefront composition; admin-only hosts therefore returned 404. The `embed-admin` feature now enables `richtext-assets`, and composition mounts the owner router when no storefront is embedded. Category: host composition and build configuration; dimensions: deployment-surface parity and preconditions. Detect by tracing every root-relative asset against each supported host profile and its Cargo feature graph. | [Router](../../apps/server/src/services/app_router.rs), [Features](../../apps/server/Cargo.toml), [Admin shell](../../apps/admin/index.html) |
+| `P-HTTP-IMMUTABLE-UNFINGERPRINTED-ASSET` | Embedded admin assets used one-year immutable caching for every non-document path, including stable names such as `output.css`, `leptos-adapter.mjs`, and `asset-manifest.json`; deployments could leave browsers serving stale bytes. Only content-fingerprinted paths now receive immutable caching; stable names use `no-cache` with ETags and the same policy on 304 responses. Category: HTTP cache correctness; dimensions: representation identity and freshness. Detect by inspecting every `immutable` Cache-Control response against actual build output names. | [Router](../../apps/server/src/services/app_router.rs), [Regression](../../apps/server/src/services/app_router.rs) |
+| `P-SERVER-NONZERO-LISTENER-PORT` | Parsing a host port as `u16` accepted zero from YAML and `PORT`/`RUSTOK_PORT`; TCP then selected an ephemeral port while deployment ingress and readiness expected the configured listener. Validate the final config value and each environment override in `1..=65535`. Category: host configuration; dimensions: preconditions, bounds, and deployment correctness. Detect by tracing `parse_server_port` and `resolve_server_endpoint` through both config and environment paths. | [Host](../../apps/server/src/host.rs), [Regression](../../apps/server/src/host.rs) |
 
 ### P-NIL-UUID-COMPARE — use .is_nil() instead of direct equality with Uuid::nil()
 
@@ -2661,6 +2664,14 @@ use. For an optional property or context value, search for a writer. `scripts/ve
 verify-fly-ssr-first.mjs` fails on a manifest feature that enables the editor's `ssr`
 without `browser-js` and on a missing nonce hand-off.
 
+The server's embedded admin shell also requests the RichText adapter from a
+root-relative `/richtext/frame/...` path. Mounting the content-owned router only
+through the storefront left admin-only host profiles with a 404. The server now
+enables `richtext-assets` through `embed-admin` and mounts the owner router in
+admin-only composition; the storefront continues to provide it exactly once
+when that surface is present. The regression exercises both the frame document
+and stable adapter path through the admin-only composition helper.
+
 ## P-RUNTIME-PORT-PROPAGATION — Pass the selected port to nested services
 
 **Category:** Runtime composition. **Logic dimension:** Branch completeness.
@@ -3444,3 +3455,48 @@ Reference: [Serde field attributes](https://serde.rs/field-attrs.html).
 - **Regression:** verify explicit shutdown waits and reports failures, while dropping an unclosed value does not block an executor thread or panic.
 
 Reference: [Rust API Guidelines — destructors](https://rust-lang.github.io/api-guidelines/dependability.html#c-dtor-block-c-dtor-fail).
+
+
+### P-HTTP-IMMUTABLE-UNFINGERPRINTED-ASSET — Immutable caching requires a content-fingerprinted path
+
+- **Category:** HTTP cache correctness and deployment consistency.
+  **Logic dimensions:** representation identity, freshness, and branch completeness.
+- **Observed defect:** The embedded admin response applied a one-year
+  `immutable` policy to every non-document asset. Stable filenames such as
+  `output.css`, `leptos-adapter.mjs`, and `asset-manifest.json` can change
+  between releases without changing their URL, so browsers may keep serving
+  stale bytes and never revalidate.
+- **Canonical correction:** Reserve long-lived immutable caching for build
+  outputs whose path is content-fingerprinted. Stable-name assets must
+  revalidate (for example, `Cache-Control: no-cache`) and retain an ETag;
+  conditional 304 responses must preserve the same cache policy.
+- **Doctor detection:** No dedicated rule. Search for
+  `max-age=31536000, immutable` and inspect the actual build manifest/output
+  names rather than assuming every file below an asset directory is hashed.
+- **Regression:** Cover stable and fingerprinted names on both 200 and
+  conditional 304 responses. Include fixed-name CSS, adapters and manifests,
+  and verify the fingerprint rule against the build output contract.
+- **Evidence:** [Admin asset response](../../apps/server/src/services/app_router.rs),
+  [cache regressions](../../apps/server/src/services/app_router.rs).
+  Regression source authored, not executed.
+
+### P-SERVER-NONZERO-LISTENER-PORT — Reject ephemeral port zero in host configuration
+
+- **Category:** Host configuration and deployment correctness.
+  **Logic dimensions:** preconditions and bounds; side-effect completeness.
+- **Observed defect:** Parsing only as `u16` accepted port zero from both the
+  YAML host configuration and `PORT`/`RUSTOK_PORT` overrides. Binding a TCP
+  listener to port zero asks the operating system to choose an ephemeral port,
+  which does not satisfy a fixed service/ingress/readiness contract.
+- **Canonical correction:** Validate the final resolved port and each
+  environment override in `1..=65535`. Do not silently turn zero into a
+  default; tests that need an ephemeral listener should bind one directly
+  inside the test rather than using production host configuration.
+- **Doctor detection:** No dedicated rule. Trace
+  `parse_server_port` and `resolve_server_endpoint` to ensure both
+  environment and YAML paths reach the same nonzero validator.
+- **Regression:** Reject zero from the environment parser and from the final
+  YAML-resolved endpoint; preserve valid boundary ports 1 and 65535.
+- **Evidence:** [Host endpoint resolution](../../apps/server/src/host.rs),
+  [port regressions](../../apps/server/src/host.rs). Source regressions
+  authored, not executed.
