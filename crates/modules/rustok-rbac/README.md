@@ -187,3 +187,9 @@ UUID-ordered owner query. Existing users must be locked first; SQLite callers
 must hold the write fence. The result indicates whether the requested role
 exists in the locked set. This is not itself authorization and does not
 establish a universal lock order for all RBAC or artifact writers.
+
+Migration 000012 protects the permanent RBAC cache watermark from direct SQL
+insertion, deletion, replacement and non-increasing or non-integer updates.
+Normal reservations advance by one; deliberate forward-only recovery may skip
+values. Missing/corrupt predecessor storage requires offline recovery.
+Privileged DDL and database restoration remain separate. Tests unrun.

@@ -73,7 +73,11 @@ grant/receipt identities; subsequent outbox or deadline checks must not
 acquire a new earlier-ranked identity. Reserve by UPDATE RETURNING, reject
 invalid or exhausted integer storage without mutating it, and publish only
 the assigned committed generation. Do not use this global watermark as a
-per-role authorization fence. Single-role grant materialization uses the
+per-role authorization fence. The seeded singleton is permanent under ordinary
+SQL DML; updates must strictly increase its integer generation. Explicit
+forward-only recovery may skip values; ordinary reservation advances by one.
+Corrupt or missing predecessor storage requires offline recovery. Privileged
+DDL and restoration remain separate boundaries. Single-role grant materialization uses the
 same ordered (resource, action) vocabulary keys in control-plane, bootstrap
 and repair writers. This is not a complete multi-role/bulk lock-order proof.
 Post-commit local

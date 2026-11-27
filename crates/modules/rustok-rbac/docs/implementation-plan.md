@@ -456,3 +456,11 @@ exists.
 - Evidence: `node scripts/verify/verify-rbac-fba.mjs, node scripts/verify/verify-owner-fba-runtime-order.mjs, and node scripts/verify/verify-rbac-admin-boundary.mjs passed after the registry correction. Retained CI evidence remains recorded above; no broad local Cargo pass is claimed.`
 - Next action: `execute and retain the exact-head formatting, Events/RBAC/Admin/server compilation, focused tests, source verifiers, and cargo xtask module validate/test rbac gates; classify every failure against the RBAC diff before moving into migration compatibility and PostgreSQL rollback evidence. Keep the verification cursor on cycle-001/core-rbac.`
 - Resume command: `cargo fmt --all -- --check`
+
+- Global lock hierarchy continuation: migration 000012 protects the RBAC
+  watermark from ordinary SQL reset/removal/replacement; user-admin response
+  reads precede reservation. Generation-bearing outbox and final credential
+  deadline remain in the transaction tail. Authored SQLite and PostgreSQL
+  regressions, including actual generation contention. Compilation, migration
+  execution, direct relation invalidation coupling and global lock evidence
+  remain pending.

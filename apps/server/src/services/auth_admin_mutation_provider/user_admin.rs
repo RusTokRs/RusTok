@@ -1330,6 +1330,16 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(map_custom_field_error)?;
         }
+        // Finish domain response reads before taking the global recovery
+        // watermark. Only fresh outbox writes and the live deadline check
+        // follow reservation; no new earlier-ranked domain identity may enter.
+        let tenant_name = self.tenant_name(&tx, context.tenant_id).await?;
+        let final_role = match role_mutation_plan.as_ref() {
+            Some(RolePlan::Builtin(plan)) => plan.new_role().to_string(),
+            Some(RolePlan::Custom(_)) | None => {
+                self.user_role_slug(&tx, context.tenant_id, user.id).await?
+            }
+        };
         let invalidates_authorization = role_mutation_plan.is_some() || status_changed;
         let durable_generation = if invalidates_authorization {
             Some(
@@ -1393,13 +1403,6 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             ));
         }
 
-        let tenant_name = self.tenant_name(&tx, context.tenant_id).await?;
-        let final_role = match role_mutation_plan.as_ref() {
-            Some(RolePlan::Builtin(plan)) => plan.new_role().to_string(),
-            Some(RolePlan::Custom(_)) | None => {
-                self.user_role_slug(&tx, context.tenant_id, user.id).await?
-            }
-        };
         self.ensure_user_admin_credential_deadline(&tx, credential_deadline)
             .await?;
         tx.commit().await.map_err(super::internal_admin_error)?;

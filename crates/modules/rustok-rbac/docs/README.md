@@ -277,3 +277,15 @@ durable generation and recovery action is still an open P1 in the implementation
 - [PostgreSQL concurrency evidence harness](./postgres-concurrency-evidence.md)
 - [Two-process durable recovery evidence](./two-process-durable-recovery-evidence.md)
 - [Two-process Redis restart recovery evidence](./two-process-redis-restart-evidence.md)
+
+### Durable generation DML integrity and transaction tail
+
+Migration 000012 preserves the seeded permissions singleton and requires
+strictly increasing integer updates; direct deletion, insertion, PostgreSQL
+TRUNCATE and SQLite replacement fail closed. Forward-only recovery jumps
+are permitted; normal owner reservation remains UPDATE RETURNING +1. Upgrade
+validates existing storage under a writer fence. Privileged DDL and restore
+are outside ordinary DML enforcement. User-admin update resolves response role
+and tenant before reservation. The generation-bearing outbox insert and final
+live credential deadline check remain after reservation and must not acquire
+new domain identities. SQLite and opt-in PostgreSQL regressions are unrun.

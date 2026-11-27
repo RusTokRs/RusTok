@@ -22,6 +22,7 @@ impl MigrationSource for RbacModule {
             Box::new(crate::m20261127_000001_create_rbac_membership_revision::Migration),
             Box::new(crate::m20261127_000003_create_rbac_role_grant_revision::Migration),
             Box::new(crate::m20261127_000006_fence_rbac_relation_parents::Migration),
+            Box::new(crate::m20261127_000012_fence_rbac_invalidation_generation::Migration),
         ]
     }
 }
