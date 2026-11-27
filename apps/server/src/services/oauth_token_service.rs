@@ -1886,38 +1886,38 @@ async fn commit_refresh_rotation(
     })?;
     let current_app =
         match lock_issuance_oauth_app(&tx, authenticated_app.id, current.tenant_id).await {
-        Ok(app) => app,
-        Err(error) => {
-            tx.rollback().await.map_err(|_| {
-                OAuthTokenProtocolError::server_error(
-                    "Failed to roll back rejected refresh-token issuance",
-                )
-            })?;
-            if error.error == "invalid_client" {
-                match detect_oauth_refresh_reuse(
-                    db,
-                    authenticated_app,
-                    current.tenant_id,
-                    &current.token_hash,
-                    clock,
-                )
-                .await
-                {
-                    Ok(true) => {
-                        return Err(OAuthTokenProtocolError::invalid_grant(
-                            "Refresh token is invalid, expired, or already used",
-                        ));
+            Ok(app) => app,
+            Err(error) => {
+                tx.rollback().await.map_err(|_| {
+                    OAuthTokenProtocolError::server_error(
+                        "Failed to roll back rejected refresh-token issuance",
+                    )
+                })?;
+                if error.error == "invalid_client" {
+                    match detect_oauth_refresh_reuse(
+                        db,
+                        authenticated_app,
+                        current.tenant_id,
+                        &current.token_hash,
+                        clock,
+                    )
+                    .await
+                    {
+                        Ok(true) => {
+                            return Err(OAuthTokenProtocolError::invalid_grant(
+                                "Refresh token is invalid, expired, or already used",
+                            ));
+                        }
+                        Ok(false) => {}
+                        Err(replay_error) if replay_error.error == "server_error" => {
+                            return Err(replay_error);
+                        }
+                        Err(_) => {}
                     }
-                    Ok(false) => {}
-                    Err(replay_error) if replay_error.error == "server_error" => {
-                        return Err(replay_error);
-                    }
-                    Err(_) => {}
                 }
+                return Err(error);
             }
-            return Err(error);
-        }
-    };
+        };
     ensure_authenticated_client_unchanged(authenticated_app, &current_app)?;
     require_grant(&current_app, REFRESH_TOKEN_GRANT)?;
     validate_scope_subset(&current_app.scopes_list(), &current.scopes_list())?;
@@ -2962,11 +2962,14 @@ mod tests {
 
     #[tokio::test]
     async fn inactive_tenant_after_refresh_preflight_still_revokes_replayed_family() {
-        let db = Database::connect("sqlite::memory:").await.expect("SQLite database");
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("SQLite database");
         let backend = db.get_database_backend();
         let schema = Schema::new(backend);
         db.execute_raw(backend.build(&schema.create_table_from_entity(tenants::Entity)))
-            .await.expect("tenants table");
+            .await
+            .expect("tenants table");
         db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_apps::Entity)))
             .await
             .expect("oauth_apps table");
