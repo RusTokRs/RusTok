@@ -32,17 +32,18 @@ impl ProjectFragment {
             .ok_or_else(|| FlyError::ComponentNotFound(component_id.to_string()))?;
         let node = ComponentNode::Object(Box::new(component.clone()));
         let mut requirements = BTreeSet::new();
-        let mut component_ids = BTreeSet::new();
+        let mut component_ids = Vec::new();
         let mut asset_references = BTreeSet::new();
         node.visit(0, "fragment.components[0]", &mut |component, _, _| {
             if let Some(provider) = component.provider.as_ref() {
                 requirements.insert(provider.clone());
             }
-            if let Some(id) = component.id.as_ref() {
-                component_ids.insert(id.clone());
-            }
-            collect_component_asset_references(component, &mut asset_references);
         });
+        // Opaque descendants remain part of the fragment's structural identity and resource
+        // graph, even though they are not exposed through the typed component visitor.
+        node.collect_ids(&mut component_ids);
+        let component_ids = component_ids.into_iter().collect::<BTreeSet<_>>();
+        collect_node_asset_references(&node, &mut asset_references);
         let styles = document
             .project()
             .styles
@@ -285,10 +286,8 @@ fn collect_opaque_asset_ids(raw: &Value, asset_ids: &mut BTreeSet<String>) {
             {
                 asset_ids.insert(asset_id.to_string());
             }
-            if let Some(children) = object.get("components").and_then(Value::as_array) {
-                for child in children {
-                    collect_opaque_asset_ids(child, asset_ids);
-                }
+            if let Some(children) = object.get("components") {
+                collect_opaque_asset_ids(children, asset_ids);
             }
         }
         _ => {}
@@ -321,10 +320,13 @@ fn remap_component_asset_references(
     match component {
         ComponentNode::Object(object) => {
             remap_asset_attribute(&mut object.attributes, mapping);
-            if let Some(children) = object.children_mut() {
-                for child in children {
-                    remap_component_asset_references(child, mapping);
+            match &mut object.components {
+                ComponentChildren::Nodes(children) => {
+                    for child in children {
+                        remap_component_asset_references(child, mapping);
+                    }
                 }
+                ComponentChildren::Opaque(raw) => remap_opaque_asset_references(raw, mapping),
             }
         }
         ComponentNode::Opaque(raw) => remap_opaque_asset_references(raw, mapping),
@@ -332,16 +334,21 @@ fn remap_component_asset_references(
 }
 
 fn remap_opaque_asset_references(raw: &mut Value, mapping: &BTreeMap<String, String>) {
-    let Some(object) = raw.as_object_mut() else {
-        return;
-    };
-    if let Some(attributes) = object.get_mut("attributes").and_then(Value::as_object_mut) {
-        remap_asset_attribute(attributes, mapping);
-    }
-    if let Some(children) = object.get_mut("components").and_then(Value::as_array_mut) {
-        for child in children {
-            remap_opaque_asset_references(child, mapping);
+    match raw {
+        Value::Array(children) => {
+            for child in children {
+                remap_opaque_asset_references(child, mapping);
+            }
         }
+        Value::Object(object) => {
+            if let Some(attributes) = object.get_mut("attributes").and_then(Value::as_object_mut) {
+                remap_asset_attribute(attributes, mapping);
+            }
+            if let Some(children) = object.get_mut("components") {
+                remap_opaque_asset_references(children, mapping);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -375,8 +382,56 @@ impl RichTextPayload {
     }
 }
 
+fn collect_node_asset_references(
+    component: &ComponentNode,
+    references: &mut BTreeSet<String>,
+) {
+    match component {
+        ComponentNode::Object(object) => {
+            collect_component_asset_references(object, references);
+            match &object.components {
+                ComponentChildren::Nodes(children) => {
+                    for child in children {
+                        collect_node_asset_references(child, references);
+                    }
+                }
+                ComponentChildren::Opaque(raw) => {
+                    collect_opaque_asset_references(raw, references);
+                }
+            }
+        }
+        ComponentNode::Opaque(raw) => collect_opaque_asset_references(raw, references),
+    }
+}
+
+fn collect_opaque_asset_references(raw: &Value, references: &mut BTreeSet<String>) {
+    match raw {
+        Value::Array(children) => {
+            for child in children {
+                collect_opaque_asset_references(child, references);
+            }
+        }
+        Value::Object(object) => {
+            if let Some(attributes) = object.get("attributes").and_then(Value::as_object) {
+                collect_asset_attribute_references(attributes, references);
+            }
+            if let Some(children) = object.get("components") {
+                collect_opaque_asset_references(children, references);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn collect_component_asset_references(
     component: &crate::ComponentObject,
+    references: &mut BTreeSet<String>,
+) {
+    collect_asset_attribute_references(&component.attributes, references);
+}
+
+fn collect_asset_attribute_references(
+    attributes: &Map<String, Value>,
     references: &mut BTreeSet<String>,
 ) {
     for key in [
@@ -386,7 +441,7 @@ fn collect_component_asset_references(
         "poster",
         "href",
     ] {
-        if let Some(value) = component.attributes.get(key).and_then(Value::as_str) {
+        if let Some(value) = attributes.get(key).and_then(Value::as_str) {
             references.insert(value.to_string());
         }
     }
@@ -719,6 +774,103 @@ mod tests {
                 .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
                 .any(|asset| asset.id == pasted_asset_id && asset.source == "/source.webp")
         );
+    }
+
+    #[test]
+    fn fragment_carries_and_remaps_assets_and_styles_in_opaque_subtrees() {
+        let source = GrapesJsCodec::decode_value(json!({
+            "assets": [{ "id": "shared", "src": "/source.webp" }],
+            "styles": [{
+                "selectors": [{ "name": "opaque-leaf", "type": 2 }],
+                "style": { "color": "red" },
+                "flyComponentId": "opaque-leaf",
+                "flyRuleId": "opaque-leaf-rule"
+            }],
+            "pages": [{
+                "component": {
+                    "id": "source-root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "hero",
+                        "type": "section",
+                        "components": {
+                            "id": "opaque-container",
+                            "attributes": { "data-fly-asset-id": "shared" },
+                            "components": [{
+                                "id": "opaque-leaf",
+                                "attributes": { "data-fly-asset-id": "shared" }
+                            }]
+                        }
+                    }]
+                }
+            }]
+        }))
+        .expect("source");
+        let fragment = ProjectFragment::from_component(&source, "hero").expect("fragment");
+        assert_eq!(fragment.assets.len(), 1);
+        assert_eq!(fragment.styles.len(), 1);
+
+        let target = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "target-root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "existing",
+                        "type": "section",
+                        "components": {
+                            "attributes": { "data-fly-asset-id": "shared" }
+                        }
+                    }]
+                }
+            }]
+        }))
+        .expect("target");
+        let mut editor = FlyEditor::new(target, RegistrySet::with_builtins());
+        let inserted = fragment
+            .insert(&mut editor, Some("target-root".to_string()), 1)
+            .expect("paste");
+
+        let existing = editor.document().component("existing").expect("existing");
+        let ComponentChildren::Opaque(existing_raw) = &existing.components else {
+            panic!("target fixture must retain opaque children")
+        };
+        assert_eq!(existing_raw["attributes"]["data-fly-asset-id"], "shared");
+
+        let pasted = editor.document().component(&inserted[0]).expect("pasted");
+        let ComponentChildren::Opaque(pasted_raw) = &pasted.components else {
+            panic!("source fixture must retain opaque children")
+        };
+        let pasted_asset_id = pasted_raw["attributes"]["data-fly-asset-id"]
+            .as_str()
+            .expect("pasted asset id");
+        assert_ne!(pasted_asset_id, "shared");
+        assert_eq!(
+            pasted_raw["components"][0]["attributes"]["data-fly-asset-id"],
+            pasted_asset_id
+        );
+        assert!(
+            editor
+                .document()
+                .project()
+                .assets
+                .iter()
+                .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
+                .any(|asset| asset.id == pasted_asset_id && asset.source == "/source.webp")
+        );
+
+        let pasted_leaf_id = pasted_raw["components"][0]["id"]
+            .as_str()
+            .expect("opaque leaf id");
+        let copied_rule = editor
+            .document()
+            .project()
+            .styles
+            .iter()
+            .filter_map(|raw| StyleRuleDescriptor::from_value(raw.clone()))
+            .find(|rule| rule.component_id.as_deref() == Some(pasted_leaf_id))
+            .expect("style rule for the opaque descendant must be carried and remapped");
+        assert_eq!(copied_rule.raw["style"]["color"], "red");
     }
 
     #[test]
