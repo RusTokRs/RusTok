@@ -136,13 +136,15 @@ for (const marker of [
   "listener.recover_generation_and_clear().await",
   "invalidate_all_user_permissions_cache().await",
   "ctx.shared_insert(runtime)",
-]) requireText(sources.listener, marker, `${files.listener}: production listener baseline`);
+  "state.observe_applied(generation)",
+  "acknowledge_rbac_applied_generation(&self.tracker, generation)?",
+]) requireNormalizedText(sources.listener, marker, `${files.listener}: production listener baseline`);
 
 for (const marker of [
   "const RBAC_DURABLE_GENERATION_RECONCILE_INTERVAL: Duration = Duration::from_secs(5)",
   '"generation_advanced"',
   "invalidate_all_user_permissions_cache().await",
-  "state.observe_applied(generation)",
+  "state.record_full_cache_recovery(generation)",
 ]) requireText(sources.watchdog, marker, `${files.watchdog}: durable recovery path`);
 
 const evidence = JSON.parse(sources.evidence);
