@@ -2704,7 +2704,6 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
                 surviving.push((key, record.expires_at_unix_secs, prepared));
             }
         }
-        }
 
         if surviving.len() > max_entries {
             surviving.sort_by_key(|(_, expires, prepared)| (*prepared, *expires));
