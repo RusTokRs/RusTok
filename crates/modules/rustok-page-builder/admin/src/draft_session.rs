@@ -3629,7 +3629,7 @@ fn prune_token_lock_files(dir: &Path) -> Result<(), SsrDraftSessionError> {
         Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
     };
     for entry in entries {
-            let entry = entry.map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
+        let entry = entry.map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
         let path = entry.path();
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
@@ -3687,6 +3687,18 @@ fn prune_token_lock_files(dir: &Path) -> Result<(), SsrDraftSessionError> {
         drop(directory_guard);
     }
     Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn try_with_legacy_flat_token_lock<T>(
+    _dir: &Path,
+    token: &str,
+    _action: impl FnOnce() -> Result<T, SsrDraftSessionError>,
+) -> Result<Option<T>, SsrDraftSessionError> {
+    FileSsrDraftSessionStore::validate_token(token)?;
+    Err(SsrDraftSessionError::Io(
+        "file-backed draft session locking is unavailable on wasm32".to_string(),
+    ))
 }
 
 #[cfg(target_arch = "wasm32")]
