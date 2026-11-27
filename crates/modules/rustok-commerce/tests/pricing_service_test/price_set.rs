@@ -959,6 +959,7 @@ async fn test_get_variant_prices_empty() {
             barcode: None,
             shipping_profile_slug: None,
             axis_values: vec![],
+            attribute_values: vec![],
             prices: vec![],
             inventory_quantity: 0,
             inventory_policy: "deny".to_string(),

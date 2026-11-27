@@ -42,6 +42,8 @@ fn is_native_channel_mutation(path: &str) -> bool {
     NATIVE_CHANNEL_MUTATION_PATHS.contains(&path)
 }
 
+pub(crate) use base::{build_request_facts_for_context, resolve_channel_context_for_facts};
+
 pub(crate) async fn invalidate_tenant_channel_cache_local(
     ctx: &ServerRuntimeContext,
     tenant_id: Uuid,

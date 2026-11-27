@@ -2,7 +2,9 @@ const FORUM_SOURCE: &str = include_str!("../../rustok-forum/src/search_projectio
 const PUBLIC_DISCOVERY: &str = include_str!("../../rustok-forum/src/services/public_discovery.rs");
 const REPLY_AUDIENCE_READ: &str =
     include_str!("../../rustok-forum/src/services/reply_audience_read.rs");
-const FORUM_REPLY_UPDATE: &str = include_str!("../../rustok-forum/src/services/reply_inline.rs");
+const FORUM_REPLY_UPDATE: &str = include_str!("../../rustok-forum/src/services/reply.rs");
+const FORUM_PROJECTION_INVALIDATION: &str =
+    include_str!("../../rustok-forum/src/services/projection_invalidation.rs");
 const SEARCH_PROJECTION_DRIVER: &str = include_str!("../src/projection_driver.rs");
 const SEARCH_ENGINE: &str = include_str!("../src/engine.rs");
 const ADMIN_GLOBAL_SEARCH: &str =
@@ -64,10 +66,17 @@ fn forum_source_publishes_only_exact_public_approved_reply_documents() {
 #[test]
 fn reply_edits_reuse_topic_invalidation_and_topic_refresh_rebuilds_child_scope() {
     for marker in [
-        "target_type: \"forum_topic\".to_string()",
-        "target_id: Some(topic_id)",
+        "super::projection_invalidation::publish_forum_topic_projection_in_tx(",
+        "topic_id,",
     ] {
         require(FORUM_REPLY_UPDATE, marker);
+    }
+    for marker in [
+        "const FORUM_TOPIC_PROJECTION_TARGET: &str = \"forum_topic\";",
+        "target_type: target_type.to_string(),",
+        "target_id,",
+    ] {
+        require(FORUM_PROJECTION_INVALIDATION, marker);
     }
     for marker in [
         // The owner, not Search, decides that a topic refresh replaces its replies.

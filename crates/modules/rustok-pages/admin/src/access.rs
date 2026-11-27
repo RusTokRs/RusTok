@@ -69,12 +69,19 @@ pub fn pages_editor_permissions_from_effective(permissions: &[String]) -> Capabi
     }
 }
 
-/// A restore writes the working document and requires the same grant as saving it.
-/// The server separately checks the principal's scope for the selected page.
+/// Whether the principal may restore a journaled body revision.
+///
+/// Restoring a revision is a save, so it needs `pages:update`. The journal
+/// itself is readable with `pages:publish` as well, and a principal that
+/// reads it that way is not offered an action the server would refuse. The
+/// server stays the authority: it also applies the ownership scope of the
+/// grant.
 pub fn pages_can_restore_body_revision(permissions: &[String]) -> bool {
     effective_permissions_grant(permissions, "pages:update")
 }
 
+/// Derives `EditorProviderState` (`Healthy`, `Degraded`, `Unavailable`) from
+/// contribution assembly diagnostics.
 pub fn pages_editor_provider_state(assembly: &ContributionAssemblyResult) -> EditorProviderState {
     if assembly
         .diagnostics

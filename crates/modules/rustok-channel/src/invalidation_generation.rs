@@ -1,4 +1,4 @@
-use sea_orm::{ConnectionTrait, DbErr, Statement};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, DbErr, Statement};
 
 use crate::{ChannelError, ChannelResult};
 
@@ -10,10 +10,44 @@ pub async fn read_resolution_invalidation_generation<C>(db: &C) -> ChannelResult
 where
     C: ConnectionTrait,
 {
+    read_generation(db, READ_CHANNEL_RESOLUTION_GENERATION_SQL.to_string()).await
+}
+
+/// Keep the owner generation stable until the protected SQL effect commits.
+/// All channel resolution writers update this row in their own transaction.
+/// SQLite reserves its single writer before reading the revision.
+pub async fn require_resolution_invalidation_generation_on(
+    tx: &DatabaseTransaction,
+    expected: u64,
+) -> ChannelResult<()> {
+    let sql = match tx.get_database_backend() {
+        DbBackend::Postgres => format!("{READ_CHANNEL_RESOLUTION_GENERATION_SQL} FOR SHARE"),
+        DbBackend::Sqlite => {
+            let result = tx.execute_unprepared(
+                "UPDATE channel_resolution_invalidation_state SET generation = generation WHERE scope = 'resolution'",
+            ).await?;
+            if result.rows_affected() != 1 {
+                return Err(ChannelError::Database(DbErr::Custom(
+                    "channel resolution invalidation state is missing".into(),
+                )));
+            }
+            READ_CHANNEL_RESOLUTION_GENERATION_SQL.to_string()
+        }
+        backend => return Err(ChannelError::Database(DbErr::Custom(
+            format!("unsupported channel authority backend: {backend:?}"),
+        ))),
+    };
+    if read_generation(tx, sql).await? != expected {
+        return Err(ChannelError::Conflict("channel resolution authority changed".into()));
+    }
+    Ok(())
+}
+
+async fn read_generation(db: &impl ConnectionTrait, sql: String) -> ChannelResult<u64> {
     let row = db
         .query_one_raw(Statement::from_string(
             db.get_database_backend(),
-            READ_CHANNEL_RESOLUTION_GENERATION_SQL.to_string(),
+            sql,
         ))
         .await?
         .ok_or_else(|| {
@@ -31,7 +65,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::read_resolution_invalidation_generation;
+    use super::{read_resolution_invalidation_generation, require_resolution_invalidation_generation_on};
     use sea_orm::{ConnectionTrait, Database, TransactionTrait};
 
     async fn install_generation_state(db: &sea_orm::DatabaseConnection, generation: i64) {
@@ -45,6 +79,24 @@ mod tests {
         ))
         .await
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn transaction_fence_rejects_stale_generation_without_advancing_it() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        install_generation_state(&db, 4).await;
+        let tx = db.begin().await.unwrap();
+        require_resolution_invalidation_generation_on(&tx, 4).await.unwrap();
+        tx.commit().await.unwrap();
+        assert_eq!(read_resolution_invalidation_generation(&db).await.unwrap(), 4);
+
+        db.execute_unprepared("UPDATE channel_resolution_invalidation_state SET generation = 6").await.unwrap();
+        let tx = db.begin().await.unwrap();
+        assert!(require_resolution_invalidation_generation_on(&tx, 4).await.is_err());
+        tx.rollback().await.unwrap();
+        let tx = db.begin().await.unwrap();
+        require_resolution_invalidation_generation_on(&tx, 6).await.unwrap();
+        tx.rollback().await.unwrap();
     }
 
     #[tokio::test]

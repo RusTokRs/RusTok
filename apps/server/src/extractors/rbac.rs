@@ -499,6 +499,7 @@ mod tests {
             failed_login_count: 0,
             locked_until: None,
             password_changed_at: None,
+            recovery_revision: 0,
             metadata: serde_json::json!({}),
             created_at: chrono::Utc::now().into(),
             updated_at: chrono::Utc::now().into(),
@@ -520,6 +521,7 @@ mod tests {
             scopes: vec![],
             grant_type: "direct".to_string(),
             access_token_expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
+            oauth_credential: None,
         }
     }
 

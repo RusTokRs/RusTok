@@ -201,10 +201,12 @@ fn status_for_error(error: &PagesBrowserIntentAccessError) -> u16 {
 fn stable_code_for_error(error: &PagesBrowserIntentAccessError) -> Option<&str> {
     match error {
         PagesBrowserIntentAccessError::Capability(BrowserCapabilityAccessError::Dispatch(
-            BrowserIntentDispatchError::RevisionConflict { .. },
+            BrowserIntentDispatchError::RevisionConflict { .. }
+            | BrowserIntentDispatchError::CommandSequenceConflict { .. },
         ))
         | PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Dispatch(
-            BrowserIntentDispatchError::RevisionConflict { .. },
+            BrowserIntentDispatchError::RevisionConflict { .. }
+            | BrowserIntentDispatchError::CommandSequenceConflict { .. },
         )) => Some(BROWSER_REVISION_CONFLICT_CODE),
         PagesBrowserIntentAccessError::Capability(BrowserCapabilityAccessError::Dispatch(
             BrowserIntentDispatchError::ProjectHashConflict { .. },
@@ -260,7 +262,8 @@ fn stable_code_for_error(error: &PagesBrowserIntentAccessError) -> Option<&str> 
 fn dispatch_status(error: &BrowserIntentDispatchError) -> u16 {
     match error {
         BrowserIntentDispatchError::RevisionConflict { .. }
-        | BrowserIntentDispatchError::ProjectHashConflict { .. } => HTTP_CONFLICT,
+        | BrowserIntentDispatchError::ProjectHashConflict { .. }
+        | BrowserIntentDispatchError::CommandSequenceConflict { .. } => HTTP_CONFLICT,
         _ => HTTP_UNPROCESSABLE_ENTITY,
     }
 }
@@ -368,6 +371,32 @@ mod tests {
         assert!(problem.capability.is_none());
         assert!(problem.required.is_empty());
         assert!(problem.missing.is_empty());
+
+        let sequence_error = PagesBrowserIntentAccessError::Pages(
+            PagesBrowserIntentError::Dispatch(BrowserIntentDispatchError::CommandSequenceConflict {
+                expected: 8,
+                actual: 7,
+            }),
+        );
+        let sequence_problem = PagesBrowserIntentProblem::from(&sequence_error);
+        assert_eq!(sequence_problem.status, HTTP_CONFLICT);
+        assert_eq!(
+            sequence_problem.code.as_deref(),
+            Some(BROWSER_REVISION_CONFLICT_CODE)
+        );
+
+        let capability_sequence_error = PagesBrowserIntentAccessError::Capability(
+            BrowserCapabilityAccessError::Dispatch(
+                BrowserIntentDispatchError::CommandSequenceConflict {
+                    expected: 8,
+                    actual: 7,
+                },
+            ),
+        );
+        assert_eq!(
+            stable_code_for_error(&capability_sequence_error),
+            Some(BROWSER_REVISION_CONFLICT_CODE)
+        );
     }
 
     #[test]

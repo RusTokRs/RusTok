@@ -42,8 +42,18 @@ The desired and observed heads must agree and be converged; an incomplete,
 legacy, ambiguous, altered or superseded set denies serving. All assignments
 must echo the derived readiness revision; a deployment revision is never a
 tenant capability or a substitute for current tenant selection, security
-state or permission checks. The runtime compares the state revision and
-observed head before and after the closure read. The producer writes intent,
+state or permission checks. The runtime compares the state revision and both head IDs before and after
+the closure read. Serving leases now retain the converged head/state
+revision, owner-derived digest, node identity and exact observation revisions
+for every required artifact, captured in one readiness read snapshot.
+SQL effects hold the shared reconciliation state row lock after the mixed
+selection fences and before the composition lock (SQLite already owns a
+write reservation). The effect reconstitutes the digest and validates the
+complete required live/observed assignments under the same lock; requests,
+claims, heartbeats and reports hold the exclusive state row lock before
+ledger mutations. A restored head with a different state revision or changed
+assignment observation denies the old lease. Fresh preflight compares the
+same evidence; no additional schema or agent wire change is required. The producer writes intent,
 derived revision, assignments, receipt, state and outbox in the existing owner
 transaction. Existing idempotency semantics remain tied to the original
 request; replay does not renew readiness.
@@ -74,8 +84,8 @@ policy events retain their own revision semantics. Storage and invalid
 evidence errors do not grant authority. A pending replacement deployment
 temporarily denies artifact serving until convergence. This is intentionally
 conservative; zero-downtime overlapping deployment generations, ongoing worker
-liveness, request context wiring, transactional execution leases and
-capability-level reauthorization are separate work. Native Auth/RBAC
+liveness, request context wiring, non-SQL effect commit fencing and continuous
+runtime liveness remain separate work. Native Auth/RBAC
 availability is unchanged.
 
 ## Alternatives and verification

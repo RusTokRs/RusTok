@@ -493,7 +493,7 @@ pub(super) fn ChannelCard(
     let lifecycle_locale_rename = ui_locale.clone();
     let rename_name = RwSignal::new(channel.channel.name.clone());
     let renaming = RwSignal::new(false);
-    let submit_rename = move |ev: SubmitEvent| {
+    let submit_rename = Callback::new(move |ev: SubmitEvent| {
         ev.prevent_default();
         let token = lifecycle_token_rename.clone();
         let tenant = lifecycle_tenant_rename.clone();
@@ -526,7 +526,7 @@ pub(super) fn ChannelCard(
             }
             busy.set(false);
         });
-    };
+    });
 
     let lifecycle_clear_query = query_writer.clone();
     let lifecycle_token_delete = token.clone();
@@ -535,7 +535,8 @@ pub(super) fn ChannelCard(
     let lifecycle_slug_delete = channel_slug.clone();
     let lifecycle_locale_delete = ui_locale.clone();
     let confirming_delete = RwSignal::new(false);
-    let delete_channel_action = move || {
+    let delete_channel_action = Callback::new(move |_: ()| {
+        let lifecycle_clear_query = lifecycle_clear_query.clone();
         let token = lifecycle_token_delete.clone();
         let tenant = lifecycle_tenant_delete.clone();
         let channel_id = lifecycle_channel_delete.clone();
@@ -562,7 +563,7 @@ pub(super) fn ChannelCard(
             }
             busy.set(false);
         });
-    };
+    });
 
     let create_target_locale = ui_locale.clone();
     let create_target = move |ev: SubmitEvent| {
@@ -771,11 +772,6 @@ pub(super) fn ChannelCard(
         lifecycle_toggle.label_key,
         lifecycle_toggle.label_fallback,
     );
-    let make_default_label = t(
-        ui_locale.as_deref(),
-        "channel.card.makeDefault",
-        "Make Default",
-    );
     let lifecycle_rename_label =
         StoredValue::new(t(ui_locale.as_deref(), "channel.card.rename", "Rename"));
     let rename_field_label = t(
@@ -798,10 +794,15 @@ pub(super) fn ChannelCard(
         "channel.card.confirmDelete",
         "Confirm delete",
     ));
-    let lifecycle_delete_hint = t(
+    let lifecycle_delete_hint = StoredValue::new(t(
         ui_locale.as_deref(),
         "channel.card.deleteHint",
         "This also removes its targets, module bindings, app bindings and policy rules.",
+    ));
+    let make_default_button_label = t(
+        ui_locale.as_deref(),
+        "channel.card.makeDefault",
+        "Make Default",
     );
 
     view! {
@@ -872,7 +873,7 @@ pub(super) fn ChannelCard(
                                 disabled=move || busy.get()
                                 on_click=Box::new(make_default)
                             >
-                                {make_default_label}
+                                {make_default_button_label}
                             </Button>
                         }.into_any()
                     }}
@@ -890,11 +891,11 @@ pub(super) fn ChannelCard(
                                 disabled=move || busy.get()
                                 on_click=Box::new(move || renaming.set(true))
                             >
-                                {lifecycle_rename_label.get_value()}
+                                {move || lifecycle_rename_label.get_value()}
                             </Button>
                         </Show>
                         <Show when=move || renaming.get()>
-                            <form class="flex flex-wrap items-center gap-2" on:submit=submit_rename.clone()>
+                            <form class="flex flex-wrap items-center gap-2" on:submit=move |ev| submit_rename.run(ev)>
                                 // `Input` spans `w-full`, so it sits in a flexible column of its
                                 // own: next to the buttons it would otherwise shrink them to the
                                 // edge of the card.
@@ -906,14 +907,14 @@ pub(super) fn ChannelCard(
                                     />
                                 </div>
                                 <Button r#type="submit" disabled=move || busy.get()>
-                                    {lifecycle_save_label.get_value()}
+                                    {move || lifecycle_save_label.get_value()}
                                 </Button>
                                 <Button
                                     variant=ButtonVariant::Outline
                                     class="text-muted-foreground"
                                     on_click=Box::new(move || renaming.set(false))
                                 >
-                                    {cancel_label.get_value()}
+                                    {move || cancel_label.get_value()}
                                 </Button>
                             </form>
                         </Show>
@@ -924,27 +925,27 @@ pub(super) fn ChannelCard(
                                 disabled=move || busy.get()
                                 on_click=Box::new(move || confirming_delete.set(true))
                             >
-                                {lifecycle_delete_label.get_value()}
+                                {move || lifecycle_delete_label.get_value()}
                             </Button>
                         </Show>
                         <Show when=move || confirming_delete.get()>
                             <div class="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2">
                                 <span class="text-xs text-destructive">
-                                    {lifecycle_delete_hint.clone()}
+                                    {move || lifecycle_delete_hint.get_value()}
                                 </span>
                                 <Button
                                     variant=ButtonVariant::Destructive
                                     disabled=move || busy.get()
-                                    on_click=Box::new(delete_channel_action.clone())
+                                    on_click=Box::new(move || delete_channel_action.run(()))
                                 >
-                                    {lifecycle_delete_confirm_label.get_value()}
+                                    {move || lifecycle_delete_confirm_label.get_value()}
                                 </Button>
                                 <Button
                                     variant=ButtonVariant::Outline
                                     class="text-muted-foreground"
                                     on_click=Box::new(move || confirming_delete.set(false))
                                 >
-                                    {cancel_label.get_value()}
+                                    {move || cancel_label.get_value()}
                                 </Button>
                             </div>
                         </Show>

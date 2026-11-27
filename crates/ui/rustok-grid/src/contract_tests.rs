@@ -126,7 +126,10 @@ fn test_grid_state_apply_rows_pipeline_contract() {
     };
     let mut state = GridState::new().with_pagination(1, 2, dataset.len() as u64);
     state.sort.set("score", SortDirection::Desc);
-    assert_eq!(names(&state.apply_rows(&dataset, cell_of)), ["Eve", "Bob"]);
+    assert_eq!(
+        names(&state.apply_rows(&dataset, cell_of).0),
+        ["Eve", "Bob"]
+    );
 
     state.pagination.set_page(2);
     assert!(state.set_filter("visible", FilterValue::Boolean(true)));
@@ -134,20 +137,22 @@ fn test_grid_state_apply_rows_pipeline_contract() {
         state.pagination.page, 1,
         "changed filters invalidate page state"
     );
-    // apply_rows returns rendered rows, not a second total source. The owner
-    // obtains its filtered count through the same canonical filter vocabulary.
-    let filtered = state.filters.retain_matching(&dataset, cell_of);
-    assert_eq!(filtered.len(), 3);
-    state.pagination.set_total(filtered.len() as u64);
-    assert_eq!(names(&state.apply_rows(&dataset, cell_of)), ["Bob", "Dana"]);
+    // The projection returns the pagination for the filtered result set.
+    let (_, pagination) = state.apply_rows(&dataset, cell_of);
+    assert_eq!(pagination.total, 3);
+    state.pagination = pagination;
+    assert_eq!(
+        names(&state.apply_rows(&dataset, cell_of).0),
+        ["Bob", "Dana"]
+    );
 
     state.pagination.set_page(2);
-    assert_eq!(names(&state.apply_rows(&dataset, cell_of)), ["Alice"]);
+    assert_eq!(names(&state.apply_rows(&dataset, cell_of).0), ["Alice"]);
     assert_eq!(state.pagination.total, 3);
     assert_eq!(state.toggle_sort("score"), None);
     assert_eq!(state.pagination.page, 1);
     assert_eq!(
-        names(&state.apply_rows(&dataset, cell_of)),
+        names(&state.apply_rows(&dataset, cell_of).0),
         ["Alice", "Bob"]
     );
 }

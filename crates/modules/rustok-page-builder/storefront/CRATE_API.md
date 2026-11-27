@@ -10,6 +10,7 @@ Canonical public contract and domain architecture specification for `rustok-page
 - `PageBuilderStorefront`: Dynamic SSR/hydrate component rendering Page Builder project documents with scoped CSS and Fly actions.
 - `StaticLandingStorefront`: Direct SSR renderer for pre-compiled static landing artifact HTML and scoped CSS without `<iframe>`.
 - `PageBuilderView`: Routable storefront page view component with localized metadata and error fallbacks.
+- `PageBuilderAuthenticatedInlineStorefront` (feature = `inline-edit`): Authenticated, grant-bound inline editing of eligible static text nodes.
 
 ### Core Rendering Primitives
 - `render_storefront_page`: Renders project data into a `StorefrontPageOutput` with default policy.
@@ -27,6 +28,13 @@ Canonical public contract and domain architecture specification for `rustok-page
 ### Browser Bridges & Assets
 - `FLY_STOREFRONT_BRIDGE_JS`: JavaScript bridge for landing-local navigation, validated Product buyer handoff and acknowledged Cart open/close/toggle requests. Same-context fragment links and `navigate` events resolve only inside the nearest landing; missing, empty and malformed fragments do not trigger host navigation. Scrolling honors reduced motion. See the [README](README.md#purchase-and-cart-bridge) for the shared payload and host event protocol.
 - `fly_browser`: Re-export of Fly browser utilities and interactive action scripts.
+
+### Authenticated Inline Editing (feature = `inline-edit`)
+- `AuthenticatedInlineEditGrant` and `AuthenticatedInlineEditRequest`: Signed, page/revision/hash-bound inline edit capability and request.
+- `AuthenticatedInlineEditSession`: Applies one authorized content mutation through the canonical Fly patch path and returns the updated `project_data` and project hash.
+- `PageBuilderAuthenticatedInlineStorefront`: SSR storefront component that instruments eligible static text nodes and attaches the real-DOM inline editor after hydration.
+- `InlineEditAuthorizationPort`, `InlineEditApplyResult` and `InlineEditError`: Host authorization seam, committed result and typed failure surface.
+- Each grant permits one successful content mutation. The host must persist the returned document, issue a new grant bound to its updated revision/hash and remount before another edit. The authenticated inline editor accepts `First`, `Index` and stable `Id` selections; `Slug` is rejected. Unsupported selections are marked in SSR and reported through `on_error` after hydration.
 
 ---
 
@@ -51,7 +59,7 @@ Canonical public contract and domain architecture specification for `rustok-page
 ## Minimum Contract Set
 
 ### Input DTOs/Commands
-- `PageSelection`: Selection criteria for specific sub-pages in a multi-page document (`First`, `ById`, `BySlug`).
+- `PageSelection`: Selection criteria for specific sub-pages in a multi-page document (`First`, `Index`, `Id`, `Slug`). The authenticated inline editor accepts `First`, `Index` and `Id`; it rejects `Slug`.
 - `RenderPolicy`: Sanitization and rendering behavior switches (component instrumentation, strict CSS filters).
 - `PageBuilderStorefrontViewModel`: Pure Rust view-model driving storefront page presentation.
 
@@ -70,3 +78,4 @@ Canonical public contract and domain architecture specification for `rustok-page
 ### Errors / Failure Codes
 - `fly::FlyError`: Document parsing, validation, or sanitization failures.
 - `PageBuilderStorefrontViewModel`: Captures render errors cleanly and displays accessible error alerts without panicking.
+- `InlineEditError` and `InlineEditContractError`: Authorization, selection, stale-revision, replay, text-validation and browser-sequence failures for the optional authenticated inline editor.

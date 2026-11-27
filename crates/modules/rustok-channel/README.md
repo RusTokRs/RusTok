@@ -104,6 +104,7 @@ It does not yet provide:
 - `ChannelResolver`
 - `ChannelService`
 - `read_resolution_invalidation_generation`
+- `require_resolution_invalidation_generation_on`: holds the existing owner generation row stable in an effect transaction; PostgreSQL uses a shared row lock and SQLite reserves the writer. Stale or missing evidence denies. The server artifact HTTP path captures uncached channel resolution and uses this fence; this is not runtime-certified.
 - `controllers::routes`
 
 ## Standalone Index identity service

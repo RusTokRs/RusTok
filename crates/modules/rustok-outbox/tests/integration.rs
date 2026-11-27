@@ -354,6 +354,7 @@ async fn seed_event(db: &DatabaseConnection) -> TestResult<EventEnvelope> {
     let payload = serde_json::to_value(&envelope)?;
     let model = entity::ActiveModel {
         id: Set(envelope.id),
+        tenant_id: Set(Some(envelope.tenant_id)),
         event_type: Set(envelope.event_type.clone()),
         schema_version: Set(envelope.schema_version as i16),
         payload: Set(payload),

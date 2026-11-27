@@ -188,6 +188,14 @@ impl PlatformCompositionService {
     pub async fn active_snapshot(
         db: &DatabaseConnection,
     ) -> Result<PlatformCompositionSnapshot, PlatformCompositionError> {
+        Self::snapshot_from_owner(Self::active_owner_snapshot(db).await?)
+    }
+
+    /// Resolve the verified owner snapshot before adapting the manifest.
+    /// Serving policy retains this exact revision, not a second manifest read.
+    pub(super) async fn active_owner_snapshot(
+        db: &DatabaseConnection,
+    ) -> Result<ModuleCompositionSnapshot, PlatformCompositionError> {
         let owner = ModuleControlPlane::new(db.clone()).composition();
         let snapshot = match owner.active_snapshot().await {
             Ok(snapshot) => snapshot,
@@ -205,7 +213,7 @@ impl PlatformCompositionService {
             }
             Err(error) => return Err(error.into()),
         };
-        Self::snapshot_from_owner(snapshot)
+        Ok(snapshot)
     }
 
     pub async fn active_manifest(

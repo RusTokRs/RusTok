@@ -181,8 +181,18 @@ production readiness. The documented implementation and operational gaps include
 - Server SQL capability effects now recheck exact active installation and
   durable grants under the existing platform/tenant activation locks in the
   effect transaction. Exact release quarantine/revocation and security revision
-  are also fenced, including implicit clear and quarantine/clear ABA. Full
-  effective-policy (including static dependencies), registry status, deployment readiness,
+  are also fenced, including implicit clear and quarantine/clear ABA.
+  Independent monotonic registry release authority fences publication, yank,
+  unyank and availability ABA for the root and entire serving artifact closure.
+  Artifact scope selection generations fence lifecycle ABA on the exact
+  serving closure. Migration 000095 requires coordinated writer/reader
+  cutover. Mixed native/artifact serving closures also fence tenant lifecycle
+  revision and optional override intent. The verified active composition
+  revision/hash is captured with the serving policy and checked under the
+  owner row lock in the SQL effect transaction. Serving closures bind and
+  transactionally revalidate converged deployment ledger evidence. Full effective-policy,
+  HTTP channel context is now evaluated and fenced by the existing Channel generation.
+  Contextual operational maintenance, deferred/background channel context, continuous node liveness,
   cross-owner lock ordering and external-effect fencing remain open; see the
   [SQL capability authority contract](./docs/README.md#sql-capability-effect-authority).
   Source regressions and compilation/concurrent PostgreSQL evidence remain unrun.

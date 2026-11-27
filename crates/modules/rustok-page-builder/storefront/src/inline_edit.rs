@@ -458,7 +458,9 @@ pub fn PageBuilderAuthenticatedInlineStorefront(
     let policy = policy.unwrap_or_default();
     let class = class.unwrap_or_else(|| "rustok-page-builder-inline-storefront".to_string());
     let root_id = inline_root_id(&grant);
-    let editable_ids = inline_editable_component_ids(&project_data, &selection).unwrap_or_default();
+    let editable_ids = inline_editable_component_ids(&project_data, &selection)
+        .map_err(|error| error.to_string());
+    let inline_edit_unavailable = editable_ids.is_err();
     let rendered = render_authenticated_inline_page(project_data, selection, policy, context);
 
     #[cfg(not(all(target_arch = "wasm32", feature = "hydrate")))]
@@ -475,9 +477,16 @@ pub fn PageBuilderAuthenticatedInlineStorefront(
         let on_error = on_error.clone();
         Effect::new(move |_| {
             subscription.set_value(None);
+            let editable_ids = match &editable_ids {
+                Ok(editable_ids) => editable_ids.clone(),
+                Err(error) => {
+                    on_error.run(error.clone());
+                    return;
+                }
+            };
             match fly_leptos::attach_real_dom_inline_editing(
                 &root_id,
-                editable_ids.clone(),
+                editable_ids,
                 grant.clone(),
                 {
                     let on_request = on_request.clone();
@@ -509,6 +518,7 @@ pub fn PageBuilderAuthenticatedInlineStorefront(
                     id=root_id
                     class=class
                     data-rustok-page-builder-inline-storefront="true"
+                    data-inline-edit-unavailable=inline_edit_unavailable.then_some("true")
                     data-page-id=page_id
                     data-inline-revision=grant.revision_id().to_string()
                     data-inline-project-hash=grant.expected_project_hash().hex()
@@ -762,6 +772,32 @@ mod tests {
         );
         assert!(!root_id.contains(grant.session_id()));
         assert!(!root_id.contains("signed-proof"));
+    }
+
+
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn unsupported_slug_selection_is_marked_unavailable_in_ssr() {
+        let mut project = project();
+        project["pages"][0]["flyPageMeta"] = json!({ "slug": "home" });
+        let grant = grant(&project);
+        let html = Owner::new().with(|| {
+            view! {
+                <PageBuilderAuthenticatedInlineStorefront
+                    project_data=project
+                    grant=grant
+                    selection=PageSelection::Slug("home".to_string())
+                    on_request=Callback::new(|_: AuthenticatedInlineEditRequest| ())
+                    on_error=Callback::new(|_: String| ())
+                />
+            }
+            .to_html()
+        });
+        assert!(
+            html.contains("data-inline-edit-unavailable=\"true\""),
+            "{html}"
+        );
+        assert!(html.contains("data-fly-page-body"), "{html}");
     }
 
     #[cfg(feature = "ssr")]

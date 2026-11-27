@@ -3594,3 +3594,57 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   owner admission. Static lifecycle/composition, registry mutation, readiness,
   installation ABA and cross-owner ordering remain open. Source regressions
   authored; compilation and concurrent database verification remain pending.
+
+- Source-wired selection continuity generation on permanent platform/tenant
+  slug activation fences (migration 000095). Advance only successful serving
+  lifecycle writes and their receipts; no generation renewal on lock-only
+  checks, receipt replay or rollback of an uncommitted transaction. Capture
+  exact selections and generations in one owner snapshot, compare under
+  closure locks for SQL effects and compare fresh closure evidence for
+  preflight. Lifecycle retains root-only generation. Tenant mutation does
+  not invalidate unrelated tenants; platform mutation conservatively
+  invalidates every affected slug lease. Source regressions include actual
+  tenant disable/re-enable, receipt replay, rollback and an opt-in PostgreSQL
+  lock-wait scenario. Tests, compilation and migration execution remain
+  pending. Drain executions, stop old writers and coordinate migration and
+  deployment. Static dependency lifecycle/overrides and composition remain
+  separate outstanding authority.
+
+- Source-wired tenant lifecycle/override continuity for every visited module
+  in the serving closure, including native dependencies reached transitively.
+  Capture the canonical aggregate revision and compare optional override
+  intent against policy facts on the selection snapshot. Acquire all visited
+  platform slug locks in sorted order before SQL checks; artifact tenant
+  locks remain ordered per slug. Both override commit paths share the same
+  platform fence; existing settings commit fence is reused. Preserve Core
+  override semantics, inherited intent and separate lifecycle hook admission.
+  Source regression extends mixed closure with first native override, stale
+  policy denial and override-clear ABA. No new migration. Tests, compilation,
+  concurrent PostgreSQL and cross-owner lock-order evidence remain pending;
+  active composition, registry mutations and readiness are not fenced.
+
+- Source-wired active composition identity through the host serving policy
+  resolver from the same verified owner manifest (defaults/co-requisites).
+  Recheck the revision/hash after closure and readiness derivation and on
+  fresh capability preflight; SQL effects take the canonical shared active
+  composition row lock after mixed-closure fences. SQLite already has its
+  write reservation. Owner CAS replacement and effect admission serialize;
+  composition ABA and missing/corrupt state fail closed. Existing lifecycle
+  hook admission remains root-only. No additional migration. SQLite owner
+  ABA and opt-in PostgreSQL lock-wait tests in both directions added, unrun.
+  Cross-owner lock ordering, independent registry/readiness mutation fences,
+  contextual channel/maintenance authority, compiled registry consistency
+  and end-to-end runtime evidence remain open.
+
+- Source-wired converged deployment head, state revision, owner readiness
+  digest and exact node assignment observation revisions into the serving
+  closure. One readiness read snapshot and final head comparison; fresh
+  preflight compares full evidence. SQL effects take the shared reconciliation
+  state row lock after selection fences and before composition, recompute
+  digest and verify all required live/observed assignment identities and
+  observations. Selection-only fixtures cannot authorize serving effects.
+  Existing ledger writers take the exclusive state row lock. SQLite source
+  regressions exercise missing dependency/node, changed observation and
+  head restoration; opt-in PostgreSQL state-lock tests cover both directions.
+  No new migration. Tests/compilation unrun; end-to-end contention, live node
+  health, registry and contextual policy authority remain open.

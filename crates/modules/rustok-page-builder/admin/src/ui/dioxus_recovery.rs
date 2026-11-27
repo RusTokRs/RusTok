@@ -58,6 +58,7 @@ struct DraftRecoveryRecord {
     updated_at_ms: u64,
 }
 
+#[derive(Clone)]
 pub(crate) struct DraftRecoveryBootstrap {
     pub store: Option<DraftRecoveryStore>,
     pub base: DraftRecoveryBase,

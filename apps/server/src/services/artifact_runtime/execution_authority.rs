@@ -10,7 +10,8 @@ use std::{
 
 use async_trait::async_trait;
 use rustok_modules::{
-    ArtifactBindingDispatchError, ArtifactCapabilityExecution,
+    ArtifactBindingDispatchError, ArtifactCapabilityExecution, ArtifactEffectivePolicyResolveError,
+    ArtifactRegistryExecutionAuthority,
     ArtifactExecutionLeaseGuard, InstalledModuleArtifact,
     ModuleRuntimeBinding, ArtifactSqlEffectAuthorizer, ArtifactSqlEffectFence,
     ArtifactSqlEffectCommitGuard, lock_granted_artifact_capability_on,
@@ -22,7 +23,7 @@ use rustok_sandbox::{
 };
 use uuid::Uuid;
 
-use super::ServerArtifactEffectivePolicyResolver;
+use super::{ArtifactServingAuthority, ServerArtifactEffectivePolicyResolver};
 use crate::services::{
     auth_admin_mutation_provider::ServerAuthAdminMutationProvider,
     rbac_request_scope::CapturedArtifactRequestScope,
@@ -46,7 +47,9 @@ struct ExecutionLease {
     binding: ModuleRuntimeBinding,
     effective_revision: Option<String>,
     security_revision: u64,
-    serving_closure: Option<rustok_modules::ArtifactServingClosure>,
+    registry_authority: ArtifactRegistryExecutionAuthority,
+    serving_authority: Option<ArtifactServingAuthority>,
+    lifecycle_generation: Option<rustok_modules::ArtifactSelectionGeneration>,
     policy: SandboxPolicy,
     deadline: Instant,
     direct_scope: Option<CapturedArtifactRequestScope>,
@@ -161,19 +164,30 @@ impl ExecutionAuthority {
             .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?
             .execution_revision()
             .ok_or(ArtifactBindingDispatchError::AdmissionMismatch)?;
-        let serving_closure = if let Some(revision) = effective_revision {
-            let (current, closure) = resolver.resolve_with_closure(tenant_id, artifact).await?;
+        let registry_authority = ArtifactRegistryExecutionAuthority::capture(&resolver.db, &artifact.release)
+            .await.map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?;
+        let serving_authority = if let Some(revision) = effective_revision {
+            let (current, authority) = resolver.resolve_with_closure(tenant_id, artifact).await?;
             if current.policy_revision() != revision {
                 return Err(ArtifactBindingDispatchError::AdmissionMismatch);
             }
-            let closure = closure.ok_or(ArtifactBindingDispatchError::AdmissionMismatch)?;
-            if closure.root_security_revision(artifact) != Some(security_revision) {
+            let authority = authority.ok_or(ArtifactBindingDispatchError::AdmissionMismatch)?;
+            if authority.closure.root_security_revision(artifact) != Some(security_revision)
+                || authority.closure.root_registry_authority(artifact) != Some(&registry_authority)
+            {
                 return Err(ArtifactBindingDispatchError::AdmissionMismatch);
             }
-            Some(closure)
+            Some(authority)
         } else {
             // Owner lifecycle is not ordinary serving admission; its root
             // security and exact installation remain mandatory.
+            None
+        };
+        let lifecycle_generation = if serving_authority.is_none() {
+            Some(rustok_modules::ArtifactSelectionGeneration::capture(
+                &resolver.db, tenant_id, &artifact.release.slug,
+            ).await.map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?)
+        } else {
             None
         };
         let mut lease = ExecutionLease {
@@ -189,7 +203,9 @@ impl ExecutionAuthority {
             binding: binding.clone(),
             effective_revision: effective_revision.map(str::to_owned),
             security_revision,
-            serving_closure,
+            registry_authority,
+            serving_authority,
+            lifecycle_generation,
             policy: policy.clone(),
             // The lease has not yet been registered. Set its non-renewable
             // monotonic deadline only after the last durable preflight.
@@ -201,6 +217,7 @@ impl ExecutionAuthority {
         if !lease.credential_live()
             || !self.check_direct(&lease).await
             || !check_security(resolver, &lease).await
+            || !check_policy(resolver, &lease).await.unwrap_or(false)
         {
             return Err(lease.denial());
         }
@@ -244,6 +261,7 @@ async fn check_security(
         .resolve(&lease.artifact.release)
         .await
         .is_ok_and(|snapshot| snapshot.execution_revision() == Some(lease.security_revision))
+        && lease.registry_authority.is_current(&resolver.db).await.unwrap_or(false)
 }
 
 async fn check_policy(
@@ -251,12 +269,18 @@ async fn check_policy(
     lease: &ExecutionLease,
 ) -> Result<bool, rustok_modules::ArtifactEffectivePolicyResolveError> {
     let Some(revision) = lease.effective_revision.as_deref() else {
-        return Ok(lease.context.phase == ExecutionPhase::Lifecycle);
+        return Ok(lease.context.phase == ExecutionPhase::Lifecycle
+            && match &lease.lifecycle_generation {
+                Some(generation) => generation.is_current(&resolver.db).await
+                    .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?,
+                None => false,
+            });
     };
-    let (policy, closure) = resolver.resolve_with_closure(lease.tenant_id(), &lease.artifact).await?;
+    let channel = lease.serving_authority.as_ref().and_then(|authority| authority.channel.clone());
+    let (policy, authority) = resolver.resolve_with_channel(lease.tenant_id(), &lease.artifact, channel).await?;
     Ok(policy.policy_revision() == revision
-        && closure.is_some()
-        && closure.as_ref() == lease.serving_closure.as_ref())
+        && authority.is_some()
+        && authority.as_ref() == lease.serving_authority.as_ref())
 }
 
 /// A bound call is produced from the live host registry, not the guest.
@@ -328,8 +352,19 @@ impl ArtifactSqlEffectFence for SqlEffectFence {
         };
         // Acquire the complete artifact closure before taking any individual
         // root lock. Overlapping serving closures use the same slug order.
-        if let Some(closure) = &self.lease.serving_closure {
-            closure.require_current_on(tx).await.map_err(|_| self.deny())?;
+        if let Some(authority) = &self.lease.serving_authority {
+            authority.closure.require_current_on(tx).await.map_err(|_| self.deny())?;
+            // The closure already owns the SQLite write reservation; on
+            // PostgreSQL the shared composition row lock conflicts with CAS
+            // replacement. Retain it until the SQL effect commits.
+            authority.composition.require_current_in_transaction(tx)
+                .await.map_err(|_| self.deny())?;
+            if let Some(channel) = &authority.channel {
+                channel.require_current_on(tx).await.map_err(|_| self.deny())?;
+            }
+        } else {
+            self.lease.lifecycle_generation.as_ref().ok_or_else(|| self.deny())?
+                .require_current_on(tx).await.map_err(|_| self.deny())?;
         }
         // Keep exact selection and the owner grant in the effect transaction
         // after the direct credential/RBAC fences, including background work.
@@ -339,6 +374,7 @@ impl ArtifactSqlEffectFence for SqlEffectFence {
         SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
             tx, &self.lease.artifact.release, self.lease.security_revision,
         ).await.map_err(|_| self.deny())?;
+        self.lease.registry_authority.require_current_on(tx).await.map_err(|_| self.deny())?;
         let original = self.lease.policy.grant(&self.call.capability).ok_or_else(|| self.deny())?;
         let current = current_policy.grant(&self.call.capability).ok_or_else(|| self.deny())?;
         if current.constraints != original.constraints {

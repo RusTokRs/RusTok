@@ -188,6 +188,7 @@ fn create_test_product_input() -> CreateProductInput {
             barcode: None,
             shipping_profile_slug: None,
             axis_values: vec![],
+            attribute_values: vec![],
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
                 channel_id: None,
@@ -1067,6 +1068,7 @@ async fn test_create_product_with_multiple_variants() {
             attribute_id: attr_id,
             option_id: opt_ids[1],
         }],
+        attribute_values: vec![],
         prices: vec![PriceInput {
             currency_code: "USD".to_string(),
             channel_id: None,
@@ -1090,6 +1092,7 @@ async fn test_create_product_with_multiple_variants() {
             attribute_id: attr_id,
             option_id: opt_ids[2],
         }],
+        attribute_values: vec![],
         prices: vec![PriceInput {
             currency_code: "USD".to_string(),
             channel_id: None,
@@ -1633,6 +1636,7 @@ async fn test_multiple_variants_different_prices() {
             attribute_id: attr_id,
             option_id: opt_ids[1],
         }],
+        attribute_values: vec![],
         prices: vec![PriceInput {
             currency_code: "USD".to_string(),
             channel_id: None,

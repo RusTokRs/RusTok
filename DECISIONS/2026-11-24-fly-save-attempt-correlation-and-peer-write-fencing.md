@@ -103,8 +103,8 @@ operation and must not be blocked by a release-readiness policy when the actor h
 
 ## Verification status
 
-The source changes are authored on a dedicated branch. No Cargo build, Rust test, lint, Playwright
-suite or mounted-host verification was run for this change. The implementation status therefore
+The source implementation is integrated in `main`. No Cargo build, Rust test, lint, Playwright
+suite or mounted-host verification has been run for this change. The implementation status therefore
 remains **In progress** until the maintainer's verification pass succeeds.
 
 ## References

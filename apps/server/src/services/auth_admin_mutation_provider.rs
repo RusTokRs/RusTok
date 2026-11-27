@@ -638,7 +638,7 @@ impl ServerAuthAdminMutationProvider {
         self.ensure_user_admin_credential_deadline(tx, Some(deadline)).await
     }
 
-    async fn lock_rbac_control_plane(
+    pub(crate) async fn lock_rbac_control_plane(
         &self,
         tx: &sea_orm::DatabaseTransaction,
         tenant_id: Uuid,

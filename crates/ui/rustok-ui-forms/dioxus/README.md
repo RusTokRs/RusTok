@@ -126,3 +126,17 @@ pub fn PostEditor() -> Element {
     }
 }
 ```
+
+## DynamicForm contract and limitations
+
+`DynamicForm` requires a caller-owned `state` signal. The submit handler must transition it
+to success or failure when its work finishes; otherwise the double-submit guard keeps the form
+disabled. The `DynamicFormPayload` contains scalar `values` and typed multiple `selections`. Multiple
+selections render as checkbox groups and are validated by the shared schema. Reset clears selections.
+File fields remain unsupported: they display a limitation message, are disabled, and block submission;
+use dedicated controls and an owner-defined typed upload/selection flow instead.
+Dioxus `initial_values` and `initial_selections` are copied on mount, not controlled by later parent changes.
+
+Standalone `FormFileInput` forwards its native `FormEvent` via `on_change`; callers can use
+`event.files()` and must route uploads through the owning media/transport flow. This does not yet
+enable file fields in `DynamicForm`.

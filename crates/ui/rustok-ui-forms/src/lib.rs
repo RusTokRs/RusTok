@@ -4,8 +4,8 @@
 //! and dirty tracking for the RusToK platform and modern Rust web applications.
 //!
 //! `rustok-forms` is a pure **Framework-Free Core (FFA)** crate designed with zero DOM, zero UI framework
-//! dependencies, and zero RusToK-specific internal dependencies. It depends only on `serde` and `serde_json`
-//! for serialization.
+//! dependencies, and zero RusToK-specific internal dependencies. It uses `serde`/`serde_json`
+//! for serialization, `regex` for patterns, and `url` for URL parsing.
 //!
 //! ## Key Capabilities
 //!
@@ -111,7 +111,7 @@ pub use field::{FieldConstraints, FieldDescriptor, FieldKind, FieldOption};
 #[doc(inline)]
 pub use sanitize::sanitize as form_sanitizer;
 #[doc(inline)]
-pub use schema::FormSchema;
+pub use schema::{DynamicFormPayload, FormSchema};
 #[doc(inline)]
 pub use state::{FormState, FormSubmissionStatus};
 #[doc(inline)]

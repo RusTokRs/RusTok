@@ -341,7 +341,7 @@ pub use composition::{
     ACTIVE_MODULE_COMPOSITION_ID, ModuleCompositionBuildAdmission,
     ModuleCompositionBuildEnqueueError, ModuleCompositionBuildEnqueueResult,
     ModuleCompositionBuildEnqueuer, ModuleCompositionBuildLease, ModuleCompositionBuildReceipt,
-    ModuleCompositionError, ModuleCompositionOperation, ModuleCompositionSnapshot,
+    ModuleCompositionError, ModuleCompositionIdentity, ModuleCompositionOperation, ModuleCompositionSnapshot,
     ModuleCompositionUpdate, STATIC_MODULE_REGISTRY_MAX_LIMIT, SeaOrmModuleCompositionService,
     SharedStaticInstalledModuleReader, SharedStaticModuleRegistryReader,
     StaticInstalledModuleReader, StaticInstalledModuleReaderError, StaticModuleRegistryQuery,
@@ -534,7 +534,7 @@ pub use installation::{
     ArtifactBlobStore, ArtifactDeactivationRequest, ArtifactDeactivationResult,
     ArtifactMigrationCheckpointRequest, ArtifactMigrationRollbackMode, ArtifactPayloadSource,
     ArtifactPermissionRegistrationStatus, ArtifactRegistry, ArtifactRollbackRequest,
-    ArtifactRollbackResult, ArtifactTenantDisableRequest, ArtifactTenantDisableResult,
+    ArtifactRollbackResult, ArtifactSelectionGeneration, ArtifactTenantDisableRequest, ArtifactTenantDisableResult,
     ArtifactTenantEnableRequest, ArtifactTenantEnableResult, ArtifactTenantLifecycleSnapshot,
     ArtifactUninstallRequest, ArtifactUninstallResult, ArtifactVerificationEvidence,
     DurableArtifactBlobStore, InstalledModuleArtifact, ModuleArtifactPackage,
@@ -681,7 +681,7 @@ pub use secrets::{
     SeaOrmArtifactSecretService, SeaOrmArtifactSecretUseService,
 };
 pub use security_state::{
-    ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecurityAuthorizer,
+    ArtifactRegistryExecutionAuthority, ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecurityAuthorizer,
     ModuleArtifactSecurityCommand, ModuleArtifactSecurityError, ModuleArtifactSecurityReceipt,
     ModuleArtifactSecuritySnapshot, ModuleArtifactSecurityStatus,
     SeaOrmModuleArtifactSecurityResolver, SeaOrmModuleArtifactSecurityService,

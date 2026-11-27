@@ -38,6 +38,10 @@ type FlyGlobal = typeof globalThis & {
     mount?: (root: Element) => {
       selectedId?: string | null;
       activeDrag?: Record<string, unknown> | null;
+      emitIntent?: (
+        intent: string,
+        payload: Record<string, unknown>
+      ) => Promise<unknown>;
     } | null;
   };
   __flyRequests?: RecordedRequest[];
@@ -160,16 +164,22 @@ async function mountSsrControls(page: Page) {
     const requests: RecordedRequest[] = [];
     fly.__flyRequests = requests;
     globalThis.fetch = async (input, init = {}) => {
+      const body = typeof init.body === 'string' ? JSON.parse(init.body) : null;
       requests.push({
         input: String(input),
         method: init.method ?? 'GET',
-        body: typeof init.body === 'string' ? JSON.parse(init.body) : null
+        body
       });
       // `reload: false` keeps the page: a real endpoint answers a mutating intent with
       // `reload: true`, which would discard the state this test reads back.
+      const state: Record<string, unknown> = {
+        revision_id: 'rev-2',
+        project_hash: 'hash-2'
+      };
+      if (body?.intent === 'activate_page') state.selected_component_id = null;
       return new Response(
         JSON.stringify({
-          result: { revision_id: 'rev-2', project_hash: 'hash-2' },
+          result: state,
           reload: false,
           draft_token: 'draft-1',
           draft_generation: 1
@@ -327,6 +337,41 @@ test('a layer row selects its component and later intents carry the selection', 
     block_id: 'forum.topic_list',
     selected_component_id: 'hero-title'
   });
+});
+
+test('server page activation clears the previous selection before the next mutation', async ({
+  page
+}) => {
+  await mountSsrControls(page);
+  await page.locator('#layer-hero').click();
+  expect(await adapterState(page)).toMatchObject({ selectedId: 'hero-title' });
+
+  await page.evaluate(async () => {
+    const root = document.querySelector('#fly-root');
+    if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
+    const adapter = (globalThis as FlyGlobal).FlyBrowser?.mount?.(root);
+    if (!adapter?.emitIntent) throw new Error('Fly browser intent transport unavailable');
+    await adapter.emitIntent('activate_page', { page_index: 1, page_id: 'about' });
+  });
+
+  await expect.poll(async () => (await adapterState(page)).selectedId).toBeNull();
+  const activation = (await requests(page))[0];
+  expect(activation.body?.payload).toMatchObject({
+    page_index: 1,
+    page_id: 'about',
+    selected_component_id: 'hero-title'
+  });
+
+  await page.evaluate(async () => {
+    const root = document.querySelector('#fly-root');
+    if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
+    const adapter = (globalThis as FlyGlobal).FlyBrowser?.mount?.(root);
+    if (!adapter?.emitIntent) throw new Error('Fly browser intent transport unavailable');
+    await adapter.emitIntent('insert_block', { block_id: 'forum.topic_list' });
+  });
+
+  await expect.poll(async () => (await requests(page)).length).toBe(2);
+  expect((await requests(page))[1].body?.payload).not.toHaveProperty('selected_component_id');
 });
 
 async function selections(page: Page): Promise<unknown[]> {

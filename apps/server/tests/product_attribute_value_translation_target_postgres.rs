@@ -553,6 +553,7 @@ fn source_product(category_id: Uuid) -> CreateProductInput {
             barcode: None,
             shipping_profile_slug: None,
             axis_values: Vec::new(),
+            attribute_values: Vec::new(),
             prices: Vec::new(),
             inventory_quantity: 0,
             inventory_policy: "deny".into(),

@@ -478,10 +478,12 @@ fn bind_workspace_intent_snapshot(
     page_id: &str,
     revision_id: &str,
     project_hash: &str,
+    command_sequence: u64,
 ) -> BrowserIntentEnvelope {
     envelope.page_id = Some(page_id.to_string());
     envelope.revision = Some(revision_id.to_string());
     envelope.project_hash = Some(project_hash.to_string());
+    envelope.command_sequence = Some(command_sequence);
     envelope
 }
 
@@ -627,19 +629,21 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     rsx! {
         PageBuilderAdminWithControllerSession {
             key: "{session_key}",
-            props: props
+            inner: props
         }
     }
 }
 
 #[component]
-fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerProps) -> Element {
+fn PageBuilderAdminWithControllerSession(inner: PageBuilderAdminWithControllerProps) -> Element {
+    let props = inner;
     let route_context = use_context::<Option<UiRouteContext>>().unwrap_or_default();
     let locale = route_context.locale;
     // The workspace renders the project stylesheet inline; without the request nonce the host's
     // policy drops it and the canvas renders unstyled.
-    let workspace_csp_nonce = use_context::<Option<UiCspNonce>>()
+    let workspace_csp_nonce = try_consume_context::<Option<UiCspNonce>>()
         .flatten()
+        .or_else(|| try_consume_context::<UiCspNonce>())
         .map(|nonce| nonce.as_str().to_string());
     let host_capabilities = props
         .editor_capability_evaluation
@@ -765,7 +769,8 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
         props.facade.is_some(),
         props.draft_recovery_scope.clone(),
     );
-    use_effect(use_reactive!(|_session_configuration_key| {
+    use_effect(use_reactive!(|session_configuration_key| {
+        let _ = &session_configuration_key;
         let (
             trait_schemas,
             editor_capability_evaluation,
@@ -916,13 +921,16 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     let on_publish_confirmed = {
         let channel = peer_write_channel;
         let conflict = peer_write_conflict;
-        let mut base = recovery_base;
+        let base = recovery_base;
         let store = recovery_store.clone();
         let consumed_records = recovery_consumed_records.clone();
-        let mut status = recovery_status;
-        let mut persisted = recovery_persisted;
+        let status = recovery_status;
+        let persisted = recovery_persisted;
         let current_session = session;
         move |revision: String, project_hash: String, submitted_project_data: Value| {
+            let mut base = base;
+            let mut status = status;
+            let mut persisted = persisted;
             base.set(DraftRecoveryBase {
                 revision_id: revision.clone(),
                 project_data: submitted_project_data,
@@ -967,8 +975,9 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     };
     #[cfg(not(all(target_arch = "wasm32", feature = "dioxus-web")))]
     let on_publish_confirmed = {
-        let mut base = recovery_base;
+        let base = recovery_base;
         move |revision: String, _project_hash: String, submitted_project_data: Value| {
+            let mut base = base;
             base.set(DraftRecoveryBase {
                 revision_id: revision,
                 project_data: submitted_project_data,
@@ -1102,6 +1111,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     let intent_page_id = workspace_page_id.clone();
     let intent_revision_id = workspace_revision_id.clone();
     let intent_project_hash = workspace_project_hash.clone();
+    let intent_command_sequence = workspace_command_sequence;
     let on_workspace_intent = EventHandler::new(move |envelope: BrowserIntentEnvelope| {
         let write_conflict = *peer_write_conflict.peek()
             || save_outcome_unknown.peek().is_some()
@@ -1130,6 +1140,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                 &intent_page_id,
                 &intent_revision_id,
                 &intent_project_hash,
+                intent_command_sequence,
             );
             match crate::dispatch_browser_intent(&mut state.controller, envelope) {
                 Ok(result) => {
@@ -1329,38 +1340,27 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
             Some(active_page) => {
                 canvas_document.project_mut().pages = vec![active_page];
                 let canvas_nonce = workspace_csp_nonce.as_deref().and_then(UiCspNonce::new);
-                match render_canvas_srcdoc_with_context(
+                let srcdoc = render_canvas_srcdoc_with_context(
                     &canvas_document,
                     &workspace_canvas_instance_id,
                     &workspace_runtime_context,
-                    canvas_nonce.as_ref(),
-                ) {
-                    Ok(srcdoc) => (
-                        Some(rsx! {
-                            DioxusIsolatedCanvas {
-                                srcdoc,
-                                instance_id: workspace_canvas_instance_id.clone(),
-                                intent_instance_id: workspace_page_id.clone(),
-                                can_resize: capabilities.edit && capabilities.styles,
-                                session,
-                                on_intent: on_workspace_intent,
-                                on_ui_intent: on_canvas_ui_intent,
-                                on_error: Some(on_workspace_error),
-                            }
-                        }),
-                        true,
-                    ),
-                    Err(error) => (
-                        Some(rsx! {
-                            div {
-                                class: "rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm",
-                                role: "alert",
-                                "Canvas rendering failed: {error}"
-                            }
-                        }),
-                        false,
-                    ),
-                }
+                    canvas_nonce.as_ref().map(UiCspNonce::as_str),
+                );
+                (
+                    Some(rsx! {
+                        DioxusIsolatedCanvas {
+                            srcdoc,
+                            instance_id: workspace_canvas_instance_id.clone(),
+                            intent_instance_id: workspace_page_id.clone(),
+                            can_resize: capabilities.edit && capabilities.styles,
+                            session,
+                            on_intent: on_workspace_intent,
+                            on_ui_intent: on_canvas_ui_intent,
+                            on_error: Some(on_workspace_error),
+                        }
+                    }),
+                    true,
+                )
             }
             None => (
                 Some(rsx! {
@@ -1918,6 +1918,7 @@ mod props_regression_tests {
             "home",
             "rev-1",
             &rendered_hash,
+            rendered.editor().revision().command_sequence,
         );
 
         let mut newer_revision =
@@ -1925,6 +1926,7 @@ mod props_regression_tests {
         assert!(matches!(
             crate::dispatch_browser_intent(&mut newer_revision, envelope.clone()),
             Err(crate::BrowserIntentDispatchError::RevisionConflict { .. })
+                | Err(crate::BrowserIntentDispatchError::CommandSequenceConflict { .. })
         ));
 
         let changed_document = json!({

@@ -625,6 +625,7 @@ fn variant(sku: &str, values: Vec<(Uuid, Uuid)>, quantity: i32) -> CreateVariant
                 option_id,
             })
             .collect(),
+        attribute_values: Vec::new(),
         prices: vec![],
         inventory_quantity: quantity,
         inventory_policy: "deny".into(),

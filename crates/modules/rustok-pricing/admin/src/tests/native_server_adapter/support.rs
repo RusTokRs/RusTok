@@ -31,8 +31,12 @@ pub fn test_app_context(db: sea_orm::DatabaseConnection) -> HostRuntimeContext {
 }
 
 pub fn test_catalog(db: sea_orm::DatabaseConnection) -> CatalogService {
-    CatalogService::new(db.clone(), mock_transactional_event_bus())
-        .with_pricing_port(rustok_pricing::integrations::in_process_product_pricing_port(db))
+    CatalogService::new(db.clone(), mock_transactional_event_bus()).with_pricing_port(
+        rustok_pricing::integrations::in_process_product_pricing_port(
+            db,
+            mock_transactional_event_bus(),
+        ),
+    )
 }
 
 pub async fn seed_tenant_context(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) {
@@ -186,6 +190,7 @@ pub async fn create_test_product(
                     barcode: None,
                     shipping_profile_slug: None,
                     axis_values: vec![],
+                    attribute_values: vec![],
                     prices: vec![rustok_product::dto::PriceInput {
                         currency_code: "USD".to_string(),
                         channel_id: None,

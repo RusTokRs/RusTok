@@ -213,15 +213,19 @@ impl EffectiveModulePolicyService {
         registry: &ModuleRegistry,
         tenant_id: uuid::Uuid,
         supported_payload_kinds: &[rustok_modules::ArtifactPayloadKind],
-    ) -> Result<ModuleEffectivePolicy, PlatformCompositionError> {
-        let manifest = PlatformCompositionService::active_manifest(db).await?;
+        channel: Option<ModuleEffectivePolicyChannelInput>,
+    ) -> Result<(ModuleEffectivePolicy, rustok_modules::ModuleCompositionIdentity), PlatformCompositionError> {
+        let owner_snapshot = PlatformCompositionService::active_owner_snapshot(db).await?;
+        let composition = owner_snapshot.identity();
+        let manifest = PlatformCompositionService::snapshot_from_owner(owner_snapshot)?.manifest;
         let co_requisites = ManifestManager::module_policy_corequisites(&manifest)?;
-        ModuleControlPlane::new(db.clone())
+        let policy = ModuleControlPlane::new(db.clone())
             .lifecycle(registry, manifest.settings.default_enabled)
             .with_corequisites(co_requisites)
-            .artifact_serving_policy(tenant_id, supported_payload_kinds)
+            .artifact_serving_policy_for_context(tenant_id, supported_payload_kinds, channel, None)
             .await
-            .map_err(map_effective_policy_error)
+            .map_err(map_effective_policy_error)?;
+        Ok((policy, composition))
     }
 
     /// Returns the redacted operator projection of the exact owner decision.

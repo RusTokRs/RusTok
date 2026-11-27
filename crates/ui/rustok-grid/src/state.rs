@@ -120,16 +120,19 @@ impl GridState {
     /// The order is part of the contract — paging before sorting would sort a single page, and
     /// sorting before filtering would sort rows that are about to be dropped — and it is the order
     /// the TypeScript twin's `applyGridRows` uses. The owner still supplies the only piece the grid
-    /// cannot know: which cell of a row belongs to which column.
-    pub fn apply_rows<T, F>(&self, items: &[T], cell_of: F) -> Vec<T>
+    /// cannot know: which cell of a row belongs to which column. Returns the rendered rows and
+    /// the normalized pagination for the filtered total; the owner must retain the latter.
+    pub fn apply_rows<T, F>(&self, items: &[T], cell_of: F) -> (Vec<T>, GridPagination)
     where
         T: Clone,
         F: Fn(&T, &str) -> crate::cell::CellValue,
     {
         let mut rows = self.filters.retain_matching(items, &cell_of);
         self.sort.sort_items(&mut rows, &cell_of);
-        let (start, end) = self.pagination.slice_bounds(rows.len());
-        rows[start..end].to_vec()
+        let mut pagination = self.pagination;
+        pagination.set_total(u64::try_from(rows.len()).unwrap_or(u64::MAX));
+        let (start, end) = pagination.slice_bounds(rows.len());
+        (rows[start..end].to_vec(), pagination)
     }
 }
 
@@ -187,7 +190,7 @@ mod tests {
 
         let mut state = GridState::new().with_pagination(1, 2, 5);
         assert_eq!(
-            state.apply_rows(&rows, cell_of),
+            state.apply_rows(&rows, cell_of).0,
             vec![Row("hat", 30.0), Row("shirt", 10.0)]
         );
 
@@ -195,19 +198,22 @@ mod tests {
         state.sort.set("price", crate::sort::SortDirection::Desc);
         state.pagination.set_page(2);
         assert_eq!(
-            state.apply_rows(&rows, cell_of),
+            state.apply_rows(&rows, cell_of).0,
             vec![Row("hat", 30.0), Row("boots", 20.0)]
         );
 
-        // Filtering narrows the pool the page indexes into; a page past the end renders empty.
+        // Filtering narrows the pool and the returned pagination reflects the filtered total.
         state.set_filter("name", FilterValue::Text("o".into()));
         state.pagination.set_page(1);
         assert_eq!(
-            state.apply_rows(&rows, cell_of),
+            state.apply_rows(&rows, cell_of).0,
             vec![Row("coat", 50.0), Row("boots", 20.0)]
         );
         state.pagination.set_page(2);
-        assert!(state.apply_rows(&rows, cell_of).is_empty());
+        let (page, pagination) = state.apply_rows(&rows, cell_of);
+        assert_eq!(page, vec![Row("coat", 50.0), Row("boots", 20.0)]);
+        assert_eq!(pagination.total, 2);
+        assert_eq!(pagination.page, 1);
     }
 
     #[test]

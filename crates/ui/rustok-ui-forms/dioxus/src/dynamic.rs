@@ -8,9 +8,9 @@
 use std::collections::HashMap;
 
 use dioxus::prelude::*;
-use rustok_ui_forms::field::{FieldDescriptor, FieldKind};
+use rustok_ui_forms::field::{FieldDescriptor, FieldKind, FieldOption};
 use rustok_ui_forms::schema::FormSchema;
-use rustok_ui_forms::{DirtyTracker, FormState};
+use rustok_ui_forms::{DirtyTracker, DynamicFormPayload, FormState};
 
 use crate::button::{ResetButton, SubmitButton};
 use crate::field::{FormDescription, FormError, FormField, FormLabel, FormMessage};
@@ -20,18 +20,55 @@ use crate::inputs::{
     FormPasswordInput, FormRadioGroup, FormRangeInput, FormSelect, FormSwitch, FormTextarea,
 };
 
+/// One option in a multiple-selection field, with independent stable identity.
+#[component]
+fn DynamicMultiOption(
+    name: String,
+    index: usize,
+    option: FieldOption,
+    mut selections: Signal<HashMap<String, Vec<String>>>,
+    disabled: bool,
+) -> Element {
+    let checked = selections
+        .read()
+        .get(&name)
+        .is_some_and(|values| values.contains(&option.value));
+    let id = format!("{}-option-{}", name, index);
+    let change_name = name.clone();
+    let change_value = option.value.clone();
+    rsx! {
+        FormCheckbox {
+            id: Some(id),
+            name: Some(name),
+            label: Some(option.label),
+            checked: checked,
+            disabled: disabled || option.disabled,
+            on_change: move |checked: bool| {
+                let mut map = selections.write();
+                let values = map.entry(change_name.clone()).or_default();
+                if checked && !values.contains(&change_value) {
+                    values.push(change_value.clone());
+                } else if !checked {
+                    values.retain(|value| value != &change_value);
+                }
+            },
+        }
+    }
+}
+
 /// Individual dynamic field renderer mapping a [`FieldDescriptor`] to the appropriate input control.
 #[component]
 fn DynamicFieldItem(
     field: FieldDescriptor,
     mut values: Signal<HashMap<String, String>>,
+    selections: Signal<HashMap<String, Vec<String>>>,
 ) -> Element {
     let name = field.name.clone();
     let cur_val = values.read().get(&name).cloned().unwrap_or_default();
     let cur_bool = cur_val == "true" || cur_val == "1";
     let required = field.constraints.required;
     let placeholder = field.placeholder.clone();
-    let disabled = field.disabled;
+    let disabled = field.disabled || !field.supports_dynamic_form();
 
     let control = match &field.kind {
         FieldKind::Password => {
@@ -76,6 +113,7 @@ fn DynamicFieldItem(
                     },
                     placeholder: placeholder,
                     disabled: disabled,
+                    required: required,
                 }
             }
         }
@@ -90,6 +128,25 @@ fn DynamicFieldItem(
                     placeholder: placeholder,
                     disabled: disabled,
                     required: required,
+                }
+            }
+        }
+        FieldKind::Select if field.is_multiple_select() => {
+            let group_label = field.label.clone().unwrap_or_else(|| name.clone());
+            rsx! {
+                fieldset {
+                    "aria-required": if required { "true" } else { "false" },
+                    legend { class: "text-sm font-medium", "{group_label}" }
+                    for (index, option) in field.options.iter().enumerate() {
+                        DynamicMultiOption {
+                            key: "{index}",
+                            name: name.clone(),
+                            index: index,
+                            option: option.clone(),
+                            selections: selections,
+                            disabled: disabled,
+                        }
+                    }
                 }
             }
         }
@@ -230,11 +287,18 @@ fn DynamicFieldItem(
     rsx! {
         FormField {
             name: "{name}",
-            if let Some(ref label) = field.label {
-                FormLabel { required: required, "{label}" }
+            if !field.is_multiple_select() {
+                if let Some(ref label) = field.label {
+                    FormLabel { required: required, "{label}" }
+                }
             }
             {control}
-            if let Some(ref desc) = field.description {
+            if !field.supports_dynamic_form() {
+                FormDescription {
+                    if let Some(ref desc) = field.description { "{desc} " }
+                    "This form does not support file fields."
+                }
+            } else if let Some(ref desc) = field.description {
                 FormDescription { "{desc}" }
             }
             FormMessage {}
@@ -245,24 +309,26 @@ fn DynamicFieldItem(
 /// Dynamic form component that renders an entire interactive form from a [`FormSchema`].
 ///
 /// Features:
-/// - Generates typed inputs for all [`FieldKind`] variants.
-/// - Validates payloads against [`FormSchema::validate_map`] on submission before calling `on_submit`.
+/// - Renders scalar and multiple-selection fields and disables unsupported file fields.
+/// - Validates payloads against [`FormSchema::validate_dynamic_form`] on submission before calling `on_submit`.
 /// - Displays field errors and form errors automatically.
-/// - Supports controlled and uncontrolled values/state.
+/// - Accepts initial values and requires externally owned submission state.
 /// - Auto-disables inputs and buttons during asynchronous submission.
 /// - Supports reset button with automatic restore of default schema values.
 #[component]
 pub fn DynamicForm(
     /// Declarative schema defining the form fields, labels, constraints, and kinds.
     schema: FormSchema,
-    /// Submission handler receiving validated form data (key-value map).
-    on_submit: EventHandler<HashMap<String, String>>,
-    /// Optional externally controlled values map.
+    /// Submission handler receiving validated scalar and multiple-selection data.
+    on_submit: EventHandler<DynamicFormPayload>,
+    /// Optional initial values, copied once when the component mounts.
     #[props(default)]
-    values: Option<HashMap<String, String>>,
-    /// Optional externally controlled form state.
+    initial_values: Option<HashMap<String, String>>,
+    /// Optional initial multiple-selection values, copied once on mount.
     #[props(default)]
-    state: Option<Signal<FormState>>,
+    initial_selections: Option<HashMap<String, Vec<String>>>,
+    /// Externally owned state; the submit handler must complete the submission on this signal.
+    state: Signal<FormState>,
     /// Optional dirty field tracker.
     #[props(default)]
     dirty_tracker: Option<Signal<DirtyTracker>>,
@@ -288,6 +354,9 @@ pub fn DynamicForm(
     let default_map = {
         let mut map = HashMap::new();
         for f in &schema.fields {
+            if f.is_multiple_select() {
+                continue;
+            }
             if let Some(ref def) = f.default_value {
                 map.insert(f.name.clone(), def.clone());
             } else if matches!(f.kind, FieldKind::Checkbox | FieldKind::Switch) {
@@ -301,7 +370,7 @@ pub fn DynamicForm(
 
     let initial_values = {
         let mut map = default_map.clone();
-        if let Some(passed) = values {
+        if let Some(passed) = initial_values {
             for (k, v) in passed {
                 map.insert(k, v);
             }
@@ -309,14 +378,17 @@ pub fn DynamicForm(
         map
     };
     let mut local_values = use_signal(move || initial_values);
-    let local_state = use_signal(FormState::idle);
-    let mut actual_state = state.unwrap_or(local_state);
+    let mut local_selections = use_signal(move || initial_selections.unwrap_or_default());
+    let mut actual_state = state;
 
     let handle_submit = {
         let schema = schema.clone();
         move |_| {
-            let current = local_values.read().clone();
-            let errors = schema.validate_map(&current);
+            let current = DynamicFormPayload {
+                values: local_values.read().clone(),
+                selections: local_selections.read().clone(),
+            };
+            let errors = schema.validate_dynamic_form(&current);
             if errors.is_empty() {
                 actual_state.write().clear_errors();
                 actual_state.write().set_submitting();
@@ -331,6 +403,7 @@ pub fn DynamicForm(
         let initial_for_reset = default_map.clone();
         move |_| {
             local_values.set(initial_for_reset.clone());
+            local_selections.set(HashMap::new());
             actual_state.write().reset();
             if let Some(ref cb) = on_reset {
                 cb.call(());
@@ -367,6 +440,7 @@ pub fn DynamicForm(
                         key: "{field.name}",
                         field: field.clone(),
                         values: local_values,
+                        selections: local_selections,
                     }
                 }
             }

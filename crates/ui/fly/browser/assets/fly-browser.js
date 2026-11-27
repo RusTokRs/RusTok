@@ -88,11 +88,29 @@ function nonEmptyString(value) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+// JavaScript stores UTF-16 code units while Rust String stores Unicode scalar values.
+// Reject lone surrogates, but keep valid pairs as ordinary non-BMP Unicode.
+function hasUnpairedSurrogate(value) {
+  for (var index = 0; index < value.length; index += 1) {
+    var code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      var next = value.charCodeAt(index + 1);
+      if (index + 1 >= value.length || next < 0xdc00 || next > 0xdfff) {
+        return true;
+      }
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function validPeerWriteField(value) {
   return typeof value === "string" &&
     value.length <= MAX_PEER_WRITE_FIELD_BYTES &&
     !/^\p{White_Space}*$/u.test(value) &&
-    !/[\uD800-\uDFFF]/u.test(value) &&
+    !hasUnpairedSurrogate(value) &&
     utf8ByteLength(value) <= MAX_PEER_WRITE_FIELD_BYTES;
 }
 
@@ -864,6 +882,7 @@ function normalizedIntent(adapter, input) {
       ? { ...message }
       : {};
   delete payload.type;
+  const commandSequence = Number(adapter.root.dataset.flyCommandSequence);
   if (
     intent !== "select" &&
     intent !== "focus_requested" &&
@@ -878,6 +897,8 @@ function normalizedIntent(adapter, input) {
     intent,
     payload,
     sequence: Number.isSafeInteger(input.sequence) ? input.sequence : null,
+    command_sequence:
+      Number.isSafeInteger(commandSequence) && commandSequence >= 0 ? commandSequence : null,
     page_id: adapter.pageId,
     revision: adapter.root.dataset.flyRevision || null,
     project_hash: adapter.root.dataset.flyProjectHash || null,
@@ -1263,7 +1284,12 @@ export class FlyBrowserAdapter {
     const wasmOwnsSelection =
       source === "ssr-control" &&
       this.root.querySelector("[data-fly-wasm-hydrated='true']");
-    if (this.postIntents && this.intentEndpoint && !wasmOwnsSelection) {
+    if (
+      this.postIntents &&
+      this.intentEndpoint &&
+      !wasmOwnsSelection &&
+      source !== "server"
+    ) {
       void this.emitIntent("select", { component_id: next });
     }
   }
@@ -2304,6 +2330,20 @@ export class FlyBrowserAdapter {
         }
         if (typeof state.project_hash === "string") {
           this.root.dataset.flyProjectHash = state.project_hash;
+        }
+        if (Number.isSafeInteger(state.command_sequence) && state.command_sequence >= 0) {
+          this.root.dataset.flyCommandSequence = String(state.command_sequence);
+        }
+        // The server is authoritative for selection after navigation and other
+        // controller transitions. In particular, ActivatePage clears the old
+        // page's selection; retaining it here would attach a stale component ID
+        // to the next mutation on the newly active page.
+        if (
+          Object.prototype.hasOwnProperty.call(state, "selected_component_id") &&
+          (state.selected_component_id === null ||
+            typeof state.selected_component_id === "string")
+        ) {
+          this.select(nonEmptyString(state.selected_component_id), "server");
         }
         // A confirmed write makes other same-origin editors of this page stale.
         // The server remains the source of truth; this is a UX safety fence.

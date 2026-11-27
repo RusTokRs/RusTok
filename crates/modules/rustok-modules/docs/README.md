@@ -1468,7 +1468,7 @@ failure or cancellation; the broker checks membership again after async reads.
 This is process-local admission, not an atomic external-effect fence or a
 continuous interrupt for capability-free computation. In-flight calls may
 complete, and a post-launch denial preserves ambiguous-outcome semantics.
-Contextual channel/maintenance policy, external owner transactional authority,
+Operational maintenance policy, deferred/background channel context, external owner transactional authority,
 performance and actual worker callback verification remain open. See
 [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).
 
@@ -1497,20 +1497,84 @@ for implicit clear). Every host capability rechecks it, including lifecycle
 calls. SQL effects verify it inside the transaction under the platform slug
 activation fence, shared by quarantine, clear and revoke writers. This fences
 first quarantine even without a security row, and quarantine followed by
-clear cannot revive an older lease. The registry status is sampled but its
-independent writers are not fenced by this increment. For ordinary serving, the same owner closure used by node readiness is
+clear cannot revive an older lease. Registry release status has an independent
+per-(slug, version) monotonic authority witness (migration 000096). The permanent
+witness advances on row insert/delete or status/checksum changes, including
+unlisted-to-listed-to-unlisted ABA; no-op metadata changes and rolled-back
+transactions do not advance it. Publication, yank and unyank acquire the platform
+slug fence before registry row locks; mutation triggers share that fence. Yank
+remains a discovery/install fact: it invalidates old leases but does not prevent
+a fresh lease solely because the release is yanked. Unavailable status denies
+admission. For ordinary serving, the same owner closure used by node readiness is
 captured in the lease, including exact artifact members reached through
-dependencies and co-requisites and their security revisions. Before any root
+dependencies and co-requisites and their security and registry authority revisions. Before any root
 selection lock, SQL admission takes all artifact slug locks in ascending
 order (platform then tenant per slug), reselects the complete artifact set,
-validates each durable sandbox policy and security revision, and keeps the
+validates each durable sandbox policy, security revision and registry witness, and keeps the
 locks through commit. Non-SQL calls compare fresh closure evidence but remain
-preflight-only. Lifecycle retains root-only owner authority; static members
-are traversed but static overrides/composition, registry writers, deployment
-readiness and installation disable/re-enable ABA are not transactionally
-fenced. Cross-owner lock-order verification remains outstanding. Upgrade all
-security writers and effect consumers together; old writers bypass the slug
-fence. No schema or transport change is required. Independent non-server broker
+preflight-only. Lifecycle retains root-only owner authority. For serving,
+every visited module (native and artifact) also captures its canonical
+StaticTenantLifecycleStore revision and exact optional tenant override,
+including absent intent. Core overrides remain irrelevant to policy.
+The SQL effect takes platform slug locks for the entire mixed closure in
+ascending order (and the tenant selection lock for each artifact), then
+compares lifecycle revision and override on the same transaction. Both
+override commit paths take the same platform lock before writing intent,
+journal and aggregate revision; static settings commits already use it.
+A concurrent first override cannot bypass the absent-row fence, and
+disable/clear or disable/enable cannot revive the prior lifecycle revision.
+Settings changes conservatively invalidate leases because they advance the
+same owner revision. Active claims alone are not treated as committed
+intent changes; no lock spans guest hooks. The serving policy is now derived
+from one verified owner composition snapshot and carries that snapshot's
+revision/hash into the lease; a final nonlocking check rejects composition
+changes during derivation. Each fresh capability preflight compares the
+composition identity as well as closure evidence. SQL effects acquire the
+existing shared active-composition row lock after the mixed closure fences
+(SQLite already holds a write reservation) and compare both revision and
+hash without bootstrapping missing state. Owner CAS replacement serializes
+with this lock; returning to an identical manifest does not restore the
+old revision. The global composition fence conservatively invalidates a
+serving lease even for unrelated manifest edits. No extra migration is
+needed. This covers composition-derived defaults and co-requisites, not
+changes to an in-process native registry or independent deployment inputs.
+The serving closure also binds the converged reconciliation state revision,
+head IDs, owner-derived readiness digest, node ID and exact observations for
+every selected artifact. Capture all readiness evidence in a single owner
+read snapshot, then reject a changed head. SQL effects take the shared
+reconciliation state row lock after mixed-selection fences (SQLite already
+holds its write reservation) and before the composition row lock. All
+reconciliation requests, claims, heartbeats and reports acquire the exclusive
+state row lock before changing ledger evidence. Recompute the persisted
+deployment digest and recheck every required live/observed assignment identity
+and observation revision under that lock. An incomplete, legacy, changed
+or missing set denies the effect; even a restored head cannot renew a lease
+whose state revision changed. Fresh non-SQL preflight compares the same
+readiness evidence without an effect lock. Lifecycle hooks retain their
+separate root-only admission. This protects the durable ledger, not live
+executor availability or independent worker liveness. Contextual
+maintenance inputs and deferred/background channel context are not transactionally fenced. HTTP channel resolution is now re-read from the owner without the TTL cache, bracketed by the durable generation and matched to the middleware-selected channel. The mixed serving policy evaluates its exact bindings for every closure member; unresolved HTTP context retains the generation as well. Capability preflight reuses the captured input and compares the generation. Structured SQL effects hold the Channel-owned generation row after readiness/composition fences until commit. No new migration is needed. Registry authority
+is checked under the sorted platform/tenant slug fences, before readiness and
+composition locks. Non-SQL effects remain preflight-only; lifecycle checks only
+the root. Drain old writers and leases before applying migration 000096; witness
+downgrade is denied. Direct SQL maintenance must follow the canonical lock order;
+DDL/TRUNCATE, witness tampering and complete cross-owner ordering are outside
+this guarantee. Each artifact lease also captures
+both platform and tenant selection generations on the permanent slug fences.
+Successful activation, deactivation, rollback, uninstall and explicit artifact
+tenant enable/disable advance the affected scope in the same transaction as
+the selection change and receipt. Lock acquisition and receipt replay do not
+advance generations. This rejects disable/enable, replacement/rollback and
+temporary tenant shadow ABA even if the exact installation returns unchanged.
+Capture exact selections and generations in one read snapshot; SQL effects
+compare generations after all closure locks. Lifecycle captures its root
+generation separately. This deliberately invalidates leases conservatively
+on scope mutations even when the effective winner does not change.
+Migration 000095 adds the generation column with baseline zero. Drain old
+executions, stop old selection/security writers, migrate and deploy all
+writers and effect consumers together; mixed-version writers can bypass the
+fence. No transport change is required. Cross-owner lock-order verification
+remains outstanding. Independent non-server broker
 compositions still need an explicitly supplied authority. External effects and
 objects/secrets/MCP/HTTP are not covered by this SQL commit guard.
 See [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).

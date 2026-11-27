@@ -181,9 +181,12 @@ async fn set_stock_location_channel_visibility(
 }
 
 pub(crate) fn test_catalog_service(db: sea_orm::DatabaseConnection) -> CatalogService {
-    let events = mock_transactional_event_bus();
-    CatalogService::new(db.clone(), events.clone())
-        .with_pricing_port(rustok_pricing::in_process_product_pricing_port(db.clone(), events))
+    let event_bus = mock_transactional_event_bus();
+    CatalogService::new(db.clone(), event_bus.clone())
+        .with_pricing_port(rustok_pricing::in_process_product_pricing_port(
+            db.clone(),
+            event_bus,
+        ))
         .with_inventory_port(rustok_inventory::in_process_product_inventory_port(db))
 }
 
@@ -214,6 +217,7 @@ pub(crate) fn storefront_product_input() -> CreateProductInput {
             barcode: None,
             shipping_profile_slug: None,
             axis_values: vec![],
+            attribute_values: vec![],
             prices: vec![PriceInput {
                 currency_code: "EUR".to_string(),
                 channel_id: None,
