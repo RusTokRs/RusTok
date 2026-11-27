@@ -244,6 +244,162 @@ test('nested scrolling refreshes component geometry and parent overlays', async 
     .toBeLessThan(initialTop - 70);
 });
 
+test('horizontal flex drop targets use the row axis instead of the vertical default', async ({
+  page
+}) => {
+  await mountRuntime(
+    page,
+    `
+      <div id="row" style="display:flex;flex-direction:row;gap:20px">
+        <section
+          id="horizontal-target"
+          data-fly-component-id="horizontal-target"
+          data-fly-index="0"
+          style="width:120px;height:120px"
+        >Target</section>
+        <section
+          id="horizontal-next"
+          data-fly-component-id="horizontal-next"
+          data-fly-index="1"
+          style="width:120px;height:120px"
+        >Next</section>
+      </div>
+    `
+  );
+  await installDeferredFetch(page);
+  await page.locator('#begin-drag').click();
+  await expect(page.locator('#fly-root')).toHaveAttribute(
+    'data-fly-dragging',
+    'block'
+  );
+
+  await page
+    .frameLocator('#canvas-a-frame')
+    .locator('#horizontal-target')
+    .evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const point = {
+        bubbles: true,
+        clientX: rect.right - 2,
+        clientY: rect.top + rect.height / 2,
+        pointerId: 7,
+        pointerType: 'mouse',
+        isPrimary: true
+      };
+      element.dispatchEvent(
+        new PointerEvent('pointermove', { ...point, buttons: 1 })
+      );
+      element.dispatchEvent(
+        new PointerEvent('pointerup', { ...point, buttons: 0 })
+      );
+    });
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (globalThis as typeof globalThis & { __flyRequests?: unknown[] })
+          .__flyRequests?.length ?? 0
+      )
+    )
+    .toBe(1);
+  const requests = await page.evaluate(
+    () => (globalThis as typeof globalThis & {
+      __flyRequests?: Array<{ body?: { intent?: string; payload?: Record<string, unknown> } }>;
+    }).__flyRequests ?? []
+  );
+  expect(requests[0]).toMatchObject({
+    body: {
+      intent: 'drop',
+      payload: {
+        target_component_id: 'horizontal-target',
+        position: 'after'
+      }
+    }
+  });
+
+  await page.evaluate(() => {
+    (
+      globalThis as typeof globalThis & { __resolveFlyFetch?: () => void }
+    ).__resolveFlyFetch?.();
+  });
+});
+
+test('reverse horizontal flex order reverses before and after drop edges', async ({
+  page
+}) => {
+  await mountRuntime(
+    page,
+    `
+      <div id="row-reverse" style="display:flex;flex-direction:row-reverse;gap:20px">
+        <section
+          id="reverse-target"
+          data-fly-component-id="reverse-target"
+          data-fly-index="0"
+          style="width:120px;height:120px"
+        >Target</section>
+        <section
+          id="reverse-next"
+          data-fly-component-id="reverse-next"
+          data-fly-index="1"
+          style="width:120px;height:120px"
+        >Next</section>
+      </div>
+    `
+  );
+  await installDeferredFetch(page);
+  await page.locator('#begin-drag').click();
+
+  await page
+    .frameLocator('#canvas-a-frame')
+    .locator('#reverse-target')
+    .evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const point = {
+        bubbles: true,
+        clientX: rect.left + 2,
+        clientY: rect.top + rect.height / 2,
+        pointerId: 8,
+        pointerType: 'mouse',
+        isPrimary: true
+      };
+      element.dispatchEvent(
+        new PointerEvent('pointermove', { ...point, buttons: 1 })
+      );
+      element.dispatchEvent(
+        new PointerEvent('pointerup', { ...point, buttons: 0 })
+      );
+    });
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (globalThis as typeof globalThis & { __flyRequests?: unknown[] })
+          .__flyRequests?.length ?? 0
+      )
+    )
+    .toBe(1);
+  const requests = await page.evaluate(
+    () => (globalThis as typeof globalThis & {
+      __flyRequests?: Array<{ body?: { intent?: string; payload?: Record<string, unknown> } }>;
+    }).__flyRequests ?? []
+  );
+  expect(requests[0]).toMatchObject({
+    body: {
+      intent: 'drop',
+      payload: {
+        target_component_id: 'reverse-target',
+        position: 'after'
+      }
+    }
+  });
+
+  await page.evaluate(() => {
+    (
+      globalThis as typeof globalThis & { __resolveFlyFetch?: () => void }
+    ).__resolveFlyFetch?.();
+  });
+});
+
 test('keyboard-started DnD suppresses late drag samples and duplicate drops', async ({
   page
 }) => {
