@@ -595,6 +595,123 @@ fn test_object_effect_fence(
     })
 }
 
+struct TestObjectEffectAuthorizer {
+    calls: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+#[async_trait]
+impl crate::ArtifactSqlEffectAuthorizer for TestObjectEffectAuthorizer {
+    async fn prepare(
+        &self,
+        call: &CapabilityCall,
+    ) -> SandboxResult<Box<dyn crate::ArtifactSqlEffectFence>> {
+        assert_eq!(call.capability.as_str(), "platform.data.objects");
+        self.calls
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(Box::new(TestObjectEffectFence {
+            deny_on_lock: 1,
+            locks: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        }))
+    }
+}
+
+#[tokio::test]
+async fn object_capability_prepares_and_uses_the_effect_authority() {
+    let database = Database::connect("sqlite::memory:")
+        .await
+        .expect("sqlite database");
+    for migration in ModulesModule.migrations() {
+        migration
+            .up(&sea_orm_migration::SchemaManager::new(&database))
+            .await
+            .expect("module migration");
+    }
+    database
+        .execute_unprepared("CREATE TABLE test_effect_authority (marker INTEGER NOT NULL)")
+        .await
+        .expect("effect authority table");
+    let directory =
+        std::env::temp_dir().join(format!("rustok-object-capability-fence-{}", Uuid::new_v4()));
+    let storage = StorageRuntime::local(&LocalStorageConfig {
+        base_dir: directory.to_string_lossy().into_owned(),
+        base_url: "/private".to_string(),
+        fsync: false,
+    })
+    .expect("local storage");
+    let scope = ArtifactDataScope {
+        policy_revision: 5,
+        ..test_scope(Uuid::new_v4(), "object_capability_fence")
+    };
+    setup_test_serving_namespace(&database, &scope).await;
+    let authorizer = Arc::new(TestObjectEffectAuthorizer {
+        calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+    });
+    let calls = Arc::clone(&authorizer.calls);
+    let broker = SeaOrmArtifactDataObjectCapabilityBroker::with_infrastructure_and_quota(
+        database.clone(),
+        storage.clone(),
+        ExactArtifactDataAuthorizer {
+            scope: scope.clone(),
+        },
+        scope.clone(),
+        ControlPlaneInfrastructure::default(),
+        ArtifactDataQuota::default(),
+    )
+    .with_sql_effect_authorizer(Some(authorizer));
+    let capability = CapabilityName::new("platform.data.objects").expect("capability name");
+    let call = CapabilityCall {
+        execution_id: Uuid::new_v4(),
+        subject: SandboxSubject::ModuleArtifact {
+            installation_id: Uuid::new_v4(),
+            slug: scope.module_slug.clone(),
+            version: "1.0.0".to_string(),
+            digest: format!("sha256:{}", "a".repeat(64)),
+        },
+        context: rustok_sandbox::CapabilityCallContext {
+            phase: rustok_sandbox::ExecutionPhase::Manual,
+            tenant_id: Some(scope.tenant_id),
+            actor_id: None,
+            trace_id: None,
+            idempotency_key: None,
+        },
+        capability: capability.clone(),
+        operation: "begin_upload".to_string(),
+        input: json!({
+            "name": "uploads/fenced.bin",
+            "content_type": "application/octet-stream",
+            "expected_revision": null,
+            "idempotency_key": Uuid::new_v4().to_string(),
+        }),
+    };
+    let grant = CapabilityGrant {
+        name: capability,
+        constraints: json!({
+            "object_prefixes": ["uploads/"],
+            "operations": ["begin_upload"],
+        }),
+    };
+    assert!(
+        broker.invoke(&call, &grant).await.is_err(),
+        "the owner effect fence must deny the upload-session commit"
+    );
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    let session_count = database
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT COUNT(*) AS n FROM module_artifact_data_object_upload_sessions".to_string(),
+        ))
+        .await
+        .expect("upload session count")
+        .expect("upload session count row");
+    assert_eq!(session_count.try_get::<i64>("", "n").unwrap(), 0);
+    drop(broker);
+    if directory.exists() {
+        tokio::fs::remove_dir_all(directory)
+            .await
+            .expect("remove object capability test storage");
+    }
+}
+
 #[tokio::test]
 async fn object_and_upload_effect_fences_reject_stale_commits() {
     let database = Database::connect("sqlite::memory:")
