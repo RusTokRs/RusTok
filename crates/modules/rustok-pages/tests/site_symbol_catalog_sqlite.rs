@@ -204,6 +204,107 @@ async fn tenant_and_locale_isolation() -> TestResult<()> {
 }
 
 #[tokio::test]
+async fn nested_symbol_dependencies_are_validated_and_protected_from_deletion() -> TestResult<()> {
+    let db = fixture().await?;
+    let tenant = Uuid::new_v4();
+    let service = SiteSymbolService::new(db);
+    let actor = SecurityContext::system();
+
+    service
+        .save(
+            tenant,
+            &actor,
+            SaveSiteSymbolInput {
+                symbol_id: "inner".into(),
+                locale: "en".into(),
+                name: None,
+                content: json!({
+                    "components": [{ "id": "inner-copy", "type": "text", "content": "Inner" }]
+                }),
+            },
+        )
+        .await?;
+
+    service
+        .save(
+            tenant,
+            &actor,
+            SaveSiteSymbolInput {
+                symbol_id: "outer".into(),
+                locale: "en".into(),
+                name: None,
+                content: json!({
+                    "components": [{
+                        "id": "opaque-parent",
+                        "type": "custom-wrapper",
+                        "components": {
+                            "id": "inner-slot",
+                            "type": "symbol",
+                            "symbolId": "inner",
+                            "components": []
+                        }
+                    }]
+                }),
+            },
+        )
+        .await?;
+
+    let delete_error = service.delete(tenant, &actor, "inner", "en").await;
+    assert!(
+        delete_error.is_err(),
+        "a definition referenced by another symbol must not be deleted"
+    );
+    assert!(service.get(tenant, &actor, "inner", "en").await?.is_some());
+
+    let cycle_error = service
+        .save(
+            tenant,
+            &actor,
+            SaveSiteSymbolInput {
+                symbol_id: "inner".into(),
+                locale: "en".into(),
+                name: None,
+                content: json!({
+                    "components": [{
+                        "id": "outer-slot",
+                        "type": "symbol",
+                        "symbolId": "outer",
+                        "components": []
+                    }]
+                }),
+            },
+        )
+        .await;
+    assert!(cycle_error.is_err(), "catalog updates must reject cycles");
+
+    let missing_error = service
+        .save(
+            tenant,
+            &actor,
+            SaveSiteSymbolInput {
+                symbol_id: "dangling".into(),
+                locale: "en".into(),
+                name: None,
+                content: json!({
+                    "components": [{
+                        "id": "missing-slot",
+                        "type": "symbol",
+                        "symbolId": "missing",
+                        "components": []
+                    }]
+                }),
+            },
+        )
+        .await;
+    assert!(
+        missing_error.is_err(),
+        "catalog updates must reject missing nested definitions"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn deletion_reference_protection() -> TestResult<()> {
     let db = fixture().await?;
     let tenant = Uuid::new_v4();
