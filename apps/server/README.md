@@ -113,7 +113,7 @@ shutdown through Commerce REST and GraphQL. [Provider fixture setup](../../crate
 
 ## Production container configuration
 
-The production Docker image is fail-closed by default: it sets `RUSTOK_ENV=production`, `RUSTOK_CONFIG_DIR=/app/config`, and `RUSTOK_HTTPS=true`. Mount the operator-managed `production.yaml` at `/app/config/production.yaml` (or provide an equivalent config through the configured directory). Development and test configuration files are deliberately not copied into the production image.
+The production Docker image is fail-closed by default: it sets `RUSTOK_ENV=production`, `RUSTOK_CONFIG_DIR=/app/config`, and `RUSTOK_HTTPS=true`. Mount the operator-managed `production.yaml` at `/app/config/production.yaml` (or provide an equivalent config through the configured directory). Development and test configuration files are deliberately not copied into the production image. The configured `server.port` and `PORT`/`RUSTOK_PORT` overrides must be in `1..=65535`; port zero is rejected rather than binding an ephemeral port.
 
 Every release build also enforces the host's production-security posture even when `RUSTOK_ENV` is explicitly set to `staging` or `development`. That label cannot relax database, HTTPS/HSTS, JWT, tenant-isolation, Secure-cookie, CORS, WebSocket, observability, or installer setup-token checks. Debug builds may use the selected non-production profile; environment-label-only behavior remains separate where it is intentionally not a security gate.
 

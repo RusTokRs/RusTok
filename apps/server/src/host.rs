@@ -667,10 +667,21 @@ where
     })
 }
 
+fn validate_server_port(name: &str, port: u16) -> Result<u16> {
+    if port == 0 {
+        return Err(Error::BadRequest(format!(
+            "Invalid port '0' in {name}: port must be between 1 and 65535"
+        )));
+    }
+
+    Ok(port)
+}
+
 fn parse_server_port(name: &str, value: &str) -> Result<u16> {
-    value.trim().parse::<u16>().map_err(|error| {
+    let port = value.trim().parse::<u16>().map_err(|error| {
         Error::BadRequest(format!("Invalid port '{value}' in {name}: {error}"))
-    })
+    })?;
+    validate_server_port(name, port)
 }
 
 fn parse_env_bool(name: &str, value: &str) -> Result<bool> {
@@ -1095,6 +1106,7 @@ fn resolve_server_endpoint(config: &ServerConfig) -> Result<(String, u16)> {
             None => config.port,
         },
     };
+    let port = validate_server_port("server.port", port)?;
     Ok((binding, port))
 }
 
@@ -2007,6 +2019,26 @@ auth:
         };
         let error = super::resolve_server_endpoint(&config).expect_err("invalid port must fail");
         assert!(error.to_string().contains("Invalid port"));
+    }
+
+    #[test]
+    fn parse_server_port_rejects_zero() {
+        let error = super::parse_server_port("PORT", "0")
+            .expect_err("port zero must not select an ephemeral listener");
+        assert!(error.to_string().contains("between 1 and 65535"));
+    }
+
+    #[test]
+    fn resolve_server_endpoint_rejects_zero_configured_port() {
+        let _env = EnvGuard::new(&["PORT", "RUSTOK_PORT", "HOST", "RUSTOK_BINDING"]);
+        let config = super::ServerConfig {
+            binding: "127.0.0.1".to_string(),
+            port: 0,
+        };
+        let error = super::resolve_server_endpoint(&config)
+            .expect_err("configured port zero must not select an ephemeral listener");
+        assert!(error.to_string().contains("server.port"));
+        assert!(error.to_string().contains("between 1 and 65535"));
     }
 
     #[tokio::test]
