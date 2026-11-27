@@ -701,6 +701,7 @@ mod tests {
         let event_id = Uuid::new_v4();
         entity::Entity::insert(entity::ActiveModel {
             id: Set(event_id),
+            tenant_id: Set(None),
             event_type: Set("invalid.event".to_string()),
             schema_version: Set(1),
             payload: Set(serde_json::json!({ "not": "an envelope" })),
@@ -764,6 +765,7 @@ mod tests {
         let event_id = envelope.id();
         entity::Entity::insert(entity::ActiveModel {
             id: Set(event_id),
+            tenant_id: Set(Some(envelope.tenant_id())),
             event_type: Set(envelope.event_type().to_string()),
             schema_version: Set(i16::try_from(envelope.schema_version()).unwrap()),
             payload: Set(serde_json::to_value(&envelope).unwrap()),
@@ -808,6 +810,7 @@ mod tests {
         let event_id = Uuid::new_v4();
         entity::Entity::insert(entity::ActiveModel {
             id: Set(event_id),
+            tenant_id: Set(None),
             event_type: Set("invalid.event".to_string()),
             schema_version: Set(1),
             payload: Set(serde_json::json!({ "not": "an envelope" })),

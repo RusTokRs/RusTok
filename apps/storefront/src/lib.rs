@@ -286,6 +286,7 @@ async fn render_shell_with_modules(
     let surface_nonce = csp_nonce.and_then(|nonce| rustok_ui_core::UiCspNonce::new(nonce.as_str()));
 
     let owner = Owner::new();
+    let shell_modules = enabled_modules.clone();
     let app_html = owner
         .with(|| {
             if let Some(nonce) = surface_nonce {
@@ -296,7 +297,7 @@ async fn render_shell_with_modules(
                 <AuthProvider>
                     <StorefrontShell
                         locale=locale
-                        enabled_modules=enabled_modules.clone()
+                        enabled_modules=shell_modules
                         query_params=query_params
                     />
                 </AuthProvider>
@@ -391,6 +392,7 @@ async fn render_module_page_with_modules(
     let surface_nonce = csp_nonce.and_then(|nonce| rustok_ui_core::UiCspNonce::new(nonce.as_str()));
 
     let owner = Owner::new();
+    let page_modules = enabled_modules.clone();
     let app_html = owner
         .with(|| {
             if let Some(nonce) = surface_nonce {
@@ -405,7 +407,7 @@ async fn render_module_page_with_modules(
                 <AuthProvider>
                     <StorefrontModulePage
                         locale=locale
-                        enabled_modules=enabled_modules.clone()
+                        enabled_modules=page_modules
                         route_segment=route_segment
                         query_params=query_params
                     />

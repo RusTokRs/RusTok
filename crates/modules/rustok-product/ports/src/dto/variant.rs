@@ -370,9 +370,9 @@ mod patch_tests {
         let input = UpdateVariantInput {
             attribute_values: vec![ProductAttributeValueBatch {
                 locale: "en".to_owned(),
-                patches: vec![super::product::ProductAttributeValuePatch {
+                patches: vec![crate::ProductAttributeValuePatch {
                     attribute_id: Uuid::from_u128(1),
-                    value: super::product::ProductAttributeValuePatchValue::Text("Blue".to_owned()),
+                    value: crate::ProductAttributeValuePatchValue::Text("Blue".to_owned()),
                 }],
             }],
             ..Default::default()

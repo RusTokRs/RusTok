@@ -84,6 +84,8 @@ impl InstallPersistencePort<()> for TestPorts {
         Ok(InstallSessionRecord {
             id: session_id,
             tenant_id: *self.tenant_id.lock().unwrap(),
+            status: "draft".to_string(),
+            attempt_generation: 0,
             lock_owner: self.lock_owner.lock().unwrap().clone(),
             lock_expires_at: None,
         })
@@ -98,6 +100,7 @@ impl InstallPersistencePort<()> for TestPorts {
     ) -> Result<InstallSessionRecord, InstallExecutionError> {
         *self.lock_owner.lock().unwrap() = Some(owner.to_string());
         Ok(InstallSessionRecord {
+            attempt_generation: session.attempt_generation + 1,
             lock_owner: Some(owner.to_string()),
             ..session
         })
@@ -106,6 +109,7 @@ impl InstallPersistencePort<()> for TestPorts {
     async fn record_receipt(
         &self,
         _runtime: &(),
+        _session: &InstallSessionRecord,
         receipt: &InstallReceipt,
     ) -> Result<InstallReceiptRecord, InstallExecutionError> {
         self.receipts.lock().unwrap().push(receipt.clone());
@@ -118,13 +122,19 @@ impl InstallPersistencePort<()> for TestPorts {
     async fn set_state(
         &self,
         _runtime: &(),
-        session_id: Uuid,
+        session: &InstallSessionRecord,
         state: InstallState,
     ) -> Result<InstallSessionRecord, InstallExecutionError> {
         self.states.lock().unwrap().push(state);
+        let status = serde_json::to_value(state)
+            .ok()
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .unwrap_or_else(|| format!("{state:?}").to_lowercase());
         Ok(InstallSessionRecord {
-            id: session_id,
+            id: session.id,
             tenant_id: *self.tenant_id.lock().unwrap(),
+            status,
+            attempt_generation: session.attempt_generation,
             lock_owner: self.lock_owner.lock().unwrap().clone(),
             lock_expires_at: None,
         })
@@ -133,13 +143,15 @@ impl InstallPersistencePort<()> for TestPorts {
     async fn set_tenant_id(
         &self,
         _runtime: &(),
-        session_id: Uuid,
+        session: &InstallSessionRecord,
         tenant_id: Uuid,
     ) -> Result<InstallSessionRecord, InstallExecutionError> {
         *self.tenant_id.lock().unwrap() = Some(tenant_id);
         Ok(InstallSessionRecord {
-            id: session_id,
+            id: session.id,
             tenant_id: Some(tenant_id),
+            status: session.status.clone(),
+            attempt_generation: session.attempt_generation,
             lock_owner: self.lock_owner.lock().unwrap().clone(),
             lock_expires_at: None,
         })

@@ -566,8 +566,8 @@ pub fn DioxusIsolatedCanvas(
                                         "data-fly-resize-handle": "{name}",
                                         role: "button",
                                         tabindex: "0",
-                                        aria_label: "Resize {name}",
-                                        aria_keyshortcuts: "ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowUp Shift+ArrowDown Shift+ArrowLeft Shift+ArrowRight",
+                                        "aria-label": "Resize {name}",
+                                        "aria-keyshortcuts": "ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowUp Shift+ArrowDown Shift+ArrowLeft Shift+ArrowRight",
                                         class: format!(
                                             "pointer-events-auto touch-none select-none fill-white stroke-violet-700 stroke-2 {}",
                                             cursor
@@ -588,9 +588,17 @@ pub fn DioxusIsolatedCanvas(
                                                     start_y: 0.0,
                                                     policy: page_builder_resize_policy(),
                                                 };
-                                                let Some(result) = resize
-                                                    .update_by_arrow_key(&event.key(), event.shift_key())
-                                                else {
+                                                let key_name = match event.key() {
+                                                    Key::ArrowLeft => "ArrowLeft",
+                                                    Key::ArrowRight => "ArrowRight",
+                                                    Key::ArrowUp => "ArrowUp",
+                                                    Key::ArrowDown => "ArrowDown",
+                                                    _ => return,
+                                                };
+                                                let Some(result) = resize.update_by_arrow_key(
+                                                    key_name,
+                                                    event.modifiers().contains(Modifiers::SHIFT),
+                                                ) else {
                                                     return;
                                                 };
                                                 if !result.width_changed && !result.height_changed {

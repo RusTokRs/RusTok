@@ -318,10 +318,7 @@ mod tests {
             }
 
             let error = super::validate_blog_draft_payload(&payload).unwrap_err();
-            assert!(
-                error.contains(field),
-                "expected validation error for {field}, got {error}"
-            );
+            assert_eq!(error, super::BlogDraftPayloadError::BlankField(field));
         }
     }
 

@@ -660,6 +660,7 @@ async fn complete_checkout_allows_backorder_variant_when_channel_inventory_hidde
             barcode: None,
             shipping_profile_slug: None,
             axis_values: vec![],
+            attribute_values: vec![],
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
                 channel_id: None,

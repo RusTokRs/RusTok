@@ -533,7 +533,11 @@ mod tests {
             Ok(_) => panic!("duplicate deployment aliases must fail closed"),
             Err(error) => error,
         };
-        assert!(error.contains("aliases must be unique and non-empty"));
+        assert!(matches!(
+            error,
+            crate::AiError::InvalidConfig(message)
+                if message.contains("aliases must be unique and non-empty")
+        ));
     }
 
     #[test]

@@ -1578,11 +1578,8 @@ mod tests {
         let policy_only = original.clone().with_issuer("other-issuer");
         assert!(std::ptr::eq(prepared, policy_only.prepared_jwt().unwrap()));
         let next_key = RsaKeyPairFixture::generate().unwrap();
-        let (_, inputs) =
-            JwtKeyringDocument::parse(&document(&fixture, 2, "two", &next_key)).unwrap();
-        let mut candidate = original.clone();
-        candidate
-            .edit_key_inputs(|current| *current = inputs)
+        let (_, candidate) = original
+            .prepare_jwt_document(&document(&fixture, 2, "two", &next_key))
             .unwrap();
         assert!(!Arc::ptr_eq(
             &original.key_snapshot().unwrap(),
@@ -1598,18 +1595,21 @@ mod tests {
         let fixture = JwtKeyringFixture::generate().unwrap();
         let (_, inputs) =
             JwtKeyringDocument::parse(&document(&fixture, 1, "one", &fixture.access)).unwrap();
-        let mut config = AuthConfig::from_key_inputs(secret(), inputs.clone());
+        let config = AuthConfig::from_key_inputs(secret(), inputs.clone());
         let clone = config.clone();
         std::thread::scope(|scope| {
             let thread = scope.spawn(|| clone.prepared_jwt().unwrap() as *const _ as usize);
             let first = config.prepared_jwt().unwrap() as *const _ as usize;
             assert_eq!(thread.join().unwrap(), first);
         });
-        let invalid = AuthSettingsOverrides {
-            rsa_private_key_pem: Some("invalid-private-key".into()),
-            ..Default::default()
-        };
-        assert!(invalid.apply(&mut config).is_err());
+        let mut invalid_doc: serde_json::Value =
+            serde_json::from_slice(&document(&fixture, 2, "two", &fixture.access)).unwrap();
+        invalid_doc["access"]["rsa_private_key_pem"] = serde_json::json!("invalid-private-key");
+        assert!(
+            config
+                .prepare_jwt_document(&serde_json::to_vec(&invalid_doc).unwrap())
+                .is_err()
+        );
         assert!(std::ptr::eq(
             config.prepared_jwt().unwrap(),
             clone.prepared_jwt().unwrap()

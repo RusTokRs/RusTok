@@ -956,7 +956,12 @@ fn document_save_attempt_key(
         digest.update([0]);
     }
     digest.update(project.to_string().as_bytes());
-    format!("fly-save-v1:{:x}", digest.finalize())
+    let hex: String = digest
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!("fly-save-v1:{hex}")
 }
 
 #[cfg(feature = "ssr")]

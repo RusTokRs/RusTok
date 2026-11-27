@@ -151,7 +151,19 @@ pub(crate) async fn lock_invite_module_policy(
     let corequisites = crate::modules::ManifestManager::module_policy_corequisites(
         &snapshot.manifest,
     )
-    .map_err(|error| Error::Message(format!("module co-requisites unavailable: {error}")))?;
+    .map_err(|error| Error::Message(format!("module co-requisites unavailable: {error}")))?
+    .into_iter()
+    .flat_map(|(module_slug, required_modules)| {
+        required_modules.into_iter().map(
+            move |(required_module_slug, version_requirement)| {
+                rustok_modules::ModuleEffectivePolicyCoRequisite {
+                    module_slug: module_slug.clone(),
+                    required_module_slug,
+                    version_requirement,
+                }
+            },
+        )
+    });
     let (policy, state) = rustok_modules::SeaOrmModulePolicyRevisionConsumer::new(db.clone())
         .lock_and_resolve_static_policy_state_in_transaction(
             tx,

@@ -153,6 +153,6 @@ mod tests {
             )
             .await
             .expect_err("stale revision must conflict");
-        assert!(stale.contains("concurrently"));
+        assert!(stale.0.contains("concurrently"));
     }
 }

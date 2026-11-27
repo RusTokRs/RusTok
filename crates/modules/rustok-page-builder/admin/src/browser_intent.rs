@@ -805,7 +805,7 @@ fn style_rule_scope_from_payload(
         "media" => {
             // SSR forms submit the stable breakpoint ID; typed callers may still
             // submit a custom media query. Normalize IDs to the canonical query.
-            let query = fly::responsive_breakpoint(scope_value)
+            let query = fly_ui::responsive_breakpoint(scope_value)
                 .map(|breakpoint| breakpoint.media_query)
                 .unwrap_or_else(|| scope_value.to_string());
             Ok(StyleRuleScope::Media { query })
@@ -889,7 +889,7 @@ mod tests {
 
     #[test]
     fn style_rule_scope_resolves_builtin_breakpoint_ids_to_media_queries() {
-        let breakpoint = fly::builtin_responsive_breakpoints()
+        let breakpoint = fly_ui::builtin_responsive_breakpoints()
             .into_iter()
             .next()
             .expect("a built-in responsive breakpoint");
@@ -916,7 +916,7 @@ mod tests {
     #[test]
     fn upsert_style_rule_accepts_builtin_breakpoint_ids_from_ssr_forms() {
         let mut controller = controller();
-        let breakpoint = fly::builtin_responsive_breakpoints()
+        let breakpoint = fly_ui::builtin_responsive_breakpoints()
             .into_iter()
             .next()
             .expect("a built-in responsive breakpoint");

@@ -34,11 +34,12 @@ pub(super) fn ChannelCard(
     let selected_oauth_query = use_route_query_value(AdminQueryKey::OauthAppId.as_str());
     let query_writer = use_route_query_writer();
     let common_cancel_label = t(ui_locale.as_deref(), "common.cancel", "Cancel");
-    let targets_cancel_label = common_cancel_label.clone();
-    let modules_cancel_label = common_cancel_label.clone();
-    let oauth_cancel_label = common_cancel_label.clone();
-    let common_edit_label = t(ui_locale.as_deref(), "common.edit", "Edit");
-    let common_delete_label = t(ui_locale.as_deref(), "common.delete", "Delete");
+    let targets_cancel_label = StoredValue::new(common_cancel_label.clone());
+    let modules_cancel_label = StoredValue::new(common_cancel_label.clone());
+    let oauth_cancel_label = StoredValue::new(common_cancel_label);
+    let common_edit_label = StoredValue::new(t(ui_locale.as_deref(), "common.edit", "Edit"));
+    let common_delete_label =
+        StoredValue::new(t(ui_locale.as_deref(), "common.delete", "Delete"));
     let targets_edit_title = t(
         ui_locale.as_deref(),
         "channel.targets.editTitle",
@@ -184,7 +185,8 @@ pub(super) fn ChannelCard(
         "Bind an existing OAuth app when this channel needs an integration-level relationship without introducing a second credential subsystem.",
     );
     let oauth_no_role_label = t(ui_locale.as_deref(), "channel.oauth.noRole", "no role");
-    let oauth_revoke_label = t(ui_locale.as_deref(), "channel.oauth.revoke", "Revoke");
+    let oauth_revoke_label =
+        StoredValue::new(t(ui_locale.as_deref(), "channel.oauth.revoke", "Revoke"));
     let oauth_no_apps_label = t(
         ui_locale.as_deref(),
         "channel.oauth.noApps",
@@ -291,10 +293,10 @@ pub(super) fn ChannelCard(
     let tenant_for_module_delete = tenant.clone();
     let channel_id_for_module_delete = channel_id.clone();
     let channel_slug_for_module_delete = channel_slug.clone();
-    let token_for_app = token;
-    let tenant_for_app = tenant;
-    let channel_id_for_app = channel_id;
-    let channel_slug_for_app = channel_slug;
+    let token_for_app = token.clone();
+    let tenant_for_app = tenant.clone();
+    let channel_id_for_app = channel_id.clone();
+    let channel_slug_for_app = channel_slug.clone();
     let token_for_app_delete = token_for_app.clone();
     let tenant_for_app_delete = tenant_for_app.clone();
     let channel_id_for_app_delete = channel_id_for_app.clone();
@@ -496,7 +498,7 @@ pub(super) fn ChannelCard(
     let lifecycle_locale_rename = ui_locale.clone();
     let rename_name = RwSignal::new(channel.channel.name.clone());
     let renaming = RwSignal::new(false);
-    let submit_rename = move |ev: SubmitEvent| {
+    let submit_rename = Callback::new(move |ev: SubmitEvent| {
         ev.prevent_default();
         let token = lifecycle_token_rename.clone();
         let tenant = lifecycle_tenant_rename.clone();
@@ -529,7 +531,7 @@ pub(super) fn ChannelCard(
             }
             busy.set(false);
         });
-    };
+    });
 
     let lifecycle_clear_query = query_writer.clone();
     let lifecycle_token_delete = token.clone();
@@ -538,7 +540,8 @@ pub(super) fn ChannelCard(
     let lifecycle_slug_delete = channel_slug.clone();
     let lifecycle_locale_delete = ui_locale.clone();
     let confirming_delete = RwSignal::new(false);
-    let delete_channel_action = move || {
+    let delete_channel_action = Callback::new(move |_: ()| {
+        let lifecycle_clear_query = lifecycle_clear_query.clone();
         let token = lifecycle_token_delete.clone();
         let tenant = lifecycle_tenant_delete.clone();
         let channel_id = lifecycle_channel_delete.clone();
@@ -564,7 +567,7 @@ pub(super) fn ChannelCard(
             }
             busy.set(false);
         });
-    };
+    });
 
     let create_target_locale = ui_locale.clone();
     let create_target = move |ev: SubmitEvent| {
@@ -773,29 +776,40 @@ pub(super) fn ChannelCard(
         lifecycle_toggle.label_key,
         lifecycle_toggle.label_fallback,
     );
-    let lifecycle_rename_label = t(ui_locale.as_deref(), "channel.card.rename", "Rename");
+    let lifecycle_rename_label =
+        StoredValue::new(t(ui_locale.as_deref(), "channel.card.rename", "Rename"));
     let rename_field_label = t(
         ui_locale.as_deref(),
         "channel.card.nameLabel",
         "Channel name",
     );
-    let lifecycle_save_label = t(ui_locale.as_deref(), "channel.card.saveName", "Save name");
+    let lifecycle_save_label = StoredValue::new(t(
+        ui_locale.as_deref(),
+        "channel.card.saveName",
+        "Save name",
+    ));
     let lifecycle_cancel_label = t(ui_locale.as_deref(), "common.cancel", "Cancel");
-    let lifecycle_cancel_label_confirm = lifecycle_cancel_label.clone();
-    let lifecycle_delete_label = t(
+    let lifecycle_cancel_label_confirm = StoredValue::new(lifecycle_cancel_label.clone());
+    let lifecycle_cancel_label = StoredValue::new(lifecycle_cancel_label);
+    let lifecycle_delete_label = StoredValue::new(t(
         ui_locale.as_deref(),
         "channel.card.delete",
         "Delete channel",
-    );
-    let lifecycle_delete_confirm_label = t(
+    ));
+    let lifecycle_delete_confirm_label = StoredValue::new(t(
         ui_locale.as_deref(),
         "channel.card.confirmDelete",
         "Confirm delete",
-    );
-    let lifecycle_delete_hint = t(
+    ));
+    let lifecycle_delete_hint = StoredValue::new(t(
         ui_locale.as_deref(),
         "channel.card.deleteHint",
         "This also removes its targets, module bindings, app bindings and policy rules.",
+    ));
+    let make_default_button_label = t(
+        ui_locale.as_deref(),
+        "channel.card.makeDefault",
+        "Make Default",
     );
 
     view! {
@@ -866,7 +880,7 @@ pub(super) fn ChannelCard(
                                 disabled=move || busy.get()
                                 on_click=Box::new(make_default)
                             >
-                                {t(ui_locale.as_deref(), "channel.card.makeDefault", "Make Default")}
+                                {make_default_button_label}
                             </Button>
                         }.into_any()
                     }}
@@ -884,11 +898,11 @@ pub(super) fn ChannelCard(
                                 disabled=move || busy.get()
                                 on_click=Box::new(move || renaming.set(true))
                             >
-                                {move || lifecycle_rename_label.clone()}
+                                {move || lifecycle_rename_label.get_value()}
                             </Button>
                         </Show>
                         <Show when=move || renaming.get()>
-                            <form class="flex flex-wrap items-center gap-2" on:submit=submit_rename>
+                            <form class="flex flex-wrap items-center gap-2" on:submit=move |ev| submit_rename.run(ev)>
                                 // `Input` spans `w-full`, so it sits in a flexible column of its
                                 // own: next to the buttons it would otherwise shrink them to the
                                 // edge of the card.
@@ -900,14 +914,14 @@ pub(super) fn ChannelCard(
                                     />
                                 </div>
                                 <Button r#type="submit" disabled=move || busy.get()>
-                                    {move || lifecycle_save_label.clone()}
+                                    {move || lifecycle_save_label.get_value()}
                                 </Button>
                                 <Button
                                     variant=ButtonVariant::Outline
                                     class="text-muted-foreground"
                                     on_click=Box::new(move || renaming.set(false))
                                 >
-                                    {move || lifecycle_cancel_label.clone()}
+                                    {move || lifecycle_cancel_label.get_value()}
                                 </Button>
                             </form>
                         </Show>
@@ -918,27 +932,27 @@ pub(super) fn ChannelCard(
                                 disabled=move || busy.get()
                                 on_click=Box::new(move || confirming_delete.set(true))
                             >
-                                {move || lifecycle_delete_label.clone()}
+                                {move || lifecycle_delete_label.get_value()}
                             </Button>
                         </Show>
                         <Show when=move || confirming_delete.get()>
                             <div class="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2">
                                 <span class="text-xs text-destructive">
-                                    {move || lifecycle_delete_hint.clone()}
+                                    {move || lifecycle_delete_hint.get_value()}
                                 </span>
                                 <Button
                                     variant=ButtonVariant::Destructive
                                     disabled=move || busy.get()
-                                    on_click=Box::new(delete_channel_action)
+                                    on_click=Box::new(move || delete_channel_action.run(()))
                                 >
-                                    {move || lifecycle_delete_confirm_label.clone()}
+                                    {move || lifecycle_delete_confirm_label.get_value()}
                                 </Button>
                                 <Button
                                     variant=ButtonVariant::Outline
                                     class="text-muted-foreground"
                                     on_click=Box::new(move || confirming_delete.set(false))
                                 >
-                                    {move || lifecycle_cancel_label_confirm.clone()}
+                                    {move || lifecycle_cancel_label_confirm.get_value()}
                                 </Button>
                             </div>
                         </Show>
@@ -977,7 +991,7 @@ pub(super) fn ChannelCard(
                                             }
                                         })
                                     >
-                                        {targets_cancel_label.clone()}
+                                        {targets_cancel_label.get_value()}
                                     </Button>
                                 </Show>
                             </div>
@@ -1042,7 +1056,7 @@ pub(super) fn ChannelCard(
                                                             }
                                                         })
                                                     >
-                                                        {common_edit_label.clone()}
+                                                        {common_edit_label.get_value()}
                                                     </Button>
                                                     <Button
                                                         variant=ButtonVariant::Outline
@@ -1109,7 +1123,7 @@ pub(super) fn ChannelCard(
                                                             }
                                                         })
                                                     >
-                                                        {common_delete_label.clone()}
+                                                        {common_delete_label.get_value()}
                                                     </Button>
                                                 </div>
                                             </div>
@@ -1188,7 +1202,7 @@ pub(super) fn ChannelCard(
                                             }
                                         })
                                     >
-                                        {modules_cancel_label.clone()}
+                                        {modules_cancel_label.get_value()}
                                     </Button>
                                 </Show>
                             </div>
@@ -1240,7 +1254,7 @@ pub(super) fn ChannelCard(
                                                             }
                                                         })
                                                     >
-                                                        {common_edit_label.clone()}
+                                                        {common_edit_label.get_value()}
                                                     </Button>
                                                     <Button
                                                         variant=ButtonVariant::Outline
@@ -1306,7 +1320,7 @@ pub(super) fn ChannelCard(
                                                             }
                                                         })
                                                     >
-                                                        {common_delete_label.clone()}
+                                                        {common_delete_label.get_value()}
                                                     </Button>
                                                 </div>
                                             </div>
@@ -1380,7 +1394,7 @@ pub(super) fn ChannelCard(
                                             }
                                         })
                                     >
-                                        {oauth_cancel_label.clone()}
+                                        {oauth_cancel_label.get_value()}
                                     </Button>
                                 </Show>
                             </div>
@@ -1426,7 +1440,7 @@ pub(super) fn ChannelCard(
                                                             }
                                                         })
                                                     >
-                                                        {common_edit_label.clone()}
+                                                        {common_edit_label.get_value()}
                                                     </Button>
                                                     <Button
                                                         variant=ButtonVariant::Outline
@@ -1492,7 +1506,7 @@ pub(super) fn ChannelCard(
                                                             }
                                                         })
                                                     >
-                                                        {oauth_revoke_label.clone()}
+                                                        {oauth_revoke_label.get_value()}
                                                     </Button>
                                                 </div>
                                             </div>

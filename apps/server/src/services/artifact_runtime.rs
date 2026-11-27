@@ -234,7 +234,7 @@ pub async fn compose_artifact_binding_executor(
 
     let execution_authority = ExecutionAuthority::new(
         ctx.shared_get::<Arc<rustok_core::ModuleRuntimeExtensions>>()
-            .and_then(|extensions| extensions.get::<Arc<super::auth_admin_mutation_provider::ServerAuthAdminMutationProvider>>()),
+            .and_then(|extensions| extensions.get::<Arc<super::auth_admin_mutation_provider::ServerAuthAdminMutationProvider>>().cloned()),
     );
     let supported_payload_kinds = [
         ArtifactPayloadKind::Rhai,

@@ -10,6 +10,7 @@ use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use super::product_editor::ProductEditorPage;
+use super::variant_mutation::ProductVariantMutationSection;
 use crate::catalog_transport;
 use crate::core::{
     DeleteOutcome, DraftForm, ProductAdminEditorFormState, ProductAdminErrorCopy,
@@ -1223,17 +1224,71 @@ fn ProductCatalogReference() -> impl IntoView {
                     </section>
 
                     <Show when=move || selected.get().is_some()>
-                        <ProductVariantsPanel
-                            locale=ui_locale.clone()
-                            product=selected.get()
-                            token=token
-                            tenant=tenant
-                            bootstrap=panel_bootstrap
-                            busy=busy
-                            set_busy=set_busy
-                            set_error=set_error
-                            on_variant_mutated=on_variant_mutated
-                        />
+                        {
+                            let variant_locale = StoredValue::new(ui_locale.clone());
+                            let variant_update_request =
+                                RwSignal::new(None::<(String, crate::model::VariantUpdateDraft)>);
+                            let variant_delete_request =
+                                RwSignal::new(None::<(String, String)>);
+                            let variant_mutation_record = RwSignal::new(
+                                None::<crate::core::variant_mutation::VariantMutationRecord>,
+                            );
+                            let variant_mutation_storage_error = RwSignal::new(false);
+                            let (variant_mutation_locked, set_variant_mutation_locked) =
+                                signal(false);
+                            let on_variant_update_saved = Callback::new(
+                                move |saved: crate::model::ProductVariant| {
+                                    if let Some(product_id) =
+                                        selected.get_untracked().map(|product| product.id)
+                                    {
+                                        on_variant_mutated.run(product_id);
+                                    } else {
+                                        let _ = saved;
+                                    }
+                                },
+                            );
+                            let on_variant_delete_saved = Callback::new(move |_: String| {
+                                if let Some(product_id) =
+                                    selected.get_untracked().map(|product| product.id)
+                                {
+                                    on_variant_mutated.run(product_id);
+                                }
+                            });
+                            view! {
+                                {move || {
+                                    selected.get().map(|product| {
+                                        view! {
+                                            <ProductVariantMutationSection
+                                                product_id=product.id
+                                                locale=variant_locale.get_value()
+                                                update_request=variant_update_request
+                                                delete_request=variant_delete_request
+                                                record=variant_mutation_record
+                                                storage_error=variant_mutation_storage_error
+                                                parent_busy=Signal::derive(move || busy.get())
+                                                set_parent_busy=set_busy
+                                                blocked=Signal::derive(|| false)
+                                                on_lock_change=Callback::new(move |locked| {
+                                                    set_variant_mutation_locked.set(locked)
+                                                })
+                                                on_update_saved=on_variant_update_saved
+                                                on_delete_saved=on_variant_delete_saved
+                                            />
+                                        }
+                                    })
+                                }}
+                                <ProductVariantsPanel
+                                    locale=variant_locale.get_value()
+                                    product=selected.get()
+                                    busy=busy
+                                    set_error=set_error
+                                    update_request=variant_update_request
+                                    delete_request=variant_delete_request
+                                    can_delete_variants=true
+                                    blocked=Signal::derive(move || variant_mutation_locked.get())
+                                />
+                            }
+                        }
                         <ProductMediaPanel
                             locale=ui_locale.clone()
                             product=selected.get()

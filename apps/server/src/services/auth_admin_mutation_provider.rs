@@ -757,7 +757,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
             if let Some(app) = app.filter(|app| app.is_active()) {
                 records.push(AuthorizedOAuthAppRecord {
                     app: self.record(context, app).await?,
-                    scopes: consent.scopes_list(),
+                    scopes: consent.scopes_list().map_err(internal_admin_error)?,
                     granted_at: consent.granted_at.into(),
                 });
             }

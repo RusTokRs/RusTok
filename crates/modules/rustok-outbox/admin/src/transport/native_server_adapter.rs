@@ -238,7 +238,7 @@ mod tests {
         ];
 
         for (tenant_id, payload, retry_count) in rows {
-            db.execute(Statement::from_sql_and_values(
+            db.execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO sys_events (id, tenant_id, status, payload, retry_count) VALUES (?1, ?2, 'pending', ?3, ?4)",
                 [

@@ -674,8 +674,8 @@ fn non_empty_option(value: &str) -> Option<String> {
 mod tests {
     use super::{
         SeoControlPlaneWidgetStateKind, SeoEntityForm, SeoEventDeliverySummary,
-        SeoMetaTranslationView, SeoMetaView, SeoRecommendation, SeoRemediationAction,
-        derive_control_plane_widget_state, remediation_hint_for_issue_code,
+        SeoMetaTranslationView, SeoMetaView, SeoPanelError, SeoRecommendation,
+        SeoRemediationAction, derive_control_plane_widget_state, remediation_hint_for_issue_code,
     };
     use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
     use serde_json::json;

@@ -206,8 +206,11 @@ impl ProfileSummaryReader for StubProfiles {
 
 fn blog_handler(db: &DatabaseConnection, profiles: Option<StubProfiles>) -> SearchIngestionHandler {
     let profiles_reader = profiles.map(|stub| Arc::new(stub) as Arc<dyn ProfileSummaryReader>);
-    let source: Arc<dyn SearchProjectionSource> =
-        Arc::new(BlogSearchProjectionSource::new(db.clone(), profiles_reader));
+    let source: Arc<dyn SearchProjectionSource> = Arc::new(BlogSearchProjectionSource::new(
+        db.clone(),
+        profiles_reader,
+        Arc::new(rustok_blog::NoopBlogTaxonomyPort),
+    ));
     SearchIngestionHandler::with_all_projection_sources(db.clone(), Some(source), None, None, None)
 }
 

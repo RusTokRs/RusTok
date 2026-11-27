@@ -1031,6 +1031,9 @@ fn ReportControl(is_topic: bool, target_id: String) -> impl IntoView {
                 let target_id = target_id.clone();
                 let locale = locale.clone();
                 let failed_label = failed_label.clone();
+                let done_label = done_label.clone();
+                let pending_label = pending_label.clone();
+                let submit_label = submit_label.clone();
                 view! {
                     <form
                         class="absolute right-0 z-20 mt-2 w-64 space-y-2 rounded-xl border border-border bg-card p-3 shadow-lg"
@@ -1068,7 +1071,8 @@ fn ReportControl(is_topic: bool, target_id: String) -> impl IntoView {
                             >
                                 {FORUM_STOREFRONT_REPORT_REASON_CODES.iter().map(|code| {
                                     let code = (*code).to_string();
-                                    view! { <option value=code.clone()>{code}</option> }
+                                    let value = code.clone();
+                                    view! { <option value=value>{code}</option> }
                                 }).collect_view()}
                             </select>
                         </label>

@@ -643,6 +643,7 @@ pub(crate) fn variant_from_editor_fields(
         barcode: super::text_or_none(barcode),
         shipping_profile_slug: None,
         axis_values,
+        attribute_values: Vec::new(),
         // Blank is no initial price, not a free price. Keep an orphan compare-at for validation.
         prices: if price.amount.trim().is_empty() && price.compare_at_amount.is_none() {
             Vec::new()

@@ -302,11 +302,13 @@ mod tests {
         dispatched_at: Option<chrono::DateTime<Utc>>,
     ) -> uuid::Uuid {
         let id = generate_id();
+        let tenant_id = generate_id();
         crate::entity::ActiveModel {
             id: Set(id),
+            tenant_id: Set(Some(tenant_id)),
             event_type: Set("test.pruned".to_string()),
             schema_version: Set(1),
-            payload: Set(serde_json::json!({"tenant_id": generate_id().to_string()})),
+            payload: Set(serde_json::json!({"tenant_id": tenant_id.to_string()})),
             status: Set(status),
             retry_count: Set(0),
             next_attempt_at: Set(None),

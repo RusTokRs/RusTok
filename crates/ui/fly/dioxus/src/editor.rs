@@ -156,9 +156,7 @@ pub fn FlyPalette(
                                                         return;
                                                     }
                                                     transfer.set_effect_allowed("move");
-                                                    if let Some(handler) = on_begin_drag {
-                                                        handler.call(drag_id.clone());
-                                                    }
+                                                    on_begin_drag.call(drag_id.clone());
                                                 },
                                                 ondragend: move |event| {
                                                     if event.data.data_transfer().drop_effect() == "none" {
@@ -254,9 +252,7 @@ pub fn FlyLayerTree(
                                             return;
                                         }
                                         transfer.set_effect_allowed("move");
-                                        if let Some(handler) = on_begin_move {
-                                            handler.call(move_id.clone());
-                                        }
+                                        on_begin_move.call(move_id.clone());
                                     },
                                     ondragend: move |event| {
                                         if event.data.data_transfer().drop_effect() == "none" {
@@ -612,7 +608,7 @@ pub fn FlyCanvasIframe(
         iframe {
             id: "{id}",
             title: "{title}",
-            sandbox: "allow-scripts",
+            "sandbox": "allow-scripts",
             srcdoc: "{srcdoc}",
             width: "{width}",
             height: "{height}",

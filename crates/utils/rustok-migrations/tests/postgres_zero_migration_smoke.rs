@@ -889,8 +889,11 @@ async fn run_product_catalog_read_port_checks() -> Result<(), Box<dyn std::error
         let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
         let service = ProductCatalogReadRuntime::in_process_with_pricing(
             db.clone(),
-            event_bus,
-            Some(rustok_pricing::in_process_product_pricing_port(db.clone())),
+            event_bus.clone(),
+            Some(rustok_pricing::in_process_product_pricing_port(
+                db.clone(),
+                event_bus,
+            )),
         )
         .read_port();
         assert_product_read_projection(service.as_ref()).await?;

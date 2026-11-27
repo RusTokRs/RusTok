@@ -161,17 +161,11 @@ pub async fn update_channel(
 ) -> Result<ChannelRecord, ApiError> {
     let rest_token = token.clone();
     let rest_tenant = tenant_slug.clone();
+    let path = format!("/api/channels/{channel_id}");
     dispatch(
         "channel.admin.update_channel",
         || native_server_adapter::channel_update_native(channel_id.to_string(), payload.clone()),
-        || {
-            rest_adapter::patch_json(
-                &format!("/api/channels/{channel_id}"),
-                payload,
-                rest_token,
-                rest_tenant,
-            )
-        },
+        || rest_adapter::patch_json(&path, payload, rest_token, rest_tenant),
     )
     .await
 }
@@ -185,17 +179,12 @@ pub async fn set_channel_active(
 ) -> Result<ChannelRecord, ApiError> {
     let rest_token = token.clone();
     let rest_tenant = tenant_slug.clone();
+    let path = format!("/api/channels/{channel_id}/active");
+    let body = serde_json::json!({ "is_active": is_active });
     dispatch(
         "channel.admin.set_channel_active",
         || native_server_adapter::channel_set_active_native(channel_id.to_string(), is_active),
-        || {
-            rest_adapter::post_json(
-                &format!("/api/channels/{channel_id}/active"),
-                &serde_json::json!({ "is_active": is_active }),
-                rest_token,
-                rest_tenant,
-            )
-        },
+        || rest_adapter::post_json(&path, &body, rest_token, rest_tenant),
     )
     .await
 }
@@ -208,16 +197,11 @@ pub async fn delete_channel(
 ) -> Result<ChannelRecord, ApiError> {
     let rest_token = token.clone();
     let rest_tenant = tenant_slug.clone();
+    let path = format!("/api/channels/{channel_id}");
     dispatch(
         "channel.admin.delete_channel",
         || native_server_adapter::channel_delete_native(channel_id.to_string()),
-        || {
-            rest_adapter::delete_json(
-                &format!("/api/channels/{channel_id}"),
-                rest_token,
-                rest_tenant,
-            )
-        },
+        || rest_adapter::delete_json(&path, rest_token, rest_tenant),
     )
     .await
 }
@@ -229,17 +213,12 @@ pub async fn make_default_channel(
 ) -> Result<ChannelRecord, ApiError> {
     let rest_token = token.clone();
     let rest_tenant = tenant_slug.clone();
+    let path = format!("/api/channels/{channel_id}/default");
+    let body = serde_json::json!({});
     dispatch(
         "channel.admin.set_default_channel",
         || native_server_adapter::channel_set_default_native(channel_id.to_string()),
-        || {
-            rest_adapter::post_json(
-                &format!("/api/channels/{channel_id}/default"),
-                &serde_json::json!({}),
-                rest_token,
-                rest_tenant,
-            )
-        },
+        || rest_adapter::post_json(&path, &body, rest_token, rest_tenant),
     )
     .await
 }
@@ -266,6 +245,8 @@ pub async fn activate_resolution_policy_set(
 ) -> Result<crate::model::ChannelResolutionPolicySetRecord, ApiError> {
     let rest_token = token.clone();
     let rest_tenant = tenant_slug.clone();
+    let path = format!("/api/channels/policies/{policy_set_id}/activate");
+    let body = serde_json::json!({});
     dispatch(
         "channel.admin.activate_resolution_policy_set",
         || {
@@ -273,14 +254,7 @@ pub async fn activate_resolution_policy_set(
                 policy_set_id.to_string(),
             )
         },
-        || {
-            rest_adapter::post_json(
-                &format!("/api/channels/policies/{policy_set_id}/activate"),
-                &serde_json::json!({}),
-                rest_token,
-                rest_tenant,
-            )
-        },
+        || rest_adapter::post_json(&path, &body, rest_token, rest_tenant),
     )
     .await
 }
@@ -293,6 +267,7 @@ pub async fn create_resolution_rule(
 ) -> Result<crate::model::ChannelResolutionRuleRecord, ApiError> {
     let rest_token = token.clone();
     let rest_tenant = tenant_slug.clone();
+    let path = format!("/api/channels/policies/{policy_set_id}/rules");
     dispatch(
         "channel.admin.create_resolution_rule",
         || {
@@ -301,14 +276,7 @@ pub async fn create_resolution_rule(
                 payload.clone(),
             )
         },
-        || {
-            rest_adapter::post_json(
-                &format!("/api/channels/policies/{policy_set_id}/rules"),
-                payload,
-                rest_token,
-                rest_tenant,
-            )
-        },
+        || rest_adapter::post_json(&path, payload, rest_token, rest_tenant),
     )
     .await
 }
@@ -322,6 +290,7 @@ pub async fn update_resolution_rule(
 ) -> Result<crate::model::ChannelResolutionRuleRecord, ApiError> {
     let rest_token = token.clone();
     let rest_tenant = tenant_slug.clone();
+    let path = format!("/api/channels/policies/{policy_set_id}/rules/{rule_id}");
     dispatch(
         "channel.admin.update_resolution_rule",
         || {
@@ -331,14 +300,7 @@ pub async fn update_resolution_rule(
                 payload.clone(),
             )
         },
-        || {
-            rest_adapter::patch_json(
-                &format!("/api/channels/policies/{policy_set_id}/rules/{rule_id}"),
-                payload,
-                rest_token,
-                rest_tenant,
-            )
-        },
+        || rest_adapter::patch_json(&path, payload, rest_token, rest_tenant),
     )
     .await
 }
@@ -351,6 +313,7 @@ pub async fn reorder_resolution_rules(
 ) -> Result<Vec<crate::model::ChannelResolutionRuleRecord>, ApiError> {
     let rest_token = token.clone();
     let rest_tenant = tenant_slug.clone();
+    let path = format!("/api/channels/policies/{policy_set_id}/rules/reorder");
     dispatch(
         "channel.admin.reorder_resolution_rules",
         || {
@@ -359,14 +322,7 @@ pub async fn reorder_resolution_rules(
                 payload.clone(),
             )
         },
-        || {
-            rest_adapter::post_json(
-                &format!("/api/channels/policies/{policy_set_id}/rules/reorder"),
-                payload,
-                rest_token,
-                rest_tenant,
-            )
-        },
+        || rest_adapter::post_json(&path, payload, rest_token, rest_tenant),
     )
     .await
 }
@@ -379,6 +335,7 @@ pub async fn delete_resolution_rule(
 ) -> Result<crate::model::ChannelResolutionRuleRecord, ApiError> {
     let rest_token = token.clone();
     let rest_tenant = tenant_slug.clone();
+    let path = format!("/api/channels/policies/{policy_set_id}/rules/{rule_id}");
     dispatch(
         "channel.admin.delete_resolution_rule",
         || {
@@ -387,13 +344,7 @@ pub async fn delete_resolution_rule(
                 rule_id.to_string(),
             )
         },
-        || {
-            rest_adapter::delete_json(
-                &format!("/api/channels/policies/{policy_set_id}/rules/{rule_id}"),
-                rest_token,
-                rest_tenant,
-            )
-        },
+        || rest_adapter::delete_json(&path, rest_token, rest_tenant),
     )
     .await
 }
@@ -406,6 +357,7 @@ pub async fn create_target(
 ) -> Result<ChannelTargetRecord, ApiError> {
     let rest_token = token.clone();
     let rest_tenant = tenant_slug.clone();
+    let path = format!("/api/channels/{channel_id}/targets");
     dispatch(
         "channel.admin.create_target",
         || {
@@ -414,14 +366,7 @@ pub async fn create_target(
                 payload.clone(),
             )
         },
-        || {
-            rest_adapter::post_json(
-                &format!("/api/channels/{channel_id}/targets"),
-                payload,
-                rest_token,
-                rest_tenant,
-            )
-        },
+        || rest_adapter::post_json(&path, payload, rest_token, rest_tenant),
     )
     .await
 }
@@ -435,6 +380,7 @@ pub async fn update_target(
 ) -> Result<ChannelTargetRecord, ApiError> {
     let rest_token = token.clone();
     let rest_tenant = tenant_slug.clone();
+    let path = format!("/api/channels/{channel_id}/targets/{target_id}");
     dispatch(
         "channel.admin.update_target",
         || {
@@ -444,14 +390,7 @@ pub async fn update_target(
                 payload.clone(),
             )
         },
-        || {
-            rest_adapter::patch_json(
-                &format!("/api/channels/{channel_id}/targets/{target_id}"),
-                payload,
-                rest_token,
-                rest_tenant,
-            )
-        },
+        || rest_adapter::patch_json(&path, payload, rest_token, rest_tenant),
     )
     .await
 }
@@ -464,6 +403,7 @@ pub async fn delete_target(
 ) -> Result<ChannelTargetRecord, ApiError> {
     let rest_token = token.clone();
     let rest_tenant = tenant_slug.clone();
+    let path = format!("/api/channels/{channel_id}/targets/{target_id}");
     dispatch(
         "channel.admin.delete_target",
         || {
@@ -472,13 +412,7 @@ pub async fn delete_target(
                 target_id.to_string(),
             )
         },
-        || {
-            rest_adapter::delete_json(
-                &format!("/api/channels/{channel_id}/targets/{target_id}"),
-                rest_token,
-                rest_tenant,
-            )
-        },
+        || rest_adapter::delete_json(&path, rest_token, rest_tenant),
     )
     .await
 }
@@ -491,6 +425,7 @@ pub async fn bind_module(
 ) -> Result<ChannelModuleBindingRecord, ApiError> {
     let rest_token = token.clone();
     let rest_tenant = tenant_slug.clone();
+    let path = format!("/api/channels/{channel_id}/modules");
     dispatch(
         "channel.admin.bind_module",
         || {
@@ -499,14 +434,7 @@ pub async fn bind_module(
                 payload.clone(),
             )
         },
-        || {
-            rest_adapter::post_json(
-                &format!("/api/channels/{channel_id}/modules"),
-                payload,
-                rest_token,
-                rest_tenant,
-            )
-        },
+        || rest_adapter::post_json(&path, payload, rest_token, rest_tenant),
     )
     .await
 }
@@ -519,6 +447,7 @@ pub async fn delete_module_binding(
 ) -> Result<ChannelModuleBindingRecord, ApiError> {
     let rest_token = token.clone();
     let rest_tenant = tenant_slug.clone();
+    let path = format!("/api/channels/{channel_id}/modules/{binding_id}");
     dispatch(
         "channel.admin.delete_module_binding",
         || {
@@ -527,13 +456,7 @@ pub async fn delete_module_binding(
                 binding_id.to_string(),
             )
         },
-        || {
-            rest_adapter::delete_json(
-                &format!("/api/channels/{channel_id}/modules/{binding_id}"),
-                rest_token,
-                rest_tenant,
-            )
-        },
+        || rest_adapter::delete_json(&path, rest_token, rest_tenant),
     )
     .await
 }
@@ -546,6 +469,7 @@ pub async fn bind_oauth_app(
 ) -> Result<ChannelOauthAppRecord, ApiError> {
     let rest_token = token.clone();
     let rest_tenant = tenant_slug.clone();
+    let path = format!("/api/channels/{channel_id}/oauth-apps");
     dispatch(
         "channel.admin.bind_oauth_app",
         || {
@@ -554,14 +478,7 @@ pub async fn bind_oauth_app(
                 payload.clone(),
             )
         },
-        || {
-            rest_adapter::post_json(
-                &format!("/api/channels/{channel_id}/oauth-apps"),
-                payload,
-                rest_token,
-                rest_tenant,
-            )
-        },
+        || rest_adapter::post_json(&path, payload, rest_token, rest_tenant),
     )
     .await
 }
@@ -574,6 +491,7 @@ pub async fn delete_oauth_app_binding(
 ) -> Result<ChannelOauthAppRecord, ApiError> {
     let rest_token = token.clone();
     let rest_tenant = tenant_slug.clone();
+    let path = format!("/api/channels/{channel_id}/oauth-apps/{binding_id}");
     dispatch(
         "channel.admin.delete_oauth_app_binding",
         || {
@@ -582,13 +500,7 @@ pub async fn delete_oauth_app_binding(
                 binding_id.to_string(),
             )
         },
-        || {
-            rest_adapter::delete_json(
-                &format!("/api/channels/{channel_id}/oauth-apps/{binding_id}"),
-                rest_token,
-                rest_tenant,
-            )
-        },
+        || rest_adapter::delete_json(&path, rest_token, rest_tenant),
     )
     .await
 }

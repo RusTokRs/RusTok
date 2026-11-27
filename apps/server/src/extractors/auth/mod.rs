@@ -743,7 +743,7 @@ pub async fn resolve_current_user_from_access_token(
                     tenant_id,
                     claims.sub,
                     client_id,
-                    claims.role,
+                    claims.role.clone(),
                     &claims.scopes,
                     access_token,
                     claims.jti,

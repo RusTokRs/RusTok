@@ -56,6 +56,7 @@ fn create_product_input(handle: &str, title: &str, sku: &str) -> CreateProductIn
             barcode: None,
             shipping_profile_slug: None,
             axis_values: vec![],
+            attribute_values: vec![],
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
                 channel_id: None,
@@ -209,6 +210,7 @@ async fn test_variant_creation_triggers_event() {
         barcode: None,
         shipping_profile_slug: None,
         axis_values: vec![],
+        attribute_values: vec![],
         prices: vec![PriceInput {
             currency_code: "USD".to_string(),
             channel_id: None,

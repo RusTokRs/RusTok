@@ -35,7 +35,7 @@ fn public_surface_matches_contract() {
 
     let nil_err = validate_target_id("00000000-0000-0000-0000-000000000000")
         .expect_err("nil target id must be rejected");
-    assert_eq!(nil_err, "Invalid target id.");
+    assert_eq!(nil_err, SeoPanelError::InvalidTargetId);
 
     let state = derive_control_plane_widget_state(false, false, None);
     assert_eq!(state.kind, SeoControlPlaneWidgetStateKind::Empty);
