@@ -1538,7 +1538,17 @@ deadline, every returned address is screened before the first validated address
 is pinned, and the remaining deadline is shared by connection, request and
 response-body consumption. Redirects remain disabled and response bytes are
 streamed under an overflow-safe configured ceiling. Zero timeouts and zero
-response limits are rejected during construction.
+response limits are rejected during construction. Host matching is exact,
+method grants are canonical uppercase, path prefixes respect segment
+boundaries, and ports default to HTTPS 443/HTTP 80 unless the grant explicitly
+lists custom ports.
+
+Rhai `http_post(url, body, idempotency_key)` and
+`http_request(method, url, body, headers, idempotency_key)` overloads allow
+an explicit per-call UUID. When omitted, the broker derives a stable key from
+the semantic request digest; identical requests in one execution therefore
+replay the same effect. Use distinct explicit UUIDs for intentionally repeated
+identical requests.
 
 Mutating methods (POST, PUT, PATCH and DELETE) require a stable host-issued
 execution idempotency key. Each request also has an explicit or deterministic
