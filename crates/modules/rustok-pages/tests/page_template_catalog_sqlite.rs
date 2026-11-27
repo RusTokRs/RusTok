@@ -294,7 +294,12 @@ async fn preview_rejects_site_symbols_whose_stored_identity_does_not_match_conte
     ))
     .one(&db)
     .await?
-    .ok_or("site symbol fixture was not inserted")?;
+    .ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "site symbol fixture was not inserted",
+        )
+    })?;
     let mut active: site_symbol::ActiveModel = row.into();
     active.content = Set(json!({
         "id": "different-symbol",
