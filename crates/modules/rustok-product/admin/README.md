@@ -16,8 +16,9 @@ For full public interface and contract definitions, see [CRATE_API.md](CRATE_API
 - Keeps admin shell copy, profile-panel state, list/status/filter, list-card view-model, editor shell view-model, shipping-profile, selected-summary, pricing-preview and pricing deep-link presentation helpers in framework-agnostic `src/core.rs`, leaving Leptos as the render/effect adapter.
 - The mounted `ui::ProductAdmin` in `src/ui/mod.rs` renders the page selected by `src/core/route.rs`. `src/ui/product_grid.rs`, `src/ui/product_editor.rs`, `src/ui/attributes.rs` and `src/ui/categories.rs` own those pages. `src/ui/leptos.rs` owns the shared sections those pages mount, including typed attribute values, variant axes and category-schema authoring.
 - Routes admin data operations through `src/transport.rs`, with GraphQL operations in `src/transport/graphql_adapter.rs` and native server functions in `src/transport/native_server_adapter.rs`.
-- Shared Variant and Media panels receive the loaded bootstrap model. The
-  transport handles GraphQL errors before the caller binds that model.
+- The routed Product editor supplies Variant mutation requests to the durable
+  write journal. The Media panel receives the loaded bootstrap model through
+  the transport facade.
 - Builds native catalog schema services from `HostRuntimeContext` DB and typed `TransactionalEventBus` host handles without a package-local framework runtime or framework-specific outbox adapter.
 - Participates in manifest-driven admin composition through `rustok-module.toml`.
 - Uses registry-backed shipping-profile selection so catalog operators work with typed product bindings instead of raw slug text.
@@ -45,6 +46,7 @@ the catalog-controls query shell) are **not mounted**: the host code generator m
 verification suite, not alternate advertised entry points. A selected `product_id` now mounts
 the same keyed `ProductEditorPage` as the routed surface, independently of Product GET. The
 unselected catalog/create reference does not duplicate the saved-document recovery boundary.
+Existing Variant rows are edited in the routed editor with its mutation journal.
 Every capability they expose is reachable on the mounted surface: list controls and search in `ui/product_grid.rs` + `ui/catalog_admin.rs`, editor shell and media in `ui/product_editor.rs`, typed attribute values through `ProductAttributeValuesSection`, variant axes through `ProductVariantAxesSection`, standalone SKU creation/recovery through `ProductVariantCreateSection` and existing-row editing through `ProductVariantsPanel`, attribute/schema authoring in `ui/attributes.rs`, and category work in `ui/categories.rs`. New feature work belongs on the mounted pages and the shared sections; the reference compositions must not grow independent write workflows.
 
 ## Interactions

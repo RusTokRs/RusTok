@@ -62,11 +62,13 @@ async-trait = { workspace = true, optional = true }
 # The preview response is served with a policy derived from the document it carries (§737).
 axum = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
+hex.workspace = true
 sha2.workspace = true
 rustok-api = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 url = { version = "2.5", optional = true }
 uuid = { workspace = true, optional = true }
 

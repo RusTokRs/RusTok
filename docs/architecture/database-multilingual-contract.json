@@ -554,7 +554,8 @@
         {
           "path": "crates/modules/rustok-auth/src/graphql/mod.rs",
           "required_markers": [
-            "locale: Some(locale.as_str().to_string())"
+            "let locale = ctx.data::<Locale>().copied().unwrap_or_default();",
+            "Some(locale.as_str().to_string()),"
           ],
           "forbidden_markers": [
             "locale: None"
@@ -573,7 +574,7 @@
           "required_markers": [
             "let (context, runtime) = oauth_mutation_context().await?;",
             ".list_oauth_apps(&context, None, limit)",
-            "locale: Some(request_context.locale)"
+            "bind_admin_credential(&extensions, &auth, Some(request_context.locale)).await?"
           ],
           "forbidden_markers": [
             "oa.name",

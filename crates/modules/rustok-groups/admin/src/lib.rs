@@ -3,6 +3,9 @@
 //! Leptos admin FFA package for social group administration in the `rustok-groups` module.
 //! Provides group directory, governance, membership application review, and visual policy editors.
 
+// The localization and policy forms expand into nested Leptos hydration futures.
+#![recursion_limit = "256"]
+
 pub mod application_bulk_core;
 pub mod application_bulk_transport;
 pub mod application_core;

@@ -5,6 +5,7 @@ import {
   type RowData,
   type StockFeatures
 } from '@tanstack/react-table';
+import { calculatePageCount } from '@rustok/ui-grid';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import * as React from 'react';
 
@@ -73,9 +74,7 @@ export function DataTableShell<TData extends RowData = any>({
     parseAsInteger.withDefault(defaultPageSize)
   );
   const rowCount = typeof totalItems === 'number' ? totalItems : data.length;
-  // A table with no rows still has one page: `Math.ceil(0 / 20)` is 0, and a grid rendering zero
-  // pages shows neither rows nor pagination controls.
-  const pageCount = Math.max(1, Math.ceil(rowCount / Math.max(1, pageSize)));
+  const pageCount = calculatePageCount(rowCount, pageSize);
 
   const { table } = useDataTable({
     data,
@@ -83,6 +82,7 @@ export function DataTableShell<TData extends RowData = any>({
     getRowId,
     routeQuery,
     pageCount,
+    rowCount: clientPagination ? undefined : rowCount,
     clientPagination,
     // Keep the table's own URL parser on the same default as the shell's
     // page-count calculation and the server-rendered first result.

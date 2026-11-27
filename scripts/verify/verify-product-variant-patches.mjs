@@ -52,8 +52,13 @@ export function run() {
   require(conversion.includes('Decimal::from_str_exact(&value)'), 'GraphQL weight must not round silently');
   require(!read('crates/modules/rustok-commerce-foundation/src/dto/variant.rs').includes('pub struct UpdateVariantInput'), 'Product must own the only canonical Variant update DTO');
   require(transport.includes('draft: crate::model::VariantUpdateDraft'), 'update must not accept the creation draft');
-  const retry = read(`${owner}admin/src/transport/retry.rs`);
-  require(retry.includes('draft={draft:?}') && retry.includes('variant_update_intent(&tenant_id, &user_id, &variant_id, &draft)'), 'retry must fingerprint the complete draft and scope');
+  const journal = read(`${owner}admin/src/core/variant_mutation.rs`);
+  const beginUpdate = section(journal, 'pub fn begin_update(', 'pub fn begin_delete(');
+  const replay = read(`${owner}admin/src/ui/variant_mutation.rs`);
+  require(beginUpdate.includes('serde_json::to_string(&draft)') &&
+    journal.includes('old_key == key && old_variant == variant_id && old_request == request') &&
+    /catalog_transport::update_product_variant_with_key\(\s*tok\.clone\(\),\s*ten\.clone\(\),\s*expected\.scope\.clone\(\),\s*variant_id,\s*key,\s*draft,/.test(replay),
+  'retry must replay the frozen draft with the original key, Variant and scope');
   const next = read('apps/next-admin/packages/rustok-product/src/api/products.ts');
   const nextDto = section(next, 'export type UpdateVariantInput = {', '\n};');
   const nextAction = section(read('apps/next-admin/src/app/dashboard/product/actions.ts'), 'export async function updateVariantAction(', '\nexport async function ');

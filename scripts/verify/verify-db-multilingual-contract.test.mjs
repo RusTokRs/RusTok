@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
@@ -14,25 +13,9 @@ const mcpMigration = "crates/modules/rustok-mcp/src/migrations/m20260319_000001_
 // Overlay only the registry: all other inputs remain the actual owner contracts.
 // Negative cases must still fail, rather than making a moved migration optional.
 function withContract(change, assertion) {
-  const root = mkdtempSync(path.join(tmpdir(), "db-multilingual-contract-"));
-  try {
-    function linkEntries(relative, except) {
-      mkdirSync(path.join(root, relative), { recursive: true });
-      for (const name of readdirSync(path.join(repoRoot, relative))) {
-        if (name === except || name.startsWith(".")) continue;
-        symlinkSync(path.join(repoRoot, relative, name), path.join(root, relative, name));
-      }
-    }
-    linkEntries("", "docs");
-    linkEntries("docs", "architecture");
-    linkEntries("docs/architecture", path.basename(contractPath));
-    const contract = JSON.parse(readFileSync(path.join(repoRoot, contractPath), "utf8"));
-    change(contract);
-    writeFileSync(path.join(root, contractPath), JSON.stringify(contract));
-    assertion(collectDbMultilingualContractFailures(root));
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  const contract = JSON.parse(readFileSync(path.join(repoRoot, contractPath), "utf8"));
+  change(contract);
+  assertion(collectDbMultilingualContractFailures(repoRoot, JSON.stringify(contract)));
 }
 
 function mcpGap(contract) {

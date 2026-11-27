@@ -66,14 +66,14 @@ function requireNonEmptyString(value, label, failures) {
   }
 }
 
-export function collectDbMultilingualContractFailures(root = repoRoot) {
+export function collectDbMultilingualContractFailures(root = repoRoot, contractSource) {
   const failures = [];
   if (!requireFile(root, contractPath, failures)) return failures;
   if (!requireFile(root, auditPath, failures)) return failures;
 
   let contract;
   try {
-    contract = JSON.parse(read(root, contractPath));
+    contract = JSON.parse(contractSource ?? read(root, contractPath));
   } catch (error) {
     failures.push(`${contractPath}: invalid JSON: ${error.message}`);
     return failures;

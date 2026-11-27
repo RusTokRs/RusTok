@@ -251,6 +251,28 @@ without evidence of a failure is recorded separately below.
 
 Find likely edges with `rg -n '\bmod\s+\w+\s*;|#\[path\s*=|\binclude(_str|_bytes)?!' crates/modules -g '*.rs'`.
 
+### P-LEPTOS-HYDRATION-CODEGEN — build the crate that owns the hydrated view
+
+- **Category** — Build and verification. **Logic dimension** — Preconditions.
+- **Observed failure** — The generated persisted admin package and the Groups
+  admin package hit the compiler's type-query depth limit when emitting WASM
+  for nested Leptos hydration futures. A successful type check does not
+  exercise this code-generation step.
+- **Implementation** — Build the affected crate for `wasm32-unknown-unknown`
+  with its actual hydrate feature. If the diagnostic identifies layout of
+  generated view futures, address it at the view owner's crate boundary and
+  rerun the build. Use a crate-local bound for a measured code-generation limit
+  on an existing view. Leave the chosen bound close to the view owner.
+
+```rust
+// Nested Leptos view futures are laid out by the compiler during code generation.
+#![recursion_limit = "256"]
+```
+
+Build the owner with `cargo build -p rustok-groups-admin --target wasm32-unknown-unknown --no-default-features --features hydrate`.
+See the [scaffold matrix](../../xtask/src/scaffold/matrix.rs) and
+[Groups crate root](../../crates/modules/rustok-groups/admin/src/lib.rs).
+
 ### P-SOURCE-GUARD-ENTRYPOINT — check the operation that owns the invariant
 
 - **Category** — Verification. **Logic dimensions** — Preconditions and branch completeness.

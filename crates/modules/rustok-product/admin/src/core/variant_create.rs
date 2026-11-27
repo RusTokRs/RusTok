@@ -495,6 +495,13 @@ mod tests {
         assert_eq!(restored, pending);
         assert_eq!(restored.state.input(), Some(&draft));
         assert_eq!(restored.scope.locale, "en");
+        let mut changed = restored.clone();
+        let VariantCreatePhase::Pending { input, .. } = &mut changed.state else {
+            panic!("expected the frozen request");
+        };
+        input.attribute_values[0].patches[0].text = Some("Changed".into());
+        assert!(!restored.can_restore(&changed));
+        assert!(!restored.can_transition_to(&changed));
         assert!(restored.begin(draft, "ru".into()).is_err());
         assert!(restored.fresh("ru".into()).is_err());
     }

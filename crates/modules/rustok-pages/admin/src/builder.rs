@@ -956,7 +956,7 @@ fn document_save_attempt_key(
         digest.update([0]);
     }
     digest.update(project.to_string().as_bytes());
-    format!("fly-save-v1:{:x}", digest.finalize())
+    format!("fly-save-v1:{}", hex::encode(digest.finalize()))
 }
 
 #[cfg(feature = "ssr")]
@@ -1138,6 +1138,10 @@ mod document_save_attempt_key_tests {
     fn write_identity_separates_actor_revision_and_payload() {
         let document = json!({"pages": [{"id": "home"}]});
         let key = document_save_attempt_key("tenant", "actor", "page", "r1", "en", &document);
+        assert_eq!(
+            key,
+            "fly-save-v1:b88a4db353d8e5fa23ed194bab8f77ac988fe4667b37620b0d06091bf751e401"
+        );
         assert_eq!(
             key,
             document_save_attempt_key("tenant", "actor", "page", "r1", "en", &document),

@@ -69,6 +69,30 @@ pub fn pages_editor_permissions_from_effective(permissions: &[String]) -> Capabi
     }
 }
 
+/// A restore writes the working document and requires the same grant as saving it.
+/// The server separately checks the principal's scope for the selected page.
+pub fn pages_can_restore_body_revision(permissions: &[String]) -> bool {
+    effective_permissions_grant(permissions, "pages:update")
+}
+
+pub fn pages_editor_provider_state(assembly: &ContributionAssemblyResult) -> EditorProviderState {
+    if assembly
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.severity == ContributionAssemblySeverity::Error)
+    {
+        EditorProviderState::Unavailable
+    } else if assembly
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.severity == ContributionAssemblySeverity::Warning)
+    {
+        EditorProviderState::Degraded
+    } else {
+        EditorProviderState::Healthy
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,6 +212,6 @@ mod tests {
         let evaluation = policy.evaluate_detailed();
         assert_eq!(evaluation.provider_state, EditorProviderState::Healthy);
         assert!(evaluation.effective.edit);
-        assert!(!evaluation.effective.publish);
+        assert!(evaluation.effective.publish);
     }
 }

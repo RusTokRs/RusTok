@@ -46,6 +46,9 @@ Local documentation for `apps/next-admin`.
   shared by endpoint. Query results also use `no-cache` and HTTP `no-store`;
 - effective locale is selected by the host/runtime layer via `x-rustok-effective-locale`
   and `@rustok/next-fluent`; module-owned packages read the host-provided locale, not a cookie/query fallback chain;
+- the proxy forwards the same resolved locale through next-fluent's
+  `x-next-locale` request header so server components and the top-level provider
+  load the same language on each request;
 - user language selection in Next Admin is stored in the host-owned cookie `rustok-admin-locale`;
   middleware normalizes the effective locale in order `?locale` → cookie → `x-rustok-effective-locale`
   → `Accept-Language` → `en`, and the UI uses dropdown in header and auth screens;

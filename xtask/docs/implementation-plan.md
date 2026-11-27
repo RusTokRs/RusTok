@@ -525,9 +525,25 @@ records route as the callback for an unauthenticated browser request.
 The embedded Leptos host build, including the generated module, reached the
 Page Builder and Product admin packages. Page Builder subsequently passed
 its scoped WASM hydration check and all 20 browser-intent unit tests.
-Product still failed at the shared variants
-panel binding and variant draft types in that full build. Authenticated
-navigation, table and settings interactions still need both mounted hosts.
+The Product package passed its WASM hydration check after routing Variant
+editing through the mounted editor and aligning the draft's typed values. A
+focused native test confirmed that mutation recovery retains Variant
+attributes and rejects a changed value for the same pending request.
+The next Trunk build passed the earlier Product and Pages type errors and
+reached a hydration code-generation depth limit in Groups. After the Groups
+fix, Trunk reached the host and identified three outdated showcase props,
+which were aligned with the shared UI components. Cargo then emitted the
+host's WASM. Trunk's offline asset step required the exact wasm-bindgen CLI
+version from the lockfile. Authenticated navigation, table and settings
+interactions still need both mounted hosts.
+
+The Next.js host resolves the locale once and forwards it under both the
+RusToK request header and the header read by next-fluent. The module can
+keep using the shared Fluent provider and server translation calls. A
+middleware check exercised explicit selection, the saved cookie and the
+default locale. The Chromium smoke passed against the live Next.js host. It
+opened the Russian sign-in page, switched to English in the real selector,
+and confirmed the language after reload.
 
 - [ ] Close Blog reference-verifier drift and retain actual reference execution
   evidence before certifying it for propagation. Do not preserve obsolete source

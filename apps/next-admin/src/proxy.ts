@@ -22,7 +22,10 @@ export default auth((req) => {
   const { nextUrl, auth: session } = req;
   const isAuthenticated = !!session;
   const requestHeaders = new Headers(req.headers);
-  requestHeaders.set(EFFECTIVE_LOCALE_HEADER, resolveEffectiveLocale(req));
+  const locale = resolveEffectiveLocale(req);
+  requestHeaders.set(EFFECTIVE_LOCALE_HEADER, locale);
+  // Server and client packages use next-fluent without per-page header options.
+  requestHeaders.set('x-next-locale', locale);
 
   // Protected routes.
   if (nextUrl.pathname.startsWith('/dashboard')) {
