@@ -208,20 +208,37 @@ pub(crate) fn sample_database_credentials_pattern(uri: &str) -> Option<&'static 
         "sqlite:",
         "localhost:5432/rustok_dev",
         "127.0.0.1:5432/rustok_dev",
-        ".example.com",
-        ".example.net",
-        ".example.org",
-        ".example",
-        ".invalid",
-        ".test",
     ];
     let normalized = uri.trim().to_ascii_lowercase();
-    known_placeholder_fragment(&normalized).or_else(|| {
-        SAMPLE_PATTERNS
-            .iter()
-            .copied()
-            .find(|pattern| normalized.contains(pattern))
-    })
+    known_placeholder_fragment(&normalized)
+        .or_else(|| {
+            SAMPLE_PATTERNS
+                .iter()
+                .copied()
+                .find(|pattern| normalized.contains(pattern))
+        })
+        .or_else(|| {
+            let host = url::Url::parse(uri.trim())
+                .ok()?
+                .host_str()?
+                .trim_end_matches('.')
+                .to_ascii_lowercase();
+            let reserved_domain = [
+                ("example.com", ".example.com"),
+                ("example.net", ".example.net"),
+                ("example.org", ".example.org"),
+            ]
+            .into_iter()
+            .find_map(|(suffix, pattern)| {
+                (host == suffix || host.ends_with(&format!(".{suffix}"))).then_some(pattern)
+            });
+            reserved_domain.or_else(|| match host.rsplit('.').next()? {
+                "example" => Some(".example"),
+                "invalid" => Some(".invalid"),
+                "test" => Some(".test"),
+                _ => None,
+            })
+        })
 }
 
 fn configured_superadmin_password() -> Result<Option<(&'static str, String)>> {
@@ -795,6 +812,26 @@ mod tests {
                 "postgres://app:strong@db.example.com:5432/rustok_prod"
             ),
             Some(".example.com")
+        );
+        assert_eq!(
+            sample_database_credentials_pattern(
+                "postgres://app:strong@db.test:5432/rustok_prod"
+            ),
+            Some(".test")
+        );
+        assert_eq!(
+            sample_database_credentials_pattern(
+                "postgres://app:strong@db.testnet.internal:5432/rustok_prod"
+            ),
+            None,
+            "a host label that merely starts with a reserved suffix must not be rejected"
+        );
+        assert_eq!(
+            sample_database_credentials_pattern(
+                "postgres://app:strong@db.testing:5432/rustok_prod"
+            ),
+            None,
+            "the testing label is not the reserved .test TLD"
         );
         assert_eq!(
             known_sample_superadmin_password("dev-password-123"),
