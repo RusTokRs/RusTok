@@ -730,3 +730,10 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   migration, lock contention and storage growth require verification. Tenant
   identity, terminal state transitions and direct session digest continuity
   remain open.
+
+- Transaction retry authority first consumer: consent revocation prelocks
+  exact credential scope and preserves typed statement failures. Confirmed
+  rollback and bounded Core retry re-enter clock and locked credential
+  admission; commit errors never retry. Other admin and owner adapters,
+  rollback/commit fault injection, full auth reauthorization contention
+  and external-effect receipts remain open. Source regressions unrun.

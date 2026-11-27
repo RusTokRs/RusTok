@@ -1077,6 +1077,7 @@ where
 pub(crate) enum BulkOAuthRevocationScope {
     Application(Uuid),
     User(Uuid),
+    Consent { app_id: Uuid, user_id: Uuid },
 }
 
 pub(crate) async fn lock_bulk_oauth_credentials<C: ConnectionTrait>(
@@ -1089,9 +1090,15 @@ pub(crate) async fn lock_bulk_oauth_credentials<C: ConnectionTrait>(
         DbBackend::Postgres => {}
         _ => return Err(sea_orm::DbErr::Custom("unsupported OAuth bulk revocation database".into())),
     }
-    let (column, identity, token_filter, include_consents) = match scope {
-        BulkOAuthRevocationScope::Application(id) => ("app_id", id, "", true),
-        BulkOAuthRevocationScope::User(id) => ("user_id", id, " AND grant_type = 'authorization_code'", false),
+    let (scope_predicate, values, token_filter, include_consents): (&str, Vec<sea_orm::Value>, &str, bool) = match scope {
+        BulkOAuthRevocationScope::Application(id) => ("app_id = $2", vec![tenant_id.into(), id.into()], "", true),
+        BulkOAuthRevocationScope::User(id) => ("user_id = $2", vec![tenant_id.into(), id.into()], " AND grant_type = 'authorization_code'", false),
+        BulkOAuthRevocationScope::Consent { app_id, user_id } => (
+            "app_id = $2 AND user_id = $3",
+            vec![tenant_id.into(), app_id.into(), user_id.into()],
+            "",
+            true,
+        ),
     };
     // Fixed identifiers only. Retain all candidate locks before the first
     // credential write, including code rows even if no tokens remain.
@@ -1103,8 +1110,8 @@ pub(crate) async fn lock_bulk_oauth_credentials<C: ConnectionTrait>(
         if table == "oauth_consents" && !include_consents { continue; }
         db.query_all_raw(sea_orm::Statement::from_sql_and_values(
             DbBackend::Postgres,
-            format!("SELECT id FROM {table} WHERE tenant_id = $1 AND {column} = $2 AND {predicate} ORDER BY id FOR UPDATE NOWAIT"),
-            [tenant_id.into(), identity.into()],
+            format!("SELECT id FROM {table} WHERE tenant_id = $1 AND {scope_predicate} AND {predicate} ORDER BY id FOR UPDATE NOWAIT"),
+            values.clone(),
         )).await?;
     }
     Ok(())
@@ -2614,6 +2621,9 @@ mod tests {
         let token = uuid::Uuid::new_v4();
         let code = uuid::Uuid::new_v4();
         let unrelated = uuid::Uuid::new_v4();
+        let consent = uuid::Uuid::new_v4();
+        let other_app_token = uuid::Uuid::new_v4();
+        let other_app = uuid::Uuid::new_v4();
         let setup = db.begin().await.unwrap();
         setup.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
         setup.execute_unprepared(&format!(
@@ -2621,22 +2631,37 @@ mod tests {
              CREATE TABLE oauth_authorization_codes (id UUID PRIMARY KEY, tenant_id UUID, app_id UUID, user_id UUID, used_at TIMESTAMPTZ);
              CREATE TABLE oauth_consents (id UUID PRIMARY KEY, tenant_id UUID, app_id UUID, user_id UUID, revoked_at TIMESTAMPTZ);
              INSERT INTO oauth_tokens VALUES ('{token}', '{tenant}', '{app}', '{user}', 'authorization_code', NULL, NULL),
-                 ('{unrelated}', '{tenant}', '{app}', '{other}', 'authorization_code', NULL, NULL);
-             INSERT INTO oauth_authorization_codes VALUES ('{code}', '{tenant}', '{app}', '{user}', NULL);"
+                 ('{unrelated}', '{tenant}', '{app}', '{other}', 'authorization_code', NULL, NULL),
+                 ('{other_app_token}', '{tenant}', '{other_app}', '{user}', 'authorization_code', NULL, NULL);
+             INSERT INTO oauth_authorization_codes VALUES ('{code}', '{tenant}', '{app}', '{user}', NULL);
+             INSERT INTO oauth_consents VALUES ('{consent}', '{tenant}', '{app}', '{user}', NULL);"
         )).await.unwrap();
         setup.commit().await.unwrap();
 
-        for (table, id) in [("oauth_tokens", token), ("oauth_authorization_codes", code)] {
+        for (table, id) in [("oauth_tokens", token), ("oauth_authorization_codes", code), ("oauth_consents", consent)] {
             let owner = db.begin().await.unwrap();
             owner.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
             owner.execute_unprepared(&format!("SELECT id FROM {table} WHERE id = '{id}' FOR UPDATE")).await.unwrap();
-            for scope in [super::BulkOAuthRevocationScope::Application(app), super::BulkOAuthRevocationScope::User(user)] {
+            let mut scopes = vec![
+                super::BulkOAuthRevocationScope::Application(app),
+                super::BulkOAuthRevocationScope::Consent { app_id: app, user_id: user },
+            ];
+            if table != "oauth_consents" {
+                scopes.push(super::BulkOAuthRevocationScope::User(user));
+            }
+            for scope in scopes {
                 let writer = db.begin().await.unwrap();
                 writer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
                 let result = tokio::time::timeout(std::time::Duration::from_secs(3),
                     super::lock_bulk_oauth_credentials(&writer, tenant, scope)).await.expect("bulk prelock must not wait");
-                assert!(result.is_err());
-                writer.rollback().await.unwrap();
+                let error = result.unwrap_err();
+                assert_eq!(
+                    rustok_core::resilience::retry::PostgresTransactionConflict::classify(
+                        sea_orm::DbBackend::Postgres, &error
+                    ),
+                    Some(rustok_core::resilience::retry::PostgresTransactionConflict::LockUnavailable)
+                );
+                assert!(rustok_core::resilience::retry::rollback_for_transaction_retry(writer, &error, 1).await.unwrap());
             }
             owner.rollback().await.unwrap();
         }
@@ -2646,10 +2671,20 @@ mod tests {
         owner.execute_unprepared(&format!("SELECT id FROM oauth_tokens WHERE id = '{unrelated}' FOR UPDATE")).await.unwrap();
         let writer = db.begin().await.unwrap();
         writer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
-        let now = chrono::Utc::now();
-        assert_eq!(super::revoke_user_delegated_tokens_in_tx(&writer, tenant, user, now).await.unwrap(), 1);
-        writer.commit().await.unwrap();
+        // Consent scope must not lock either another user in this app or
+        // another app for the same user. Roll back the probe before exercising
+        // the broader user-wide writer.
+        owner.execute_unprepared(&format!("SELECT id FROM oauth_tokens WHERE id = '{other_app_token}' FOR UPDATE")).await.unwrap();
+        super::lock_bulk_oauth_credentials(&writer, tenant,
+            super::BulkOAuthRevocationScope::Consent { app_id: app, user_id: user }).await.unwrap();
+        writer.rollback().await.unwrap();
         owner.rollback().await.unwrap();
+
+        let writer = db.begin().await.unwrap();
+        writer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        let now = chrono::Utc::now();
+        assert_eq!(super::revoke_user_delegated_tokens_in_tx(&writer, tenant, user, now).await.unwrap(), 2);
+        writer.commit().await.unwrap();
         let check = db.begin().await.unwrap();
         check.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
         assert_eq!(super::revoke_user_delegated_tokens_in_tx(&check, tenant, user, now).await.unwrap(), 0);

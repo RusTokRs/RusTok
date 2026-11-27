@@ -1221,9 +1221,17 @@ impl OAuthAppService {
         user_id: Uuid,
         tenant_id: Uuid,
     ) -> Result<()> {
+        // Same stable token/code/consent order as the broader owner writers.
+        // Preserve driver errors until the authenticated owner can decide
+        // whether a confirmed rollback permits a fresh transaction.
+        crate::services::oauth_token_service::lock_bulk_oauth_credentials(
+            tx,
+            tenant_id,
+            crate::services::oauth_token_service::BulkOAuthRevocationScope::Consent { app_id, user_id },
+        )
+        .await?;
         let consent = OAuthConsents::find_active_consent(tx, app_id, user_id, tenant_id)
-            .await
-            .map_err(|_| Error::InternalServerError)?;
+            .await?;
 
         let now = rustok_auth::application_clock::verified_now(tx).await?;
 
@@ -1232,8 +1240,7 @@ impl OAuthAppService {
             active.revoked_at = Set(Some(now.into()));
             active
                 .update(tx)
-                .await
-                .map_err(|_| Error::InternalServerError)?;
+                .await?;
         }
 
         // Revoke all access and refresh tokens for this user and app.
@@ -1255,8 +1262,7 @@ impl OAuthAppService {
                     .add(oauth_tokens::Column::RevokedAt.is_null()),
             )
             .exec(tx)
-            .await
-            .map_err(|_| Error::InternalServerError)?;
+            .await?;
 
         crate::models::oauth_authorization_codes::Entity::update_many()
             .col_expr(
@@ -1268,8 +1274,7 @@ impl OAuthAppService {
             .filter(crate::models::oauth_authorization_codes::Column::TenantId.eq(tenant_id))
             .filter(crate::models::oauth_authorization_codes::Column::UsedAt.is_null())
             .exec(tx)
-            .await
-            .map_err(|_| Error::InternalServerError)?;
+            .await?;
         tracing::debug!(
             app_id = %app_id,
             user_id = %user_id,

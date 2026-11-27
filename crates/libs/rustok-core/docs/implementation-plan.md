@@ -82,3 +82,9 @@ Server startup now propagates listener binding failures. The focused regression 
 configured delivery/restart evidence. See the [API](../CRATE_API.md#acknowledged-sealed-module-delivery-2026-11-01-source-only),
 [sealed-family decision](../../../../DECISIONS/2026-07-17-sealed-typed-event-families.md#acknowledged-local-contract-listeners-2026-11-01),
 and [root-delivery decision](../../../../DECISIONS/2026-11-18-acknowledged-root-event-delivery.md).
+
+- SQL transaction retry admission: typed driver conflict classifier and
+  rollback-consuming bounded retry helper; generic RetryPolicy remains
+  unsuitable for auth writes. First live consumer is OAuth consent revocation.
+  SQLite rollback and opt-in PostgreSQL driver/lock regressions authored,
+  unrun. Other owner adapters and commit-uncertainty recovery remain open.

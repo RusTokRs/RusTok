@@ -42,3 +42,13 @@ and other invariants that the remaining RusToK modules rely on.
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
 - [Event flow contract](../../../../docs/architecture/event-flow-contract.md)
+
+## SQL transaction retry admission
+
+`resilience::retry::rollback_for_transaction_retry` consumes a transaction,
+classifies only PostgreSQL driver 55P03/40P01/40001, requires successful
+explicit rollback and permits at most two retries (25/50 ms backoff).
+A caller must recreate admission and authorization from scratch and limit
+use to SQL-only pre-commit failures. No commit error is eligible through
+this API; generic RetryPolicy does not establish rollback or authority.
+The host OAuth consent-revoke path is the first consumer; regressions unrun.

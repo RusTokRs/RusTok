@@ -388,3 +388,9 @@ Witness storage grows with credential births; no plaintext is retained.
 Pre-cutover removed identities, direct session digest reuse, in-place terminal
 timestamp regression, tenant identity and privileged DDL/restore are not
 covered by this migration. Source regressions unrun.
+
+Authenticated OAuth consent revocation prelocks exact token/code/consent
+rows in the existing stable order. On a typed PostgreSQL statement conflict,
+confirmed rollback permits a bounded fresh attempt with new clock admission
+and locked credential authority. Commit failure is never auto-replayed.
+Source regressions are unrun; other admin paths are not covered by this retry.

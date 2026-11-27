@@ -57,3 +57,7 @@ uncompiled/unrun; source format/parser/guards do not prove runtime behavior, shu
 real Iggy or Outbox recovery. See the [public contract](CRATE_API.md#acknowledged-sealed-module-delivery-2026-11-01-source-only),
 [live plan](docs/implementation-plan.md#acknowledged-sealed-module-delivery-2026-11-01-source-only),
 and [root-delivery decision](../../../DECISIONS/2026-11-18-acknowledged-root-event-delivery.md).
+
+SQL-only transaction retry admission is owned by `resilience::retry`:
+classify driver PostgreSQL SQLSTATE, explicitly roll back, and bound retries.
+Do not use generic RetryPolicy for authorization transactions or unknown commits.

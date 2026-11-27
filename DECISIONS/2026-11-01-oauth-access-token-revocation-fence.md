@@ -316,3 +316,16 @@ and managed app reactivation retain their existing contracts. The claim
 history is independent of the live token table; no plaintext is stored.
 Pre-cutover deletions, terminal timestamp rewrites and privileged DDL/restore
 are outside this guarantee. Regression sources unrun.
+
+## Consent revocation retry admission
+
+The authenticated consent revoke path reuses the stable bulk credential
+prelock order on the exact tenant/app/user intersection (tokens, codes,
+consents). Core classifies typed PostgreSQL statement conflicts and consumes
+the failed transaction with an explicit rollback before bounded backoff.
+Every new attempt repeats durable clock admission and live credential
+fences, preserving the original request ceiling and checking the deadline
+before commit. No retry is allowed after a failed rollback or commit request,
+for authorization errors, or for an unclassified database error. No external
+side effect is included. Other owner writes retain their current contracts;
+commit recovery and end-to-end contention evidence remain open.

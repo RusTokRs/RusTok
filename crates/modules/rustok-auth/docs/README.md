@@ -1220,3 +1220,17 @@ Witness storage grows with credential births; no plaintext is retained.
 Pre-cutover removed identities, direct session digest reuse, in-place terminal
 timestamp regression, tenant identity and privileged DDL/restore are not
 covered by this migration. Source regressions unrun.
+
+## OAuth consent revocation retry admission
+
+The authenticated host revokes consent under its existing app/user/session
+fence, then prelocks exact tenant/app/user live tokens, unused codes and
+active consent rows in the canonical bulk order. The SQL-only owner body
+preserves driver errors until rollback admission. Core permits fresh retry
+only for PostgreSQL 55P03, 40P01 or 40001 and successful explicit rollback,
+with at most three attempts total. Each attempt repeats durable clock
+admission, current app/user/session authorization and final credential
+deadline validation. Authorization and deadline failures, unmapped storage
+errors, rollback failure and every commit error are not auto-replayed. No
+external effects run in the retried body. Trusted low-level calls retain
+single-attempt semantics. No client contract change; source regressions unrun.
