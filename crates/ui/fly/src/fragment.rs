@@ -300,12 +300,7 @@ pub(crate) fn collect_component_asset_ids(
 ) {
     match component {
         ComponentNode::Object(object) => {
-            if let Some(Value::String(asset_id)) =
-                object.attributes.get("data-fly-asset-id")
-                && !asset_id.trim().is_empty()
-            {
-                asset_ids.insert(asset_id.clone());
-            }
+            collect_asset_id_attribute_references(&object.attributes, asset_ids);
             match &object.components {
                 ComponentChildren::Nodes(children) => {
                     for child in children {
@@ -319,6 +314,20 @@ pub(crate) fn collect_component_asset_ids(
     }
 }
 
+fn collect_asset_id_attribute_references(
+    attributes: &Map<String, Value>,
+    asset_ids: &mut BTreeSet<String>,
+) {
+    for (name, value) in attributes {
+        if name.eq_ignore_ascii_case("data-fly-asset-id")
+            && let Some(asset_id) = value.as_str()
+            && !asset_id.trim().is_empty()
+        {
+            asset_ids.insert(asset_id.to_string());
+        }
+    }
+}
+
 fn collect_opaque_asset_ids(raw: &Value, asset_ids: &mut BTreeSet<String>) {
     match raw {
         Value::Array(children) => {
@@ -327,13 +336,8 @@ fn collect_opaque_asset_ids(raw: &Value, asset_ids: &mut BTreeSet<String>) {
             }
         }
         Value::Object(object) => {
-            if let Some(attributes) = object.get("attributes").and_then(Value::as_object)
-                && let Some(asset_id) = attributes
-                    .get("data-fly-asset-id")
-                    .and_then(Value::as_str)
-                && !asset_id.trim().is_empty()
-            {
-                asset_ids.insert(asset_id.to_string());
+            if let Some(attributes) = object.get("attributes").and_then(Value::as_object) {
+                collect_asset_id_attribute_references(attributes, asset_ids);
             }
             if let Some(children) = object.get("components") {
                 collect_opaque_asset_ids(children, asset_ids);
@@ -405,11 +409,13 @@ fn remap_asset_attribute(
     attributes: &mut Map<String, Value>,
     mapping: &BTreeMap<String, String>,
 ) {
-    let Some(Value::String(asset_id)) = attributes.get_mut("data-fly-asset-id") else {
-        return;
-    };
-    if let Some(replacement) = mapping.get(asset_id) {
-        *asset_id = replacement.clone();
+    for (name, value) in attributes {
+        if name.eq_ignore_ascii_case("data-fly-asset-id")
+            && let Value::String(asset_id) = value
+            && let Some(replacement) = mapping.get(asset_id)
+        {
+            *asset_id = replacement.clone();
+        }
     }
 }
 
@@ -666,14 +672,18 @@ fn collect_asset_attribute_references(
     attributes: &Map<String, Value>,
     references: &mut BTreeSet<String>,
 ) {
-    for key in [
-        "data-fly-asset-id",
-        "data-fly-provider-asset-id",
-        "src",
-        "poster",
-        "href",
-    ] {
-        if let Some(value) = attributes.get(key).and_then(Value::as_str) {
+    for (name, raw_value) in attributes {
+        if [
+            "data-fly-asset-id",
+            "data-fly-provider-asset-id",
+            "src",
+            "poster",
+            "href",
+        ]
+        .iter()
+        .any(|key| name.eq_ignore_ascii_case(key))
+            && let Some(value) = raw_value.as_str()
+        {
             references.insert(value.to_string());
         }
     }
@@ -879,6 +889,67 @@ mod tests {
                 .contains(&format!("[data-fly-style-id=\"{copy}\"]{{color:red}}")),
             "{}",
             rendered.css
+        );
+    }
+
+    #[test]
+    fn fragment_copy_and_paste_preserve_case_insensitive_asset_attributes() {
+        let source = GrapesJsCodec::decode_value(json!({
+            "assets": [{ "id": "shared", "src": "/source.webp" }],
+            "pages": [{
+                "component": {
+                    "id": "source-root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "hero",
+                        "type": "image",
+                        "attributes": {
+                            "DATA-FLY-ASSET-ID": "shared",
+                            "SRC": "/source.webp"
+                        }
+                    }]
+                }
+            }]
+        }))
+        .expect("source");
+        let mut fragment = ProjectFragment::from_component(&source, "hero").expect("fragment");
+        assert_eq!(fragment.assets.len(), 1);
+
+        let target = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "target-root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "existing",
+                        "type": "section",
+                        "attributes": { "DATA-FLY-ASSET-ID": "shared" }
+                    }]
+                }
+            }]
+        }))
+        .expect("target");
+        let mut editor = FlyEditor::new(target, RegistrySet::with_builtins());
+        let inserted = fragment
+            .insert(&mut editor, Some("target-root".to_string()), 1)
+            .expect("paste");
+
+        let existing = editor.document().component("existing").expect("existing");
+        assert_eq!(existing.attributes["DATA-FLY-ASSET-ID"], "shared");
+        let pasted = editor.document().component(&inserted[0]).expect("pasted");
+        let pasted_asset_id = pasted.attributes["DATA-FLY-ASSET-ID"]
+            .as_str()
+            .expect("asset id");
+        assert_ne!(pasted_asset_id, "shared");
+        assert_eq!(pasted.attributes["SRC"], "/source.webp");
+        assert!(
+            editor
+                .document()
+                .project()
+                .assets
+                .iter()
+                .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
+                .any(|asset| asset.id == pasted_asset_id && asset.source == "/source.webp")
         );
     }
 
