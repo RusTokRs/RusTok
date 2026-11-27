@@ -566,9 +566,11 @@ mod tests {
     fn deadline_extensions() -> Vec<&'static str> {
         vec![
             "UPDATE sessions SET absolute_expires_at = NULL",
-            "UPDATE sessions SET absolute_expires_at = '2026-02-01'",
+            "UPDATE sessions SET absolute_expires_at = '2026-02-01 00:00:00+00:00'",
             // Text looks earlier but the offset makes the instant later.
             "UPDATE sessions SET absolute_expires_at = '2026-01-14 23:59:59-02:00'",
+            "UPDATE sessions SET absolute_expires_at = '2026-01-15 00:00:00.0001+00:00'",
+            "UPDATE sessions SET absolute_expires_at = 'not-a-timestamp'",
         ]
     }
 
@@ -599,8 +601,8 @@ mod tests {
         db.execute_unprepared("UPDATE oauth_tokens SET scopes = scopes;
             UPDATE oauth_authorization_codes SET expires_at = expires_at").await.unwrap();
         db.execute_unprepared("UPDATE oauth_consents SET scopes = scopes").await.unwrap();
-        db.execute_unprepared("UPDATE sessions SET absolute_expires_at = '2026-02-01';
-            UPDATE sessions SET absolute_expires_at = '2026-01-15';
+        db.execute_unprepared("UPDATE sessions SET absolute_expires_at = '2026-02-01 00:00:00+00:00';
+            UPDATE sessions SET absolute_expires_at = '2026-01-15 00:00:00+00:00';
             UPDATE sessions SET absolute_expires_at = absolute_expires_at").await.unwrap();
         for sql in deadline_extensions() {
             assert!(db.execute_unprepared(&sql).await.is_err(), "{sql}");
@@ -643,8 +645,8 @@ mod tests {
         fixture(&tx).await;
         seed_consent(&tx).await;
         Migration.up(&SchemaManager::new(&tx)).await.unwrap();
-        tx.execute_unprepared("UPDATE sessions SET absolute_expires_at = '2026-02-01';
-            UPDATE sessions SET absolute_expires_at = '2026-01-15';
+        tx.execute_unprepared("UPDATE sessions SET absolute_expires_at = '2026-02-01 00:00:00+00:00';
+            UPDATE sessions SET absolute_expires_at = '2026-01-15 00:00:00+00:00';
             UPDATE sessions SET absolute_expires_at = absolute_expires_at").await.unwrap();
         tx.commit().await.unwrap();
         for sql in deadline_extensions() {
