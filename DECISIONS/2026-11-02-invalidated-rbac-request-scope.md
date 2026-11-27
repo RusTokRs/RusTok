@@ -265,3 +265,7 @@ lifecycle ABA; the durable tenant lifecycle sequence and raw-DML continuity
 are separate work. Sync-only and unscoped consumers are not covered. Source
 regression covers policy drift without a notification and terminal invalidation
 after restoration; compilation and execution remain pending.
+
+Existing WebSocket lease revalidation uses the same JWT admission resolver in
+non-initializing mode. Only fresh credential admission retains the bootstrap
+path. A missing active composition cannot be recreated by a lease recheck.

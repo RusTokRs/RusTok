@@ -2396,3 +2396,14 @@ compare it with the owner read, failing closed on drift or unavailable evidence.
 WebSocket revalidation compares the revision as well as effective grants.
 The original ceiling is never refreshed. Service OAuth, module availability,
 non-scope consumers and in-flight effects are separate; source regressions unrun.
+
+### Continuous static module-policy observation
+
+Composed JWT admissions retain the owner-issued tenant policy identity,
+composition revision and availability alongside the original grant ceiling.
+Scope-aware async checks re-observe those facts without the TTL cache;
+drift or unavailable evidence terminally invalidates the matching scope.
+Final admission and existing WebSocket lease revalidation do not bootstrap
+missing composition. This is observation-based, not a commit-time fence;
+undetected tenant lifecycle ABA, raw-DML continuity and sync-only consumers
+remain open. Source regression authored; compilation and execution pending.

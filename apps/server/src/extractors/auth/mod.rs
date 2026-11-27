@@ -173,7 +173,7 @@ impl WebSocketAuthLease {
         }
         let lookup_timeout = remaining.min(std::time::Duration::from_secs(5));
         let user = tokio::time::timeout(lookup_timeout, async {
-            resolve_current_user_from_access_token(auth_runtime, self.tenant_id, &self.access_token)
+            resolve_current_user_from_access_token_with_policy(auth_runtime, self.tenant_id, &self.access_token, false)
                 .await
                 .map_err(|_| ())
         })
@@ -568,6 +568,17 @@ pub async fn resolve_current_user_from_access_token(
     tenant_id: uuid::Uuid,
     access_token: &str,
 ) -> Result<CurrentUser, (StatusCode, &'static str)> {
+    resolve_current_user_from_access_token_with_policy(ctx, tenant_id, access_token, true).await
+}
+
+/// An existing WebSocket lease must not bootstrap missing composition while
+/// attempting to revalidate its original authority.
+async fn resolve_current_user_from_access_token_with_policy(
+    ctx: &ServerAuthRuntime,
+    tenant_id: uuid::Uuid,
+    access_token: &str,
+    initialize_policy: bool,
+) -> Result<CurrentUser, (StatusCode, &'static str)> {
     let auth_config = ctx.auth_config().ok_or((
         StatusCode::INTERNAL_SERVER_ERROR,
         "JWT secret not configured",
@@ -755,7 +766,7 @@ pub async fn resolve_current_user_from_access_token(
                 tenant_id,
                 user.id,
                 granted_permissions,
-                true,
+                initialize_policy,
             )
             .await?;
 
@@ -807,7 +818,7 @@ pub async fn resolve_current_user_from_access_token(
                     &claims.scopes,
                     access_token,
                     claims.jti,
-                    true,
+                    initialize_policy,
                 )
                 .await?;
             durable_credential_expires_at = registration_expires_at;

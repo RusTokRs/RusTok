@@ -283,3 +283,14 @@ closed. Callers must retain the transaction through the effect. Raw user
 status DML bypassing the owner, privileged database maintenance, and complete
 cross-owner lock ordering are not covered by this change. PostgreSQL
 regression source authored; compilation and execution remain pending.
+
+### Continuous static module-policy observation
+
+Composed JWT admissions retain the owner-issued tenant policy identity,
+composition revision and availability alongside the original grant ceiling.
+Scope-aware async checks re-observe those facts without the TTL cache;
+drift or unavailable evidence terminally invalidates the matching scope.
+Final admission and existing WebSocket lease revalidation do not bootstrap
+missing composition. This is observation-based, not a commit-time fence;
+undetected tenant lifecycle ABA, raw-DML continuity and sync-only consumers
+remain open. Source regression authored; compilation and execution pending.
