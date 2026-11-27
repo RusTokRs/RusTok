@@ -200,9 +200,15 @@ impl ProductCatalogSchemaService {
         }
 
         let snapshot = if let Some(source_category_id) = input.clone_from_category_id {
-            let form =
-                Self::load_effective_form_for_category_in(&txn, tenant_id, source_category_id, &[])
-                    .await?;
+            let taxonomy_port = self.taxonomy();
+            let form = Self::load_effective_form_for_category_in(
+                &txn,
+                taxonomy_port.as_ref(),
+                tenant_id,
+                source_category_id,
+                &[],
+            )
+            .await?;
             for binding in &form.attributes {
                 super::attribute_validation::validate_rule_option_references_in(
                     &txn,

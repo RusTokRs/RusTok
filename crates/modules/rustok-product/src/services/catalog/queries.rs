@@ -485,9 +485,11 @@ impl CatalogService {
         // Specifications travel with the detail contract: the owner resolves which attributes may
         // reach the storefront and formats every value, so a consumer renders a table and nothing
         // else.
+        let taxonomy_port = self.taxonomy();
         product.storefront_attributes =
             super::storefront_attributes::load_storefront_product_attributes(
                 &self.db,
+                taxonomy_port.as_ref(),
                 tenant_id,
                 product_id,
                 locale,

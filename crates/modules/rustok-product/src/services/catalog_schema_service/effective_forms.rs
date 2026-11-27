@@ -1,11 +1,11 @@
 use super::*;
+use crate::ports::{AsTaxonomyConnection, ProductTaxonomyCategorySnapshot, ProductTaxonomyPort};
 
 const EFFECTIVE_ATTRIBUTE_DEFINITION_BATCH_SIZE: usize = 500;
 
 #[derive(FromQueryResult)]
-struct ProductCategoryPathRow {
+struct ProductCategoryIdRow {
     id: Uuid,
-    path: String,
 }
 
 #[derive(FromQueryResult)]
@@ -110,7 +110,14 @@ impl ProductCatalogSchemaService {
         tenant_id: Uuid,
         product_id: Uuid,
     ) -> CommerceResult<Option<EffectiveProductForm>> {
-        Self::load_effective_form_for_product_in(&self.db, tenant_id, product_id).await
+        let taxonomy_port = self.taxonomy();
+        Self::load_effective_form_for_product_in(
+            &self.db,
+            taxonomy_port.as_ref(),
+            tenant_id,
+            product_id,
+        )
+        .await
     }
 
     /// Effective form of a product's primary category.
@@ -119,11 +126,12 @@ impl ProductCatalogSchemaService {
     /// visibility overrides (and the same display order) the admin form uses.
     pub(crate) async fn load_effective_form_for_product_in<C>(
         db: &C,
+        taxonomy_port: &dyn ProductTaxonomyPort,
         tenant_id: Uuid,
         product_id: Uuid,
     ) -> CommerceResult<Option<EffectiveProductForm>>
     where
-        C: ConnectionTrait,
+        C: ConnectionTrait + AsTaxonomyConnection,
     {
         let product = ProductPrimaryCategoryRow::find_by_statement(Statement::from_sql_and_values(
             db.get_database_backend(),
@@ -150,6 +158,7 @@ impl ProductCatalogSchemaService {
 
         Self::load_effective_form_for_category_in(
             db,
+            taxonomy_port,
             tenant_id,
             primary_category_id,
             &existing_value_attribute_ids,
@@ -164,8 +173,10 @@ impl ProductCatalogSchemaService {
         category_id: Uuid,
         existing_value_attribute_ids: &[Uuid],
     ) -> CommerceResult<EffectiveProductForm> {
+        let taxonomy_port = self.taxonomy();
         Self::load_effective_form_for_category_in(
             &self.db,
+            taxonomy_port.as_ref(),
             tenant_id,
             category_id,
             existing_value_attribute_ids,
@@ -175,14 +186,15 @@ impl ProductCatalogSchemaService {
 
     pub(crate) async fn load_effective_form_for_category_in<C>(
         db: &C,
+        taxonomy_port: &dyn ProductTaxonomyPort,
         tenant_id: Uuid,
         category_id: Uuid,
         existing_value_attribute_ids: &[Uuid],
     ) -> CommerceResult<EffectiveProductForm>
     where
-        C: ConnectionTrait,
+        C: ConnectionTrait + AsTaxonomyConnection,
     {
-        let categories = Self::load_category_schema_map(db, tenant_id).await?;
+        let categories = Self::load_category_schema_map(db, taxonomy_port, tenant_id).await?;
         let schemas = Self::load_attribute_schema_map(db, tenant_id).await?;
         let mut form = resolve_effective_product_form(
             category_id,
@@ -207,7 +219,17 @@ impl ProductCatalogSchemaService {
     ) -> CommerceResult<HashMap<String, String>> {
         validate_locale(locale)?;
         let mut labels = HashMap::new();
-        let parent_map = load_product_taxonomy_category_parent_map(&self.db, tenant_id).await?;
+        let taxonomy_port = self.taxonomy();
+        let product_category_ids = load_product_category_ids(&self.db, tenant_id).await?;
+        let parent_map = load_taxonomy_category_parent_map(
+            &self.db,
+            taxonomy_port.as_ref(),
+            tenant_id,
+            &product_category_ids,
+            locale,
+            Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
+        )
+        .await?;
         let category_ids = taxonomy_ancestor_chain(category_id, &parent_map)?;
 
         if category_ids.is_empty() {
@@ -277,12 +299,12 @@ impl ProductCatalogSchemaService {
 
     pub(super) async fn load_category_schema_map<C>(
         db: &C,
+        taxonomy_port: &dyn ProductTaxonomyPort,
         tenant_id: Uuid,
     ) -> CommerceResult<HashMap<Uuid, CatalogCategorySchema>>
     where
-        C: ConnectionTrait,
+        C: ConnectionTrait + AsTaxonomyConnection,
     {
-        let taxonomy_parent_map = load_product_taxonomy_category_parent_map(db, tenant_id).await?;
         let category_rows = CategorySchemaRow::find_by_statement(Statement::from_sql_and_values(
             db.get_database_backend(),
             r#"
@@ -300,6 +322,19 @@ impl ProductCatalogSchemaService {
             vec![tenant_id.into()],
         ))
         .all(db)
+        .await?;
+        let category_ids = category_rows
+            .iter()
+            .map(|row| row.category_id)
+            .collect::<Vec<_>>();
+        let taxonomy_parent_map = load_taxonomy_category_parent_map(
+            db,
+            taxonomy_port,
+            tenant_id,
+            &category_ids,
+            rustok_api::PLATFORM_FALLBACK_LOCALE,
+            Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
+        )
         .await?;
 
         let local_rows = CategoryAttributeRow::find_by_statement(Statement::from_sql_and_values(
@@ -467,40 +502,160 @@ impl ProductCatalogSchemaService {
     }
 }
 
-async fn load_product_taxonomy_category_parent_map<C>(
+const TAXONOMY_CATEGORY_READ_BATCH_SIZE: usize = 500;
+
+async fn load_product_category_ids<C>(
     connection: &C,
     tenant_id: Uuid,
-) -> CommerceResult<HashMap<Uuid, Option<Uuid>>>
+) -> CommerceResult<Vec<Uuid>>
 where
     C: ConnectionTrait,
 {
-    let rows = ProductCategoryPathRow::find_by_statement(Statement::from_sql_and_values(
+    let rows = ProductCategoryIdRow::find_by_statement(Statement::from_sql_and_values(
         connection.get_database_backend(),
-        r#"
-            SELECT c.id, c.path
-            FROM catalog_categories c
-            WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
-            ORDER BY c.id ASC
-            "#,
+        "SELECT id FROM catalog_categories WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY id ASC",
         vec![tenant_id.into()],
     ))
     .all(connection)
     .await?;
+    Ok(rows.into_iter().map(|row| row.id).collect())
+}
 
-    if rows.is_empty() {
+/// Reads canonical hierarchy in bounded batches. The owner port receives the exact
+/// pool/transaction handle used by Product so a schema write never observes a different
+/// Taxonomy snapshot from the transaction that is about to commit.
+async fn load_taxonomy_category_parent_map<C>(
+    connection: &C,
+    taxonomy_port: &dyn ProductTaxonomyPort,
+    tenant_id: Uuid,
+    expected_category_ids: &[Uuid],
+    locale: &str,
+    fallback_locale: Option<&str>,
+) -> CommerceResult<HashMap<Uuid, Option<Uuid>>>
+where
+    C: ConnectionTrait + AsTaxonomyConnection,
+{
+    if expected_category_ids.is_empty() {
         return Ok(HashMap::new());
     }
 
-    let path_to_id: HashMap<String, Uuid> =
-        rows.iter().map(|row| (row.path.clone(), row.id)).collect();
+    let mut requested_ids = expected_category_ids.to_vec();
+    requested_ids.sort_unstable();
+    if requested_ids.windows(2).any(|pair| pair[0] == pair[1]) {
+        return Err(super::taxonomy_projection_error(
+            "Product category projection contains duplicate identities",
+        ));
+    }
 
-    let mut parent_map = HashMap::with_capacity(rows.len());
-    for row in &rows {
-        let parent_id = match row.path.rfind('/') {
-            Some(pos) => path_to_id.get(&row.path[..pos]).copied(),
-            None => None,
-        };
-        parent_map.insert(row.id, parent_id);
+    let mut owners = Vec::with_capacity(requested_ids.len());
+    for batch in requested_ids.chunks(TAXONOMY_CATEGORY_READ_BATCH_SIZE) {
+        let batch_ids = batch.iter().copied().collect::<HashSet<_>>();
+        let batch_owners = taxonomy_port
+            .load_scoped_categories(
+                connection.as_taxonomy_connection(),
+                tenant_id,
+                Some(batch),
+                locale,
+                fallback_locale,
+            )
+            .await?;
+        if batch_owners.iter().any(|owner| !batch_ids.contains(&owner.id)) {
+            return Err(super::taxonomy_projection_error(
+                "Product category Taxonomy read returned an unrequested owner",
+            ));
+        }
+        owners.extend(batch_owners);
+    }
+
+    taxonomy_category_parent_map(&requested_ids, owners)
+}
+
+/// Validates an exact Product → Taxonomy identity projection before exposing parent links
+/// to the schema resolver. Missing, extra, duplicate or malformed owner rows must never be
+/// interpreted as root categories.
+fn taxonomy_category_parent_map(
+    expected_category_ids: &[Uuid],
+    owners: Vec<ProductTaxonomyCategorySnapshot>,
+) -> CommerceResult<HashMap<Uuid, Option<Uuid>>> {
+    let expected_ids = expected_category_ids.iter().copied().collect::<HashSet<_>>();
+    if expected_ids.len() != expected_category_ids.len() {
+        return Err(super::taxonomy_projection_error(
+            "Product category projection contains duplicate identities",
+        ));
+    }
+
+    let mut parent_map = HashMap::with_capacity(owners.len());
+    for owner in owners {
+        if !expected_ids.contains(&owner.id) {
+            return Err(super::taxonomy_projection_error(
+                "Product category Taxonomy read returned an unrequested owner",
+            ));
+        }
+        if owner.canonical_key != format!("product-category-{}", owner.id) {
+            return Err(super::taxonomy_projection_error(
+                "Product category has incompatible Taxonomy canonical key",
+            ));
+        }
+        if owner.scope_type != "module" || owner.scope_value.as_deref() != Some("product") {
+            return Err(super::taxonomy_projection_error(
+                "Product category has incompatible Taxonomy scope",
+            ));
+        }
+        if owner.available_locales.is_empty() {
+            return Err(super::taxonomy_projection_error(
+                "Product category has no canonical Taxonomy localized copy",
+            ));
+        }
+        if owner.position < 0 {
+            return Err(super::taxonomy_projection_error(
+                "Product category has a negative Taxonomy sibling position",
+            ));
+        }
+        if parent_map.insert(owner.id, owner.parent_id).is_some() {
+            return Err(super::taxonomy_projection_error(
+                "Product category Taxonomy read returned duplicate owners",
+            ));
+        }
+    }
+
+    if parent_map.len() != expected_ids.len()
+        || expected_ids.iter().any(|category_id| !parent_map.contains_key(category_id))
+    {
+        return Err(super::taxonomy_projection_error(
+            "Product category is missing its Taxonomy owner projection",
+        ));
+    }
+
+    for parent_id in parent_map.values().flatten() {
+        if !parent_map.contains_key(parent_id) {
+            return Err(super::taxonomy_projection_error(
+                "Product category is missing its Taxonomy parent owner projection",
+            ));
+        }
+    }
+
+    let mut completed = HashSet::new();
+    for start_id in parent_map.keys().copied() {
+        let mut visiting = HashSet::new();
+        let mut path = Vec::new();
+        let mut current = Some(start_id);
+        while let Some(category_id) = current {
+            if completed.contains(&category_id) {
+                break;
+            }
+            if !visiting.insert(category_id) {
+                return Err(super::taxonomy_projection_error(
+                    "Product category has a cyclic Taxonomy hierarchy projection",
+                ));
+            }
+            path.push(category_id);
+            current = *parent_map.get(&category_id).ok_or_else(|| {
+                super::taxonomy_projection_error(
+                    "Product category is missing its Taxonomy hierarchy projection",
+                )
+            })?;
+        }
+        completed.extend(path);
     }
 
     Ok(parent_map)
@@ -563,6 +718,132 @@ mod tests {
         assert!(matches!(
             taxonomy_ancestor_chain(leaf, &cycle),
             Err(CommerceError::Core(rustok_core::error::Error::Internal(_)))
+        ));
+    }
+
+    fn taxonomy_category_snapshot(
+        id: Uuid,
+        parent_id: Option<Uuid>,
+    ) -> ProductTaxonomyCategorySnapshot {
+        ProductTaxonomyCategorySnapshot {
+            id,
+            parent_id,
+            canonical_key: format!("product-category-{id}"),
+            scope_type: "module".to_string(),
+            scope_value: Some("product".to_string()),
+            slug: format!("category-{id}"),
+            name: format!("Category {id}"),
+            description: None,
+            position: 0,
+            available_locales: vec!["en".to_string()],
+        }
+    }
+
+    #[test]
+    fn taxonomy_category_parent_projection_accepts_exact_owner_hierarchy() {
+        let root = Uuid::new_v4();
+        let child = Uuid::new_v4();
+        let parents = taxonomy_category_parent_map(
+            &[root, child],
+            vec![
+                taxonomy_category_snapshot(root, None),
+                taxonomy_category_snapshot(child, Some(root)),
+            ],
+        )
+        .expect("exact canonical Taxonomy hierarchy");
+        assert_eq!(parents.get(&root), Some(&None));
+        assert_eq!(parents.get(&child), Some(&Some(root)));
+    }
+
+    #[test]
+    fn taxonomy_category_parent_projection_rejects_missing_extra_and_duplicate_owners() {
+        let root = Uuid::new_v4();
+        let child = Uuid::new_v4();
+
+        let missing = taxonomy_category_parent_map(
+            &[root, child],
+            vec![taxonomy_category_snapshot(root, None)],
+        )
+        .expect_err("missing owner must not become a root");
+        assert!(matches!(
+            missing,
+            CommerceError::Core(rustok_core::error::Error::Internal(_))
+        ));
+
+        let extra = taxonomy_category_parent_map(
+            &[root],
+            vec![
+                taxonomy_category_snapshot(root, None),
+                taxonomy_category_snapshot(child, None),
+            ],
+        )
+        .expect_err("unrequested owner must be rejected");
+        assert!(matches!(
+            extra,
+            CommerceError::Core(rustok_core::error::Error::Internal(_))
+        ));
+
+        let duplicate = taxonomy_category_parent_map(
+            &[root],
+            vec![
+                taxonomy_category_snapshot(root, None),
+                taxonomy_category_snapshot(root, None),
+            ],
+        )
+        .expect_err("duplicate owner must not overwrite");
+        assert!(matches!(
+            duplicate,
+            CommerceError::Core(rustok_core::error::Error::Internal(_))
+        ));
+    }
+
+    #[test]
+    fn taxonomy_category_parent_projection_rejects_invalid_owner_contract() {
+        let id = Uuid::new_v4();
+
+        let mut invalid_key = taxonomy_category_snapshot(id, None);
+        invalid_key.canonical_key = "another-owner".to_string();
+        assert!(taxonomy_category_parent_map(&[id], vec![invalid_key]).is_err());
+
+        let mut invalid_scope = taxonomy_category_snapshot(id, None);
+        invalid_scope.scope_value = Some("forum".to_string());
+        assert!(taxonomy_category_parent_map(&[id], vec![invalid_scope]).is_err());
+
+        let mut missing_copy = taxonomy_category_snapshot(id, None);
+        missing_copy.available_locales.clear();
+        assert!(taxonomy_category_parent_map(&[id], vec![missing_copy]).is_err());
+
+        let mut invalid_position = taxonomy_category_snapshot(id, None);
+        invalid_position.position = -1;
+        assert!(taxonomy_category_parent_map(&[id], vec![invalid_position]).is_err());
+    }
+
+    #[test]
+    fn taxonomy_category_parent_projection_rejects_missing_parents_and_cycles() {
+        let root = Uuid::new_v4();
+        let child = Uuid::new_v4();
+
+        let missing_parent = taxonomy_category_parent_map(
+            &[child],
+            vec![taxonomy_category_snapshot(child, Some(root))],
+        )
+        .expect_err("parent outside the Product owner projection must fail closed");
+        assert!(matches!(
+            missing_parent,
+            CommerceError::Core(rustok_core::error::Error::Internal(_))
+        ));
+
+        let cycle = taxonomy_category_parent_map(
+            &[root, child],
+            vec![
+                taxonomy_category_snapshot(root, Some(child)),
+                taxonomy_category_snapshot(child, Some(root)),
+            ],
+        )
+        .expect_err("cyclic canonical hierarchy must fail closed");
+        assert!(matches!(
+            cycle,
+            CommerceError::Core(rustok_core::error::Error::Internal(_))
         ));
     }
 

@@ -28,6 +28,7 @@ use uuid::Uuid;
 
 use crate::dto::{StorefrontProductAttributeResponse, StorefrontProductAttributeValueResponse};
 use crate::error::CommerceResult;
+use crate::ports::{AsTaxonomyConnection, ProductTaxonomyPort};
 use crate::services::catalog_schema::AttributeValueType;
 use crate::services::catalog_schema_service::ProductCatalogSchemaService;
 
@@ -101,25 +102,35 @@ struct AttributeSlice {
 /// rows of the product itself, nothing else.
 pub(super) async fn load_storefront_product_attributes(
     db: &DatabaseConnection,
+    taxonomy_port: &dyn ProductTaxonomyPort,
     tenant_id: Uuid,
     product_id: Uuid,
     locale: &str,
     fallback_locale: &str,
 ) -> CommerceResult<Vec<StorefrontProductAttributeResponse>> {
-    load_storefront_product_attributes_in(db, tenant_id, product_id, locale, fallback_locale).await
+    load_storefront_product_attributes_in(
+        db,
+        taxonomy_port,
+        tenant_id,
+        product_id,
+        locale,
+        fallback_locale,
+    )
+    .await
 }
 
 /// Connection-generic form: the storefront detail read already runs inside one transaction on the
 /// separate-process runtime, so the projection must be usable with any connection.
 pub(super) async fn load_storefront_product_attributes_in<C>(
     db: &C,
+    taxonomy_port: &dyn ProductTaxonomyPort,
     tenant_id: Uuid,
     product_id: Uuid,
     locale: &str,
     fallback_locale: &str,
 ) -> CommerceResult<Vec<StorefrontProductAttributeResponse>>
 where
-    C: ConnectionTrait,
+    C: ConnectionTrait + AsTaxonomyConnection,
 {
     let candidates = locale_candidates(locale.trim(), fallback_locale.trim());
     let rows = load_value_rows(db, tenant_id, product_id).await?;
@@ -127,7 +138,7 @@ where
         return Ok(Vec::new());
     }
 
-    let form_overrides = load_form_overrides(db, tenant_id, product_id).await?;
+    let form_overrides = load_form_overrides(db, taxonomy_port, tenant_id, product_id).await?;
     let mut slices = rows
         .into_iter()
         .map(|row| {
@@ -277,14 +288,20 @@ struct FormOverride {
 
 async fn load_form_overrides<C>(
     db: &C,
+    taxonomy_port: &dyn ProductTaxonomyPort,
     tenant_id: Uuid,
     product_id: Uuid,
 ) -> CommerceResult<HashMap<Uuid, FormOverride>>
 where
-    C: ConnectionTrait,
+    C: ConnectionTrait + AsTaxonomyConnection,
 {
     let Some(form) =
-        ProductCatalogSchemaService::load_effective_form_for_product_in(db, tenant_id, product_id)
+        ProductCatalogSchemaService::load_effective_form_for_product_in(
+            db,
+            taxonomy_port,
+            tenant_id,
+            product_id,
+        )
             .await?
     else {
         return Ok(HashMap::new());
