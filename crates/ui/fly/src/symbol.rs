@@ -525,6 +525,43 @@ pub(crate) fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()
             )));
         }
     }
+    let asset_policy = crate::AssetPolicy::default();
+    if descriptor.assets.len() > asset_policy.maximum_assets {
+        return Err(FlyError::InvalidAssetReference(format!(
+            "symbol `{}` exceeds the maximum of {} assets",
+            descriptor.id, asset_policy.maximum_assets
+        )));
+    }
+    let mut asset_ids = BTreeSet::new();
+    for raw in &descriptor.assets {
+        let asset = crate::AssetDescriptor::from_value(raw.clone()).ok_or_else(|| {
+            FlyError::InvalidAssetReference(format!(
+                "symbol `{}` contains an invalid asset descriptor",
+                descriptor.id
+            ))
+        })?;
+        if asset.id.trim().is_empty()
+            || asset.id.len() > 256
+            || asset.id.chars().any(char::is_control)
+        {
+            return Err(FlyError::InvalidAssetReference(format!(
+                "symbol `{}` contains an invalid asset id",
+                descriptor.id
+            )));
+        }
+        if !asset_ids.insert(asset.id.clone()) {
+            return Err(FlyError::InvalidAssetReference(format!(
+                "symbol `{}` contains duplicate asset id `{}`",
+                descriptor.id, asset.id
+            )));
+        }
+        if !crate::source_allowed(&asset.source, asset.kind, &asset_policy) {
+            return Err(FlyError::InvalidAssetReference(format!(
+                "symbol `{}` asset `{}` uses a source rejected by policy",
+                descriptor.id, asset.id
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -620,10 +657,20 @@ pub fn resolve_symbol_instances(document: &ProjectDocument) -> FlyResult<Project
         return Ok(document.clone());
     }
     let mut resolved = document.clone();
+    let mut asset_references = BTreeSet::new();
+    for page in &resolved.project().pages {
+        if let Some(root) = page.component.as_ref() {
+            crate::fragment::collect_component_asset_ids(root, &mut asset_references);
+        }
+    }
     let mut identities = SymbolIdentityReservations {
         generated: crate::id_reference::project_identity_ids(&resolved),
         forms: crate::id_reference::project_form_ids(&resolved),
         page_dom: BTreeSet::new(),
+        assets: resolved.project().assets.clone(),
+        asset_references,
+        asset_id_generator: crate::SequentialIdGenerator::new("fly-symbol-asset"),
+        symbol_asset_mappings: BTreeMap::new(),
     };
     let mut pending_styles = Vec::new();
     for page in &mut resolved.project_mut().pages {
@@ -640,6 +687,7 @@ pub fn resolve_symbol_instances(document: &ProjectDocument) -> FlyResult<Project
             )?;
         }
     }
+    resolved.project_mut().assets = identities.assets;
     resolved.project_mut().styles.extend(pending_styles);
     Ok(resolved)
 }
@@ -712,6 +760,10 @@ struct SymbolIdentityReservations {
     generated: BTreeSet<String>,
     forms: BTreeSet<String>,
     page_dom: BTreeSet<String>,
+    assets: Vec<Value>,
+    asset_references: BTreeSet<String>,
+    asset_id_generator: crate::SequentialIdGenerator,
+    symbol_asset_mappings: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 fn expand_node(
@@ -938,6 +990,51 @@ fn expand_instance(
     let mut cloned: Vec<ComponentNode> = descriptor.components.clone();
     for component in &mut cloned {
         component.remap_ids_with_dom(&mapping, &dom_mapping);
+    }
+    let mut symbol_assets = descriptor.assets.clone();
+    if let Some(asset_mapping) = identities.symbol_asset_mappings.get(symbol_id) {
+        crate::fragment::apply_fragment_asset_id_mapping(
+            &mut symbol_assets,
+            &mut cloned,
+            asset_mapping,
+        )?;
+    } else {
+        let asset_mapping = crate::fragment::remap_fragment_asset_ids(
+            &mut symbol_assets,
+            &mut cloned,
+            &identities.assets,
+            &identities.asset_references,
+            &mut identities.asset_id_generator,
+        )?;
+        identities
+            .symbol_asset_mappings
+            .insert(symbol_id.to_string(), asset_mapping);
+    }
+    for raw in symbol_assets {
+        let asset = crate::AssetDescriptor::from_value(raw.clone()).ok_or_else(|| {
+            FlyError::InvalidAssetReference(format!(
+                "symbol `{symbol_id}` contains an invalid asset descriptor"
+            ))
+        })?;
+        if let Some(existing) = identities.assets.iter().find(|candidate| {
+            crate::AssetDescriptor::from_value((*candidate).clone())
+                .is_some_and(|candidate| candidate.id == asset.id)
+        }) {
+            if existing != &raw {
+                return Err(FlyError::InvalidAssetReference(format!(
+                    "symbol `{symbol_id}` asset id `{}` conflicts with an existing asset",
+                    asset.id
+                )));
+            }
+        } else {
+            identities.assets.push(raw);
+        }
+    }
+    for component in &cloned {
+        crate::fragment::collect_component_asset_ids(
+            component,
+            &mut identities.asset_references,
+        );
     }
     // A later instance must also see the actual HTML ids minted by this one.
     identities
