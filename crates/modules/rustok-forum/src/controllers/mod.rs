@@ -14,7 +14,9 @@ use rustok_outbox::TransactionalEventBus;
 use rustok_web::{HttpError, HttpResult};
 use sea_orm::DatabaseConnection;
 
-use crate::{ForumSettingsProviders, SharedForumAudienceFactsPort};
+use crate::{
+    ForumSettingsProviders, SharedForumAudienceFactsPort, SharedForumPostingPolicyFactsComposer,
+};
 
 pub mod categories;
 pub mod category_commands;
@@ -41,6 +43,7 @@ pub struct ForumHttpRuntime {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     audience_facts: Option<SharedForumAudienceFactsPort>,
+    posting_policy_facts: Option<SharedForumPostingPolicyFactsComposer>,
     settings_providers: ForumSettingsProviders,
     taxonomy_port: Arc<dyn ForumTaxonomyPort>,
 }
@@ -76,9 +79,13 @@ impl ForumHttpRuntime {
             }
             None => crate::TopicService::new(self.db_clone(), self.event_bus()),
         };
-        service
+        let service = service
             .with_settings_providers(self.settings_providers.clone())
-            .with_taxonomy_port(self.taxonomy_port.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone());
+        match self.posting_policy_facts.clone() {
+            Some(composer) => service.with_posting_policy_facts(composer),
+            None => service,
+        }
     }
 
     fn reply_service(&self) -> crate::ReplyService {
@@ -88,9 +95,13 @@ impl ForumHttpRuntime {
             }
             None => crate::ReplyService::new(self.db_clone(), self.event_bus()),
         };
-        service
+        let service = service
             .with_taxonomy_port(self.taxonomy_port.clone())
-            .with_settings_providers(self.settings_providers.clone())
+            .with_settings_providers(self.settings_providers.clone());
+        match self.posting_policy_facts.clone() {
+            Some(composer) => service.with_posting_policy_facts(composer),
+            None => service,
+        }
     }
 
     fn vote_service(&self) -> crate::VoteService {
@@ -158,6 +169,7 @@ impl ForumHttpRuntime {
             db: runtime.db_clone(),
             event_bus,
             audience_facts: runtime.shared_get::<SharedForumAudienceFactsPort>(),
+            posting_policy_facts: runtime.shared_get::<SharedForumPostingPolicyFactsComposer>(),
             settings_providers,
             taxonomy_port,
         })
@@ -285,6 +297,7 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
             }
             err
         }
+        ForumError::Validation(msg) => HttpError::bad_request(code, msg),
         ForumError::Database(_)
         | ForumError::Content(_)
         | ForumError::Internal(_)
@@ -298,7 +311,14 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
             code,
             "The forum operation could not be completed",
         ),
-        error => HttpError::bad_request(code, error.to_string()),
+        // Any variant not matched above must not echo its `Display` text to a
+        // public client and must not be misclassified as a 400. Surface a stable
+        // internal-server-error instead.
+        _ => HttpError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            code,
+            "The forum operation could not be completed",
+        ),
     }
 }
 
@@ -600,6 +620,7 @@ mod tests {
             db,
             event_bus,
             audience_facts: None,
+            posting_policy_facts: None,
             settings_providers: crate::ForumSettingsProviders::default(),
             taxonomy_port: Arc::new(NoopForumTaxonomyPort),
         }
@@ -667,6 +688,7 @@ mod tests {
                 db,
                 event_bus,
                 audience_facts: None,
+                posting_policy_facts: None,
                 settings_providers: crate::ForumSettingsProviders::default(),
                 taxonomy_port: Arc::new(NoopForumTaxonomyPort),
             }

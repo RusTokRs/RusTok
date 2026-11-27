@@ -226,8 +226,12 @@ impl TopicService {
 
         // The temporary row was inserted as `Open` and counted (+1) so reply
         // guards could admit historical replies. A topic imported straight into
-        // `Archived` must not keep that contribution to the public aggregates.
-        if prepared.record.status == crate::state_machine::TopicStatus::Archived {
+        // `Archived` or `Closed` is not part of the public topic set (the
+        // storefront only lists `Open` topics), so it must not keep that
+        // contribution to the public aggregates.
+        if prepared.record.status == crate::state_machine::TopicStatus::Archived
+            || prepared.record.status == crate::state_machine::TopicStatus::Closed
+        {
             CategoryService::adjust_counters_in_tx(
                 txn,
                 tenant_id,
@@ -320,6 +324,7 @@ pub struct TopicService {
     event_bus: TransactionalEventBus,
     settings: ForumSettingsProviders,
     taxonomy_port: Arc<dyn ForumTaxonomyPort>,
+    posting_policy_facts: Option<crate::SharedForumPostingPolicyFactsComposer>,
 }
 
 impl TopicService {
@@ -329,6 +334,7 @@ impl TopicService {
             event_bus,
             settings: ForumSettingsProviders::default(),
             taxonomy_port: Arc::new(NoopForumTaxonomyPort),
+            posting_policy_facts: None,
         }
     }
 
@@ -339,6 +345,16 @@ impl TopicService {
 
     pub fn with_taxonomy_port(mut self, port: Arc<dyn ForumTaxonomyPort>) -> Self {
         self.taxonomy_port = port;
+        self
+    }
+
+    /// Attaches the host-published posting policy fact composer used by the
+    /// create path when the tenant configured window rules.
+    pub fn with_posting_policy_facts(
+        mut self,
+        composer: crate::SharedForumPostingPolicyFactsComposer,
+    ) -> Self {
+        self.posting_policy_facts = Some(composer);
         self
     }
 
@@ -366,7 +382,12 @@ impl TopicService {
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
-        let topic = self.find_topic(tenant_id, topic_id).await?;
+        // Read the tombstone-aware row so an owner can still resolve a soft-deleted
+        // topic and receive `is_deleted = true`; ordinary readers that must not see
+        // deleted topics go through `find_topic` instead.
+        let topic = self
+            .find_topic_including_deleted(tenant_id, topic_id)
+            .await?;
         let is_deleted = Self::is_topic_deleted(&self.db, tenant_id, topic_id)
             .await?
             .ok_or(ForumError::TopicNotFound(topic_id))?;
@@ -411,16 +432,27 @@ impl TopicService {
             fallback_locale.as_deref(),
         )
     }
+    /// Reads a topic by id, excluding soft-deleted rows (`deleted_at IS NOT
+    /// NULL`). Every ordinary reader should use this; the restore lifecycle
+    /// operation uses [`Self::find_topic_including_deleted`], which returns the
+    /// tombstone so the delete transaction can be inverted.
     pub(crate) async fn find_topic(
         &self,
         tenant_id: Uuid,
         topic_id: Uuid,
     ) -> ForumResult<forum_topic::Model> {
-        forum_topic::Entity::find_by_id(topic_id)
-            .filter(forum_topic::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(ForumError::TopicNotFound(topic_id))
+        Self::find_topic_raw(&self.db, tenant_id, topic_id, true).await
+    }
+
+    /// Reads a topic by id regardless of its `deleted_at` tombstone. Reserved for
+    /// the restore lifecycle operation, the explicit inverse of the delete
+    /// transaction.
+    pub(crate) async fn find_topic_including_deleted(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+    ) -> ForumResult<forum_topic::Model> {
+        Self::find_topic_raw(&self.db, tenant_id, topic_id, false).await
     }
 
     pub(crate) async fn find_topic_in_tx(
@@ -428,11 +460,58 @@ impl TopicService {
         tenant_id: Uuid,
         topic_id: Uuid,
     ) -> ForumResult<forum_topic::Model> {
-        forum_topic::Entity::find_by_id(topic_id)
-            .filter(forum_topic::Column::TenantId.eq(tenant_id))
-            .one(txn)
-            .await?
-            .ok_or(ForumError::TopicNotFound(topic_id))
+        Self::find_topic_raw(txn, tenant_id, topic_id, true).await
+    }
+
+    /// Transactional read that ignores the `deleted_at` tombstone. Reserved for
+    /// the restore operation.
+    pub(crate) async fn find_topic_in_tx_including_deleted(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+    ) -> ForumResult<forum_topic::Model> {
+        Self::find_topic_raw(txn, tenant_id, topic_id, false).await
+    }
+
+    /// Loads a topic row by primary key. When `exclude_deleted` is set, the
+    /// `deleted_at` tombstone is honoured with a `deleted_at IS NULL` predicate.
+    /// The column lives in the database (see migration
+    /// `m20260713_000009_add_forum_soft_delete_revisions`) but is intentionally
+    /// not modelled on `forum_topic::Model`, so the filter is expressed as raw
+    /// SQL, consistent with the other soft-delete helpers in this module.
+    async fn find_topic_raw<C: ConnectionTrait + std::marker::Send + std::marker::Sync>(
+        db: &C,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        exclude_deleted: bool,
+    ) -> ForumResult<forum_topic::Model> {
+        let backend = db.get_database_backend();
+        let columns = "id, tenant_id, category_id, author_id, status, metadata, is_pinned, \
+                       is_locked, reply_count, created_at, updated_at, last_reply_at";
+        let (sql, values) = match backend {
+            DatabaseBackend::Postgres => {
+                let mut statement =
+                    format!("SELECT {columns} FROM forum_topics WHERE tenant_id = $1 AND id = $2",);
+                if exclude_deleted {
+                    statement.push_str(" AND deleted_at IS NULL");
+                }
+                (statement, vec![tenant_id.into(), topic_id.into()])
+            }
+            _ => {
+                let mut statement =
+                    format!("SELECT {columns} FROM forum_topics WHERE tenant_id = ?1 AND id = ?2",);
+                if exclude_deleted {
+                    statement.push_str(" AND deleted_at IS NULL");
+                }
+                (statement, vec![tenant_id.into(), topic_id.into()])
+            }
+        };
+        let stmt = Statement::from_sql_and_values(backend, sql, values);
+        let model = forum_topic::Entity::find()
+            .from_raw_sql(stmt)
+            .one(db)
+            .await?;
+        model.ok_or(ForumError::TopicNotFound(topic_id))
     }
 
     pub(crate) async fn find_topic_for_update_in_tx(
@@ -1570,6 +1649,19 @@ impl TopicService {
             )
             .await?;
 
+        // Compose posting-policy facts before the transaction so fact reads
+        // never race the writer lock; the decision itself is enforced below,
+        // after authorization and the flat cooldown. Inert with default rules.
+        let posting_policy =
+            super::posting_policy_enforcement::prepare_topic_create_posting_policy(
+                self.posting_policy_facts.as_ref(),
+                context.as_ref(),
+                &security,
+                tenant_id,
+                content_limits.posting_policy_rules(),
+            )
+            .await?;
+
         let txn = self.db.begin().await?;
         lock_category_tree_in_tx(&txn, tenant_id).await?;
         create_audience
@@ -1590,6 +1682,12 @@ impl TopicService {
             content_limits.new_topic_rate_limit_seconds(),
         )
         .await?;
+        let transactional_limits =
+            ForumContentLimits::resolve_in_tx(&self.settings, &txn, tenant_id).await?;
+        super::posting_policy_enforcement::enforce_prepared_create_posting_policy(
+            &posting_policy,
+            &transactional_limits.posting_policy_rules(),
+        )?;
         // Tenant pre-moderation holds a new topic as `Pending`. The per-category `moderated` flag
         // holds replies only, so it does not hold topics. Approval moves the topic to `Open`
         // through the moderation owner. See `DECISIONS/2026-10-09-forum-topic-pre-moderation.md`.

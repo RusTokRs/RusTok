@@ -585,6 +585,7 @@ pub struct ReplyService {
     relations: MentionRelationService,
     settings: ForumSettingsProviders,
     taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    posting_policy_facts: Option<crate::SharedForumPostingPolicyFactsComposer>,
     inner: reply::ReplyService,
 }
 
@@ -595,6 +596,7 @@ impl ReplyService {
             relations: MentionRelationService::new(db.clone()),
             settings: ForumSettingsProviders::default(),
             taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
+            posting_policy_facts: None,
             db,
             event_bus,
         }
@@ -605,6 +607,16 @@ impl ReplyService {
         port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
     ) -> Self {
         self.taxonomy_port = port;
+        self
+    }
+
+    /// Attaches the host-published posting policy fact composer used by the
+    /// reply create path when the tenant configured window rules.
+    pub fn with_posting_policy_facts(
+        mut self,
+        composer: crate::SharedForumPostingPolicyFactsComposer,
+    ) -> Self {
+        self.posting_policy_facts = Some(composer);
         self
     }
 
@@ -1451,6 +1463,19 @@ impl ReplyService {
             )
             .await?;
 
+        // Compose posting-policy facts before the transaction so fact reads
+        // never race the writer lock; the decision itself is enforced below,
+        // after authorization and the flat cooldown. Inert with default rules.
+        let posting_policy =
+            super::posting_policy_enforcement::prepare_reply_create_posting_policy(
+                self.posting_policy_facts.as_ref(),
+                context.as_ref(),
+                &security,
+                tenant_id,
+                content_limits.posting_policy_rules(),
+            )
+            .await?;
+
         let txn = self.db.begin().await?;
         lock_category_tree_in_tx(&txn, tenant_id).await?;
         lock_topic_reply_create_audience_in_tx(&txn, tenant_id, topic_id).await?;
@@ -1506,6 +1531,12 @@ impl ReplyService {
             content_limits.new_reply_rate_limit_seconds(),
         )
         .await?;
+        let transactional_limits =
+            ForumContentLimits::resolve_in_tx(&self.settings, &txn, tenant_id).await?;
+        super::posting_policy_enforcement::enforce_prepared_create_posting_policy(
+            &posting_policy,
+            &transactional_limits.posting_policy_rules(),
+        )?;
         let position = allocate_reply_position_in_tx(&txn, tenant_id, topic_id).await?;
         // Pre-moderation holds a new reply when the category or the tenant requires review. Tenant
         // pre-moderation also holds new topics, see `TopicService::create_with_inline_relations`.

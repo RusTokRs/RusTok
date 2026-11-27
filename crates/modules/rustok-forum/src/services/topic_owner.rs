@@ -76,6 +76,14 @@ impl TopicService {
         self
     }
 
+    pub fn with_posting_policy_facts(
+        mut self,
+        composer: crate::SharedForumPostingPolicyFactsComposer,
+    ) -> Self {
+        self.inner = self.inner.with_posting_policy_facts(composer);
+        self
+    }
+
     pub async fn get_with_locale_fallback(
         &self,
         tenant_id: Uuid,
@@ -401,7 +409,12 @@ impl TopicService {
         )
         .await?;
 
-        let topic = topic::TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
+        // Restore is the inverse of the delete transaction: it must be able to
+        // read the soft-deleted (archived + deleted_at set) row, so it uses the
+        // variant that does not filter the tombstone.
+        let topic =
+            topic::TopicService::find_topic_in_tx_including_deleted(&txn, tenant_id, topic_id)
+                .await?;
         if forum_topic_merge_operation::Entity::find()
             .filter(forum_topic_merge_operation::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_merge_operation::Column::SourceTopicId.eq(topic_id))

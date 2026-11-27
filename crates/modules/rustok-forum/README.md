@@ -463,9 +463,15 @@ wrappers. Each one has an owner decision or a follow-up task in
   (HTTP 429). Only user actors are limited. System and service actors, including the starter import and
   the starter driver, are exempt. The cooldown does not count window limits; see
   [`DECISIONS/2026-10-09-forum-posting-rate-limits.md`](../../../DECISIONS/2026-10-09-forum-posting-rate-limits.md).
-  The posting policy evaluator (`posting_policy_evaluator.rs`) is intentionally not wired into the write
-  path until ADR `2026-10-09-forum-posting-rate-limits.md` is superseded; live creates are limited only
-  by `posting_rate.rs`.
+  The posting policy evaluator also enforces opt-in `posting_policy_topic_create_limit` and
+  `posting_policy_reply_create_limit` settings (`{ maximum_count, window_seconds }`, absent by default).
+  REST and GraphQL pass the host facts composer to the shared create owners. Facts are prepared before
+  the transaction; inside it, current rules must match that snapshot before the pure decision runs.
+  A settings change during preparation rejects the write rather than using stale rules. Configured
+  rules fail closed without required context or facts. These observed counts are not concurrency-safe
+  reservations. No admin fields are added, and edit/bump policy remains open. See
+  [Posting-policy window enforcement](../../../DECISIONS/2026-11-27-forum-posting-policy-window-enforcement.md).
+  Rust compilation and configured-window runtime verification remain pending.
 - User reports on topics and replies are filed with the Moderation owner through the `reportForumTopic` and
   `reportForumReply` GraphQL mutations, which return the report id. Forum checks the reporter's read audience, rejects
   self-reports, and pins the current subject revision; the host adapter forwards the report through

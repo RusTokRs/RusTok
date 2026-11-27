@@ -243,6 +243,11 @@ pub struct ForumPostingPolicyFactsComposer {
     providers: Vec<SharedForumPostingPolicyOwnerFactPort>,
 }
 
+/// Host-published composer handle. The host runtime registers this exact
+/// `Arc<ForumPostingPolicyFactsComposer>` in its extension registry; topic and
+/// reply create paths read it back to compose facts before evaluating policy.
+pub type SharedForumPostingPolicyFactsComposer = Arc<ForumPostingPolicyFactsComposer>;
+
 impl ForumPostingPolicyFactsComposer {
     pub fn new(
         mut providers: Vec<SharedForumPostingPolicyOwnerFactPort>,

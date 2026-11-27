@@ -15,9 +15,10 @@ use uuid::Uuid;
 use crate::constants::topic_status;
 use crate::state_machine::TopicStatus;
 use crate::{
-    CategoryListItem, CategoryResponse, CategoryService, ForumError, ForumResult,
-    ForumSettingsProviders, ForumTopicAudienceListService, ForumTopicAudienceReadService,
-    ListTopicsFilter, TopicListItem, TopicResponse, TopicService,
+    CategoryListItem, CategoryResponse, CategoryService, ForumCategoryAudienceViewer,
+    ForumCategoryAudienceVisibilityService, ForumError, ForumResult, ForumSettingsProviders,
+    ForumTopicAudienceListService, ForumTopicAudienceReadService, ListTopicsFilter, TopicListItem,
+    TopicResponse, TopicService,
 };
 
 const BULK_FETCH_SIZE: u64 = 48;
@@ -46,6 +47,31 @@ pub(crate) fn seo_category_route_service(
     runtime: &SeoTargetRuntimeContext,
 ) -> crate::ForumCategoryRouteService {
     crate::ForumCategoryRouteService::new(runtime.db.clone()).with_port(seo_taxonomy_port(runtime))
+}
+
+/// Mirrors the topic SEO gate: a category is eligible for public SEO surfaces
+/// (summaries, sitemap, public route resolution) only when an anonymous viewer
+/// may see it. Hidden and audience-restricted categories must not be indexed.
+/// Owner authoring surfaces resolve categories through `SecurityContext::system()`
+/// and intentionally bypass this gate.
+async fn seo_category_is_publicly_visible(
+    runtime: &SeoTargetRuntimeContext,
+    tenant_id: Uuid,
+    category_id: Uuid,
+) -> AnyResult<bool> {
+    // The anonymous visibility gate honours the tenant's anonymous-reading
+    // setting, so it needs the same settings port as the topic SEO reads.
+    let settings = seo_settings_providers(runtime);
+    ForumCategoryAudienceVisibilityService::new(runtime.db.clone(), None)
+        .with_taxonomy_port(seo_taxonomy_port(runtime))
+        .with_settings_providers(settings)
+        .is_category_visible(
+            tenant_id,
+            category_id,
+            &ForumCategoryAudienceViewer::public(),
+        )
+        .await
+        .map_err(SeoTargetError::provider)
 }
 
 #[derive(Clone, Default)]
@@ -79,6 +105,14 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
         runtime: &SeoTargetRuntimeContext,
         request: SeoTargetLoadRequest<'_>,
     ) -> AnyResult<Option<SeoLoadedTargetRecord>> {
+        // Public SEO surfaces must not index hidden or audience-restricted
+        // categories; owner authoring surfaces may still resolve them.
+        if matches!(request.scope, SeoTargetLoadScope::PublicRoute)
+            && !seo_category_is_publicly_visible(runtime, request.tenant_id, request.target_id)
+                .await?
+        {
+            return Ok(None);
+        }
         let service =
             CategoryService::new(runtime.db.clone()).with_taxonomy_port(seo_taxonomy_port(runtime));
         let category = optional_category(
@@ -133,41 +167,76 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
     ) -> AnyResult<SeoBulkSummaryPage> {
         let service =
             CategoryService::new(runtime.db.clone()).with_taxonomy_port(seo_taxonomy_port(runtime));
-        let after = request
+        let mut after = request
             .after
             .map(Uuid::parse_str)
             .transpose()
             .map_err(|_| SeoTargetError::provider("invalid forum category SEO bulk cursor"))?;
-        let (categories, next_cursor) = service
-            .list_keyset_with_locale_fallback(
-                request.tenant_id,
-                SecurityContext::system(),
-                request.locale,
-                after,
-                request.limit,
-                Some(request.default_locale),
-            )
-            .await
-            .map_err(SeoTargetError::provider)?;
+        let limit = request.limit.max(1);
+        let mut items = Vec::with_capacity(limit as usize);
 
-        let mut items = Vec::with_capacity(categories.len());
-        for item in categories {
-            if let Some(summary) = load_category_summary(
-                &service,
-                request.tenant_id,
-                request.locale,
-                request.default_locale,
-                item,
-            )
-            .await?
-            {
+        // The raw keyset scans with the system context, so hidden and
+        // audience-restricted categories come back in the page. Drop them here
+        // and keep refilling from the keyset until `limit` visible summaries
+        // are collected or the scan is exhausted: an early empty page with no
+        // cursor would stall outer scanners that rely on cursor progress.
+        loop {
+            let remaining = limit.saturating_sub(items.len() as u64).max(1);
+            let (categories, page_next) = service
+                .list_keyset_with_locale_fallback(
+                    request.tenant_id,
+                    SecurityContext::system(),
+                    request.locale,
+                    after,
+                    remaining,
+                    Some(request.default_locale),
+                )
+                .await
+                .map_err(SeoTargetError::provider)?;
+            if categories.is_empty() {
+                return Ok(SeoBulkSummaryPage {
+                    items,
+                    next_cursor: None,
+                });
+            }
+            let batch_len = categories.len();
+            for (index, item) in categories.into_iter().enumerate() {
+                let item_id = item.id;
+                after = Some(item_id);
+                if !seo_category_is_publicly_visible(runtime, request.tenant_id, item_id).await? {
+                    continue;
+                }
+                let Some(summary) = load_category_summary(
+                    &service,
+                    request.tenant_id,
+                    request.locale,
+                    request.default_locale,
+                    item,
+                )
+                .await?
+                else {
+                    continue;
+                };
                 items.push(summary);
+                if items.len() as u64 == limit {
+                    // Resume strictly after the last returned summary; rows
+                    // past it are rescanned on the next call, so no visible
+                    // target is skipped or duplicated. The cursor only advances
+                    // when another raw row is known to exist.
+                    let more_rows_remain = page_next.is_some() || index + 1 < batch_len;
+                    return Ok(SeoBulkSummaryPage {
+                        items,
+                        next_cursor: more_rows_remain.then(|| item_id.to_string()),
+                    });
+                }
+            }
+            if page_next.is_none() {
+                return Ok(SeoBulkSummaryPage {
+                    items,
+                    next_cursor: None,
+                });
             }
         }
-        Ok(SeoBulkSummaryPage {
-            items,
-            next_cursor: next_cursor.map(|id| id.to_string()),
-        })
     }
 
     async fn sitemap_candidates(
@@ -197,6 +266,12 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
             }
 
             for item in items {
+                // Same public gate as the bulk keyset: the offset scan runs
+                // with the system context, so categories the anonymous
+                // storefront audience cannot see must never reach the sitemap.
+                if !seo_category_is_publicly_visible(runtime, request.tenant_id, item.id).await? {
+                    continue;
+                }
                 if let Some(candidate) = load_category_sitemap_candidate(
                     &service,
                     request.tenant_id,

@@ -1,5 +1,5 @@
-//! Tenant length limits, per-author posting rate limits, reply pre-moderation, the author edit
-//! window and locked topics in storefront lists on SQLite.
+//! Tenant length limits, per-author posting cooldowns and policy windows, reply pre-moderation,
+//! the author edit window and locked topics in storefront lists on SQLite.
 //!
 //! Each test writes the Forum settings row, then exercises a user write path. Imports are
 //! deliberately not covered here; see `DECISIONS/2026-10-09-forum-content-length-enforcement.md`
@@ -1342,4 +1342,338 @@ async fn new_replies_are_published_immediately_when_pre_moderation_is_off() {
         stored_reply_status(&db, reply.id).await,
         ReplyStatus::Approved
     );
+}
+
+fn posting_policy_context(tenant_id: Uuid, user_id: Uuid) -> rustok_api::PortContext {
+    rustok_api::PortContext::new(
+        tenant_id.to_string(),
+        rustok_api::PortActor::user(user_id.to_string()),
+        "en",
+        "posting-policy-create-integration",
+    )
+    .with_deadline(std::time::Duration::from_secs(30))
+}
+
+fn create_window_composer(
+    db: &DatabaseConnection,
+) -> rustok_forum::SharedForumPostingPolicyFactsComposer {
+    Arc::new(
+        rustok_forum::ForumPostingPolicyFactsComposer::new(vec![
+            rustok_forum::ForumTopicCreatesWindowFactPort::shared(db.clone()),
+            rustok_forum::ForumReplyCreatesWindowFactPort::shared(db.clone()),
+        ])
+        .expect("distinct window fact providers"),
+    )
+}
+
+fn posting_policy_reply_input() -> CreateReplyInput {
+    CreateReplyInput {
+        locale: "en".to_string(),
+        content: rustok_api::RichTextDocument::single_paragraph("Window-controlled reply"),
+        parent_reply_id: None,
+    }
+}
+
+/// Capture every persisted table, including translations, routes, counters,
+/// next_reply_position and outbox. Comparing only topic/reply counts would miss
+/// partial effects from a denied command. SQLite quote() also handles NULL and
+/// blob columns; json_array keeps field boundaries unambiguous. No worker runs
+/// in this fixture, so the snapshot cannot change asynchronously.
+async fn posting_policy_database_snapshot(db: &DatabaseConnection) -> Vec<(String, Vec<String>)> {
+    use sea_orm::{DbBackend, Statement};
+
+    fn identifier(name: &str) -> String {
+        format!("\"{}\"", name.replace('"', "\"\""))
+    }
+
+    let tables = db
+        .query_all_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
+        ))
+        .await
+        .expect("table inventory");
+    let mut snapshot = Vec::new();
+    for table in tables {
+        let name: String = table.try_get("", "name").expect("table name");
+        let columns = db
+            .query_all_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                format!("PRAGMA table_info({})", identifier(&name)),
+            ))
+            .await
+            .expect("table columns");
+        let quoted_columns = columns
+            .iter()
+            .map(|column| {
+                let name: String = column.try_get("", "name").expect("column name");
+                format!("quote({})", identifier(&name))
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let rows = db
+            .query_all_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                format!(
+                    "SELECT json_array({quoted_columns}) AS snapshot FROM {} ORDER BY snapshot",
+                    identifier(&name),
+                ),
+            ))
+            .await
+            .expect("table snapshot");
+        let rows = rows
+            .iter()
+            .map(|row| row.try_get::<String>("", "snapshot").expect("snapshot row"))
+            .collect();
+        snapshot.push((name, rows));
+    }
+    snapshot
+}
+
+#[tokio::test]
+async fn posting_policy_topic_window_uses_persisted_facts_and_denial_changes_nothing() {
+    let (db, event_bus, tenant_id) = setup().await;
+    let author_id = Uuid::new_v4();
+    let other_id = Uuid::new_v4();
+    let category = create_category(
+        &CategoryService::new(db.clone()),
+        tenant_id,
+        SecurityContext::system(),
+        false,
+    )
+    .await;
+    set_forum_module_settings(
+        &db,
+        tenant_id,
+        serde_json::json!({
+            "rate_limit_new_topic_seconds": 0,
+            "rate_limit_new_reply_seconds": 0,
+            "posting_policy_topic_create_limit": { "maximum_count": 1, "window_seconds": 3600 },
+        }),
+    )
+    .await;
+    let topics = TopicService::new(db.clone(), event_bus)
+        .with_settings_providers(test_settings_providers(db.clone()))
+        .with_posting_policy_facts(create_window_composer(&db));
+    let first = topics
+        .create_with_audience_context(
+            tenant_id,
+            author_security(author_id),
+            posting_policy_context(tenant_id, author_id),
+            topic_input(category.id, "First window topic", "window-first", "Body"),
+        )
+        .await
+        .expect("zero persisted creates allows the first topic");
+
+    let before = posting_policy_database_snapshot(&db).await;
+    let retry = assert_rate_limited(
+        topics
+            .create_with_audience_context(
+                tenant_id,
+                author_security(author_id),
+                posting_policy_context(tenant_id, author_id),
+                topic_input(category.id, "Denied window topic", "window-denied", "Body"),
+            )
+            .await,
+        "topic window at the configured threshold with cooldown disabled",
+    );
+    assert_eq!(retry, 3600);
+    assert_eq!(posting_policy_database_snapshot(&db).await, before);
+
+    topics
+        .create_with_audience_context(
+            tenant_id,
+            author_security(other_id),
+            posting_policy_context(tenant_id, other_id),
+            topic_input(category.id, "Other author", "window-other", "Body"),
+        )
+        .await
+        .expect("the window belongs to the exact author");
+    backdate_topic(&db, first.id, 61).await;
+    topics
+        .create_with_audience_context(
+            tenant_id,
+            author_security(author_id),
+            posting_policy_context(tenant_id, author_id),
+            topic_input(category.id, "After window", "window-expired", "Body"),
+        )
+        .await
+        .expect("a persisted topic outside the window no longer consumes it");
+}
+
+#[tokio::test]
+async fn posting_policy_reply_window_uses_persisted_facts_and_denial_changes_nothing() {
+    let (db, event_bus, tenant_id) = setup().await;
+    let author_id = Uuid::new_v4();
+    let other_id = Uuid::new_v4();
+    let category = create_category(
+        &CategoryService::new(db.clone()),
+        tenant_id,
+        SecurityContext::system(),
+        false,
+    )
+    .await;
+    set_forum_module_settings(
+        &db,
+        tenant_id,
+        serde_json::json!({
+            "rate_limit_new_topic_seconds": 0,
+            "rate_limit_new_reply_seconds": 0,
+            "posting_policy_reply_create_limit": { "maximum_count": 1, "window_seconds": 3600 },
+        }),
+    )
+    .await;
+    let topics = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(test_settings_providers(db.clone()))
+        .with_posting_policy_facts(create_window_composer(&db));
+    let replies = ReplyService::new(db.clone(), event_bus)
+        .with_settings_providers(test_settings_providers(db.clone()))
+        .with_posting_policy_facts(create_window_composer(&db));
+    let topic = topics
+        .create(
+            tenant_id,
+            author_security(author_id),
+            topic_input(category.id, "Reply window", "reply-window", "Body"),
+        )
+        .await
+        .expect("a reply rule does not require facts for a topic create");
+    let first = replies
+        .create_with_audience_context(
+            tenant_id,
+            author_security(author_id),
+            topic.id,
+            posting_policy_context(tenant_id, author_id),
+            posting_policy_reply_input(),
+        )
+        .await
+        .expect("the topic does not consume the reply window");
+    let before = posting_policy_database_snapshot(&db).await;
+    let retry = assert_rate_limited(
+        replies
+            .create_with_audience_context(
+                tenant_id,
+                author_security(author_id),
+                topic.id,
+                posting_policy_context(tenant_id, author_id),
+                posting_policy_reply_input(),
+            )
+            .await,
+        "reply window at the configured threshold with cooldown disabled",
+    );
+    assert_eq!(retry, 3600);
+    assert_eq!(posting_policy_database_snapshot(&db).await, before);
+    replies
+        .create_with_audience_context(
+            tenant_id,
+            author_security(other_id),
+            topic.id,
+            posting_policy_context(tenant_id, other_id),
+            posting_policy_reply_input(),
+        )
+        .await
+        .expect("another author's reply window is independent");
+    backdate_reply(&db, first.id, 61).await;
+    replies
+        .create_with_audience_context(
+            tenant_id,
+            author_security(author_id),
+            topic.id,
+            posting_policy_context(tenant_id, author_id),
+            posting_policy_reply_input(),
+        )
+        .await
+        .expect("a reply outside the window no longer consumes it");
+}
+
+#[tokio::test]
+async fn posting_policy_missing_dependencies_cannot_bypass_create_owners() {
+    let (db, event_bus, tenant_id) = setup().await;
+    let author_id = Uuid::new_v4();
+    let category = create_category(
+        &CategoryService::new(db.clone()),
+        tenant_id,
+        SecurityContext::system(),
+        false,
+    )
+    .await;
+    let topic = TopicService::new(db.clone(), event_bus.clone())
+        .create(
+            tenant_id,
+            SecurityContext::system(),
+            topic_input(category.id, "Parent", "window-parent", "Body"),
+        )
+        .await
+        .expect("unconfigured parent fixture");
+    set_forum_module_settings(
+        &db,
+        tenant_id,
+        serde_json::json!({
+            "rate_limit_new_topic_seconds": 0,
+            "rate_limit_new_reply_seconds": 0,
+            "posting_policy_topic_create_limit": { "maximum_count": 1, "window_seconds": 3600 },
+            "posting_policy_reply_create_limit": { "maximum_count": 1, "window_seconds": 3600 },
+        }),
+    )
+    .await;
+    for missing in ["composer", "context", "provider"] {
+        let mut topics = TopicService::new(db.clone(), event_bus.clone())
+            .with_settings_providers(test_settings_providers(db.clone()));
+        let mut replies = ReplyService::new(db.clone(), event_bus.clone())
+            .with_settings_providers(test_settings_providers(db.clone()));
+        if missing != "composer" {
+            let composer = if missing == "provider" {
+                rustok_forum::SharedForumPostingPolicyFactsComposer::default()
+            } else {
+                create_window_composer(&db)
+            };
+            topics = topics.with_posting_policy_facts(composer.clone());
+            replies = replies.with_posting_policy_facts(composer);
+        }
+        let before = posting_policy_database_snapshot(&db).await;
+        let input = topic_input(category.id, "Must not persist", "window-no-bypass", "Body");
+        let topic_result = if missing == "context" {
+            topics
+                .create(tenant_id, author_security(author_id), input)
+                .await
+        } else {
+            topics
+                .create_with_audience_context(
+                    tenant_id,
+                    author_security(author_id),
+                    posting_policy_context(tenant_id, author_id),
+                    input,
+                )
+                .await
+        };
+        assert!(
+            matches!(topic_result, Err(ForumError::Internal(_))),
+            "missing {missing} must fail closed for topics"
+        );
+        assert_eq!(posting_policy_database_snapshot(&db).await, before);
+        let reply_result = if missing == "context" {
+            replies
+                .create(
+                    tenant_id,
+                    author_security(author_id),
+                    topic.id,
+                    posting_policy_reply_input(),
+                )
+                .await
+        } else {
+            replies
+                .create_with_audience_context(
+                    tenant_id,
+                    author_security(author_id),
+                    topic.id,
+                    posting_policy_context(tenant_id, author_id),
+                    posting_policy_reply_input(),
+                )
+                .await
+        };
+        assert!(
+            matches!(reply_result, Err(ForumError::Internal(_))),
+            "missing {missing} must fail closed for replies"
+        );
+        assert_eq!(posting_policy_database_snapshot(&db).await, before);
+    }
 }
