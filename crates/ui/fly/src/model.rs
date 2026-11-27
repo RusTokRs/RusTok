@@ -96,16 +96,14 @@ fn ensure_opaque_node_stable_ids(
             object.insert("id".to_string(), Value::String(id));
         }
     }
-    if let Some(children) = object.get_mut("components").and_then(Value::as_array_mut) {
-        for child in children {
-            ensure_opaque_node_stable_ids(
-                child,
-                generator,
-                reserved,
-                seen,
-                remapped_component_ids,
-            );
-        }
+    if let Some(children) = object.get_mut("components") {
+        ensure_opaque_children_stable_ids(
+            children,
+            generator,
+            reserved,
+            seen,
+            remapped_component_ids,
+        );
     }
 }
 
@@ -415,12 +413,7 @@ fn check_opaque_node_ids_stable<'a>(
     }
     object
         .get("components")
-        .and_then(Value::as_array)
-        .is_none_or(|children| {
-            children
-                .iter()
-                .all(|child| check_opaque_node_ids_stable(child, seen))
-        })
+        .is_none_or(|children| check_opaque_children_ids_stable(children, seen))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -572,10 +565,8 @@ fn visit_opaque_node(value: &Value, visitor: &mut impl FnMut(&Map<String, Value>
         return;
     };
     visitor(object);
-    if let Some(children) = object.get("components").and_then(Value::as_array) {
-        for child in children {
-            visit_opaque_node(child, visitor);
-        }
+    if let Some(children) = object.get("components") {
+        visit_opaque_children(children, visitor);
     }
 }
 
@@ -622,11 +613,7 @@ fn remap_opaque_node(
                 }
             }
             "components" => {
-                if let Value::Array(children) = value {
-                    for child in children {
-                        remap_opaque_node(child, components, dom, attribute_ids, action_ids);
-                    }
-                }
+                remap_opaque_children(value, components, dom, attribute_ids, action_ids);
             }
             crate::FLY_ACTION_FIELD => remap_action_ids(value, action_ids),
             _ => {}
@@ -1458,6 +1445,45 @@ mod tests {
             ids.push(target.to_string());
         }
         assert_ne!(ids[0], ids[1]);
+    }
+
+    #[test]
+    fn nested_object_opaque_children_are_repaired_and_references_are_remapped() {
+        let mut document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": {
+                        "id": "opaque-parent",
+                        "components": {
+                            "id": "invalid nested id",
+                            "flyAction": {
+                                "kind": "scroll_to",
+                                "target_id": "invalid nested id"
+                            }
+                        }
+                    }
+                }
+            }]
+        }))
+        .expect("document");
+
+        document.ensure_stable_ids(&mut crate::SequentialIdGenerator::new("repair"));
+
+        let root = document.project.pages[0]
+            .component
+            .as_ref()
+            .and_then(ComponentNode::as_object)
+            .expect("root");
+        let ComponentChildren::Opaque(parent) = &root.components else {
+            panic!("fixture must preserve opaque children")
+        };
+        let nested = &parent["components"];
+        let repaired_id = nested["id"].as_str().expect("repaired nested id");
+        assert_ne!(repaired_id, "invalid nested id");
+        assert_eq!(parent["flyAction"]["target_id"], repaired_id);
+        assert!(validate_identifier(repaired_id).is_ok());
     }
 
     #[test]
