@@ -14,7 +14,7 @@ use rustok_modules::{
     ArtifactExecutionLeaseGuard, ArtifactInstallationTarget, InstalledModuleArtifact,
     ModuleRuntimeBinding, ArtifactSqlEffectAuthorizer, ArtifactSqlEffectFence,
     ArtifactSqlEffectCommitGuard, lock_granted_artifact_capability_on,
-    resolve_granted_artifact_capability,
+    resolve_granted_artifact_capability, SeaOrmModuleArtifactSecurityResolver,
 };
 use rustok_sandbox::{
     CapabilityBroker, CapabilityCall, CapabilityCallContext, CapabilityGrant, CapabilityResponse,
@@ -45,6 +45,7 @@ struct ExecutionLease {
     artifact: InstalledModuleArtifact,
     binding: ModuleRuntimeBinding,
     effective_revision: Option<String>,
+    security_revision: u64,
     policy: SandboxPolicy,
     deadline: Instant,
     direct_scope: Option<CapturedArtifactRequestScope>,
@@ -154,6 +155,11 @@ impl ExecutionAuthority {
         } else {
             None
         };
+        let security_revision = SeaOrmModuleArtifactSecurityResolver::new(resolver.db.clone())
+            .resolve(&artifact.release).await
+            .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?
+            .execution_revision()
+            .ok_or(ArtifactBindingDispatchError::AdmissionMismatch)?;
         let mut lease = ExecutionLease {
             execution_id: context.execution_id,
             subject: SandboxSubject::ModuleArtifact {
@@ -166,6 +172,7 @@ impl ExecutionAuthority {
             artifact: artifact.clone(),
             binding: binding.clone(),
             effective_revision: effective_revision.map(str::to_owned),
+            security_revision,
             policy: policy.clone(),
             // The lease has not yet been registered. Set its non-renewable
             // monotonic deadline only after the last durable preflight.
@@ -176,6 +183,7 @@ impl ExecutionAuthority {
         // sandbox grant snapshot. No SQL transaction spans guest execution.
         if !lease.credential_live() || !check_policy(resolver, &lease).await?
             || !self.check_direct(&lease).await
+            || !check_security(resolver, &lease).await
         {
             return Err(lease.denial());
         }
@@ -209,6 +217,16 @@ impl ExecutionAuthority {
             .filter(|lease| lease.matches(call))
             .ok_or_else(|| SandboxError::CapabilityDenied(call.capability.clone()))
     }
+}
+
+async fn check_security(
+    resolver: &ServerArtifactEffectivePolicyResolver,
+    lease: &ExecutionLease,
+) -> bool {
+    SeaOrmModuleArtifactSecurityResolver::new(resolver.db.clone())
+        .resolve(&lease.artifact.release)
+        .await
+        .is_ok_and(|snapshot| snapshot.execution_revision() == Some(lease.security_revision))
 }
 
 async fn check_policy(
@@ -298,6 +316,9 @@ impl ArtifactSqlEffectFence for SqlEffectFence {
         let current_policy = lock_granted_artifact_capability_on(
             tx, &self.lease.artifact, self.lease.tenant_id(), &self.call.capability,
         ).await?;
+        SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
+            tx, &self.lease.artifact.release, self.lease.security_revision,
+        ).await.map_err(|_| self.deny())?;
         let original = self.lease.policy.grant(&self.call.capability).ok_or_else(|| self.deny())?;
         let current = current_policy.grant(&self.call.capability).ok_or_else(|| self.deny())?;
         if current.constraints != original.constraints {
@@ -365,6 +386,7 @@ impl<B: CapabilityBroker> CapabilityBroker for FencedCapabilityBroker<B> {
         if current != lease.artifact
             || !check_policy(&self.resolver, &lease).await.unwrap_or(false)
             || !authority.check_direct(&lease).await
+            || !check_security(&self.resolver, &lease).await
         {
             return Err(denied());
         }

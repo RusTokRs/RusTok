@@ -48,10 +48,14 @@ transaction now takes the existing platform/tenant activation locks after
 direct credential/RBAC fences, resolves the current selection and grant
 through the canonical owner queries, and compares against the lease's exact
 installation and grant constraints. The transaction retains selection locks
-through commit, including for non-direct execution. This increment does not
-fence the full effective-policy revision, security state, dependency closure
-or deployment readiness; PostgreSQL lock-order and runtime evidence remain
-required. Lifecycle admission remains distinct from serving mutations.
+through commit, including for non-direct execution. The lease captures the
+root release's clear security revision and checks it for every host capability.
+SQL effects and security writers share the platform slug fence, including
+the implicit clear state. Quarantine/clear does not revive older leases.
+Lifecycle admission remains distinct from serving mutations but cannot bypass
+release security. Full effective-policy revision, dependency closure/security,
+registry mutation fencing and deployment readiness remain open; PostgreSQL
+cross-owner lock-order and runtime evidence remain required.
 
 ## Context, events and migration
 

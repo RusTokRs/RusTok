@@ -1492,9 +1492,17 @@ installation facts, capability revision, missing grants and changed grant
 constraints relative to the execution lease. Activation, deactivation,
 rollback and tenant artifact lifecycle writers use these same selection
 locks. Lifecycle hooks do not use the serving-mutation journal rejection.
-This does not yet fence the full effective policy (including dependencies,
-static overrides, security state and deployment readiness), nor prove the
-cross-owner lock order under concurrent PostgreSQL execution. Independent non-server broker
+The lease also captures the exact release's clear security revision (zero
+for implicit clear). Every host capability rechecks it, including lifecycle
+calls. SQL effects verify it inside the transaction under the platform slug
+activation fence, shared by quarantine, clear and revoke writers. This fences
+first quarantine even without a security row, and quarantine followed by
+clear cannot revive an older lease. The registry status is sampled but its
+independent writers are not fenced by this increment. Full effective policy
+(including dependency security, static overrides and deployment readiness)
+and cross-owner lock-order verification remain outstanding. Upgrade all
+security writers and effect consumers together; old writers bypass the slug
+fence. No schema or transport change is required. Independent non-server broker
 compositions still need an explicitly supplied authority. External effects and
 objects/secrets/MCP/HTTP are not covered by this SQL commit guard.
 See [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).

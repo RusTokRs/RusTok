@@ -3577,5 +3577,11 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   locks. The lease rejects changed installation facts or grant constraints.
   Selection/grant regression authored; PostgreSQL concurrent lifecycle and
   cross-owner lock-order verification remains outstanding. Full effective
-  policy, dependency closure, security/quarantine and deployment readiness
-  are not fenced by this increment.
+  policy, dependency closure and deployment readiness remain open.
+- Source-wired root release security revision in the execution lease and SQL
+  fence. Security transitions share the existing platform slug lock, even
+  for the implicit clear state. Quarantine/clear invalidates old leases,
+  registry unknown denies, and lifecycle calls also check security. SQLite
+  and opt-in PostgreSQL first-quarantine lock-wait regressions are authored,
+  not run. Registry writers, dependency security and global ordering remain
+  outstanding. Coordinate upgrade of security writers and effect consumers.

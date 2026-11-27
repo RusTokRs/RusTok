@@ -180,7 +180,9 @@ production readiness. The documented implementation and operational gaps include
 
 - Server SQL capability effects now recheck exact active installation and
   durable grants under the existing platform/tenant activation locks in the
-  effect transaction. Full effective-policy, security, deployment readiness,
+  effect transaction. Exact release quarantine/revocation and security revision
+  are also fenced, including implicit clear and quarantine/clear ABA. Full
+  effective-policy, dependency security, registry status, deployment readiness,
   cross-owner lock ordering and external-effect fencing remain open; see the
   [SQL capability authority contract](./docs/README.md#sql-capability-effect-authority).
   Source regressions and compilation/concurrent PostgreSQL evidence remain unrun.
