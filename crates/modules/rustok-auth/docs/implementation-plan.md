@@ -708,3 +708,11 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   whole transaction; fixed conservative cutoff and SQLite behavior preserved.
   Source regressions unrun. Full session history immutability, tenant/user
   identity parity, bulk revocation and cross-owner/outbox ordering remain open.
+
+- Session evidence integrity (platform migration 000011): immutable session
+  identity/creation time, tenant/user composite FK or SQLite equivalent,
+  append-only history and parent-only cascade, PostgreSQL TRUNCATE rejection
+  and SQLite replacement guards. Dirty identity blocks migration. Source
+  regressions and aging fixture adjustments authored; no runtime verification.
+  Absolute deadline monotonicity, parent-delete authorization, bulk revocation
+  and cross-owner/outbox ordering remain open.

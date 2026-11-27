@@ -260,3 +260,16 @@ a fresh transaction. Metadata-only session writes do not acquire new parent
 locks. SQLite retains its single writer and existing FK. This is a lock-order
 fence, not a complete direct-SQL history immutability or tenant-integrity
 contract; PostgreSQL test source is unrun.
+
+## Durable evidence integrity (2026-11-27)
+
+Platform migration 000011 enforces immutable session ID, tenant, user and
+creation time. PostgreSQL adds the scoped user FK, reusing the Auth composite
+identity index; SQLite uses equivalent insert/parent-move guards. History
+updates and independent deletion while the parent exists are forbidden;
+PostgreSQL TRUNCATE and SQLite replacement of existing session/history rows
+are denied. The existing session FK cascade still deletes history with its
+parent. Existing inconsistent session identities stop cutover without silent
+repair. This is ordinary DML protection, not authorization of parent deletion
+or protection against privileged DDL. Source regression tests and explicit
+isolated history-aging fixtures are unrun.

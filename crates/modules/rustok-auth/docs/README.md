@@ -1185,3 +1185,14 @@ Clock cutoffs, final corroboration and all-or-nothing semantics are unchanged.
 The source regression exercises app/session/member/code contention and rollback,
 plus retained lineage and retry; execution, large sweeps and external DDL/direct
 SQL are not certified.
+
+Platform migration 000011 makes session ID, tenant, user and creation time
+immutable and enforces tenant/user parent integrity (PostgreSQL composite FK,
+SQLite insert and parent-move guards). History is append-only: UPDATE and
+independent DELETE are rejected while the parent exists; PostgreSQL TRUNCATE
+is denied, SQLite REPLACE is rejected for existing sessions/history. Existing
+parent cascade remains valid. Migration rejects dirty scoped identities
+without deleting history. Tests that age history explicitly restore the
+SQLite guard inside an isolated fixture transaction. No runtime bypass.
+This protects ordinary DML, not privileged trigger disabling or parent
+removal outside the retention contract. Compile and runtime tests unrun.

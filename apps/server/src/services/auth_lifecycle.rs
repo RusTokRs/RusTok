@@ -2078,6 +2078,24 @@ mod tests {
     use std::sync::atomic::Ordering;
     use uuid::Uuid;
 
+    // These isolated SQLite tests intentionally simulate elapsed time without
+    // waiting for the replay grace period. Restore the exact production
+    // trigger within the fixture transaction; no runtime bypass exists.
+    async fn age_history_fixture(
+        db: &sea_orm::DatabaseConnection,
+        history: session_refresh_history::ActiveModel,
+    ) {
+        let tx = db.begin().await.unwrap();
+        let trigger = tx.query_one_raw(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'trg_session_history_immutable_update'",
+        )).await.unwrap().unwrap().try_get::<String>("", "sql").unwrap();
+        tx.execute_unprepared("DROP TRIGGER trg_session_history_immutable_update").await.unwrap();
+        history.update(&tx).await.unwrap();
+        tx.execute_unprepared(&trigger).await.unwrap();
+        tx.commit().await.unwrap();
+    }
+
     fn test_auth_config(
         secret: &str,
         access_expiration: u64,
@@ -2190,10 +2208,8 @@ mod tests {
 
         // Simulate a lineage approaching its absolute deadline; rotation
         // must return only the remaining lifetime, not a fresh 90 days.
-        let created_at = Utc::now() - Duration::days(89);
         let mut active: sessions::ActiveModel = session.into();
-        active.created_at = Set(created_at.into());
-        active.absolute_expires_at = Set(Some((created_at + Duration::days(90)).into()));
+        active.absolute_expires_at = Set(Some((Utc::now() + Duration::days(1)).into()));
         active.update(&db).await.expect("age the session");
 
         let (_user, rotated) = AuthLifecycleService::refresh_with_config_db(
@@ -3874,7 +3890,7 @@ mod tests {
         let session_id = history.session_id;
         let mut aged: session_refresh_history::ActiveModel = history.into();
         aged.rotated_at = Set(Some((Utc::now() - Duration::seconds(60)).into()));
-        aged.update(&db).await.expect("age history fixture");
+        age_history_fixture(&db, aged).await;
 
         let wrong_tenant = AuthLifecycleService::refresh_with_config_db(
             &db,
@@ -4162,7 +4178,7 @@ mod tests {
         }
         let mut aged: session_refresh_history::ActiveModel = history.into();
         aged.rotated_at = Set(Some((Utc::now() - Duration::seconds(60)).into()));
-        aged.update(&db).await.unwrap();
+        age_history_fixture(&db, aged).await;
         // The current credential and its used proof must conflict outside
         // grace without revoking the lineage. Age its own history evidence.
         let second_hash = hash_refresh_token(&rotated.refresh_token);
@@ -4174,7 +4190,7 @@ mod tests {
                 .unwrap()
                 .into();
         second_history.rotated_at = Set(Some((Utc::now() - Duration::seconds(60)).into()));
-        second_history.update(&db).await.unwrap();
+        age_history_fixture(&db, second_history).await;
         let result = AuthLifecycleService::refresh_with_config_db(
             &db,
             &config,
@@ -4261,7 +4277,7 @@ mod tests {
             .expect("create tenant B user");
 
         let refresh_token = "cross-tenant-refresh-token";
-        sessions::ActiveModel::new(
+        assert!(sessions::ActiveModel::new(
             tenant_a.id,
             user_b.id,
             hash_refresh_token(refresh_token),
@@ -4271,7 +4287,7 @@ mod tests {
         )
         .insert(&db)
         .await
-        .expect("insert mismatched session for boundary test");
+        .is_err(), "the database must reject a mismatched session");
 
         let config = test_auth_config("refresh-boundary-secret", 600, 3600);
         let result = AuthLifecycleService::refresh_with_config_db(
@@ -4286,7 +4302,7 @@ mod tests {
         .await;
 
         assert!(
-            matches!(result, Err(AuthLifecycleError::UserNotFound)),
+            matches!(result, Err(AuthLifecycleError::InvalidRefreshToken)),
             "a refresh session must never authorize a user from another tenant"
         );
     }
