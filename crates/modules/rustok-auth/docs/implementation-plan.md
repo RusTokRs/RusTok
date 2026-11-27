@@ -777,3 +777,9 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   admin and refresh preflight/commit. Same-timestamp replacement regressions
   cover refresh and admin; unbound legacy families fail closed. Source
   regressions unrun.
+
+- Consent generation admission checks active consent and consumed code in one
+  SQL snapshot, and checks both prepared token models against the admitted
+  original code and epoch before any exchange/rotation/recovery effect.
+  Regression assertions cover a stale grant observation and mismatched
+  prepared lineage. Source regressions unrun.

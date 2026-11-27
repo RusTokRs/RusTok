@@ -760,6 +760,25 @@ fn prepared_access_lifetime(
     remaining_access_lifetime(prepared_token_expiry(model)?, now, maximum)
 }
 
+// Validate the actual persistence models, not merely the preparation DTO.
+// A root inserted with a different code would otherwise publish a different
+// generation even though the presented credential passed the live fence.
+fn validate_prepared_consent_lineage(
+    prepared: &PreparedOAuthTokens,
+    expected_code_id: Option<Uuid>,
+) -> Result<(), OAuthTokenProtocolError> {
+    for model in std::iter::once(&prepared.access_model).chain(prepared.refresh_model.iter()) {
+        if !matches!(&model.authorization_code_id, Set(id) if *id == expected_code_id)
+            || !matches!(&model.consent_granted_at, Set(epoch) if epoch == &prepared.consent_granted_at)
+        {
+            return Err(OAuthTokenProtocolError::invalid_grant(
+                "Prepared OAuth credential consent lineage changed",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn validate_prepared_deadlines(
     prepared: &PreparedOAuthTokens,
     now: chrono::DateTime<Utc>,
@@ -1595,6 +1614,7 @@ async fn commit_authorization_code_exchange(
     )
     .await?;
     validate_code_consent_epoch(code, prepared.consent_granted_at.as_ref(), consent_id)?;
+    validate_prepared_consent_lineage(prepared, Some(code.id))?;
 
     let now = verify_application_clock(&tx, clock).await?;
     validate_prepared_deadlines(prepared, now, None)?;
@@ -1778,6 +1798,7 @@ async fn commit_refresh_rotation(
     )
     .await?;
     validate_token_consent_generation(&tx, current, consent_id).await?;
+    validate_prepared_consent_lineage(prepared, current.authorization_code_id)?;
 
     if prepared.consent_granted_at != current.consent_granted_at {
         return Err(OAuthTokenProtocolError::invalid_grant(
@@ -2421,6 +2442,10 @@ mod tests {
 
         super::validate_token_consent_generation(&db, &current, Some(consent.id))
             .await.expect("original consumed code proves generation");
+        super::validate_prepared_consent_lineage(&prepared, Some(original_code.id))
+            .expect("prepared models retain exact code");
+        assert!(super::validate_prepared_consent_lineage(&prepared, Some(Uuid::new_v4()))
+            .is_err());
         let mut unbound = current.clone();
         unbound.authorization_code_id = None;
         assert!(super::validate_token_consent_generation(&db, &unbound, Some(consent.id))
@@ -2428,6 +2453,8 @@ mod tests {
         let mut retired: oauth_consents::ActiveModel = consent.clone().into();
         retired.revoked_at = Set(Some(now.into()));
         retired.update(&db).await.expect("retire old grant");
+        assert!(super::validate_token_consent_generation(&db, &current, Some(consent.id))
+            .await.is_err(), "a stale grant observation cannot authorize a retired code");
         let mut replacement: oauth_consents::ActiveModel = consent.clone().into();
         replacement.id = Set(Uuid::new_v4());
         replacement.revoked_at = Set(None);

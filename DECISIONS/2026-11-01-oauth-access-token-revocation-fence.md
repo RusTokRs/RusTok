@@ -393,3 +393,9 @@ addition to timestamp and scope checks. Legacy unbound families cannot adopt
 the current grant. Existing retention preserves code evidence while token
 registrations survive; missing evidence fails closed. Consent-exempt clients
 retain their prior policy. Source regressions unrun.
+
+The consumed-code resolver re-observes active consent in the same SQL
+statement as the code, so a prior scope observation cannot authorize a
+consent retired before that lookup. Locked exchange and refresh also compare
+both actual prepared registration models against the admitted original code
+and epoch before consumption or recovery. Source regressions unrun.

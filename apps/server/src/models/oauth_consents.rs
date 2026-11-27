@@ -1,4 +1,4 @@
-use sea_orm::ConnectionTrait;
+use sea_orm::{ConnectionTrait, QuerySelect, QueryTrait};
 use sea_orm::prelude::*;
 
 use super::_entities::oauth_consents::{self};
@@ -30,11 +30,22 @@ impl Entity {
         let Some(code_id) = code_id else {
             return Ok(false);
         };
+        // Re-observe active consent in the same SQL snapshot as the code.
+        // A prior scope read must not hide a replacement between reads.
+        let live = Self::find()
+            .select_only()
+            .column(Column::Id)
+            .filter(Column::Id.eq(consent_id))
+            .filter(Column::TenantId.eq(tenant_id))
+            .filter(Column::AppId.eq(app_id))
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::RevokedAt.is_null())
+            .into_query();
         Ok(codes::Entity::find_by_id(code_id)
             .filter(codes::Column::TenantId.eq(tenant_id))
             .filter(codes::Column::AppId.eq(app_id))
             .filter(codes::Column::UserId.eq(user_id))
-            .filter(codes::Column::ConsentId.eq(consent_id))
+            .filter(codes::Column::ConsentId.in_subquery(live))
             .filter(codes::Column::UsedAt.is_not_null())
             .one(db)
             .await?
