@@ -142,8 +142,7 @@ pub(crate) fn check_production_environment(
         }
         Err(std::env::VarError::NotUnicode(_)) => {
             return Err(crate::error::Error::Message(
-                "FATAL: RUSTOK_DEV_SEED_PASSWORD must be valid UTF-8 in production."
-                    .to_string(),
+                "FATAL: RUSTOK_DEV_SEED_PASSWORD must be valid UTF-8 in production.".to_string(),
             ));
         }
         _ => {}
@@ -628,7 +627,10 @@ mod tests {
     fn production_secret_validation_rejects_development_seed_password_variable() {
         let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
         unsafe {
-            std::env::set_var("RUSTOK_DEV_SEED_PASSWORD", "a-strong-but-development-only-password");
+            std::env::set_var(
+                "RUSTOK_DEV_SEED_PASSWORD",
+                "a-strong-but-development-only-password",
+            );
         }
         let secret = "aB3!zY7@qW8#eR2$".repeat(5);
         let error = check_production_environment(
@@ -739,7 +741,9 @@ mod tests {
         }
         let error_multibyte =
             check_production_environment(&secret, "postgres://app:strong@db/rustok", true)
-                .expect_err("passwords below the character limit must fail regardless of UTF-8 byte length");
+                .expect_err(
+                    "passwords below the character limit must fail regardless of UTF-8 byte length",
+                );
         assert!(
             error_multibyte
                 .to_string()
@@ -814,9 +818,7 @@ mod tests {
             Some(".example.com")
         );
         assert_eq!(
-            sample_database_credentials_pattern(
-                "postgres://app:strong@db.test:5432/rustok_prod"
-            ),
+            sample_database_credentials_pattern("postgres://app:strong@db.test:5432/rustok_prod"),
             Some(".test")
         );
         assert_eq!(
