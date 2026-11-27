@@ -309,8 +309,9 @@ Required: exact context and execution ID mismatch, binding capability absence,
 lease expiry and cancellation, captured request invalidation across tasks,
 revoked session/role/grant and changed policy/readiness, both Rhai worker and
 Wasm paths, owner background/lifecycle compatibility, concurrency and timing.
-Source regressions cover scope propagation/invalidation and pre/post launch
-lease checks; compilation and the remaining integration evidence are pending.
+Source regressions cover scope propagation/invalidation, pre/post-launch
+lease checks, and result/error fencing after awaited capability brokers;
+compilation and the remaining integration evidence are pending.
 
 Registry validation job claims (including invalid-work-item terminalization),
 remote stage claims, completion and requeue now acquire the request row before
