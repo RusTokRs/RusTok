@@ -70,6 +70,20 @@ pub struct UpdateOAuthAppInput {
     pub granted_permissions: Vec<String>,
 }
 
+/// Prepared credentials stay outside SQL transactions while Argon2 runs.
+pub(crate) struct PreparedOAuthApp {
+    model: OAuthAppActiveModel,
+    client_secret: String,
+}
+
+pub(crate) struct PreparedOAuthSecret {
+    app_id: Uuid,
+    tenant_id: Uuid,
+    expected_hash: Option<String>,
+    secret_hash: String,
+    client_secret: String,
+}
+
 /// Result of creating an OAuth app — includes the plaintext secret shown once
 pub struct CreateOAuthAppResult {
     pub app: oauth_apps::Model,
@@ -266,6 +280,18 @@ impl OAuthAppService {
         tenant_id: Uuid,
         input: CreateOAuthAppInput,
     ) -> Result<CreateOAuthAppResult> {
+        ensure_slug_available(db, tenant_id, &input.slug).await?;
+        let prepared = Self::prepare_app(tenant_id, input).await?;
+        let tx = db.begin().await?;
+        let result = Self::create_prepared_app_in_transaction(&tx, prepared).await?;
+        tx.commit().await?;
+        Ok(result)
+    }
+
+    pub(crate) async fn prepare_app(
+        tenant_id: Uuid,
+        input: CreateOAuthAppInput,
+    ) -> Result<PreparedOAuthApp> {
         let granted_permissions = validate_granted_permissions(input.granted_permissions)?;
         validate_manual_app_configuration(
             &input.app_type,
@@ -275,17 +301,10 @@ impl OAuthAppService {
             &granted_permissions,
         )?;
         validate_app_display_fields(&input.name, Some(&input.slug), input.icon_url.as_deref())?;
-        // `(tenant_id, slug)` is a unique index. Probing first turns a colliding
-        // slug into a 409 the caller can act on; the insert-error path below
-        // repeats the check to preserve that result when concurrent creates race.
-        let slug = input.slug.clone();
-        ensure_slug_available(db, tenant_id, &slug).await?;
-
         let client_id = Uuid::new_v4();
         let client_secret_plain = generate_client_secret()?;
         let client_secret_hash = auth::hash_password_async(client_secret_plain.clone()).await?;
-
-        let app = OAuthAppActiveModel {
+        let model = OAuthAppActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
             name: Set(input.name),
@@ -312,41 +331,25 @@ impl OAuthAppService {
             metadata: Set(serde_json::json!({})),
             created_at: Set(Utc::now().into()),
             updated_at: Set(Utc::now().into()),
-        }
-        .insert(db)
-        .await;
-
-        let app = match app {
-            Ok(app) => app,
-            Err(insert_error) => {
-                match ensure_slug_available(db, tenant_id, &slug).await {
-                    Err(error @ Error::Conflict(_)) => return Err(error),
-                    Err(error) => {
-                        tracing::error!(
-                            %error,
-                            tenant_id = %tenant_id,
-                            slug = %slug,
-                            "Failed to recheck OAuth app slug after insert failure"
-                        );
-                    }
-                    Ok(()) => {}
-                }
-                tracing::error!(
-                    %insert_error,
-                    tenant_id = %tenant_id,
-                    slug = %slug,
-                    "Failed to insert OAuth app"
-                );
-                return Err(Error::InternalServerError);
-            }
         };
+        Ok(PreparedOAuthApp { model, client_secret: client_secret_plain })
+    }
 
+    /// Caller owns the transaction and the authorization fences.
+    pub(crate) async fn create_prepared_app_in_transaction(
+        tx: &DatabaseTransaction,
+        prepared: PreparedOAuthApp,
+    ) -> Result<CreateOAuthAppResult> {
+        let app = prepared.model.insert_in_transaction(tx).await.map_err(|error| {
+            if matches!(error.sql_err(), Some(sea_orm::SqlErr::UniqueConstraintViolation(_))) {
+                Error::Conflict("OAuth app slug or identity already exists".to_string())
+            } else {
+                tracing::error!(%error, "Failed to insert OAuth app");
+                Error::InternalServerError
+            }
+        })?;
         tracing::Span::current().record("client_id", tracing::field::display(app.client_id));
-
-        Ok(CreateOAuthAppResult {
-            app,
-            client_secret: client_secret_plain,
-        })
+        Ok(CreateOAuthAppResult { app, client_secret: prepared.client_secret })
     }
 
     /// Update a manual OAuth app.
@@ -357,17 +360,23 @@ impl OAuthAppService {
         app_id: Uuid,
         input: UpdateOAuthAppInput,
     ) -> Result<oauth_apps::Model> {
-        let granted_permissions = validate_granted_permissions(input.granted_permissions)?;
-        // The authorization decision and security-sensitive OAuth configuration
-        // mutation must observe the same app version. Manifest reconciliation,
-        // token issuance and consent use this app-row fence too. On SQLite it
-        // reserves the writer before reading to avoid read-to-write races.
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
         let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
-            .await
-            .map_err(|_| Error::InternalServerError)?
-            .ok_or(Error::NotFound)?;
+            .await.map_err(|_| Error::InternalServerError)?.ok_or(Error::NotFound)?;
+        let updated = Self::update_locked_app(&tx, app, input).await?;
+        tx.commit().await.map_err(|_| Error::InternalServerError)?;
+        Ok(updated)
+    }
 
+    /// Apply a validated manual update on the caller's locked app.
+    pub(crate) async fn update_locked_app(
+        tx: &DatabaseTransaction,
+        app: oauth_apps::Model,
+        input: UpdateOAuthAppInput,
+    ) -> Result<oauth_apps::Model> {
+        let app_id = app.id;
+        let tenant_id = app.tenant_id;
+        let granted_permissions = validate_granted_permissions(input.granted_permissions)?;
         if !app.can_edit() {
             return Err(Error::BadRequest(
                 "This OAuth app is managed by manifest/config and cannot be edited manually"
@@ -397,7 +406,7 @@ impl OAuthAppService {
             &input.grant_types,
             &granted_permissions,
         ) {
-            revoke_oauth_app_credentials(&tx, app_id, tenant_id, Utc::now()).await?;
+            revoke_oauth_app_credentials(tx, app_id, tenant_id, Utc::now()).await?;
         }
         let mut active = manual_app_update_base(app);
         active.name = Set(input.name);
@@ -414,7 +423,7 @@ impl OAuthAppService {
         active.updated_at = Set(Utc::now().into());
 
         let mut updated = active
-            .update(&tx)
+            .update(tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
         // The ActiveModel update deliberately leaves these columns NotSet.
@@ -422,7 +431,7 @@ impl OAuthAppService {
         // represents the committed mutation, not a stale preflight snapshot.
         let current = OAuthApps::find_by_id(app_id)
             .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-            .one(&tx)
+            .one(tx)
             .await
             .map_err(|_| Error::InternalServerError)?
             .ok_or(Error::NotFound)?;
@@ -430,7 +439,6 @@ impl OAuthAppService {
         updated.is_active = current.is_active;
         updated.revoked_at = current.revoked_at;
         updated.last_used_at = current.last_used_at;
-        tx.commit().await.map_err(|_| Error::InternalServerError)?;
         Ok(updated)
     }
 
@@ -507,38 +515,47 @@ impl OAuthAppService {
             ));
         }
 
-        // A first-party app may start as a public PKCE client with no secret.
-        // The first rotation uses NULL as the compare-and-swap precondition.
-        let expected_hash = app.client_secret_hash.clone();
-        let new_secret = generate_client_secret()?;
-        let new_hash = auth::hash_password_async(new_secret.clone()).await?;
-        let updated_at = Utc::now();
+        let prepared = Self::prepare_secret(&app).await?;
+        let tx = db.begin().await?;
+        let locked = lock_oauth_app_for_mutation(&tx, app_id, tenant_id).await?.ok_or(Error::NotFound)?;
+        let result = Self::rotate_locked_secret(&tx, locked, prepared).await?;
+        tx.commit().await?;
+        Ok(result)
+    }
 
-        // Compare-and-swap the hash so concurrent rotations cannot both report
-        // success for a plaintext that did not become the stored credential.
-        if !replace_oauth_secret_if_current(
-            db,
-            tenant_id,
-            app_id,
-            expected_hash.as_deref(),
-            &new_hash,
-            updated_at.clone(),
-        )
-        .await?
-        {
-            return Err(Error::Conflict(
-                "OAuth client secret changed during rotation; retry the operation".to_string(),
-            ));
+    pub(crate) async fn prepare_secret(app: &oauth_apps::Model) -> Result<PreparedOAuthSecret> {
+        if !app.can_rotate_secret() {
+            return Err(Error::BadRequest("This OAuth app does not support client secret rotation".to_string()));
         }
-
-        let mut updated = app;
-        updated.client_secret_hash = Some(new_hash);
-        updated.updated_at = updated_at.into();
-
-        Ok(RotateSecretResult {
-            app: updated,
-            client_secret: new_secret,
+        let client_secret = generate_client_secret()?;
+        let secret_hash = auth::hash_password_async(client_secret.clone()).await?;
+        Ok(PreparedOAuthSecret {
+            app_id: app.id, tenant_id: app.tenant_id,
+            expected_hash: app.client_secret_hash.clone(), secret_hash, client_secret,
         })
+    }
+
+    pub(crate) async fn rotate_locked_secret(
+        tx: &DatabaseTransaction,
+        mut app: oauth_apps::Model,
+        prepared: PreparedOAuthSecret,
+    ) -> Result<RotateSecretResult> {
+        if app.id != prepared.app_id || app.tenant_id != prepared.tenant_id {
+            return Err(Error::Unauthorized("Prepared secret belongs to another OAuth app".to_string()));
+        }
+        if !app.can_rotate_secret() {
+            return Err(Error::BadRequest("This OAuth app does not support client secret rotation".to_string()));
+        }
+        let updated_at = Utc::now();
+        if !replace_oauth_secret_if_current(
+            tx, app.tenant_id, app.id, prepared.expected_hash.as_deref(),
+            &prepared.secret_hash, updated_at,
+        ).await? {
+            return Err(Error::Conflict("OAuth client secret changed during rotation; retry the operation".to_string()));
+        }
+        app.client_secret_hash = Some(prepared.secret_hash);
+        app.updated_at = updated_at.into();
+        Ok(RotateSecretResult { app, client_secret: prepared.client_secret })
     }
 
     /// Revoke an app — deactivate it and revoke tokens, consents, and pending codes.
@@ -560,6 +577,17 @@ impl OAuthAppService {
             .map_err(|_| Error::InternalServerError)?
             .ok_or(Error::NotFound)?;
 
+        let updated = Self::revoke_locked_app(&tx, app).await?;
+        tx.commit().await.map_err(|_| Error::InternalServerError)?;
+        Ok(updated)
+    }
+
+    pub(crate) async fn revoke_locked_app(
+        tx: &DatabaseTransaction,
+        app: oauth_apps::Model,
+    ) -> Result<oauth_apps::Model> {
+        let tenant_id = app.tenant_id;
+        let app_id = app.id;
         if !app.can_revoke() {
             return Err(Error::BadRequest(
                 "This OAuth app is managed by manifest/config and cannot be revoked manually"
@@ -579,7 +607,7 @@ impl OAuthAppService {
             .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now.clone()))
             .filter(oauth_apps::Column::Id.eq(app_id))
             .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-            .exec(&tx)
+            .exec(tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
         if deactivated.rows_affected != 1 {
@@ -588,14 +616,13 @@ impl OAuthAppService {
 
         let updated = OAuthApps::find_by_id(app_id)
             .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-            .one(&tx)
+            .one(tx)
             .await
             .map_err(|_| Error::InternalServerError)?
             .ok_or_else(|| Error::NotFound)?;
 
-        revoke_oauth_app_credentials(&tx, app_id, tenant_id, now).await?;
+        revoke_oauth_app_credentials(tx, app_id, tenant_id, now).await?;
 
-        tx.commit().await.map_err(|_| Error::InternalServerError)?;
 
         Ok(updated)
     }
@@ -1134,6 +1161,7 @@ impl OAuthAppService {
         user_id: Uuid,
         tenant_id: Uuid,
     ) -> Result<()> {
+        rustok_auth::application_clock::admit_now(db).await?;
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
         // Match token issuance's app-then-user lock order. Without these
         // fences an exchange can read active consent, then commit a new token
@@ -1146,17 +1174,28 @@ impl OAuthAppService {
             .await
             .map_err(|_| Error::InternalServerError)?
             .ok_or(Error::NotFound)?;
-        let consent = OAuthConsents::find_active_consent(&tx, app_id, user_id, tenant_id)
+        Self::revoke_locked_user_consent(&tx, app_id, user_id, tenant_id).await?;
+        tx.commit().await.map_err(|_| Error::InternalServerError)?;
+        Ok(())
+    }
+
+    pub(crate) async fn revoke_locked_user_consent(
+        tx: &DatabaseTransaction,
+        app_id: Uuid,
+        user_id: Uuid,
+        tenant_id: Uuid,
+    ) -> Result<()> {
+        let consent = OAuthConsents::find_active_consent(tx, app_id, user_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?;
 
-        let now = Utc::now();
+        let now = rustok_auth::application_clock::verified_now(tx).await?;
 
         if let Some(c) = consent {
             let mut active: OAuthConsentActiveModel = c.into();
             active.revoked_at = Set(Some(now.into()));
             active
-                .update(&tx)
+                .update(tx)
                 .await
                 .map_err(|_| Error::InternalServerError)?;
         }
@@ -1179,7 +1218,7 @@ impl OAuthAppService {
                     .add(oauth_tokens::Column::TenantId.eq(tenant_id))
                     .add(oauth_tokens::Column::RevokedAt.is_null()),
             )
-            .exec(&tx)
+            .exec(tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
 
@@ -1192,7 +1231,7 @@ impl OAuthAppService {
             .filter(crate::models::oauth_authorization_codes::Column::UserId.eq(user_id))
             .filter(crate::models::oauth_authorization_codes::Column::TenantId.eq(tenant_id))
             .filter(crate::models::oauth_authorization_codes::Column::UsedAt.is_null())
-            .exec(&tx)
+            .exec(tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
         tracing::debug!(
@@ -1203,7 +1242,6 @@ impl OAuthAppService {
             "Revoked OAuth token family after consent revocation"
         );
 
-        tx.commit().await.map_err(|_| Error::InternalServerError)?;
 
         Ok(())
     }
@@ -1897,7 +1935,7 @@ fn generate_client_secret() -> Result<String> {
 }
 
 async fn replace_oauth_secret_if_current(
-    db: &DatabaseConnection,
+    db: &impl ConnectionTrait,
     tenant_id: Uuid,
     app_id: Uuid,
     expected_hash: Option<&str>,

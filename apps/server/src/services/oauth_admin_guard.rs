@@ -2,24 +2,16 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::Utc;
 use rustok_api::{Permission, has_effective_permission};
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, AuthorizedOAuthAppRecord,
     CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,
-    UpdateOAuthAppCommand, generate_refresh_token,
+    UpdateOAuthAppCommand,
 };
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
-    QuerySelect, Set, TransactionTrait, sea_query::Expr,
-};
+use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::models::oauth_apps;
-
-use super::oauth_app::OAuthAppService;
 use super::rbac_request_scope::permissions_for;
-use crate::services::auth_admin_mutation_provider::build_oauth_app_record;
 
 const MAX_OAUTH_GUARD_LIST_LIMIT: u64 = 100;
 
@@ -27,33 +19,14 @@ fn clamp_oauth_guard_list_limit(limit: u64) -> u64 {
     limit.clamp(1, MAX_OAUTH_GUARD_LIST_LIMIT)
 }
 
-fn internal_oauth_guard_error<E>(error: E) -> AuthAdminMutationError
-where
-    E: std::fmt::Display,
-{
-    tracing::error!(
-        error = %error,
-        "OAuth administration guard operation failed"
-    );
-    AuthAdminMutationError::Internal("OAuth administration guard operation failed".to_string())
-}
-
-/// A secret prepared without holding a database transaction. Keep it private
-/// and never derive Debug: the plaintext must not enter diagnostics.
-struct PreparedOAuthSecretRotation {
-    client_secret: String,
-    secret_hash: String,
-    prior_secret_hash: Option<String>,
-}
-
+/// Transport preflight only: all mutations go through the owner port.
 pub struct GuardedOAuthAdminProvider {
-    db: DatabaseConnection,
     inner: Arc<dyn OAuthAdminPort>,
 }
 
 impl GuardedOAuthAdminProvider {
-    pub fn new(db: DatabaseConnection, inner: Arc<dyn OAuthAdminPort>) -> Self {
-        Self { db, inner }
+    pub fn new(_db: DatabaseConnection, inner: Arc<dyn OAuthAdminPort>) -> Self {
+        Self { inner }
     }
 
     fn request_permissions(
@@ -101,140 +74,6 @@ impl GuardedOAuthAdminProvider {
         }
         Ok(())
     }
-
-    /// Preflight is intentionally lock-free: generating and Argon2-hashing a
-    /// new client secret is expensive and must never hold an app mutation lock.
-    /// The commit phase repeats all security checks against the locked row.
-    async fn prepare_oauth_secret_rotation(
-        &self,
-        tenant_id: Uuid,
-        app_id: Uuid,
-        authority: &[Permission],
-    ) -> Result<PreparedOAuthSecretRotation, AuthAdminMutationError> {
-        let app = oauth_apps::Entity::find_by_id(app_id)
-            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await
-            .map_err(internal_oauth_guard_error)?
-            .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
-        self.validate_permission_strings(authority, &app.granted_permissions_list())?;
-        if !app.can_rotate_secret() {
-            return Err(AuthAdminMutationError::Validation(
-                "This OAuth app does not support client secret rotation".to_string(),
-            ));
-        }
-
-        let first_token = generate_refresh_token().map_err(internal_oauth_guard_error)?;
-        let second_token = generate_refresh_token().map_err(internal_oauth_guard_error)?;
-        let client_secret = format!("sk_live_{first_token}{second_token}");
-        let secret_hash = crate::auth::hash_password_async(client_secret.clone())
-            .await
-            .map_err(internal_oauth_guard_error)?;
-        Ok(PreparedOAuthSecretRotation {
-            client_secret,
-            secret_hash,
-            prior_secret_hash: app.client_secret_hash,
-        })
-    }
-
-    async fn commit_prepared_oauth_secret_rotation(
-        &self,
-        context: &AuthAdminMutationContext,
-        app_id: Uuid,
-        authority: &[Permission],
-        prepared: PreparedOAuthSecretRotation,
-    ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
-        let tx = self.db.begin().await.map_err(internal_oauth_guard_error)?;
-        let app = lock_oauth_app(&tx, context.tenant_id, app_id).await?;
-        self.validate_permission_strings(authority, &app.granted_permissions_list())?;
-        if !app.can_rotate_secret() {
-            return Err(AuthAdminMutationError::Validation(
-                "This OAuth app does not support client secret rotation".to_string(),
-            ));
-        }
-        // If a second rotation committed while Argon2 was running, return a
-        // retryable conflict instead of returning a secret that has already
-        // been superseded by the other successful request.
-        if app.client_secret_hash != prepared.prior_secret_hash {
-            return Err(AuthAdminMutationError::Conflict(
-                "OAuth client secret changed during rotation; retry".to_string(),
-            ));
-        }
-
-        let mut active: oauth_apps::ActiveModel = app.into();
-        active.client_secret_hash = Set(Some(prepared.secret_hash));
-        active.updated_at = Set(Utc::now().into());
-        let updated_app = active
-            .update(&tx)
-            .await
-            .map_err(internal_oauth_guard_error)?;
-        let response_record = build_oauth_app_record(&tx, context, updated_app).await?;
-        tx.commit().await.map_err(internal_oauth_guard_error)?;
-
-        Ok(OAuthAppSecretResult {
-            app: response_record,
-            client_secret: prepared.client_secret,
-        })
-    }
-
-    async fn rotate_secret_transactionally(
-        &self,
-        context: &AuthAdminMutationContext,
-        app_id: Uuid,
-        authority: &[Permission],
-    ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
-        let prepared = self
-            .prepare_oauth_secret_rotation(context.tenant_id, app_id, authority)
-            .await?;
-        self.commit_prepared_oauth_secret_rotation(context, app_id, authority, prepared)
-            .await
-    }
-}
-
-async fn lock_oauth_app<C>(
-    db: &C,
-    tenant_id: Uuid,
-    app_id: Uuid,
-) -> Result<oauth_apps::Model, AuthAdminMutationError>
-where
-    C: ConnectionTrait,
-{
-    let query = || {
-        oauth_apps::Entity::find_by_id(app_id).filter(oauth_apps::Column::TenantId.eq(tenant_id))
-    };
-    let app = match db.get_database_backend() {
-        DbBackend::Postgres | DbBackend::MySql => query()
-            .lock_exclusive()
-            .one(db)
-            .await
-            .map_err(internal_oauth_guard_error)?,
-        DbBackend::Sqlite => {
-            // app_id and tenant_id are known. Reserve SQLite's writer before
-            // reading the app so a concurrent token issue/revoke cannot race a
-            // deferred read-to-write lock upgrade.
-            let result = oauth_apps::Entity::update_many()
-                .col_expr(
-                    oauth_apps::Column::UpdatedAt,
-                    Expr::col(oauth_apps::Column::UpdatedAt),
-                )
-                .filter(oauth_apps::Column::Id.eq(app_id))
-                .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-                .exec(db)
-                .await
-                .map_err(internal_oauth_guard_error)?;
-            if result.rows_affected != 1 {
-                return Err(AuthAdminMutationError::NotFound("oauth app".to_string()));
-            }
-            query().one(db).await.map_err(internal_oauth_guard_error)?
-        }
-        _ => {
-            return Err(AuthAdminMutationError::Internal(
-                "unsupported SeaORM database backend".to_string(),
-            ));
-        }
-    };
-
-    app.ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))
 }
 
 fn require_direct_user_consent(
@@ -326,9 +165,8 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         context: &AuthAdminMutationContext,
         app_id: Uuid,
     ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
-        let authority = self.require_settings_manage(context)?;
-        self.rotate_secret_transactionally(context, app_id, &authority)
-            .await
+        self.require_settings_manage(context)?;
+        self.inner.rotate_oauth_app_secret(context, app_id).await
     }
 
     async fn revoke_oauth_app(
@@ -349,15 +187,9 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         // Consent is the user's own decision, not authority delegated to an
         // OAuth client. Enforce this at the outer provider boundary.
         require_direct_user_consent(context)?;
-        OAuthAppService::grant_consent_strict(
-            &self.db,
-            app_id,
-            context.actor_id,
-            context.tenant_id,
-            scopes,
-        )
-        .await
-        .map_err(map_consent_error)
+        self.inner
+            .grant_oauth_app_consent(context, app_id, scopes)
+            .await
     }
 
     async fn revoke_oauth_app_consent(
@@ -370,22 +202,13 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
     }
 }
 
-fn map_consent_error(error: crate::error::Error) -> AuthAdminMutationError {
-    match error {
-        crate::error::Error::NotFound => AuthAdminMutationError::NotFound("oauth app".to_string()),
-        crate::error::Error::BadRequest(message) => AuthAdminMutationError::Validation(message),
-        crate::error::Error::Unauthorized(_) => AuthAdminMutationError::Unauthorized,
-        other => internal_oauth_guard_error(other),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
     use super::{
-        GuardedOAuthAdminProvider, clamp_oauth_guard_list_limit, internal_oauth_guard_error,
-        require_direct_user_consent, validate_grant_dependencies,
+        GuardedOAuthAdminProvider, clamp_oauth_guard_list_limit, require_direct_user_consent,
+        validate_grant_dependencies,
     };
     use crate::models::oauth_apps::scope_runtime_copy_locale;
     use crate::models::{oauth_apps, tenants};
@@ -413,20 +236,23 @@ mod tests {
         .insert(&db)
         .await
         .expect("insert tenant");
-        let created = OAuthAppService::create_app(
-            &db,
-            tenant.id,
-            CreateOAuthAppInput {
-                name: "Consent target".to_string(),
-                slug: "consent-target".to_string(),
-                description: None,
-                app_type: "third_party".to_string(),
-                icon_url: None,
-                redirect_uris: vec!["https://client.example/callback".to_string()],
-                scopes: vec!["profile".to_string()],
-                grant_types: vec!["authorization_code".to_string()],
-                granted_permissions: Vec::new(),
-            },
+        let created = scope_runtime_copy_locale(
+            "en".to_string(),
+            OAuthAppService::create_app(
+                &db,
+                tenant.id,
+                CreateOAuthAppInput {
+                    name: "Consent target".to_string(),
+                    slug: "consent-target".to_string(),
+                    description: None,
+                    app_type: "third_party".to_string(),
+                    icon_url: None,
+                    redirect_uris: vec!["https://client.example/callback".to_string()],
+                    scopes: vec!["profile".to_string()],
+                    grant_types: vec!["authorization_code".to_string()],
+                    granted_permissions: Vec::new(),
+                },
+            ),
         )
         .await
         .expect("create OAuth app");
@@ -487,7 +313,22 @@ mod tests {
         .insert(&db)
         .await
         .expect("insert tenant");
-        let actor_id = Uuid::new_v4();
+        let mut actor = crate::models::users::ActiveModel::new(
+            tenant.id,
+            "oauth-rotation-admin@example.test",
+            "hash",
+        );
+        actor.status = sea_orm::Set(rustok_core::UserStatus::Active);
+        let actor = actor.insert(&db).await.unwrap();
+        let actor_id = actor.id;
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db,
+            tenant.id,
+            actor_id,
+            UserRole::SuperAdmin,
+        )
+        .await
+        .unwrap();
         let context = AuthAdminMutationContext {
             actor_id,
             tenant_id: tenant.id,
@@ -667,7 +508,22 @@ mod tests {
         .await
         .expect("create OAuth app");
         let app_id = created.app.id;
-        let actor_id = Uuid::new_v4();
+        let mut actor = crate::models::users::ActiveModel::new(
+            tenant.id,
+            "oauth-rotation-admin@example.test",
+            "hash",
+        );
+        actor.status = sea_orm::Set(rustok_core::UserStatus::Active);
+        let actor = actor.insert(&db).await.unwrap();
+        let actor_id = actor.id;
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db,
+            tenant.id,
+            actor_id,
+            UserRole::SuperAdmin,
+        )
+        .await
+        .unwrap();
         let context = AuthAdminMutationContext {
             actor_id,
             tenant_id: tenant.id,
@@ -675,21 +531,17 @@ mod tests {
             locale: Some("en".to_string()),
             principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
         };
-        let guard = GuardedOAuthAdminProvider::new(
-            db.clone(),
-            Arc::new(ServerAuthAdminMutationProvider::new(
-                &ServerRuntimeContext::new(db.clone(), Default::default()),
-                crate::auth::test_auth_config(
-                    "test-secret-key-for-oauth-rotation-race-at-least-32-bytes".to_string(),
-                ),
-            )),
+        let provider = ServerAuthAdminMutationProvider::new(
+            &ServerRuntimeContext::new(db.clone(), Default::default()),
+            crate::auth::test_auth_config(
+                "test-secret-key-for-oauth-rotation-race-at-least-32-bytes".to_string(),
+            ),
         );
         let authority = vec![Permission::SETTINGS_MANAGE, Permission::MODULES_MANAGE];
 
         // Password hashing has completed without holding a transaction. The
         // app can be updated independently before the commit phase starts.
-        let prepared = guard
-            .prepare_oauth_secret_rotation(tenant.id, app_id, &authority)
+        let prepared = OAuthAppService::prepare_secret(&created.app)
             .await
             .expect("prepare secret outside a SQL transaction");
         let competing_hash = "secret-hash-set-by-another-rotation".to_string();
@@ -702,9 +554,12 @@ mod tests {
         .await
         .expect("concurrent secret update must not be blocked by preparation");
 
-        let error = match guard
-            .commit_prepared_oauth_secret_rotation(&context, app_id, &authority, prepared)
-            .await
+        let scope = RbacRequestScope::new(tenant.id, actor_id, authority, UserRole::SuperAdmin);
+        let error = match with_rbac_request_scope(
+            Some(scope),
+            provider.commit_prepared_oauth_secret_rotation(&context, app_id, prepared),
+        )
+        .await
         {
             Ok(_) => panic!("stale prepared secret must never overwrite new secret"),
             Err(error) => error,
@@ -769,16 +624,6 @@ mod tests {
         assert_eq!(clamp_oauth_guard_list_limit(50), 50);
         assert_eq!(clamp_oauth_guard_list_limit(100), 100);
         assert_eq!(clamp_oauth_guard_list_limit(u64::MAX), 100);
-    }
-
-    #[test]
-    fn internal_guard_errors_are_redacted() {
-        let error = internal_oauth_guard_error("database secret leaked");
-        assert!(matches!(
-            error,
-            AuthAdminMutationError::Internal(message)
-                if message == "OAuth administration guard operation failed"
-        ));
     }
 
     #[test]

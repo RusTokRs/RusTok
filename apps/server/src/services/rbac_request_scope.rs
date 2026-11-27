@@ -22,14 +22,14 @@ pub(crate) struct RequestCredentialAuthority {
     pub(crate) session_id: Uuid,
     pub(crate) expires_at: DateTime<Utc>,
     pub(crate) recovery_revision: i64,
-    pub(crate) delegated: Option<DelegatedCredentialEvidence>,
+    pub(crate) oauth: Option<OAuthCredentialEvidence>,
 }
 
 /// Identity of the exact durable access registration admitted by the JWT
 /// extractor. Never accept these facts from a command payload or rederive
 /// them from a later consent grant.
 #[derive(Clone, PartialEq, Eq)]
-pub(crate) struct DelegatedCredentialEvidence {
+pub(crate) struct OAuthCredentialEvidence {
     pub(crate) registration_id: Uuid,
     pub(crate) app_id: Uuid,
     pub(crate) client_id: Uuid,
@@ -39,9 +39,9 @@ pub(crate) struct DelegatedCredentialEvidence {
     pub(crate) scopes: Vec<String>,
 }
 
-impl std::fmt::Debug for DelegatedCredentialEvidence {
+impl std::fmt::Debug for OAuthCredentialEvidence {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DelegatedCredentialEvidence")
+        f.debug_struct("OAuthCredentialEvidence")
             .field("registration_id", &self.registration_id)
             .field("app_id", &self.app_id)
             .field("client_id", &self.client_id)
@@ -51,7 +51,7 @@ impl std::fmt::Debug for DelegatedCredentialEvidence {
     }
 }
 
-impl DelegatedCredentialEvidence {
+impl OAuthCredentialEvidence {
     pub(crate) fn from_registration(
         row: &crate::models::oauth_tokens::Model,
         client_id: Uuid,
@@ -104,7 +104,7 @@ impl RbacRequestScope {
             session_id: current.session_id,
             expires_at: deadline.min(current.access_token_expires_at),
             recovery_revision: current.user.recovery_revision,
-            delegated: current.delegated_credential.clone(),
+            oauth: current.oauth_credential.clone(),
         });
         scope
     }
@@ -366,7 +366,7 @@ mod tests {
             session_id: Uuid::new_v4(),
             expires_at: Utc::now(),
             recovery_revision: 7,
-            delegated: None,
+            oauth: None,
         };
         scope.credential = Some(credential.clone());
         with_rbac_request_scope(Some(scope), async {

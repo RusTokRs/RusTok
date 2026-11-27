@@ -641,7 +641,21 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   with the extractor's canonical scope checks. GraphQL HTTP and WebSocket
   initialization no longer replace credential evidence with a grant-only scope.
   Re-filter current role grants through the original OAuth scopes.
+- OAuth administration source slice: all six admin mutations share the
+  provider authority decision and caller-owned OAuth write transaction.
+  The HTTP/WS scope retains exact service access registration evidence as
+  well as delegated evidence. Tenant FK protection precedes UUID-ordered
+  issuer/target apps, then actor/session or access registration, module
+  policy and role grants. Require original and live settings/delegation
+  ceilings for app administration, exact direct session for personal consent,
+  and the earliest signed/durable credential deadline before commit.
+  Expensive secret hashing remains outside the transaction, with prepared
+  rotation bound to app/tenant and a locked CAS. The outer guard no longer
+  writes independently. Regression scenarios authored for revoked direct
+  sessions and service registrations.
 - Pending: extend the owner mutation context to all transports, apply
-  transaction authority to OAuth app/consent and RBAC role-definition writes,
-  account for artifact permissions and prove cross-module lock ordering.
-  Compile and PostgreSQL contention/revocation tests remain unrun.
+  transaction authority to RBAC role-definition writes, account for artifact
+  permissions and prove cross-module lock ordering (including tenant active
+  state and all bulk credential revocation paths). Grant-only internal user
+  scopes remain an explicit compatibility boundary. Compile and PostgreSQL
+  contention/revocation tests remain unrun.

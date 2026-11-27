@@ -42,7 +42,8 @@ pub struct CurrentUser {
     pub grant_type: String,
     /// Effective access deadline: the earlier of the signed JWT and durable credential.
     pub access_token_expires_at: chrono::DateTime<chrono::Utc>,
-    pub(crate) delegated_credential: Option<crate::services::rbac_request_scope::DelegatedCredentialEvidence>,
+    pub(crate) oauth_credential:
+        Option<crate::services::rbac_request_scope::OAuthCredentialEvidence>,
 }
 
 impl CurrentUser {
@@ -404,8 +405,15 @@ async fn resolve_service_token_permissions(
     token_scopes: &[String],
     access_token: &str,
     jti: Option<uuid::Uuid>,
-) -> Result<(Vec<Permission>, UserRole, chrono::DateTime<chrono::Utc>), (StatusCode, &'static str)>
-{
+) -> Result<
+    (
+        Vec<Permission>,
+        UserRole,
+        chrono::DateTime<chrono::Utc>,
+        crate::services::rbac_request_scope::OAuthCredentialEvidence,
+    ),
+    (StatusCode, &'static str),
+> {
     let db = ctx.db();
     let app = resolve_active_oauth_app(
         db,
@@ -460,6 +468,11 @@ async fn resolve_service_token_permissions(
         effective_permissions,
         inferred_role,
         access_row.expires_at.with_timezone(&chrono::Utc),
+        crate::services::rbac_request_scope::OAuthCredentialEvidence::from_registration(
+            &access_row,
+            client_id,
+            token_scopes,
+        ),
     ))
 }
 
@@ -540,7 +553,7 @@ pub async fn resolve_current_user_from_access_token(
 
     let principal_kind = classify_access_token_claims(&claims)?;
     let mut delegated_credential_issued_at = None;
-    let mut delegated_credential = None;
+    let mut oauth_credential = None;
     let mut static_authority_revision = None;
     let mut durable_credential_expires_at = access_token_expires_at;
 
@@ -613,9 +626,13 @@ pub async fn resolve_current_user_from_access_token(
         // password change and token issuance.
         delegated_credential_issued_at = Some(access_row.created_at.with_timezone(&chrono::Utc));
         durable_credential_expires_at = access_row.expires_at.with_timezone(&chrono::Utc);
-        delegated_credential = Some(crate::services::rbac_request_scope::DelegatedCredentialEvidence::from_registration(
-            &access_row, client_id, &claims.scopes,
-        ));
+        oauth_credential = Some(
+            crate::services::rbac_request_scope::OAuthCredentialEvidence::from_registration(
+                &access_row,
+                client_id,
+                &claims.scopes,
+            ),
+        );
         validate_active_user_consent(
             db,
             &app,
@@ -720,7 +737,7 @@ pub async fn resolve_current_user_from_access_token(
                 StatusCode::UNAUTHORIZED,
                 "OAuth service token is missing client_id",
             ))?;
-            let (permissions, inferred_role, registration_expires_at) =
+            let (permissions, inferred_role, registration_expires_at, registration) =
                 resolve_service_token_permissions(
                     ctx.runtime_ctx(),
                     tenant_id,
@@ -733,6 +750,7 @@ pub async fn resolve_current_user_from_access_token(
                 )
                 .await?;
             durable_credential_expires_at = registration_expires_at;
+            oauth_credential = Some(registration);
 
             (
                 users::Model::default_service_user(claims.sub, tenant_id),
@@ -862,7 +880,7 @@ pub async fn resolve_current_user_from_access_token(
         scopes: claims.scopes,
         grant_type: claims.grant_type,
         access_token_expires_at: access_token_expires_at.min(durable_credential_expires_at),
-        delegated_credential,
+        oauth_credential,
     })
 }
 
@@ -899,7 +917,7 @@ async fn revalidate_admitted_authority(
     let database_error = (StatusCode::INTERNAL_SERVER_ERROR, "Database error");
     if principal_kind == AuthPrincipalKind::Service {
         let client_id = claims.client_id.ok_or(changed)?;
-        let (current_permissions, current_role, current_deadline) =
+        let (current_permissions, current_role, current_deadline, _) =
             resolve_service_token_permissions(
                 ctx.runtime_ctx(),
                 tenant_id,
