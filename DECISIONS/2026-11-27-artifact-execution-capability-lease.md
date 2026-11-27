@@ -112,10 +112,19 @@ Migration 000096 introduces a permanent monotonic witness for each registry
 (slug, version), including release absence. Row insert, delete, status change
 and checksum change advance it atomically; unchanged metadata, rejected writes,
 transaction rollback and idempotent replay do not. Publication, yank and unyank
-take the platform activation fence before release/request row locks. The database
-mutation trigger also takes that fence. Direct SQL maintenance must use the
-same order; unrestricted administrative DDL, TRUNCATE and tampering with the
-witness are outside this runtime contract. Existing active/yanked/unlisted
+take the platform activation fence before release/request row locks. Migration 000098 splits PostgreSQL database admission from witness mutation.
+The canonical platform fence acquires a transaction advisory gate keyed by
+`hashtextextended('rustok:module-artifact-platform:' || slug, 0)` before its
+permanent activation row. The BEFORE ROW registry guard tries that same gate
+without waiting, then locks an existing activation row NOWAIT or creates it
+under the gate. UPDATE/DELETE can already hold a release row at this point:
+contention aborts the statement with SQLSTATE 55P03 rather than inverting the
+blocking order. The AFTER trigger only advances the witness. Identity changes
+and TRUNCATE are rejected. SQLite retains its single-writer path. Direct SQL
+maintenance spanning multiple slugs must acquire the same gates and activation
+rows up front in sorted slug order, and retry a rejected operation only from
+a new transaction. Arbitrary prelocked rows, disabled triggers, privileged DDL
+and direct witness/fence tampering are outside this runtime contract. Existing active/yanked/unlisted
 eligibility is retained; unavailable status denies admission. A fresh lease
 may admit a yanked release but an earlier lease is invalidated by the mutation.
 The witness is checked for the exact root and every artifact in the serving
@@ -225,11 +234,15 @@ is conservative and can increase contention for large topologies; the
 existing bounded topology size limits the set. No schema change is needed.
 
 This is still a partial cross-owner order, not an exhaustive proof.
-The registry release AFTER trigger can acquire a platform slug fence after
-a release row lock when administrative SQL bypasses canonical publication,
-yank and unyank writers. This entry-order hazard is not fixed by the
-reconciliation changes. Other implicit FK and trigger locks, owner receipts,
+The registry release AFTER trigger no longer acquires a platform slug fence
+after release row locks. The PostgreSQL BEFORE guard and matching canonical
+advisory gate reject late competing registry DML, including first insertion.
+This closes that particular blocking edge in source, not arbitrary multi-row
+or cross-owner deadlocks. Other implicit FK and trigger locks, owner receipts,
 security/RBAC generations, and external effects need separate analysis.
+Migration 000098 preserves existing witness revisions; stop old writers and
+drain leases before applying it and deploying the matching gate users.
+PostgreSQL contention regressions are authored but not executed.
 Coordinate reconciliation and installation writer rollout; do not infer
 production deadlock freedom from the authored tests.
 

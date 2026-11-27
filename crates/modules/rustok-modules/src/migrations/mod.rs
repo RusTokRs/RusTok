@@ -92,6 +92,7 @@ pub(crate) mod m20261127_000094_artifact_deployment_readiness;
 mod m20261127_000095_artifact_selection_generation;
 pub(crate) mod m20261127_000096_registry_release_authority;
 pub(crate) mod m20261127_000097_operational_maintenance_authority;
+mod m20261127_000098_registry_platform_lock_order;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -191,6 +192,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261127_000095_artifact_selection_generation::Migration),
         Box::new(m20261127_000096_registry_release_authority::Migration),
         Box::new(m20261127_000097_operational_maintenance_authority::Migration),
+        Box::new(m20261127_000098_registry_platform_lock_order::Migration),
     ]
 }
 

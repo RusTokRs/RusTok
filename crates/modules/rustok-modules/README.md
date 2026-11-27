@@ -187,6 +187,10 @@ production readiness. The documented implementation and operational gaps include
   are also fenced, including implicit clear and quarantine/clear ABA.
   Independent monotonic registry release authority fences publication, yank,
   unyank and availability ABA for the root and entire serving artifact closure.
+  Migration 000098 moves PostgreSQL registry fence admission to a BEFORE guard
+  with the canonical advisory gate and nonblocking late acquisition; the
+  AFTER trigger only advances the witness. Coordinated writer cutover and
+  PostgreSQL contention verification remain required.
   Artifact scope selection generations fence lifecycle ABA on the exact
   serving closure. Migration 000095 requires coordinated writer/reader
   cutover. Mixed native/artifact serving closures also fence tenant lifecycle

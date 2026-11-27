@@ -1159,7 +1159,15 @@ before the platform lock and hold both through commit; on a domain conflict
 they roll back, release the aggregate claim, and record a replayable failure.
 PostgreSQL transactions use READ COMMITTED so post-lock checks see commits made
 while waiting. The platform lock serializes all tenants of a slug, a deliberate
-concurrency cost.
+concurrency cost. On PostgreSQL, migration 000098 requires the transaction
+advisory gate before the permanent platform activation row. The registry
+BEFORE ROW guard tries the same gate and uses NOWAIT on an existing row;
+a competing late writer fails with SQLSTATE 55P03 and must roll back.
+The AFTER trigger advances only the exact registry witness. Multi-slug SQL
+maintenance must pre-acquire gates and rows in sorted slug order, and TRUNCATE
+of releases is rejected. No witness changes on metadata-only updates,
+failed writes or rollback. Drain old writers/leases before the coordinated
+migration and application rollout. PostgreSQL regressions are unrun.
 
 Lifecycle toggle and post-hook recovery admission now take that same platform
 lock while checking checkpoints and acquiring the durable journal aggregate

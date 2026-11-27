@@ -7333,6 +7333,20 @@ pub(crate) async fn acquire_artifact_activation_lock<C: ConnectionTrait>(
         ModuleInstallationScope::Platform => ("platform", "platform".to_string()),
         ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
     };
+    // PostgreSQL registry row triggers must never wait for a platform
+    // fence after taking a release row lock. Take the matching transaction
+    // advisory gate before even the first insertion of the permanent row.
+    // Keep the key expression in sync with migration 000098.
+    if backend == SupportedBackend::Postgres && scope_kind == "platform" {
+        connection
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                "SELECT pg_advisory_xact_lock(hashtextextended('rustok:module-artifact-platform:' || CAST($1 AS TEXT), 0))",
+                vec![slug.into()],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    }
     let values = match backend {
         SupportedBackend::Postgres => "$1,$2,$3",
         SupportedBackend::Sqlite => "?1,?2,?3",
