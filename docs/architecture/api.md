@@ -379,6 +379,12 @@ Verification Evidence for artifact export and a link to the diff.
   tables, but is enabled staged: first platform-control/tenant-module pilot
   after request-scoped tenant DB session context becomes available.
 - Broad RLS big-bang migration is prohibited without a separate ADR and rollback plan.
+- Session credential issuance is additionally serialized with tenant deactivation:
+  registration, login and refresh lock the active tenant row before user/session
+  locks and hold it through commit. A refresh request that loses this fence may
+  still commit stale-lineage revocation after re-reading locked state, but it
+  cannot issue a replacement credential. See the
+  [tenant admission fence ADR](../../DECISIONS/2026-11-28-auth-session-tenant-admission.md).
 
 ## What Not To Do
 
