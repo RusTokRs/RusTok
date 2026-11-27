@@ -813,4 +813,5 @@ parity and production deployment remain unverified. The full Bash CI script,
 workspace suites and long E2E were not executed in this review. Temporary
 generated fixtures are kept outside the source checkout and removed after use.
 `origin/main` was refreshed again before local integration and remains at the
-recorded base SHA. The user requested handoff
+recorded base SHA. The user requested handoff to local `main` on 2026-11-03;
+subsequent scaffolding work continues there.

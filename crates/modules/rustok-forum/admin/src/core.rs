@@ -77,7 +77,6 @@ pub fn forum_admin_sidebar_copy_labels(
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Which module-owned workspace the Forum admin root renders for a subpath.
 ///
 /// The module declares `topics`, `categories` and the topic action routes
