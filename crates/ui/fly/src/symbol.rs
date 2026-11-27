@@ -2240,6 +2240,66 @@ mod tests {
     }
 
     #[test]
+    fn symbol_assets_do_not_claim_dangling_ids_from_other_definitions() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [
+                {
+                    "id": "gallery",
+                    "assets": [{ "id": "shared", "src": "/media/gallery.webp" }],
+                    "components": [{
+                        "id": "gallery-image",
+                        "type": "image",
+                        "attributes": {
+                            "src": "/media/gallery.webp",
+                            "data-fly-asset-id": "shared"
+                        }
+                    }]
+                },
+                {
+                    "id": "legacy",
+                    "components": [{
+                        "id": "legacy-image",
+                        "type": "image",
+                        "attributes": { "data-fly-asset-id": "shared" }
+                    }]
+                }
+            ],
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [
+                        { "id": "gallery-slot", "type": "symbol", "symbolId": "gallery", "components": [] },
+                        { "id": "legacy-slot", "type": "symbol", "symbolId": "legacy", "components": [] }
+                    ]
+                }
+            }]
+        }))
+        .expect("document");
+
+        let resolved = resolve_symbol_instances(&document).expect("resolve");
+        let gallery = resolved.component("gallery-slot").expect("gallery");
+        let gallery_asset_id = gallery.children()[0].as_object().expect("image")
+            .attributes["data-fly-asset-id"].as_str().expect("asset id");
+        let legacy = resolved.component("legacy-slot").expect("legacy");
+        let legacy_asset_id = legacy.children()[0].as_object().expect("image")
+            .attributes["data-fly-asset-id"].as_str().expect("asset id");
+
+        assert_ne!(gallery_asset_id, "shared");
+        assert_eq!(legacy_asset_id, "shared");
+        assert!(
+            resolved.project().assets.iter()
+                .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
+                .any(|asset| asset.id == gallery_asset_id && asset.source == "/media/gallery.webp")
+        );
+        assert!(
+            !resolved.project().assets.iter()
+                .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
+                .any(|asset| asset.id == "shared")
+        );
+    }
+
+    #[test]
     fn symbol_component_limit_counts_opaque_children() {
         let opaque_children = (0..MAX_SYMBOL_COMPONENTS)
             .map(|index| json!({ "id": format!("opaque-{index}") }))
