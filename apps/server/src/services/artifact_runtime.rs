@@ -507,18 +507,17 @@ fn build_capability_resolver(
     );
     let secret_policy = control_plane.artifact_secret_handle_policy();
     let mut data = control_plane.artifact_data_capability();
+    let mut object_data = control_plane.artifact_data_object_capability(storage.clone());
     let mut events = control_plane.artifact_events_capability();
     if let Some(authorizer) = effect_authorizer {
         data = data.with_sql_effect_authorizer(Arc::clone(&authorizer));
+        object_data = object_data.with_sql_effect_authorizer(Arc::clone(&authorizer));
         events = events.with_sql_effect_authorizer(authorizer);
     }
     ArtifactCapabilityBrokerResolverRouter::new()
         .route(data_capability, Arc::new(data))
         .and_then(|router| {
-            router.route(
-                object_data_capability,
-                Arc::new(control_plane.artifact_data_object_capability(storage.clone())),
-            )
+            router.route(object_data_capability, Arc::new(object_data))
         })
         .and_then(|router| {
             router.route(
