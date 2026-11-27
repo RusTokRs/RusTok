@@ -2248,10 +2248,15 @@ through commit, and the direct credential deadline plus execution lease are
 checked again immediately before commit. Structured-data reads/writes and
 event-outbox publication use this fence; delete-receipt replay is fenced too.
 
-This is not yet a universal effect transaction: full effective-policy revision,
-dependency closure/security, registry mutation state and deployment readiness
-are not all held through commit, and HTTP, MCP, secrets and object-storage
-capabilities do not share this SQL commit fence. PostgreSQL cross-owner lock
+This is not yet a universal effect transaction. The server-composed
+structured-data and event-outbox SQL paths now hold dependency/co-requisite
+closure, security revisions, registry release authority, selection generations,
+tenant lifecycle/override intent, active composition, deployment readiness and
+captured HTTP channel generation through commit. Full effective-policy
+revision, operational maintenance authority, deferred/background channel
+context and continuous worker/node liveness remain unfenced. HTTP, MCP, secrets
+and object-storage effects do not share the SQL commit fence and still rely on
+per-call admission plus owner-specific checks. PostgreSQL cross-owner lock
 ordering/contention and deployed worker/runtime evidence remain pending. See
 the [execution capability lease ADR](../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md)
 and the server [Known Limitations / Pending Implementation](../README.md#known-limitations--pending-implementation).

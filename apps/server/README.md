@@ -267,7 +267,23 @@ matching BFFs and revoke pre-cutover sessions; bare cookies are rejected.
   response cannot be recovered from the old token. Durable incident/retry
   evidence and two-replica failure-injection verification remain pending.
 
-- Artifact execution leases now bind each host execution to its exact installation, sandbox grant constraints and direct request scope. Structured-data and event-outbox SQL effects recheck the current exact installation/grant and lock direct Auth/RBAC authority through transaction commit. The serving lease also binds exact dependency/co-requisite closure, security, scope generations, tenant lifecycle/override and active composition revision/hash. SQL admission takes the canonical composition shared row lock after closure locks; composition replacement/restore does not renew older leases. The serving closure also binds the converged deployment state revision, head, owner readiness digest and exact node assignment observation revisions. SQL admission shares the reconciliation state row lock with ledger writers after selection fences. Full effective-policy revision, contextual channel/maintenance authority, registry mutation state and continuous node liveness remain unfenced; non-SQL effects (HTTP, MCP, secrets and object storage) still rely on per-call host admission and owner-specific checks rather than the same commit fence. PostgreSQL cross-owner lock ordering/contention and deployed worker/runtime/cancellation evidence remain unverified. Do not treat the in-memory lease as durable replay authority or automatically retry ambiguous effects. **Owners:** server host, `rustok-modules`, Auth/RBAC and individual capability owners. **Removal condition:** add owner-side fences for the remaining policy/readiness and non-SQL effect boundaries, then pass PostgreSQL contention and both in-process/worker runtime regressions. See the [execution capability lease ADR](../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md); source regressions remain unrun at the user's request.
+- Artifact execution leases now bind each host execution to its exact installation, sandbox grant constraints and direct request scope. Structured-data and event-outbox SQL effects recheck the current exact installation/grant and lock direct Auth/RBAC authority through transaction commit. The serving lease also binds exact dependency/co-requisite closure, security, scope generations, tenant lifecycle/override and active composition revision/hash. SQL admission takes the canonical composition shared row lock after closure locks; composition replacement/restore does not renew older leases. The serving closure also binds the converged deployment state revision, head, owner readiness digest and exact node assignment observation revisions. SQL admission shares the reconciliation state row lock with ledger writers after selection fences. The server-composed structured-data and event-outbox SQL paths now hold the
+exact dependency/co-requisite closure, security revisions, registry release
+authority, selection generations, tenant lifecycle/override intent, active
+composition, deployment readiness and captured HTTP channel generation
+through commit. The remaining gaps are full effective-policy revision,
+operational maintenance authority, deferred/background channel context and
+continuous worker/node liveness. Non-SQL effects (HTTP, MCP, secrets and object
+storage) still rely on per-call host admission and owner-specific checks rather
+than the same commit fence. PostgreSQL cross-owner lock ordering/contention and
+deployed worker/runtime/cancellation evidence remain unverified. Do not treat
+the in-memory lease as durable replay authority or automatically retry
+ambiguous effects. **Owners:** server host, `rustok-modules`, Auth/RBAC and
+individual capability owners. **Removal condition:** add owner-side fences
+for the remaining effective-policy/maintenance and non-SQL effect boundaries,
+then pass PostgreSQL contention and both in-process/worker runtime
+regressions. See the [execution capability lease ADR](../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md);
+source regressions remain unrun at the user's request.
 
 
 ## Acknowledged sealed delivery (source only)
