@@ -485,6 +485,18 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactHttpCapabilityBrokerReso
 mod tests {
     use super::*;
 
+    #[test]
+    fn http_capability_rejects_zero_timeout_and_response_limit() {
+        assert!(matches!(
+            ArtifactHttpCapabilityBroker::with_timeout_and_limit(Duration::ZERO, 1),
+            Err(SandboxError::InvalidRequest(_))
+        ));
+        assert!(matches!(
+            ArtifactHttpCapabilityBroker::with_timeout_and_limit(Duration::from_secs(1), 0),
+            Err(SandboxError::InvalidRequest(_))
+        ));
+    }
+
     #[tokio::test]
     async fn dns_lookup_is_bounded_by_the_capability_timeout() {
         let capability = CapabilityName::new("platform.http").expect("capability");
