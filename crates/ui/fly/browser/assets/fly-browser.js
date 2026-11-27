@@ -1284,7 +1284,12 @@ export class FlyBrowserAdapter {
     const wasmOwnsSelection =
       source === "ssr-control" &&
       this.root.querySelector("[data-fly-wasm-hydrated='true']");
-    if (this.postIntents && this.intentEndpoint && !wasmOwnsSelection) {
+    if (
+      this.postIntents &&
+      this.intentEndpoint &&
+      !wasmOwnsSelection &&
+      source !== "server"
+    ) {
       void this.emitIntent("select", { component_id: next });
     }
   }
@@ -2328,6 +2333,17 @@ export class FlyBrowserAdapter {
         }
         if (Number.isSafeInteger(state.command_sequence) && state.command_sequence >= 0) {
           this.root.dataset.flyCommandSequence = String(state.command_sequence);
+        }
+        // The server is authoritative for selection after navigation and other
+        // controller transitions. In particular, ActivatePage clears the old
+        // page's selection; retaining it here would attach a stale component ID
+        // to the next mutation on the newly active page.
+        if (
+          Object.prototype.hasOwnProperty.call(state, "selected_component_id") &&
+          (state.selected_component_id === null ||
+            typeof state.selected_component_id === "string")
+        ) {
+          this.select(nonEmptyString(state.selected_component_id), "server");
         }
         // A confirmed write makes other same-origin editors of this page stale.
         // The server remains the source of truth; this is a UX safety fence.
