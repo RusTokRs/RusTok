@@ -6,10 +6,11 @@ use std::error::Error;
 use chrono::Utc;
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
-use rustok_pages::entities::page_body;
+use rustok_pages::entities::{page_body, site_symbol};
 use rustok_pages::{PageTemplateService, PagesModule, SaveSiteSymbolInput, SiteSymbolService};
 use sea_orm::{
-    ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Set,
+    ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
+    Set,
 };
 use sea_orm_migration::SchemaManager;
 use serde_json::json;
@@ -301,6 +302,62 @@ async fn nested_symbol_dependencies_are_validated_and_protected_from_deletion() 
         "catalog updates must reject missing nested definitions"
     );
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn delete_rejects_mismatched_stored_symbol_identity() -> TestResult<()> {
+    let db = fixture().await?;
+    let tenant = Uuid::new_v4();
+    let service = SiteSymbolService::new(db.clone());
+    let actor = SecurityContext::system();
+    service
+        .save(
+            tenant,
+            &actor,
+            SaveSiteSymbolInput {
+                symbol_id: "header".into(),
+                locale: "en".into(),
+                name: Some("Header".into()),
+                content: json!({"id": "header", "components": []}),
+            },
+        )
+        .await?;
+
+    let row = site_symbol::Entity::find_by_id((
+        tenant,
+        "en".to_string(),
+        "header".to_string(),
+    ))
+    .one(&db)
+    .await?
+    .ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "site symbol fixture was not inserted",
+        )
+    })?;
+    let mut active: site_symbol::ActiveModel = row.into();
+    active.content = Set(json!({"id": "different", "components": []}));
+    active.update(&db).await?;
+
+    let error = service
+        .delete(tenant, &actor, "header", "en")
+        .await
+        .expect_err("delete must not operate on a row whose content identity is corrupt");
+    assert!(error.to_string().contains("identity mismatch"));
+
+    assert!(
+        site_symbol::Entity::find_by_id((
+            tenant,
+            "en".to_string(),
+            "header".to_string()
+        ))
+        .one(&db)
+        .await?
+        .is_some(),
+        "the corrupt row must remain available for explicit repair"
+    );
     Ok(())
 }
 
