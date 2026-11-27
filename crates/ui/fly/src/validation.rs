@@ -122,8 +122,23 @@ pub fn validate_project_with_embed_registry(
     if report.page_count > DEFAULT_MAXIMUM_PAGES {
         return report;
     }
-    if document.project().assets.len() > DEFAULT_MAXIMUM_ASSETS {
-        report.asset_count = document.project().assets.len();
+    let resolved_document = if crate::document_has_symbol_instances(document) {
+        match crate::resolve_symbol_instances(document) {
+            Ok(resolved) => Some(resolved),
+            Err(error) => {
+                report
+                    .diagnostics
+                    .push(symbol_materialization_diagnostic(&error));
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let effective_document = resolved_document.as_ref().unwrap_or(document);
+
+    if effective_document.project().assets.len() > DEFAULT_MAXIMUM_ASSETS {
+        report.asset_count = effective_document.project().assets.len();
         report.diagnostics.push(diagnostic(
             ValidationSeverity::Error,
             "maximum_assets_exceeded",
@@ -135,8 +150,8 @@ pub fn validate_project_with_embed_registry(
         ));
         return report;
     }
-    if document.project().styles.len() > DEFAULT_MAXIMUM_STYLE_RULES {
-        report.style_rule_count = document.project().styles.len();
+    if effective_document.project().styles.len() > DEFAULT_MAXIMUM_STYLE_RULES {
+        report.style_rule_count = effective_document.project().styles.len();
         report.diagnostics.push(diagnostic(
             ValidationSeverity::Error,
             "maximum_style_rules_exceeded",
@@ -150,12 +165,12 @@ pub fn validate_project_with_embed_registry(
     }
 
     // Reuses the document-resident index if already built, avoiding a redundant tree walk.
-    let index = document.component_index();
-    validate_theme_tokens(document, &mut report);
-    // Typed checks, opaque checks and URL-attribute checks all happen in this one traversal.
-    validate_components(document, registries, embeds, limits, &mut report);
-    validate_assets(document, &mut report);
-    validate_style_rules(document, index, &mut report);
+    let index = effective_document.component_index();
+    validate_theme_tokens(effective_document, &mut report);
+    // Validate the effective page tree: shared symbols are materialized before publish too.
+    validate_components(effective_document, registries, embeds, limits, &mut report);
+    validate_assets(effective_document, &mut report);
+    validate_style_rules(effective_document, index, &mut report);
     validate_symbols(document, registries, embeds, limits, &mut report);
 
     if report.node_count > limits.maximum_nodes {
@@ -172,7 +187,7 @@ pub fn validate_project_with_embed_registry(
 
     report
         .diagnostics
-        .extend(validate_runtime_extensions(document));
+        .extend(validate_runtime_extensions(effective_document));
     deduplicate_diagnostics(&mut report.diagnostics);
     report
 }
@@ -1034,6 +1049,30 @@ fn deduplicate_diagnostics(diagnostics: &mut Vec<ValidationDiagnostic>) {
             diagnostic.message.clone(),
         ))
     });
+}
+
+fn symbol_materialization_diagnostic(error: &crate::FlyError) -> ValidationDiagnostic {
+    let code = match error {
+        crate::FlyError::MaximumNodesExceeded { .. } => {
+            "symbol_expansion_maximum_nodes_exceeded"
+        }
+        crate::FlyError::MaximumStyleRulesExceeded { .. } => {
+            "symbol_expansion_maximum_style_rules_exceeded"
+        }
+        crate::FlyError::MaximumAssetsExceeded { .. } => {
+            "symbol_expansion_maximum_assets_exceeded"
+        }
+        crate::FlyError::InvalidAssetReference(_) => "symbol_asset_materialization_invalid",
+        crate::FlyError::SymbolNotFound(_) => "symbol_reference_missing",
+        crate::FlyError::SymbolCycle(_) => "symbol_cycle",
+        _ => "symbol_materialization_invalid",
+    };
+    diagnostic(
+        ValidationSeverity::Error,
+        code,
+        FLY_SYMBOLS_FIELD,
+        error.to_string(),
+    )
 }
 
 fn diagnostic(
