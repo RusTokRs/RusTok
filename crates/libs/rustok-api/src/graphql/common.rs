@@ -242,6 +242,8 @@ pub fn extract_graphql_context<'a>(
     Ok((db, tenant))
 }
 
+/// Snapshot-only permission preflight. Resolvers starting new protected reads
+/// after root admission must also use the live read authority contract.
 pub fn require_graphql_auth<'a>(
     ctx: &'a Context<'_>,
     permissions: &[crate::Permission],

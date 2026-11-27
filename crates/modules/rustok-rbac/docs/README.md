@@ -420,8 +420,13 @@ and immutable AuthContext, including effective ceiling and credential facts.
 Missing or substituted scope denies rather than falling back. Nested query
 fields recheck local validity; selected mutations retain receipt serialization.
 Root durable revision reads are unchanged; no per-scalar SQL read is added.
-Nested mutation reads and durable revocation between root and nested read
-remain separate boundaries. Source regressions unrun.
+Explicit fresh nested reads now use a host-composed shared GraphQL authority
+handle: Blog moderation and User live role/can/tenant name/custom fields
+revalidate before and after reads. Blog preserves the admitted actor and
+requires moderate plus list rather than escalating to System. User mutation
+role and tenant name serialize the owner receipt. Unmigrated nested
+consumers and continuous credential/module authority remain separate
+boundaries. Source regressions unrun.
 
 ## Revision-bound permission cache publication
 

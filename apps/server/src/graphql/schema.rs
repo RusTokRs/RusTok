@@ -304,6 +304,9 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         builder
     };
     let builder = builder
+        .data(rustok_api::graphql::GraphqlReadAuthorityHandle(Arc::new(
+            super::security::HostGraphqlReadAuthority,
+        )))
         .data(db)
         .data(event_bus)
         .data(transactional_event_bus)

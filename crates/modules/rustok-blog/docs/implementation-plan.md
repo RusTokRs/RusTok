@@ -1944,3 +1944,7 @@ Runtime, build, browser, gatekeeper, and automated tests remain maintainer-owned
 - `storefront_cached_public_comments_snapshot_source_ready_maintainer_execution_pending`: one Blog snapshot policy for both storefront transports (`comments_owner_only`, TTL 900 seconds, maximum 10,000 keys, `cachedSnapshot`).
 - `fallback_vocabulary_for_active_storefront_write_surface`: `comment_form_fallback = planned`, cached public read snapshot, comment-form fallback is still a separate unfinished result. No tests, Cargo commands, Node verifiers were run.
 
+
+- Nested moderation queue authority: host-bound live read guard before/after,
+  Blog availability, actual actor and effective moderate/list grants; no
+  system escalation. Source regression authored, maintainer execution pending.

@@ -137,6 +137,26 @@ Fresh protected reads within a mutation payload and durable revocation
 during nested queries still require owner-specific checks. Source regressions
 are unrun.
 
+## Fresh nested reads versus command receipts (2026-11-27)
+
+The shared GraphQL read authority handle is host-composed and fail closed:
+missing provider, missing admission marker, wrong tenant, invalid scope or
+durable static revision drift prevents a fresh protected read. Explicit
+consumers check before reading and again before releasing the result. The
+host reuses the original scope binding and durable static reader, not
+unscoped persisted grants. This is an observation boundary, not a
+transaction fence or continuous credential/module policy authority.
+
+Blog moderation queue reads require effective Comments moderate AND list
+grants (manage implies both), retain the actual actor and permission ceiling
+instead of System, and recheck Blog module availability. User live role,
+can, tenant name and custom fields reads require current authority.
+The owner mutation record already carries role and tenant name; these two
+receipt fields are serialized directly without a new read. A denied fresh
+non-null field can still propagate a GraphQL null after commit. Other
+receipt projections and protected nested consumers remain open. No schema
+field type change. Source regressions authored, unrun.
+
 ## Non-goals
 
 This change does not create an atomic revocation fence, ensure immediate

@@ -585,7 +585,15 @@ exists.
   payloads retain committed receipt serialization. Source regressions cover
   absent/substituted authority, widened context, aliases and operation
   selection. Unrun. Fresh protected reads nested inside mutation payloads
-  and durable nested read authority remain open.
+  and durable nested read authority remain open for unmigrated consumers.
+
+- Fresh nested read authority: require host provider and original scope
+  binding, before/after durable static revision checks for Blog moderation
+  and User live role/can/tenant name/custom fields. Blog preserves the
+  actor ceiling and requires both moderate and list grants. Owner-issued
+  User mutation role/tenant name are receipt data, not new reads. Source
+  regressions authored, unrun. Other protected nested fields, full receipt
+  materialization and continuous credential/module authority remain open.
 
 - Revision-bound permission cache: bracket production fills with durable
   revision reads and recheck the local epoch after publication. Bound hits

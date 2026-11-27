@@ -180,6 +180,40 @@ impl ExtensionFactory for GraphqlSecurityPolicy {
 
 struct GraphqlSecurityPolicyExtension;
 
+/// Reuse the same host binding and durable static revision check at an
+/// explicitly protected nested read boundary, including mutation payloads.
+pub(crate) struct HostGraphqlReadAuthority;
+
+#[async_trait::async_trait]
+impl rustok_api::graphql::GraphqlReadAuthority for HostGraphqlReadAuthority {
+    async fn revalidate(&self, ctx: &async_graphql::Context<'_>) -> async_graphql::Result<()> {
+        use crate::services::rbac_request_scope::{
+            RbacRequestScope, ensure_graphql_scope_binding, ensure_scope_authority,
+        };
+
+        let unavailable = || <FieldError as GraphQLError>::internal_error(
+            "Request authority is temporarily unavailable",
+        );
+        let auth = ctx.data::<AuthContext>().map_err(|_| unavailable())?;
+        let expected = ctx.data::<RbacRequestScope>().map_err(|_| unavailable())?;
+        let principal = ctx
+            .data_opt::<rustok_api::AuthPrincipalContext>()
+            .map(|context| context.kind);
+        ensure_graphql_scope_binding(expected, Some(auth), principal)
+            .map_err(|_| unavailable())?;
+        ensure_scope_authority(
+            ctx.data_opt::<sea_orm::DatabaseConnection>(),
+            &auth.tenant_id,
+            &auth.user_id,
+        )
+        .await
+        .map_err(|_| unavailable())?;
+        ensure_graphql_scope_binding(expected, Some(auth), principal)
+            .map_err(|_| unavailable())?;
+        Ok(())
+    }
+}
+
 #[async_trait::async_trait]
 impl Extension for GraphqlSecurityPolicyExtension {
     async fn resolve(
@@ -353,6 +387,24 @@ mod tests {
 
     struct MutationRoot;
 
+    struct ReadReceipt {
+        committed: bool,
+        tenant_id: Uuid,
+    }
+
+    #[Object]
+    impl ReadReceipt {
+        async fn committed(&self) -> bool {
+            self.committed
+        }
+
+        async fn fresh_read(&self, ctx: &Context<'_>) -> async_graphql::Result<Option<bool>> {
+            rustok_api::graphql::require_live_graphql_read(ctx, self.tenant_id).await?;
+            ctx.data_unchecked::<Arc<AtomicUsize>>().fetch_add(1, Ordering::SeqCst);
+            Ok(Some(true))
+        }
+    }
+
     #[derive(SimpleObject)]
     struct MutationReceipt {
         committed: bool,
@@ -368,6 +420,19 @@ mod tests {
             let auth = ctx.data_unchecked::<AuthContext>();
             invalidate_current_rbac_request_scope(&auth.tenant_id, &auth.user_id);
             MutationReceipt { committed: true }
+        }
+
+        async fn change_then_read(&self, ctx: &Context<'_>) -> ReadReceipt {
+            let auth = ctx.data_unchecked::<AuthContext>();
+            invalidate_current_rbac_request_scope(&auth.tenant_id, &auth.user_id);
+            ReadReceipt { committed: true, tenant_id: auth.tenant_id }
+        }
+
+        async fn read_without_change(&self, ctx: &Context<'_>) -> ReadReceipt {
+            ReadReceipt {
+                committed: true,
+                tenant_id: ctx.data_unchecked::<AuthContext>().tenant_id,
+            }
         }
 
         async fn change_other_authority(&self, ctx: &Context<'_>) -> MutationReceipt {
@@ -399,6 +464,46 @@ mod tests {
             scopes: Vec::new(),
             grant_type: "password".to_string(),
         }
+    }
+
+    #[tokio::test]
+    async fn fresh_mutation_read_requires_live_authority_but_receipt_survives() {
+        use rustok_api::graphql::GraphqlReadAuthorityHandle;
+
+        let schema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
+            .extension(GraphqlSecurityPolicy)
+            .data(GraphqlReadAuthorityHandle(Arc::new(super::HostGraphqlReadAuthority)))
+            .finish();
+        let auth = auth_context(vec![Permission::USERS_READ]);
+        let tenant = rustok_api::TenantContext {
+            id: auth.tenant_id,
+            name: "Test".into(),
+            slug: "test".into(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".into(),
+            is_active: true,
+        };
+        let scope = RbacRequestScope::new(
+            auth.tenant_id, auth.user_id, auth.permissions.clone(), UserRole::Admin,
+        );
+        let calls = Arc::new(AtomicUsize::new(0));
+        let request = |query| Request::new(query)
+            .data(auth.clone()).data(tenant.clone()).data(scope.clone()).data(calls.clone());
+
+        let allowed = with_rbac_request_scope(Some(scope.clone()), schema.execute(
+            request("mutation { readWithoutChange { committed freshRead } }")
+        )).await;
+        assert!(allowed.errors.is_empty(), "{:?}", allowed.errors);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        let denied = with_rbac_request_scope(Some(scope.clone()), schema.execute(
+            request("mutation { changeThenRead { committed freshRead } }")
+        )).await;
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(denied.errors.len(), 1);
+        assert_eq!(denied.data.into_json().unwrap()["changeThenRead"],
+            json!({"committed": true, "freshRead": null}));
     }
 
     #[tokio::test]

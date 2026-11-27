@@ -3,7 +3,8 @@ use async_graphql::{ComplexObject, Context, Enum, FieldError, InputObject, Resul
 use chrono::{DateTime, Utc};
 use rustok_api::{
     AuthContext, Patch, Permission, RichTextDocument, RichTextView, TenantContext,
-    graphql::GraphQLError, has_any_effective_permission,
+    graphql::{GraphQLError, require_live_graphql_read, require_module_enabled},
+    has_effective_permission,
 };
 use rustok_core::SecurityContext;
 use rustok_profiles::GqlProfileSummary;
@@ -235,18 +236,20 @@ impl GqlPost {
         page: Option<u64>,
         per_page: Option<u64>,
     ) -> Result<GqlModerationCommentList> {
-        let auth = require_comment_moderator(ctx)?;
+        let auth = require_live_graphql_read(ctx, self.tenant_id).await?;
+        let security = comment_moderation_security(auth)?;
+        require_module_enabled(ctx, "blog").await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
         let request_tenant = ctx.data::<TenantContext>()?;
-        ensure_comment_tenant_binding(request_tenant, &auth, self.tenant_id)?;
+        ensure_comment_tenant_binding(request_tenant, auth, self.tenant_id)?;
         let requested_locale = comment_locale(locale.as_deref(), &self.effective_locale);
         let service = runtime.comment_service(db.clone());
 
         let (items, total) = service
             .list_for_post_with_locale_fallback(
                 self.tenant_id,
-                SecurityContext::system(),
+                security,
                 self.id,
                 ListCommentsFilter {
                     locale: Some(requested_locale),
@@ -259,6 +262,10 @@ impl GqlPost {
             .await
             .map_err(crate::error::public::to_graphql_error)?;
 
+        // Do not release a moderation queue if the admission changed during
+        // the owner read. Public comments retain their own publication policy.
+        require_module_enabled(ctx, "blog").await?;
+        require_live_graphql_read(ctx, self.tenant_id).await?;
         Ok(GqlModerationCommentList {
             items: items.into_iter().map(Into::into).collect(),
             total,
@@ -286,17 +293,22 @@ fn post_comment_fallback_locale<'a>(
     Ok(tenant.default_locale.as_str())
 }
 
-fn require_comment_moderator(ctx: &Context<'_>) -> Result<AuthContext> {
-    let auth = ctx
-        .data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
-        .clone();
-    if !has_any_effective_permission(&auth.permissions, &[Permission::COMMENTS_MODERATE]) {
+fn comment_moderation_security(auth: &AuthContext) -> Result<SecurityContext> {
+    // Owner queue reads require both moderation visibility and list access.
+    // Never manufacture the missing list grant through system authority.
+    if ![Permission::COMMENTS_MODERATE, Permission::COMMENTS_LIST]
+        .iter()
+        .all(|permission| has_effective_permission(&auth.permissions, permission))
+    {
         return Err(<FieldError as GraphQLError>::permission_denied(
-            "Permission denied: comments:moderate required",
+            "Permission denied: comments:moderate and comments:list required",
         ));
     }
-    Ok(auth)
+    Ok(rustok_core::security_context_from_access_token(
+        auth.user_id,
+        &auth.grant_type,
+        &auth.permissions,
+    ))
 }
 
 fn ensure_comment_tenant_binding(
@@ -781,6 +793,32 @@ mod tests {
     use async_graphql::MaybeUndefined;
     use rustok_api::{Patch, RichTextDocument};
     use uuid::Uuid;
+
+    #[test]
+    fn moderation_queue_never_manufactures_system_or_missing_list_authority() {
+        use rustok_api::{AuthContext, Permission};
+        use rustok_core::SecurityActorKind;
+        let actor = Uuid::new_v4();
+        let mut auth = AuthContext {
+            user_id: actor,
+            tenant_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".into(),
+            permissions: vec![Permission::COMMENTS_MODERATE],
+        };
+        assert!(super::comment_moderation_security(&auth).is_err());
+        auth.permissions = vec![Permission::COMMENTS_LIST];
+        assert!(super::comment_moderation_security(&auth).is_err());
+        auth.permissions.push(Permission::COMMENTS_MODERATE);
+        let security = super::comment_moderation_security(&auth).unwrap();
+        assert_eq!(security.actor_kind, SecurityActorKind::User);
+        assert_eq!(security.user_id, Some(actor));
+        assert_eq!(security.permissions().len(), 2);
+        auth.permissions = vec![Permission::COMMENTS_MANAGE];
+        assert!(super::comment_moderation_security(&auth).is_ok());
+    }
 
     #[test]
     fn update_post_input_conversion_preserves_canonical_content() {

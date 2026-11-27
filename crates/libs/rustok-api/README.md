@@ -22,6 +22,8 @@
 - Provide host/API request, tenant, auth, channel, locale, permission and port contracts.
 - Provide the framework-independent manifest-to-runtime registry comparison contract used by the server composition root.
 - Provide GraphQL helper types and error helpers shared across modules.
+- The host-composed GraphQL read authority handle revalidates fresh protected
+  reads; missing provider denies. It does not replace owner permission policy.
 - Provide request-level locale and tenant resolution and shared selection of localized owner values.
 - Provide `HostRuntimeContext` for server-side Leptos/native adapters that need host-owned runtime handles without importing a host-wide application context.
 - Provide the tenant-wide Search publication binding under the `runtime` feature.

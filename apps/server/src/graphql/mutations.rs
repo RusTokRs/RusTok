@@ -267,6 +267,7 @@ fn user_from_mutation_record(record: UserMutationRecord) -> User {
         created_at: record.created_at.to_rfc3339(),
         tenant_id: record.tenant_id,
         metadata: record.metadata,
+        mutation_projection: Some((record.role, record.tenant_name)),
     }
 }
 

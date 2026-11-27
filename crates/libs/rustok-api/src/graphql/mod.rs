@@ -1,6 +1,7 @@
 mod common;
 mod contribution;
 mod errors;
+mod read_authority;
 
 pub use common::{
     PageInfo, PaginationInput, decode_cursor, encode_cursor, extract_graphql_context,
@@ -11,3 +12,6 @@ pub use contribution::GraphqlContributionDescriptor;
 #[cfg(feature = "server")]
 pub use contribution::GraphqlRuntimeInputs;
 pub use errors::{ErrorCode, GraphQLError};
+pub use read_authority::{
+    GraphqlReadAuthority, GraphqlReadAuthorityHandle, require_live_graphql_read,
+};

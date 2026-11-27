@@ -44,6 +44,9 @@ pub struct User {
     pub tenant_id: Uuid,
     #[graphql(skip)]
     pub metadata: serde_json::Value,
+    /// Owner-issued mutation projection, not a live read or a fresh grant.
+    #[graphql(skip)]
+    pub(crate) mutation_projection: Option<(String, Option<String>)>,
 }
 
 #[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
@@ -160,30 +163,45 @@ impl User {
     }
 
     async fn role(&self, ctx: &Context<'_>) -> Result<String> {
+        if let Some((role, _)) = &self.mutation_projection {
+            return Ok(role.clone());
+        }
+        rustok_api::graphql::require_live_graphql_read(ctx, self.tenant_id).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let role = RbacService::get_user_role_slug(db, &self.tenant_id, &self.id)
             .await
             .map_err(|error| graphql_internal_error("Unable to resolve user role", error))?;
+        rustok_api::graphql::require_live_graphql_read(ctx, self.tenant_id).await?;
         Ok(role)
     }
 
     async fn can(&self, ctx: &Context<'_>, action: String) -> Result<bool> {
+        rustok_api::graphql::require_live_graphql_read(ctx, self.tenant_id).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let permission = Permission::from_str(&action).map_err(|_| {
             <async_graphql::FieldError as GraphQLError>::bad_user_input("Invalid permission action")
         })?;
 
-        RbacService::has_permission(db, &self.tenant_id, &self.id, &permission)
+        let allowed = RbacService::has_permission(db, &self.tenant_id, &self.id, &permission)
             .await
-            .map_err(|error| graphql_internal_error("Unable to resolve user permission", error))
+            .map_err(|error| graphql_internal_error("Unable to resolve user permission", error))?;
+        rustok_api::graphql::require_live_graphql_read(ctx, self.tenant_id).await?;
+        Ok(allowed)
     }
 
     async fn tenant_name(&self, ctx: &Context<'_>) -> Result<Option<String>> {
+        if let Some((_, tenant_name)) = &self.mutation_projection {
+            return Ok(tenant_name.clone());
+        }
+        rustok_api::graphql::require_live_graphql_read(ctx, self.tenant_id).await?;
         let loader = ctx.data::<DataLoader<TenantNameLoader>>()?;
-        loader.load_one(self.tenant_id).await
+        let name = loader.load_one(self.tenant_id).await?;
+        rustok_api::graphql::require_live_graphql_read(ctx, self.tenant_id).await?;
+        Ok(name)
     }
 
     async fn custom_fields(&self, ctx: &Context<'_>) -> Result<Option<serde_json::Value>> {
+        rustok_api::graphql::require_live_graphql_read(ctx, self.tenant_id).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<crate::context::TenantContext>()?;
         let preferred_locale = ctx
@@ -191,7 +209,7 @@ impl User {
             .map(|request| request.locale.as_str())
             .unwrap_or(tenant.default_locale.as_str());
 
-        FlexAttachedValuesService::resolve_merged_payload(
+        let fields = FlexAttachedValuesService::resolve_merged_payload(
             db,
             self.tenant_id,
             "user",
@@ -201,7 +219,9 @@ impl User {
             tenant.default_locale.as_str(),
         )
         .await
-        .map_err(|error| graphql_internal_error("Unable to resolve user custom fields", error))
+        .map_err(|error| graphql_internal_error("Unable to resolve user custom fields", error))?;
+        rustok_api::graphql::require_live_graphql_read(ctx, self.tenant_id).await?;
+        Ok(fields)
     }
 }
 
@@ -227,6 +247,7 @@ impl From<&users::Model> for User {
             created_at: model.created_at.to_rfc3339(),
             tenant_id: model.tenant_id,
             metadata: model.metadata.clone(),
+            mutation_projection: None,
         }
     }
 }

@@ -123,3 +123,7 @@ endpoint URLs and provider error text. `rustok-modules` owns the catalog port;
    logic, resolver ownership, or runtime composition.
 2. Update the root README and local docs with a public contract change.
 3. Update host and consumer-module documentation with changed shared semantics.
+
+Fresh protected GraphQL reads use the shared host-composed authority handle,
+separately from snapshot-only permission preflight and command receipt
+serialization. Source regressions authored in the host; execution pending.

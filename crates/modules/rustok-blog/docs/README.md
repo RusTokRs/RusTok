@@ -266,3 +266,8 @@ mutations are never retried through another protocol.
 - [implementation-plan-slice-95.md](./implementation-plan-slice-95.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
 - [implementation-plan-slice-96.md](./implementation-plan-slice-96.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
 - [implementation-plan-slice-97.md](./implementation-plan-slice-97.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+
+Nested GraphQL moderation queue reads require the live host read authority,
+Blog module availability, and effective Comments moderate plus list grants.
+The original actor/security ceiling reaches Comments; no System substitution.
+Revalidate after reading before releasing the queue. Source regressions unrun.
