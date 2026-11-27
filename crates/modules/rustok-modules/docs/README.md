@@ -437,12 +437,15 @@ reference, revision, and purpose; resolver keys, values, and consumer output are
 not serializable through this boundary.
 The production server registers this capability through
 `ModuleControlPlane::artifact_secret_handle_policy`. The dynamic resolver first
-checks the exact active installation and durable grant, and the policy repeats
-that check immediately before the binding read so a lifecycle or
-capability-revision change cannot leave a stale broker authorized. The repeated
-check derives installation-backed capability authority and the independently
-persisted opaque secret instance from owner installation state. Neither the
-guest nor a secret resolver supplies this identity; no data contract is required.
+checks the exact active installation and durable grant; the handle read then
+locks the binding row and the same execution-authority fence in one short
+transaction. Secret value use reloads the exact revision, closes the transaction
+before calling the external resolver, then re-locks and compares the binding
+facts and reauthorizes immediately before the fixed-purpose consumer. No SQL
+row lock spans the resolver or consumer. The repeated checks derive
+installation-backed capability authority and the independently persisted
+opaque secret instance from owner installation state. Neither the guest nor a
+secret resolver supplies this identity; no data contract is required.
 
 `OciDistributionArtifactRegistry` resolves only digest-pinned references. It
 requires the returned manifest digest to match the requested reference, reads
@@ -967,11 +970,13 @@ and production value-use authorization remain required.
 MCP now consumes the shared installation-backed `ArtifactCapabilityScope`,
 binding tenant, stable owner, exact release, installation, and grant revision.
 It does not require a data contract or namespace. Its broker and server invoker
-match the complete admitted subject instead of only the slug. The data broker
-uses that same immutable authority binding before adding its own persistence
-scope. Stateless MCP runtime verification remains pending. Secrets add only
-their independently persisted opaque secret instance to this authority; they
-do not require a data persistence scope.
+match the complete admitted subject instead of only the slug. The artifact
+server exposes a separate explicit read-only registry tool allowlist, rather
+than inheriting every tool later added to the general MCP registry. Calls use
+a short execution-authority admission transaction and the result is revalidated
+before release. Stateless MCP runtime verification remains pending. Secrets
+add only their independently persisted opaque secret instance to this
+authority; they do not require a data persistence scope.
 
 Owner maintenance commands share `ArtifactDataNamespace` facts and the same
 serialized root reader. Checked tenant/owner/instance/contract/revision facts
@@ -1535,18 +1540,33 @@ response-body consumption. Redirects remain disabled and response bytes are
 streamed under an overflow-safe configured ceiling. Zero timeouts and zero
 response limits are rejected during construction.
 
-This is an outbound transport and resource boundary only. It does not make a
-remote HTTP effect transactional, prove that a timed-out remote operation did
-not complete, or close the separate non-SQL execution-lease race described
-above.
+Mutating methods (POST, PUT, PATCH and DELETE) require a stable host-issued
+execution idempotency key. Each request also has an explicit or deterministic
+per-request key. A tenant/installation-scoped receipt is committed before
+dispatch; completed responses are persisted and replayed, while a conflicting
+key is rejected and a dispatching/ambiguous outcome is never automatically
+resent. The composite key is also sent as the remote `Idempotency-Key` header
+for services that support it. Event and schedule deliveries propagate their
+stable delivery ID into the execution context, so retries address the same
+receipt. GET, HEAD and OPTIONS use a short SQL admission fence but do not create
+effect receipts.
+
+The network request remains outside the SQL transaction. A timeout or process
+failure after dispatch can leave an ambiguous receipt; that is deliberately
+not treated as permission to retry the remote side effect. It requires
+reconciliation rather than automatic replay.
 
 ### SQL capability effect authority
 
 The server composition injects an explicit SQL effect authorizer into the
-structured-data, private-object, and event-outbox brokers. It captures the live execution lease
-before opening the owner transaction, reuses Auth/RBAC tenant/user/session/role
-fences on that transaction for direct user execution, and checks the locked
-credential deadline and lease membership before commit. All structured CRUD,
+structured-data, private-object, event-outbox, HTTP, MCP and secret-handle
+brokers. It captures the live execution lease before opening the owner
+transaction, reuses Auth/RBAC tenant/user/session/role fences on that
+transaction for direct user execution, and checks the locked credential
+deadline and lease membership before commit. Structured data, private objects
+and event outbox use this guard through their owner commits. HTTP dispatch,
+MCP registry calls and secret-handle reads use short fenced admission
+transactions that are closed before network, MCP or secret-provider I/O. All structured CRUD,
 list/index reads and the delete-receipt replay path use the same commit gate. Object metadata
 reads/lists, object put/delete receipts, upload-session creation/claim, chunk
 append, completion transitions and their replay paths use the same guard.
@@ -1648,7 +1668,15 @@ writers and effect consumers together; mixed-version writers can bypass the
 fence. No transport change is required. Cross-owner lock-order verification
 remains outstanding. Independent non-server broker
 compositions still need an explicitly supplied authority. Physical object-store
-bytes, secrets, MCP and HTTP remain outside this SQL commit guard.
+bytes, outbound HTTP exchanges and host-only secret-value consumers remain
+outside SQL transactions. Object reads and all capability responses are
+revalidated before release. HTTP mutations use the durable receipt protocol
+above; a completed response is replayed and an unresolved dispatch is never
+automatically repeated. The current artifact MCP surface is an explicit
+read-only registry allowlist; adding a mutating MCP tool requires a durable
+per-call receipt before it can be exposed. Secret handles are read under the
+execution fence, and host-only value use rechecks the exact binding revision
+after resolution and reauthorizes immediately before the consumer.
 See [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).
 
 ### Private object capability effect boundary
