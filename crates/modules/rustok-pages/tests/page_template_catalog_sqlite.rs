@@ -6,7 +6,8 @@ use rustok_core::{MigrationSource, SecurityContext};
 use rustok_pages::entities::{page, site_symbol};
 use rustok_pages::{PageTemplateService, PagesModule};
 use sea_orm::{
-    ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Set,
+    ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
+    Set,
 };
 use sea_orm_migration::SchemaManager;
 use serde_json::json;
@@ -275,6 +276,49 @@ async fn preview_resolves_layout_without_writing_the_source() -> TestResult<()> 
             .is_err()
     );
     assert_eq!(source, json!({"pages":[{"id":"home","flyPageMeta":{"title":"Home","description":"Preview","slug":"home"},"component":{"id":"root","type":"wrapper","components":[{"id":"body","type":"text","content":"Body"}]}}]}).to_string());
+    Ok(())
+}
+
+#[tokio::test]
+async fn preview_rejects_site_symbols_whose_stored_identity_does_not_match_content() -> TestResult<()> {
+    let db = fixture().await?;
+    let tenant = Uuid::new_v4();
+    let service = PageTemplateService::new(db.clone());
+    let actor = SecurityContext::system();
+    symbol(&db, tenant, "en", "header").await?;
+
+    let row = site_symbol::Entity::find_by_id((
+        tenant,
+        "en".to_string(),
+        "header".to_string(),
+    ))
+    .one(&db)
+    .await?
+    .ok_or("site symbol fixture was not inserted")?;
+    let mut active: site_symbol::ActiveModel = row.into();
+    active.content = Set(json!({
+        "id": "different-symbol",
+        "components": [{
+            "id": "section",
+            "type": "text",
+            "content": "Corrupt identity"
+        }]
+    }));
+    active.update(&db).await?;
+
+    let source = json!({
+        "pages": [{
+            "id": "home",
+            "component": { "id": "root", "type": "wrapper", "components": [] }
+        }]
+    })
+    .to_string();
+    let error = service
+        .preview_document(tenant, &actor, "default", "en", &source)
+        .await
+        .expect_err("preview must reject a catalog row whose content id disagrees with its key");
+
+    assert!(error.to_string().contains("identity mismatch"));
     Ok(())
 }
 
