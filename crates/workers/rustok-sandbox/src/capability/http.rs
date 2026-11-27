@@ -171,29 +171,22 @@ fn validate_http_request_shape(call: &CapabilityCall, method: &str) -> SandboxRe
         });
     }
 
-    if matches!(method.to_ascii_uppercase().as_str(), "POST" | "PUT" | "PATCH" | "DELETE") {
-        let key = input
-            .get("idempotency_key")
-            .and_then(Value::as_str)
-            .and_then(|value| uuid::Uuid::parse_str(value).ok())
-            .filter(|key| !key.is_nil());
-        if key.is_none() || call.context.idempotency_key.is_none_or(|key| key.is_nil()) {
-            return Err(SandboxError::CapabilityConstraintDenied {
-                capability: call.capability.clone(),
-                reason: "mutating HTTP requests require an execution idempotency key and a per-request idempotency_key UUID".to_string(),
-            });
-        }
-    } else if input
-        .get("idempotency_key")
-        .is_some_and(|value| {
-            value.as_str()
-                .and_then(|key| uuid::Uuid::parse_str(key).ok())
-                .is_none_or(|key| key.is_nil())
-        })
+    if matches!(method.to_ascii_uppercase().as_str(), "POST" | "PUT" | "PATCH" | "DELETE")
+        && call.context.idempotency_key.is_none_or(|key| key.is_nil())
     {
         return Err(SandboxError::CapabilityConstraintDenied {
             capability: call.capability.clone(),
-            reason: "HTTP idempotency_key must be a non-nil UUID".to_string(),
+            reason: "mutating HTTP requests require a stable execution idempotency key".to_string(),
+        });
+    }
+    if input.get("idempotency_key").is_some_and(|value| {
+        value.as_str()
+            .and_then(|key| uuid::Uuid::parse_str(key).ok())
+            .is_none_or(|key| key.is_nil())
+    }) {
+        return Err(SandboxError::CapabilityConstraintDenied {
+            capability: call.capability.clone(),
+            reason: "HTTP idempotency_key must be a non-nil UUID when supplied".to_string(),
         });
     }
     Ok(())
