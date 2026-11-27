@@ -241,7 +241,7 @@ mod tests {
     use serde_json::json;
     use uuid::Uuid;
 
-    use super::{path_matches_prefix, validate_http_request_shape};
+    use super::{HttpCapabilityConstraints, path_matches_prefix, validate_http_request_shape};
     use crate::{
         CapabilityCall, CapabilityCallContext, CapabilityName, ExecutionPhase, SandboxSubject,
     };
@@ -309,6 +309,25 @@ mod tests {
             Some(Uuid::new_v4()),
         );
         assert!(validate_http_request_shape(&call, "POST").is_err());
+    }
+
+    #[test]
+    fn HTTP_constraints_restrict_nonstandard_ports() {
+        let mut call = call("GET", json!({}), None);
+        call.input["url"] = json!("https://api.example.test:8443/v1/items");
+        let constraints = HttpCapabilityConstraints {
+            hosts: vec!["api.example.test".to_string()],
+            methods: vec!["GET".to_string()],
+            path_prefixes: vec!["/v1".to_string()],
+            ports: vec![443],
+            allow_plain_http: false,
+        };
+        assert!(constraints.validate(&call).is_err());
+        let allowed = HttpCapabilityConstraints {
+            ports: vec![8443],
+            ..constraints
+        };
+        assert!(allowed.validate(&call).is_ok());
     }
 
     #[test]
