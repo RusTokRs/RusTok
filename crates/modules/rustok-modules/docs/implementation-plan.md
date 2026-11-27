@@ -14,7 +14,9 @@ The server-composed `platform.data.objects` resolver now receives the same
 SQL effect authorizer as structured data and events. Object metadata reads and
 writes, idempotency receipts, upload-session/chunk transitions, completion
 claims and replay paths lock the exact execution authority in their owner
-transactions. The server also revalidates installation, policy, direct
+transactions and reject active namespace migration holds. Chunk bytes are
+staged before opening the owner transaction; session, quota and migration
+state are revalidated before the chunk row is committed. The server also revalidates installation, policy, direct
 authority, security and lease state after object-store reads before releasing
 bytes. Upload completion replay resolves the object receipt by the session's
 stored idempotency key, and begin replay returns the completed object result.
