@@ -386,6 +386,60 @@ async fn standalone_replacement_locks_continuity_and_destination_in_uuid_order()
     }).await.unwrap_or_else(|error| panic!("RBAC ordered role union evidence failed: {error}"));
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires PostgreSQL admin access"]
+async fn lifecycle_cursor_observation_is_read_only_and_detects_committed_aba() {
+    use rustok_modules::SeaOrmModulePolicyRevisionConsumer;
+    use std::time::Duration;
+
+    with_rbac_postgres_database("rustok_rbac_policy_cursor", |db_a, db_b| async move {
+        let tenant = insert_tenant(&db_a, "policy-cursor").await?;
+        let other_tenant = insert_tenant(&db_a, "policy-cursor-other").await?;
+        let writer = SeaOrmModulePolicyRevisionConsumer::new(db_a.clone());
+        let reader = SeaOrmModulePolicyRevisionConsumer::new(db_b.clone());
+        let a = format!("sha256:{}", "a".repeat(64));
+        let b = format!("sha256:{}", "b".repeat(64));
+
+        assert!(reader.observe_lifecycle_cursor(tenant).await?.is_none());
+        assert!(reader.observe_lifecycle_cursor(tenant).await?.is_none());
+        let initial = writer.cursor_state(tenant, "module.lifecycle").await?;
+        let admitted = writer
+            .resync_if_current(tenant, "module.lifecycle", &initial, &a)
+            .await?;
+        let transaction = db_a.begin().await?;
+        let uncommitted = writer
+            .resync_if_current_in_transaction(&transaction, tenant, "module.lifecycle", &admitted, &b)
+            .await?;
+        assert!(uncommitted.current_sequence > admitted.current_sequence);
+
+        // The authorization observation must not wait for a writer's row lock
+        // or see its uncommitted successor. Release the fence even on timeout.
+        let observation = tokio::time::timeout(
+            Duration::from_secs(4),
+            reader.observe_lifecycle_cursor(tenant),
+        ).await;
+        transaction.rollback().await?;
+        assert_eq!(
+            observation.map_err(|_| "cursor observation waited for writer fence")??,
+            Some(admitted.clone()),
+        );
+        assert_eq!(reader.observe_lifecycle_cursor(tenant).await?, Some(admitted.clone()));
+        let disabled = writer
+            .resync_if_current(tenant, "module.lifecycle", &admitted, &b)
+            .await?;
+        let restored = writer
+            .resync_if_current(tenant, "module.lifecycle", &disabled, &a)
+            .await?;
+        assert_eq!(restored.current_revision, admitted.current_revision);
+        assert!(restored.current_sequence > admitted.current_sequence);
+        assert_eq!(reader.observe_lifecycle_cursor(tenant).await?, Some(restored));
+        assert!(reader.observe_lifecycle_cursor(other_tenant).await?.is_none());
+        Ok(())
+    })
+    .await
+    .unwrap_or_else(|error| panic!("RBAC lifecycle cursor observation evidence failed: {error}"));
+}
+
 async fn with_rbac_postgres_database<T, F, Fut>(prefix: &str, test: F) -> TestResult<T>
 where
     F: FnOnce(DatabaseConnection, DatabaseConnection) -> Fut,

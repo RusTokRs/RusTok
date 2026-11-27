@@ -289,3 +289,5 @@ transition writers or deletion/recreation of owner generations is not covered
 by the sequence contract; database-level enforcement and PostgreSQL contention
 verification remain open. SQLite source regressions cover read-only absence,
 rollback and cursor ABA without notification; execution is pending.
+
+PostgreSQL source regression `lifecycle_cursor_observation_is_read_only_and_detects_committed_aba` uses independent pools and an uncommitted writer row lock. It asserts that the reader observes the previous committed state without blocking, rollback preserves the admitted state, a committed digest ABA advances the sequence, and another tenant remains isolated. The ignored integration test is authored but unrun.
