@@ -885,7 +885,11 @@ impl ModuleWorkHandler for ArtifactScheduleDeliveryWorkAdapter {
                     "schedule_digest": payload.schedule_digest.clone(),
                 }),
                 phase: ExecutionPhase::Scheduled,
-                context: crate::ArtifactBindingExecutionContext::default(),
+                context: crate::ArtifactBindingExecutionContext {
+                    actor_id: None,
+                    trace_id: Some(format!("artifact-schedule:{}", payload.delivery_id)),
+                    idempotency_key: Some(payload.delivery_id),
+                },
             })
             .await
         {
