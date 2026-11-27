@@ -95,6 +95,33 @@ pub fn InstallerPage() -> impl IntoView {
         });
     });
 
+    // The public status projection survives page reloads; the operator re-enters
+    // the setup token before the protected job detail endpoint is queried.
+    #[cfg(target_arch = "wasm32")]
+    Effect::new(move |_| {
+        let Some(Ok(status)) = status_resource.get() else {
+            return;
+        };
+        let (Some(restored_job_id), Some(_)) = (status.job_id, status.job_status) else {
+            return;
+        };
+        let token = setup_token.get();
+        if token.trim().is_empty() {
+            return;
+        }
+        let already_loaded = job_status
+            .get_untracked()
+            .and_then(Result::ok)
+            .is_some_and(|job| job.job_id == restored_job_id);
+        if already_loaded {
+            return;
+        }
+        set_job_id.set(Some(restored_job_id));
+        spawn_local(async move {
+            set_job_status.set(Some(transport::fetch_job(restored_job_id, token).await));
+        });
+    });
+
     let build_plan = move || {
         build_install_plan(BuildInstallPlanParams {
             instance_root: instance_root.get_untracked(),
@@ -220,10 +247,8 @@ pub fn InstallerPage() -> impl IntoView {
         Effect::new(move |_| {
             if matches!(
                 job_status.get(),
-                Some(Ok(transport::InstallJobStatusResponse {
-                    status: transport::InstallJobState::Running,
-                    ..
-                }))
+                Some(Ok(transport::InstallJobStatusResponse { status, .. }))
+                    if status.should_poll()
             ) {
                 resume_polling();
             } else {
@@ -237,14 +262,11 @@ pub fn InstallerPage() -> impl IntoView {
             || status_resource
                 .get()
                 .and_then(Result::ok)
-                .is_some_and(|status| status.completed)
-            || matches!(
-                job_status.get(),
-                Some(Ok(transport::InstallJobStatusResponse {
-                    status: transport::InstallJobState::Running,
-                    ..
-                }))
-            )
+                .is_some_and(|status| status.blocks_apply())
+            || job_status
+                .get()
+                .and_then(Result::ok)
+                .is_some_and(|status| status.status.blocks_apply())
     });
 
     view! {
@@ -434,7 +456,7 @@ pub fn InstallerPage() -> impl IntoView {
                     </section>
 
                     <PreflightPanel result=preflight_result />
-                    <JobPanel result=apply_result status=job_status />
+                    <JobPanel result=apply_result status=job_status install_status=status_resource />
                     <ReceiptsPanel receipts=receipts />
                 </aside>
             </div>
@@ -539,13 +561,28 @@ fn PreflightPanel(
 fn JobPanel(
     result: ReadSignal<Option<Result<transport::InstallApplyJobResponse, String>>>,
     status: ReadSignal<Option<Result<transport::InstallJobStatusResponse, String>>>,
+    install_status: LocalResource<Result<transport::InstallStatusResponse, String>>,
 ) -> impl IntoView {
     view! {
         <section class="rounded-lg border border-border bg-card p-5 shadow-sm">
             <h2 class="text-base font-semibold text-card-foreground">"Job"</h2>
             <div class="mt-4 space-y-3">
                 {move || match result.get() {
-                    None => view! { <p class="text-sm text-muted-foreground">"No job submitted."</p> }.into_any(),
+                    None => match install_status
+                        .get()
+                        .and_then(Result::ok)
+                        .and_then(|projection| projection.job_id.zip(projection.job_status))
+                    {
+                        Some((job_id, job_state)) => view! {
+                            <div class="rounded-md border border-border bg-background px-3 py-2 text-sm">
+                                <div class="font-medium text-foreground">{job_id.to_string()}</div>
+                                <div class="mt-1 text-muted-foreground">{job_state.label()}</div>
+                            </div>
+                        }.into_any(),
+                        None => view! {
+                            <p class="text-sm text-muted-foreground">"No job submitted."</p>
+                        }.into_any(),
+                    },
                     Some(Err(error)) => view! {
                         <div class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                             {error}
@@ -799,12 +836,9 @@ fn spawn_refresh_job(
     spawn_local(async move {
         let result = transport::fetch_job(job_id, setup_token.clone()).await;
         if let Ok(status) = &result
-            && let Some(session_id) = status.session_id.filter(|_| {
-                matches!(
-                    status.status,
-                    transport::InstallJobState::Succeeded | transport::InstallJobState::Failed
-                )
-            })
+            && let Some(session_id) = status
+                .session_id
+                .filter(|_| status.status.should_load_receipts())
         {
             set_receipts.set(Some(
                 transport::fetch_receipts(session_id, setup_token).await,
