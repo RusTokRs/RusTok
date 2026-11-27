@@ -146,9 +146,14 @@ fn is_disallowed_global_ipv6(ipv6: std::net::Ipv6Addr) -> bool {
         || ((segments[0] == 0x2001 && (segments[1] & 0xfe00) == 0)
             && !is_globally_reachable_ietf_assignment(ipv6))
         || (segments[0] == 0x2001 && segments[1] == 0x0db8) // Documentation
-        // 3f00::/8 contains IANA-reserved space, the former 6bone and
-        // the 3fff::/20 documentation prefix.
-        || (segments[0] & 0xff00) == 0x3f00
+        // IANA-reserved portions of the global-unicast block 2000::/3.
+        || segments[0] == 0x2d00 // 2d00::/8
+        || (segments[0] & 0xfe00) == 0x2e00 // 2e00::/7
+        || (segments[0] & 0xf800) == 0x3000 // 3000::/5
+        || (segments[0] & 0xfc00) == 0x3800 // 3800::/6
+        || (segments[0] & 0xfe00) == 0x3c00 // 3c00::/7
+        || segments[0] == 0x3e00 // 3e00::/8
+        || (segments[0] & 0xff00) == 0x3f00 // 3f00::/8, including 6bone/docs
         || segments[0] == 0x5f00 // Segment Routing SIDs 5f00::/16
 }
 
@@ -678,6 +683,30 @@ mod tests {
         ));
         assert!(is_disallowed_ip(
             "4000::1".parse().expect("non-global-unicast ipv6")
+        ));
+        for address in [
+            "2d00::1",
+            "2e00::1",
+            "2fff::1",
+            "3000::1",
+            "37ff::1",
+            "3800::1",
+            "3bff::1",
+            "3c00::1",
+            "3dff::1",
+            "3e00::1",
+            "3eff::1",
+            "3f00::1",
+        ] {
+            assert!(is_disallowed_ip(
+                address.parse().expect("IANA-reserved global-unicast range")
+            ));
+        }
+        assert!(!is_disallowed_ip(
+            "2c00::1".parse().expect("allocated global-unicast range")
+        ));
+        assert!(!is_disallowed_ip(
+            "2a00::1".parse().expect("allocated global-unicast range")
         ));
         assert!(is_disallowed_ip(
             "fc00::1".parse().expect("unique-local ipv6")
