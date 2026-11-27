@@ -88,7 +88,6 @@ impl CommandCapabilityRequirement {
             || !patch.fields.is_empty()
             || !patch.remove_fields.is_empty();
         let changes_styles = patch.style.is_some()
-            || patch.replace_style
             || patch.clear_style
             || !patch.remove_style_properties.is_empty();
         if changes_properties {
@@ -231,10 +230,19 @@ mod tests {
                 patch: PagePatch::default(),
             },
         });
+        let replace_style_without_value =
+            CommandCapabilityRequirement::for_command(&EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: ComponentPatch {
+                    replace_style: true,
+                    ..ComponentPatch::default()
+                },
+            });
 
         assert!(empty_batch.is_empty());
         assert!(empty_patch.is_empty());
         assert!(empty_page_patch.is_empty());
+        assert!(replace_style_without_value.is_empty());
     }
 
     #[test]
