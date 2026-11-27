@@ -158,3 +158,12 @@ replay reject conflicting durable identity and populated tenant projections.
 Historical null projections remain readable. Source regressions cover queued
 renewal, stale claims and both envelope families. Compilation, database
 contention, real target cancellation and broker idempotency remain unverified.
+
+## Retention consumer fencing (2026-11-27, source only)
+
+Both delivered and opt-in DLQ event deletion use the same consumer hold in
+candidate selection and final DELETE. PostgreSQL serializes registry writes
+with the deletion transaction using a SHARE table lock before the fresh
+READ COMMITTED snapshot; SQLite serializes writers. The SQLite DLQ hold
+regression was extended. PostgreSQL registration/delete contention and
+runtime verification remain pending.

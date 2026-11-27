@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-    sea_query::Expr,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait, sea_query::Expr,
 };
 
 use rustok_core::{Error, Result};
@@ -24,7 +24,8 @@ pub struct OutboxRetentionConfig {
     /// How long a dead-lettered (`failed`) event is kept before it may be
     /// pruned, measured from `created_at`. `None` (the default) keeps the
     /// DLQ forever: pruning it is an explicit operator decision, because a
-    /// failed row is the only record that the event never landed.
+    /// failed row is the only record that the event never landed. Required
+    /// consumer acknowledgements remain mandatory even with this window.
     pub failed_retention: Option<chrono::Duration>,
     /// How long a terminal (`completed`/`failed`) owner-operation receipt
     /// is kept before it may be pruned, measured from `completed_at`.
@@ -94,12 +95,10 @@ pub struct OutboxPruneReport {
 /// Bounded retention for `sys_events`.
 ///
 /// The outbox is both the delivery queue and the durable record of what was
-/// delivered, so retention only ever deletes rows that reached the transport
-/// (`dispatched` with a non-null `dispatched_at` older than the window) and
-/// whose registered durable consumers have all acknowledged the event.
-/// Undelivered (`pending`) and dead-lettered (`failed`) rows are never touched:
-/// the first still owe a delivery, the second are the DLQ an operator works
-/// through. A delivered row that lost its `dispatched_at` is left alone as well,
+/// delivered. By default only aged dispatched rows are eligible; an explicit
+/// failed-event window also permits aged DLQ rows. Every event deletion
+/// requires all registered durable consumers to have acknowledged it.
+/// Pending rows are never pruned. A dispatched row without `dispatched_at` is left alone,
 /// so the pruner can never delete a row whose delivery age is unknown.
 #[derive(Clone)]
 pub struct OutboxRetention {
@@ -161,15 +160,17 @@ impl OutboxRetention {
         }
 
         let batch_exhausted = candidate_ids.len() as u64 >= self.config.batch_size;
+        let txn = self.begin_event_delete().await?;
         let deleted = entity::Entity::delete_many()
             .filter(entity::Column::Id.is_in(candidate_ids))
             .filter(entity::Column::Status.eq(SysEventStatus::Dispatched))
             .filter(entity::Column::DispatchedAt.is_not_null())
             .filter(entity::Column::DispatchedAt.lte(cutoff))
             .filter(required_consumers_acknowledged_predicate())
-            .exec(&self.db)
+            .exec(&txn)
             .await?
             .rows_affected;
+        txn.commit().await?;
 
         if deleted > 0 {
             rustok_telemetry::metrics::record_outbox_pruned(deleted);
@@ -191,6 +192,22 @@ impl OutboxRetention {
         })
     }
 
+    // PostgreSQL's statement snapshot does not see an uncommitted new
+    // subscription. A SHARE table lock conflicts with the registry writer's
+    // ROW EXCLUSIVE lock, including inserts of previously absent keys. Take
+    // it before the final DELETE, then use a fresh READ COMMITTED snapshot.
+    // SQLite serializes writers; the DELETE is the first data statement.
+    async fn begin_event_delete(&self) -> Result<DatabaseTransaction> {
+        let txn = self.db.begin().await?;
+        if self.db.get_database_backend() == DatabaseBackend::Postgres {
+            txn.execute_unprepared("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+                .await?;
+            txn.execute_unprepared("LOCK TABLE sys_event_consumers IN SHARE MODE")
+                .await?;
+        }
+        Ok(txn)
+    }
+
     /// Prunes the two bounded histories that are disabled by default:
     /// dead-lettered events past their configured window and terminal
     /// owner-operation receipts past theirs.
@@ -204,6 +221,7 @@ impl OutboxRetention {
                 .column(entity::Column::Id)
                 .filter(entity::Column::Status.eq(SysEventStatus::Failed))
                 .filter(entity::Column::CreatedAt.lte(cutoff))
+                .filter(required_consumers_acknowledged_predicate())
                 .order_by_asc(entity::Column::CreatedAt)
                 .limit(self.config.batch_size)
                 .into_tuple::<uuid::Uuid>()
@@ -213,13 +231,16 @@ impl OutboxRetention {
                 batch_exhausted = true;
             }
             if !candidate_ids.is_empty() {
+                let txn = self.begin_event_delete().await?;
                 pruned_failed = entity::Entity::delete_many()
                     .filter(entity::Column::Id.is_in(candidate_ids))
                     .filter(entity::Column::Status.eq(SysEventStatus::Failed))
                     .filter(entity::Column::CreatedAt.lte(cutoff))
-                    .exec(&self.db)
+                    .filter(required_consumers_acknowledged_predicate())
+                    .exec(&txn)
                     .await?
                     .rows_affected;
+                txn.commit().await?;
                 if pruned_failed > 0 {
                     tracing::info!(
                         pruned_failed_events = pruned_failed,
@@ -447,6 +468,20 @@ mod tests {
             failed_retention: Some(chrono::Duration::days(30)),
             ..Default::default()
         });
+        let consumer = crate::OutboxConsumer::new(db.clone());
+        consumer
+            .register_required_event_types("consumer.dlq", &["test.pruned".to_string()])
+            .await
+            .expect("register durable consumer");
+        let held = retention.prune_once().await.expect("held failed prune");
+        assert_eq!(held.pruned_failed, 0);
+        assert!(!held.batch_exhausted);
+        assert!(crate::entity::Entity::find_by_id(failed)
+            .one(&db).await.expect("query").is_some());
+        consumer
+            .acknowledge_existing("consumer.dlq", failed)
+            .await
+            .expect("terminal consumer receipt");
         let report = retention.prune_once().await.expect("failed prune");
         assert_eq!(report.pruned_failed, 1);
         assert!(

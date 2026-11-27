@@ -51,6 +51,10 @@ Consumers register their required event types through `OutboxConsumer` before
 the retention worker starts. A dispatched event is retained while any registered
 consumer lacks an acknowledgement for that event ID. Multiple consumers are
 independent obligations; all must acknowledge before age-based pruning applies.
+The optional failed-event retention window obeys the same holds. PostgreSQL
+takes a SHARE lock on the registry before the final DELETE at READ COMMITTED,
+so concurrent registration either precedes that snapshot or follows deletion.
+SQLite serializes writes. Registration cannot recover already-pruned events.
 
 Consumers write acknowledgements only after their own terminal receipt commits.
 When both records share a database, the neutral owner port writes the Outbox

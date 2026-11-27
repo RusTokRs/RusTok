@@ -149,8 +149,13 @@ environment variables over the `RelayConfig` defaults:
 - Dead-lettered rows are kept forever by default. An operator may opt into
   `failed_retention` (server: `events.outbox_retention.failed_retention_days`,
   0 = keep forever): rows whose `created_at` is older than the window are
-  then pruned in the same bounded batches. Enabling it accepts that the
-  only record of an undelivered event is discarded.
+  then eligible for pruning in the same bounded batches, but only after
+  all registered durable consumers have acknowledged them. Enabling it
+  accepts discarding an undelivered event with no remaining consumer hold.
+- Both delivered and optional failed-event deletion recheck all registered
+  consumer obligations. PostgreSQL serializes the final DELETE with registry
+  writes by locking `sys_event_consumers` in SHARE mode in a short transaction
+  before taking a fresh READ COMMITTED snapshot; SQLite serializes writers.
 - Terminal owner-operation receipts are pruned under `receipt_retention`
   (server: `events.outbox_retention.receipt_retention_days`, default 90
   days, 0 = keep forever). A retry that arrives after its receipt was

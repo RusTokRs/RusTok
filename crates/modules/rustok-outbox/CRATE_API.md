@@ -44,8 +44,9 @@
   projections remain permitted.
 - Refreshes the fenced claim before dispatch and checks the timeout budget.
 - Retains delivered rows for a configured window: `OutboxRetention::prune_once` deletes only
-  `dispatched` rows whose `dispatched_at` is older than the window, in bounded batches, and never
-  touches `pending` (still owed) or `failed` (DLQ) rows.
+  aged `dispatched` rows by default. An explicit failed-event window also permits
+  aged DLQ rows. Both require all registered consumer acknowledgements and a
+  final deletion fenced against concurrent registry writes. Pending rows are never pruned.
 
 ## Platform Capability Bindings
 
