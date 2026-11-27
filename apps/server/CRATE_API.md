@@ -33,6 +33,12 @@
 - Authorization failures on the permission-availability path fail closed: a
   resolution error is returned to the caller rather than treated as "no
   module permissions".
+- Direct session issuance (registration, login and refresh) takes the active
+  tenant row lock before user/session locks and holds it through commit. A
+  refresh request that loses tenant admission may perform replay-only session
+  revocation after re-reading the locked lineage, but it must never issue a
+  replacement token. Logout and explicit revocation remain available while a
+  tenant is inactive.
 - A platform-settings write must record who made it. `SettingsError::MissingActor`
   is returned before the transaction opens, because `PlatformSettingsChanged`
   carries a non-nil `changed_by`; GraphQL maps it to a permission error rather
