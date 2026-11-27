@@ -369,9 +369,10 @@ fn normalize_base_path(value: Option<&str>) -> Result<Option<String>, String> {
         || value.contains('\\')
         || value.chars().any(|character| character.is_control())
         || value.chars().any(char::is_whitespace)
+        || base_path_has_unsafe_segments(value)
     {
         return Err(format!(
-            "internal page link base_path `{value}` must be a safe absolute path prefix"
+            "internal page link base_path `{value}` must be a safe absolute path prefix without dot segments or encoded separators"
         ));
     }
     let normalized = value.trim_end_matches('/');
@@ -380,6 +381,17 @@ fn normalize_base_path(value: Option<&str>) -> Result<Option<String>, String> {
     } else {
         normalized.to_string()
     }))
+}
+
+fn base_path_has_unsafe_segments(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    if lower.contains("%2f") || lower.contains("%5c") {
+        return true;
+    }
+    value.split('/').any(|segment| {
+        let decoded_dots = segment.to_ascii_lowercase().replace("%2e", ".");
+        matches!(decoded_dots.as_str(), "." | "..")
+    })
 }
 
 fn normalize_suffix(
@@ -554,6 +566,32 @@ mod tests {
                 .iter()
                 .any(|diagnostic| diagnostic.code == "internal_page_link_invalid")
         );
+    }
+
+    #[test]
+    fn base_path_cannot_escape_its_prefix_with_dot_segments_or_encoded_separators() {
+        for base_path in [
+            "/shop/../admin",
+            "/shop/./admin",
+            "/shop/%2e%2e/admin",
+            "/shop/.%2E/admin",
+            "/shop/%2fadmin",
+            "/shop/%5cadmin",
+        ] {
+            let mut document = document();
+            document
+                .component_mut("about-link")
+                .unwrap()
+                .extensions
+                .get_mut(FLY_PAGE_LINK_FIELD)
+                .unwrap()["base_path"] = json!(base_path);
+            assert!(
+                validate_internal_page_links(&document)
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == "internal_page_link_invalid"),
+                "{base_path}"
+            );
+        }
     }
 
     #[test]
