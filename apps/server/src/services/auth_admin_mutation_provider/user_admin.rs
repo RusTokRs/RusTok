@@ -849,12 +849,12 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .locale
             .as_deref()
             .unwrap_or(rustok_api::PLATFORM_FALLBACK_LOCALE);
-        let prepared = FlexAttachedValuesService::prepare_create(
+        let mut prepared = FlexAttachedValuesService::prepare_create(
             &self.db,
             context.tenant_id,
             "user",
             locale,
-            command.custom_fields,
+            command.custom_fields.clone(),
         )
         .await
         .map_err(map_custom_field_error)?;
@@ -868,8 +868,6 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         )
         .await
         .map_err(map_lifecycle_error)?;
-        let actor_permissions = self.request_permissions(context)?;
-        let request_role = self.actor_role(context).await?;
         let privileged = custom_slug.is_some()
             || role != UserRole::Customer
             || status
@@ -880,114 +878,153 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         } else {
             &[Permission::USERS_CREATE, Permission::USERS_MANAGE]
         };
-        let tx = self.prepare_admin_transaction(true).await?;
-        let target_slug = custom_slug.clone().unwrap_or_else(|| role.to_string());
-        let (_, current_role, current_permissions, credential_deadline) = self
-            .lock_user_admin_authority(
+        let mut attempt = 1;
+        loop {
+            // Only insertion/role assignment statement failures can enter this
+            // retry. No event has been published, and Argon2 stays outside locks.
+            self.authorize_user(context, required, "current user creation permission is required")
+                .await?;
+            let actor_permissions = self.request_permissions(context)?;
+            let request_role = self.actor_role(context).await?;
+            // The validation result from an abandoned attempt is not authoritative.
+            // Re-read Flex definitions before opening a new transaction.
+            if attempt > 1 {
+                prepared = FlexAttachedValuesService::prepare_create(
+                    &self.db,
+                    context.tenant_id,
+                    "user",
+                    locale,
+                    command.custom_fields.clone(),
+                )
+                .await
+                .map_err(map_custom_field_error)?;
+            }
+            let tx = self.prepare_admin_transaction(true).await?;
+            let target_slug = custom_slug.clone().unwrap_or_else(|| role.to_string());
+            let (_, current_role, current_permissions, credential_deadline) = self
+                .lock_user_admin_authority(
+                    &tx,
+                    context,
+                    None,
+                    if custom_slug.is_none() {
+                        Some(&role)
+                    } else {
+                        None
+                    },
+                    Some(&target_slug),
+                    required,
+                )
+                .await?;
+            let user_result = if let Some(slug) = custom_slug.as_deref() {
+                validate_custom_role_grant_on(
+                    &tx,
+                    context.tenant_id,
+                    &request_role,
+                    &actor_permissions,
+                    slug,
+                )
+                .await
+                .map_err(super::super_admin_guard::persistence_error)?;
+                let target_slug = validate_custom_role_grant_on(
+                    &tx,
+                    context.tenant_id,
+                    &current_role,
+                    &current_permissions,
+                    slug,
+                )
+                .await
+                .map_err(super::super_admin_guard::persistence_error)?;
+                AuthLifecycleService::create_user_with_custom_role_in_tx(
+                    &tx,
+                    context.tenant_id,
+                    prepared_user.clone(),
+                    &target_slug,
+                    status.clone(),
+                )
+                .await
+            } else {
+                if role != UserRole::Customer {
+                    rustok_rbac::require_role_assignment(&current_role, &role)
+                        .map_err(map_role_mutation_policy_error)?;
+                }
+                for ceiling in [&actor_permissions, &current_permissions] {
+                    validate_persisted_role_grant_on(&tx, context.tenant_id, ceiling, &target_slug)
+                        .await
+                        .map_err(super::super_admin_guard::persistence_error)?;
+                }
+                AuthLifecycleService::create_user_in_tx(
+                    &tx,
+                    context.tenant_id,
+                    prepared_user.clone(),
+                    role.clone(),
+                    status.clone(),
+                )
+                .await
+            };
+            let mut user = match user_result {
+                Ok(user) => user,
+                Err(AuthLifecycleError::Internal(crate::error::Error::Database(error))) => {
+                    if rustok_core::resilience::retry::rollback_for_transaction_retry(
+                        tx, &error, attempt,
+                    )
+                    .await
+                    .map_err(super::internal_admin_error)?
+                    {
+                        attempt += 1;
+                        continue;
+                    }
+                    return Err(super::internal_admin_error(error));
+                }
+                Err(error) => {
+                    tx.rollback().await.map_err(super::internal_admin_error)?;
+                    return Err(map_lifecycle_error(error));
+                }
+            };
+
+            if let Some(metadata) = prepared.metadata {
+                let mut active: users::ActiveModel = user.into();
+                active.metadata = Set(metadata);
+                user = active
+                    .update(&tx)
+                    .await
+                    .map_err(super::internal_admin_error)?;
+            }
+            if let (Some(locale), Some(values)) = (
+                prepared.locale.as_deref(),
+                prepared.localized_values.as_ref(),
+            ) {
+                FlexAttachedValuesService::persist_localized_values(
+                    &tx,
+                    context.tenant_id,
+                    "user",
+                    user.id,
+                    locale,
+                    values,
+                )
+                .await
+                .map_err(map_custom_field_error)?;
+            }
+            let final_role = if custom_slug.is_some() {
+                self.user_role_slug(&tx, context.tenant_id, user.id).await?
+            } else {
+                role.to_string()
+            };
+            let tenant_name = self.tenant_name(&tx, context.tenant_id).await?;
+            self.publish_admin_event_in_tx(
                 &tx,
                 context,
-                None,
-                if custom_slug.is_none() {
-                    Some(&role)
-                } else {
-                    None
-                },
-                Some(&target_slug),
-                required,
+                DomainEvent::UserAccountRegistered { user_id: user.id },
             )
             .await?;
-        let mut user = if let Some(slug) = custom_slug.as_deref() {
-            validate_custom_role_grant_on(
-                &tx,
-                context.tenant_id,
-                &request_role,
-                &actor_permissions,
-                slug,
-            )
-            .await
-            .map_err(super::super_admin_guard::persistence_error)?;
-            let target_slug = validate_custom_role_grant_on(
-                &tx,
-                context.tenant_id,
-                &current_role,
-                &current_permissions,
-                slug,
-            )
-            .await
-            .map_err(super::super_admin_guard::persistence_error)?;
-            AuthLifecycleService::create_user_with_custom_role_in_tx(
-                &tx,
-                context.tenant_id,
-                prepared_user,
-                &target_slug,
-                status.clone(),
-            )
-            .await
-            .map_err(map_lifecycle_error)?
-        } else {
-            if role != UserRole::Customer {
-                rustok_rbac::require_role_assignment(&current_role, &role)
-                    .map_err(map_role_mutation_policy_error)?;
-            }
-            for ceiling in [&actor_permissions, &current_permissions] {
-                validate_persisted_role_grant_on(&tx, context.tenant_id, ceiling, &target_slug)
-                    .await
-                    .map_err(super::super_admin_guard::persistence_error)?;
-            }
-            AuthLifecycleService::create_user_in_tx(
-                &tx,
-                context.tenant_id,
-                prepared_user,
-                role.clone(),
-                status.clone(),
-            )
-            .await
-            .map_err(map_lifecycle_error)?
-        };
-
-        if let Some(metadata) = prepared.metadata {
-            let mut active: users::ActiveModel = user.into();
-            active.metadata = Set(metadata);
-            user = active
-                .update(&tx)
-                .await
-                .map_err(super::internal_admin_error)?;
+            self.ensure_user_admin_credential_deadline(&tx, credential_deadline)
+                .await?;
+            tx.commit().await.map_err(super::internal_admin_error)?;
+            return Ok(ServerAuthAdminMutationProvider::user_record(
+                user,
+                final_role,
+                tenant_name,
+            ));
         }
-        if let (Some(locale), Some(values)) = (
-            prepared.locale.as_deref(),
-            prepared.localized_values.as_ref(),
-        ) {
-            FlexAttachedValuesService::persist_localized_values(
-                &tx,
-                context.tenant_id,
-                "user",
-                user.id,
-                locale,
-                values,
-            )
-            .await
-            .map_err(map_custom_field_error)?;
-        }
-        let final_role = if custom_slug.is_some() {
-            self.user_role_slug(&tx, context.tenant_id, user.id).await?
-        } else {
-            role.to_string()
-        };
-        let tenant_name = self.tenant_name(&tx, context.tenant_id).await?;
-        self.publish_admin_event_in_tx(
-            &tx,
-            context,
-            DomainEvent::UserAccountRegistered { user_id: user.id },
-        )
-        .await?;
-        self.ensure_user_admin_credential_deadline(&tx, credential_deadline)
-            .await?;
-        tx.commit().await.map_err(super::internal_admin_error)?;
-        Ok(ServerAuthAdminMutationProvider::user_record(
-            user,
-            final_role,
-            tenant_name,
-        ))
     }
 
     async fn update_user(
@@ -1092,8 +1129,6 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             None => None,
         };
 
-        let request_role = self.actor_role(context).await?;
-        let request_permissions = self.request_permissions(context)?;
         let required: &[Permission] = if command.role.is_some() || command.status.is_some() {
             &[Permission::USERS_MANAGE]
         } else {
@@ -1102,268 +1137,316 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let requested_slug = requested_custom_slug
             .clone()
             .or_else(|| requested_role.as_ref().map(ToString::to_string));
-        let tx = self.prepare_admin_transaction(true).await?;
-        let (locked_user, live_actor_role, live_permissions, credential_deadline) = self
-            .lock_user_admin_authority(
+        let mut attempt = 1;
+        loop {
+            // Keep the original metadata baseline: a retry must not erase
+            // the concurrent-patch check. Recompute all locked plans and Flex
+            // localized values; the prepared password hash is input only.
+            self.authorize_user(context, required, "current user update permission is required")
+                .await?;
+            let request_role = self.actor_role(context).await?;
+            let request_permissions = self.request_permissions(context)?;
+            let tx = self.prepare_admin_transaction(true).await?;
+            let (locked_user, live_actor_role, live_permissions, credential_deadline) = self
+                .lock_user_admin_authority(
+                    &tx,
+                    context,
+                    Some(command.id),
+                    requested_role.as_ref(),
+                    requested_slug.as_deref(),
+                    required,
+                )
+                .await?;
+            let locked_user =
+                locked_user.ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))?;
+            let email_changed = email_identity_changed(&locked_user.email, normalized_email.as_deref());
+            let current_role = self
+                .user_role(&tx, context.tenant_id, locked_user.id)
+                .await?;
+            // Both the original request ceiling and the live hierarchy must
+            // authorize the exact target, including profile-only updates.
+            for actor_role in [&request_role, &live_actor_role] {
+                rustok_rbac::require_user_management(
+                    context.actor_id,
+                    locked_user.id,
+                    actor_role,
+                    &current_role,
+                )
+                .map_err(map_role_mutation_policy_error)?;
+            }
+            ensure_custom_field_snapshot_is_current(
+                &initial_user.metadata,
+                &locked_user.metadata,
+                custom_fields_updated,
+            )?;
+            let prepared = FlexAttachedValuesService::prepare_user_update(
                 &tx,
-                context,
-                Some(command.id),
-                requested_role.as_ref(),
-                requested_slug.as_deref(),
-                required,
-            )
-            .await?;
-        let locked_user =
-            locked_user.ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))?;
-        let email_changed = email_identity_changed(&locked_user.email, normalized_email.as_deref());
-        let current_role = self
-            .user_role(&tx, context.tenant_id, locked_user.id)
-            .await?;
-        // Both the original request ceiling and the live hierarchy must
-        // authorize the exact target, including profile-only updates.
-        for actor_role in [&request_role, &live_actor_role] {
-            rustok_rbac::require_user_management(
-                context.actor_id,
+                context.tenant_id,
                 locked_user.id,
-                actor_role,
-                &current_role,
+                locale,
+                &locked_user.metadata,
+                command.custom_fields.clone(),
             )
-            .map_err(map_role_mutation_policy_error)?;
-        }
-        ensure_custom_field_snapshot_is_current(
-            &initial_user.metadata,
-            &locked_user.metadata,
-            custom_fields_updated,
-        )?;
-        let prepared = FlexAttachedValuesService::prepare_user_update(
-            &tx,
-            context.tenant_id,
-            locked_user.id,
-            locale,
-            &locked_user.metadata,
-            command.custom_fields,
-        )
-        .await
-        .map_err(map_custom_field_error)?;
-        let user_id = locked_user.id;
-        let target_status = locked_user.status.clone();
-        let status_changed = status_change_requested(&target_status, requested_status.as_ref());
+            .await
+            .map_err(map_custom_field_error)?;
+            let user_id = locked_user.id;
+            let target_status = locked_user.status.clone();
+            let status_changed = status_change_requested(&target_status, requested_status.as_ref());
 
-        let role_mutation_plan: Option<RolePlan> =
-            if let Some(requested_role) = requested_role.as_ref() {
-                rustok_rbac::require_role_assignment(&request_role, requested_role)
-                    .map_err(map_role_mutation_policy_error)?;
-                for ceiling in [&request_permissions, &live_permissions] {
-                    validate_persisted_role_grant_on(
+            let role_mutation_plan: Option<RolePlan> =
+                if let Some(requested_role) = requested_role.as_ref() {
+                    rustok_rbac::require_role_assignment(&request_role, requested_role)
+                        .map_err(map_role_mutation_policy_error)?;
+                    for ceiling in [&request_permissions, &live_permissions] {
+                        validate_persisted_role_grant_on(
+                            &tx,
+                            context.tenant_id,
+                            ceiling,
+                            &requested_role.to_string(),
+                        )
+                        .await
+                        .map_err(super::super_admin_guard::persistence_error)?;
+                    }
+                    match plan_persisted_user_role_mutation_on(
+                        &tx,
+                        RbacUserRoleMutationRequest {
+                            tenant_id: context.tenant_id,
+                            actor_id: context.actor_id,
+                            actor_tenant_id: context.tenant_id,
+                            actor_role: live_actor_role.clone(),
+                            target_user_id: user_id,
+                            requested_role: requested_role.clone(),
+                            resulting_status: requested_status.clone(),
+                        },
+                    )
+                    .await
+                    .map_err(super::super_admin_guard::persistence_error)?
+                    {
+                        RbacRoleMutationOutcome::Noop => None,
+                        RbacRoleMutationOutcome::Apply(plan) => Some(RolePlan::Builtin(plan)),
+                    }
+                } else if let Some(slug) = requested_custom_slug.as_ref() {
+                    validate_custom_role_grant_on(
                         &tx,
                         context.tenant_id,
-                        ceiling,
-                        &requested_role.to_string(),
+                        &request_role,
+                        &request_permissions,
+                        slug,
+                    )
+                    .await
+                    .map_err(super::super_admin_guard::persistence_error)?;
+                    plan_persisted_custom_role_assignment_on(
+                        &tx,
+                        RbacCustomRoleAssignmentRequest {
+                            tenant_id: context.tenant_id,
+                            actor_id: context.actor_id,
+                            actor_tenant_id: context.tenant_id,
+                            actor_role: live_actor_role,
+                            actor_permissions: live_permissions,
+                            target_user_id: user_id,
+                            requested_role_slug: slug.clone(),
+                            resulting_status: requested_status.clone(),
+                        },
+                    )
+                    .await
+                    .map_err(super::super_admin_guard::persistence_error)?
+                    .map(RolePlan::Custom)
+                } else {
+                    None
+                };
+
+            let user_row_update_requested = user_row_update_requested(
+                command.email.is_some(),
+                command.name.is_some(),
+                status_changed,
+                password_changed,
+                prepared.metadata.is_some(),
+                prepared.localized_values.is_some(),
+            );
+            let mut active: users::ActiveModel = locked_user.clone().into();
+            if user_row_update_requested {
+                active.updated_at = Set(Utc::now().into());
+            }
+            if email_changed {
+                // A different address has not proven mailbox control; never carry
+                // the previous address's verification or existing sessions over.
+                active.email_verified_at = Set(None);
+            }
+            if let Some(email) = normalized_email.clone() {
+                active.email = Set(email);
+            }
+            if let Some(name) = normalized_name.clone() {
+                active.name = Set(name);
+            }
+            if status_changed && let Some(status) = requested_status.as_ref() {
+                active.status = Set(status.clone());
+            }
+            if let Some(password_hash) = new_password_hash.clone() {
+                active.set_replacement_password(password_hash, Utc::now());
+            }
+            if let Some(metadata) = prepared.metadata {
+                active.metadata = Set(metadata);
+            }
+
+            if requested_role.is_none() && requested_custom_slug.is_none() {
+                let effective_requested_status = if status_changed {
+                    requested_status.as_ref()
+                } else {
+                    None
+                };
+                ensure_active_super_admin_continuity(
+                    &tx,
+                    context.tenant_id,
+                    user_id,
+                    None,
+                    effective_requested_status,
+                    false,
+                )
+                .await?;
+            }
+            let user = if user_row_update_requested {
+                active.update(&tx).await.map_err(|error| {
+                    // The uniqueness pre-check above runs outside this
+                    // transaction; a concurrent claim of the same email loses
+                    // here and must surface as Conflict, not Internal.
+                    if matches!(
+                        error.sql_err(),
+                        Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+                    ) {
+                        AuthAdminMutationError::Conflict("user email already exists".to_string())
+                    } else {
+                        super::internal_admin_error(error)
+                    }
+                })?
+            } else {
+                locked_user
+            };
+            match role_mutation_plan.as_ref() {
+                Some(RolePlan::Builtin(plan)) => {
+                    RbacService::replace_user_role_in_transaction(
+                        &tx,
+                        &user.id,
+                        &context.tenant_id,
+                        plan.new_role().clone(),
+                    )
+                    .await
+                    .map_err(super::internal_admin_error)?;
+                }
+                Some(RolePlan::Custom(plan)) => {
+                    replace_persisted_user_role_by_slug_on(
+                        &tx,
+                        context.tenant_id,
+                        user.id,
+                        plan.role_slug(),
                     )
                     .await
                     .map_err(super::super_admin_guard::persistence_error)?;
                 }
-                match plan_persisted_user_role_mutation_on(
-                    &tx,
-                    RbacUserRoleMutationRequest {
-                        tenant_id: context.tenant_id,
-                        actor_id: context.actor_id,
-                        actor_tenant_id: context.tenant_id,
-                        actor_role: live_actor_role.clone(),
-                        target_user_id: user_id,
-                        requested_role: requested_role.clone(),
-                        resulting_status: requested_status.clone(),
-                    },
-                )
-                .await
-                .map_err(super::super_admin_guard::persistence_error)?
-                {
-                    RbacRoleMutationOutcome::Noop => None,
-                    RbacRoleMutationOutcome::Apply(plan) => Some(RolePlan::Builtin(plan)),
-                }
-            } else if let Some(slug) = requested_custom_slug.as_ref() {
-                validate_custom_role_grant_on(
-                    &tx,
-                    context.tenant_id,
-                    &request_role,
-                    &request_permissions,
-                    slug,
-                )
-                .await
-                .map_err(super::super_admin_guard::persistence_error)?;
-                plan_persisted_custom_role_assignment_on(
-                    &tx,
-                    RbacCustomRoleAssignmentRequest {
-                        tenant_id: context.tenant_id,
-                        actor_id: context.actor_id,
-                        actor_tenant_id: context.tenant_id,
-                        actor_role: live_actor_role,
-                        actor_permissions: live_permissions,
-                        target_user_id: user_id,
-                        requested_role_slug: slug.clone(),
-                        resulting_status: requested_status.clone(),
-                    },
-                )
-                .await
-                .map_err(super::super_admin_guard::persistence_error)?
-                .map(RolePlan::Custom)
-            } else {
-                None
-            };
-
-        let user_row_update_requested = user_row_update_requested(
-            command.email.is_some(),
-            command.name.is_some(),
-            status_changed,
-            password_changed,
-            prepared.metadata.is_some(),
-            prepared.localized_values.is_some(),
-        );
-        let mut active: users::ActiveModel = locked_user.clone().into();
-        if user_row_update_requested {
-            active.updated_at = Set(Utc::now().into());
-        }
-        if email_changed {
-            // A different address has not proven mailbox control; never carry
-            // the previous address's verification or existing sessions over.
-            active.email_verified_at = Set(None);
-        }
-        if let Some(email) = normalized_email {
-            active.email = Set(email);
-        }
-        if let Some(name) = normalized_name {
-            active.name = Set(name);
-        }
-        if status_changed && let Some(status) = requested_status.as_ref() {
-            active.status = Set(status.clone());
-        }
-        if let Some(password_hash) = new_password_hash {
-            active.set_replacement_password(password_hash, Utc::now());
-        }
-        if let Some(metadata) = prepared.metadata {
-            active.metadata = Set(metadata);
-        }
-
-        if requested_role.is_none() && requested_custom_slug.is_none() {
-            let effective_requested_status = if status_changed {
-                requested_status.as_ref()
-            } else {
-                None
-            };
-            ensure_active_super_admin_continuity(
-                &tx,
-                context.tenant_id,
-                user_id,
-                None,
-                effective_requested_status,
-                false,
-            )
-            .await?;
-        }
-        let user = if user_row_update_requested {
-            active.update(&tx).await.map_err(|error| {
-                // The uniqueness pre-check above runs outside this
-                // transaction; a concurrent claim of the same email loses
-                // here and must surface as Conflict, not Internal.
-                if matches!(
-                    error.sql_err(),
-                    Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
-                ) {
-                    AuthAdminMutationError::Conflict("user email already exists".to_string())
-                } else {
-                    super::internal_admin_error(error)
-                }
-            })?
-        } else {
-            locked_user
-        };
-        match role_mutation_plan.as_ref() {
-            Some(RolePlan::Builtin(plan)) => {
-                RbacService::replace_user_role_in_transaction(
-                    &tx,
-                    &user.id,
-                    &context.tenant_id,
-                    plan.new_role().clone(),
-                )
-                .await
-                .map_err(super::internal_admin_error)?;
+                None => {}
             }
-            Some(RolePlan::Custom(plan)) => {
-                replace_persisted_user_role_by_slug_on(
-                    &tx,
-                    context.tenant_id,
-                    user.id,
-                    plan.role_slug(),
-                )
-                .await
-                .map_err(super::super_admin_guard::persistence_error)?;
-            }
-            None => {}
-        }
-        let status_disables_user = status_changed
-            && requested_status
-                .as_ref()
-                .is_some_and(|status| status != &UserStatus::Active);
-        // A stale refresh token must not become usable again after a new
-        // mailbox is verified. Revoke browser sessions and delegated OAuth
-        // credentials in the same transaction as the identity change.
-        if password_changed || status_disables_user || email_changed {
-            revoke_active_sessions(&tx, context.tenant_id, user.id).await?;
-            auth_email_change_requests::Entity::delete_many()
-                .filter(auth_email_change_requests::Column::TenantId.eq(context.tenant_id))
-                .filter(auth_email_change_requests::Column::UserId.eq(user.id))
-                .exec(&tx)
-                .await
-                .map_err(super::internal_admin_error)?;
-        }
-        if let (Some(locale), Some(values)) = (
-            prepared.locale.as_deref(),
-            prepared.localized_values.as_ref(),
-        ) {
-            FlexAttachedValuesService::persist_localized_values(
-                &tx,
-                context.tenant_id,
-                "user",
-                user_id,
-                locale,
-                values,
-            )
-            .await
-            .map_err(map_custom_field_error)?;
-        }
-        // Finish domain response reads before taking the global recovery
-        // watermark. Only fresh outbox writes and the live deadline check
-        // follow reservation; no new earlier-ranked domain identity may enter.
-        let tenant_name = self.tenant_name(&tx, context.tenant_id).await?;
-        let final_role = match role_mutation_plan.as_ref() {
-            Some(RolePlan::Builtin(plan)) => plan.new_role().to_string(),
-            Some(RolePlan::Custom(_)) | None => {
-                self.user_role_slug(&tx, context.tenant_id, user.id).await?
-            }
-        };
-        let invalidates_authorization = role_mutation_plan.is_some() || status_changed;
-        let durable_generation = if invalidates_authorization {
-            Some(
-                reserve_rbac_invalidation_generation(&tx)
+            let status_disables_user = status_changed
+                && requested_status
+                    .as_ref()
+                    .is_some_and(|status| status != &UserStatus::Active);
+            // A stale refresh token must not become usable again after a new
+            // mailbox is verified. Revoke browser sessions and delegated OAuth
+            // credentials in the same transaction as the identity change.
+            if password_changed || status_disables_user || email_changed {
+                revoke_active_sessions(&tx, context.tenant_id, user.id).await?;
+                auth_email_change_requests::Entity::delete_many()
+                    .filter(auth_email_change_requests::Column::TenantId.eq(context.tenant_id))
+                    .filter(auth_email_change_requests::Column::UserId.eq(user.id))
+                    .exec(&tx)
                     .await
-                    .map_err(super::internal_admin_error)?,
-            )
-        } else {
-            None
-        };
-
-        let event_bus = &self.event_bus;
-
-        if let Some(plan) = role_mutation_plan.as_ref() {
-            let generation = durable_generation.ok_or_else(|| {
-                AuthAdminMutationError::Internal(
-                    "RBAC role mutation did not reserve a durable generation".to_string(),
+                    .map_err(super::internal_admin_error)?;
+            }
+            if let (Some(locale), Some(values)) = (
+                prepared.locale.as_deref(),
+                prepared.localized_values.as_ref(),
+            ) {
+                FlexAttachedValuesService::persist_localized_values(
+                    &tx,
+                    context.tenant_id,
+                    "user",
+                    user_id,
+                    locale,
+                    values,
                 )
-            })?;
-            let event = plan.integration_event(generation)?;
-            if let Err(error) = event_bus
-                .publish_contract_in_tx(&tx, plan.tenant_id(), Some(plan.actor_id()), event)
                 .await
+                .map_err(map_custom_field_error)?;
+            }
+            // Finish domain response reads before taking the global recovery
+            // watermark. Only fresh outbox writes and the live deadline check
+            // follow reservation; no new earlier-ranked domain identity may enter.
+            let tenant_name = self.tenant_name(&tx, context.tenant_id).await?;
+            let final_role = match role_mutation_plan.as_ref() {
+                Some(RolePlan::Builtin(plan)) => plan.new_role().to_string(),
+                Some(RolePlan::Custom(_)) | None => {
+                    self.user_role_slug(&tx, context.tenant_id, user.id).await?
+                }
+            };
+            let invalidates_authorization = role_mutation_plan.is_some() || status_changed;
+            let durable_generation = if invalidates_authorization {
+                match reserve_rbac_invalidation_generation(&tx).await {
+                    Ok(generation) => Some(generation),
+                    Err(crate::error::Error::Database(error)) => {
+                        if rustok_core::resilience::retry::rollback_for_transaction_retry(
+                            tx, &error, attempt,
+                        )
+                        .await
+                        .map_err(super::internal_admin_error)?
+                        {
+                            attempt += 1;
+                            continue;
+                        }
+                        return Err(super::internal_admin_error(error));
+                    }
+                    Err(error) => {
+                        tx.rollback().await.map_err(super::internal_admin_error)?;
+                        return Err(super::internal_admin_error(error));
+                    }
+                }
+            } else {
+                None
+            };
+
+            let event_bus = &self.event_bus;
+
+            if let Some(plan) = role_mutation_plan.as_ref() {
+                let generation = durable_generation.ok_or_else(|| {
+                    AuthAdminMutationError::Internal(
+                        "RBAC role mutation did not reserve a durable generation".to_string(),
+                    )
+                })?;
+                let event = plan.integration_event(generation)?;
+                if let Err(error) = event_bus
+                    .publish_contract_in_tx(&tx, plan.tenant_id(), Some(plan.actor_id()), event)
+                    .await
+                {
+                    let rollback_error = tx.rollback().await.err();
+                    tracing::error!(
+                        %error,
+                        ?rollback_error,
+                        tenant_id = %context.tenant_id,
+                        actor_id = %context.actor_id,
+                        user_id = %user.id,
+                        "Durable RBAC role mutation event publication failed; user update rolled back"
+                    );
+                    return Err(AuthAdminMutationError::Internal(
+                        "durable RBAC role mutation event is unavailable".to_string(),
+                    ));
+                }
+            }
+
+            if (user_row_update_requested || role_mutation_plan.is_some())
+                && let Err(error) = event_bus
+                    .publish_in_tx(
+                        &tx,
+                        context.tenant_id,
+                        Some(context.actor_id),
+                        DomainEvent::UserUpdated { user_id: user.id },
+                    )
+                    .await
             {
                 let rollback_error = tx.rollback().await.err();
                 tracing::error!(
@@ -1372,55 +1455,31 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                     tenant_id = %context.tenant_id,
                     actor_id = %context.actor_id,
                     user_id = %user.id,
-                    "Durable RBAC role mutation event publication failed; user update rolled back"
+                    "Durable UserUpdated publication failed; user update rolled back"
                 );
                 return Err(AuthAdminMutationError::Internal(
-                    "durable RBAC role mutation event is unavailable".to_string(),
+                    "durable UserUpdated event is unavailable".to_string(),
                 ));
             }
-        }
 
-        if (user_row_update_requested || role_mutation_plan.is_some())
-            && let Err(error) = event_bus
-                .publish_in_tx(
-                    &tx,
+            self.ensure_user_admin_credential_deadline(&tx, credential_deadline)
+                .await?;
+            tx.commit().await.map_err(super::internal_admin_error)?;
+            if let Some(durable_generation) = durable_generation {
+                publish_committed_user_invalidation(
+                    &self.cache_service,
                     context.tenant_id,
-                    Some(context.actor_id),
-                    DomainEvent::UserUpdated { user_id: user.id },
+                    user.id,
+                    durable_generation,
                 )
-                .await
-        {
-            let rollback_error = tx.rollback().await.err();
-            tracing::error!(
-                %error,
-                ?rollback_error,
-                tenant_id = %context.tenant_id,
-                actor_id = %context.actor_id,
-                user_id = %user.id,
-                "Durable UserUpdated publication failed; user update rolled back"
-            );
-            return Err(AuthAdminMutationError::Internal(
-                "durable UserUpdated event is unavailable".to_string(),
+                .await;
+            }
+            return Ok(ServerAuthAdminMutationProvider::user_record(
+                user,
+                final_role,
+                tenant_name,
             ));
         }
-
-        self.ensure_user_admin_credential_deadline(&tx, credential_deadline)
-            .await?;
-        tx.commit().await.map_err(super::internal_admin_error)?;
-        if let Some(durable_generation) = durable_generation {
-            publish_committed_user_invalidation(
-                &self.cache_service,
-                context.tenant_id,
-                user.id,
-                durable_generation,
-            )
-            .await;
-        }
-        Ok(ServerAuthAdminMutationProvider::user_record(
-            user,
-            final_role,
-            tenant_name,
-        ))
     }
 
     async fn delete_user(

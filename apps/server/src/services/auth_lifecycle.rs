@@ -240,6 +240,7 @@ impl From<AuthLifecycleError> for Error {
 /// hashing (see `AuthLifecycleService::prepare_new_user`). Fields are
 /// crate-private so the only way to obtain one is through that
 /// validation point.
+#[derive(Clone)]
 pub(crate) struct PreparedNewUser {
     email: String,
     name: Option<String>,
@@ -521,9 +522,15 @@ impl AuthLifecycleService {
         let user = Self::insert_new_user_in_tx(tx, tenant_id, prepared, status).await?;
         rustok_rbac::replace_persisted_user_role_by_slug_on(tx, tenant_id, user.id, role_slug)
             .await
-            .map_err(|error| {
-                tracing::error!(%error, "New account custom role assignment failed");
-                AuthLifecycleError::Internal(Error::InternalServerError)
+            .map_err(|error| match error {
+                rustok_rbac::RbacRolePersistenceError::Database(error)
+                | rustok_rbac::RbacRolePersistenceError::Assignment(
+                    rustok_rbac::RbacRoleAssignmentError::Statement(error),
+                ) => AuthLifecycleError::Internal(Error::Database(error)),
+                other => {
+                    tracing::error!(error = %other, "New account custom role assignment failed");
+                    AuthLifecycleError::Internal(Error::InternalServerError)
+                }
             })?;
         Ok(user)
     }

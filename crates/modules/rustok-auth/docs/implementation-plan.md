@@ -634,8 +634,14 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   A fresh attempt starts at request authorization and clock admission, repeats
   tenant/app/user/session or registration/consent/module/role fences and
   continuity checks, and publishes cache invalidation only after commit.
-  Other statement errors and commit failures are not retried. Create/update,
-  invite and GraphQL role retry wiring, plus PostgreSQL credential revocation
+  Other deactivation statement errors and commit failures are not retried.
+- Admin create retries typed account insertion/assignment errors; update
+  retries typed generation reservation conflicts before event publication.
+  Both reuse only validated inputs/hash, repeat clock and locked authority;
+  update retains its original metadata baseline and rereads Flex values.
+  Create refreshes Flex preparation before retry, not a schema-generation
+  fence. No event/commit failure retry. Other statement errors, invite and
+  GraphQL role retry wiring, plus PostgreSQL credential revocation
   between attempts and end-to-end event/rollback verification, remain open.
 
 - All user-admin mutations now use the same pre-transaction clock admission

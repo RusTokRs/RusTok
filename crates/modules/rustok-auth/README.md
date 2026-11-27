@@ -418,8 +418,14 @@ Account deactivation also retries a typed RBAC watermark reservation failure
 before durable event publication, only after explicit rollback. Each attempt
 rechecks the original admitted ceiling and the locked live credential, tenant,
 module policy, role grants and continuity. Other statement failures, event
-publication, commit errors, create/update user and invite writes are not
-covered by this retry. PostgreSQL re-admission and contention evidence is
+publication and commit errors are not replayed. Admin creation now retries
+classified account insertion/assignment statement failures before event
+publication; admin update retries the late generation reservation only.
+Both preserve the request ceiling and rerun locked authority; Argon2 is not
+repeated. Update retains its original metadata conflict baseline and reloads
+localized values in the fresh transaction; creation refreshes Flex preparation
+before a retry (not a schema-generation fence). Invite writes and other
+statement boundaries are not covered. PostgreSQL re-admission and contention evidence is
 still required. Source regressions are unrun.
 
 ### Authorization-code consent generation

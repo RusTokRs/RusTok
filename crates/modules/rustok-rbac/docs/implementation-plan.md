@@ -14,7 +14,9 @@ conflicts after explicit rollback and fresh locked facts; no-op and commit
 failure never retry. Bootstrap assignment statements now preserve driver errors through the
 standalone replacement adapter; begin/commit/rollback diagnostics do not
 enter that statement variant. Account deactivation retries only watermark
-reservation conflicts with fresh credential admission. Other request-bound
+reservation conflicts with fresh credential admission. Admin creation now
+retries typed account insertion/role assignment failures; admin update
+retries generation reservation conflicts before event publication. Other request-bound
 Auth/GraphQL whole-transaction retry remain open. An optional legacy host callback still needs its own generation
 reconciliation. Added owner/host regressions have not been compiled or executed.
 

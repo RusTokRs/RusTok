@@ -43,6 +43,31 @@ pub(super) fn persistence_error(
                 "active super administrator role assignment is inconsistent".to_string(),
             )
         }
-        other => AuthAdminMutationError::Internal(other.to_string()),
+        other => super::internal_admin_error(other),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn persistence_error_does_not_expose_driver_diagnostics() {
+        let error = persistence_error(rustok_rbac::RbacRolePersistenceError::Database(
+            sea_orm::DbErr::Custom("private connection string and SQL".into()),
+        ));
+        assert_eq!(
+            error,
+            AuthAdminMutationError::Internal("Auth administration operation failed".into()),
+        );
+        let error = persistence_error(rustok_rbac::RbacRolePersistenceError::Assignment(
+            rustok_rbac::RbacRoleAssignmentError::Statement(
+                sea_orm::DbErr::Custom("private role statement".into()),
+            ),
+        ));
+        assert_eq!(
+            error,
+            AuthAdminMutationError::Internal("Auth administration operation failed".into()),
+        );
     }
 }
