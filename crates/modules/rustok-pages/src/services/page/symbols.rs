@@ -197,6 +197,38 @@ pub(super) fn apply_site_symbols_to_content(
         .map_err(|error| PagesError::validation(format!("unable to encode resolved page: {error}")))
 }
 
+fn validate_stored_site_symbol(row: &site_symbol::Model) -> PagesResult<()> {
+    let descriptor = SymbolDescriptor::from_value(&row.content)
+        .ok_or_else(|| PagesError::validation("Stored site symbol is malformed"))?;
+    if descriptor.id != row.symbol_id {
+        return Err(PagesError::validation(format!(
+            "Stored site symbol identity mismatch for `{}`",
+            row.symbol_id
+        )));
+    }
+    Ok(())
+}
+
+/// Loads the canonical symbol catalog for one exact tenant/locale.
+pub(crate) async fn load_site_symbols_for_locale<C: ConnectionTrait>(
+    conn: &C,
+    tenant_id: Uuid,
+    locale: &str,
+) -> PagesResult<Vec<Value>> {
+    let rows = site_symbol::Entity::find()
+        .filter(site_symbol::Column::TenantId.eq(tenant_id))
+        .filter(site_symbol::Column::Locale.eq(locale))
+        .order_by_asc(site_symbol::Column::SymbolId)
+        .all(conn)
+        .await?;
+    let mut symbols = Vec::with_capacity(rows.len());
+    for row in rows {
+        validate_stored_site_symbol(&row)?;
+        symbols.push(row.content);
+    }
+    Ok(symbols)
+}
+
 /// Loads the canonical symbol catalog for a tenant, keyed by locale.
 pub(crate) async fn load_site_symbols_by_locale<C: ConnectionTrait>(
     conn: &C,
@@ -209,14 +241,7 @@ pub(crate) async fn load_site_symbols_by_locale<C: ConnectionTrait>(
         .await?;
     let mut by_locale: HashMap<String, Vec<Value>> = HashMap::new();
     for row in rows {
-        let descriptor = SymbolDescriptor::from_value(&row.content)
-            .ok_or_else(|| PagesError::validation("Stored site symbol is malformed"))?;
-        if descriptor.id != row.symbol_id {
-            return Err(PagesError::validation(format!(
-                "Stored site symbol identity mismatch for `{}`",
-                row.symbol_id
-            )));
-        }
+        validate_stored_site_symbol(&row)?;
         by_locale.entry(row.locale).or_default().push(row.content);
     }
     Ok(by_locale)
