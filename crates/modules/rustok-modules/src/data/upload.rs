@@ -359,15 +359,23 @@ where
         .map_err(|error| ArtifactDataError::Storage(error.to_string()))?
         .to_string();
         let stored_path = key.clone();
-        self.storage
+        if let Err(error) = self
+            .storage
             .objects
             .put_opts(
-                &Path::from(key),
+                &Path::from(stored_path.as_str()),
                 chunk.data.clone().into(),
                 self.storage.put_options("application/octet-stream"),
             )
             .await
-            .map_err(storage_error)?;
+        {
+            delete_uploaded_object_best_effort(
+                &self.storage,
+                &Path::from(stored_path.as_str()),
+            )
+            .await;
+            return Err(storage_error(error));
+        }
         let stored_size = chunk.data.len() as u64;
         let inserted = transaction.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
