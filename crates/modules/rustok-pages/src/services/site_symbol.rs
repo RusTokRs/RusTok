@@ -30,6 +30,14 @@ impl TryFrom<site_symbol::Model> for SiteSymbolRecord {
     type Error = PagesError;
 
     fn try_from(row: site_symbol::Model) -> PagesResult<Self> {
+        let descriptor = fly::SymbolDescriptor::from_value(&row.content)
+            .ok_or_else(|| PagesError::validation("Stored site symbol is malformed"))?;
+        if descriptor.id != row.symbol_id {
+            return Err(PagesError::validation(format!(
+                "Stored site symbol identity mismatch for `{}`",
+                row.symbol_id
+            )));
+        }
         Ok(Self {
             symbol_id: row.symbol_id,
             locale: row.locale,
