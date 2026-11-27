@@ -2370,6 +2370,14 @@ mod tests {
         )
         .await
         .expect("login");
+        let first_hash = hash_refresh_token(&first.refresh_token);
+        let first_preflight = sessions::Entity::find()
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::TokenHash.eq(&first_hash))
+            .one(&db)
+            .await
+            .expect("load preflight session")
+            .expect("preflight session");
         let (_, rotated) = AuthLifecycleService::refresh_with_config_db(
             &db,
             &config,
@@ -2381,7 +2389,6 @@ mod tests {
         )
         .await
         .expect("initial refresh rotation");
-        let first_hash = hash_refresh_token(&first.refresh_token);
         let history = session_refresh_history::Entity::find_by_id(first_hash.clone())
             .one(&db)
             .await
@@ -2392,6 +2399,48 @@ mod tests {
         let mut aged_history: session_refresh_history::ActiveModel = history.into();
         aged_history.rotated_at = Set(Some((Utc::now() - Duration::minutes(2)).into()));
         age_history_fixture(&db, aged_history).await;
+
+        let (_, second) = AuthLifecycleService::login_with_config(
+            &ctx,
+            &config,
+            tenant.id,
+            &user.email,
+            "Password123!",
+            None,
+            None,
+            false,
+        )
+        .await
+        .expect("second login");
+        let second_hash = hash_refresh_token(&second.refresh_token);
+        let second_preflight = sessions::Entity::find()
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::TokenHash.eq(&second_hash))
+            .one(&db)
+            .await
+            .expect("load second preflight session")
+            .expect("second preflight session");
+        let (_, second_rotated) = AuthLifecycleService::refresh_with_config_db(
+            &db,
+            &config,
+            tenant.id,
+            &second.refresh_token,
+            false,
+            None,
+            None,
+        )
+        .await
+        .expect("second refresh rotation");
+        let second_history = session_refresh_history::Entity::find_by_id(second_hash.clone())
+            .one(&db)
+            .await
+            .expect("load second refresh history")
+            .expect("second history row");
+        let second_session_id = second_history.session_id;
+        let mut aged_second_history: session_refresh_history::ActiveModel = second_history.into();
+        aged_second_history.rotated_at =
+            Set(Some((Utc::now() - Duration::minutes(2)).into()));
+        age_history_fixture(&db, aged_second_history).await;
 
         let mut inactive_tenant: tenants::ActiveModel = tenant.clone().into();
         inactive_tenant.is_active = Set(false);
@@ -2423,6 +2472,23 @@ mod tests {
             .expect("current session");
         assert_eq!(current_after.token_hash, current_before.token_hash);
         assert!(current_after.revoked_at.is_none());
+
+        AuthLifecycleService::detect_refresh_reuse_after_tenant_deactivation(
+            &db,
+            &config,
+            tenant.id,
+            &second_preflight,
+            &second_hash,
+        )
+        .await
+        .expect("security-only replay check must re-read the session after tenant deactivation");
+        let second_revoked = sessions::Entity::find_by_id(second_session_id)
+            .one(&db)
+            .await
+            .expect("reload second revoked session")
+            .expect("second session");
+        assert!(second_revoked.revoked_at.is_some());
+        assert!(second_revoked.previous_token_hash.is_none());
 
         let stale_attempt = AuthLifecycleService::refresh_with_config_db(
             &db,
