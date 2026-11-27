@@ -574,7 +574,7 @@ fn expand_instance(
             "symbol instance of `{symbol_id}` must carry a component id"
         )));
     };
-    if !object.children().is_empty() {
+    if !object.components.is_empty() {
         return Err(FlyError::InvalidSymbolReference(format!(
             "symbol instance `{instance_id}` must be child-free at rest"
         )));
@@ -1359,6 +1359,31 @@ mod tests {
             .collect();
         assert!(codes.contains(&"symbol_reference_missing"));
         assert!(codes.contains(&"symbol_instance_with_children"));
+    }
+
+    #[test]
+    fn symbol_expansion_rejects_opaque_instance_children() {
+        let instance = ComponentNode::Object(Box::new(ComponentObject {
+            id: Some("slot".to_string()),
+            component_type: Some("symbol".to_string()),
+            symbol_id: Some("cta".to_string()),
+            components: crate::ComponentChildren::Opaque(json!({
+                "id": "opaque-child"
+            })),
+            ..ComponentObject::default()
+        }));
+        let document = document_with(
+            object("root", "wrapper", vec![instance]),
+            vec![symbol_json("cta", vec![plain_component_json("cta-1")])],
+        );
+
+        let error = resolve_symbol_instances(&document).expect_err(
+            "opaque children must not be silently overwritten by symbol expansion",
+        );
+        assert!(matches!(
+            error,
+            FlyError::InvalidSymbolReference(message) if message.contains("child-free")
+        ));
     }
 
     #[test]
