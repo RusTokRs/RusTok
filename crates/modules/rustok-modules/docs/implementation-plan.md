@@ -3651,3 +3651,13 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   head restoration; opt-in PostgreSQL state-lock tests cover both directions.
   No new migration. Tests/compilation unrun; end-to-end contention, live node
   health, registry and contextual policy authority remain open.
+
+- Registry release FK ordering: migration 000099 adds nonblocking PostgreSQL
+  request-parent admission for release INSERT/repoint and request/release
+  parent admission for publication, yank and unyank receipts. Existing
+  canonical writers retain their parent locks; metadata-only SET NULL
+  cascades do not advance release continuity. Missing/invisible parent or
+  contention rejects the write. PostgreSQL regression covers both parent
+  classes, direct receipt updates, canonical lock reuse, retry and cascade;
+  compilation and runtime/migration checks remain pending. Other registry
+  review/evidence/validation receipts and cross-owner FK edges remain open.

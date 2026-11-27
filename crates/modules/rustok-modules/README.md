@@ -263,4 +263,7 @@ Deployment reconciliation and migration checkpoints now share the platform slug
 ordering: reconciliation fences all target slugs before readiness state, uses
 read-only identity locks compatible with PostgreSQL FK KEY SHARE, and rechecks
 all target identities before convergence. This is source-only remediation;
-registry trigger entry and wider FK/receipt ordering still require review.
+registry platform trigger entry is fenced by migration 000098. Migration 000099
+also rejects contended late release/request and publication/yank/unyank receipt
+FK parent acquisition (PostgreSQL 55P03). Retry from a new transaction; broader
+FK/receipt ordering and PostgreSQL runtime verification remain open.

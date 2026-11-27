@@ -241,7 +241,13 @@ This closes that particular blocking edge in source, not arbitrary multi-row
 or cross-owner deadlocks. RBAC migration 000006 adds nonblocking parent
 guards before membership/grant revision triggers and artifact grant/receipt
 FK checks, retaining the parent locks through commit. See the membership
-and role grant ADRs for the bounded ordering and retry contract. Other
+and role grant ADRs for the bounded ordering and retry contract. Migration 000099 also fences registry release request references and
+publication/yank/unyank receipt FK parents with PostgreSQL KEY SHARE NOWAIT;
+publication checks request before release. This avoids waiting on an earlier
+parent from a direct child write, retains the FK, and rejects invisible or
+missing parents. An unchanged release request reference or SET NULL cascade
+requires no new request-parent lock. A 55P03 rejection requires transaction
+restart. SQLite keeps its serialized writer path. Other
 implicit FK and trigger locks, bulk cascades, owner receipts, RBAC generation
 ordering across owners, and external effects need further analysis.
 For the governed-transition/security-state seam, the global security epoch

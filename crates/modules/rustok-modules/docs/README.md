@@ -1625,5 +1625,11 @@ SHARE). Agent paths recheck the exact desired state and target installation
 set after waiting; either convergence branch revalidates all target identities.
 Migration checkpoint writes now acquire platform/tenant slug fences before
 receipt and identity writes. No new migration; coordinate owner writer rollout.
-The registry AFTER-trigger lock inversion under noncanonical administrative SQL
-and remaining implicit FK/receipt/generation ordering are still open.
+Migration 000098 removes the blocking registry AFTER-trigger platform edge.
+Migration 000099 adds PostgreSQL BEFORE guards for new release request references
+and publication/yank/unyank receipt parents. The guard takes KEY SHARE NOWAIT
+in request-before-release order where both are referenced, rejects missing or
+invisible parents, and retains existing FK constraints. SET NULL cascades and
+unchanged release request references need no new request parent lock. Retry
+55P03 from a new transaction. Source regressions are authored, unrun. Other
+implicit FK/receipt/generation ordering remains open.
