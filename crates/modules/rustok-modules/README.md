@@ -237,8 +237,10 @@ production readiness. The documented implementation and operational gaps include
   paths need production evidence.
 - Server-composed `platform.data.objects` now uses the SQL capability effect
   fence for object metadata, receipts, upload-session/chunk transitions and
-  replay paths; object-read output is revalidated after storage fetch. Physical
-  object-store bytes remain outside SQL transactions, so artifact-data object
+  replay paths; object-read output is revalidated after storage fetch, and
+  active namespace migration holds block object reads/writes and upload-session
+  transitions. Chunk bytes are staged before opening the owner transaction.
+  Physical object-store bytes remain outside SQL transactions, so artifact-data object
   migration and the physical namespace cutover still need production
   fleet/job/write/recovery/retention fences, actual migration-object copy
   publication, PostgreSQL crash/race evidence, a separate full-manifest
