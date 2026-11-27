@@ -1,12 +1,5 @@
-logger:
-  enable: true
-  pretty_backtrace: false
-  level: info
-  format: json
-
 server:
   binding: 0.0.0.0
-  host: https://api.example.com
   port: 5150
 
 database:
@@ -100,6 +93,7 @@ settings:
         warning_threshold: 0.7
         critical_threshold: 0.9
 
+# Set RUST_LOG=info and RUSTOK_LOG_FORMAT=json in the process environment.
 # Production startup also requires RUSTOK_HTTPS=true so HSTS is emitted.
 # Redis runtime is resolved from environment, not from this YAML.
 # Set one of:

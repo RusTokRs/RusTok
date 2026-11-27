@@ -17,6 +17,7 @@ LABEL org.opencontainers.image.title="RusToK Server" \
 ENV RUST_BACKTRACE=1 \
     RUSTOK_SOURCE_COMMIT=${OCI_REVISION} \
     RUSTOK_ENV=production \
+    RUSTOK_LOG_FORMAT=json \
     RUSTOK_CONFIG_DIR=/app/config \
     RUSTOK_HTTPS=true
 WORKDIR /app
