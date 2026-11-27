@@ -65,6 +65,13 @@ its registration is explicitly retired. `OutboxConsumer::retire_if_drained` refu
 retirement while any existing event remains unacknowledged; callers must stop the
 worker and quiesce producers of the registered event types first.
 
+Consumer registration and retirement serialize registry mutations before drain
+reads. PostgreSQL retirement takes a non-blocking event-table writer fence;
+SQLite reserves the writer before scanning. Drain requires matching event-type
+receipts. ACK holds registry and source event authority through the owner
+transaction; contention must roll back owner effects and be retried.
+Unfenced transport ACK cannot complete a relay claim.
+
 ## Tenant and authorization boundary
 
 - Tenant-facing DLQ list and native dashboard reads always derive tenant scope from the trusted request context. They do not accept a client-selected tenant identifier.

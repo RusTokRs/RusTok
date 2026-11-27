@@ -167,3 +167,15 @@ with the deletion transaction using a SHARE table lock before the fresh
 READ COMMITTED snapshot; SQLite serializes writers. The SQLite DLQ hold
 regression was extended. PostgreSQL registration/delete contention and
 runtime verification remain pending.
+
+## Durable consumer lifecycle and acknowledgement authority (2026-11-27, source only)
+
+Consumer registration and retirement serialize registry mutations before drain
+reads. PostgreSQL retirement takes a non-blocking event-table writer fence;
+SQLite reserves the writer before scanning. Drain requires matching event-type
+receipts. ACK holds registry and source event authority through the owner
+transaction; contention must roll back owner effects and be retried.
+Unfenced transport ACK cannot complete a relay claim.
+Source regressions cover retirement, wrong-type receipts and claim stealing.
+PostgreSQL contention, owner rollback/retry, compilation and broker delivery
+remain unverified.

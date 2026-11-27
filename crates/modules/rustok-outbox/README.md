@@ -32,6 +32,12 @@ use the storage library with its own database and compose delivery separately.
   generic receipt primitive acknowledges a consumer event only for a
   registered consumer: `acknowledge_existing` errors on an unregistered
   consumer key instead of silently reporting success.
+  Consumer registration and retirement serialize registry mutations before drain
+  reads. PostgreSQL retirement takes a non-blocking event-table writer fence;
+  SQLite reserves the writer before scanning. Drain requires matching event-type
+  receipts. ACK holds registry and source event authority through the owner
+  transaction; contention must roll back owner effects and be retried.
+  Unfenced transport ACK cannot complete a relay claim.
 - Expose the runtime services used by `apps/server` event bootstrap and background delivery.
 - Ship the module-owned Leptos admin UI package for relay visibility with a `core/transport/ui` FFA split.
 

@@ -19,3 +19,10 @@ Configure Outbox to deliver committed events from that database. See the
 
 Replay verifies the stored row ID and any populated tenant projection against
 the decoded envelope. Historical null projections remain permitted.
+
+Consumer registration and retirement serialize registry mutations before drain
+reads. PostgreSQL retirement takes a non-blocking event-table writer fence;
+SQLite reserves the writer before scanning. Drain requires matching event-type
+receipts. ACK holds registry and source event authority through the owner
+transaction; contention must roll back owner effects and be retried.
+Unfenced transport ACK cannot complete a relay claim.

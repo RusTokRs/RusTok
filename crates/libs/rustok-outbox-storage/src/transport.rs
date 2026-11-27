@@ -360,12 +360,13 @@ impl EventTransport for OutboxTransport {
                 "outbox event_id must not be nil".to_string(),
             ));
         }
-        // Atomic state transition: only a pending row may be acknowledged.
-        // A read-modify-write through a stale snapshot could resurrect a
-        // dead-lettered row or steal another worker's live claim.
+        // An unfenced ACK may complete only an unclaimed pending row.
+        // Relay claims require the exact owner token and timestamp.
         let result = entity::Entity::update_many()
             .filter(entity::Column::Id.eq(event_id))
             .filter(entity::Column::Status.eq(SysEventStatus::Pending))
+            .filter(entity::Column::ClaimedBy.is_null())
+            .filter(entity::Column::ClaimedAt.is_null())
             .set(entity::ActiveModel {
                 status: Set(SysEventStatus::Dispatched),
                 dispatched_at: Set(Some(Utc::now())),

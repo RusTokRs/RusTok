@@ -101,6 +101,17 @@ types is unacknowledged; the caller must first stop the consumer and quiesce
 those event producers.
 
 - Registration is idempotent and committed before the retention worker starts.
+- Registration and retirement serialize through a PostgreSQL SHARE ROW
+  EXCLUSIVE registry lock at READ COMMITTED. Retirement then acquires
+  SHARE on sys_events with NOWAIT before drain reads. SQLite reserves its
+  writer before the drain. Producers must still be quiesced operationally;
+  events committed after retirement are not owed to the retired consumer.
+- Drain checks require both the consumer key and event type on each receipt.
+  Retirement preserves terminal receipts for the same consumer identity.
+- ACK takes the registry SHARE lock with NOWAIT and locks the source and
+  subscription rows through the owner transaction on PostgreSQL. SQLite
+  reserves its writer. Contention requires owner rollback and retry. Only
+  trusted startup backfill of terminal receipts may accept an absent event.
 - Receipt and acknowledgement are committed in one owner transaction.
 - Duplicate workers may race to acknowledge the same event; the unique key
   makes the operation idempotent.
