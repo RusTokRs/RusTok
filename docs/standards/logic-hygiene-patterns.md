@@ -1574,6 +1574,13 @@ let category = self.taxonomy()?
 * **Commerce example:** The storefront Product list had a compiled ORM handler
   alongside the owner-port handler. Remove the superseded handler and check that
   Product counts and pages the same tenant- and channel-filtered SQL query.
+* **Localized record example:** The scaffold publishes an exact-locale
+  publication and revision predicate. The module control plane supplies the
+  tenant discovery decision. Index combines both before selecting the page
+  and counting. The PostgreSQL fixture checks the period after an owner edit
+  or withdrawal and before the next Outbox delivery.
+  [Owner predicate](../../xtask/src/scaffold/persistence/index_publication.rs.in),
+  [PostgreSQL fixture](../../xtask/src/scaffold/matrix/index_fixture.rs.in)
 
 ---
 

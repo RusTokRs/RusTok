@@ -1,8 +1,14 @@
+use async_graphql::MergedObject;
+
 mod mutation;
 mod query;
 mod runtime;
+mod storefront;
 mod types;
 
 pub use mutation::__MODULE_STEM__AdminMutation;
 pub use query::__MODULE_STEM__AdminQuery;
 pub use runtime::{__MODULE_STEM__AdminGraphqlData, attach_schema_data};
+
+#[derive(Default, MergedObject)]
+pub struct __MODULE_STEM__Query(__MODULE_STEM__AdminQuery, storefront::StorefrontQuery);

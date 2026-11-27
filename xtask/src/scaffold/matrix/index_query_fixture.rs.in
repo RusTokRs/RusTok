@@ -1,8 +1,8 @@
 mod index_query {
     use rustok_core::MigrationSource;
     use rustok_index::{
-        FieldName, FieldPath, IndexQuery, IndexQueryPort, IndexQueryScope, IndexValue, LocaleKey,
-        Pagination, SharedIndexQueryRuntime,
+        FieldName, FieldPath, IndexQuery, IndexQueryPage, IndexQueryPort, IndexQueryScope,
+        IndexValue, LocaleKey, LocalizedEntityQuery, Pagination, SharedIndexQueryRuntime,
     };
     use rustok_modules::ModulesModule;
     use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
@@ -55,23 +55,46 @@ mod index_query {
         pub(super) async fn expect(&self, locale: &str, title: Option<&str>) {
             let page = self
                 .runtime
-                .execute_query(IndexQuery {
-                    scope: IndexQueryScope {
-                        tenant_id: self.tenant,
-                        locale: Some(LocaleKey::new(locale).unwrap()),
-                    },
-                    schema: localized_schema(),
-                    fields: vec![FieldPath::new(FieldName::new("title").unwrap())],
-                    filter: None,
-                    order_by: Vec::new(),
-                    pagination: Pagination::Cursor {
-                        first: 1,
-                        after: None,
-                    },
-                    include_exact_count: true,
-                })
+                .execute_query(self.query(locale))
                 .await
                 .unwrap();
+            Self::assert_title(page, title);
+        }
+
+        pub(super) async fn expect_fallback(
+            &self,
+            requested: &str,
+            fallback: &str,
+            title: Option<&str>,
+        ) {
+            let query = self.query(requested);
+            let title_field = query.fields[0].clone();
+            let query =
+                LocalizedEntityQuery::new(query, Some(LocaleKey::new(fallback).unwrap()), None)
+                    .with_localized_projection_fields([title_field]);
+            let page = self.runtime.execute_localized_query(query).await.unwrap();
+            Self::assert_title(page, title);
+        }
+
+        fn query(&self, locale: &str) -> IndexQuery {
+            IndexQuery {
+                scope: IndexQueryScope {
+                    tenant_id: self.tenant,
+                    locale: Some(LocaleKey::new(locale).unwrap()),
+                },
+                schema: localized_schema(),
+                fields: vec![FieldPath::new(FieldName::new("title").unwrap())],
+                filter: None,
+                order_by: Vec::new(),
+                pagination: Pagination::Cursor {
+                    first: 1,
+                    after: None,
+                },
+                include_exact_count: true,
+            }
+        }
+
+        fn assert_title(page: IndexQueryPage, title: Option<&str>) {
             assert_eq!(page.exact_count, Some(u64::from(title.is_some())));
             assert!(!page.has_more);
             let titles = page
