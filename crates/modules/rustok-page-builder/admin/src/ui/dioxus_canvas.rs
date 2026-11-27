@@ -20,6 +20,13 @@ use wasm_bindgen::JsCast;
 #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
 use web_sys::{Element, Event, EventTarget, PointerEvent};
 
+#[cfg(any(all(target_arch = "wasm32", feature = "dioxus-web"), test))]
+fn can_resize_by_keyboard(modifiers: Modifiers) -> bool {
+    !modifiers.contains(Modifiers::ALT)
+        && !modifiers.contains(Modifiers::CONTROL)
+        && !modifiers.contains(Modifiers::META)
+}
+
 const RESIZE_HANDLES: [ResizeHandle; 8] = [
     ResizeHandle::NorthWest,
     ResizeHandle::North,
@@ -629,6 +636,11 @@ pub fn DioxusIsolatedCanvas(
                                         onkeydown: {
                                             let intent_instance_id = intent_instance_id.clone();
                                             move |event| {
+                                                // Modified arrow chords belong to browser, OS or
+                                                // editor shortcuts; resize only owns plain arrows.
+                                                if !can_resize_by_keyboard(event.modifiers()) {
+                                                    return;
+                                                }
                                                 let Some(context) = keyboard_resize_context.clone()
                                                 else {
                                                     return;
@@ -1028,6 +1040,16 @@ fn update_drag_candidates(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn modified_arrow_chords_are_not_consumed_by_resize_handles() {
+        assert!(can_resize_by_keyboard(Modifiers::empty()));
+        assert!(can_resize_by_keyboard(Modifiers::SHIFT));
+        assert!(!can_resize_by_keyboard(Modifiers::ALT));
+        assert!(!can_resize_by_keyboard(Modifiers::CONTROL));
+        assert!(!can_resize_by_keyboard(Modifiers::META));
+        assert!(!can_resize_by_keyboard(Modifiers::ALT | Modifiers::CONTROL));
+    }
 
     #[test]
     fn resize_gesture_snapshot_is_fenced_by_identity_target_geometry_and_zoom() {
