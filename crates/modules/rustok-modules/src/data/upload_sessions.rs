@@ -179,7 +179,7 @@ where
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-        ensure_active_namespace(&transaction, scope, backend).await?;
+        ensure_active_object_namespace(&transaction, scope, backend).await?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -231,7 +231,7 @@ where
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-        ensure_active_namespace(&transaction, scope, backend).await?;
+        ensure_active_object_namespace(&transaction, scope, backend).await?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -282,7 +282,7 @@ where
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-        ensure_active_namespace(&transaction, scope, backend).await?;
+        ensure_active_object_namespace(&transaction, scope, backend).await?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -392,7 +392,7 @@ where
             begin_artifact_data_effect(&self.db, scope, self.effect_fence.as_ref()).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-        ensure_active_namespace(&transaction, scope, backend).await?;
+        ensure_active_object_namespace(&transaction, scope, backend).await?;
         let operation =
             find_artifact_data_object_operation(&transaction, scope, idempotency_key).await?;
         commit_artifact_data_effect(transaction, guard).await?;
