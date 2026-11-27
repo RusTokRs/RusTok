@@ -1659,11 +1659,15 @@ the exact execution authority on every metadata transaction, including reads,
 lists, put/delete receipts, upload-session creation and completion claims,
 chunk append, completed-upload replay, and the final session transition. The
 guard rechecks installation selection, capability grant constraints, security
-revision, direct credential/RBAC fences, and lease liveness before commit.
+revision, direct credential/RBAC fences, and lease liveness before commit. Every
+object operation also locks the serving namespace and rejects an active object
+or record-copy migration hold before reading or publishing namespace state.
 
 Object-store bytes are not part of the SQL transaction. A normal object put
 writes to a private generated key before publishing metadata; chunk append
-writes a private staging key before publishing the chunk row. A known denied
+writes a private staging key before opening the owner transaction. The owner
+transaction then revalidates session state and quota before publishing the
+chunk row, so no SQL authority lock spans object-store I/O. A known denied
 commit rolls back SQL and compensates the just-written bytes. An ambiguous
 storage/database failure does not delete bytes whose metadata commit may have
 succeeded. Object reads commit a fenced metadata snapshot, fetch bytes outside
