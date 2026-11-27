@@ -42,6 +42,7 @@ pub struct CurrentUser {
     pub grant_type: String,
     /// Effective access deadline: the earlier of the signed JWT and durable credential.
     pub access_token_expires_at: chrono::DateTime<chrono::Utc>,
+    pub(crate) delegated_credential: Option<crate::services::rbac_request_scope::DelegatedCredentialEvidence>,
 }
 
 impl CurrentUser {
@@ -187,7 +188,7 @@ fn classify_access_token_claims(
     ))
 }
 
-fn validate_oauth_token_scopes(
+pub(crate) fn validate_oauth_token_scopes(
     app: &oauth_apps::Model,
     token_scopes: &[String],
 ) -> Result<(), (StatusCode, &'static str)> {
@@ -207,8 +208,8 @@ fn validate_oauth_token_scopes(
     ))
 }
 
-async fn validate_active_user_consent(
-    db: &DatabaseConnection,
+pub(crate) async fn validate_active_user_consent(
+    db: &impl sea_orm::ConnectionTrait,
     app: &oauth_apps::Model,
     tenant_id: uuid::Uuid,
     user_id: uuid::Uuid,
@@ -493,6 +494,7 @@ pub async fn resolve_current_user_from_access_token(
 
     let principal_kind = classify_access_token_claims(&claims)?;
     let mut delegated_credential_issued_at = None;
+    let mut delegated_credential = None;
     let mut static_authority_revision = None;
     let mut durable_credential_expires_at = access_token_expires_at;
 
@@ -560,6 +562,9 @@ pub async fn resolve_current_user_from_access_token(
         delegated_credential_issued_at =
             Some(access_row.created_at.with_timezone(&chrono::Utc));
         durable_credential_expires_at = access_row.expires_at.with_timezone(&chrono::Utc);
+        delegated_credential = Some(crate::services::rbac_request_scope::DelegatedCredentialEvidence::from_registration(
+            &access_row, client_id, &claims.scopes,
+        ));
         validate_active_user_consent(
             db,
             &app,
@@ -756,6 +761,7 @@ pub async fn resolve_current_user_from_access_token(
         scopes: claims.scopes,
         grant_type: claims.grant_type,
         access_token_expires_at: access_token_expires_at.min(durable_credential_expires_at),
+        delegated_credential,
     })
 }
 

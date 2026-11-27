@@ -136,12 +136,7 @@ async fn graphql_handler(
     }
 
     let rbac_scope = current_user.as_ref().map(|current_user| {
-        RbacRequestScope::new(
-            current_user.user.tenant_id,
-            current_user.user.id,
-            current_user.permissions.clone(),
-            current_user.inferred_role.clone(),
-        )
+        RbacRequestScope::authenticated(current_user, current_user.access_token_expires_at)
     });
 
     if let Some(current_user) = current_user {
@@ -789,11 +784,8 @@ async fn build_ws_connection_data(
             .await
             .map_err(|(_, message)| async_graphql::Error::new(message))?;
 
-    let request_scope = RbacRequestScope::new(
-        current_user.user.tenant_id,
-        current_user.user.id,
-        current_user.permissions.clone(),
-        current_user.inferred_role.clone(),
+    let request_scope = RbacRequestScope::authenticated(
+        &current_user, current_user.access_token_expires_at,
     );
 
     let locale = resolve_ws_locale(&runtime_ctx, &tenant_ctx, payload.locale.as_deref()).await?;

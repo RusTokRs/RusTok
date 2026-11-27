@@ -107,10 +107,13 @@ revision in the host request scope. Direct session credentials lock the
 initiating session after ordered user locks, validate the exact subject and
 live absolute/sliding deadlines, and recheck time after policy/role locks
 and before commit. Grant-only internal scopes do not claim credential
-authority. Delegated registration/consent fencing, OAuth administration,
-RBAC role-definition mutations, artifact authority and cross-module
-PostgreSQL deadlock evidence remain open. Compilation and runtime
-verification are pending for this slice.
+authority. Delegated user administration now carries the admitted registration
+identity, digest, scopes, issuance time and consent epoch, locks the OAuth app
+before ordered users, locks the registration, checks current app/consent policy
+and restricts current grants to the original scopes. HTTP GraphQL and WS scope
+construction preserve these facts. OAuth administration, RBAC role-definition
+mutations, artifact authority and cross-module PostgreSQL deadlock evidence
+remain open. Compilation and runtime verification are pending.
 
 OAuth authorization rechecks the locked direct-session/access deadline after
 consent and code writes, and code consumption rejects future-dated and expired

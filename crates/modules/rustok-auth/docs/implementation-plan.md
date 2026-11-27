@@ -634,8 +634,14 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   create/update/deactivate and invite issue/revoke lock the direct initiating
   session in user-before-session order and check expiry after policy locks
   and before commit. RBAC role assignment uses the same user port.
-- Pending: complete OAuth registration identity and consent epoch fencing under
-  a common lock protocol, extend the owner mutation context to all transports,
-  apply transaction authority to OAuth app/consent and RBAC role-definition
-  writes, account for artifact permissions and prove cross-module lock
-  ordering. Compile and PostgreSQL contention/revocation tests remain unrun.
+- Delegated user-admin source slice: admitted access registration ID, digest,
+  client/app, original scopes, precise issuance and consent epoch are retained.
+  Acquire tenant FK protection (PostgreSQL), app, ordered users, registration,
+  then existing invite/policy/role locks. Validate live registration and consent
+  with the extractor's canonical scope checks. GraphQL HTTP and WebSocket
+  initialization no longer replace credential evidence with a grant-only scope.
+  Re-filter current role grants through the original OAuth scopes.
+- Pending: extend the owner mutation context to all transports, apply
+  transaction authority to OAuth app/consent and RBAC role-definition writes,
+  account for artifact permissions and prove cross-module lock ordering.
+  Compile and PostgreSQL contention/revocation tests remain unrun.

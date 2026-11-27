@@ -22,6 +22,51 @@ pub(crate) struct RequestCredentialAuthority {
     pub(crate) session_id: Uuid,
     pub(crate) expires_at: DateTime<Utc>,
     pub(crate) recovery_revision: i64,
+    pub(crate) delegated: Option<DelegatedCredentialEvidence>,
+}
+
+/// Identity of the exact durable access registration admitted by the JWT
+/// extractor. Never accept these facts from a command payload or rederive
+/// them from a later consent grant.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct DelegatedCredentialEvidence {
+    pub(crate) registration_id: Uuid,
+    pub(crate) app_id: Uuid,
+    pub(crate) client_id: Uuid,
+    pub(crate) token_hash: String,
+    pub(crate) issued_at: DateTime<Utc>,
+    pub(crate) consent_granted_at: Option<sea_orm::prelude::DateTimeWithTimeZone>,
+    pub(crate) scopes: Vec<String>,
+}
+
+impl std::fmt::Debug for DelegatedCredentialEvidence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DelegatedCredentialEvidence")
+            .field("registration_id", &self.registration_id)
+            .field("app_id", &self.app_id)
+            .field("client_id", &self.client_id)
+            .field("issued_at", &self.issued_at)
+            .field("consent_granted_at", &self.consent_granted_at)
+            .finish_non_exhaustive()
+    }
+}
+
+impl DelegatedCredentialEvidence {
+    pub(crate) fn from_registration(
+        row: &crate::models::oauth_tokens::Model,
+        client_id: Uuid,
+        scopes: &[String],
+    ) -> Self {
+        Self {
+            registration_id: row.id,
+            app_id: row.app_id,
+            client_id,
+            token_hash: row.token_hash.clone(),
+            issued_at: row.created_at.with_timezone(&Utc),
+            consent_granted_at: row.consent_granted_at,
+            scopes: scopes.to_vec(),
+        }
+    }
 }
 
 impl RbacRequestScope {
@@ -59,6 +104,7 @@ impl RbacRequestScope {
             session_id: current.session_id,
             expires_at: deadline.min(current.access_token_expires_at),
             recovery_revision: current.user.recovery_revision,
+            delegated: current.delegated_credential.clone(),
         });
         scope
     }
@@ -318,6 +364,7 @@ mod tests {
             session_id: Uuid::new_v4(),
             expires_at: Utc::now(),
             recovery_revision: 7,
+            delegated: None,
         };
         scope.credential = Some(credential.clone());
         with_rbac_request_scope(Some(scope), async {

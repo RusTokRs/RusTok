@@ -18,13 +18,13 @@ use rustok_rbac::{
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait,
+    DbBackend, QueryOrder, QuerySelect, Set, Statement, TransactionTrait,
 };
 use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::auth::{AuthConfig, hash_password_async};
-use crate::models::{auth_email_change_requests, auth_invite_consumptions, auth_invites, users};
+use crate::models::{auth_email_change_requests, auth_invite_consumptions, auth_invites, oauth_apps, oauth_tokens, tenants, users};
 use crate::services::auth_invite::{
     InviteLookup, invite_token_hash, issuer_may_issue_invite, lock_invite_for_mutation,
     validate_invite_role_grant_on,
@@ -33,12 +33,39 @@ use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::rbac_cache_invalidation::publish_user_rbac_invalidation;
 use crate::services::rbac_invalidation_generation::reserve_rbac_invalidation_generation;
-use crate::services::rbac_request_scope::{credential_for, permissions_for, role_for};
+use crate::services::rbac_request_scope::{DelegatedCredentialEvidence, credential_for, permissions_for, role_for};
 use crate::services::rbac_service::RbacService;
 
 use super::{
     ServerAuthAdminMutationProvider, super_admin_guard::ensure_active_super_admin_continuity,
 };
+
+fn map_oauth_credential_error(
+    (status, message): (axum::http::StatusCode, &'static str),
+) -> AuthAdminMutationError {
+    if status.is_server_error() {
+        super::internal_admin_error(message)
+    } else {
+        AuthAdminMutationError::Unauthorized
+    }
+}
+
+/// Restrict newly resolved grants to the exact admitted OAuth scopes as well
+/// as requiring the independent original request permission ceiling.
+fn scope_live_admin_permissions(
+    context: &AuthAdminMutationContext,
+    permissions: Vec<Permission>,
+) -> Result<Vec<Permission>, AuthAdminMutationError> {
+    match credential_for(&context.tenant_id, &context.actor_id)
+        .ok_or(AuthAdminMutationError::Unauthorized)?
+    {
+        Some(evidence) if evidence.principal_kind == AuthPrincipalKind::DelegatedUser => {
+            let delegated = evidence.delegated.ok_or(AuthAdminMutationError::Unauthorized)?;
+            Ok(rustok_api::context::restrict_permissions_to_scopes(&permissions, &delegated.scopes))
+        }
+        _ => Ok(permissions),
+    }
+}
 
 /// Invite tokens stay valid for a week: long enough for out-of-band
 /// delivery by an administrator, short enough to bound exposure.
@@ -282,13 +309,114 @@ impl ServerAuthAdminMutationProvider {
         })
     }
 
+    /// Delegated administrative writes must follow the OAuth owner's app ->
+    /// user order, never acquire an app fence while holding a user row.
+    /// PostgreSQL manifest reconciliation takes tenant FOR UPDATE before apps;
+    /// reserve a compatible tenant FK fence first so later owner inserts do
+    /// not invert tenant/app ordering. SQLite's app lock reserves the writer.
+    async fn lock_delegated_admin_app(
+        &self,
+        tx: &sea_orm::DatabaseTransaction,
+        context: &AuthAdminMutationContext,
+    ) -> Result<Option<oauth_apps::Model>, AuthAdminMutationError> {
+        let Some(evidence) = credential_for(&context.tenant_id, &context.actor_id)
+            .ok_or(AuthAdminMutationError::Unauthorized)? else {
+            return Ok(None);
+        };
+        if context.principal_kind.is_some_and(|kind| kind != evidence.principal_kind) {
+            return Err(AuthAdminMutationError::Unauthorized);
+        }
+        if evidence.principal_kind != AuthPrincipalKind::DelegatedUser {
+            return Ok(None);
+        }
+        let delegated = evidence.delegated.as_ref().ok_or(AuthAdminMutationError::Unauthorized)?;
+        if tx.get_database_backend() == DbBackend::Postgres {
+            let tenant = tx.query_one_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT id FROM tenants WHERE id = $1 AND is_active = TRUE FOR KEY SHARE",
+                [context.tenant_id.into()],
+            )).await.map_err(super::internal_admin_error)?;
+            if tenant.is_none() {
+                return Err(AuthAdminMutationError::Unauthorized);
+            }
+        } else if tx.get_database_backend() != DbBackend::Sqlite {
+            return Err(AuthAdminMutationError::Internal("Unsupported credential transaction backend".to_string()));
+        }
+        let app = crate::services::oauth_app::lock_oauth_app_for_mutation(
+            tx, delegated.app_id, context.tenant_id,
+        ).await.map_err(super::internal_admin_error)?
+            .filter(|app| app.is_active() && app.client_id == delegated.client_id
+                && app.supports_grant_type("authorization_code"))
+            .ok_or(AuthAdminMutationError::Unauthorized)?;
+        if tx.get_database_backend() == DbBackend::Sqlite
+            && !tenants::Entity::find_by_id(context.tenant_id).one(tx).await
+                .map_err(super::internal_admin_error)?.is_some_and(|tenant| tenant.is_active)
+        {
+            return Err(AuthAdminMutationError::Unauthorized);
+        }
+        if delegated.scopes.is_empty() {
+            return Err(AuthAdminMutationError::Unauthorized);
+        }
+        crate::extractors::auth::validate_oauth_token_scopes(&app, &delegated.scopes)
+            .map_err(map_oauth_credential_error)?;
+        Ok(Some(app))
+    }
+
+    /// The app and actor fences are already held. Check the exact access
+    /// registration under a row lock; SQLite already holds its writer fence.
+    /// All canonical app/consent changes revoke old registrations in their
+    /// own transaction. Keep both fences until the administrative commit.
+    async fn lock_delegated_admin_registration(
+        &self,
+        tx: &sea_orm::DatabaseTransaction,
+        context: &AuthAdminMutationContext,
+        actor: &users::Model,
+        app: &oauth_apps::Model,
+        delegated: &DelegatedCredentialEvidence,
+    ) -> Result<DateTime<Utc>, AuthAdminMutationError> {
+        let query = oauth_tokens::Entity::find_by_id(delegated.registration_id)
+            .filter(oauth_tokens::Column::TenantId.eq(context.tenant_id))
+            .filter(oauth_tokens::Column::AppId.eq(app.id));
+        let row = match tx.get_database_backend() {
+            DbBackend::Postgres => query.lock_exclusive().one(tx).await,
+            DbBackend::Sqlite => query.one(tx).await,
+            _ => return Err(AuthAdminMutationError::Internal("Unsupported credential transaction backend".to_string())),
+        }.map_err(super::internal_admin_error)?.ok_or(AuthAdminMutationError::Unauthorized)?;
+        let scopes = row.decoded_scopes().map_err(|_| AuthAdminMutationError::Unauthorized)?;
+        if app.id != delegated.app_id
+            || app.client_id != delegated.client_id
+            || row.user_id != Some(actor.id)
+            || row.token_hash != delegated.token_hash
+            || row.grant_type != "authorization_code"
+            || row.token_kind != oauth_tokens::TOKEN_KIND_ACCESS
+            || row.revoked_at.is_some()
+            || row.created_at.with_timezone(&Utc) != delegated.issued_at
+            || row.consent_granted_at != delegated.consent_granted_at
+            || scopes != delegated.scopes
+            || actor.rejects_delegated_token_issued_at(delegated.issued_at)
+        {
+            return Err(AuthAdminMutationError::Unauthorized);
+        }
+        crate::extractors::auth::validate_active_user_consent(
+            tx, app, context.tenant_id, actor.id, &delegated.scopes, row.consent_granted_at,
+        ).await.map_err(map_oauth_credential_error)?;
+        let now = self.user_admin_credential_now(tx).await?;
+        let expires = row.expires_at.with_timezone(&Utc);
+        if now < delegated.issued_at || now >= expires {
+            return Err(AuthAdminMutationError::Unauthorized);
+        }
+        Ok(expires)
+    }
+
     /// The actor user row is already locked. Acquire the direct session fence
-    /// in the same user -> session order as refresh and recovery.
+    /// in the same user -> session order as refresh and recovery, or validate
+    /// the delegated registration under the earlier app fence.
     async fn lock_user_admin_credential(
         &self,
         tx: &sea_orm::DatabaseTransaction,
         context: &AuthAdminMutationContext,
         actor: &users::Model,
+        delegated_app: Option<&oauth_apps::Model>,
     ) -> Result<Option<DateTime<Utc>>, AuthAdminMutationError> {
         let evidence = credential_for(&context.tenant_id, &context.actor_id)
             .ok_or(AuthAdminMutationError::Unauthorized)?;
@@ -325,9 +453,11 @@ impl ServerAuthAdminMutationProvider {
                 return Err(AuthAdminMutationError::Unauthorized);
             }
         } else {
-            // Registration and consent fencing require their own app/user
-            // lock protocol. For now enforce the admitted deadline and
-            // recovery revision without claiming an OAuth revocation fence.
+            let app = delegated_app.ok_or(AuthAdminMutationError::Unauthorized)?;
+            let delegated = evidence.delegated.as_ref().ok_or(AuthAdminMutationError::Unauthorized)?;
+            deadline = deadline.min(self.lock_delegated_admin_registration(
+                tx, context, actor, app, delegated,
+            ).await?);
             self.ensure_user_admin_credential_deadline(tx, Some(deadline)).await?;
         }
         Ok(Some(deadline))
@@ -360,7 +490,7 @@ impl ServerAuthAdminMutationProvider {
         Ok(())
     }
 
-    /// Lock all existing users before module and role state. Request evidence
+    /// Lock the delegated app first, then all existing users before module and role state. Request evidence
     /// remains a ceiling; the independently resolved live actor must also
     /// authorize the operation. The target is returned from its locked read.
     async fn lock_user_admin_authority(
@@ -379,6 +509,7 @@ impl ServerAuthAdminMutationProvider {
                 "user administration requires a user actor".to_string(),
             ));
         }
+        let delegated_app = self.lock_delegated_admin_app(tx, context).await?;
         let mut ids = vec![context.actor_id];
         if let Some(target) = target_id {
             ids.push(target);
@@ -402,7 +533,7 @@ impl ServerAuthAdminMutationProvider {
         }
 
         let actor = actor.ok_or(AuthAdminMutationError::Unauthorized)?;
-        let credential_deadline = self.lock_user_admin_credential(tx, context, &actor).await?;
+        let credential_deadline = self.lock_user_admin_credential(tx, context, &actor, delegated_app.as_ref()).await?;
 
         let (_, availability) = crate::services::rbac_module_availability::lock_invite_module_policy(
             &self.db, tx, self.invite_registry.as_ref(), context.tenant_id,
@@ -426,6 +557,7 @@ impl ServerAuthAdminMutationProvider {
         if let Some(availability) = availability {
             permissions = availability.active_permissions(&permissions);
         }
+        let permissions = scope_live_admin_permissions(context, permissions)?;
         if !required.iter().any(|permission| rustok_rbac::has_effective_permission_in_set(&permissions, permission)) {
             return Err(AuthAdminMutationError::Forbidden(
                 "current user administration permission is required".to_string(),
@@ -1186,6 +1318,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             &self.db, self.invite_registry.as_ref(),
         ).await.map_err(super::internal_admin_error)?;
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
+        let delegated_app = self.lock_delegated_admin_app(&tx, context).await?;
         // Membership and account-status writers serialize on this user
         // fence. Do not issue a durable invitation for a removed, disabled
         // or demoted actor based solely on a stale request snapshot.
@@ -1198,7 +1331,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         .ok_or_else(|| AuthAdminMutationError::Forbidden(
             "active invitation issuer is required".to_string(),
         ))?;
-        let credential_deadline = self.lock_user_admin_credential(&tx, context, &issuer).await?;
+        let credential_deadline = self.lock_user_admin_credential(&tx, context, &issuer, delegated_app.as_ref()).await?;
         let (module_policy_binding, availability) =
             crate::services::rbac_module_availability::lock_invite_module_policy(
                 &self.db, &tx, self.invite_registry.as_ref(), context.tenant_id,
@@ -1224,6 +1357,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         if let Some(availability) = availability {
             persisted_permissions = availability.active_permissions(&persisted_permissions);
         }
+        let persisted_permissions = scope_live_admin_permissions(context, persisted_permissions)?;
         let persisted_role = RbacService::get_user_role_authoritative(
             &tx, &context.tenant_id, &context.actor_id,
         )
@@ -1350,10 +1484,11 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         crate::services::rbac_module_availability::prepare_invite_module_policy(
             &self.db, self.invite_registry.as_ref(),
         ).await.map_err(super::internal_admin_error)?;
-        // Match acceptance's order: actor user -> invite -> module policy
-        // -> ordered role grants. Revoking an invite does not require its
+        // For delegated callers acquire the OAuth app fence before the
+        // acceptance-compatible actor -> invite -> policy -> roles order. Revoking an invite does not require its
         // original issuer or destination role to remain valid.
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
+        let delegated_app = self.lock_delegated_admin_app(&tx, context).await?;
         let actor = AuthLifecycleService::lock_user_for_mutation(
             &tx, context.tenant_id, context.actor_id,
         ).await.map_err(super::internal_admin_error)?
@@ -1361,7 +1496,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .ok_or_else(|| AuthAdminMutationError::Forbidden(
                 "active invitation administrator is required".to_string(),
             ))?;
-        let credential_deadline = self.lock_user_admin_credential(&tx, context, &actor).await?;
+        let credential_deadline = self.lock_user_admin_credential(&tx, context, &actor, delegated_app.as_ref()).await?;
         let invite = lock_invite_for_mutation(
             &tx,
             context.tenant_id,
@@ -1386,6 +1521,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         if let Some(availability) = availability {
             permissions = availability.active_permissions(&permissions);
         }
+        let permissions = scope_live_admin_permissions(context, permissions)?;
         if !rustok_rbac::has_effective_permission_in_set(&permissions, &Permission::USERS_MANAGE) {
             return Err(AuthAdminMutationError::Forbidden(
                 "current users:manage required".to_string(),
@@ -1610,6 +1746,7 @@ mod tests {
             scopes: Vec::new(),
             grant_type: "direct".to_string(),
             access_token_expires_at: chrono::Utc::now() + chrono::Duration::minutes(10),
+            delegated_credential: None,
         };
         let authenticated = |deadline| RbacRequestScope::authenticated(&current, deadline);
         let allowed = with_rbac_request_scope(Some(authenticated(current.access_token_expires_at)), async {
