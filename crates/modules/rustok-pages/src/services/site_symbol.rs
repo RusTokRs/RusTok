@@ -293,13 +293,17 @@ impl SiteSymbolService {
 }
 
 fn validate_symbol_catalog(symbols: Vec<serde_json::Value>) -> PagesResult<()> {
-    let value = serde_json::json!({
-        fly::FLY_SYMBOLS_FIELD: symbols,
-        "pages": []
-    });
-    let document = fly::GrapesJsCodec::decode_value(value).map_err(|error| {
-        PagesError::validation(format!("Site symbol catalog cannot be decoded: {error}"))
-    })?;
+    let mut project = serde_json::Map::new();
+    project.insert(
+        fly::FLY_SYMBOLS_FIELD.to_string(),
+        serde_json::Value::Array(symbols),
+    );
+    project.insert("pages".to_string(), serde_json::Value::Array(Vec::new()));
+    let document = fly::GrapesJsCodec::decode_value(serde_json::Value::Object(project)).map_err(
+        |error| {
+            PagesError::validation(format!("Site symbol catalog cannot be decoded: {error}"))
+        },
+    )?;
     fly::resolve_symbol_instances(&document).map_err(|error| {
         PagesError::validation(format!("Site symbol catalog is invalid: {error}"))
     })?;
