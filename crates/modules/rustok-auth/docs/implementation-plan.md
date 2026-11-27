@@ -653,9 +653,16 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   rotation bound to app/tenant and a locked CAS. The outer guard no longer
   writes independently. Regression scenarios authored for revoked direct
   sessions and service registrations.
-- Pending: extend the owner mutation context to all transports, apply
-  transaction authority to RBAC role-definition writes, account for artifact
-  permissions and prove cross-module lock ordering (including tenant active
-  state and all bulk credential revocation paths). Grant-only internal user
-  scopes remain an explicit compatibility boundary. Compile and PostgreSQL
-  contention/revocation tests remain unrun.
+- RBAC control-plane source slice: create/update/delete role and the
+  host artifact grant/revoke transport use the host credential authority
+  port on their write transaction. Require direct session evidence,
+  admitted and current management permissions, lock static module policy
+  and actor/target role rows in UUID order, and check deadline immediately
+  before commit (including artifact idempotent retries). Owner SQL fixtures
+  explicitly inject a test-only authority adapter. Host/session and owner
+  rollback regressions are authored, not executed.
+- Pending: extend the owner mutation context to all transports, account for
+  artifact-runtime authority and prove cross-module lock ordering (including
+  tenant active state and all bulk credential revocation paths). Grant-only
+  internal user scopes remain an explicit compatibility boundary. Compile
+  and PostgreSQL contention/revocation tests remain unrun.

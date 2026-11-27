@@ -292,6 +292,11 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
     } else {
         builder
     };
+    let builder = if let Some(authority) = runtime_extensions.get::<rustok_rbac::graphql::RbacMutationAuthorityHandle>().cloned() {
+        builder.data(authority)
+    } else {
+        builder
+    };
     let builder = builder
         .data(db)
         .data(event_bus)

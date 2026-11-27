@@ -40,3 +40,22 @@ protected. Legacy unbound pending invites are revoked at cutover; accepted
 receipts and prior revocations remain. Drain old binaries before migrations;
 no live schema downgrade. Source regressions are authored, compilation and
 PostgreSQL concurrency/upgrade/rollback tests remain unrun.
+
+## RBAC control-plane credential transaction extension (2026-11-27)
+
+The GraphQL role-definition owner invokes a mandatory host mutation authority
+port before role writes. The host reuses Auth's direct-session fence and
+locks tenant FK protection, actor, session, static composition/lifecycle
+policy, and the union of actor memberships and exact target role ID ordered
+by UUID. Both admitted and live management/grant ceilings apply. Retained
+dormant grants use the locked availability, not a cached preflight. Recheck
+the credential deadline before commit; missing provider fails closed.
+The same port guards the REST artifact grant/revoke owner transaction,
+including exact idempotent retries, and the owner locks the target role
+against deletion. No new public GraphQL fields or REST payloads.
+
+Trusted low-level owner calls do not claim bearer authentication. Artifact
+definition/runtime entitlement, policy interactions beyond static module
+authority, tenant activity and global cross-owner lock ordering still
+require verification. Source regressions authored; compile and PostgreSQL
+contention tests not run.

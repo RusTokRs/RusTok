@@ -87,3 +87,35 @@ pub trait RbacModuleAvailabilityProvider: Send + Sync {
 
 #[derive(Clone)]
 pub struct RbacModuleAvailabilityHandle(pub Arc<dyn RbacModuleAvailabilityProvider>);
+
+
+/// Host-authenticated transaction authority for RBAC control-plane writes.
+/// Implementations acquire credential, module policy and ordered role fences
+/// on the supplied owner transaction, not on another pool connection.
+#[derive(Clone)]
+pub struct RbacLockedMutationAuthority {
+    pub permissions: Vec<rustok_api::Permission>,
+    pub availability: Option<crate::PermissionAvailability>,
+    pub deadline: chrono::DateTime<chrono::Utc>,
+}
+
+#[async_trait]
+pub trait RbacMutationAuthority: Send + Sync {
+    async fn prepare(&self) -> Result<(), RbacGraphqlRoleWriteError>;
+    async fn lock(
+        &self,
+        tx: &sea_orm::DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        target_role_id: Option<Uuid>,
+        required: &[rustok_api::Permission],
+    ) -> Result<RbacLockedMutationAuthority, RbacGraphqlRoleWriteError>;
+    async fn ensure_deadline(
+        &self,
+        tx: &sea_orm::DatabaseTransaction,
+        authority: &RbacLockedMutationAuthority,
+    ) -> Result<(), RbacGraphqlRoleWriteError>;
+}
+
+#[derive(Clone)]
+pub struct RbacMutationAuthorityHandle(pub Arc<dyn RbacMutationAuthority>);

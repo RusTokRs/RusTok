@@ -153,3 +153,33 @@ pub async fn lock_user_admin_role_grants_on(
     }
     Ok(found_requested)
 }
+
+
+/// Acquire the actor's grants and the exact destination role as one UUID-
+/// ordered set. A preflight slug lookup cannot substitute a recreated role.
+pub async fn lock_role_definition_authority_on(
+    tx: &DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    target_role_id: Option<Uuid>,
+) -> Result<bool, DbErr> {
+    let backend = tx.get_database_backend();
+    let sql = match backend {
+        DatabaseBackend::Postgres => "SELECT r.id, r.grant_revision FROM roles r WHERE r.tenant_id = $1 AND (r.id = $2 OR EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = $3 AND ur.role_id = r.id)) ORDER BY r.id FOR UPDATE OF r",
+        DatabaseBackend::Sqlite => "SELECT r.id, r.grant_revision FROM roles r WHERE r.tenant_id = ?1 AND (r.id = ?2 OR EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = ?3 AND ur.role_id = r.id)) ORDER BY r.id",
+        _ => return Err(DbErr::Custom("unsupported RBAC grant revision backend".into())),
+    };
+    let rows = tx.query_all_raw(Statement::from_sql_and_values(
+        backend, sql, [tenant_id.into(), target_role_id.into(), actor_id.into()],
+    )).await?;
+    let mut found = target_role_id.is_none();
+    for row in rows {
+        let id: Uuid = row.try_get("", "id")?;
+        let revision: i64 = row.try_get("", "grant_revision")?;
+        if id.is_nil() || revision < 0 {
+            return Err(DbErr::Custom("invalid RBAC role grant revision".into()));
+        }
+        found |= target_role_id == Some(id);
+    }
+    Ok(found)
+}

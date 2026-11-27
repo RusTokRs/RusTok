@@ -109,23 +109,37 @@ impl RbacArtifactPermissionAssignmentService {
         ensure_supported_backend(self.db.get_database_backend())?;
 
         let transaction = self.db.begin().await.map_err(database_error)?;
-        if !role_exists(&transaction, &command).await? {
-            transaction.rollback().await.map_err(database_error)?;
+        let result = self.assign_in_transaction(&transaction, command).await?;
+        transaction.commit().await.map_err(database_error)?;
+        Ok(result)
+    }
+
+    /// Host control-plane adapters supply an owner transaction on which
+    /// credential and actor/target role authority has already been locked.
+    /// The receipt, state and event remain owned by RBAC.
+    pub async fn assign_in_transaction(
+        &self,
+        transaction: &DatabaseTransaction,
+        command: ArtifactRolePermissionAssignmentCommand,
+    ) -> Result<ArtifactRolePermissionAssignmentResult, ArtifactPermissionAssignmentError> {
+        validate_command(&command)?;
+        ensure_supported_backend(transaction.get_database_backend())?;
+        if !role_exists(transaction, &command).await? {
             return Err(ArtifactPermissionAssignmentError::RoleNotFound);
         }
         let artifact_permission =
-            resolve_artifact_permission_identity(&transaction, &command).await?;
+            resolve_artifact_permission_identity(transaction, &command).await?;
 
-        if let Some(existing) = find_operation(&transaction, &command).await? {
+        if let Some(existing) = find_operation(transaction, &command).await? {
             return match_operation(existing, &artifact_permission, &command);
         }
 
-        let operation_id = match insert_operation(&transaction, &artifact_permission, &command)
+        let operation_id = match insert_operation(transaction, &artifact_permission, &command)
             .await?
         {
             Some(operation_id) => operation_id,
             None => {
-                let existing = find_operation(&transaction, &command)
+                let existing = find_operation(transaction, &command)
                     .await?
                     .ok_or_else(|| {
                         ArtifactPermissionAssignmentError::Database(
@@ -138,25 +152,23 @@ impl RbacArtifactPermissionAssignmentService {
         };
 
         let changed = if command.granted {
-            grant_permission(&transaction, &artifact_permission, &command).await?
+            grant_permission(transaction, &artifact_permission, &command).await?
         } else {
-            revoke_permission(&transaction, &artifact_permission, &command).await?
+            revoke_permission(transaction, &artifact_permission, &command).await?
         };
         if changed
             && let Err(error) = self
                 .event_publisher
                 .publish_assignment_changed(
-                    &transaction,
+                    transaction,
                     command.tenant_id,
                     command.actor_id,
                     assignment_event(operation_id, &artifact_permission, &command),
                 )
                 .await
         {
-            transaction.rollback().await.map_err(database_error)?;
             return Err(error);
         }
-        transaction.commit().await.map_err(database_error)?;
 
         Ok(ArtifactRolePermissionAssignmentResult { applied: true })
     }
@@ -397,10 +409,11 @@ async fn role_exists(
     command: &ArtifactRolePermissionAssignmentCommand,
 ) -> Result<bool, ArtifactPermissionAssignmentError> {
     let backend = transaction.get_database_backend();
-    let sql = placeholders(
-        backend,
-        "SELECT 1 FROM roles WHERE id = {role_id} AND tenant_id = {tenant_id} LIMIT 1",
-    );
+    // Serialize against role deletion even for trusted owner-only callers.
+    let sql = placeholders(backend, match backend {
+        sea_orm::DbBackend::Postgres => "SELECT 1 FROM roles WHERE id = {role_id} AND tenant_id = {tenant_id} FOR UPDATE",
+        _ => "UPDATE roles SET id = id WHERE id = {role_id} AND tenant_id = {tenant_id} RETURNING id",
+    });
     Ok(transaction
         .query_one_raw(Statement::from_sql_and_values(
             backend,

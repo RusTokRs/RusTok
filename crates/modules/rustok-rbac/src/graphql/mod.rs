@@ -9,5 +9,6 @@ pub use query::RbacQuery;
 pub use runtime::{
     RbacGraphqlRoleWriteError, RbacGraphqlRoleWriter, RbacGraphqlRoleWriterHandle,
     RbacModuleAvailabilityHandle, RbacModuleAvailabilityProvider,
+    RbacLockedMutationAuthority, RbacMutationAuthority, RbacMutationAuthorityHandle,
 };
 pub use types::*;
