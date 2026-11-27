@@ -321,3 +321,18 @@ entering the polling loop. A wrapper cannot disable checkpointing after a
 primary confirmation has been persisted for that event; the relay rejects
 that invocation before primary I/O, preserving the existing checkpoint.
 Focused source regressions cover both paths; execution remains unverified.
+
+## Exact durable dispatch admission (2026-11-27; source only)
+
+Claim batches must write every selected locked candidate and read back exactly
+that many claimed rows before commit. A suppressed write aborts the whole
+batch. Claim renewal returns the actual row read under the new claim instead
+of patching a queued snapshot in memory. Before any external publication,
+route checkpoint and open attempt creation must each insert exactly one row
+and match the readback identity and initial state in the same transaction.
+Suppressed or altered inserts abort admission and roll back any newly created
+checkpoint/intent; the pending claim remains reclaimable under its lease.
+No retry is charged for this storage-admission error. SQLite source regressions
+cover suppressed claim, checkpoint and attempt writes and fresh retry metadata.
+This does not make arbitrary later SQL mutation safe or guarantee exactly-once.
+Compilation and regression execution remain pending.

@@ -543,7 +543,7 @@ impl OutboxRelay {
         if now < eligible_at {
             return Err(Error::External("outbox clock regressed within relay pass".to_string()));
         }
-        entity::Entity::update_many()
+        let claimed_count = entity::Entity::update_many()
             .filter(entity::Column::Id.is_in(candidate_ids.clone()))
             .filter(entity::Column::Status.eq(SysEventStatus::Pending))
             .filter(
@@ -562,7 +562,14 @@ impl OutboxRelay {
                 ..Default::default()
             })
             .exec(&txn)
-            .await?;
+            .await?
+            .rows_affected;
+        // Both backends hold the admission writer fence; PostgreSQL also
+        // locks every selected candidate. A short write is an invariant
+        // failure, not a successful empty batch.
+        if claimed_count != candidate_ids.len() as u64 {
+            return Err(Error::External("outbox claim batch write was incomplete".into()));
+        }
 
         let claimed = entity::Entity::find()
             .filter(entity::Column::Id.is_in(candidate_ids))
@@ -574,6 +581,9 @@ impl OutboxRelay {
             .all(&txn)
             .await?;
 
+        if claimed.len() as u64 != claimed_count {
+            return Err(Error::External("outbox claim batch readback did not match the write".into()));
+        }
         txn.commit().await?;
         Ok(claimed)
     }
@@ -615,7 +625,7 @@ impl OutboxRelay {
             .await?;
         self.ensure_claim_owned(model.id, locked.rows_affected)?;
         let now = rustok_outbox_storage::database_now(&txn).await?;
-        let claimed_at = model.claimed_at.expect("checked claim timestamp");
+        let claimed_at = model.claimed_at.ok_or_else(|| Error::External("missing outbox claim timestamp".into()))?;
         let ttl = chrono::Duration::from_std(self.config.claim_ttl)
             .map_err(|_| Error::Validation("outbox relay claim_ttl is out of range".to_string()))?;
         if claimed_at > now || now.signed_duration_since(claimed_at) >= ttl {
@@ -637,10 +647,16 @@ impl OutboxRelay {
             .exec(&txn)
             .await?;
         self.ensure_claim_owned(model.id, result.rows_affected)?;
+        // Read the actual renewed row, not a locally patched snapshot.
+        // Even a maintenance write between claim and refresh must not cause
+        // dispatch to use stale payload or retry metadata.
+        let refreshed = entity::Entity::find_by_id(model.id)
+            .filter(entity::Column::Status.eq(SysEventStatus::Pending))
+            .filter(entity::Column::ClaimedBy.eq(token))
+            .filter(entity::Column::ClaimedAt.eq(now))
+            .one(&txn).await?
+            .ok_or_else(|| Error::External(format!("outbox event {} renewed claim readback failed", model.id)))?;
         txn.commit().await?;
-        let mut refreshed = model.clone();
-        refreshed.claimed_by = Some(token);
-        refreshed.claimed_at = Some(now);
         Ok(refreshed)
     }
 
@@ -839,10 +855,20 @@ impl OutboxRelay {
                 return Ok(false);
             }
         } else {
-            checkpoints::Entity::insert(checkpoints::ActiveModel {
+            let affected = checkpoints::Entity::insert(checkpoints::ActiveModel {
                 event_id: Set(model.id), route_key: Set(self.delivery_route.clone()),
                 local_required: Set(None), primary_confirmed_at: Set(None),
             }).exec_without_returning(txn).await?;
+            if affected != 1 {
+                return Err(Error::External("outbox delivery route checkpoint was not inserted".into()));
+            }
+            let saved = checkpoints::Entity::find_by_id(model.id).one(txn).await?
+                .ok_or_else(|| Error::External("outbox delivery route checkpoint readback failed".into()))?;
+            if saved.route_key != self.delivery_route || saved.local_required.is_some()
+                || saved.primary_confirmed_at.is_some()
+            {
+                return Err(Error::External("outbox delivery route checkpoint was altered during admission".into()));
+            }
         }
         Ok(true)
     }
@@ -925,14 +951,25 @@ impl OutboxRelay {
             return Ok(AttemptAdmission::RouteConflict);
         }
         let id = Uuid::new_v4();
-        attempts::Entity::insert(attempts::ActiveModel {
+        let token = model.claimed_by.clone().ok_or_else(|| Error::External("missing outbox claim token".into()))?;
+        let affected = attempts::Entity::insert(attempts::ActiveModel {
             id: Set(id),
             event_id: Set(model.id),
-            claim_token: Set(model.claimed_by.clone().ok_or_else(|| Error::External("missing outbox claim token".into()))?),
+            claim_token: Set(token.clone()),
             started_at: Set(now),
             finished_at: Set(None),
             state: Set(attempts::OPEN.into()),
         }).exec_without_returning(&txn).await?;
+        if affected != 1 {
+            return Err(Error::External("outbox dispatch intent was not inserted".into()));
+        }
+        let saved = attempts::Entity::find_by_id(id).one(&txn).await?
+            .ok_or_else(|| Error::External("outbox dispatch intent readback failed".into()))?;
+        if saved.event_id != model.id || saved.claim_token != token || saved.started_at != now
+            || saved.finished_at.is_some() || saved.state != attempts::OPEN
+        {
+            return Err(Error::External("outbox dispatch intent was altered during admission".into()));
+        }
         txn.commit().await?;
         Ok(AttemptAdmission::Ready(id))
     }
@@ -1241,6 +1278,57 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn suppressed_dispatch_admission_never_invokes_transport() {
+        for table in ["outbox_delivery_checkpoints", "outbox_dispatch_attempts"] {
+            let db = database().await;
+            let envelope = EventEnvelope::new(
+                Uuid::new_v4(), None,
+                rustok_events::DomainEvent::UserLoggedIn { user_id: Uuid::new_v4() },
+            );
+            let id = envelope.id;
+            crate::OutboxTransport::new(db.clone()).publish(envelope).await.unwrap();
+            db.execute_unprepared(&format!(
+                "CREATE TRIGGER suppress_admission BEFORE INSERT ON {table} BEGIN SELECT RAISE(IGNORE); END"
+            )).await.unwrap();
+            let relay = OutboxRelay::new(db.clone(), Arc::new(RejectUnexpectedPublish));
+            assert!(relay.process_pending_once(None).await.is_err(), "{table}");
+            let event = entity::Entity::find_by_id(id).one(&db).await.unwrap().unwrap();
+            assert_eq!(event.status, SysEventStatus::Pending);
+            assert_eq!(event.retry_count, 0);
+            assert!(event.last_error.is_none());
+            assert_eq!(relay.metrics().processed_total, 0);
+            assert!(checkpoints::Entity::find_by_id(id).one(&db).await.unwrap().is_none());
+            assert_eq!(attempts::Entity::find().filter(attempts::Column::EventId.eq(id)).count(&db).await.unwrap(), 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn suppressed_claim_batch_rolls_back_other_claims() {
+        let db = database().await;
+        let mut ids = Vec::new();
+        for _ in 0..2 {
+            let envelope = EventEnvelope::new(
+                Uuid::new_v4(), None,
+                rustok_events::DomainEvent::UserLoggedIn { user_id: Uuid::new_v4() },
+            );
+            ids.push(envelope.id);
+            crate::OutboxTransport::new(db.clone()).publish(envelope).await.unwrap();
+        }
+        db.execute_unprepared(
+            "CREATE TRIGGER suppress_claim BEFORE UPDATE OF claimed_by ON sys_events
+             WHEN NEW.claimed_by IS NOT NULL AND OLD.id = (SELECT id FROM sys_events ORDER BY id LIMIT 1)
+             BEGIN SELECT RAISE(IGNORE); END"
+        ).await.unwrap();
+        let relay = OutboxRelay::new(db.clone(), Arc::new(RejectUnexpectedPublish));
+        assert!(relay.process_pending_once(None).await.is_err());
+        for id in ids {
+            let row = entity::Entity::find_by_id(id).one(&db).await.unwrap().unwrap();
+            assert!(row.claimed_by.is_none());
+            assert_eq!(row.retry_count, 0);
+        }
+    }
+
+    #[tokio::test]
     async fn backoff_reaches_cap_without_overflow_or_fixed_exponent_ceiling() {
         let relay = OutboxRelay::new(database().await, Arc::new(RejectUnexpectedPublish))
             .with_config(RelayConfig {
@@ -1421,7 +1509,11 @@ mod tests {
         wrong_tenant.tenant_id = Some(Uuid::new_v4());
         assert!(OutboxRelay::decode_envelope(&wrong_tenant).is_err());
 
+        entity::Entity::update_many().filter(entity::Column::Id.eq(event_id))
+            .set(entity::ActiveModel { retry_count: Set(1), ..Default::default() })
+            .exec(&relay.db).await.unwrap();
         let renewed = relay.refresh_claim(&queued).await.expect("renew claim");
+        assert_eq!(renewed.retry_count, 1);
         assert_ne!(renewed.claimed_by, queued.claimed_by);
         assert!(renewed.claimed_at > queued.claimed_at);
         let AttemptAdmission::Ready(attempt) = relay.begin_dispatch_attempt(&renewed).await.expect("admission") else { panic!("intent"); };
