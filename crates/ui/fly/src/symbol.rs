@@ -1992,6 +1992,151 @@ mod tests {
     }
 
     #[test]
+    fn symbol_assets_are_materialized_and_shared_by_all_instances() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [{
+                "id": "gallery",
+                "assets": [{ "id": "gallery-image", "src": "/media/gallery.webp" }],
+                "components": [{
+                    "id": "image",
+                    "type": "image",
+                    "attributes": {
+                        "src": "/media/gallery.webp",
+                        "data-fly-asset-id": "gallery-image"
+                    }
+                }]
+            }],
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [
+                        { "id": "slot-a", "type": "symbol", "symbolId": "gallery", "components": [] },
+                        { "id": "slot-b", "type": "symbol", "symbolId": "gallery", "components": [] }
+                    ]
+                }
+            }]
+        }))
+        .expect("document");
+
+        let resolved = resolve_symbol_instances(&document).expect("resolve");
+        let assets = resolved.project().assets.iter()
+            .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            assets.iter().filter(|asset| asset.source == "/media/gallery.webp").count(),
+            1
+        );
+        let first = resolved.component("slot-a").expect("first instance");
+        let second = resolved.component("slot-b").expect("second instance");
+        assert_eq!(
+            first.children()[0].as_object().expect("first image").attributes["data-fly-asset-id"],
+            "gallery-image"
+        );
+        assert_eq!(
+            second.children()[0].as_object().expect("second image").attributes["data-fly-asset-id"],
+            "gallery-image"
+        );
+    }
+
+    #[test]
+    fn symbol_asset_collisions_preserve_page_assets_and_dangling_references() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "assets": [{ "id": "shared", "src": "/media/page.webp" }],
+            "flySymbols": [{
+                "id": "gallery",
+                "assets": [
+                    { "id": "shared", "src": "/media/symbol.webp" },
+                    { "id": "dangling", "src": "/media/dangling.webp" }
+                ],
+                "components": [
+                    {
+                        "id": "shared-image",
+                        "type": "image",
+                        "attributes": {
+                            "src": "/media/symbol.webp",
+                            "data-fly-asset-id": "shared"
+                        }
+                    },
+                    {
+                        "id": "dangling-image",
+                        "type": "image",
+                        "attributes": {
+                            "src": "/media/dangling.webp",
+                            "data-fly-asset-id": "dangling"
+                        }
+                    }
+                ]
+            }],
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [
+                        {
+                            "id": "legacy-shared",
+                            "type": "image",
+                            "attributes": { "data-fly-asset-id": "shared" }
+                        },
+                        {
+                            "id": "legacy-dangling",
+                            "type": "image",
+                            "attributes": { "data-fly-asset-id": "dangling" }
+                        },
+                        { "id": "slot-a", "type": "symbol", "symbolId": "gallery", "components": [] },
+                        { "id": "slot-b", "type": "symbol", "symbolId": "gallery", "components": [] }
+                    ]
+                }
+            }]
+        }))
+        .expect("document");
+
+        let resolved = resolve_symbol_instances(&document).expect("resolve");
+        let page_asset = AssetDescriptor::from_value(resolved.project().assets[0].clone())
+            .expect("page asset");
+        assert_eq!(page_asset.id, "shared");
+        assert_eq!(page_asset.source, "/media/page.webp");
+
+        let first = resolved.component("slot-a").expect("first instance");
+        let second = resolved.component("slot-b").expect("second instance");
+        let first_shared = first.children()[0].as_object().expect("first shared image")
+            .attributes["data-fly-asset-id"].as_str().expect("asset id");
+        let first_dangling = first.children()[1].as_object().expect("first dangling image")
+            .attributes["data-fly-asset-id"].as_str().expect("asset id");
+        let second_shared = second.children()[0].as_object().expect("second shared image")
+            .attributes["data-fly-asset-id"].as_str().expect("asset id");
+        let second_dangling = second.children()[1].as_object().expect("second dangling image")
+            .attributes["data-fly-asset-id"].as_str().expect("asset id");
+
+        assert_ne!(first_shared, "shared");
+        assert_ne!(first_dangling, "dangling");
+        assert_eq!(first_shared, second_shared);
+        assert_eq!(first_dangling, second_dangling);
+        assert_eq!(
+            resolved.component("legacy-shared").map(|component| {
+                component.attributes["data-fly-asset-id"].as_str()
+            }).flatten(),
+            Some("shared")
+        );
+        assert_eq!(
+            resolved.component("legacy-dangling").map(|component| {
+                component.attributes["data-fly-asset-id"].as_str()
+            }).flatten(),
+            Some("dangling")
+        );
+        assert!(
+            resolved.project().assets.iter()
+                .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
+                .any(|asset| asset.id == first_shared && asset.source == "/media/symbol.webp")
+        );
+        assert!(
+            resolved.project().assets.iter()
+                .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
+                .any(|asset| asset.id == first_dangling && asset.source == "/media/dangling.webp")
+        );
+    }
+
+    #[test]
     fn symbol_component_limit_counts_opaque_children() {
         let opaque_children = (0..MAX_SYMBOL_COMPONENTS)
             .map(|index| json!({ "id": format!("opaque-{index}") }))
