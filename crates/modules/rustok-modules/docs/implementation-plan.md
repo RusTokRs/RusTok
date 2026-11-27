@@ -828,16 +828,17 @@ the scope from an exact inactive, uninstalled installation, repeats lifecycle
 checks under its write lock, and rejects exact serving-instance collisions. GraphQL
 previews use owner projections; apply and preview errors are sanitized, and
 receipt integers use checked conversions. The server data-purge authorizer
-binds the owner context and resolves current persisted `modules:manage` grants
-inside the owner write transaction through `authorize_purge_on` and
-`rustok-rbac::authorize_current_permission` and its canonical tenant
-policy engine without request/cache snapshots. The persisted reader belongs to
-the RBAC owner and is also used by the cached host runtime. This policy read does not establish an atomic
-revocation fence or production traffic/job/write drain. Terminal replay remains
-bound to the original full command before mutable lifecycle preconditions,
-including a recheck after waiting for the installation lock. Recovery prepare,
-finalization, and cutover use the same serialization/replay ordering. The
-purge integration passes 1/1 after the policy transaction cutover. The owner
+binds the owner context and requires the shared RBAC mutation authority on the
+owner transaction, before receipt lookup and installation/namespace locks.
+Direct-session credentials, active actor, live module policy, ordered role
+fences and the admitted/current `modules:manage` intersection precede destructive
+work. All three commit paths require a final deadline and request-scope check.
+Exact terminal replay remains independent of mutable lifecycle preconditions,
+including the recheck after waiting for the installation lock, but never bypasses
+authorization. Tests now exercise denied replay and rollback on final authority
+failure; these changes are uncompiled and unrun. Recovery prepare, finalization
+and cutover are separate paths. Prior purge integration passed 1/1 before this
+authority change; it does not verify the new contract. The owner
 library passes 308/308, object-migration fixtures 3/3, and canonical structured-
 copy fixtures 11/11. Scoped owner check/clippy and server check exit 0.
 These results do not prove production maintenance/revocation/fleet fences or the
@@ -2656,8 +2657,10 @@ stores actor/reason/idempotency audit data, and emits an outbox fact. The curren
 post-purge coordinator retains the marker permanently and requires a fresh
 verified instance plus separate authorized reference CAS. Production composition
 and operational fence evidence remain incomplete. The service
-requires a host-provided ArtifactDataPurgeAuthorizer. The current host binds
-owner context and checks current RBAC grants; legal-hold, retention, traffic,
+requires a host-provided ArtifactDataPurgeAuthorizer with pre-transaction
+preparation, locked operator authority, exact owner admission and final commit
+validation, including receipt replay. The current host reuses RBAC's live
+credential and effective grant fences; legal-hold, retention, traffic,
 job, and write fences remain open. No guest capability can authorize itself.
 
 `SeaOrmArtifactDataExportService` provides the first owner-only export slice.

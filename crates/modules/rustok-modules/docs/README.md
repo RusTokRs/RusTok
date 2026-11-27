@@ -821,14 +821,16 @@ only an exact installation; the owner derives the current namespace scope from
 that installation's admitted descriptor and capability grant, binds the
 durable receipt to `(tenant_id, installation_id, idempotency_key)`, and repeats
 the inactive-plus-uninstalled lifecycle fence inside its write transaction.
-The server authorizer binds tenant and installation to owner-derived facts and
-resolves persisted `modules:manage` grants through the supplied owner write
-transaction without request/cache snapshots. The policy no longer opens a
-separate connection. Purge replays terminal receipts after lifecycle
-serialization before deriving mutable target facts.
-The relation reader and current tenant-policy decision belong to `rustok-rbac`;
-the server only binds module-owner context and consumes that decision.
-This is a policy read, not an atomic revocation or traffic/job/write fence.
+The server authorizer binds tenant and installation to owner-derived facts.
+Before receipt lookup or installation/namespace locks, the host's RBAC mutation
+authority acquires the exact direct-session credential, module policy and role
+fences on the supplied owner write transaction and requires admitted and current
+`modules:manage`. Every commit, including either receipt replay path, checks the
+credential deadline and request scope again. Exact terminal replay remains
+independent of mutable target eligibility. The owner retains authority through
+commit and never opens an independent authorization transaction. This is not a
+proof of global lock ordering, operational traffic/job/write drain or retention
+and legal-hold admission; current source regressions remain unrun.
 Transport errors hide storage details and receipt integers are checked.
 The matching preview is an owner read projection, not a GraphQL-side database
 join. The in-progress physical cutover binds serving collisions to the exact

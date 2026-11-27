@@ -239,6 +239,10 @@ production readiness. The documented implementation and operational gaps include
   production fleet/job/write/recovery/retention fences, actual migration-object
   copy publication, PostgreSQL crash/race evidence, a separate full-manifest
   serving cutover, and safe orphan collection.
+- Structured namespace purge requires a direct operator's transaction-bound
+  credential, live RBAC/module policy and admitted grant ceiling, acquired before
+  installation locks and receipt reads. Every commit checks the credential
+  deadline, including exact replay; retention and operational drain remain open.
 - Post-purge recovery and structured copy still need production policy and host
   transport composition, lifecycle outbox facts, whole-operation source
   retention, full-snapshot verification, and production hold/fleet fences.

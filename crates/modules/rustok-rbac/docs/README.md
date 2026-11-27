@@ -28,6 +28,13 @@ a concrete grant can survive a manage wildcard in either direction, but
 cannot be widened to manage. Credential deadline and database fences remain
 mandatory; source regressions are unrun.
 
+Structured artifact namespace purge also consumes this host mutation authority:
+credential/module/role fences are acquired on the Modules owner transaction
+before receipt lookup and activation locks. Exact terminal replay requires
+current admitted authority, and each commit checks the credential deadline.
+Operational drain, legal holds and global lock-order execution evidence are
+separate gates.
+
 ## Integration
 
 - `SeaOrmRelationPermissionStore` owns persisted relation reads for both cached

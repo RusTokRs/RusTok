@@ -51,6 +51,10 @@ and makes injected clock/ID/event-writer infrastructure request-dependent.
   `ArtifactHttpBindingRequest` admit and dispatch exact installed artifacts.
 - `ModuleEffectivePolicy` and `SharedModuleEffectivePolicyReader` provide the
   owner-issued, redacted availability decision.
+- `ModuleControlPlane::artifact_data_purge` requires an
+  `ArtifactDataPurgeAuthorizer` with a transaction-held `LockedAuthority`;
+  it admits the operator before receipt lookup or installation locks, validates
+  the exact owner for new effects, and rechecks authority before every commit.
 - `ModuleControlPlane::artifact_data_object_gc` returns the owner GC service.
   Its `tenants_with_candidates_after(after, limit)` method returns a bounded
   ascending UUID keyset page using an exclusive cursor; callers should wrap

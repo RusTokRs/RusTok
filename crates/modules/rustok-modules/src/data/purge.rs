@@ -57,11 +57,15 @@ where
             .tenant_id
             .ok_or(ArtifactDataError::PurgePrecondition)?;
 
-        // An exact terminal receipt is replayable after a later lifecycle
-        // transition. Check it before requiring that the historical target is
-        // still purge-eligible.
+        self.authorizer.prepare_purge().await?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, tenant_id).await?;
+        // Operator authority is acquired first, on this transaction. Receipt
+        // replay bypasses historical target eligibility, never authorization.
+        let authority = self
+            .authorizer
+            .lock_purge_authority_on(&transaction, &request)
+            .await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         if let Some(existing) = find_artifact_data_purge_operation(
@@ -72,6 +76,9 @@ where
         )
         .await?
         {
+            self.authorizer
+                .ensure_purge_authority_on(&transaction, &request, &authority)
+                .await?;
             transaction.commit().await.map_err(storage_error)?;
             return Ok(existing);
         }
@@ -88,6 +95,9 @@ where
         )
         .await?
         {
+            self.authorizer
+                .ensure_purge_authority_on(&transaction, &request, &authority)
+                .await?;
             transaction.commit().await.map_err(storage_error)?;
             return Ok(existing);
         }
@@ -131,7 +141,12 @@ where
             return Err(ArtifactDataError::PurgePrecondition);
         }
         self.authorizer
-            .authorize_purge_on(&transaction, &request, &locked_target.authorization)
+            .authorize_purge_on(
+                &transaction,
+                &request,
+                &locked_target.authorization,
+                &authority,
+            )
             .await?;
         ensure_namespace_not_migration_held_on(
             &transaction,
@@ -446,6 +461,9 @@ where
             )
             .await
             .map_err(storage_error)?;
+        self.authorizer
+            .ensure_purge_authority_on(&transaction, &request, &authority)
+            .await?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(ArtifactDataPurgeResult {
             namespace_revision: next_revision,
