@@ -270,6 +270,8 @@ matching BFFs and revoke pre-cutover sessions; bare cookies are rejected.
   response cannot be recovered from the old token. Durable incident/retry
   evidence and two-replica failure-injection verification remain pending.
 
+- Artifact execution leases now bind each host execution to its exact installation, sandbox grant constraints and direct request scope. Structured-data and event-outbox SQL effects recheck the current exact installation/grant and lock direct Auth/RBAC authority through transaction commit. This is not yet a single transaction fence for the full effective-policy revision, dependency closure/security, registry mutation state or deployment readiness; non-SQL effects (HTTP, MCP, secrets and object storage) still rely on per-call host admission and owner-specific checks rather than the same commit fence. PostgreSQL cross-owner lock ordering/contention and deployed worker/runtime/cancellation evidence remain unverified. Do not treat the in-memory lease as durable replay authority or automatically retry ambiguous effects. **Owners:** server host, `rustok-modules`, Auth/RBAC and individual capability owners. **Removal condition:** add owner-side fences for the remaining policy/readiness and non-SQL effect boundaries, then pass PostgreSQL contention and both in-process/worker runtime regressions. See the [execution capability lease ADR](../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md); source regressions remain unrun at the user's request.
+
 ## Acknowledged sealed delivery (source only)
 
 The reservation-fact continuation source-wires acknowledged sealed module startup on the actual
