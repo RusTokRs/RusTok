@@ -497,6 +497,7 @@ pub(super) fn parse_attribute_value_batches(
         .collect()
 }
 
+#[cfg(feature = "ssr")]
 fn parse_attribute_value_patch(
     draft: ProductAttributeValuePatchDraft,
 ) -> Result<rustok_product::services::ProductAttributeValuePatch, ServerFnError> {
