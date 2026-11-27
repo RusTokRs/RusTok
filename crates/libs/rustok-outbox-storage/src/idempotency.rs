@@ -52,6 +52,7 @@ mod entity {
 /// Checks that the database role can read the receipt schema without reading any stored receipts.
 pub async fn verify_readable_schema(connection: &impl ConnectionTrait) -> Result<(), DbErr> {
     entity::Entity::find().limit(0).all(connection).await?;
+    crate::database_now(connection).await?;
     Ok(())
 }
 
@@ -165,6 +166,7 @@ pub async fn admit<T: Serialize>(
         return inspect_or_reclaim(database, existing, &operation, &request_hash).await;
     }
 
+    crate::observe_database_clock(database).await.map_err(database_error)?;
     let txn = database.begin().await.map_err(database_error)?;
     let now = crate::database_now(&txn).await.map_err(database_error)?.fixed_offset();
     let id = generate_id();
@@ -300,6 +302,7 @@ pub async fn renew_lease(database: &DatabaseConnection, lease: Lease) -> Result<
             "lease operation_id and token must not be nil",
         ));
     }
+    crate::observe_database_clock(database).await.map_err(database_error)?;
     let txn = database.begin().await.map_err(database_error)?;
     let Some(now) = live_processing_time(&txn, lease).await? else {
         txn.rollback().await.map_err(database_error)?;
@@ -530,7 +533,7 @@ pub async fn prune_terminal_receipts(
             "operation receipt prune batch size must be greater than zero",
         ));
     }
-    let cutoff = crate::database_now(database)
+    let cutoff = crate::observe_database_clock(database)
         .await.map_err(database_error)?
         .checked_sub_signed(older_than)
         .ok_or_else(|| PortError::validation(
@@ -603,7 +606,7 @@ async fn inspect_or_reclaim(
                 })
         }
         STATUS_PROCESSING => {
-            let stale_before = crate::database_now(database)
+            let stale_before = crate::observe_database_clock(database)
                 .await.map_err(database_error)?.fixed_offset()
                 .checked_sub_signed(Duration::minutes(PROCESSING_LEASE_MINUTES))
                 .ok_or_else(|| database_error(DbErr::Custom("receipt lease cutoff is out of range".to_string())))?;

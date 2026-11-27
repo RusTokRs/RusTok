@@ -272,7 +272,7 @@ impl OutboxRelay {
         // a timed-out pass aborts its JoinSet, but a later pass must wait until
         // those tasks have actually released their guard clones.
         let guard = Arc::new(self.pass_lock.clone().lock_owned().await);
-        let eligible_at = rustok_outbox_storage::database_now(&self.db).await?;
+        let eligible_at = rustok_outbox_storage::observe_database_clock(&self.db).await?;
         let mut cursor = None;
         let mut report = OutboxRelayRunOnceProjection {
             claimed_count: 0, success_total: 0, failure_total: 0,
@@ -407,6 +407,9 @@ impl OutboxRelay {
         }
 
         let now = rustok_outbox_storage::database_now(&txn).await?;
+        if now < eligible_at {
+            return Err(Error::External("outbox clock regressed within relay pass".to_string()));
+        }
         entity::Entity::update_many()
             .filter(entity::Column::Id.is_in(candidate_ids.clone()))
             .filter(entity::Column::Status.eq(SysEventStatus::Pending))
@@ -451,7 +454,28 @@ impl OutboxRelay {
                 model.id
             )));
         }
-        let now = rustok_outbox_storage::database_now(&self.db).await?;
+        let txn = self.db.begin().await?;
+        // Acquire the exact pending row before observing its remaining time.
+        let locked = entity::Entity::update_many()
+            .filter(entity::Column::Id.eq(model.id))
+            .filter(entity::Column::Status.eq(SysEventStatus::Pending))
+            .filter(entity::Column::ClaimedBy.eq(model.claimed_by.clone()))
+            .filter(entity::Column::ClaimedAt.eq(model.claimed_at))
+            .set(entity::ActiveModel {
+                claimed_by: Set(model.claimed_by.clone()),
+                ..Default::default()
+            })
+            .exec(&txn)
+            .await?;
+        self.ensure_claim_owned(model.id, locked.rows_affected)?;
+        let now = rustok_outbox_storage::database_now(&txn).await?;
+        let claimed_at = model.claimed_at.expect("checked claim timestamp");
+        let ttl = chrono::Duration::from_std(self.config.claim_ttl)
+            .map_err(|_| Error::Validation("outbox relay claim_ttl is out of range".to_string()))?;
+        if claimed_at > now || now.signed_duration_since(claimed_at) >= ttl {
+            txn.rollback().await?;
+            return Err(Error::External(format!("outbox event {} claim expired before dispatch", model.id)));
+        }
         // Rotate the token even when renewal occurs in the same clock tick.
         let token = format!("{}:{}", self.config.worker_id, Uuid::new_v4());
         let result = entity::Entity::update_many()
@@ -464,9 +488,10 @@ impl OutboxRelay {
                 claimed_at: Set(Some(now)),
                 ..Default::default()
             })
-            .exec(&self.db)
+            .exec(&txn)
             .await?;
         self.ensure_claim_owned(model.id, result.rows_affected)?;
+        txn.commit().await?;
         let mut refreshed = model.clone();
         refreshed.claimed_by = Some(token);
         refreshed.claimed_at = Some(now);
@@ -1013,7 +1038,7 @@ mod tests {
             .filter(entity::Column::Id.eq(event_id))
             .set(entity::ActiveModel {
                 claimed_by: Set(Some("queued-worker".to_string())),
-                claimed_at: Set(Some(Utc::now() - chrono::Duration::minutes(5))),
+                claimed_at: Set(Some(Utc::now() - chrono::Duration::seconds(1))),
                 ..Default::default()
             })
             .exec(&db)
@@ -1038,6 +1063,28 @@ mod tests {
         assert!(renewed.claimed_at > queued.claimed_at);
         assert!(relay.mark_dispatched(&queued).await.is_err());
         relay.mark_dispatched(&renewed).await.expect("current claim");
+    }
+
+    #[tokio::test]
+    async fn expired_claim_cannot_be_refreshed_without_reclaim() {
+        let db = database().await;
+        let envelope = EventEnvelope::new(
+            Uuid::new_v4(), None,
+            rustok_events::DomainEvent::UserLoggedIn { user_id: Uuid::new_v4() },
+        );
+        let id = envelope.id;
+        crate::OutboxTransport::new(db.clone()).publish(envelope).await.unwrap();
+        entity::Entity::update_many()
+            .filter(entity::Column::Id.eq(id))
+            .set(entity::ActiveModel {
+                claimed_by: Set(Some("expired-worker".into())),
+                claimed_at: Set(Some(Utc::now() - chrono::Duration::minutes(2))),
+                ..Default::default()
+            })
+            .exec(&db).await.unwrap();
+        let row = entity::Entity::find_by_id(id).one(&db).await.unwrap().unwrap();
+        let relay = OutboxRelay::new(db, Arc::new(RejectUnexpectedPublish));
+        assert!(relay.refresh_claim(&row).await.is_err());
     }
 
     #[tokio::test]

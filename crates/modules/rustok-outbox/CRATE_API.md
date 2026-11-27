@@ -201,3 +201,25 @@ owner errors require rollback of the entire owner transaction. Expired release
 preserves the request fingerprint for exact-request reclamation. Owners must
 renew before expiry and keep owner transactions bounded; a row lock alone
 does not extend the lease. External effects need owner-specific idempotency.
+
+## Durable temporal clock authority
+
+The outbox_temporal_clock singleton stores the maximum committed SQL-clock
+observation across process restarts. Independent relay-pass, receipt admission,
+renewal/reclaim and retention boundaries advance it in a short transaction.
+Owner transactions read the floor and SQL time without taking the global writer
+lock. Missing schema, backward observations below the committed floor, slow
+observations (>2s), host-clock steps (>100ms during observation) or SQL/host
+skew outside a 2s sanity bound fail closed; host time is not a timestamp
+fallback. Relay claim refresh checks its live interval after acquiring row
+ownership. Event retention checks time again after the registry fence.
+
+This is bounded discontinuity detection, not a trusted independent distributed
+time service: simultaneous host/DB forward jumps, smaller jumps within the
+sanity bound and a stale repeatable-read snapshot are not fully fenced.
+A floor ahead of actual time blocks affected operations until time catches up
+or an explicitly reviewed operator recovery is performed. Do not reset it on
+startup. The floor begins at zero on migration; pre-upgrade history is not
+retroactively verified. Upgrade the schema before new workers and drain old
+workers that bypass the guard. A committed owner transaction may still be
+subject to cancellation and ambiguous broker effects.

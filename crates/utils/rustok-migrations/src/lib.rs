@@ -75,6 +75,7 @@ mod composition {
     mod m20261126_000050_add_user_recovery_revision;
     mod m20261127_000010_fence_session_history_parents;
     mod m20261127_000011_session_evidence_integrity;
+    mod m20261127_000200_create_outbox_temporal_clock;
 
     #[cfg(test)]
     mod contract_tests;
@@ -524,6 +525,9 @@ mod composition {
         ));
         all.push(Box::new(
             m20261127_000011_session_evidence_integrity::Migration,
+        ));
+        all.push(Box::new(
+            m20261127_000200_create_outbox_temporal_clock::Migration,
         ));
         all
     }

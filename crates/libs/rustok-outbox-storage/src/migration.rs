@@ -14,10 +14,12 @@ impl MigrationTrait for SysEventsMigration {
         create_sys_events_tenant_index(manager).await?;
         add_sys_events_integrity_checks(manager).await?;
         create_owner_operation_receipts_table(manager).await?;
-        create_sys_event_consumer_tables(manager).await
+        create_sys_event_consumer_tables(manager).await?;
+        create_outbox_temporal_clock(manager).await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        drop_outbox_temporal_clock(manager).await?;
         drop_sys_event_consumer_tables(manager).await?;
         drop_owner_operation_receipts_table(manager).await?;
         drop_sys_events_schema(manager).await
@@ -673,4 +675,37 @@ enum OwnerOperationReceipts {
     CreatedAt,
     UpdatedAt,
     CompletedAt,
+}
+
+/// Append-only owner schema for the durable temporal authority. Do not reset
+/// a previously initialized floor when applying this idempotent helper.
+pub async fn create_outbox_temporal_clock(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let connection = manager.get_connection();
+    connection.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS outbox_temporal_clock (id INTEGER PRIMARY KEY CHECK (id = 1), high_water_ms BIGINT NOT NULL CHECK (high_water_ms >= 0))",
+    ).await?;
+    connection.execute_unprepared(
+        "INSERT INTO outbox_temporal_clock (id, high_water_ms) VALUES (1, 0) ON CONFLICT (id) DO NOTHING",
+    ).await?;
+    Ok(())
+}
+
+pub async fn drop_outbox_temporal_clock(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager.get_connection().execute_unprepared("DROP TABLE IF EXISTS outbox_temporal_clock").await?;
+    Ok(())
+}
+
+// Module-local append-only upgrade for already initialized standalone schemas.
+#[derive(DeriveMigrationName)]
+pub struct OutboxTemporalClockMigration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for OutboxTemporalClockMigration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        create_outbox_temporal_clock(manager).await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        drop_outbox_temporal_clock(manager).await
+    }
 }
