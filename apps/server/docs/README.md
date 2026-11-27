@@ -467,8 +467,12 @@ than being reported as invalid invitations. Administrative user creation and
 password replacement enforce the runtime's configured minimum password length,
 matching public account lifecycle operations.
 
-OAuth consent grants and revocations lock the app row and then the subject row,
-matching token issuance's lock order before reading or changing consent. This
+OAuth authorization-code issuance, direct consent grants, client-credentials
+exchange, code exchange and refresh rotation/recovery fence the active tenant
+before locking the app and then the subject where applicable. Both direct
+consent grant entrypoints use the same strict validation and clock admission.
+Security-only revocations retain their app/subject order and can invalidate
+credentials even when the tenant is inactive. This
 prevents an exchange from committing a token against consent that was revoked
 first, and prevents grants after an app or user becomes inactive. Token
 exchange and refresh also re-read the active consent, scope coverage, and grant

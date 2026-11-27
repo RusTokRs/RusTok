@@ -160,7 +160,7 @@ impl OAuthTokenService {
                         "Failed to begin client-credentials exchange",
                     )
                 })?;
-                let current_app = lock_active_oauth_app(&tx, app.id, tenant_id).await?;
+                let current_app = lock_issuance_oauth_app(&tx, app.id, tenant_id).await?;
                 ensure_authenticated_client_unchanged(&app, &current_app)?;
                 require_grant(&current_app, CLIENT_CREDENTIALS_GRANT)?;
                 let scopes = validate_requested_scopes(&current_app, request.scope.as_deref())?;
@@ -1277,6 +1277,23 @@ where
     Ok(Some(consent.id))
 }
 
+/// Credential birth/rotation must fence the active tenant before the client.
+/// Security-only replay revocations use the app fence separately so that an
+/// inactive tenant cannot prevent invalidation of a compromised family.
+async fn lock_issuance_oauth_app(
+    tx: &sea_orm::DatabaseTransaction,
+    app_id: Uuid,
+    tenant_id: Uuid,
+) -> Result<oauth_apps::Model, OAuthTokenProtocolError> {
+    let active = crate::services::auth_invite::lock_active_auth_tenant(tx, tenant_id)
+        .await
+        .map_err(|_| OAuthTokenProtocolError::server_error("Failed to lock OAuth tenant"))?;
+    if !active {
+        return Err(OAuthTokenProtocolError::invalid_client("OAuth client is unavailable"));
+    }
+    lock_active_oauth_app(tx, app_id, tenant_id).await
+}
+
 async fn lock_active_oauth_app<C>(
     db: &C,
     app_id: Uuid,
@@ -1576,7 +1593,7 @@ async fn commit_authorization_code_exchange(
     let tx = db.begin().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to begin authorization-code exchange")
     })?;
-    let current_app = lock_active_oauth_app(&tx, authenticated_app.id, code.tenant_id).await?;
+    let current_app = lock_issuance_oauth_app(&tx, authenticated_app.id, code.tenant_id).await?;
     ensure_authenticated_client_unchanged(authenticated_app, &current_app)?;
     require_grant(&current_app, AUTHORIZATION_CODE_GRANT)?;
     if prepared.refresh_model.is_some() {
@@ -1773,7 +1790,7 @@ async fn commit_refresh_rotation(
     let tx = db.begin().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to begin refresh-token rotation")
     })?;
-    let current_app = lock_active_oauth_app(&tx, authenticated_app.id, current.tenant_id).await?;
+    let current_app = lock_issuance_oauth_app(&tx, authenticated_app.id, current.tenant_id).await?;
     ensure_authenticated_client_unchanged(authenticated_app, &current_app)?;
     require_grant(&current_app, REFRESH_TOKEN_GRANT)?;
     validate_scope_subset(&current_app.scopes_list(), &current.scopes_list())?;
@@ -1979,6 +1996,28 @@ mod tests {
 
     fn test_clock() -> Result<chrono::DateTime<Utc>, super::OAuthTokenProtocolError> {
         Ok(Utc::now())
+    }
+
+    #[tokio::test]
+    async fn issuance_rejects_inactive_tenant_before_reading_client() {
+        let db = Database::connect("sqlite::memory:").await.expect("SQLite database");
+        let backend = db.get_database_backend();
+        let schema = Schema::new(backend);
+        db.execute_raw(backend.build(&schema.create_table_from_entity(tenants::Entity)))
+            .await.expect("tenants table");
+        let mut tenant = tenants::ActiveModel::new("Inactive OAuth tenant", "inactive-oauth");
+        tenant.is_active = Set(false);
+        let tenant = tenant.insert(&db).await.expect("tenant");
+
+        // No oauth_apps table: an inactive or missing tenant must fail before
+        // any app lookup or credential write can occur.
+        for tenant_id in [tenant.id, Uuid::new_v4()] {
+            let tx = db.begin().await.expect("begin issuance");
+            let error = super::lock_issuance_oauth_app(&tx, Uuid::new_v4(), tenant_id)
+                .await.expect_err("inactive or missing tenant must reject issuance");
+            assert_eq!(error.error, "invalid_client");
+            tx.rollback().await.expect("rollback issuance");
+        }
     }
 
     #[tokio::test]

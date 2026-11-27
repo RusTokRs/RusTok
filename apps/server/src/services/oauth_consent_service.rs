@@ -25,11 +25,13 @@ impl OAuthAppService {
             ));
         }
 
-        // Token issuance takes these same locks in app-then-user order before
-        // checking consent. Sharing that order makes grant/revoke linearizable
-        // with token exchange and with concurrent app/user deactivation.
+        // Reserve the active tenant before the app and subject, matching token
+        // issuance. The fence remains held until the consent transaction ends.
         rustok_auth::application_clock::admit_now(db).await?;
         let tx = db.begin().await?;
+        if !crate::services::auth_invite::lock_active_auth_tenant(&tx, tenant_id).await? {
+            return Err(Error::Unauthorized("OAuth tenant is inactive or unavailable".to_string()));
+        }
         let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await?
             .filter(|app| app.is_active())

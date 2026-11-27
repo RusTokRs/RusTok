@@ -809,3 +809,13 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   original code and epoch before any exchange/rotation/recovery effect.
   Regression assertions cover a stale grant observation and mismatched
   prepared lineage. Source regressions unrun.
+
+- OAuth tenant admission continuation: authorization-code issuance (including
+  browser confirmation), direct consent grants, client-credentials exchange,
+  code exchange and refresh rotation/recovery now reserve the active tenant
+  before the app/subject fences. Direct consent grant entrypoints share strict
+  validation and application-clock admission. Security-only replay revocations
+  retain their independent app fence so inactive tenants cannot block cleanup.
+  SQLite source regressions cover inactive/missing tenant rejection and absence
+  of extra consent/code effects; PostgreSQL multi-connection evidence and scoped
+  compilation remain unrun. Global lock hierarchy is not closed.

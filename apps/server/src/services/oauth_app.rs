@@ -714,8 +714,8 @@ impl OAuthAppService {
         Ok(())
     }
 
-    /// Atomically admit and store one authorization code under the same app ->
-    /// user lock order used by exchange, consent grants and revocation.
+    /// Atomically admit and store one authorization code under the same
+    /// tenant -> app -> user lock order used by credential issuance.
     ///
     /// HTTP authorization preflight is advisory: app settings, the user's
     /// active status and third-party consent may change before this insert.
@@ -734,6 +734,9 @@ impl OAuthAppService {
         clock()?;
         rustok_auth::application_clock::admit_now(db).await?;
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        if !crate::services::auth_invite::lock_active_auth_tenant(&tx, tenant_id).await? {
+            return Err(Error::Unauthorized("OAuth tenant is inactive or unavailable".to_string()));
+        }
         let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?
@@ -1063,16 +1066,8 @@ impl OAuthAppService {
         }
     }
 
-    /// Grant user consent for an application, replacing any previously
-    /// consented scope set with exactly the approved one.
-    ///
-    /// Re-granting after a revoke revives the soft-deleted consent row in
-    /// place instead of inserting a second row: with the historical full
-    /// unique index that insert failed forever (the index is now partial
-    /// over active rows, and revive-in-place keeps a single row per
-    /// (app, user, tenant) regardless). Scope narrowing is possible by
-    /// re-granting a narrower set; the previous merge-only behavior made
-    /// consent monotonically grow.
+    /// Grant consent through the same strict owner path used by direct callers.
+    /// Re-granting retires the old grant and creates a fresh consent UUID.
     pub async fn grant_consent(
         db: &DatabaseConnection,
         app_id: Uuid,
@@ -1080,52 +1075,7 @@ impl OAuthAppService {
         tenant_id: Uuid,
         scopes: Vec<String>,
     ) -> Result<()> {
-        if scopes.is_empty() {
-            return Err(Error::BadRequest(
-                "OAuth consent must include at least one scope".to_string(),
-            ));
-        }
-
-        let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
-        // Keep the same lock order as token issuance and consent revocation.
-        // This serializes concurrent grants and prevents consent from being
-        // created after either the app or subject has become inactive.
-        let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
-            .await
-            .map_err(|_| Error::InternalServerError)?
-            .filter(|app| app.is_active())
-            .ok_or(Error::NotFound)?;
-        lock_oauth_user_for_mutation(&tx, user_id, tenant_id)
-            .await
-            .map_err(|_| Error::InternalServerError)?
-            .filter(|user| user.is_active())
-            .ok_or_else(|| {
-                Error::Unauthorized("OAuth consent subject is missing or inactive".to_string())
-            })?;
-
-        let app_scopes = app.scopes_list();
-        if scopes
-            .iter()
-            .any(|scope| !scope_matches(&app_scopes, scope))
-        {
-            return Err(Error::BadRequest(
-                "Requested scopes exceed the application's registered scopes".to_string(),
-            ));
-        }
-
-        let scopes_json = serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?;
-        let now = rustok_auth::application_clock::verified_now(&tx).await?;
-        Self::grant_consent_in_transaction(&tx, app_id, user_id, tenant_id, &scopes_json, now)
-            .await
-            .map_err(|attempt| match attempt {
-                GrantConsentAttempt::UniqueRace => Error::Conflict(
-                    "OAuth consent changed concurrently; retry the operation".to_string(),
-                ),
-                GrantConsentAttempt::Fatal(error) => error,
-            })?;
-        rustok_auth::application_clock::verified_now(&tx).await?;
-        tx.commit().await.map_err(|_| Error::InternalServerError)?;
-        Ok(())
+        Self::grant_consent_strict(db, app_id, user_id, tenant_id, scopes).await
     }
 
     /// Replace the active grant with a fresh consent identity on a caller-owned
@@ -3407,6 +3357,19 @@ mod tests {
             .await
             .expect("renew consent");
         let _another_code = issue().await.expect("admit code after re-consent");
+        let mut inactive_tenant: tenants::ActiveModel = tenant.clone().into();
+        inactive_tenant.is_active = Set(false);
+        inactive_tenant.update(&db).await.expect("deactivate tenant");
+        assert!(matches!(issue().await, Err(Error::Unauthorized(_))));
+        for result in [
+            OAuthAppService::grant_consent_strict(&db, app.id, user.id, tenant.id, scopes.clone()).await,
+            OAuthAppService::grant_consent(&db, app.id, user.id, tenant.id, scopes.clone()).await,
+        ] {
+            assert!(matches!(result, Err(Error::Unauthorized(_))));
+        }
+        let mut active_tenant: tenants::ActiveModel = tenant.clone().into();
+        active_tenant.is_active = Set(true);
+        active_tenant.update(&db).await.expect("reactivate tenant");
         let consent_rows = OAuthConsents::find()
             .filter(oauth_consents::Column::AppId.eq(app.id))
             .filter(oauth_consents::Column::UserId.eq(user.id))
