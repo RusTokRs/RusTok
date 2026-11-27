@@ -2213,7 +2213,7 @@ Compilation, formatting and tests were not run at the maintainer's request.
 Secret-bearing runtime configuration no longer prints raw values through Rust
 Debug formatting. Redis URLs, SMTP credentials, registry runner tokens, search
 URLs/API keys, Iggy external credentials, bundled process arguments/environment
-values, database URIs, raw host settings JSON, and S3 endpoint/public URLs are
+values, database URIs, raw host settings JSON, S3 access keys/session tokens, and S3 endpoint/public URLs are
 represented only by configured-state metadata. Opaque connector acknowledgement
 tokens and Iggy consumer identifiers are also redacted. Focused regression tests
 assert that representative secret values do not appear in Debug output.
