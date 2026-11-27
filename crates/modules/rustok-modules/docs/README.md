@@ -477,7 +477,11 @@ ordinary discovery/install state and does not silently disable an already
 admitted tenant intent. `ModuleControlPlane::artifact_security` owns explicit
 quarantine, quarantine-clear, and terminal emergency-revoke commands with
 revision CAS, platform authorization, exact idempotency replay, and outbox
-events. The read-only security resolver feeds effective policy with redacted
+events. The owner calls the host authorizer inside the transition transaction,
+before replay and before taking the platform slug activation lock; the host
+must retain direct credential and current RBAC row fences through commit.
+Therefore an exact idempotency replay still requires current authorization.
+The read-only security resolver feeds effective policy with redacted
 status/revision/release facts; quarantine and revoke block new execution, while
 a revoked state cannot be cleared.
 Successful build results must carry the complete component, SBOM, provenance,

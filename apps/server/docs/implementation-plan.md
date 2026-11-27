@@ -3553,12 +3553,13 @@ exposes the matching snapshot and mutation fields. Both transports require a
 direct authenticated user and modules:manage, and the owner adapter binds the
 authenticated actor to a tenant-independent command envelope.
 
-The authorizer checks both the direct-session claims and the server's canonical RBAC resolver,
-failing closed if permission resolution is unavailable. All
-mutations retain the owner-issued idempotency receipt and outbox evidence, and
-successful changes evict every tenant entry from the process-local effective
-policy cache. Marketplace yanking and external-provenance quarantine remain
-separate controls.
+The host authorizer revalidates the direct credential and current RBAC grants
+inside the owner transaction, taking tenant/user/session/policy/role fences
+before the platform release-slug lock and retaining them through commit.
+Exact idempotency replay also requires current authorization. All mutations
+retain the owner-issued idempotency receipt and outbox evidence, and successful
+changes evict every tenant entry from the process-local effective policy cache.
+Marketplace yanking and external-provenance quarantine remain separate controls.
 
 Regression source was added for authorization, command identity, response
 cache policy, error mapping, GraphQL field classification and OpenAPI bearer

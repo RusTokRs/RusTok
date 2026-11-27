@@ -47,8 +47,13 @@ lease's exact clear security revision after the lock wait. This protects the
 implicit clear revision zero even before a security-state row exists. Clearing
 quarantine advances the revision, never restoring prior execution authority.
 The emergency writer does not consult the lifecycle journal mutation guard.
-The lock covers short SQL transactions, not guest execution or external calls;
-a security action waits for an already-admitted SQL transaction to finish.
+The server host authorizer runs on that same owner transaction before the
+platform slug lock. It acquires the tenant, direct-user, session, policy, and
+current RBAC role fences first and retains them through the security-state,
+receipt, and outbox commit. Exact idempotency replay also requires current
+authorization; a cached request snapshot alone is not sufficient. The lock
+covers short SQL transactions, not guest execution or external calls; a
+security action waits for an already-admitted SQL transaction to finish.
 Registry status has a separate monotonic release authority witness (migration
 000096), and registry publication/yank/unyank share the same platform slug fence.
 Serving SQL effects check both security and registry authority for every artifact

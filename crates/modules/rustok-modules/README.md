@@ -71,7 +71,10 @@ around the owner contracts.
   are removed.
 - Own artifact-release quarantine and terminal emergency revocation separately
   from registry yanking; security state blocks new execution while preserving
-  tenant enablement intent and records exact revisioned outbox evidence.
+  tenant enablement intent and records exact revisioned outbox evidence. The
+  owner invokes the host authorization port inside the transition transaction,
+  before replay and the platform slug lock, so credential and RBAC fences stay
+  held through commit.
 - Supply owner clock and identity ports through one
   `ControlPlaneInfrastructure` context rather than process-global calls.
 - Map installed artifacts to neutral sandbox requests and capability grants.

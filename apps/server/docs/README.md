@@ -2297,11 +2297,15 @@ fields are also decimal strings.
 
 Both transports require a direct authenticated user session and the effective
 modules:manage permission in the resolved tenant. Delegated and service
-principals are rejected. The permission is checked against both the authenticated
-permission snapshot and the server's canonical RBAC resolver, including request-scope invalidation. Successful commands clear the
-process-local effective module-policy cache across all tenants, because the
-security aggregate is global to the release. The owner-side SQL execution fence
-remains authoritative for already-running artifact work.
+principals are rejected. For mutations, the host revalidates the direct
+credential and current RBAC grants inside the owner transaction, taking
+tenant/user/session/policy/role fences before the platform release-slug lock
+and retaining them through commit. Exact idempotency replay also requires
+current authorization, so a stale request snapshot cannot authorize a replay.
+Successful commands clear the process-local effective module-policy cache
+across all tenants, because the security aggregate is global to the release.
+The owner-side SQL execution fence remains authoritative for already-running
+artifact work.
 
 Focused source regressions cover direct-principal authorization, canonical RBAC
 permission-resolution checks, tenant/actor binding, global command context, response cache
