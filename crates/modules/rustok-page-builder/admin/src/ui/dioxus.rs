@@ -435,11 +435,13 @@ fn controller_session_key(controller: &AdminCanvasController) -> String {
     )
 }
 
+/// Changes after every document command, including undo/redo to a previous content hash.
 pub(super) fn canvas_instance_id(
     page_id: &str,
     active_page_index: usize,
     revision_id: &str,
     project_hash: &str,
+    command_sequence: u64,
 ) -> String {
     fn hex(value: &str) -> String {
         let mut encoded = String::with_capacity(value.len() * 2);
@@ -450,11 +452,12 @@ pub(super) fn canvas_instance_id(
     }
 
     format!(
-        "fly-canvas-{}-{}-{}-{}",
+        "fly-canvas-{}-{}-{}-{}-{}",
         hex(page_id),
         active_page_index,
         hex(revision_id),
-        project_hash
+        project_hash,
+        command_sequence
     )
 }
 
@@ -1006,12 +1009,15 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     let workspace_selected = current.controller.ui().state.selection.component_id.clone();
     let workspace_initial_page = current.controller.active_page_index();
     let workspace_revision_id = current.controller.revision_id().to_string();
-    let workspace_project_hash = current.controller.editor().revision().project_hash.hex();
+    let workspace_revision = current.controller.editor().revision();
+    let workspace_project_hash = workspace_revision.project_hash.hex();
+    let workspace_command_sequence = workspace_revision.command_sequence;
     let workspace_canvas_instance_id = canvas_instance_id(
         &workspace_page_id,
         workspace_initial_page,
         &workspace_revision_id,
         &workspace_project_hash,
+        workspace_command_sequence,
     );
     let last_error = current.last_error.clone();
     let last_announcement = current.last_announcement.clone();
@@ -1981,11 +1987,12 @@ mod props_regression_tests {
 
     #[test]
     fn canvas_iframe_identity_tracks_document_revision_and_hash() {
-        let first = canvas_instance_id("home", 0, "rev-1", "hash-1");
-        assert_ne!(first, canvas_instance_id("home", 1, "rev-1", "hash-1"));
-        assert_ne!(first, canvas_instance_id("home", 0, "rev-1", "hash-2"));
-        assert_ne!(first, canvas_instance_id("home", 0, "rev-2", "hash-1"));
-        assert_ne!(first, canvas_instance_id("about", 0, "rev-1", "hash-1"));
+        let first = canvas_instance_id("home", 0, "rev-1", "hash-1", 7);
+        assert_ne!(first, canvas_instance_id("home", 1, "rev-1", "hash-1", 7));
+        assert_ne!(first, canvas_instance_id("home", 0, "rev-1", "hash-2", 7));
+        assert_ne!(first, canvas_instance_id("home", 0, "rev-2", "hash-1", 7));
+        assert_ne!(first, canvas_instance_id("about", 0, "rev-1", "hash-1", 7));
+        assert_ne!(first, canvas_instance_id("home", 0, "rev-1", "hash-1", 8));
         assert!(first.starts_with("fly-canvas-"));
     }
 

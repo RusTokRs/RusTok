@@ -12,8 +12,8 @@ use rustok_modules::{
 };
 use uuid::Uuid;
 
-pub(crate) use crate::services::artifact_binding::{
-    is_artifact_permission_authorized, require_artifact_permission,
+use crate::services::artifact_binding::{
+    authorize_artifact_surface, require_artifact_direct_credential, require_artifact_permission,
 };
 
 use crate::{
@@ -50,19 +50,13 @@ pub(crate) async fn list_authorized_artifact_ui_contributions(
     installation_id: Uuid,
     effective_locale: &str,
 ) -> Result<Vec<ArtifactUiContributionView>> {
+    require_artifact_direct_credential(tenant_id, actor_id)?;
     let installation = resolve_artifact_installation(ctx, installation_id, tenant_id).await?;
+    let (_, keys) = authorize_artifact_surface(ctx, tenant_id, actor_id, &installation).await?;
     let mut contributions = Vec::with_capacity(installation.descriptor.ui_contributions.len());
 
     for contribution in &installation.descriptor.ui_contributions {
-        if !is_artifact_permission_authorized(
-            ctx,
-            tenant_id,
-            actor_id,
-            &installation,
-            &contribution.permission,
-        )
-        .await?
-        {
+        if !keys.iter().any(|key| key == &contribution.permission) {
             continue;
         }
 
@@ -109,6 +103,7 @@ pub(crate) async fn execute_artifact_ui_action(
     input: serde_json::Value,
     idempotency_key: Option<Uuid>,
 ) -> Result<serde_json::Value> {
+    require_artifact_direct_credential(tenant_id, actor_id)?;
     let installation = resolve_artifact_installation(ctx, installation_id, tenant_id).await?;
     let binding = find_artifact_ui_action_binding(
         &installation.descriptor.ui_contributions,
@@ -141,6 +136,7 @@ pub(crate) async fn list_authorized_artifact_ui_action_audit(
     installation_id: Uuid,
     contribution_id: &str,
 ) -> Result<Vec<ArtifactBindingExecutionAuditEntry>> {
+    require_artifact_direct_credential(tenant_id, actor_id)?;
     let installation = resolve_artifact_installation(ctx, installation_id, tenant_id).await?;
     let binding = find_artifact_ui_action_binding(
         &installation.descriptor.ui_contributions,

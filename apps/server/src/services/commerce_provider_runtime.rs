@@ -369,10 +369,7 @@ pub fn attach_commerce_provider_registries(
             server
                 .shared_get::<rustok_outbox::TransactionalEventBus>()
                 .map(|event_bus| {
-                    rustok_pricing::in_process_product_pricing_port(
-                        server.db_clone(),
-                        event_bus,
-                    )
+                    rustok_pricing::in_process_product_pricing_port(server.db_clone(), event_bus)
                 })
         }
         #[cfg(not(feature = "mod-pricing"))]

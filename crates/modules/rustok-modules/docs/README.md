@@ -237,10 +237,36 @@ an oversight — churning the durable revision on every worker flap would
 invalidate every revision-keyed cache and transition consumer cluster-wide.
 A cached decision can lag both recovery and loss; a revision match does not
 prove current executor availability. Dispatch checks do not protect earlier
-authorization consumers such as server guards and RBAC. The current server
-policy path builds its catalog from the static registry and does not wire an
-artifact executor into that lifecycle reader; executor kind support is not a
-worker health probe. Do not infer live artifact-worker health from that path.
+authorization consumers such as server guards and RBAC. The static server
+policy path deliberately remains independent of sandbox availability. Artifact
+HTTP/command/UI/audit admission and non-lifecycle execution now share the
+uncached mixed-catalog owner policy. It combines compiled definitions and the
+bounded RLS-scoped active artifact selection, never overriding a native slug,
+and treats active tenant-enabled installations as dynamic activation intent
+while honoring explicit tenant override denials. The actual composed executor's
+payload-kind support supplies the availability input; it is not a worker
+health probe. Exact durable node readiness is still required for the resulting
+deployment readiness revision, independently derived from the deployment intent,
+topology digest and frozen owner assignment identities. Tenant effective-policy
+revision remains independently bound to execution admission; see the
+[deployment readiness authority ADR](../../../../DECISIONS/2026-11-27-artifact-deployment-readiness-authority.md). Readiness now covers the root and every selected artifact in its dependency
+and co-requisite closure. Each dependency lock node must match the selected
+artifact version, payload and manifest digest, and dependency edges; a native
+definition without immutable artifact evidence cannot satisfy a lock node.
+Every required artifact must match the policy's installation/graph/capability
+facts and active observed assignment on the same node and reconciliation
+revision. The owner checks the observed-head revision before and after the
+closure read, not an atomic execution lease. Storage failures remain
+infrastructure errors; unavailable or stale readiness is a policy denial.
+The singleton ledger now carries a deployment-scoped revision rather than a
+tenant policy digest. Its owner reconstructs the digest from stored intent,
+topology and exact assignments, requires desired/observed equality, and rejects
+legacy rows whose deployment intent is NULL. The tenant-specific policy is still
+required and the sandbox compares its admission revision separately. Fresh
+reconciliation is mandatory at cutover; historical observations are not promoted.
+Contextual channel/maintenance owner inputs,
+the reconciliation producer's full revision parity and atomic runtime fences
+remain outstanding.
 The active installation resolver chooses the effective tenant/platform scope by
 slug before checking release identity, including when the two scopes have
 selected different versions. Disabled and uninstalled installations do not
@@ -317,11 +343,13 @@ tests and PostgreSQL/RLS and concurrency verification remain outstanding.
 Artifact binding admission requires an enabled artifact definition for the exact
 release and a matching installation fact; the non-lifecycle executor rechecks
 both against its resolved installation. A static definition with the same slug
-cannot grant artifact execution. Because the current server resolver is
-static-only, artifact bindings using it fail closed until artifact-aware policy
-composition is wired. Lifecycle hooks have a separate admission path. These
-checks still depend on owner provenance, and are not a transactional lock over
-subsequent execution.
+cannot grant artifact execution. Host and sandbox now use the same
+artifact-aware serving resolver. A prior effective-policy admission is rejected
+if the freshly resolved policy revision differs, even when the target remains
+enabled. Owner-revalidation work has no prior revision and must independently
+pass the current policy. Lifecycle hooks have a separate admission path.
+These checks still depend on owner provenance, and are not a transactional
+lock over subsequent execution.
 The server's `get_latest` cache hit does not check an independently obtained
 current owner revision. It exposes only policy; consumers requiring both policy
 and defaults use an uncached resolution that supplies the same manifest defaults
@@ -1420,3 +1448,61 @@ transition watchdog reading all checkpoints.
 - [Implementation plan](./implementation-plan.md)
 - [Neutral sandbox ADR](../../../../DECISIONS/2026-07-11-neutral-sandbox-foundation.md)
 - [Module control-plane plan](../../../../docs/modules/module-control-plane-consolidation-plan.md)
+
+### Host execution capability lease
+
+The server-composed artifact binding executor registers a host-only live lease
+for each generated execution ID. It binds the exact sandbox subject, tenant,
+actor/trace/idempotency context, phase, binding and admitted capability set.
+The non-renewable monotonic deadline is bounded by the sandbox wall-clock
+budget and, for direct HTTP/command execution, the original credential expiry.
+The request scope capture shares its invalidation flag and never serializes
+bearer evidence to a worker. Initial preflight and each capability call check
+current direct-session/RBAC authority, tenant serving policy and readiness
+(non-lifecycle), and exact current installation/grant evidence (capability
+calls). Only declared binding capabilities are eligible. Owner lifecycle and
+durable work retain their own admission; audit actor attribution does not
+create a direct credential. Scope and lease expiry are checked before launch
+and before returning output. The guard removes the lease on completion,
+failure or cancellation; the broker checks membership again after async reads.
+This is process-local admission, not an atomic external-effect fence or a
+continuous interrupt for capability-free computation. In-flight calls may
+complete, and a post-launch denial preserves ambiguous-outcome semantics.
+Contextual channel/maintenance policy, external owner transactional authority,
+performance and actual worker callback verification remain open. See
+[execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).
+
+### SQL capability effect authority
+
+The server composition injects an explicit SQL effect authorizer into the
+structured-data and event-outbox brokers. It captures the live execution lease
+before opening the owner transaction, reuses Auth/RBAC tenant/user/session/role
+fences on that transaction for direct user execution, and checks the locked
+credential deadline and lease membership before commit. All structured CRUD,
+list/index reads and the delete-receipt replay path use the same commit gate.
+An error rolls back the effect and its receipt; no new database connection or
+guest invocation is permitted under the fences. The events resolver also
+binds the complete installation subject and tenant, rejecting mismatched
+capability identity. Owner-only/background work preserves its separate
+admission contract and checks lease lifetime, without inventing user evidence.
+The SQL fence also acquires the existing platform-then-tenant artifact
+activation locks, reselects the exact installation after the lock wait and
+resolves its durable sandbox policy on that transaction. It rejects changed
+installation facts, capability revision, missing grants and changed grant
+constraints relative to the execution lease. Activation, deactivation,
+rollback and tenant artifact lifecycle writers use these same selection
+locks. Lifecycle hooks do not use the serving-mutation journal rejection.
+The lease also captures the exact release's clear security revision (zero
+for implicit clear). Every host capability rechecks it, including lifecycle
+calls. SQL effects verify it inside the transaction under the platform slug
+activation fence, shared by quarantine, clear and revoke writers. This fences
+first quarantine even without a security row, and quarantine followed by
+clear cannot revive an older lease. The registry status is sampled but its
+independent writers are not fenced by this increment. Full effective policy
+(including dependency security, static overrides and deployment readiness)
+and cross-owner lock-order verification remain outstanding. Upgrade all
+security writers and effect consumers together; old writers bypass the slug
+fence. No schema or transport change is required. Independent non-server broker
+compositions still need an explicitly supplied authority. External effects and
+objects/secrets/MCP/HTTP are not covered by this SQL commit guard.
+See [execution capability lease ADR](../../../../DECISIONS/2026-11-27-artifact-execution-capability-lease.md).

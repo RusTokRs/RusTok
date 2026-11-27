@@ -89,9 +89,17 @@ mod tests {
     async fn reservation_does_not_heal_a_corrupt_negative_generation() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         db.execute_unprepared("CREATE TABLE rbac_invalidation_state (scope TEXT PRIMARY KEY, generation BIGINT NOT NULL, updated_at TEXT NOT NULL)").await.unwrap();
-        db.execute_unprepared("INSERT INTO rbac_invalidation_state VALUES ('permissions', -1, CURRENT_TIMESTAMP)").await.unwrap();
+        db.execute_unprepared(
+            "INSERT INTO rbac_invalidation_state VALUES ('permissions', -1, CURRENT_TIMESTAMP)",
+        )
+        .await
+        .unwrap();
         let tx = db.begin().await.unwrap();
-        assert!(reserve_permission_invalidation_generation(&tx).await.is_err());
+        assert!(
+            reserve_permission_invalidation_generation(&tx)
+                .await
+                .is_err()
+        );
         tx.commit().await.unwrap();
         assert!(read_permission_invalidation_generation(&db).await.is_err());
     }

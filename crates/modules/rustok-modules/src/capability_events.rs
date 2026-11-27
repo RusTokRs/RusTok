@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use sea_orm::{DatabaseConnection, TransactionTrait};
+use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
 
 use rustok_events::DomainEvent;
@@ -25,6 +25,8 @@ pub struct ArtifactEventCapabilityBroker {
     db: DatabaseConnection,
     infrastructure: ControlPlaneInfrastructure,
     module_slug: String,
+    scope: Option<crate::ArtifactCapabilityScope>,
+    effect_authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>,
 }
 
 impl ArtifactEventCapabilityBroker {
@@ -37,6 +39,8 @@ impl ArtifactEventCapabilityBroker {
             db,
             infrastructure,
             module_slug,
+            scope: None,
+            effect_authorizer: None,
         }
     }
 }
@@ -46,8 +50,17 @@ impl CapabilityBroker for ArtifactEventCapabilityBroker {
     async fn invoke(
         &self,
         call: &CapabilityCall,
-        _grant: &CapabilityGrant,
+        grant: &CapabilityGrant,
     ) -> SandboxResult<CapabilityResponse> {
+        if call.capability.as_str() != "platform.events" || grant.name != call.capability
+            || call.context.tenant_id.is_none_or(|tenant| tenant.is_nil())
+            || !matches!(&call.subject, rustok_sandbox::SandboxSubject::ModuleArtifact { slug, .. } if slug == &self.module_slug)
+            || self.scope.as_ref().is_some_and(|scope| {
+                !scope.matches_subject(&call.subject) || call.context.tenant_id != Some(scope.tenant_id)
+            })
+        {
+            return Err(SandboxError::CapabilityDenied(call.capability.clone()));
+        }
         let input = call
             .input
             .as_object()
@@ -73,9 +86,11 @@ impl CapabilityBroker for ArtifactEventCapabilityBroker {
             .event_envelope(tenant_id, None, domain_event);
         let event_id = envelope.id;
 
-        let transaction = self
-            .db
-            .begin()
+        let fence = match self.effect_authorizer.as_ref() {
+            Some(authorizer) => Some(authorizer.prepare(call).await?),
+            None => None,
+        };
+        let transaction = crate::backend::begin_fenced_transaction(&self.db)
             .await
             .map_err(|err| SandboxError::HostCapability {
                 capability: call.capability.clone(),
@@ -91,6 +106,10 @@ impl CapabilityBroker for ArtifactEventCapabilityBroker {
             message: format!("failed to scope event transaction: {err}"),
         })?;
 
+        let guard = match fence.as_ref() {
+            Some(fence) => Some(fence.lock_on(&transaction).await?),
+            None => None,
+        };
         self.infrastructure
             .write_event(&transaction, envelope)
             .await
@@ -99,6 +118,9 @@ impl CapabilityBroker for ArtifactEventCapabilityBroker {
                 message: format!("failed to write event to outbox: {err}"),
             })?;
 
+        if let Some(guard) = guard.as_ref() {
+            guard.check_before_commit(&transaction).await?;
+        }
         transaction
             .commit()
             .await
@@ -122,6 +144,7 @@ impl CapabilityBroker for ArtifactEventCapabilityBroker {
 pub struct SeaOrmArtifactEventCapabilityBrokerResolver {
     db: DatabaseConnection,
     infrastructure: ControlPlaneInfrastructure,
+    effect_authorizer: Option<Arc<dyn crate::ArtifactSqlEffectAuthorizer>>,
 }
 
 impl SeaOrmArtifactEventCapabilityBrokerResolver {
@@ -133,7 +156,12 @@ impl SeaOrmArtifactEventCapabilityBrokerResolver {
         db: DatabaseConnection,
         infrastructure: ControlPlaneInfrastructure,
     ) -> Self {
-        Self { db, infrastructure }
+        Self { db, infrastructure, effect_authorizer: None }
+    }
+
+    pub fn with_sql_effect_authorizer(mut self, authorizer: Arc<dyn crate::ArtifactSqlEffectAuthorizer>) -> Self {
+        self.effect_authorizer = Some(authorizer);
+        self
     }
 }
 
@@ -147,11 +175,15 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactEventCapabilityBrokerRes
         if capability.as_str() != "platform.events" {
             return Err(SandboxError::CapabilityDenied(capability.clone()));
         }
-        resolve_granted_artifact_capability(&self.db, execution, capability).await?;
-        Ok(Arc::new(ArtifactEventCapabilityBroker::new(
-            self.db.clone(),
-            self.infrastructure.clone(),
-            execution.slug.clone(),
-        )))
+        let installation = resolve_granted_artifact_capability(&self.db, execution, capability).await?;
+        let scope = crate::artifact_capability_router::artifact_capability_scope_for_execution(
+            &installation, execution, capability,
+        )?;
+        let mut broker = ArtifactEventCapabilityBroker::new(
+            self.db.clone(), self.infrastructure.clone(), execution.slug.clone(),
+        );
+        broker.scope = Some(scope);
+        broker.effect_authorizer = self.effect_authorizer.clone();
+        Ok(Arc::new(broker))
     }
 }

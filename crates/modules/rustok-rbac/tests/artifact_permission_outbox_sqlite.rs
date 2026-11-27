@@ -75,6 +75,7 @@ async fn setup_database() -> DatabaseConnection {
         "INSERT INTO rbac_invalidation_state (scope, generation, updated_at) VALUES ('permissions', 0, CURRENT_TIMESTAMP)",
         "CREATE TABLE roles (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, UNIQUE (tenant_id, id))",
         "CREATE TABLE users (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, UNIQUE (tenant_id, id))",
+        "CREATE TABLE user_roles (user_id TEXT NOT NULL, role_id TEXT NOT NULL)",
         "CREATE TABLE rbac_artifact_permission_installations (installation_id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (installation_id, scope_key, module_slug, release_digest))",
         "CREATE TABLE rbac_artifact_permission_definitions (id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, installation_id TEXT NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, permission_key TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (installation_id, scope_key, module_slug, release_digest) REFERENCES rbac_artifact_permission_installations (installation_id, scope_key, module_slug, release_digest) ON UPDATE RESTRICT ON DELETE RESTRICT, UNIQUE (id, scope_key), UNIQUE (scope_key, installation_id, permission_key))",
         "CREATE TABLE rbac_artifact_role_permissions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, role_id TEXT NOT NULL, artifact_permission_id TEXT NOT NULL, permission_scope_key TEXT NOT NULL, granted_by_actor_id TEXT NOT NULL, granted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, CHECK (permission_scope_key = 'platform' OR permission_scope_key = 'tenant:' || tenant_id), FOREIGN KEY (tenant_id, role_id) REFERENCES roles (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (tenant_id, granted_by_actor_id) REFERENCES users (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT, FOREIGN KEY (artifact_permission_id, permission_scope_key) REFERENCES rbac_artifact_permission_definitions (id, scope_key) ON UPDATE RESTRICT ON DELETE RESTRICT, UNIQUE (tenant_id, role_id, artifact_permission_id))",
@@ -256,9 +257,19 @@ async fn only_state_changes_publish_artifact_permission_events() {
     );
 
     assert!(service.assign(grant.clone()).await.expect("grant").applied);
-    assert_eq!(rustok_rbac::read_permission_invalidation_generation(&db).await.unwrap(), 1);
+    assert_eq!(
+        rustok_rbac::read_permission_invalidation_generation(&db)
+            .await
+            .unwrap(),
+        1
+    );
     assert!(!service.assign(grant).await.expect("exact retry").applied);
-    assert_eq!(rustok_rbac::read_permission_invalidation_generation(&db).await.unwrap(), 1);
+    assert_eq!(
+        rustok_rbac::read_permission_invalidation_generation(&db)
+            .await
+            .unwrap(),
+        1
+    );
     assert!(
         service
             .assign(command(
@@ -276,7 +287,12 @@ async fn only_state_changes_publish_artifact_permission_events() {
             .applied
     );
     assert_eq!(event_grants(&db).await, vec![true]);
-    assert_eq!(rustok_rbac::read_permission_invalidation_generation(&db).await.unwrap(), 1);
+    assert_eq!(
+        rustok_rbac::read_permission_invalidation_generation(&db)
+            .await
+            .unwrap(),
+        1
+    );
     let persisted_scope: String = db
         .query_one_raw(Statement::from_string(
             db.get_database_backend(),
@@ -335,7 +351,12 @@ async fn only_state_changes_publish_artifact_permission_events() {
             .applied
     );
     assert_eq!(event_grants(&db).await, vec![true, false]);
-    assert_eq!(rustok_rbac::read_permission_invalidation_generation(&db).await.unwrap(), 2);
+    assert_eq!(
+        rustok_rbac::read_permission_invalidation_generation(&db)
+            .await
+            .unwrap(),
+        2
+    );
 }
 
 #[tokio::test]
@@ -473,7 +494,12 @@ async fn publication_failure_rolls_back_grant_and_idempotency_receipt() {
         0
     );
     assert_eq!(table_count(&db, "rbac_artifact_permission_events").await, 0);
-    assert_eq!(rustok_rbac::read_permission_invalidation_generation(&db).await.unwrap(), 0);
+    assert_eq!(
+        rustok_rbac::read_permission_invalidation_generation(&db)
+            .await
+            .unwrap(),
+        0
+    );
 }
 
 #[tokio::test]
@@ -485,20 +511,144 @@ async fn missing_generation_rolls_back_artifact_grant_and_receipt() {
     let installation_id = Uuid::new_v4();
     let permission_key = "sample.events.handle";
     insert_role_and_actor(&db, tenant_id, role_id, actor_id).await;
-    insert_definition(&db, &format!("tenant:{tenant_id}"), installation_id, permission_key).await;
-    db.execute_unprepared("DELETE FROM rbac_invalidation_state").await.unwrap();
+    insert_definition(
+        &db,
+        &format!("tenant:{tenant_id}"),
+        installation_id,
+        permission_key,
+    )
+    .await;
+    db.execute_unprepared("DELETE FROM rbac_invalidation_state")
+        .await
+        .unwrap();
     let service = RbacArtifactPermissionAssignmentService::new(
         db.clone(),
         Arc::new(SqliteArtifactPermissionEventPublisher { fail: false }),
     );
     assert!(matches!(
-        service.assign(command(
-            tenant_id, role_id, ArtifactPermissionAssignmentScope::Tenant,
-            installation_id, permission_key, actor_id, true, "missing-generation",
-        )).await,
+        service
+            .assign(command(
+                tenant_id,
+                role_id,
+                ArtifactPermissionAssignmentScope::Tenant,
+                installation_id,
+                permission_key,
+                actor_id,
+                true,
+                "missing-generation",
+            ))
+            .await,
         Err(ArtifactPermissionAssignmentError::Database(_))
     ));
     assert_eq!(table_count(&db, "rbac_artifact_role_permissions").await, 0);
-    assert_eq!(table_count(&db, "rbac_artifact_role_permission_operations").await, 0);
+    assert_eq!(
+        table_count(&db, "rbac_artifact_role_permission_operations").await,
+        0
+    );
     assert_eq!(table_count(&db, "rbac_artifact_permission_events").await, 0);
+}
+
+#[tokio::test]
+async fn fenced_artifact_keys_require_exact_scope_release_and_membership() {
+    use rustok_rbac::SeaOrmArtifactPermissionAuthorizer;
+    use sea_orm::TransactionTrait;
+
+    let db = setup_database().await;
+    let tenant = Uuid::new_v4();
+    let actor = Uuid::new_v4();
+    let role = Uuid::new_v4();
+    let installation = Uuid::new_v4();
+    let permission = "sample.events.handle";
+    let digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    insert_role_and_actor(&db, tenant, role, actor).await;
+    insert_definition(&db, &format!("tenant:{tenant}"), installation, permission).await;
+    db.execute_raw(Statement::from_sql_and_values(
+        db.get_database_backend(),
+        "INSERT INTO user_roles (user_id, role_id) VALUES (?1, ?2)",
+        [actor.to_string().into(), role.to_string().into()],
+    ))
+    .await
+    .unwrap();
+    let service = RbacArtifactPermissionAssignmentService::new(
+        db.clone(),
+        Arc::new(SqliteArtifactPermissionEventPublisher { fail: false }),
+    );
+    service
+        .assign(command(
+            tenant,
+            role,
+            ArtifactPermissionAssignmentScope::Tenant,
+            installation,
+            permission,
+            actor,
+            true,
+            "runtime-grant",
+        ))
+        .await
+        .unwrap();
+    let tx = db.begin().await.unwrap();
+    for (scope, slug, release, allowed) in [
+        (
+            ArtifactPermissionAssignmentScope::Tenant,
+            "sample",
+            digest,
+            true,
+        ),
+        (
+            ArtifactPermissionAssignmentScope::Platform,
+            "sample",
+            digest,
+            false,
+        ),
+        (
+            ArtifactPermissionAssignmentScope::Tenant,
+            "different",
+            digest,
+            false,
+        ),
+        (
+            ArtifactPermissionAssignmentScope::Tenant,
+            "sample",
+            "different",
+            false,
+        ),
+    ] {
+        let keys = SeaOrmArtifactPermissionAuthorizer::authorized_keys_on(
+            &tx,
+            tenant,
+            actor,
+            installation,
+            scope,
+            slug,
+            release,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            keys,
+            if allowed {
+                vec![permission.to_owned()]
+            } else {
+                Vec::new()
+            }
+        );
+    }
+    tx.execute_unprepared("DELETE FROM user_roles")
+        .await
+        .unwrap();
+    assert!(
+        SeaOrmArtifactPermissionAuthorizer::authorized_keys_on(
+            &tx,
+            tenant,
+            actor,
+            installation,
+            ArtifactPermissionAssignmentScope::Tenant,
+            "sample",
+            digest,
+        )
+        .await
+        .unwrap()
+        .is_empty()
+    );
+    tx.commit().await.unwrap();
 }

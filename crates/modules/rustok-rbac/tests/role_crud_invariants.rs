@@ -1,7 +1,9 @@
 use async_graphql::{EmptySubscription, Schema};
 use rustok_api::{AuthContext, AuthPrincipalContext, AuthPrincipalKind, Permission, TenantContext};
-use rustok_rbac::graphql::{RbacMutation, RbacQuery, RbacMutationAuthority,
-    RbacMutationAuthorityHandle, RbacLockedMutationAuthority, RbacGraphqlRoleWriteError};
+use rustok_rbac::graphql::{
+    RbacGraphqlRoleWriteError, RbacLockedMutationAuthority, RbacMutation, RbacMutationAuthority,
+    RbacMutationAuthorityHandle, RbacQuery,
+};
 
 /// The owner SQL fixtures intentionally omit Auth's session/user schema.
 /// Supply an explicit test-only authority adapter, never a production fallback.
@@ -12,23 +14,47 @@ struct TestMutationAuthority {
 }
 #[async_trait::async_trait]
 impl RbacMutationAuthority for TestMutationAuthority {
-    async fn prepare(&self) -> Result<(), RbacGraphqlRoleWriteError> { Ok(()) }
-    async fn lock(&self, _tx: &sea_orm::DatabaseTransaction, _tenant_id: Uuid,
-        _actor_id: Uuid, _target_role_id: Option<Uuid>, _required: &[Permission],
+    async fn prepare(&self) -> Result<(), RbacGraphqlRoleWriteError> {
+        Ok(())
+    }
+    async fn lock(
+        &self,
+        _tx: &sea_orm::DatabaseTransaction,
+        _tenant_id: Uuid,
+        _actor_id: Uuid,
+        _target_role_id: Option<Uuid>,
+        _required: &[Permission],
     ) -> Result<RbacLockedMutationAuthority, RbacGraphqlRoleWriteError> {
         Ok(RbacLockedMutationAuthority {
-            permissions: self.permissions.clone(), availability: self.availability.clone(),
+            permissions: self.permissions.clone(),
+            availability: self.availability.clone(),
             deadline: chrono::Utc::now() + chrono::Duration::minutes(1),
         })
     }
-    async fn ensure_deadline(&self, _tx: &sea_orm::DatabaseTransaction,
+    async fn ensure_deadline(
+        &self,
+        _tx: &sea_orm::DatabaseTransaction,
         _authority: &RbacLockedMutationAuthority,
     ) -> Result<(), RbacGraphqlRoleWriteError> {
-        if self.deny_commit { Err(RbacGraphqlRoleWriteError::Forbidden("credential expired".into())) } else { Ok(()) }
+        if self.deny_commit {
+            Err(RbacGraphqlRoleWriteError::Forbidden(
+                "credential expired".into(),
+            ))
+        } else {
+            Ok(())
+        }
     }
 }
-fn test_authority(permissions: Vec<Permission>, availability: Option<rustok_rbac::PermissionAvailability>, deny_commit: bool) -> RbacMutationAuthorityHandle {
-    RbacMutationAuthorityHandle(std::sync::Arc::new(TestMutationAuthority { permissions, availability, deny_commit }))
+fn test_authority(
+    permissions: Vec<Permission>,
+    availability: Option<rustok_rbac::PermissionAvailability>,
+    deny_commit: bool,
+) -> RbacMutationAuthorityHandle {
+    RbacMutationAuthorityHandle(std::sync::Arc::new(TestMutationAuthority {
+        permissions,
+        availability,
+        deny_commit,
+    }))
 }
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
 use uuid::Uuid;
@@ -666,10 +692,19 @@ async fn test_disabled_module_permissions_are_annotated_and_not_grantable() {
         default_locale: "en".to_string(),
         is_active: true,
     };
-    let locked_availability = rustok_rbac::graphql::RbacModuleAvailabilityProvider::permission_availability(&DisabledBlogAvailability, &tenant_id).await;
+    let locked_availability =
+        rustok_rbac::graphql::RbacModuleAvailabilityProvider::permission_availability(
+            &DisabledBlogAvailability,
+            &tenant_id,
+        )
+        .await;
     let schema = Schema::build(RbacQuery, RbacMutation, EmptySubscription)
         .data(db)
-        .data(test_authority(auth.permissions.clone(), locked_availability, false))
+        .data(test_authority(
+            auth.permissions.clone(),
+            locked_availability,
+            false,
+        ))
         .data(auth)
         .data(AuthPrincipalContext::new(AuthPrincipalKind::DirectUser))
         .data(tenant)
@@ -1111,8 +1146,18 @@ async fn update_role_preserves_dormant_grants_clears_description_and_syncs_syste
     // Actor permissions intentionally OMIT blog_posts:create because disabled-module
     // permissions are stripped at authentication time.
     let availability = RbacModuleAvailabilityHandle(std::sync::Arc::new(BlogDisabledAvailability));
-    let locked_availability = BlogDisabledAvailability.permission_availability(&tenant_id).await;
-    let locked_authority = test_authority(vec![Permission::SETTINGS_READ, Permission::SETTINGS_MANAGE, Permission::PRODUCTS_READ], locked_availability, false);
+    let locked_availability = BlogDisabledAvailability
+        .permission_availability(&tenant_id)
+        .await;
+    let locked_authority = test_authority(
+        vec![
+            Permission::SETTINGS_READ,
+            Permission::SETTINGS_MANAGE,
+            Permission::PRODUCTS_READ,
+        ],
+        locked_availability,
+        false,
+    );
 
     // 1. Saving with existing dormant grant + active grant succeeds, AND description can be cleared with null.
     let res = schema
@@ -1130,7 +1175,8 @@ async fn update_role_preserves_dormant_grants_clears_description_and_syncs_syste
                     }
                 }"#,
             )
-            .data(availability.clone()).data(locked_authority.clone()),
+            .data(availability.clone())
+            .data(locked_authority.clone()),
         )
         .await;
     assert!(
@@ -1314,7 +1360,6 @@ async fn load_tenant_roles_overview_on_resolves_custom_roles_inactive_perms_and_
     assert!(!custom.is_system);
 }
 
-
 #[tokio::test]
 async fn role_mutations_require_live_ceiling_and_rollback_on_credential_expiry() {
     let db = setup_test_db().await;
@@ -1323,13 +1368,21 @@ async fn role_mutations_require_live_ceiling_and_rollback_on_credential_expiry()
     let permissions = vec![Permission::SETTINGS_MANAGE, Permission::POSTS_READ];
     let schema = test_schema(db.clone(), tenant_id, actor_id, permissions.clone());
     let create = "mutation { createRole(input: {name: \"Editor\", slug: \"editor\", permissions: [\"posts:read\"]}) { success } }";
-    let denied = schema.execute(async_graphql::Request::new(create).data(test_authority(
-        vec![Permission::SETTINGS_MANAGE], None, false,
-    ))).await;
+    let denied = schema
+        .execute(async_graphql::Request::new(create).data(test_authority(
+            vec![Permission::SETTINGS_MANAGE],
+            None,
+            false,
+        )))
+        .await;
     assert!(!denied.errors.is_empty());
-    let expired = schema.execute(async_graphql::Request::new(create).data(test_authority(
-        permissions.clone(), None, true,
-    ))).await;
+    let expired = schema
+        .execute(async_graphql::Request::new(create).data(test_authority(
+            permissions.clone(),
+            None,
+            true,
+        )))
+        .await;
     assert!(!expired.errors.is_empty());
     create_editor(&schema).await;
     let before = editor_state(&db).await;
@@ -1338,9 +1391,12 @@ async fn role_mutations_require_live_ceiling_and_rollback_on_credential_expiry()
     ).data(test_authority(permissions.clone(), None, true))).await;
     assert!(!expired_update.errors.is_empty());
     assert_eq!(editor_state(&db).await, before);
-    let expired_delete = schema.execute(async_graphql::Request::new(
-        "mutation { deleteRole(slug: \"editor\") { success } }",
-    ).data(test_authority(permissions, None, true))).await;
+    let expired_delete = schema
+        .execute(
+            async_graphql::Request::new("mutation { deleteRole(slug: \"editor\") { success } }")
+                .data(test_authority(permissions, None, true)),
+        )
+        .await;
     assert!(!expired_delete.errors.is_empty());
     assert_eq!(editor_state(&db).await, before);
 }

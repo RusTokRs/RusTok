@@ -6,7 +6,8 @@
 //! enumeration surface.
 
 use axum::http::StatusCode;
-use rustok_core::ModuleRegistry;
+use rustok_api::AuthPrincipalKind;
+use rustok_auth::AuthAdminMutationError;
 use rustok_modules::{
     ArtifactBindingDispatchError, ArtifactBindingExecutionContext, ArtifactBindingIdempotencyClaim,
     ArtifactBindingIdempotencyError, ArtifactBindingIdempotencyRequest, ArtifactExecutionAdmission,
@@ -15,7 +16,7 @@ use rustok_modules::{
     ModuleRuntimeBinding, SharedArtifactBindingExecutor, artifact_binding_request_digest,
     dispatch_artifact_command_binding, dispatch_artifact_http_binding,
 };
-use rustok_rbac::SeaOrmArtifactPermissionAuthorizer;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
@@ -78,34 +79,7 @@ pub(crate) async fn dispatch_artifact_binding_operation(
     idempotency_key: Option<Uuid>,
     operation: ArtifactBindingOperation,
 ) -> Result<serde_json::Value> {
-    let registry = ctx.shared_get::<ModuleRegistry>().ok_or_else(|| {
-        Error::Message("artifact dispatch requires the initialized module registry".to_string())
-    })?;
-    let policy = crate::services::effective_module_policy::EffectiveModulePolicyService::resolve(
-        ctx.db(),
-        &registry,
-        tenant_id,
-    )
-    .await
-    .map_err(|error| {
-        tracing::error!(%error, "artifact dispatch effective-policy resolution failed");
-        Error::InternalServerError
-    })?;
-    let admission = policy
-        .admit_artifact_execution(
-            tenant_id,
-            &installation.release,
-            ArtifactInstallationTarget::ExactInstallation {
-                installation_id: installation.installation_id,
-            },
-        )
-        .ok_or_else(|| {
-            http_error(rustok_web::HttpError::forbidden(
-                "module_policy_denied",
-                "The module is not enabled by the effective module policy",
-            ))
-        })?;
-    authorize_binding(ctx, tenant_id, actor_id, installation, binding).await?;
+    let admission = authorize_binding(ctx, tenant_id, actor_id, installation, binding).await?;
     let executor = ctx
         .shared_get::<SharedArtifactBindingExecutor>()
         .ok_or_else(|| Error::Message("artifact binding runtime is not initialized".to_string()))?;
@@ -131,7 +105,10 @@ pub(crate) async fn dispatch_artifact_binding_operation(
         Some(request) => {
             let store = ModuleControlPlane::new(ctx.db_clone()).artifact_binding_idempotency();
             match store.claim(&request).await.map_err(map_idempotency_error)? {
-                ArtifactBindingIdempotencyClaim::Replay { response } => Ok(response),
+                ArtifactBindingIdempotencyClaim::Replay { response } => {
+                    authorize_binding(ctx, tenant_id, actor_id, installation, binding).await?;
+                    Ok(response)
+                }
                 ArtifactBindingIdempotencyClaim::InProgress => {
                     Err(http_error(rustok_web::HttpError::new(
                         StatusCode::CONFLICT,
@@ -147,14 +124,23 @@ pub(crate) async fn dispatch_artifact_binding_operation(
                     )))
                 }
                 ArtifactBindingIdempotencyClaim::Execute { operation_id } => {
-                    let result = execute_operation(
-                        executor.as_ref(),
-                        installation,
-                        tenant_id,
-                        admission,
-                        operation,
-                        binding_execution_context,
-                    )
+                    // Claim may have waited for a durable receipt lock.
+                    // A claimed-but-denied operation follows the existing
+                    // conservative reconciliation path, without execution.
+                    let result = async {
+                        let admission =
+                            authorize_binding(ctx, tenant_id, actor_id, installation, binding)
+                                .await?;
+                        execute_operation(
+                            executor.as_ref(),
+                            installation,
+                            tenant_id,
+                            admission,
+                            operation,
+                            binding_execution_context,
+                        )
+                        .await
+                    }
                     .await;
                     match result {
                         Ok(output) => match store.complete(&request, operation_id, &output).await {
@@ -207,46 +193,81 @@ pub(crate) async fn dispatch_artifact_binding_operation(
     }
 }
 
-/// Checks the dynamic, admitted permission required for one artifact surface.
-pub(crate) async fn is_artifact_permission_authorized(
+fn artifact_permission_denied() -> Error {
+    http_error(rustok_web::HttpError::forbidden(
+        "forbidden",
+        "Permission denied for artifact binding",
+    ))
+}
+
+/// Bind the host-admitted scope, never a caller-supplied principal kind.
+pub(crate) fn require_artifact_direct_credential(tenant_id: Uuid, actor_id: Uuid) -> Result<()> {
+    crate::services::rbac_request_scope::bind_admin_context(
+        tenant_id,
+        actor_id,
+        AuthPrincipalKind::DirectUser,
+        None,
+    )
+    .map(|_| ())
+    .map_err(|_| artifact_permission_denied())
+}
+
+/// Shared policy admission for execution, UI metadata and audit reads.
+async fn artifact_policy_admission(
     ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
-    actor_id: Uuid,
     installation: &InstalledModuleArtifact,
-    permission: &str,
-) -> Result<bool> {
-    SeaOrmArtifactPermissionAuthorizer::new(ctx.db_clone())
-        .is_authorized(
+) -> Result<ArtifactExecutionAdmission> {
+    let policy = crate::services::artifact_runtime::resolve_serving_artifact_policy(
+        ctx,
+        tenant_id,
+        installation,
+    )
+    .await?;
+    policy
+        .admit_artifact_execution(
             tenant_id,
-            actor_id,
-            installation.installation_id,
-            permission,
+            &installation.release,
+            ArtifactInstallationTarget::ExactInstallation {
+                installation_id: installation.installation_id,
+            },
         )
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "artifact RBAC authorization failed");
-            Error::InternalServerError
+        .ok_or_else(|| {
+            http_error(rustok_web::HttpError::forbidden(
+                "module_policy_denied",
+                "The module is not enabled by the effective module policy",
+            ))
         })
 }
 
-/// Enforces an admitted artifact permission with the same opaque forbidden
-/// response for every server transport.
-pub(crate) async fn require_artifact_permission(
+/// Resolve current dynamic role grants through the Auth and RBAC owner fences.
+/// Policy resolution remains an independent owner read; do not hold a
+/// transaction across a sandbox invocation or an unrelated pool checkout.
+pub(crate) async fn authorize_artifact_surface(
     ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
     actor_id: Uuid,
     installation: &InstalledModuleArtifact,
-    permission: &str,
-) -> Result<()> {
-    if is_artifact_permission_authorized(ctx, tenant_id, actor_id, installation, permission).await?
-    {
-        Ok(())
-    } else {
-        Err(http_error(rustok_web::HttpError::forbidden(
-            "forbidden",
-            "Permission denied for artifact binding",
-        )))
-    }
+) -> Result<(ArtifactExecutionAdmission, Vec<String>)> {
+    require_artifact_direct_credential(tenant_id, actor_id)?;
+    let admission = artifact_policy_admission(ctx, tenant_id, installation).await?;
+    let extensions = ctx
+        .shared_get::<Arc<rustok_core::ModuleRuntimeExtensions>>()
+        .ok_or(Error::InternalServerError)?;
+    let provider = extensions
+        .get::<Arc<crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider>>(
+        )
+        .ok_or(Error::InternalServerError)?;
+    let keys = provider
+        .artifact_runtime_permission_keys(tenant_id, actor_id, installation)
+        .await
+        .map_err(|error| match error {
+            AuthAdminMutationError::Unauthorized | AuthAdminMutationError::Forbidden(_) => {
+                artifact_permission_denied()
+            }
+            _ => Error::InternalServerError,
+        })?;
+    Ok((admission, keys))
 }
 
 async fn authorize_binding(
@@ -255,8 +276,29 @@ async fn authorize_binding(
     actor_id: Uuid,
     installation: &InstalledModuleArtifact,
     binding: &ModuleRuntimeBinding,
+) -> Result<ArtifactExecutionAdmission> {
+    let (admission, keys) =
+        authorize_artifact_surface(ctx, tenant_id, actor_id, installation).await?;
+    if keys.iter().any(|key| key == &binding.permission) {
+        Ok(admission)
+    } else {
+        Err(artifact_permission_denied())
+    }
+}
+
+pub(crate) async fn require_artifact_permission(
+    ctx: &ServerRuntimeContext,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    installation: &InstalledModuleArtifact,
+    permission: &str,
 ) -> Result<()> {
-    require_artifact_permission(ctx, tenant_id, actor_id, installation, &binding.permission).await
+    let (_, keys) = authorize_artifact_surface(ctx, tenant_id, actor_id, installation).await?;
+    if keys.iter().any(|key| key == permission) {
+        Ok(())
+    } else {
+        Err(artifact_permission_denied())
+    }
 }
 
 async fn execute_operation(
@@ -365,7 +407,10 @@ fn map_dispatch_error(error: ModuleDispatchError) -> Error {
         }
         ModuleDispatchError::ArtifactHook(ArtifactBindingDispatchError::DeniedByPolicy {
             ..
-        }) => http_error(rustok_web::HttpError::forbidden(
+        })
+        | ModuleDispatchError::ArtifactHook(ArtifactBindingDispatchError::EffectivePolicy(
+            rustok_modules::ArtifactEffectivePolicyResolveError::NodeNotReady(_),
+        )) => http_error(rustok_web::HttpError::forbidden(
             "module_policy_denied",
             "The module is not enabled by the effective module policy",
         )),

@@ -3496,3 +3496,92 @@ durable source projection, retains original identity and awaits queue insertion 
 Root payload representation and queue ownership remain unchanged. Two scoped definitions are
 **uncompiled/unrun**. Remaining: compile, actual backend exact/wildcard admission/dedupe,
 worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#sealed-artifact-subscription-intake-2026-11-01-source-only).
+
+## Mixed artifact serving policy — 2026-11-27
+
+- Source-wired bounded active installation catalog under tenant RLS using the
+  exact dispatch candidate query and common scope selection. Ambiguous or
+  invalid selections and native slug collisions fail closed.
+- Shared owner capability, security and dependency evidence for lifecycle and
+  mixed serving policy; active tenant-enabled installations supply activation
+  intent and explicit tenant overrides still deny. Static authorization remains
+  independent of sandbox availability.
+- HTTP/GraphQL UI, audit, replay and sandbox runtime share an uncached resolver
+  using actual configured payload support plus exact observed node readiness.
+  Reject effective-policy admissions after a policy revision change.
+- Owner selection regression extended; compilation and all tests unrun.
+  Reconciliation producer revision parity, request-specific channel/maintenance
+  inputs, dependency/node liveness coverage and post-admission races remain
+  open. No readiness promotion or atomic sandbox guarantee is claimed.
+
+### Dependency-closure node readiness
+
+- Source-wired the exact active assignment check for the entire effective
+  dependency/co-requisite closure, with immutable artifact lock identity and
+  policy installation/graph/capability evidence comparisons. Compare the
+  durable observed state revision before and after all assignment reads.
+- Deny stale/unavailable readiness at both host admission and runtime
+  dispatch; distinguish storage errors from policy denials.
+- Added pure closure regression for exact match, replaced manifest digest,
+  changed capability revision and absent selection; tests unrun.
+- The existing singleton platform observed head cannot represent differing
+  tenant-specific serving policy revisions simultaneously. Producer parity
+  needs an explicit contract change and migration (not a fallback comparison).
+  Contextual channel/maintenance inputs, independent liveness/expiry and
+  atomic post-admission enforcement remain open.
+
+### Deployment readiness authority separation
+
+- Source-wired owner-derived deployment revision from intent, topology and exact
+  assignment identities. Reconstruct it from the converged desired/observed
+  set before checking each required node assignment. Tenant policy is an
+  independent mandatory authority; no equality between unrelated digests.
+- Migration 000094 preserves old rows as legacy (NULL intent); require fresh
+  reconciliation, coordinated writer/reader cutover, and new idempotency key.
+- Extended owner test with distinct intent/derived digest, legacy marker,
+  intent tamper and desired/observed mismatch. Tests and migration unrun;
+  real cross-tenant integration, PostgreSQL/RLS and continuous liveness remain
+  open. See [ADR](../../../../DECISIONS/2026-11-27-artifact-deployment-readiness-authority.md).
+
+### Execution-bound capability admission
+
+- Source-wired the server-only execution lease and capability broker guard;
+  captured direct request evidence shares its invalidation flag across callback
+  tasks, remains host-only, and reuses the locked Auth/RBAC permission read.
+- Require exact execution/subject/context/binding capability, current tenant
+  effective-policy revision and readiness, current installed grant identity;
+  check membership after async work. Deadline bounded by wall-clock budget
+  and original direct credential expiry. Lifecycle and data-upgrade owner
+  dispatch remain distinct from HTTP/command user authority.
+- Source tests exercise captured scope across tasks and invalidation, plus
+  lease cancellation before launch and before releasing output. Tests unrun.
+- No atomic effect commit fence, independent worker liveness guarantee,
+  channel/maintenance wiring or forced cancellation of in-flight external
+  effects. Standalone non-server executor compositions are not claimed covered.
+
+### SQL capability credential and RBAC fences
+
+- Reuse the original direct credential and binding permission check inside the
+  structured-data and event-outbox transaction, with the current owner lock
+  order and a deadline check before commit. Prepare the clock before opening
+  the transaction. No nested pool checkout for credential authorization.
+- Authorize every structured commit, including read results and delete replay;
+  source regression exercises rollback and replay denial. Bind the events
+  broker to the resolved exact installation and tenant.
+- The host lease is still checked on all SQL effects; background work does not
+  impersonate users. Full effective-policy/readiness fences, event-outbox
+  integration evidence, independent compositions and non-SQL effects remain
+  outstanding. Tests and compilation are unrun.
+- Source-wired exact active installation and capability grant revalidation on
+  the SQL effect transaction using the existing platform/tenant activation
+  locks. The lease rejects changed installation facts or grant constraints.
+  Selection/grant regression authored; PostgreSQL concurrent lifecycle and
+  cross-owner lock-order verification remains outstanding. Full effective
+  policy, dependency closure and deployment readiness remain open.
+- Source-wired root release security revision in the execution lease and SQL
+  fence. Security transitions share the existing platform slug lock, even
+  for the implicit clear state. Quarantine/clear invalidates old leases,
+  registry unknown denies, and lifecycle calls also check security. SQLite
+  and opt-in PostgreSQL first-quarantine lock-wait regressions are authored,
+  not run. Registry writers, dependency security and global ordering remain
+  outstanding. Coordinate upgrade of security writers and effect consumers.

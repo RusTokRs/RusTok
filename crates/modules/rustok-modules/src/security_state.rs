@@ -76,6 +76,16 @@ pub struct ModuleArtifactSecuritySnapshot {
     pub reason_detail: Option<String>,
 }
 
+impl ModuleArtifactSecuritySnapshot {
+    /// Revision zero denotes the implicit clear state, not a missing grant.
+    /// A cleared quarantine has a new revision and cannot revive an old lease.
+    pub fn execution_revision(&self) -> Option<u64> {
+        (self.status == ModuleArtifactSecurityStatus::Clear
+            && self.registry_status != ModuleArtifactRegistryReleaseStatus::Unavailable)
+            .then_some(self.revision)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModuleArtifactSecurityCommand {
@@ -164,6 +174,23 @@ impl SeaOrmModuleArtifactSecurityResolver {
         validate_release(release)?;
         load_snapshot(&self.db, release, false).await
     }
+
+    /// Verify the original release security revision on the effect
+    /// transaction. The platform slug fence covers the implicit clear state
+    /// even when there is no security row to lock.
+    pub async fn require_execution_revision_on(
+        tx: &DatabaseTransaction,
+        release: &ArtifactReleaseRef,
+        expected: u64,
+    ) -> Result<(), ModuleArtifactSecurityError> {
+        let snapshot = lock_security_snapshot_on(tx, release).await?;
+        if snapshot.execution_revision() != Some(expected) {
+            return Err(ModuleArtifactSecurityError::AuthorizationDenied(
+                "artifact execution security revision is no longer admitted".into(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl<A> SeaOrmModuleArtifactSecurityService<A>
@@ -250,7 +277,9 @@ where
             return Ok(receipt);
         }
 
-        let transaction = self.db.begin().await.map_err(store_error)?;
+        let transaction = crate::backend::begin_fenced_transaction(&self.db)
+            .await
+            .map_err(store_error)?;
         crate::backend::set_platform_scope(&transaction)
             .await
             .map_err(store_error)?;
@@ -260,7 +289,7 @@ where
             transaction.commit().await.map_err(store_error)?;
             return Ok(receipt);
         }
-        let current = load_snapshot(&transaction, &command.release, true).await?;
+        let current = lock_security_snapshot_on(&transaction, &command.release).await?;
         if current.revision != command.expected_revision {
             return Err(ModuleArtifactSecurityError::RevisionConflict {
                 expected: command.expected_revision,
@@ -490,6 +519,25 @@ async fn persist_state(
         });
     }
     Ok(())
+}
+
+/// Shared writer/effect serialization point. Never apply the serving
+/// mutation journal guard here: emergency security actions must remain
+/// possible during a durable lifecycle claim. The slug lock is already
+/// acquired before the tenant selection lock in SQL effect admission.
+async fn lock_security_snapshot_on(
+    tx: &DatabaseTransaction,
+    release: &ArtifactReleaseRef,
+) -> Result<ModuleArtifactSecuritySnapshot, ModuleArtifactSecurityError> {
+    validate_release(release)?;
+    crate::installation::acquire_artifact_activation_lock(
+        tx,
+        &crate::ModuleInstallationScope::Platform,
+        &release.slug,
+    )
+    .await
+    .map_err(store_error)?;
+    load_snapshot(tx, release, true).await
 }
 
 async fn load_snapshot<C: ConnectionTrait>(
@@ -728,9 +776,12 @@ fn revision_value(revision: u64) -> Result<Value, ModuleArtifactSecurityError> {
 
 fn revision_from_row(row: &QueryResult, column: &str) -> Result<u64, ModuleArtifactSecurityError> {
     let value: i64 = row.try_get("", column).map_err(store_error)?;
-    u64::try_from(value).map_err(|_| {
-        ModuleArtifactSecurityError::Store("artifact security revision is invalid".to_string())
-    })
+    u64::try_from(value)
+        .ok()
+        .filter(|revision| *revision > 0)
+        .ok_or_else(|| {
+            ModuleArtifactSecurityError::Store("artifact security revision is invalid".to_string())
+        })
 }
 
 fn digest_error(error: impl std::fmt::Display) -> ModuleArtifactSecurityError {
@@ -745,14 +796,15 @@ fn store_error(error: impl std::fmt::Display) -> ModuleArtifactSecurityError {
 mod tests {
     use async_trait::async_trait;
     use rustok_core::MigrationSource;
-    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TransactionTrait};
     use sea_orm_migration::{MigrationTrait, SchemaManager};
     use uuid::Uuid;
 
     use super::{
         ModuleArtifactSecurityAuthorizer, ModuleArtifactSecurityCommand,
         ModuleArtifactSecurityError, ModuleArtifactSecurityStatus,
-        SeaOrmModuleArtifactSecurityService, SecurityAction, validate_command, validate_transition,
+        SeaOrmModuleArtifactSecurityResolver, SeaOrmModuleArtifactSecurityService,
+        SecurityAction, lock_security_snapshot_on, persist_state, validate_command, validate_transition,
     };
     use crate::{
         ArtifactReleaseRef, ControlPlaneInfrastructure, ModuleCommandContext, ModulesModule,
@@ -831,6 +883,12 @@ mod tests {
         );
         let command = command();
 
+        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
+        SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
+            &tx, &command.release, 0,
+        ).await.expect("implicit clear revision admitted");
+        tx.rollback().await.unwrap();
+
         let initial = service
             .quarantine(command.clone())
             .await
@@ -899,7 +957,7 @@ mod tests {
             Some(command.context.trace_id.as_str())
         );
 
-        let mut changed_observability_replay = command;
+        let mut changed_observability_replay = command.clone();
         changed_observability_replay.context.trace_id = "test:changed-trace".to_string();
         changed_observability_replay.context.correlation_id = Uuid::new_v4();
         changed_observability_replay.reason_detail = "retry wording".to_string();
@@ -907,6 +965,121 @@ mod tests {
             .quarantine(changed_observability_replay)
             .await
             .expect("changed observability context replays quarantine");
+
+        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
+        assert!(SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
+            &tx, &command.release, 0,
+        ).await.is_err());
+        tx.rollback().await.unwrap();
+
+        let mut clear = command.clone();
+        clear.expected_revision = 1;
+        clear.context.idempotency_key = Uuid::new_v4();
+        let cleared = service.clear_quarantine(clear).await.expect("clear quarantine");
+        assert_eq!(cleared.snapshot.execution_revision(), Some(2));
+        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
+        assert!(SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
+            &tx, &command.release, 0,
+        ).await.is_err(), "clearing quarantine must not revive the original lease");
+        SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
+            &tx, &command.release, 2,
+        ).await.expect("new revision admitted");
+        tx.rollback().await.unwrap();
+
+        let mut revoke = command.clone();
+        revoke.expected_revision = 2;
+        revoke.context.idempotency_key = Uuid::new_v4();
+        let revoked = service.revoke(revoke).await.expect("revoke");
+        assert_eq!(revoked.snapshot.execution_revision(), None);
+        let tx = crate::backend::begin_fenced_transaction(&database).await.unwrap();
+        assert!(SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
+            &tx, &command.release, 2,
+        ).await.is_err());
+        tx.rollback().await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_MODULES_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_first_quarantine_fences_effect_without_security_row() {
+        use std::time::Duration;
+
+        let url = std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").unwrap();
+        let db = Database::connect(url).await.unwrap();
+        assert_eq!(db.get_database_backend(), DbBackend::Postgres);
+        let schema = format!("security_fence_test_{}", Uuid::new_v4().simple());
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
+        let setup = db.begin().await.unwrap();
+        setup.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        setup.execute_unprepared(
+            "CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, PRIMARY KEY (scope_kind, scope_tenant_key, slug));
+             CREATE TABLE registry_module_releases (slug TEXT, version TEXT, checksum_sha256 TEXT, status TEXT);
+             CREATE TABLE module_artifact_security_states (module_slug TEXT NOT NULL, module_version TEXT NOT NULL, payload_digest TEXT NOT NULL, revision BIGINT NOT NULL, status TEXT NOT NULL, policy_revision TEXT NOT NULL, reason_code TEXT NOT NULL, reason_detail TEXT NOT NULL, changed_by UUID NOT NULL, changed_at TIMESTAMPTZ NOT NULL, PRIMARY KEY (module_slug, module_version, payload_digest));",
+        ).await.unwrap();
+        setup.commit().await.unwrap();
+
+        let command = command();
+        let writer = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        writer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        let initial = lock_security_snapshot_on(&writer, &command.release).await.unwrap();
+        assert_eq!(initial.execution_revision(), Some(0));
+        // The same owner primitives used by the security command, before
+        // its transaction commits the new state and outbox.
+        persist_state(&writer, ModuleArtifactSecurityStatus::Quarantined, 1, &command)
+            .await.unwrap();
+
+        let worker_db = db.clone();
+        let worker_schema = schema.clone();
+        let release = command.release.clone();
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let mut worker = tokio::spawn(async move {
+            let tx = crate::backend::begin_fenced_transaction(&worker_db).await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}")).await.unwrap();
+            ready_tx.send(()).unwrap();
+            let result = SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
+                &tx, &release, 0,
+            ).await;
+            tx.rollback().await.unwrap();
+            result
+        });
+        ready_rx.await.unwrap();
+        assert!(tokio::time::timeout(Duration::from_millis(150), &mut worker).await.is_err());
+        writer.commit().await.unwrap();
+        assert!(matches!(worker.await.unwrap(),
+            Err(ModuleArtifactSecurityError::AuthorizationDenied(_))));
+        // Reverse order: the effect wins admission first. A writer cannot
+        // publish a new security decision until that effect commits.
+        let mut clear = command.clone();
+        clear.expected_revision = 1;
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        assert_eq!(lock_security_snapshot_on(&tx, &clear.release).await.unwrap().revision, 1);
+        persist_state(&tx, ModuleArtifactSecurityStatus::Clear, 2, &clear).await.unwrap();
+        tx.commit().await.unwrap();
+
+        let effect = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        effect.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        SeaOrmModuleArtifactSecurityResolver::require_execution_revision_on(
+            &effect, &command.release, 2,
+        ).await.unwrap();
+        let worker_db = db.clone();
+        let worker_schema = schema.clone();
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let mut writer = tokio::spawn(async move {
+            let tx = crate::backend::begin_fenced_transaction(&worker_db).await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}")).await.unwrap();
+            ready_tx.send(()).unwrap();
+            let snapshot = lock_security_snapshot_on(&tx, &command.release).await.unwrap();
+            assert_eq!(snapshot.execution_revision(), Some(2));
+            let mut revoke = command;
+            revoke.expected_revision = 2;
+            persist_state(&tx, ModuleArtifactSecurityStatus::Revoked, 3, &revoke).await.unwrap();
+            tx.commit().await.unwrap();
+        });
+        ready_rx.await.unwrap();
+        assert!(tokio::time::timeout(Duration::from_millis(150), &mut writer).await.is_err());
+        effect.commit().await.unwrap();
+        writer.await.unwrap();
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
     }
 
     #[test]

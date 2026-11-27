@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_auth::{
-    AuthAdminMutationError, UpdateUserCommand, UserAdminMutationRuntime,
-};
+use rustok_auth::{AuthAdminMutationError, UpdateUserCommand, UserAdminMutationRuntime};
 use rustok_cache::CacheService;
 use rustok_core::{ModuleRuntimeExtensions, UserRole};
 use rustok_rbac::graphql::{
@@ -32,8 +30,12 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
             .port()
             .update_user(
                 &crate::services::rbac_request_scope::bind_admin_context(
-                    *tenant_id, *actor_id, rustok_api::AuthPrincipalKind::DirectUser, None,
-                ).map_err(map_auth_admin_error)?,
+                    *tenant_id,
+                    *actor_id,
+                    rustok_api::AuthPrincipalKind::DirectUser,
+                    None,
+                )
+                .map_err(map_auth_admin_error)?,
                 UpdateUserCommand {
                     id: *user_id,
                     email: None,
@@ -64,8 +66,12 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
             .port()
             .update_user(
                 &crate::services::rbac_request_scope::bind_admin_context(
-                    *tenant_id, *actor_id, rustok_api::AuthPrincipalKind::DirectUser, None,
-                ).map_err(map_auth_admin_error)?,
+                    *tenant_id,
+                    *actor_id,
+                    rustok_api::AuthPrincipalKind::DirectUser,
+                    None,
+                )
+                .map_err(map_auth_admin_error)?,
                 UpdateUserCommand {
                     id: *user_id,
                     email: None,

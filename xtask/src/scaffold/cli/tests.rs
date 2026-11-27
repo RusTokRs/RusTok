@@ -139,11 +139,9 @@ fn cli_scaffold_previews_and_applies_the_owner_and_registry_as_one_plan() {
         manifest["dev-dependencies"]["uuid"]["workspace"].as_bool(),
         Some(true)
     );
-    assert!(
-        readme
-            .lines()
-            .any(|line| line.starts_with("- `src/provider.rs`"))
-    );
+    assert!(readme
+        .lines()
+        .any(|line| line.starts_with("- `src/provider.rs`")));
     let api = fs::read_to_string(root.join(OWNER).join("cli/CRATE_API.md")).unwrap();
     assert!(api.lines().any(|line| line == "Inspect module identity"));
     let generated = fs::read_to_string(root.join(REGISTRY).join("src/generated.rs")).unwrap();

@@ -2189,3 +2189,44 @@ added; tests and formatting were not run at the user's request.
 ## Direct-session mutation and recovery timestamp fences (2026-11-26)
 
 The proving session for password changes and revoke-other-sessions is checked with the database-correlated application clock after row-lock waits and again before commit. The shared session fence includes creation time, sliding expiry, explicit absolute expiry, and the legacy 90-day cap. Session listing uses the same clock and excludes future-created rows. Refresh-token logout remains a security-reducing revocation after a session deadline when the presented digest is still bound to that session; already-revoked or mismatched credentials retain their existing rejection behavior. Email verification records both `email_verified_at` and `updated_at` from the corroborated post-lock timestamp. Regression cases were added; formatting and tests were not run at the user's request.
+
+## Server follow-up — bootstrap side effects and registry runner request boundaries (2026-11-27)
+
+SuperAdmin bootstrap now resolves the normalized existing tenant/account before
+validating new credentials. A bad password can no longer create an empty tenant,
+and an existing account remains idempotent even when the configured replacement
+password is invalid. Regression coverage was added for both cases.
+
+The atomic registry remote-runner middleware now requires one JSON content-type
+header before decoding a mutation body. Missing, non-JSON and duplicate content
+type values are rejected. Artifact-access fallback routing shares the canonical
+remote-runner path recognizer and passes a private verified-authority extension
+after stripping the shared secret; the controller fallback no longer needs to
+re-read a removed header and rejects duplicate token headers.
+
+Focused source regressions cover password/tenant side effects, runner media type,
+path classification, verified-authority propagation and duplicate token headers.
+Compilation, formatting and tests were not run at the maintainer's request.
+
+## Debug-safe configuration and connector diagnostics (2026-11-27)
+
+Secret-bearing runtime configuration no longer prints raw values through Rust
+Debug formatting. Redis URLs, SMTP credentials, registry runner tokens, search
+URLs/API keys, Iggy external credentials, bundled process arguments/environment
+values, database URIs, raw host settings JSON, S3 access keys/session tokens, and S3 endpoint/public URLs are
+represented only by configured-state metadata. Opaque connector acknowledgement
+tokens and Iggy consumer identifiers are also redacted. Focused regression tests
+assert that representative secret values do not appear in Debug output.
+
+The changes preserve Debug support for diagnostics while avoiding accidental
+credential disclosure in logs or assertion output. Compilation, formatting and
+tests remain unrun at the maintainer's request.
+
+## Artifact execution lease clock fence (2026-11-27)
+
+Captured direct artifact request scopes now consult the shared Auth application
+clock latch as part of every lease-liveness check, in addition to request-scope
+invalidation and the original credential deadline. A clock discontinuity that
+is latched while guest work is running therefore fails closed before a later
+capability admission or successful output release. The change reuses the
+existing process-local clock guard and adds no new clock source or lease.

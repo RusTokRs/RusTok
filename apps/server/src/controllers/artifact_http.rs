@@ -57,6 +57,10 @@ async fn dispatch_http(
     if path.is_empty() {
         return Err(Error::NotFound);
     }
+    crate::services::artifact_binding::require_artifact_direct_credential(
+        tenant.id,
+        current.user.id,
+    )?;
     let installation = resolve_artifact_installation(&ctx, installation_id, tenant.id).await?;
     let binding = find_artifact_http_binding(&installation.descriptor.bindings, method, &path)
         .ok_or(Error::NotFound)?;
@@ -93,6 +97,10 @@ async fn dispatch_command(
         "Handling artifact command dispatch request"
     );
     ensure_json_content_type(&headers)?;
+    crate::services::artifact_binding::require_artifact_direct_credential(
+        tenant.id,
+        current.user.id,
+    )?;
     let installation = resolve_artifact_installation(&ctx, installation_id, tenant.id).await?;
     let binding = find_artifact_command_binding(&installation.descriptor.bindings, &binding_id)
         .ok_or(Error::NotFound)?;

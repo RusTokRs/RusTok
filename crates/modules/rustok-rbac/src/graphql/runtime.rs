@@ -88,7 +88,6 @@ pub trait RbacModuleAvailabilityProvider: Send + Sync {
 #[derive(Clone)]
 pub struct RbacModuleAvailabilityHandle(pub Arc<dyn RbacModuleAvailabilityProvider>);
 
-
 /// Host-authenticated transaction authority for RBAC control-plane writes.
 /// Implementations acquire credential, module policy and ordered role fences
 /// on the supplied owner transaction, not on another pool connection.

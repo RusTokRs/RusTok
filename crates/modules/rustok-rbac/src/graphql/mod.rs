@@ -8,7 +8,7 @@ pub use mutation::RbacMutation;
 pub use query::RbacQuery;
 pub use runtime::{
     RbacGraphqlRoleWriteError, RbacGraphqlRoleWriter, RbacGraphqlRoleWriterHandle,
-    RbacModuleAvailabilityHandle, RbacModuleAvailabilityProvider,
-    RbacLockedMutationAuthority, RbacMutationAuthority, RbacMutationAuthorityHandle,
+    RbacLockedMutationAuthority, RbacModuleAvailabilityHandle, RbacModuleAvailabilityProvider,
+    RbacMutationAuthority, RbacMutationAuthorityHandle,
 };
 pub use types::*;

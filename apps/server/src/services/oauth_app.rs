@@ -332,7 +332,10 @@ impl OAuthAppService {
             created_at: Set(Utc::now().into()),
             updated_at: Set(Utc::now().into()),
         };
-        Ok(PreparedOAuthApp { model, client_secret: client_secret_plain })
+        Ok(PreparedOAuthApp {
+            model,
+            client_secret: client_secret_plain,
+        })
     }
 
     /// Caller owns the transaction and the authorization fences.
@@ -340,16 +343,26 @@ impl OAuthAppService {
         tx: &DatabaseTransaction,
         prepared: PreparedOAuthApp,
     ) -> Result<CreateOAuthAppResult> {
-        let app = prepared.model.insert_in_transaction(tx).await.map_err(|error| {
-            if matches!(error.sql_err(), Some(sea_orm::SqlErr::UniqueConstraintViolation(_))) {
-                Error::Conflict("OAuth app slug or identity already exists".to_string())
-            } else {
-                tracing::error!(%error, "Failed to insert OAuth app");
-                Error::InternalServerError
-            }
-        })?;
+        let app = prepared
+            .model
+            .insert_in_transaction(tx)
+            .await
+            .map_err(|error| {
+                if matches!(
+                    error.sql_err(),
+                    Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+                ) {
+                    Error::Conflict("OAuth app slug or identity already exists".to_string())
+                } else {
+                    tracing::error!(%error, "Failed to insert OAuth app");
+                    Error::InternalServerError
+                }
+            })?;
         tracing::Span::current().record("client_id", tracing::field::display(app.client_id));
-        Ok(CreateOAuthAppResult { app, client_secret: prepared.client_secret })
+        Ok(CreateOAuthAppResult {
+            app,
+            client_secret: prepared.client_secret,
+        })
     }
 
     /// Update a manual OAuth app.
@@ -362,7 +375,9 @@ impl OAuthAppService {
     ) -> Result<oauth_apps::Model> {
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
         let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
-            .await.map_err(|_| Error::InternalServerError)?.ok_or(Error::NotFound)?;
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .ok_or(Error::NotFound)?;
         let updated = Self::update_locked_app(&tx, app, input).await?;
         tx.commit().await.map_err(|_| Error::InternalServerError)?;
         Ok(updated)
@@ -517,7 +532,9 @@ impl OAuthAppService {
 
         let prepared = Self::prepare_secret(&app).await?;
         let tx = db.begin().await?;
-        let locked = lock_oauth_app_for_mutation(&tx, app_id, tenant_id).await?.ok_or(Error::NotFound)?;
+        let locked = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
+            .await?
+            .ok_or(Error::NotFound)?;
         let result = Self::rotate_locked_secret(&tx, locked, prepared).await?;
         tx.commit().await?;
         Ok(result)
@@ -525,13 +542,18 @@ impl OAuthAppService {
 
     pub(crate) async fn prepare_secret(app: &oauth_apps::Model) -> Result<PreparedOAuthSecret> {
         if !app.can_rotate_secret() {
-            return Err(Error::BadRequest("This OAuth app does not support client secret rotation".to_string()));
+            return Err(Error::BadRequest(
+                "This OAuth app does not support client secret rotation".to_string(),
+            ));
         }
         let client_secret = generate_client_secret()?;
         let secret_hash = auth::hash_password_async(client_secret.clone()).await?;
         Ok(PreparedOAuthSecret {
-            app_id: app.id, tenant_id: app.tenant_id,
-            expected_hash: app.client_secret_hash.clone(), secret_hash, client_secret,
+            app_id: app.id,
+            tenant_id: app.tenant_id,
+            expected_hash: app.client_secret_hash.clone(),
+            secret_hash,
+            client_secret,
         })
     }
 
@@ -541,21 +563,36 @@ impl OAuthAppService {
         prepared: PreparedOAuthSecret,
     ) -> Result<RotateSecretResult> {
         if app.id != prepared.app_id || app.tenant_id != prepared.tenant_id {
-            return Err(Error::Unauthorized("Prepared secret belongs to another OAuth app".to_string()));
+            return Err(Error::Unauthorized(
+                "Prepared secret belongs to another OAuth app".to_string(),
+            ));
         }
         if !app.can_rotate_secret() {
-            return Err(Error::BadRequest("This OAuth app does not support client secret rotation".to_string()));
+            return Err(Error::BadRequest(
+                "This OAuth app does not support client secret rotation".to_string(),
+            ));
         }
         let updated_at = Utc::now();
         if !replace_oauth_secret_if_current(
-            tx, app.tenant_id, app.id, prepared.expected_hash.as_deref(),
-            &prepared.secret_hash, updated_at,
-        ).await? {
-            return Err(Error::Conflict("OAuth client secret changed during rotation; retry the operation".to_string()));
+            tx,
+            app.tenant_id,
+            app.id,
+            prepared.expected_hash.as_deref(),
+            &prepared.secret_hash,
+            updated_at,
+        )
+        .await?
+        {
+            return Err(Error::Conflict(
+                "OAuth client secret changed during rotation; retry the operation".to_string(),
+            ));
         }
         app.client_secret_hash = Some(prepared.secret_hash);
         app.updated_at = updated_at.into();
-        Ok(RotateSecretResult { app, client_secret: prepared.client_secret })
+        Ok(RotateSecretResult {
+            app,
+            client_secret: prepared.client_secret,
+        })
     }
 
     /// Revoke an app — deactivate it and revoke tokens, consents, and pending codes.
@@ -622,7 +659,6 @@ impl OAuthAppService {
             .ok_or_else(|| Error::NotFound)?;
 
         revoke_oauth_app_credentials(tx, app_id, tenant_id, now).await?;
-
 
         Ok(updated)
     }
@@ -1241,7 +1277,6 @@ impl OAuthAppService {
             revoked_tokens = revoked_tokens.rows_affected,
             "Revoked OAuth token family after consent revocation"
         );
-
 
         Ok(())
     }

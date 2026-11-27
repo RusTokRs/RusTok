@@ -37,6 +37,21 @@ registry status fails closed. Quarantine and revocation block new execution
 through `ModuleEffectivePolicy`; the policy revision includes the security
 snapshot but no grant contents or resolver error text.
 
+## Execution effect serialization (2026-11-27)
+
+Quarantine, clear and revoke acquire the permanent platform slug activation
+lock before reading or writing the security aggregate, in a read-committed
+owner transaction. SQL effect admission holds the same lock and checks the
+lease's exact clear security revision after the lock wait. This protects the
+implicit clear revision zero even before a security-state row exists. Clearing
+quarantine advances the revision, never restoring prior execution authority.
+The emergency writer does not consult the lifecycle journal mutation guard.
+The lock covers short SQL transactions, not guest execution or external calls;
+a security action waits for an already-admitted SQL transaction to finish.
+Registry status is still independently observed and dependency security is
+not yet transactionally fenced. All security writers and SQL effect consumers
+must be upgraded together; no schema migration is required.
+
 ## Consequences
 
 - Emergency disable has a durable, revisioned, owner-owned path independent of

@@ -2154,7 +2154,10 @@ mod tests {
             },
         )
         .await;
-        assert!(matches!(inactive_tenant, Err(AuthAdminMutationError::Unauthorized)));
+        assert!(matches!(
+            inactive_tenant,
+            Err(AuthAdminMutationError::Unauthorized)
+        ));
         assert!(
             users::Entity::find_by_email(&db, tenant.id, "tenant-inactive@example.test")
                 .await

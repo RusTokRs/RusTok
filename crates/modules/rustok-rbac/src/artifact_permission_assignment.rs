@@ -197,6 +197,56 @@ impl SeaOrmArtifactPermissionAuthorizer {
         Self { db }
     }
 
+    /// Read exact admitted installation keys on the caller's credential
+    /// and role-fenced transaction. This is not an execution entitlement.
+    pub async fn authorized_keys_on(
+        tx: &DatabaseTransaction,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        installation_id: Uuid,
+        scope: ArtifactPermissionAssignmentScope,
+        module_slug: &str,
+        release_digest: &str,
+    ) -> Result<Vec<String>, ArtifactPermissionAssignmentError> {
+        if tenant_id.is_nil()
+            || user_id.is_nil()
+            || installation_id.is_nil()
+            || module_slug.is_empty()
+            || release_digest.is_empty()
+        {
+            return Err(ArtifactPermissionAssignmentError::InvalidCommand(
+                "authorization identity must be present",
+            ));
+        }
+        let backend = tx.get_database_backend();
+        ensure_supported_backend(backend)?;
+        let sql = placeholders(
+            backend,
+            "SELECT DISTINCT apd.permission_key FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id INNER JOIN roles r ON r.id = ur.role_id INNER JOIN rbac_artifact_role_permissions arp ON arp.role_id = r.id AND arp.tenant_id = r.tenant_id INNER JOIN rbac_artifact_permission_definitions apd ON apd.id = arp.artifact_permission_id AND apd.scope_key = arp.permission_scope_key WHERE u.id = {user_id} AND u.tenant_id = {tenant_id} AND r.tenant_id = {tenant_id} AND apd.installation_id = {installation_id} AND apd.scope_key = {scope_key} AND apd.module_slug = {module_slug} AND apd.release_digest = {release_digest} ORDER BY apd.permission_key",
+        );
+        tx.query_all_raw(Statement::from_sql_and_values(
+            backend,
+            sql,
+            vec![
+                uuid_value(backend, user_id),
+                uuid_value(backend, tenant_id),
+                uuid_value(backend, installation_id),
+                scope_key(scope, tenant_id).into(),
+                module_slug.to_owned().into(),
+                release_digest.to_owned().into(),
+            ],
+        ))
+        .await
+        .map_err(database_error)?
+        .into_iter()
+        .map(|row| {
+            let key: String = row.try_get("", "permission_key").map_err(database_error)?;
+            validate_permission_key(&key)?;
+            Ok(key)
+        })
+        .collect()
+    }
+
     pub async fn is_authorized(
         &self,
         tenant_id: Uuid,
@@ -423,10 +473,15 @@ async fn lock_assignment_actor(
     command: &ArtifactRolePermissionAssignmentCommand,
 ) -> Result<(), ArtifactPermissionAssignmentError> {
     let backend = transaction.get_database_backend();
-    let sql = placeholders(backend, match backend {
-        DbBackend::Postgres => "SELECT 1 FROM users WHERE id = {actor_id} AND tenant_id = {tenant_id} FOR KEY SHARE",
-        _ => "SELECT 1 FROM users WHERE id = {actor_id} AND tenant_id = {tenant_id}",
-    });
+    let sql = placeholders(
+        backend,
+        match backend {
+            DbBackend::Postgres => {
+                "SELECT 1 FROM users WHERE id = {actor_id} AND tenant_id = {tenant_id} FOR KEY SHARE"
+            }
+            _ => "SELECT 1 FROM users WHERE id = {actor_id} AND tenant_id = {tenant_id}",
+        },
+    );
     if transaction
         .query_one_raw(Statement::from_sql_and_values(
             backend,
@@ -453,10 +508,17 @@ async fn role_exists(
 ) -> Result<bool, ArtifactPermissionAssignmentError> {
     let backend = transaction.get_database_backend();
     // Serialize against role deletion even for trusted owner-only callers.
-    let sql = placeholders(backend, match backend {
-        sea_orm::DbBackend::Postgres => "SELECT 1 FROM roles WHERE id = {role_id} AND tenant_id = {tenant_id} FOR UPDATE",
-        _ => "UPDATE roles SET id = id WHERE id = {role_id} AND tenant_id = {tenant_id} RETURNING id",
-    });
+    let sql = placeholders(
+        backend,
+        match backend {
+            sea_orm::DbBackend::Postgres => {
+                "SELECT 1 FROM roles WHERE id = {role_id} AND tenant_id = {tenant_id} FOR UPDATE"
+            }
+            _ => {
+                "UPDATE roles SET id = id WHERE id = {role_id} AND tenant_id = {tenant_id} RETURNING id"
+            }
+        },
+    );
     Ok(transaction
         .query_one_raw(Statement::from_sql_and_values(
             backend,
@@ -482,8 +544,12 @@ async fn resolve_artifact_permission_identity(
         // Definitions are immutable, but a concurrent delete must not
         // invalidate the exact parent between resolution and receipt/write.
         match backend {
-            DbBackend::Postgres => "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key} LIMIT 1 FOR KEY SHARE",
-            _ => "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key} LIMIT 1",
+            DbBackend::Postgres => {
+                "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key} LIMIT 1 FOR KEY SHARE"
+            }
+            _ => {
+                "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key} LIMIT 1"
+            }
         },
     );
     transaction

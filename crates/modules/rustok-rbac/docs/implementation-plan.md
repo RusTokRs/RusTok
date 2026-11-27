@@ -267,6 +267,15 @@ close the component.
 
 ### Artifact permission identity, mutation, and events
 
+- Source runtime admission now requires an admitted direct session, using
+  the host credential transaction with tenant/user/session and ordered role
+  locks. One RBAC query returns exact scope/installation/module/release keys
+  for UI projection, execution and audit; policy admission is shared across
+  those paths and repeated after idempotency claim waits, including replay.
+  OAuth principals fail closed pending a dynamic delegation vocabulary.
+  This is an admission check, not a transaction across the sandbox or a
+  lock of all module runtime policy inputs. Exact key regressions unrun.
+
 - [x] Add sealed assignment event v1 with exact immutable definition identity.
 - [x] Keep validation, idempotency, mutation, and publication in one owner transaction.
 - [x] Emit no event for exact retry or durable no-op.

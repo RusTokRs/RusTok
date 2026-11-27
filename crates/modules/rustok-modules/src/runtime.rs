@@ -219,6 +219,18 @@ where
         input: ArtifactBindingDispatchEnvelope,
         policy: SandboxPolicy,
     ) -> Result<SandboxOutcome, ArtifactRuntimeError> {
+        self.execute_binding_with_lease(artifact, binding, context, input, policy, None).await
+    }
+
+    async fn execute_binding_with_lease(
+        &self,
+        artifact: &InstalledModuleArtifact,
+        binding: &ModuleRuntimeBinding,
+        context: SandboxContext,
+        input: ArtifactBindingDispatchEnvelope,
+        policy: SandboxPolicy,
+        lease: Option<&dyn ArtifactExecutionLeaseGuard>,
+    ) -> Result<SandboxOutcome, ArtifactRuntimeError> {
         self.validate_descriptor(&artifact.descriptor)?;
         if !artifact
             .descriptor
@@ -238,6 +250,10 @@ where
             .map_err(|error| ArtifactRuntimeError::DispatchEnvelopeEncoding(error.to_string()))?;
         let mut request = artifact.sandbox_request(payload, context, input, policy)?;
         request.payload.entrypoint = binding.entrypoint.clone();
+        // CAS and schema preparation can outlive the original admission.
+        if lease.is_some_and(|lease| !lease.is_live()) {
+            return Err(rustok_sandbox::SandboxError::Cancelled.into());
+        }
         let outcome = self.sandbox.execute(request).await?;
         let outcome = self.decode_rhai_output(artifact, outcome)?;
         self.validate_binding_value(
@@ -246,6 +262,11 @@ where
             BindingSchemaStage::Output,
             &outcome.output,
         )?;
+        if lease.is_some_and(|lease| !lease.is_live()) {
+            // Guest effects may already have committed. Preserve the existing
+            // ambiguous execution failure semantics rather than replaying it.
+            return Err(rustok_sandbox::SandboxError::Cancelled.into());
+        }
         Ok(outcome)
     }
 
@@ -559,6 +580,26 @@ pub trait ArtifactEffectivePolicyResolver: Send + Sync {
         tenant_id: uuid::Uuid,
         artifact: &InstalledModuleArtifact,
     ) -> Result<ModuleEffectivePolicy, ArtifactEffectivePolicyResolveError>;
+
+    /// Optional host composition seam. The production server binds every
+    /// execution to its capability broker's live lease registry. Standalone
+    /// owner/test executors retain their existing explicit broker contracts.
+    async fn begin_execution(
+        &self,
+        _artifact: &InstalledModuleArtifact,
+        _binding: &ModuleRuntimeBinding,
+        _context: &SandboxContext,
+        _policy: &SandboxPolicy,
+        _effective_revision: Option<&str>,
+    ) -> Result<Option<Box<dyn ArtifactExecutionLeaseGuard>>, ArtifactBindingDispatchError> {
+        Ok(None)
+    }
+}
+
+/// Host-owned lifetime guard for one exact sandbox execution. The owner
+/// drops it on success, failure, or future cancellation.
+pub trait ArtifactExecutionLeaseGuard: Send + Sync {
+    fn is_live(&self) -> bool;
 }
 
 /// Production adapter from admitted dispatcher bindings to the shared sandbox.
@@ -643,27 +684,37 @@ where
             dispatch.phase,
             &artifact,
         )?;
-        if dispatch.phase != ExecutionPhase::Lifecycle {
+        let effective_revision = if dispatch.phase != ExecutionPhase::Lifecycle {
             let policy = self
                 .effective_policy
                 .resolve(dispatch.tenant_id, &artifact)
                 .await?;
-            if policy
-                .admit_artifact_execution(
-                    dispatch.tenant_id,
-                    &artifact.release,
-                    crate::ArtifactInstallationTarget::ExactInstallation {
-                        installation_id: artifact.installation_id,
-                    },
-                )
-                .is_none()
+            // An effective-policy token issued before a durable policy
+            // transition must not silently gain authority from a new one.
+            // Owner-revalidation dispatch has no prior revision to compare.
+            if dispatch
+                .admission
+                .policy_revision()
+                .is_some_and(|revision| revision != policy.policy_revision())
+                || policy
+                    .admit_artifact_execution(
+                        dispatch.tenant_id,
+                        &artifact.release,
+                        crate::ArtifactInstallationTarget::ExactInstallation {
+                            installation_id: artifact.installation_id,
+                        },
+                    )
+                    .is_none()
             {
                 return Err(ArtifactBindingDispatchError::DeniedByPolicy {
                     slug: artifact.release.slug.clone(),
                     policy_revision: policy.policy_revision().to_string(),
                 });
             }
-        }
+            Some(policy.policy_revision().to_owned())
+        } else {
+            None
+        };
         let policy = effective_binding_policy(
             dispatch.binding,
             dispatch.phase,
@@ -675,11 +726,14 @@ where
         context.trace_id = dispatch.context.trace_id.clone();
         context.idempotency_key = dispatch.context.idempotency_key;
         context.audit_label = Some(dispatch.binding.id.clone());
+        let lease = self.effective_policy.begin_execution(
+            &artifact, dispatch.binding, &context, &policy, effective_revision.as_deref(),
+        ).await?;
         let input =
             ArtifactBindingDispatchEnvelope::new(dispatch.binding, dispatch.phase, dispatch.input);
         Ok(self
             .runtime
-            .execute_binding(&artifact, dispatch.binding, context, input, policy)
+            .execute_binding_with_lease(&artifact, dispatch.binding, context, input, policy, lease.as_deref())
             .await?
             .output)
     }
@@ -1098,6 +1152,159 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn serving_closure_requires_exact_locked_dependency_and_current_policy() {
+        use crate::artifact_node_reconciliation::serving_artifact_closure;
+        use std::collections::BTreeMap;
+
+        let mut root = installed(&package());
+        let mut dependency = installed(&package());
+        dependency.release.slug = "dependency".into();
+        dependency.descriptor.slug = dependency.release.slug.clone();
+        root.descriptor
+            .dependencies
+            .push(crate::ModuleDependencyConstraint {
+                slug: dependency.release.slug.clone(),
+                version_requirement: "*".into(),
+            });
+        root.dependency_lock = crate::ModuleDependencyLockGraph::create(
+            1,
+            vec![crate::ModuleDependencyLockNode {
+                slug: dependency.release.slug.clone(),
+                version: dependency.release.version.clone(),
+                payload_digest: dependency.release.digest.clone(),
+                manifest_digest: dependency.reference.digest.clone(),
+                dependencies: vec![],
+            }],
+        )
+        .unwrap();
+        let tenant_id = Uuid::new_v4();
+        let revision = format!("sha256:{}", "b".repeat(64));
+        let mut decisions = serde_json::Map::new();
+        for item in [&root, &dependency] {
+            let mut facts = vec![
+                json!({"kind": "definition", "version": item.release.version.clone(),
+                    "module_kind": "optional", "source": {"kind": "artifact", "release": item.release.clone()}}),
+                json!({"kind": "artifact_installation", "installation_id": item.installation_id,
+                    "scope": item.scope.clone(), "release_digest": item.release.digest.clone(),
+                    "dependency_graph_revision": item.dependency_lock.graph_revision,
+                    "dependency_graph_digest": item.dependency_lock.graph_digest.clone(),
+                    "capability_grant_revision": item.capability_grant_revision}),
+            ];
+            if item.installation_id == root.installation_id {
+                facts.push(json!({"kind":"dependency", "module_slug":dependency.release.slug.clone(),"enabled":true}));
+            }
+            decisions.insert(
+                item.release.slug.clone(),
+                json!({
+                    "module_slug":item.release.slug.clone(), "enabled":true,
+                    "policy_revision":revision.clone(), "facts":facts, "denial_reasons":[]
+                }),
+            );
+        }
+        let policy: ModuleEffectivePolicy = serde_json::from_value(json!({
+            "policy_revision": revision,
+            "enabled_modules": [root.release.slug.clone(), dependency.release.slug.clone()],
+            "decisions": decisions
+        }))
+        .unwrap();
+        let mut selected = BTreeMap::from([
+            (root.release.slug.clone(), root.clone()),
+            (dependency.release.slug.clone(), dependency.clone()),
+        ]);
+        assert_eq!(
+            serving_artifact_closure(tenant_id, &root, &policy, &selected)
+                .unwrap()
+                .len(),
+            2
+        );
+        selected
+            .get_mut(&dependency.release.slug)
+            .unwrap()
+            .reference
+            .digest = format!("sha256:{}", "f".repeat(64));
+        assert!(serving_artifact_closure(tenant_id, &root, &policy, &selected).is_err());
+        selected.insert(dependency.release.slug.clone(), dependency.clone());
+        selected
+            .get_mut(&dependency.release.slug)
+            .unwrap()
+            .capability_grant_revision += 1;
+        assert!(serving_artifact_closure(tenant_id, &root, &policy, &selected).is_err());
+        selected.remove(&dependency.release.slug);
+        assert!(serving_artifact_closure(tenant_id, &root, &policy, &selected).is_err());
+    }
+
+    #[tokio::test]
+    async fn runtime_rejects_stale_admission_even_if_current_policy_allows_target() {
+        let installed = installed(&package());
+        let binding = installed.descriptor.bindings[0].clone();
+        let tenant_id = Uuid::new_v4();
+        let target = crate::ArtifactInstallationTarget::ExactInstallation {
+            installation_id: installed.installation_id,
+        };
+        let revision = format!("sha256:{}", "b".repeat(64));
+        let policy: ModuleEffectivePolicy = serde_json::from_value(json!({
+            "policy_revision": revision.clone(),
+            "enabled_modules": [installed.release.slug.clone()],
+            "decisions": {
+                "sample_module": {
+                    "module_slug": "sample_module",
+                    "enabled": true,
+                    "policy_revision": revision.clone(),
+                    "facts": [
+                        {"kind": "definition", "version": installed.release.version.clone(),
+                         "module_kind": "optional", "source": {
+                            "kind": "artifact", "release": installed.release.clone()
+                         }},
+                        {"kind": "artifact_installation", "installation_id": installed.installation_id,
+                         "scope": installed.scope.clone(), "release_digest": installed.release.digest.clone(),
+                         "dependency_graph_revision": installed.dependency_lock.graph_revision,
+                         "dependency_graph_digest": installed.dependency_lock.graph_digest.clone(),
+                         "capability_grant_revision": installed.capability_grant_revision}
+                    ],
+                    "denial_reasons": []
+                }
+            }
+        })).expect("valid current policy");
+        assert!(
+            policy
+                .admit_artifact_execution(tenant_id, &installed.release, target)
+                .is_some()
+        );
+        let executor = ArtifactRuntimeLifecycleExecutor::new(
+            ArtifactRuntime::new(
+                InMemoryArtifactBlobStore::default(),
+                SandboxRuntime::new(ExecutorRegistry::new(), Arc::new(DenyBroker)),
+            ),
+            FixedInstallation(installed.clone()),
+            DeniedSandboxPolicy,
+            FixedEffectivePolicy(policy),
+        );
+        let error = executor
+            .dispatch_binding(ArtifactBindingDispatch {
+                release: &installed.release,
+                binding: &binding,
+                target,
+                tenant_id,
+                admission: crate::ArtifactExecutionAdmission::effective_policy(
+                    tenant_id,
+                    &installed.release,
+                    target,
+                    format!("sha256:{}", "a".repeat(64)),
+                ),
+                input: json!({"id": 1}),
+                phase: ExecutionPhase::Event,
+                context: crate::ArtifactBindingExecutionContext::default(),
+            })
+            .await
+            .expect_err("stale policy must deny before capability resolution");
+        assert!(
+            matches!(error, ArtifactBindingDispatchError::DeniedByPolicy {
+            policy_revision, ..
+        } if policy_revision == revision)
+        );
+    }
+
     #[tokio::test]
     async fn policy_gate_receives_the_exact_resolved_installation_before_execution() {
         let package = package();
@@ -1174,6 +1381,30 @@ mod tests {
             .expect("admit payload");
         let runtime = ArtifactRuntime::new(blobs, sandbox);
         let context = SandboxContext::new(ExecutionPhase::Event);
+
+        // A failed lease before sandbox launch must not reach the executor.
+        // A lease expiring after launch must not release a successful result.
+        struct CheckBudget(std::sync::atomic::AtomicUsize);
+        impl ArtifactExecutionLeaseGuard for CheckBudget {
+            fn is_live(&self) -> bool {
+                self.0.fetch_update(
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::SeqCst,
+                    |remaining| remaining.checked_sub(1),
+                ).is_ok()
+            }
+        }
+        for budget in [0, 1] {
+            let lease = CheckBudget(std::sync::atomic::AtomicUsize::new(budget));
+            let error = runtime.execute_binding_with_lease(
+                &installed, &binding, SandboxContext::new(ExecutionPhase::Event),
+                ArtifactBindingDispatchEnvelope::new(&binding, ExecutionPhase::Event, json!({"id": 1})),
+                SandboxPolicy::default(), Some(&lease),
+            ).await.expect_err("expired execution lease");
+            assert!(matches!(error, ArtifactRuntimeError::Sandbox(SandboxError::Cancelled)));
+            assert_eq!(observed.lock().unwrap().is_some(), budget == 1);
+            *observed.lock().unwrap() = None;
+        }
 
         let outcome = runtime
             .execute_binding(

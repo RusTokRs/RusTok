@@ -106,7 +106,7 @@ impl<'de> serde::Deserialize<'de> for ConnectorMode {
 }
 
 /// Configuration for the bundled Iggy server managed by this connector.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct BundledConnectorConfig {
     /// Absolute or PATH-resolved executable for the Iggy server.
     pub executable: String,
@@ -145,6 +145,21 @@ impl Default for BundledConnectorConfig {
     }
 }
 
+impl std::fmt::Debug for BundledConnectorConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BundledConnectorConfig")
+            .field("executable", &self.executable)
+            .field("arguments_count", &self.arguments.len())
+            .field("environment_keys", &self.environment.keys().collect::<Vec<_>>())
+            .field("data_dir", &self.data_dir)
+            .field("tcp_port", &self.tcp_port)
+            .field("http_port", &self.http_port)
+            .field("startup_timeout_ms", &self.startup_timeout_ms)
+            .field("shutdown_timeout_ms", &self.shutdown_timeout_ms)
+            .finish()
+    }
+}
+
 const fn default_startup_timeout_ms() -> u64 {
     30_000
 }
@@ -154,7 +169,7 @@ const fn default_shutdown_timeout_ms() -> u64 {
 }
 
 /// Configuration for an external Iggy server connection.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ExternalConnectorConfig {
     /// Server addresses (ip:port)
     pub addresses: Vec<String>,
@@ -225,6 +240,20 @@ impl Default for ExternalConnectorConfig {
             tls_domain: None,
             tls_ca_file: None,
         }
+    }
+}
+
+impl std::fmt::Debug for ExternalConnectorConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExternalConnectorConfig")
+            .field("addresses_configured", &!self.addresses.is_empty())
+            .field("protocol", &self.protocol)
+            .field("username_configured", &!self.username.is_empty())
+            .field("password_configured", &!self.password.is_empty())
+            .field("tls_enabled", &self.tls_enabled)
+            .field("tls_domain_configured", &self.tls_domain.is_some())
+            .field("tls_ca_file_configured", &self.tls_ca_file.is_some())
+            .finish()
     }
 }
 
@@ -381,7 +410,7 @@ pub trait ConsumerCursor: Send {
 /// needed by higher transport layers for offset tracking, retries, DLQ and
 /// replay coordination. It does not define retry limits, DLQ routing, replay
 /// policy or any other transport-level behavior.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubscriberMessageMetadata {
     /// Stream the message was read from.
     pub stream: String,
@@ -397,6 +426,20 @@ pub struct SubscriberMessageMetadata {
     pub delivery_attempt: Option<u32>,
     /// Opaque connector-owned acknowledgement token.
     pub ack_token: Option<String>,
+}
+
+impl std::fmt::Debug for SubscriberMessageMetadata {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SubscriberMessageMetadata")
+            .field("stream", &self.stream)
+            .field("topic", &self.topic)
+            .field("partition", &self.partition)
+            .field("offset", &self.offset)
+            .field("message_id", &self.message_id)
+            .field("delivery_attempt", &self.delivery_attempt)
+            .field("ack_token_configured", &self.ack_token.is_some())
+            .finish()
+    }
 }
 
 impl SubscriberMessageMetadata {
@@ -470,7 +513,7 @@ impl SubscriberMessageMetadata {
 /// Tokens stay opaque to transport users, but connector implementations keep a
 /// structured builder/parser internally so simulated and real SDK subscribers
 /// validate stream/topic/partition/offset scope before acknowledging.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum ConnectorAckToken {
     /// Canonical no-SDK simulation token used by legacy subscriber test doubles.
     Simulated {
@@ -491,6 +534,41 @@ pub enum ConnectorAckToken {
         offset: u64,
         consumer_id: String,
     },
+}
+
+impl std::fmt::Debug for ConnectorAckToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Simulated {
+                mode,
+                stream,
+                topic,
+                partition,
+                offset,
+            } => f
+                .debug_struct("ConnectorAckToken::Simulated")
+                .field("mode", mode)
+                .field("stream", stream)
+                .field("topic", topic)
+                .field("partition", partition)
+                .field("offset", offset)
+                .finish(),
+            Self::IggySdk {
+                stream,
+                topic,
+                partition,
+                offset,
+                consumer_id,
+            } => f
+                .debug_struct("ConnectorAckToken::IggySdk")
+                .field("stream", stream)
+                .field("topic", topic)
+                .field("partition", partition)
+                .field("offset", offset)
+                .field("consumer_id_configured", &!consumer_id.is_empty())
+                .finish(),
+        }
+    }
 }
 
 impl ConnectorAckToken {
@@ -1597,6 +1675,50 @@ fn calculate_partition(key: &str, partitions: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn connector_config_debug_redacts_bundled_and_external_credentials() {
+        let mut config = ConnectorConfig::default();
+        config.external.addresses =
+            vec!["broker-user:broker-password@broker.example:8090".to_string()];
+        config.external.username = "external-user-secret".to_string();
+        config.external.password = "external-password-secret".to_string();
+        config.bundled.arguments.push("--token=bundled-argument-secret".to_string());
+        config.bundled.environment.insert(
+            "PRIVATE_ENV".to_string(),
+            "bundled-environment-secret".to_string(),
+        );
+
+        let debug = format!("{config:?}");
+        for secret in [
+            "broker-user",
+            "broker-password",
+            "external-user-secret",
+            "external-password-secret",
+            "bundled-argument-secret",
+            "bundled-environment-secret",
+        ] {
+            assert!(!debug.contains(secret), "Debug output leaked {secret}: {debug}");
+        }
+    }
+
+    #[test]
+    fn acknowledgement_debug_output_keeps_opaque_tokens_redacted() {
+        let metadata = SubscriberMessageMetadata::new("stream", "topic", 1)
+            .with_ack_token("opaque-ack-secret");
+        let metadata_debug = format!("{metadata:?}");
+        assert!(!metadata_debug.contains("opaque-ack-secret"));
+
+        let token = ConnectorAckToken::IggySdk {
+            stream: "stream".to_string(),
+            topic: "topic".to_string(),
+            partition: 1,
+            offset: 42,
+            consumer_id: "consumer-id-secret".to_string(),
+        };
+        let token_debug = format!("{token:?}");
+        assert!(!token_debug.contains("consumer-id-secret"));
+    }
 
     #[test]
     fn test_calculate_partition() {

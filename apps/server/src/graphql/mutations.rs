@@ -230,15 +230,32 @@ pub(crate) fn user_mutation_context(
     if auth.tenant_id != tenant.id {
         return Err(<FieldError as GraphQLError>::unauthenticated());
     }
-    let principal = ctx.data::<rustok_api::AuthPrincipalContext>()
+    let principal = ctx
+        .data::<rustok_api::AuthPrincipalContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
     let extensions = ctx.data::<Arc<ModuleRuntimeExtensions>>()?;
-    let resolver = extensions.get::<rustok_auth::AuthAdminCredentialResolverHandle>()
-        .ok_or_else(|| <FieldError as GraphQLError>::internal_error("Auth admin credential resolver is unavailable"))?;
-    resolver.0.bind(rustok_auth::AdminCredentialRequest {
-        tenant_id: auth.tenant_id, user_id: auth.user_id, session_id: auth.session_id,
-        client_id: auth.client_id, grant_type: &auth.grant_type, scopes: &auth.scopes,
-    }, principal.kind, Some(locale)).map_err(map_user_mutation_error)
+    let resolver = extensions
+        .get::<rustok_auth::AuthAdminCredentialResolverHandle>()
+        .ok_or_else(|| {
+            <FieldError as GraphQLError>::internal_error(
+                "Auth admin credential resolver is unavailable",
+            )
+        })?;
+    resolver
+        .0
+        .bind(
+            rustok_auth::AdminCredentialRequest {
+                tenant_id: auth.tenant_id,
+                user_id: auth.user_id,
+                session_id: auth.session_id,
+                client_id: auth.client_id,
+                grant_type: &auth.grant_type,
+                scopes: &auth.scopes,
+            },
+            principal.kind,
+            Some(locale),
+        )
+        .map_err(map_user_mutation_error)
 }
 
 fn user_from_mutation_record(record: UserMutationRecord) -> User {

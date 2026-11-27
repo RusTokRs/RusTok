@@ -144,7 +144,8 @@ impl ProductCatalogSchemaService {
 
         validate_uuid("variant_id", variant_id)?;
         let owner = load_variant_owner_for_update(txn, tenant_id, variant_id).await?;
-        let product = super::lock_product_for_update_in_tx(txn, tenant_id, owner.product_id).await?;
+        let product =
+            super::lock_product_for_update_in_tx(txn, tenant_id, owner.product_id).await?;
         let Some(primary_category_id) = product.primary_category_id else {
             return Err(CommerceError::Validation(
                 "variant product must have a primary structural category before attribute values can be saved"

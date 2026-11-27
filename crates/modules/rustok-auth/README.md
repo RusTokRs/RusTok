@@ -135,7 +135,19 @@ now share pre-transaction application-clock admission. The active tenant is
 fenced before app/user/credential locks, including direct user administration:
 PostgreSQL uses FOR SHARE (not FK-only KEY SHARE), SQLite a conditional
 write-before-read fence. The inactive-tenant regression is authored, unrun.
-Artifact-runtime entitlement, remaining scope-independent owner
+Artifact runtime HTTP/GraphQL dispatch, UI projection and audit now require
+the admitted direct session, rechecking tenant, actor, session, current role
+grants and credential deadline in a short host transaction. OAuth delegated
+and service credentials are denied until an explicit dynamic permission
+delegation contract exists. The shared runtime policy check also guards UI
+reads and durable receipt replay. SQL locks are not held across sandbox
+execution; policy/installation and external execution are not atomically
+fenced by this slice. A claimed operation denied at recheck requires the
+existing reconciliation flow.
+The artifact-aware serving resolver is now source-wired from owner-selected
+active installations and actual executor support, with exact node readiness
+and policy-revision revalidation. Contextual policy and readiness producer
+parity, post-admission runtime entitlement, remaining scope-independent owner
 contract work and global PostgreSQL deadlock evidence remain open.
 Compilation and runtime verification are pending.
 
@@ -318,3 +330,21 @@ admission-only when unbound. See the
 [clock ADR](../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md) for
 configuration, recovery and limits. Source implementation only; runtime,
 contention and failover evidence remain pending.
+
+Server artifact HTTP/command execution captures the original direct request
+scope in a host-only per-execution lease, sharing the invalidation flag with
+callback tasks. At initial lease admission and before each capability call,
+the host rechecks the same tenant/user/session/recovery and current binding
+permission through the existing transaction. Lease lifetime is bounded by the
+original credential expiry and sandbox budget; it is removed on cancellation,
+failure or completion. No bearer evidence crosses worker transport. This does
+not revoke already-started external effects or provide an atomic fence for
+every domain owner commit. Compilation and worker integration remain pending.
+
+The server structured-data and event capability brokers now reuse the
+transaction-bound direct credential and artifact permission read on their own
+SQL effect transaction. Active tenant, actor, session and role grant locks
+remain held through commit, and the locked credential deadline is checked
+again immediately before committing. Lease membership and expiry remain
+mandatory; no actor is inferred for owner work. Installation and module
+policy concurrency fencing remains separate work.

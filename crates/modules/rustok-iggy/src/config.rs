@@ -3,7 +3,7 @@ use rustok_iggy_connector::{
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[derive(Deserialize, Serialize, Clone, Default)]
 pub struct IggyConfig {
     #[serde(default)]
     pub mode: IggyMode,
@@ -53,7 +53,7 @@ impl std::fmt::Display for SerializationFormat {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct BundledConfig {
     #[serde(default = "default_local_executable")]
     pub executable: String,
@@ -97,7 +97,7 @@ const fn default_shutdown_timeout_ms() -> u64 {
     10_000
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct ExternalConfig {
     pub addresses: Vec<String>,
     pub protocol: String,
@@ -123,6 +123,48 @@ impl Default for ExternalConfig {
             tls_domain: None,
             tls_ca_file: None,
         }
+    }
+}
+
+impl std::fmt::Debug for IggyConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IggyConfig")
+            .field("mode", &self.mode)
+            .field("serialization", &self.serialization)
+            .field("bundled", &self.bundled)
+            .field("external", &self.external)
+            .field("topology", &self.topology)
+            .field("retention", &self.retention)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for BundledConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BundledConfig")
+            .field("executable", &self.executable)
+            .field("arguments_count", &self.arguments.len())
+            .field("environment_keys", &self.environment.keys().collect::<Vec<_>>())
+            .field("data_dir", &self.data_dir)
+            .field("tcp_port", &self.tcp_port)
+            .field("http_port", &self.http_port)
+            .field("startup_timeout_ms", &self.startup_timeout_ms)
+            .field("shutdown_timeout_ms", &self.shutdown_timeout_ms)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for ExternalConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExternalConfig")
+            .field("addresses_configured", &!self.addresses.is_empty())
+            .field("protocol", &self.protocol)
+            .field("username_configured", &!self.username.is_empty())
+            .field("password_configured", &!self.password.is_empty())
+            .field("tls_enabled", &self.tls_enabled)
+            .field("tls_domain_configured", &self.tls_domain.is_some())
+            .field("tls_ca_file_configured", &self.tls_ca_file.is_some())
+            .finish()
     }
 }
 
@@ -251,6 +293,33 @@ mod tests {
         assert_eq!(config.data_dir, "./data/iggy");
         assert_eq!(config.tcp_port, 8090);
         assert_eq!(config.http_port, 3000);
+    }
+
+    #[test]
+    fn debug_output_redacts_external_and_bundled_credentials() {
+        let mut config = IggyConfig::default();
+        config.external.addresses = vec![
+            "iggy://address-user:address-password@broker.example:8090".to_string(),
+        ];
+        config.external.username = "iggy-user-secret".to_string();
+        config.external.password = "iggy-password-secret".to_string();
+        config.bundled.arguments.push("--token=bundled-argument-secret".to_string());
+        config.bundled.environment.insert(
+            "PRIVATE_ENV".to_string(),
+            "bundled-environment-secret".to_string(),
+        );
+
+        let debug = format!("{config:?}");
+        for secret in [
+            "address-user",
+            "address-password",
+            "iggy-user-secret",
+            "iggy-password-secret",
+            "bundled-argument-secret",
+            "bundled-environment-secret",
+        ] {
+            assert!(!debug.contains(secret), "Debug output leaked {secret}: {debug}");
+        }
     }
 
     #[test]

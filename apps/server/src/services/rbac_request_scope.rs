@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::{DateTime, Utc};
@@ -141,7 +142,7 @@ impl RbacRequestScopeState {
 }
 
 tokio::task_local! {
-    static CURRENT_RBAC_SCOPE: Option<RbacRequestScopeState>;
+    static CURRENT_RBAC_SCOPE: Option<Arc<RbacRequestScopeState>>;
 }
 
 pub async fn with_rbac_request_scope<F>(scope: Option<RbacRequestScope>, future: F) -> F::Output
@@ -151,8 +152,43 @@ where
     // An explicit unauthenticated nested boundary must mask any outer
     // authenticated request. Never inherit its credential by accident.
     CURRENT_RBAC_SCOPE
-        .scope(scope.map(RbacRequestScopeState::new), future)
+        .scope(scope.map(|scope| Arc::new(RbacRequestScopeState::new(scope))), future)
         .await
+}
+
+/// Host-only capture of the original request authority for isolated sandbox
+/// callbacks. Clones share the invalidation flag; no credentials cross the
+/// worker transport. The durable session/role fence must still be rechecked.
+#[derive(Clone)]
+pub(crate) struct CapturedArtifactRequestScope(Arc<RbacRequestScopeState>);
+
+impl CapturedArtifactRequestScope {
+    pub(crate) fn capture(tenant_id: Uuid, actor_id: Uuid) -> Option<Self> {
+        CURRENT_RBAC_SCOPE.try_with(|state| {
+            let state = state.as_ref()?;
+            let credential = state.scope.credential.as_ref()?;
+            (state.matches_valid(&tenant_id, &actor_id)
+                && credential.principal_kind == AuthPrincipalKind::DirectUser
+                && credential.typed().is_some()).then(|| Self(Arc::clone(state)))
+        }).ok().flatten()
+    }
+
+    pub(crate) fn is_valid(&self) -> bool {
+        // A captured credential must share the Auth process clock fence as
+        // well as request invalidation; raw wall-clock checks alone could
+        // release output after a latched clock discontinuity.
+        self.0.valid.load(Ordering::Acquire)
+            && rustok_auth::application_clock::check_local().is_ok()
+    }
+
+    pub(crate) fn expires_at(&self) -> DateTime<Utc> {
+        // Construction requires the original authenticated credential.
+        self.0.scope.credential.as_ref().expect("captured credential").expires_at
+    }
+
+    pub(crate) async fn run<F: Future>(&self, future: F) -> F::Output {
+        CURRENT_RBAC_SCOPE.scope(Some(Arc::clone(&self.0)), future).await
+    }
 }
 
 pub fn permissions_for(tenant_id: &Uuid, actor_id: &Uuid) -> Option<Vec<Permission>> {
@@ -505,6 +541,82 @@ mod tests {
             assert!(credential_for_admin(&context).is_err());
         })
         .await;
+    }
+
+    #[tokio::test]
+    async fn artifact_runtime_rejects_non_direct_and_unbound_credentials() {
+        use crate::services::artifact_binding::require_artifact_direct_credential;
+        let tenant = Uuid::new_v4();
+        let actor = Uuid::new_v4();
+        let make_scope = || {
+            RbacRequestScope::new(
+                tenant,
+                actor,
+                vec![Permission::MODULES_MANAGE],
+                UserRole::Admin,
+            )
+        };
+        assert!(require_artifact_direct_credential(tenant, actor).is_err());
+        with_rbac_request_scope(Some(make_scope()), async {
+            assert!(require_artifact_direct_credential(tenant, actor).is_err());
+        })
+        .await;
+        for kind in [
+            AuthPrincipalKind::DirectUser,
+            AuthPrincipalKind::DelegatedUser,
+            AuthPrincipalKind::Service,
+        ] {
+            let mut scope = make_scope();
+            let oauth = (kind != AuthPrincipalKind::DirectUser).then(|| OAuthCredentialEvidence {
+                registration_id: Uuid::new_v4(),
+                app_id: Uuid::new_v4(),
+                client_id: Uuid::new_v4(),
+                token_hash: "digest".into(),
+                issued_at: Utc::now(),
+                consent_granted_at: None,
+                scopes: vec!["modules:manage".into()],
+            });
+            scope.credential = Some(RequestCredentialAuthority {
+                principal_kind: kind,
+                session_id: if oauth.is_some() {
+                    Uuid::nil()
+                } else {
+                    Uuid::new_v4()
+                },
+                expires_at: Utc::now() + chrono::Duration::minutes(5),
+                recovery_revision: 1,
+                oauth,
+            });
+            with_rbac_request_scope(Some(scope), async {
+                assert_eq!(
+                    require_artifact_direct_credential(tenant, actor).is_ok(),
+                    kind == AuthPrincipalKind::DirectUser
+                );
+                assert!(require_artifact_direct_credential(tenant, Uuid::new_v4()).is_err());
+                let capture = CapturedArtifactRequestScope::capture(tenant, actor);
+                assert_eq!(capture.is_some(), kind == AuthPrincipalKind::DirectUser);
+                assert!(CapturedArtifactRequestScope::capture(Uuid::new_v4(), actor).is_none());
+                if let Some(capture) = capture.as_ref() {
+                    let child = capture.clone();
+                    tokio::spawn(async move {
+                        assert!(require_artifact_direct_credential(tenant, actor).is_err());
+                        child.run(async {
+                            assert!(require_artifact_direct_credential(tenant, actor).is_ok());
+                        }).await;
+                        assert!(require_artifact_direct_credential(tenant, actor).is_err());
+                    }).await.unwrap();
+                }
+                invalidate_current_rbac_request_scope(&tenant, &actor);
+                assert!(require_artifact_direct_credential(tenant, actor).is_err());
+                if let Some(capture) = capture {
+                    assert!(!capture.is_valid());
+                    capture.run(async {
+                        assert!(require_artifact_direct_credential(tenant, actor).is_err());
+                    }).await;
+                }
+            })
+            .await;
+        }
     }
 
     #[test]

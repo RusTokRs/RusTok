@@ -1,6 +1,6 @@
+use super::product::ProductAttributeValueBatch;
 use rust_decimal::Decimal;
 use rustok_api::Patch;
-use super::product::ProductAttributeValueBatch;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -121,7 +121,10 @@ impl UpdateVariantInput {
             || self.weight.is_changed()
             || self.weight_unit.is_changed()
             || self.axis_values.is_some()
-            || self.attribute_values.iter().any(|batch| !batch.patches.is_empty())
+            || self
+                .attribute_values
+                .iter()
+                .any(|batch| !batch.patches.is_empty())
     }
 
     /// Whether the caller supplied any owner mutation rather than an empty keep-all patch.
@@ -369,9 +372,7 @@ mod patch_tests {
                 locale: "en".to_owned(),
                 patches: vec![super::product::ProductAttributeValuePatch {
                     attribute_id: Uuid::from_u128(1),
-                    value: super::product::ProductAttributeValuePatchValue::Text(
-                        "Blue".to_owned(),
-                    ),
+                    value: super::product::ProductAttributeValuePatchValue::Text("Blue".to_owned()),
                 }],
             }],
             ..Default::default()

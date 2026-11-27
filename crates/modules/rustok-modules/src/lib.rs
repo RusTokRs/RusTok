@@ -261,8 +261,9 @@ pub use artifact::{
 };
 pub use artifact_capability_router::{
     ArtifactCapabilityBrokerResolver, ArtifactCapabilityBrokerResolverRouter,
-    ArtifactCapabilityExecution, ArtifactCapabilityScope, ResolvingArtifactCapabilityBroker,
-    resolve_granted_artifact_capability,
+    ArtifactCapabilityExecution, ArtifactCapabilityScope, ArtifactSqlEffectAuthorizer,
+    ArtifactSqlEffectFence, ArtifactSqlEffectCommitGuard, ResolvingArtifactCapabilityBroker,
+    lock_granted_artifact_capability_on, resolve_granted_artifact_capability,
 };
 pub use artifact_cas::StorageArtifactBlobStore;
 pub use artifact_node_reconciliation::{
@@ -648,7 +649,7 @@ pub use resolution::{
     ModuleResolutionResult, ModuleResolutionScope, resolve_module_dependencies,
 };
 pub use runtime::{
-    ArtifactEffectivePolicyResolveError, ArtifactEffectivePolicyResolver,
+    ArtifactEffectivePolicyResolveError, ArtifactEffectivePolicyResolver, ArtifactExecutionLeaseGuard,
     ArtifactInstallationResolveError, ArtifactInstallationResolver, ArtifactRuntime,
     ArtifactRuntimeError, ArtifactRuntimeLifecycleExecutor, ArtifactRuntimeReadinessProbe,
     ArtifactSandboxPolicyResolveError, ArtifactSandboxPolicyResolver, VerifiedArtifactNodeCache,

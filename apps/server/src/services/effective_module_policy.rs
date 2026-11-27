@@ -205,6 +205,25 @@ impl EffectiveModulePolicyService {
             .map(|snapshot| snapshot.policy)
     }
 
+    /// Uncached artifact-serving policy. Keep the static authorization
+    /// projection independent from sandbox availability; both use the active
+    /// manifest and the same Modules owner policy evaluator.
+    pub(crate) async fn resolve_artifact_serving(
+        db: &DatabaseConnection,
+        registry: &ModuleRegistry,
+        tenant_id: uuid::Uuid,
+        supported_payload_kinds: &[rustok_modules::ArtifactPayloadKind],
+    ) -> Result<ModuleEffectivePolicy, PlatformCompositionError> {
+        let manifest = PlatformCompositionService::active_manifest(db).await?;
+        let co_requisites = ManifestManager::module_policy_corequisites(&manifest)?;
+        ModuleControlPlane::new(db.clone())
+            .lifecycle(registry, manifest.settings.default_enabled)
+            .with_corequisites(co_requisites)
+            .artifact_serving_policy(tenant_id, supported_payload_kinds)
+            .await
+            .map_err(map_effective_policy_error)
+    }
+
     /// Returns the redacted operator projection of the exact owner decision.
     pub async fn resolve_view(
         db: &DatabaseConnection,
