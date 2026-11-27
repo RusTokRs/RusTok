@@ -29,6 +29,16 @@ conversion bound; external Rust consumers must migrate. Multi-query consistency,
 commit-time revocation fences, and multi-replica recovery remain separate gates.
 See [the decision](../../../../DECISIONS/2026-11-02-rbac-cache-resolution-consistency.md).
 
+## Coherent static permission reads (2026-11-27)
+
+Cached misses and uncached decisions share one tenant/user-scoped SQL relation
+read rather than separately sampling membership and role grants. The relation
+store contract now requires a coherent read, including custom implementations;
+the old split-load methods are removed. Source regressions cover malformed
+cross-tenant grants and membership, cache misses, and caller-transaction
+revocation. Compilation, PostgreSQL concurrent execution and distributed cache
+recovery remain pending; a statement snapshot is not a revocation fence.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`

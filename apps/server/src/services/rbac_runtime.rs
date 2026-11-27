@@ -656,13 +656,6 @@ mod tests {
         .await
         .expect("assign foreign role");
 
-        let local_role = roles::Entity::find()
-            .filter(roles::Column::TenantId.eq(tenant_a))
-            .filter(roles::Column::Slug.eq(UserRole::Customer.to_string()))
-            .one(&db)
-            .await
-            .expect("load local role")
-            .expect("local role exists");
         let foreign_role = roles::Entity::find()
             .filter(roles::Column::TenantId.eq(tenant_b))
             .filter(roles::Column::Slug.eq(UserRole::Admin.to_string()))
@@ -683,11 +676,18 @@ mod tests {
         );
 
         let store = SeaOrmRelationPermissionStore::new(db);
-        let role_ids = store
-            .load_user_role_ids(&user_a)
+        let permissions = store
+            .load_permissions_for_user(&tenant_a, &user_a)
             .await
-            .expect("load user roles");
-
-        assert_eq!(role_ids, vec![local_role.id]);
+            .expect("load local user permissions");
+        assert!(permissions.contains(&Permission::PRODUCTS_READ));
+        assert!(!permissions.contains(&Permission::USERS_MANAGE));
+        assert!(
+            store
+                .load_permissions_for_user(&tenant_b, &user_a)
+                .await
+                .expect("load foreign tenant permissions")
+                .is_empty()
+        );
     }
 }

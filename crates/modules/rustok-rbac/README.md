@@ -10,9 +10,13 @@ Generation-aware cached permission resolution discards relation reads rejected b
 every bounded publication attempt and returns the typed
 `PermissionCacheResolutionError::Invalidated`. It does not grant those permissions
 or fabricate an empty successful grant set. Store errors remain distinct. This
-local check is not a commit-time revocation fence, a multi-query database snapshot,
-or a guarantee for cache adapters using default non-generation-aware methods.
+local check is not a commit-time revocation fence or a guarantee for cache adapters using default non-generation-aware methods.
 See [the cache-consistency decision](../../../DECISIONS/2026-11-02-rbac-cache-resolution-consistency.md).
+
+The persisted SeaORM reader resolves the entire tenant/user membership and
+static-grant graph in one SQL statement, for both cache misses and uncached
+authorization. A statement snapshot prevents mixed membership/grant reads; it
+does not fence subsequent revocation or make cache hits current.
 
 ## Responsibilities
 

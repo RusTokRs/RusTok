@@ -47,9 +47,15 @@ adapter may silently turn that error into an allowed decision.
 ## Non-goals
 
 This decision does not establish an atomic revocation fence at a later write or
-response boundary, coherent snapshots across multiple relation queries, immediate
+response boundary, immediate
 cross-replica invalidation, or guarantees for adapters that use the default
 non-generation-aware cache methods. It does not replace request-scope ceilings.
+
+The 2026-11-27 persisted relation reader now loads the static membership/grant
+graph in one statement snapshot for cache misses and uncached decisions.
+The split-load store interface is removed; adapters must supply one coherent
+tenant/user read. This addresses mixed database snapshots independently of
+the cache generation check and does not make cache hits current.
 
 ## Data, transaction, and concurrency boundary
 

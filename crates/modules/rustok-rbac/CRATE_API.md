@@ -11,6 +11,8 @@
   - `RbacPermissionDecisionProvider` wrapping authoritative `PermissionResolver`.
 - **Permission Resolution & Evaluation**:
   - `PermissionResolver`, `RuntimePermissionResolver`, `RelationPermissionStore`
+  - `RelationPermissionStore::load_permissions_for_user` requires a coherent
+    tenant/user graph read; the SeaORM adapter uses one SQL statement.
   - `PermissionCacheResolutionError<E>` distinguishes store failure from exhausted
     cache-generation validation. Cached resolution returns this typed error;
     runtime adapters must map it without creating an authorization decision.

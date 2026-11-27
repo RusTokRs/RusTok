@@ -21,7 +21,8 @@ documentation for this module must live inside the crate, not spread across
 ## Integration
 
 - `SeaOrmRelationPermissionStore` owns persisted relation reads for both cached
-  runtime and uncached decisions. `authorize_current_permission` evaluates
+  runtime and uncached decisions in a single SQL statement joining the exact
+  tenant/user, memberships, roles, and grants. `authorize_current_permission` evaluates
   those current grants on a host-supplied connection or transaction through the
   canonical tenant policy engine; it never
   consumes request snapshots and does not establish a revocation fence;
