@@ -58,7 +58,9 @@ pub async fn enforce(
         if !runner_token_valid {
             return unauthorized("Missing or invalid registry runner token");
         }
-        request.extensions_mut().insert(VerifiedRegistryRunnerAccess);
+        request
+            .extensions_mut()
+            .insert(VerifiedRegistryRunnerAccess);
         return next.run(request).await;
     }
 
@@ -428,8 +430,12 @@ mod tests {
         assert!(is_remote_runner_path("/v2/catalog/runner/claim_1/complete"));
         assert!(is_remote_runner_path("/v2/catalog/runner/claim_1/fail"));
         assert!(!is_remote_runner_path("/v2/catalog/runner/claim_1"));
-        assert!(!is_remote_runner_path("/v2/catalog/runner/claim_1/heartbeat/"));
-        assert!(!is_remote_runner_path("//v2/catalog/runner/claim_1/heartbeat"));
+        assert!(!is_remote_runner_path(
+            "/v2/catalog/runner/claim_1/heartbeat/"
+        ));
+        assert!(!is_remote_runner_path(
+            "//v2/catalog/runner/claim_1/heartbeat"
+        ));
         assert!(!is_remote_runner_path("/v2/catalog/publish/rpr_1"));
     }
 

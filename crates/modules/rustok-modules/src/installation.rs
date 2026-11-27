@@ -4729,9 +4729,13 @@ impl SeaOrmArtifactInstallationStore {
                 "artifact installation resolution requires a non-nil tenant".to_string(),
             ));
         }
-        let tx = self.db.begin().await
+        let tx = self
+            .db
+            .begin()
+            .await
             .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
-        configure_rls_scope(&tx, &ModuleInstallationScope::Tenant { tenant_id }).await
+        configure_rls_scope(&tx, &ModuleInstallationScope::Tenant { tenant_id })
+            .await
             .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend())
             .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
@@ -4745,8 +4749,10 @@ impl SeaOrmArtifactInstallationStore {
         }
         let mut artifacts = Vec::with_capacity(selection.rows.len());
         for row in selection.rows {
-            let field = |name: &str| row.try_get::<String>("", name)
-                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()));
+            let field = |name: &str| {
+                row.try_get::<String>("", name)
+                    .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))
+            };
             let release = ArtifactReleaseRef {
                 slug: field("slug")?,
                 version: field("version")?,
@@ -4754,12 +4760,14 @@ impl SeaOrmArtifactInstallationStore {
             };
             if field("admission_payload_digest")? != release.digest {
                 return Err(ArtifactInstallationResolveError::Invariant(
-                    "selected artifact admission payload does not match the installation".to_string(),
+                    "selected artifact admission payload does not match the installation"
+                        .to_string(),
                 ));
             }
             artifacts.push(decode_installed_artifact_row(&row, backend, &release)?);
         }
-        tx.commit().await
+        tx.commit()
+            .await
             .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
         Ok(artifacts)
     }
@@ -12503,6 +12511,12 @@ mod tests {
                 .await
                 .is_err()
         );
-        assert!(store.list_active_for_tenant(tenant_id).await.unwrap().is_empty());
+        assert!(
+            store
+                .list_active_for_tenant(tenant_id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 }

@@ -1355,12 +1355,17 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             self.db.clone(),
             self.infrastructure.clone(),
         );
-        let artifacts = installations.list_active_for_tenant(tenant_id).await
+        let artifacts = installations
+            .list_active_for_tenant(tenant_id)
+            .await
             .map_err(database_error)?;
         let mut catalog = (*self.definition_catalog()?).clone();
         let mut defaults = self.default_enabled_modules.clone();
         for artifact in &artifacts {
-            catalog.insert(crate::ModuleDefinition::from_artifact_descriptor(&artifact.descriptor))
+            catalog
+                .insert(crate::ModuleDefinition::from_artifact_descriptor(
+                    &artifact.descriptor,
+                ))
                 .map_err(ModuleLifecycleDbWriterError::Definition)?;
             // The active, tenant-enabled selection is the dynamic owner
             // intent. Explicit tenant overrides can still deny it.
@@ -1369,7 +1374,10 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         let mut inputs = Vec::with_capacity(artifacts.len());
         for artifact in artifacts {
             let supported = supported_payload_kinds.contains(&artifact.descriptor.payload_kind);
-            inputs.push(self.runtime_policy_input_for_artifact(artifact, tenant_id, supported).await?);
+            inputs.push(
+                self.runtime_policy_input_for_artifact(artifact, tenant_id, supported)
+                    .await?,
+            );
         }
         ModuleEffectivePolicyQuery::new_with_context(
             &catalog,
@@ -1543,7 +1551,10 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             let executor_available = self.artifact_executor.is_some_and(|executor| {
                 executor.supports_payload_kind(artifact.descriptor.payload_kind)
             });
-            inputs.push(self.runtime_policy_input_for_artifact(artifact, tenant_id, executor_available).await?);
+            inputs.push(
+                self.runtime_policy_input_for_artifact(artifact, tenant_id, executor_available)
+                    .await?,
+            );
         }
         Ok(inputs)
     }
@@ -1563,8 +1574,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         // effective revision is the artifact's. Absence/mismatch are
         // policy states; storage and invariant failures propagate.
         let capability_policy_revision =
-            match ArtifactSandboxPolicyResolver::resolve(&policies, &artifact, tenant_id).await
-            {
+            match ArtifactSandboxPolicyResolver::resolve(&policies, &artifact, tenant_id).await {
                 Ok(_) => Some(artifact.capability_grant_revision),
                 Err(
                     ArtifactSandboxPolicyResolveError::Unavailable

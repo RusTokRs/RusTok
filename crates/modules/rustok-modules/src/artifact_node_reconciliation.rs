@@ -494,7 +494,8 @@ impl SeaOrmArtifactNodeReadiness {
         policy: &crate::ModuleEffectivePolicy,
     ) -> Result<(), ModuleArtifactNodeReconciliationError> {
         let before = load_state(&self.db, false).await?;
-        let observed_id = before.observed_id
+        let observed_id = before
+            .observed_id
             .filter(|id| before.desired_id == Some(*id))
             .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
         let readiness_revision = load_deployment_readiness_revision(&self.db, observed_id).await?;
@@ -502,7 +503,8 @@ impl SeaOrmArtifactNodeReadiness {
             .list_active_for_tenant(tenant_id)
             .await
             .map_err(store_error)?;
-        let selected = selected.into_iter()
+        let selected = selected
+            .into_iter()
             .map(|item| (item.release.slug.clone(), item))
             .collect::<BTreeMap<_, _>>();
         let required = serving_artifact_closure(tenant_id, artifact, policy, &selected)?;
@@ -700,24 +702,30 @@ pub(crate) fn serving_artifact_closure<'a>(
         if let ModuleDefinitionSource::Artifact { release } = source {
             let item = selected.get(&slug).ok_or_else(denied)?;
             if &item.release != release
-                || policy.admit_artifact_execution(
-                    tenant_id, release, ArtifactInstallationTarget::ExactInstallation {
-                        installation_id: item.installation_id,
-                    },
-                ).is_none()
+                || policy
+                    .admit_artifact_execution(
+                        tenant_id,
+                        release,
+                        ArtifactInstallationTarget::ExactInstallation {
+                            installation_id: item.installation_id,
+                        },
+                    )
+                    .is_none()
             {
                 return Err(denied());
             }
-            let exact_fact = decision.facts.iter().any(|fact| matches!(fact,
-                ModuleEffectivePolicyFact::ArtifactInstallation {
-                    installation_id, scope, release_digest, dependency_graph_revision,
-                    dependency_graph_digest, capability_grant_revision,
-                } if *installation_id == item.installation_id && scope == &item.scope
-                    && release_digest == &item.release.digest
-                    && *dependency_graph_revision == item.dependency_lock.graph_revision
-                    && dependency_graph_digest == &item.dependency_lock.graph_digest
-                    && *capability_grant_revision == item.capability_grant_revision
-            ));
+            let exact_fact = decision.facts.iter().any(|fact| {
+                matches!(fact,
+                    ModuleEffectivePolicyFact::ArtifactInstallation {
+                        installation_id, scope, release_digest, dependency_graph_revision,
+                        dependency_graph_digest, capability_grant_revision,
+                    } if *installation_id == item.installation_id && scope == &item.scope
+                        && release_digest == &item.release.digest
+                        && *dependency_graph_revision == item.dependency_lock.graph_revision
+                        && dependency_graph_digest == &item.dependency_lock.graph_digest
+                        && *capability_grant_revision == item.capability_grant_revision
+                )
+            });
             if !exact_fact {
                 return Err(denied());
             }
@@ -730,9 +738,17 @@ pub(crate) fn serving_artifact_closure<'a>(
                 {
                     return Err(denied());
                 }
-                let actual_edges = dependency.descriptor.dependencies.iter()
-                    .map(|edge| edge.slug.as_str()).collect::<BTreeSet<_>>();
-                let locked_edges = lock.dependencies.iter().map(String::as_str).collect::<BTreeSet<_>>();
+                let actual_edges = dependency
+                    .descriptor
+                    .dependencies
+                    .iter()
+                    .map(|edge| edge.slug.as_str())
+                    .collect::<BTreeSet<_>>();
+                let locked_edges = lock
+                    .dependencies
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<BTreeSet<_>>();
                 if actual_edges != locked_edges {
                     return Err(denied());
                 }
@@ -742,10 +758,16 @@ pub(crate) fn serving_artifact_closure<'a>(
         }
         for fact in &decision.facts {
             match fact {
-                ModuleEffectivePolicyFact::Dependency { module_slug, enabled } if *enabled =>
-                    pending.push(module_slug.clone()),
-                ModuleEffectivePolicyFact::CoRequisite { module_slug, enabled, compatible, .. }
-                    if *enabled && *compatible => pending.push(module_slug.clone()),
+                ModuleEffectivePolicyFact::Dependency {
+                    module_slug,
+                    enabled,
+                } if *enabled => pending.push(module_slug.clone()),
+                ModuleEffectivePolicyFact::CoRequisite {
+                    module_slug,
+                    enabled,
+                    compatible,
+                    ..
+                } if *enabled && *compatible => pending.push(module_slug.clone()),
                 ModuleEffectivePolicyFact::Dependency { .. }
                 | ModuleEffectivePolicyFact::CoRequisite { .. } => return Err(denied()),
                 _ => {}
@@ -853,7 +875,9 @@ where
         let resolved_assignments =
             resolve_assignment_identities(&transaction, &topology, true).await?;
         let readiness_revision = deployment_readiness_revision(
-            &command.policy_revision, &topology.topology_digest, &resolved_assignments,
+            &command.policy_revision,
+            &topology.topology_digest,
+            &resolved_assignments,
         )?;
         let predecessor = match state.observed_id {
             Some(reconciliation_id) => {
@@ -1624,7 +1648,8 @@ fn deployment_readiness_revision(
         "deployment_intent_revision": intent,
         "topology_digest": topology_digest,
         "assignments": assignments,
-    })).map_err(digest_error)
+    }))
+    .map_err(digest_error)
 }
 
 /// Reconstruct the digest from the persisted owner-issued set. Old rows
@@ -1640,7 +1665,9 @@ async fn load_deployment_readiness_revision(
         vec![backend.uuid_value(reconciliation_id)],
     )).await.map_err(store_error)?
         .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
-    let intent: Option<String> = row.try_get("", "deployment_intent_revision").map_err(store_error)?;
+    let intent: Option<String> = row
+        .try_get("", "deployment_intent_revision")
+        .map_err(store_error)?;
     let intent = intent.ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
     let reconciliation = load_reconciliation(db, reconciliation_id, false).await?;
     if reconciliation.status != ModuleArtifactNodeReconciliationStatus::Converged {
@@ -1680,7 +1707,8 @@ async fn load_deployment_readiness_revision(
         topology_digest: reconciliation.topology_digest.clone(),
         assignments: targets,
     })?;
-    let expected = deployment_readiness_revision(&intent, &reconciliation.topology_digest, &resolved)?;
+    let expected =
+        deployment_readiness_revision(&intent, &reconciliation.topology_digest, &resolved)?;
     if expected != reconciliation.policy_revision {
         return Err(ModuleArtifactNodeReconciliationError::StaleReconciliation);
     }
@@ -3558,8 +3586,10 @@ mod tests {
         );
         let readiness =
             SeaOrmArtifactNodeReadiness::new(service.db.clone(), node_id).expect("node readiness");
-        let deployment_revision = load_deployment_readiness_revision(&service.db, created.reconciliation_id)
-            .await.expect("owner-issued deployment revision");
+        let deployment_revision =
+            load_deployment_readiness_revision(&service.db, created.reconciliation_id)
+                .await
+                .expect("owner-issued deployment revision");
         assert_ne!(deployment_revision, policy_revision);
         assert_eq!(deployment_revision, reconciliation.policy_revision);
         // Neither legacy evidence nor a substituted deployment intent can
@@ -3582,7 +3612,12 @@ mod tests {
         service.db.execute_unprepared(&format!(
             "UPDATE module_artifact_node_reconciliations SET deployment_intent_revision = '{policy_revision}' WHERE reconciliation_id = '{reconciliation_id}'"
         )).await.unwrap();
-        assert_eq!(load_deployment_readiness_revision(&service.db, reconciliation_id).await.unwrap(), deployment_revision);
+        assert_eq!(
+            load_deployment_readiness_revision(&service.db, reconciliation_id)
+                .await
+                .unwrap(),
+            deployment_revision
+        );
         let policy_revision = deployment_revision;
         let identity = InstallationIdentity {
             installation_scope: ModuleArtifactNodeInstallationScope::Platform,
@@ -3610,7 +3645,9 @@ mod tests {
             "UPDATE module_artifact_node_reconciliation_state SET desired_reconciliation_id = NULL WHERE state_id = 'current'"
         ).await.unwrap();
         assert!(matches!(
-            readiness.require_active_identity(installation_id, &identity, &policy_revision).await,
+            readiness
+                .require_active_identity(installation_id, &identity, &policy_revision)
+                .await,
             Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)
         ));
         service.db.execute_unprepared(&format!(

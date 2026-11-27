@@ -19,8 +19,12 @@ impl MigrationTrait for Migration {
         // NULL is an explicit legacy marker. Never reinterpret historical
         // observations as owner-derived deployment evidence.
         let sql = match backend {
-            SupportedBackend::Postgres => "ALTER TABLE module_artifact_node_reconciliations ADD COLUMN deployment_intent_revision TEXT NULL CHECK (deployment_intent_revision IS NULL OR deployment_intent_revision ~ '^sha256:[0-9a-f]{64}$')",
-            SupportedBackend::Sqlite => "ALTER TABLE module_artifact_node_reconciliations ADD COLUMN deployment_intent_revision TEXT NULL CHECK (deployment_intent_revision IS NULL OR (length(deployment_intent_revision) = 71 AND substr(deployment_intent_revision, 1, 7) = 'sha256:' AND substr(deployment_intent_revision, 8) NOT GLOB '*[^0-9a-f]*'))",
+            SupportedBackend::Postgres => {
+                "ALTER TABLE module_artifact_node_reconciliations ADD COLUMN deployment_intent_revision TEXT NULL CHECK (deployment_intent_revision IS NULL OR deployment_intent_revision ~ '^sha256:[0-9a-f]{64}$')"
+            }
+            SupportedBackend::Sqlite => {
+                "ALTER TABLE module_artifact_node_reconciliations ADD COLUMN deployment_intent_revision TEXT NULL CHECK (deployment_intent_revision IS NULL OR (length(deployment_intent_revision) = 71 AND substr(deployment_intent_revision, 1, 7) = 'sha256:' AND substr(deployment_intent_revision, 8) NOT GLOB '*[^0-9a-f]*'))"
+            }
         };
         manager.get_connection().execute_unprepared(sql).await?;
         Ok(())

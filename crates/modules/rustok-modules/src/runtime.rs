@@ -651,16 +651,19 @@ where
             // An effective-policy token issued before a durable policy
             // transition must not silently gain authority from a new one.
             // Owner-revalidation dispatch has no prior revision to compare.
-            if dispatch.admission.policy_revision().is_some_and(|revision| revision != policy.policy_revision())
+            if dispatch
+                .admission
+                .policy_revision()
+                .is_some_and(|revision| revision != policy.policy_revision())
                 || policy
-                .admit_artifact_execution(
-                    dispatch.tenant_id,
-                    &artifact.release,
-                    crate::ArtifactInstallationTarget::ExactInstallation {
-                        installation_id: artifact.installation_id,
-                    },
-                )
-                .is_none()
+                    .admit_artifact_execution(
+                        dispatch.tenant_id,
+                        &artifact.release,
+                        crate::ArtifactInstallationTarget::ExactInstallation {
+                            installation_id: artifact.installation_id,
+                        },
+                    )
+                    .is_none()
             {
                 return Err(ArtifactBindingDispatchError::DeniedByPolicy {
                     slug: artifact.release.slug.clone(),
@@ -1104,26 +1107,30 @@ mod tests {
 
     #[test]
     fn serving_closure_requires_exact_locked_dependency_and_current_policy() {
-        use std::collections::BTreeMap;
         use crate::artifact_node_reconciliation::serving_artifact_closure;
+        use std::collections::BTreeMap;
 
         let mut root = installed(&package());
         let mut dependency = installed(&package());
         dependency.release.slug = "dependency".into();
         dependency.descriptor.slug = dependency.release.slug.clone();
-        root.descriptor.dependencies.push(crate::ModuleDependencyConstraint {
-            slug: dependency.release.slug.clone(),
-            version_requirement: "*".into(),
-        });
-        root.dependency_lock = crate::ModuleDependencyLockGraph::create(1, vec![
-            crate::ModuleDependencyLockNode {
+        root.descriptor
+            .dependencies
+            .push(crate::ModuleDependencyConstraint {
+                slug: dependency.release.slug.clone(),
+                version_requirement: "*".into(),
+            });
+        root.dependency_lock = crate::ModuleDependencyLockGraph::create(
+            1,
+            vec![crate::ModuleDependencyLockNode {
                 slug: dependency.release.slug.clone(),
                 version: dependency.release.version.clone(),
                 payload_digest: dependency.release.digest.clone(),
                 manifest_digest: dependency.reference.digest.clone(),
                 dependencies: vec![],
-            },
-        ]).unwrap();
+            }],
+        )
+        .unwrap();
         let tenant_id = Uuid::new_v4();
         let revision = format!("sha256:{}", "b".repeat(64));
         let mut decisions = serde_json::Map::new();
@@ -1140,25 +1147,41 @@ mod tests {
             if item.installation_id == root.installation_id {
                 facts.push(json!({"kind":"dependency", "module_slug":dependency.release.slug.clone(),"enabled":true}));
             }
-            decisions.insert(item.release.slug.clone(), json!({
-                "module_slug":item.release.slug.clone(), "enabled":true,
-                "policy_revision":revision.clone(), "facts":facts, "denial_reasons":[]
-            }));
+            decisions.insert(
+                item.release.slug.clone(),
+                json!({
+                    "module_slug":item.release.slug.clone(), "enabled":true,
+                    "policy_revision":revision.clone(), "facts":facts, "denial_reasons":[]
+                }),
+            );
         }
         let policy: ModuleEffectivePolicy = serde_json::from_value(json!({
             "policy_revision": revision,
             "enabled_modules": [root.release.slug.clone(), dependency.release.slug.clone()],
             "decisions": decisions
-        })).unwrap();
+        }))
+        .unwrap();
         let mut selected = BTreeMap::from([
             (root.release.slug.clone(), root.clone()),
             (dependency.release.slug.clone(), dependency.clone()),
         ]);
-        assert_eq!(serving_artifact_closure(tenant_id, &root, &policy, &selected).unwrap().len(), 2);
-        selected.get_mut(&dependency.release.slug).unwrap().reference.digest = format!("sha256:{}", "f".repeat(64));
+        assert_eq!(
+            serving_artifact_closure(tenant_id, &root, &policy, &selected)
+                .unwrap()
+                .len(),
+            2
+        );
+        selected
+            .get_mut(&dependency.release.slug)
+            .unwrap()
+            .reference
+            .digest = format!("sha256:{}", "f".repeat(64));
         assert!(serving_artifact_closure(tenant_id, &root, &policy, &selected).is_err());
         selected.insert(dependency.release.slug.clone(), dependency.clone());
-        selected.get_mut(&dependency.release.slug).unwrap().capability_grant_revision += 1;
+        selected
+            .get_mut(&dependency.release.slug)
+            .unwrap()
+            .capability_grant_revision += 1;
         assert!(serving_artifact_closure(tenant_id, &root, &policy, &selected).is_err());
         selected.remove(&dependency.release.slug);
         assert!(serving_artifact_closure(tenant_id, &root, &policy, &selected).is_err());
@@ -1196,7 +1219,11 @@ mod tests {
                 }
             }
         })).expect("valid current policy");
-        assert!(policy.admit_artifact_execution(tenant_id, &installed.release, target).is_some());
+        assert!(
+            policy
+                .admit_artifact_execution(tenant_id, &installed.release, target)
+                .is_some()
+        );
         let executor = ArtifactRuntimeLifecycleExecutor::new(
             ArtifactRuntime::new(
                 InMemoryArtifactBlobStore::default(),
@@ -1206,21 +1233,29 @@ mod tests {
             DeniedSandboxPolicy,
             FixedEffectivePolicy(policy),
         );
-        let error = executor.dispatch_binding(ArtifactBindingDispatch {
-            release: &installed.release,
-            binding: &binding,
-            target,
-            tenant_id,
-            admission: crate::ArtifactExecutionAdmission::effective_policy(
-                tenant_id, &installed.release, target, format!("sha256:{}", "a".repeat(64)),
-            ),
-            input: json!({"id": 1}),
-            phase: ExecutionPhase::Event,
-            context: crate::ArtifactBindingExecutionContext::default(),
-        }).await.expect_err("stale policy must deny before capability resolution");
-        assert!(matches!(error, ArtifactBindingDispatchError::DeniedByPolicy {
+        let error = executor
+            .dispatch_binding(ArtifactBindingDispatch {
+                release: &installed.release,
+                binding: &binding,
+                target,
+                tenant_id,
+                admission: crate::ArtifactExecutionAdmission::effective_policy(
+                    tenant_id,
+                    &installed.release,
+                    target,
+                    format!("sha256:{}", "a".repeat(64)),
+                ),
+                input: json!({"id": 1}),
+                phase: ExecutionPhase::Event,
+                context: crate::ArtifactBindingExecutionContext::default(),
+            })
+            .await
+            .expect_err("stale policy must deny before capability resolution");
+        assert!(
+            matches!(error, ArtifactBindingDispatchError::DeniedByPolicy {
             policy_revision, ..
-        } if policy_revision == revision));
+        } if policy_revision == revision)
+        );
     }
 
     #[tokio::test]

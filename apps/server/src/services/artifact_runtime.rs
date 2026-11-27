@@ -11,10 +11,10 @@ use async_trait::async_trait;
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
     ArtifactBlobStore, ArtifactCapabilityBrokerResolverRouter, ArtifactEffectivePolicyResolveError,
-    ArtifactEffectivePolicyResolver, ArtifactRuntime, ArtifactRuntimeLifecycleExecutor,
-    ArtifactPayloadKind, ArtifactRuntimeReadinessProbe, ExecutorPoolIdentity, ExecutorPoolRegistration,
-    ExecutorReadinessService, InstalledModuleArtifact, MODULE_BUILD_RUNTIME_ABI,
-    ModuleControlPlane, ModuleEffectivePolicy, OwnerPlacementPolicy,
+    ArtifactEffectivePolicyResolver, ArtifactPayloadKind, ArtifactRuntime,
+    ArtifactRuntimeLifecycleExecutor, ArtifactRuntimeReadinessProbe, ExecutorPoolIdentity,
+    ExecutorPoolRegistration, ExecutorReadinessService, InstalledModuleArtifact,
+    MODULE_BUILD_RUNTIME_ABI, ModuleControlPlane, ModuleEffectivePolicy, OwnerPlacementPolicy,
     ResolvingArtifactCapabilityBroker, RuntimeFingerprint, SeaOrmArtifactNodeReadiness,
     SharedArtifactBindingExecutor, VerifiedArtifactNodeCache,
 };
@@ -83,20 +83,25 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
             .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?;
         // A policy denial remains a policy denial; readiness cannot turn it
         // into an infrastructure error or authorize a disabled installation.
-        if policy.admit_artifact_execution(
-            tenant_id, &artifact.release,
-            rustok_modules::ArtifactInstallationTarget::ExactInstallation {
-                installation_id: artifact.installation_id,
-            },
-        ).is_none() {
+        if policy
+            .admit_artifact_execution(
+                tenant_id,
+                &artifact.release,
+                rustok_modules::ArtifactInstallationTarget::ExactInstallation {
+                    installation_id: artifact.installation_id,
+                },
+            )
+            .is_none()
+        {
             return Ok(policy);
         }
         self.node_readiness
             .require_active_policy_closure(tenant_id, artifact, &policy)
             .await
             .map_err(|error| match error {
-                rustok_modules::ModuleArtifactNodeReconciliationError::Store(_) =>
-                    ArtifactEffectivePolicyResolveError::Store(error.to_string()),
+                rustok_modules::ModuleArtifactNodeReconciliationError::Store(_) => {
+                    ArtifactEffectivePolicyResolveError::Store(error.to_string())
+                }
                 _ => ArtifactEffectivePolicyResolveError::NodeNotReady(error.to_string()),
             })?;
         Ok(policy)
@@ -110,17 +115,24 @@ pub(crate) async fn resolve_serving_artifact_policy(
     tenant_id: uuid::Uuid,
     artifact: &InstalledModuleArtifact,
 ) -> Result<ModuleEffectivePolicy> {
-    let resolver = ctx.shared_get::<ServerArtifactEffectivePolicyResolver>()
+    let resolver = ctx
+        .shared_get::<ServerArtifactEffectivePolicyResolver>()
         .ok_or(Error::InternalServerError)?;
-    resolver.resolve(tenant_id, artifact).await.map_err(|error| {
-        tracing::warn!(%error, "artifact serving policy unavailable");
-        match error {
-            ArtifactEffectivePolicyResolveError::NodeNotReady(_) => crate::error::http_error(
-                rustok_web::HttpError::forbidden("module_policy_denied", "Artifact node is not ready for the current policy"),
-            ),
-            _ => Error::InternalServerError,
-        }
-    })
+    resolver
+        .resolve(tenant_id, artifact)
+        .await
+        .map_err(|error| {
+            tracing::warn!(%error, "artifact serving policy unavailable");
+            match error {
+                ArtifactEffectivePolicyResolveError::NodeNotReady(_) => {
+                    crate::error::http_error(rustok_web::HttpError::forbidden(
+                        "module_policy_denied",
+                        "Artifact node is not ready for the current policy",
+                    ))
+                }
+                _ => Error::InternalServerError,
+            }
+        })
 }
 
 pub const DEFAULT_DEV_ARTIFACT_NODE_ID: uuid::Uuid =
@@ -215,10 +227,13 @@ pub async fn compose_artifact_binding_executor(
     )
     .map_err(|error| Error::Message(format!("artifact node cache is invalid: {error}")))?;
     let runtime = ArtifactRuntime::new(artifact_cache, sandbox);
-    let supported_payload_kinds = [ArtifactPayloadKind::Rhai, ArtifactPayloadKind::WasmComponent]
-        .into_iter()
-        .filter(|kind| runtime.supports_payload_kind(*kind))
-        .collect();
+    let supported_payload_kinds = [
+        ArtifactPayloadKind::Rhai,
+        ArtifactPayloadKind::WasmComponent,
+    ]
+    .into_iter()
+    .filter(|kind| runtime.supports_payload_kind(*kind))
+    .collect();
     let policy_resolver = ServerArtifactEffectivePolicyResolver {
         db: ctx.db_clone(),
         registry,
