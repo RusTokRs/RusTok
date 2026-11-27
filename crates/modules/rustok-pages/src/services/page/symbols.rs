@@ -198,7 +198,7 @@ pub(super) fn apply_site_symbols_to_content(
 }
 
 /// Loads the canonical symbol catalog for a tenant, keyed by locale.
-pub(super) async fn load_site_symbols_by_locale<C: ConnectionTrait>(
+pub(crate) async fn load_site_symbols_by_locale<C: ConnectionTrait>(
     conn: &C,
     tenant_id: Uuid,
 ) -> PagesResult<HashMap<String, Vec<Value>>> {
