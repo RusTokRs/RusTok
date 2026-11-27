@@ -237,6 +237,17 @@ where
     app.ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))
 }
 
+fn require_direct_user_consent(
+    context: &AuthAdminMutationContext,
+) -> Result<(), AuthAdminMutationError> {
+    match context.principal_kind {
+        Some(rustok_api::AuthPrincipalKind::DirectUser) => Ok(()),
+        _ => Err(AuthAdminMutationError::Forbidden(
+            "oauth consent operations require a direct user session".to_string(),
+        )),
+    }
+}
+
 fn validate_grant_dependencies(grant_types: &[String]) -> Result<(), AuthAdminMutationError> {
     let has_authorization_code = grant_types
         .iter()
@@ -334,19 +345,9 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         app_id: Uuid,
         scopes: Vec<String>,
     ) -> Result<(), AuthAdminMutationError> {
-        // Consent is the user's own grant decision. A delegated token must
-        // not pre-consent another application on the user's behalf: the REST
-        // authorize/consent flow enforces the same DirectUser invariant, and
-        // this provider is the registered composition, so the check must run
-        // here and not only in the inner provider it bypasses.
-        match context.principal_kind {
-            Some(rustok_api::AuthPrincipalKind::DirectUser) => {}
-            _ => {
-                return Err(AuthAdminMutationError::Forbidden(
-                    "oauth consent operations require a direct user session".to_string(),
-                ));
-            }
-        }
+        // Consent is the user's own decision, not authority delegated to an
+        // OAuth client. Enforce this at the outer provider boundary.
+        require_direct_user_consent(context)?;
         OAuthAppService::grant_consent_strict(
             &self.db,
             app_id,
@@ -363,6 +364,7 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         context: &AuthAdminMutationContext,
         app_id: Uuid,
     ) -> Result<(), AuthAdminMutationError> {
+        require_direct_user_consent(context)?;
         self.inner.revoke_oauth_app_consent(context, app_id).await
     }
 }
@@ -382,7 +384,7 @@ mod tests {
 
     use super::{
         GuardedOAuthAdminProvider, clamp_oauth_guard_list_limit, internal_oauth_guard_error,
-        validate_grant_dependencies,
+        require_direct_user_consent, validate_grant_dependencies,
     };
     use crate::models::oauth_apps::scope_runtime_copy_locale;
     use crate::models::{oauth_apps, tenants};
@@ -401,7 +403,7 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn guarded_consent_grant_requires_direct_user_principal() {
+    async fn guarded_consent_mutations_require_direct_user_principal() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tenant = tenants::ActiveModel::new(
             "OAuth consent guard tenant",
@@ -447,12 +449,20 @@ mod tests {
                 locale: Some("en".to_string()),
                 principal_kind,
             };
-            let result = guarded
+            let grant_result = guarded
                 .grant_oauth_app_consent(&context, created.app.id, vec!["profile".to_string()])
                 .await;
             assert!(
-                matches!(result, Err(AuthAdminMutationError::Forbidden(_))),
-                "principal_kind {principal_kind:?} must not grant consent, got {result:?}"
+                matches!(grant_result, Err(AuthAdminMutationError::Forbidden(_))),
+                "principal_kind {principal_kind:?} must not grant consent, got {grant_result:?}"
+            );
+
+            let revoke_result = guarded
+                .revoke_oauth_app_consent(&context, created.app.id)
+                .await;
+            assert!(
+                matches!(revoke_result, Err(AuthAdminMutationError::Forbidden(_))),
+                "principal_kind {principal_kind:?} must not revoke consent, got {revoke_result:?}"
             );
         }
     }
@@ -697,6 +707,32 @@ mod tests {
             .expect("reload app")
             .expect("app still exists");
         assert_eq!(current.client_secret_hash.as_deref(), Some(competing_hash.as_str()));
+    }
+
+    #[test]
+    fn direct_user_consent_guard_rejects_delegated_service_and_unknown_principals() {
+        let context = |principal_kind| AuthAdminMutationContext {
+            actor_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            request_id: None,
+            locale: Some("en".to_string()),
+            principal_kind,
+        };
+
+        assert!(require_direct_user_consent(&context(Some(
+            rustok_api::AuthPrincipalKind::DirectUser
+        )))
+        .is_ok());
+        for principal_kind in [
+            Some(rustok_api::AuthPrincipalKind::DelegatedUser),
+            Some(rustok_api::AuthPrincipalKind::Service),
+            None,
+        ] {
+            assert!(matches!(
+                require_direct_user_consent(&context(principal_kind)),
+                Err(AuthAdminMutationError::Forbidden(_))
+            ));
+        }
     }
 
     #[test]
