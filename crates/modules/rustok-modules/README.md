@@ -187,8 +187,9 @@ production readiness. The documented implementation and operational gaps include
   cutover. Mixed native/artifact serving closures also fence tenant lifecycle
   revision and optional override intent. The verified active composition
   revision/hash is captured with the serving policy and checked under the
-  owner row lock in the SQL effect transaction. Full effective-policy,
-  contextual channel/maintenance, registry status, deployment readiness,
+  owner row lock in the SQL effect transaction. Serving closures bind and
+  transactionally revalidate converged deployment ledger evidence. Full effective-policy,
+  contextual channel/maintenance, registry status, continuous node liveness,
   cross-owner lock ordering and external-effect fencing remain open; see the
   [SQL capability authority contract](./docs/README.md#sql-capability-effect-authority).
   Source regressions and compilation/concurrent PostgreSQL evidence remain unrun.

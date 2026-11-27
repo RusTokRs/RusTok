@@ -3635,3 +3635,16 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   Cross-owner lock ordering, independent registry/readiness mutation fences,
   contextual channel/maintenance authority, compiled registry consistency
   and end-to-end runtime evidence remain open.
+
+- Source-wired converged deployment head, state revision, owner readiness
+  digest and exact node assignment observation revisions into the serving
+  closure. One readiness read snapshot and final head comparison; fresh
+  preflight compares full evidence. SQL effects take the shared reconciliation
+  state row lock after selection fences and before composition, recompute
+  digest and verify all required live/observed assignment identities and
+  observations. Selection-only fixtures cannot authorize serving effects.
+  Existing ledger writers take the exclusive state row lock. SQLite source
+  regressions exercise missing dependency/node, changed observation and
+  head restoration; opt-in PostgreSQL state-lock tests cover both directions.
+  No new migration. Tests/compilation unrun; end-to-end contention, live node
+  health, registry and contextual policy authority remain open.

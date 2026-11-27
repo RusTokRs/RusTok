@@ -507,11 +507,7 @@ impl SeaOrmArtifactNodeReadiness {
         policy: &crate::ModuleEffectivePolicy,
     ) -> Result<ArtifactServingClosure, ModuleArtifactNodeReconciliationError> {
         let before = load_state(&self.db, false).await?;
-        let observed_id = before
-            .observed_id
-            .filter(|id| before.desired_id == Some(*id))
-            .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
-        let readiness_revision = load_deployment_readiness_revision(&self.db, observed_id).await?;
+        before.converged_id().ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
         let selected = crate::SeaOrmArtifactInstallationStore::new(self.db.clone())
             .list_active_for_tenant(tenant_id)
             .await
@@ -520,16 +516,25 @@ impl SeaOrmArtifactNodeReadiness {
             .into_iter()
             .map(|item| (item.release.slug.clone(), item))
             .collect::<BTreeMap<_, _>>();
-        let closure = ArtifactServingClosure::from_policy_selection(
+        let mut closure = ArtifactServingClosure::from_policy_selection(
             &self.db, tenant_id, artifact, policy, &selected,
         ).await?;
-        for (item, _) in closure.artifacts.values() {
-            self.require_active(item, &readiness_revision).await?;
-        }
-        let after = load_state(&self.db, false).await?;
-        if before.revision != after.revision || before.observed_id != after.observed_id {
+        let members = closure.artifacts.values()
+            .map(|(item, _)| Ok((item.installation_id, runtime_installation_identity(item)?)))
+            .collect::<Result<Vec<_>, ModuleArtifactNodeReconciliationError>>()?;
+        // Digest, head and observations must come from one consistent
+        // owner snapshot. Do not attach a newer deployment to an older read.
+        let tx = crate::backend::begin_snapshot_transaction(&self.db).await.map_err(store_error)?;
+        crate::backend::set_tenant_scope(&tx, tenant_id).await.map_err(store_error)?;
+        let readiness = ServingDeploymentReadiness::capture_on(&tx, self.node_id, &members).await?;
+        if readiness.state != before {
             return Err(ModuleArtifactNodeReconciliationError::StaleReconciliation);
         }
+        tx.commit().await.map_err(store_error)?;
+        if load_state(&self.db, false).await? != before {
+            return Err(ModuleArtifactNodeReconciliationError::StaleReconciliation);
+        }
+        closure.readiness = Some(readiness);
         Ok(closure)
     }
 
@@ -542,37 +547,8 @@ impl SeaOrmArtifactNodeReadiness {
         artifact: &InstalledModuleArtifact,
         policy_revision: &str,
     ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-        let identity = InstallationIdentity {
-            installation_scope: match artifact.scope {
-                ModuleInstallationScope::Platform => ModuleArtifactNodeInstallationScope::Platform,
-                ModuleInstallationScope::Tenant { .. } => {
-                    ModuleArtifactNodeInstallationScope::Tenant
-                }
-            },
-            release_digest: artifact.reference.digest.clone(),
-            payload_digest: artifact.descriptor.artifact_digest.clone(),
-            payload_kind: artifact.descriptor.payload_kind,
-            payload_media_type: artifact.payload_media_type.clone(),
-            admission_revision: 0,
-            dependency_graph_revision: artifact.dependency_lock.graph_revision,
-            dependency_graph_digest: artifact.dependency_lock.graph_digest.clone(),
-            capability_grant_revision: artifact.capability_grant_revision,
-            executor_abi: artifact.descriptor.runtime_abi.clone(),
-        };
-        if artifact.installation_id.is_nil()
-            || !valid_digest(policy_revision)
-            || !valid_digest(&identity.release_digest)
-            || !valid_digest(&identity.payload_digest)
-            || !valid_text(&identity.payload_media_type, MAX_PAYLOAD_MEDIA_TYPE_BYTES)
-            || identity.dependency_graph_revision == 0
-            || !valid_digest(&identity.dependency_graph_digest)
-            || identity.capability_grant_revision == 0
-            || !valid_text(&identity.executor_abi, MAX_EXECUTOR_ABI_BYTES)
-        {
-            return Err(ModuleArtifactNodeReconciliationError::InvalidRuntimeIdentity);
-        }
-        self.require_active_identity(artifact.installation_id, &identity, policy_revision)
-            .await
+        let identity = runtime_installation_identity(artifact)?;
+        self.require_active_identity(artifact.installation_id, &identity, policy_revision).await
     }
 
     async fn require_active_identity(
@@ -581,104 +557,207 @@ impl SeaOrmArtifactNodeReadiness {
         identity: &InstallationIdentity,
         policy_revision: &str,
     ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
-        let row = self
-            .db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                format!(
-                    "SELECT reconciliation.reconciliation_id \
-                     FROM module_artifact_node_reconciliation_state state \
-                     JOIN module_artifact_node_reconciliations reconciliation \
-                       ON reconciliation.reconciliation_id = state.observed_reconciliation_id \
-                     JOIN module_artifact_node_reconciliation_assignments assignment \
-                       ON assignment.reconciliation_id = reconciliation.reconciliation_id \
-                     JOIN module_artifact_installations installation \
-                       ON installation.installation_id = assignment.installation_id \
-                     JOIN module_artifact_admissions admission \
-                       ON admission.installation_id = installation.installation_id \
-                     WHERE state.state_id = {} \
-                       AND reconciliation.status = 'converged' \
-                       AND state.desired_reconciliation_id = state.observed_reconciliation_id \
-                       AND reconciliation.deployment_intent_revision IS NOT NULL \
-                       AND reconciliation.policy_revision = {} \
-                       AND assignment.node_id = {} \
-                       AND assignment.installation_id = {} \
-                       AND assignment.phase = 'active' \
-                       AND assignment.installation_scope = {} \
-                       AND assignment.release_digest = {} \
-                       AND assignment.payload_digest = {} \
-                       AND assignment.payload_kind = {} \
-                       AND assignment.payload_media_type = {} \
-                       AND assignment.dependency_graph_revision = {} \
-                       AND assignment.dependency_graph_digest = {} \
-                       AND assignment.capability_grant_revision = {} \
-                       AND assignment.executor_abi = {} \
-                       AND assignment.policy_revision = reconciliation.policy_revision \
-                       AND assignment.observed_installation_scope = assignment.installation_scope \
-                       AND assignment.observed_release_digest = assignment.release_digest \
-                       AND assignment.observed_payload_digest = assignment.payload_digest \
-                       AND assignment.observed_payload_kind = assignment.payload_kind \
-                       AND assignment.observed_payload_media_type = assignment.payload_media_type \
-                       AND assignment.observed_admission_revision = assignment.admission_revision \
-                       AND assignment.observed_dependency_graph_revision = assignment.dependency_graph_revision \
-                       AND assignment.observed_dependency_graph_digest = assignment.dependency_graph_digest \
-                       AND assignment.observed_capability_grant_revision = assignment.capability_grant_revision \
-                       AND assignment.observed_executor_abi = assignment.executor_abi \
-                       AND assignment.observed_policy_revision = assignment.policy_revision \
-                       AND installation.scope_kind = assignment.installation_scope \
-                       AND installation.manifest_digest = assignment.release_digest \
-                       AND installation.payload_digest = assignment.payload_digest \
-                       AND installation.payload_kind = assignment.payload_kind \
-                       AND installation.dependency_graph_revision = assignment.dependency_graph_revision \
-                       AND installation.dependency_graph_digest = assignment.dependency_graph_digest \
-                       AND installation.capability_grant_revision = assignment.capability_grant_revision \
-                       AND installation.runtime_abi = assignment.executor_abi \
-                       AND admission.revision = assignment.admission_revision \
-                       AND admission.media_type = assignment.payload_media_type \
-                       AND admission.status = 'active' \
-                       AND NOT EXISTS ( \
-                           SELECT 1 FROM module_artifact_uninstall_operations uninstall \
-                           WHERE uninstall.installation_id = installation.installation_id \
-                       ) \
-                     LIMIT 1",
-                    backend.placeholder(1),
-                    backend.placeholder(2),
-                    backend.placeholder(3),
-                    backend.placeholder(4),
-                    backend.placeholder(5),
-                    backend.placeholder(6),
-                    backend.placeholder(7),
-                    backend.placeholder(8),
-                    backend.placeholder(9),
-                    backend.placeholder(10),
-                    backend.placeholder(11),
-                    backend.placeholder(12),
-                    backend.placeholder(13),
-                ),
-                vec![
-                    RECONCILIATION_STATE_ID.into(),
-                    policy_revision.to_string().into(),
-                    backend.uuid_value(self.node_id),
-                    backend.uuid_value(installation_id),
-                    identity.installation_scope.as_str().into(),
-                    identity.release_digest.clone().into(),
-                    identity.payload_digest.clone().into(),
-                    identity.payload_kind.as_str().into(),
-                    identity.payload_media_type.clone().into(),
-                    revision_value(identity.dependency_graph_revision)?,
-                    identity.dependency_graph_digest.clone().into(),
-                    revision_value(identity.capability_grant_revision)?,
-                    identity.executor_abi.clone().into(),
-                ],
-            ))
-            .await
-            .map_err(store_error)?;
-        if row.is_some() {
-            Ok(())
-        } else {
-            Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)
+        require_active_identity_on(&self.db, self.node_id, installation_id, identity, policy_revision)
+            .await.map(|_| ())
+    }
+}
+
+fn runtime_installation_identity(
+    artifact: &InstalledModuleArtifact,
+) -> Result<InstallationIdentity, ModuleArtifactNodeReconciliationError> {
+    let identity = InstallationIdentity {
+        installation_scope: match artifact.scope {
+            ModuleInstallationScope::Platform => ModuleArtifactNodeInstallationScope::Platform,
+            ModuleInstallationScope::Tenant { .. } => {
+                ModuleArtifactNodeInstallationScope::Tenant
+            }
+        },
+        release_digest: artifact.reference.digest.clone(),
+        payload_digest: artifact.descriptor.artifact_digest.clone(),
+        payload_kind: artifact.descriptor.payload_kind,
+        payload_media_type: artifact.payload_media_type.clone(),
+        admission_revision: 0,
+        dependency_graph_revision: artifact.dependency_lock.graph_revision,
+        dependency_graph_digest: artifact.dependency_lock.graph_digest.clone(),
+        capability_grant_revision: artifact.capability_grant_revision,
+        executor_abi: artifact.descriptor.runtime_abi.clone(),
+    };
+    if artifact.installation_id.is_nil()
+        || !valid_digest(&identity.release_digest)
+        || !valid_digest(&identity.payload_digest)
+        || !valid_text(&identity.payload_media_type, MAX_PAYLOAD_MEDIA_TYPE_BYTES)
+        || identity.dependency_graph_revision == 0
+        || !valid_digest(&identity.dependency_graph_digest)
+        || identity.capability_grant_revision == 0
+        || !valid_text(&identity.executor_abi, MAX_EXECUTOR_ABI_BYTES)
+    {
+        return Err(ModuleArtifactNodeReconciliationError::InvalidRuntimeIdentity);
+    }
+    Ok(identity)
+}
+
+async fn require_active_identity_on(
+    connection: &impl ConnectionTrait,
+    node_id: Uuid,
+    installation_id: Uuid,
+    identity: &InstallationIdentity,
+    policy_revision: &str,
+) -> Result<u64, ModuleArtifactNodeReconciliationError> {
+    if node_id.is_nil() || installation_id.is_nil() || !valid_digest(policy_revision) {
+        return Err(ModuleArtifactNodeReconciliationError::InvalidRuntimeIdentity);
+    }
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let row = connection
+        .query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            format!(
+                "SELECT assignment.observation_revision \
+                 FROM module_artifact_node_reconciliation_state state \
+                 JOIN module_artifact_node_reconciliations reconciliation \
+                   ON reconciliation.reconciliation_id = state.observed_reconciliation_id \
+                 JOIN module_artifact_node_reconciliation_assignments assignment \
+                   ON assignment.reconciliation_id = reconciliation.reconciliation_id \
+                 JOIN module_artifact_installations installation \
+                   ON installation.installation_id = assignment.installation_id \
+                 JOIN module_artifact_admissions admission \
+                   ON admission.installation_id = installation.installation_id \
+                 WHERE state.state_id = {} \
+                   AND reconciliation.status = 'converged' \
+                   AND state.desired_reconciliation_id = state.observed_reconciliation_id \
+                   AND reconciliation.deployment_intent_revision IS NOT NULL \
+                   AND reconciliation.policy_revision = {} \
+                   AND assignment.node_id = {} \
+                   AND assignment.installation_id = {} \
+                   AND assignment.phase = 'active' \
+                   AND assignment.installation_scope = {} \
+                   AND assignment.release_digest = {} \
+                   AND assignment.payload_digest = {} \
+                   AND assignment.payload_kind = {} \
+                   AND assignment.payload_media_type = {} \
+                   AND assignment.dependency_graph_revision = {} \
+                   AND assignment.dependency_graph_digest = {} \
+                   AND assignment.capability_grant_revision = {} \
+                   AND assignment.executor_abi = {} \
+                   AND assignment.policy_revision = reconciliation.policy_revision \
+                   AND assignment.observed_installation_scope = assignment.installation_scope \
+                   AND assignment.observed_release_digest = assignment.release_digest \
+                   AND assignment.observed_payload_digest = assignment.payload_digest \
+                   AND assignment.observed_payload_kind = assignment.payload_kind \
+                   AND assignment.observed_payload_media_type = assignment.payload_media_type \
+                   AND assignment.observed_admission_revision = assignment.admission_revision \
+                   AND assignment.observed_dependency_graph_revision = assignment.dependency_graph_revision \
+                   AND assignment.observed_dependency_graph_digest = assignment.dependency_graph_digest \
+                   AND assignment.observed_capability_grant_revision = assignment.capability_grant_revision \
+                   AND assignment.observed_executor_abi = assignment.executor_abi \
+                   AND assignment.observed_policy_revision = assignment.policy_revision \
+                   AND installation.scope_kind = assignment.installation_scope \
+                   AND installation.manifest_digest = assignment.release_digest \
+                   AND installation.payload_digest = assignment.payload_digest \
+                   AND installation.payload_kind = assignment.payload_kind \
+                   AND installation.dependency_graph_revision = assignment.dependency_graph_revision \
+                   AND installation.dependency_graph_digest = assignment.dependency_graph_digest \
+                   AND installation.capability_grant_revision = assignment.capability_grant_revision \
+                   AND installation.runtime_abi = assignment.executor_abi \
+                   AND admission.revision = assignment.admission_revision \
+                   AND admission.media_type = assignment.payload_media_type \
+                   AND admission.status = 'active' \
+                   AND NOT EXISTS ( \
+                       SELECT 1 FROM module_artifact_uninstall_operations uninstall \
+                       WHERE uninstall.installation_id = installation.installation_id \
+                   ) \
+                 LIMIT 1",
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.placeholder(9),
+                backend.placeholder(10),
+                backend.placeholder(11),
+                backend.placeholder(12),
+                backend.placeholder(13),
+            ),
+            vec![
+                RECONCILIATION_STATE_ID.into(),
+                policy_revision.to_string().into(),
+                backend.uuid_value(node_id),
+                backend.uuid_value(installation_id),
+                identity.installation_scope.as_str().into(),
+                identity.release_digest.clone().into(),
+                identity.payload_digest.clone().into(),
+                identity.payload_kind.as_str().into(),
+                identity.payload_media_type.clone().into(),
+                revision_value(identity.dependency_graph_revision)?,
+                identity.dependency_graph_digest.clone().into(),
+                revision_value(identity.capability_grant_revision)?,
+                identity.executor_abi.clone().into(),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
+    let row = row.ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
+    revision_from_row(&row, "observation_revision", false)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ServingDeploymentReadiness {
+    state: ModuleDesiredObservedState,
+    node_id: Uuid,
+    deployment_revision: String,
+    members: BTreeMap<Uuid, (InstallationIdentity, u64)>,
+}
+
+impl ServingDeploymentReadiness {
+    async fn capture_on(
+        tx: &DatabaseTransaction,
+        node_id: Uuid,
+        required: &[(Uuid, InstallationIdentity)],
+    ) -> Result<Self, ModuleArtifactNodeReconciliationError> {
+        let state = load_state(tx, false).await?;
+        let head = state.converged_id()
+            .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
+        let deployment_revision = load_deployment_readiness_revision(tx, head).await?;
+        let mut members = BTreeMap::new();
+        for (id, identity) in required {
+            let observation = require_active_identity_on(tx, node_id, *id, identity, &deployment_revision).await?;
+            if members.insert(*id, (identity.clone(), observation)).is_some() {
+                return Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable);
+            }
         }
+        if members.is_empty() {
+            return Err(ModuleArtifactNodeReconciliationError::AssignmentUnavailable);
+        }
+        Ok(Self { state, node_id, deployment_revision, members })
+    }
+
+    /// The selection closure already holds its slug fences (and SQLite
+    /// write reservation). Every ledger writer holds the state row
+    /// exclusively before touching reconciliation/assignment evidence.
+    async fn require_current_on(
+        &self,
+        tx: &DatabaseTransaction,
+    ) -> Result<(), ModuleArtifactNodeReconciliationError> {
+        let current = load_state_with_lock(tx, StateLock::Shared).await?;
+        if current != self.state {
+            return Err(ModuleArtifactNodeReconciliationError::StaleReconciliation);
+        }
+        let head = current.converged_id()
+            .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
+        if load_deployment_readiness_revision(tx, head).await? != self.deployment_revision {
+            return Err(ModuleArtifactNodeReconciliationError::StaleReconciliation);
+        }
+        for (id, (identity, expected_observation)) in &self.members {
+            let current_observation = require_active_identity_on(
+                tx, self.node_id, *id, identity, &self.deployment_revision,
+            ).await?;
+            if current_observation != *expected_observation {
+                return Err(ModuleArtifactNodeReconciliationError::StaleReconciliation);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -692,6 +771,7 @@ pub struct ArtifactServingClosure {
     artifacts: BTreeMap<String, (InstalledModuleArtifact, u64)>,
     generations: BTreeMap<String, crate::ArtifactSelectionGeneration>,
     tenant_intents: BTreeMap<String, ServingTenantIntent>,
+    readiness: Option<ServingDeploymentReadiness>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -803,7 +883,7 @@ impl ArtifactServingClosure {
             });
         }
         tx.commit().await.map_err(store_error)?;
-        Ok(Self { tenant_id, artifacts, generations, tenant_intents })
+        Ok(Self { tenant_id, artifacts, generations, tenant_intents, readiness: None })
     }
 
     pub fn root_security_revision(&self, root: &InstalledModuleArtifact) -> Option<u64> {
@@ -816,6 +896,18 @@ impl ArtifactServingClosure {
     /// each slug), before reading any member. The caller retains the locks
     /// through commit. No pool checkout or guest code may run under them.
     pub async fn require_current_on(
+        &self,
+        tx: &DatabaseTransaction,
+    ) -> Result<(), ModuleArtifactNodeReconciliationError> {
+        let readiness = self.readiness.as_ref()
+            .ok_or(ModuleArtifactNodeReconciliationError::AssignmentUnavailable)?;
+        self.require_selection_current_on(tx).await?;
+        readiness.require_current_on(tx).await
+    }
+
+    /// Selection-only primitive; internal closure construction and regression
+    /// fixtures cannot be mistaken for a readiness-authorized serving lease.
+    pub(crate) async fn require_selection_current_on(
         &self,
         tx: &DatabaseTransaction,
     ) -> Result<(), ModuleArtifactNodeReconciliationError> {
@@ -1898,7 +1990,7 @@ fn deployment_readiness_revision(
 /// Reconstruct the digest from the persisted owner-issued set. Old rows
 /// have no deployment intent and cannot satisfy the new serving contract.
 async fn load_deployment_readiness_revision(
-    db: &DatabaseConnection,
+    db: &impl ConnectionTrait,
     reconciliation_id: Uuid,
 ) -> Result<String, ModuleArtifactNodeReconciliationError> {
     let backend = SupportedBackend::new(db.get_database_backend()).map_err(store_error)?;
@@ -2438,15 +2530,29 @@ async fn supersede_reconciliation(
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+enum StateLock {
+    None,
+    Shared,
+    Exclusive,
+}
+
 async fn load_state<C: ConnectionTrait>(
     connection: &C,
     lock_row: bool,
 ) -> Result<ModuleDesiredObservedState, ModuleArtifactNodeReconciliationError> {
+    load_state_with_lock(connection, if lock_row { StateLock::Exclusive } else { StateLock::None }).await
+}
+
+async fn load_state_with_lock<C: ConnectionTrait>(
+    connection: &C,
+    lock_row: StateLock,
+) -> Result<ModuleDesiredObservedState, ModuleArtifactNodeReconciliationError> {
     let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
-    let lock = if lock_row && backend == SupportedBackend::Postgres {
-        " FOR UPDATE"
-    } else {
-        ""
+    let lock = match (backend, lock_row) {
+        (SupportedBackend::Postgres, StateLock::Shared) => " FOR SHARE",
+        (SupportedBackend::Postgres, StateLock::Exclusive) => " FOR UPDATE",
+        _ => "",
     };
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
@@ -3522,6 +3628,61 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires RUSTOK_MODULES_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_readiness_state_shared_fence_serializes_owner_head_writes() {
+        use std::time::Duration;
+        let db = Database::connect(std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").unwrap()).await.unwrap();
+        assert_eq!(db.get_database_backend(), DbBackend::Postgres);
+        let schema = format!("readiness_fence_{}", Uuid::new_v4().simple());
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
+        let setup = db.begin().await.unwrap();
+        setup.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        setup.execute_unprepared("CREATE TABLE module_artifact_node_reconciliation_state (state_id TEXT PRIMARY KEY, revision BIGINT NOT NULL, desired_reconciliation_id UUID, observed_reconciliation_id UUID, updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP); INSERT INTO module_artifact_node_reconciliation_state (state_id, revision) VALUES ('current', 0)").await.unwrap();
+        setup.commit().await.unwrap();
+
+        let effect = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        effect.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        let original = load_state_with_lock(&effect, StateLock::Shared).await.unwrap();
+        let worker_db = db.clone();
+        let worker_schema = schema.clone();
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let mut writer = tokio::spawn(async move {
+            let tx = crate::backend::begin_fenced_transaction(&worker_db).await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}")).await.unwrap();
+            ready_tx.send(()).unwrap();
+            let state = load_state(&tx, true).await.unwrap();
+            advance_state(&tx, state.revision, state.revision + 1, None, None).await.unwrap();
+            tx.commit().await.unwrap();
+        });
+        ready_rx.await.unwrap();
+        assert!(tokio::time::timeout(Duration::from_millis(150), &mut writer).await.is_err());
+        effect.commit().await.unwrap();
+        writer.await.unwrap();
+
+        let writer = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        writer.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        let state = load_state(&writer, true).await.unwrap();
+        advance_state(&writer, state.revision, state.revision + 1, None, None).await.unwrap();
+        let worker_db = db.clone();
+        let worker_schema = schema.clone();
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let mut effect = tokio::spawn(async move {
+            let tx = crate::backend::begin_fenced_transaction(&worker_db).await.unwrap();
+            tx.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}")).await.unwrap();
+            ready_tx.send(()).unwrap();
+            let state = load_state_with_lock(&tx, StateLock::Shared).await.unwrap();
+            tx.rollback().await.unwrap();
+            state
+        });
+        ready_rx.await.unwrap();
+        assert!(tokio::time::timeout(Duration::from_millis(150), &mut effect).await.is_err());
+        writer.commit().await.unwrap();
+        let current = effect.await.unwrap();
+        assert_eq!(current.revision, original.revision + 2);
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
+    }
+
+    #[tokio::test]
     async fn owner_fences_topology_digest_converges_exact_identity_and_replays_reports() {
         let database = database().await;
         let installation_id = Uuid::new_v4();
@@ -3901,6 +4062,41 @@ mod tests {
             .require_active_identity(installation_id, &identity, &policy_revision)
             .await
             .expect("converged identity is executable");
+        let tx = crate::backend::begin_snapshot_transaction(&service.db).await.unwrap();
+        let proof = ServingDeploymentReadiness::capture_on(
+            &tx, node_id, &[(installation_id, identity.clone())],
+        ).await.unwrap();
+        assert!(ServingDeploymentReadiness::capture_on(
+            &tx, Uuid::new_v4(), &[(installation_id, identity.clone())],
+        ).await.is_err());
+        assert!(ServingDeploymentReadiness::capture_on(
+            &tx, node_id, &[(installation_id, identity.clone()), (Uuid::new_v4(), identity.clone())],
+        ).await.is_err(), "a ready root cannot substitute for a missing dependency assignment");
+        tx.commit().await.unwrap();
+
+        // SQLite already owns its write reservation at the serving fence.
+        let tx = crate::backend::begin_fenced_transaction(&service.db).await.unwrap();
+        tx.execute_unprepared("UPDATE module_artifact_node_reconciliation_state SET revision = revision WHERE state_id = 'current'").await.unwrap();
+        proof.require_current_on(&tx).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        // Reject a changed observation even when its head/digest are intact.
+        let tx = crate::backend::begin_fenced_transaction(&service.db).await.unwrap();
+        tx.execute_unprepared("UPDATE module_artifact_node_reconciliation_assignments SET observation_revision = observation_revision + 1").await.unwrap();
+        assert!(proof.require_current_on(&tx).await.is_err());
+        tx.rollback().await.unwrap();
+
+        // Simulate head divergence and restoration while retaining the
+        // original assignment digest. The old lease cannot be renewed.
+        let tx = crate::backend::begin_fenced_transaction(&service.db).await.unwrap();
+        advance_state(&tx, proof.state.revision, proof.state.revision + 1, None, proof.state.observed_id).await.unwrap();
+        assert!(proof.require_current_on(&tx).await.is_err());
+        advance_state(&tx, proof.state.revision + 1, proof.state.revision + 2, proof.state.desired_id, proof.state.observed_id).await.unwrap();
+        assert!(matches!(proof.require_current_on(&tx).await, Err(ModuleArtifactNodeReconciliationError::StaleReconciliation)));
+        let renewed = ServingDeploymentReadiness::capture_on(&tx, node_id, &[(installation_id, identity.clone())]).await.unwrap();
+        renewed.require_current_on(&tx).await.unwrap();
+        tx.rollback().await.unwrap();
+
         assert!(matches!(
             readiness
                 .require_active_identity(installation_id, &identity, &digest('f'))
