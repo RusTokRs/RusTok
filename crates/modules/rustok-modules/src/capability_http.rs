@@ -168,11 +168,9 @@ fn is_disallowed_ip(ip: IpAddr) -> bool {
             if let Some(ipv4) = ipv6.to_ipv4_mapped() {
                 return is_disallowed_ipv4(ipv4);
             }
-            // Well-known NAT64, IPv4-compatible and 6to4 traffic can be
-            // delivered to an embedded IPv4 destination, so apply IPv4 rules.
-            if let Some(ipv4) = embedded_ipv4(ipv6) {
-                return is_disallowed_ipv4(ipv4);
-            }
+            // NAT64, IPv4-mapped/translated/compatible, 6to4 and ISATAP
+            // forms can carry an IPv4 destination; apply IPv4 screening, and
+            // also retain the IPv6-prefix policy for ISATAP.
             if let Some(ipv4) = embedded_ipv4(ipv6) {
                 // ISATAP uses an arbitrary IPv6 /64 prefix. Do not let a
                 // link-local, ULA, documentation or reserved prefix bypass
