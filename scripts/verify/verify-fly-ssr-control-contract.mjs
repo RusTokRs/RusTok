@@ -126,6 +126,17 @@ const kebab = (datasetKey) =>
 
 const adapter = read(adapterPath);
 const controls = blockBody(adapter, 'bindSsrControls(signal) {');
+const selectBody = blockBody(
+  adapter,
+  'select(componentId, source, sourceElement = null) {',
+);
+if (
+  !selectBody ||
+  !/sourceElement\.closest\("\[data-fly-wasm-hydrated='true'\]"\)/.test(selectBody) ||
+  selectBody.includes('this.root.querySelector')
+) {
+  fail(adapterPath + ": selection ownership must be scoped to the originating hydrated control");
+}
 if (!controls) {
   console.error(`${adapterPath}: bindSsrControls(signal) was not found`);
   process.exit(1);
@@ -406,6 +417,28 @@ if (!browserSpec.includes(adapterPath.split('/').slice(-4).join('/'))) {
 //    palette and the layer tree, the contract markup is the same. `rsx!` writes an attribute as
 //    `"data-fly-x": value`.
 const twin = productionSource(read(twinWorkspacePath));
+const hydratedIslandCount = (twin.match(/"data-fly-wasm-hydrated":/g) || []).length;
+if (hydratedIslandCount < 2) {
+  fail(twinWorkspacePath + ": palette and layer tree must each mark their hydrated control island");
+}
+const twinLiteralActions = new Set(
+  [...twin.matchAll(/"data-fly-action":\s*"([^"]+)"/g)].map(([, action]) => action),
+);
+for (const action of twinLiteralActions) {
+  if (!handledActions.has(action)) {
+    fail(twinWorkspacePath + ": Dioxus emits unhandled browser action " + action);
+  }
+}
+if (twin.includes('"begin-component-move"')) {
+  fail(twinWorkspacePath + ": Dioxus-local move controls must not masquerade as browser actions");
+}
+if (
+  !browserSpec.includes(
+    "hydrated palette and layer islands defer to Dioxus while canvas selection remains classic-JS-owned",
+  )
+) {
+  fail(browserSpecPath + ": missing nested hydration-boundary browser regression");
+}
 for (const attribute of [...boundAttributes].sort()) {
   if (attribute === 'data-fly-action') continue;
   if (!emittedAttributes.get(attribute)?.has(workspacePath)) continue;

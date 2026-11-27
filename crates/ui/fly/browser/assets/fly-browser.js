@@ -1290,7 +1290,7 @@ export class FlyBrowserAdapter {
   // announced with `fly:select`, whatever caused it: the host bootstrap retargets the
   // server-rendered forms on that event, so a change without it leaves the forms on the
   // previous component. Selecting the selected component again announces nothing.
-  select(componentId, source) {
+  select(componentId, source, sourceElement = null) {
     const next = componentId || null;
     const changed = next !== this.selectedId;
     this.selectedId = next;
@@ -1302,12 +1302,12 @@ export class FlyBrowserAdapter {
         detail: { componentId: next, source },
       }),
     );
-    // In the hydrated workspace, Leptos owns selection and updates its local
-    // controller. The adapter still mirrors selectedId for SSR forms, but must not
-    // post a second request. SSR and iframe/inspector selections use this transport.
+    // A hydrated control island owns only selections originating inside that island.
+    // Raw canvas markup can remain classic-JS-owned beside hydrated Dioxus controls.
     const wasmOwnsSelection =
       source === "ssr-control" &&
-      this.root.querySelector("[data-fly-wasm-hydrated='true']");
+      sourceElement instanceof Element &&
+      sourceElement.closest("[data-fly-wasm-hydrated='true']") !== null;
     if (
       this.postIntents &&
       this.intentEndpoint &&
@@ -1479,7 +1479,15 @@ export class FlyBrowserAdapter {
         (event) => {
           const blockId = element.dataset.flyBlockId;
           if (!blockId) return;
-          if (element.closest("[data-fly-wasm-hydrated='true']")) return;
+          if (element.closest("[data-fly-wasm-hydrated='true']")) {
+            const nativeDragHandle =
+              event.target instanceof Element &&
+              event.target.closest(
+                "[data-fly-action='begin-block-drag'][draggable='true']",
+              );
+            if (!nativeDragHandle) event.preventDefault();
+            return;
+          }
           event.dataTransfer?.setData("application/x-fly-block", blockId);
           event.dataTransfer?.setData("text/plain", blockId);
           this.activeDrag = { kind: "block", block_id: blockId };
@@ -1516,7 +1524,7 @@ export class FlyBrowserAdapter {
         // Preview links and form controls must not navigate or submit while the
         // author is selecting a component in the canvas.
         event.preventDefault();
-        this.select(componentId, "ssr-control");
+        this.select(componentId, "ssr-control", componentElement);
       },
       { signal },
     );
@@ -1536,7 +1544,8 @@ export class FlyBrowserAdapter {
         const componentId = componentElement.dataset.flyComponentId;
         if (!componentId) return;
         if (componentElement.closest("[data-fly-wasm-hydrated='true']")) {
-          this.select(componentId, "ssr-control");
+          this.select(componentId, "ssr-control", componentElement);
+          event.preventDefault();
           return;
         }
         event.dataTransfer?.setData(
@@ -1544,7 +1553,7 @@ export class FlyBrowserAdapter {
           componentId,
         );
         event.dataTransfer?.setData("text/plain", componentId);
-        this.select(componentId, "ssr-control");
+        this.select(componentId, "ssr-control", componentElement);
         this.activeDrag = { kind: "component", component_id: componentId };
         this.activeDrop = null;
         this.root.dataset.flyDragging = "component";
@@ -1593,7 +1602,7 @@ export class FlyBrowserAdapter {
             break;
           }
           case "select-component":
-            this.select(actionElement.dataset.flyComponentId, "ssr-control");
+            this.select(actionElement.dataset.flyComponentId, "ssr-control", actionElement);
             break;
           default: {
             if (!action.startsWith("intent:")) break;

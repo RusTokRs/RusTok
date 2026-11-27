@@ -13,6 +13,7 @@ SSR and Web/Desktop Dioxus 0.7 adapter foundation and component shells for Fly v
 - `FlyContributionSummary`: Summary badge rendering loaded block, dynamic slot, and extension counts with accessible status semantics.
 - `FlyPalette`: Category-grouped block palette honoring `CapabilityState` (`edit` for insert, `drag_drop` for drag) and contribution-access filtering. Drag controls use native HTML5 `dragstart`/`dragend` and appear as draggable only when both `on_begin_drag` and `on_cancel_drag` are provided.
 - `FlyLayerTree`: Interactive layer hierarchy tree with selection highlighting and navigation. Selectable rows carry `data-fly-component-id` and `data-fly-action="select-component"`; optional move sources use native HTML5 drag events and require begin/cancel callbacks.
+- Hydration boundary: palette and layer-tree roots render data-fly-wasm-hydrated=false in SSR and switch to true after Dioxus hydration. Only Dioxus-owned controls are marked; raw FlyCanvasPreview remains outside those islands so classic JS can continue handling its component selection and drag interactions.
 - `FlyThemeTokens`: Read-only design token listing displaying token keys and resolved values.
 - `FlyThemeTokenEditor`: Interactive design token management panel supporting upsert, remove, and error dispatch.
 - `FlyCanvasPreview`: Responsive live canvas preview container rendering the active page AST into styled HTML with error fallback.

@@ -38,6 +38,7 @@ type FlyGlobal = typeof globalThis & {
     mount?: (root: Element) => {
       selectedId?: string | null;
       activeDrag?: Record<string, unknown> | null;
+      postIntents?: boolean;
       emitIntent?: (
         intent: string,
         payload: Record<string, unknown>
@@ -432,6 +433,67 @@ test('selecting the selected component again announces nothing', async ({
 
   expect(await selections(page)).toEqual([
     { componentId: 'hero-title', source: 'ssr-control' }
+  ]);
+});
+
+test('hydrated palette and layer islands defer to Dioxus while canvas selection remains classic-JS-owned', async ({
+  page
+}) => {
+  await mountSsrControls(page);
+
+  await page.evaluate(() => {
+    const root = document.querySelector('#fly-root');
+    if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
+    const adapter = (globalThis as FlyGlobal).FlyBrowser?.mount?.(root);
+    if (!adapter?.emitIntent) throw new Error('Fly browser intent transport unavailable');
+    adapter.postIntents = true;
+
+    root.querySelector('.fly-palette')?.setAttribute('data-fly-wasm-hydrated', 'true');
+    root.querySelector('.fly-layers')?.setAttribute('data-fly-wasm-hydrated', 'true');
+
+    const insert = root.querySelector('#allowed-insert');
+    insert?.addEventListener('click', () => {
+      void adapter.emitIntent?.('insert_block', { block_id: 'forum.topic_list' });
+    });
+    root.querySelector('#allowed-drag')?.setAttribute('draggable', 'true');
+
+    const canvas = document.createElement('div');
+    canvas.dataset.flyCanvas = 'true';
+    const component = document.createElement('button');
+    component.id = 'canvas-component';
+    component.dataset.flyComponentId = 'canvas-hero';
+    component.textContent = 'Canvas hero';
+    canvas.append(component);
+    root.append(canvas);
+  });
+
+  await page.locator('#allowed-insert').click();
+  await expect.poll(async () => (await requests(page)).length).toBe(1);
+
+  await page.locator('#layer-hero').click();
+  await page.locator('#layer-hero').dispatchEvent('dragstart');
+  await page.locator('#allowed-drag').dispatchEvent('dragstart');
+  expect(await adapterState(page)).toMatchObject({
+    selectedId: 'hero-title',
+    activeDrag: null,
+    dragging: null
+  });
+  expect(await requests(page)).toHaveLength(1);
+
+  await page.locator('#canvas-component').click();
+  await expect.poll(async () => (await requests(page)).length).toBe(2);
+  const recorded = await requests(page);
+  expect(recorded[0].body).toMatchObject({
+    intent: 'insert_block',
+    payload: { block_id: 'forum.topic_list' }
+  });
+  expect(recorded[1].body).toMatchObject({
+    intent: 'select',
+    payload: { component_id: 'canvas-hero' }
+  });
+  expect(await selections(page)).toEqual([
+    { componentId: 'hero-title', source: 'ssr-control' },
+    { componentId: 'canvas-hero', source: 'ssr-control' }
   ]);
 });
 

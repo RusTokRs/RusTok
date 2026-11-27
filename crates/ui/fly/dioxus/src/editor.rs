@@ -88,6 +88,10 @@ pub fn FlyPalette(
     let drag_label = messages.drag_block;
     let can_insert = capabilities.map(|s| s.edit).unwrap_or(true);
     let can_drag = capabilities.map(|s| s.drag_drop).unwrap_or(true);
+    let mut wasm_hydrated = use_signal(|| false);
+    use_effect(move || {
+        wasm_hydrated.set(true);
+    });
     let mut groups = std::collections::BTreeMap::<String, Vec<PaletteBlockItem>>::new();
     for block in blocks {
         groups
@@ -97,7 +101,11 @@ pub fn FlyPalette(
     }
 
     rsx! {
-        div { class: "fly-palette", role: "group", aria_label: "{palette_label}",
+        div {
+            class: "fly-palette",
+            role: "group",
+            aria_label: "{palette_label}",
+            "data-fly-wasm-hydrated": if *wasm_hydrated.read() { "true" } else { "false" },
             for (category, items) in groups.into_iter() {
                 details {
                     key: "{category}",
@@ -196,9 +204,16 @@ pub fn FlyLayerTree(
     let messages = messages.unwrap_or_default();
     let layers_label = messages.layers.clone();
     let move_label = messages.drag_block.clone();
+    let mut wasm_hydrated = use_signal(|| false);
+    use_effect(move || {
+        wasm_hydrated.set(true);
+    });
 
     rsx! {
-        ol { class: "fly-layers", aria_label: "{layers_label}",
+        ol {
+            class: "fly-layers",
+            aria_label: "{layers_label}",
+            "data-fly-wasm-hydrated": if *wasm_hydrated.read() { "true" } else { "false" },
             for item in layers.into_iter() {
                 {
                     let item_id = item.id.clone();
@@ -234,8 +249,6 @@ pub fn FlyLayerTree(
                                     r#type: "button",
                                     class: "fly-layers__move",
                                     aria_label: format!("{} {}", move_label, move_id),
-                                    "data-fly-action": "begin-component-move",
-                                    "data-fly-component-id": "{move_id}",
                                     draggable: move_enabled,
                                     disabled: !move_enabled,
                                     ondragstart: move |event| {
