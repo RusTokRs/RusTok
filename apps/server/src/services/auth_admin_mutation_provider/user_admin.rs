@@ -1337,7 +1337,7 @@ mod tests {
         use rustok_auth::{AuthAdminMutationContext, CreateUserCommand, UserAdminMutationPort};
         use rustok_migrations::SqliteTestMigrator;
         use rustok_test_utils::db::setup_test_db_with_migrations;
-        use rustok_outbox_storage::entity as sys_events;
+        use rustok::outbox_storage::entity as sys_events;
         use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
         use uuid::Uuid;
 
