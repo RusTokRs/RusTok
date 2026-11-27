@@ -1,5 +1,15 @@
 # Server App — Implementation Plan
 
+## GraphQL system diagnostic authority parity (2026-11-27)
+
+`sessionStats` now uses verified Auth application time and the same tenant,
+revocation, creation-time, sliding-expiry and 90-day absolute-deadline fences
+as Auth session listing. `eventsStatus.iggyMode` reports the active runtime
+mode, `inactive` for an initialized Outbox-only runtime, and the deployment
+setting only before runtime initialization. Query-shape and mode-selection
+regressions were added. Maintainer verification remains pending; compilation,
+formatting and tests were not run in this session.
+
 ## Bounded post-abort worker joins (2026-11-25)
 
 Runtime and module worker shutdown helpers now use a separate one-second
