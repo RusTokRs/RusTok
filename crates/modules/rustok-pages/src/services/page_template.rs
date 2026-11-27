@@ -173,15 +173,9 @@ impl PageTemplateService {
             let record = PageTemplateRecord::try_from(row)?;
             (record.header_symbol_ids, record.footer_symbol_ids)
         };
-        let symbols = site_symbol::Entity::find()
-            .filter(site_symbol::Column::TenantId.eq(tenant_id))
-            .filter(site_symbol::Column::Locale.eq(&locale))
-            .order_by_asc(site_symbol::Column::SymbolId)
-            .all(&self.db)
-            .await?
-            .into_iter()
-            .map(|row| row.content)
-            .collect::<Vec<_>>();
+        let mut symbols_by_locale =
+            crate::services::page::load_site_symbols_by_locale(&self.db, tenant_id).await?;
+        let symbols = symbols_by_locale.remove(&locale).unwrap_or_default();
         let composed =
             crate::services::page::compose_layout_document(document, &header, &footer, &symbols)?;
         let project: serde_json::Value = serde_json::from_str(&composed).map_err(|error| {
