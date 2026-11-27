@@ -127,6 +127,7 @@ static RBAC_PERMISSION_CACHE_KEY_EPOCHS: Lazy<[AtomicU32; RBAC_PERMISSION_CACHE_
 struct CachedPermissionSnapshot {
     token: u64,
     permissions: Vec<Permission>,
+    revision: Option<std::sync::Arc<rustok_rbac::StaticActorAuthorityRevision>>,
 }
 
 static USER_PERMISSION_CACHE: Lazy<Cache<PermissionCacheKey, CachedPermissionSnapshot>> =
@@ -149,7 +150,10 @@ fn permission_cache_entry_weight(
                 .permissions
                 .len()
                 .saturating_mul(std::mem::size_of::<Permission>()),
-        );
+        )
+        .saturating_add(snapshot.revision.as_ref().map_or(0, |revision| {
+            revision.estimated_heap_bytes().saturating_add(2 * std::mem::size_of::<usize>())
+        }));
     weight.clamp(1, u32::MAX as usize) as u32
 }
 
@@ -375,6 +379,10 @@ pub(crate) struct MokaPermissionCache;
 
 #[async_trait]
 impl PermissionCache for MokaPermissionCache {
+    fn supports_static_revisions(&self) -> bool {
+        true
+    }
+
     async fn get(&self, tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) -> Option<Vec<Permission>> {
         self.lookup(tenant_id, user_id).await.into_parts().0
     }
@@ -413,7 +421,9 @@ impl PermissionCache for MokaPermissionCache {
 
             match snapshot {
                 Some(snapshot) if snapshot.token == token => {
-                    return PermissionCacheLookup::new(Some(snapshot.permissions), token);
+                    return PermissionCacheLookup::with_revision(
+                        snapshot.permissions, token, snapshot.revision,
+                    );
                 }
                 Some(_) => {
                     USER_PERMISSION_CACHE.invalidate(&key).await;
@@ -442,13 +452,25 @@ impl PermissionCache for MokaPermissionCache {
         token: u64,
         permissions: Vec<Permission>,
     ) -> bool {
+        self.insert_bound_if_current(tenant_id, user_id, token, permissions, None)
+            .await
+    }
+
+    async fn insert_bound_if_current(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        token: u64,
+        permissions: Vec<Permission>,
+        revision: Option<std::sync::Arc<rustok_rbac::StaticActorAuthorityRevision>>,
+    ) -> bool {
         let key = (*tenant_id, *user_id);
         if current_permission_cache_token(&key) != Some(token) {
             return false;
         }
 
         USER_PERMISSION_CACHE
-            .insert(key, CachedPermissionSnapshot { token, permissions })
+            .insert(key, CachedPermissionSnapshot { token, permissions, revision })
             .await;
         if current_permission_cache_token(&key) != Some(token) {
             USER_PERMISSION_CACHE.invalidate(&key).await;
@@ -553,6 +575,7 @@ mod tests {
             &key,
             &CachedPermissionSnapshot {
                 token: 1,
+                revision: None,
                 permissions: vec![Permission::new(Resource::Users, Action::Read)],
             },
         );
@@ -560,6 +583,7 @@ mod tests {
             &key,
             &CachedPermissionSnapshot {
                 token: 1,
+                revision: None,
                 permissions: vec![Permission::new(Resource::Users, Action::Read); 32],
             },
         );
@@ -640,6 +664,73 @@ mod tests {
 
         assert!(!published);
         assert!(cache.get(&tenant_id, &user_id).await.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn revision_bound_cache_rejects_raw_grant_aba_and_checks_publication() {
+        use crate::models::_entities::role_permissions;
+
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let (tenant, user) = insert_tenant_and_user(
+            &db, "revision-cache", "revision-cache@example.test",
+        ).await;
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db, tenant, user, UserRole::Admin,
+        ).await.unwrap();
+        let resolver = resolver(&db);
+        let original = resolver.resolve_permissions(&tenant, &user).await.unwrap();
+        assert!(!original.cache_hit);
+        let cached = USER_PERMISSION_CACHE.get(&(tenant, user)).await.unwrap();
+        assert!(cached.revision.is_some());
+        assert!(resolver.resolve_permissions(&tenant, &user).await.unwrap().cache_hit);
+
+        let role = roles::Entity::find()
+            .filter(roles::Column::TenantId.eq(tenant))
+            .filter(roles::Column::Slug.eq(UserRole::Admin.to_string()))
+            .one(&db).await.unwrap().unwrap();
+        let grant = role_permissions::Entity::find()
+            .filter(role_permissions::Column::RoleId.eq(role.id))
+            .one(&db).await.unwrap().unwrap();
+        role_permissions::Entity::delete_by_id(grant.id).exec(&db).await.unwrap();
+        role_permissions::Entity::insert(role_permissions::ActiveModel {
+            id: Set(grant.id),
+            role_id: Set(grant.role_id),
+            permission_id: Set(grant.permission_id),
+        }).exec(&db).await.unwrap();
+
+        let restored = resolver.resolve_permissions(&tenant, &user).await.unwrap();
+        assert!(!restored.cache_hit, "equal grants must not hide revision ABA");
+        assert_eq!(restored.permissions, original.permissions);
+        assert!(resolver.resolve_permissions(&tenant, &user).await.unwrap().cache_hit);
+
+        // Force raw DML during conditional publication, without a cache epoch
+        // change. The first fill must not become a successful decision.
+        struct RevokingCache {
+            db: DatabaseConnection,
+            grant_id: uuid::Uuid,
+            calls: AtomicU32,
+        }
+        #[async_trait]
+        impl PermissionCache for RevokingCache {
+            fn supports_static_revisions(&self) -> bool { true }
+            async fn get(&self, _: &uuid::Uuid, _: &uuid::Uuid) -> Option<Vec<Permission>> { None }
+            async fn invalidate(&self, _: &uuid::Uuid, _: &uuid::Uuid) {}
+            async fn insert(&self, _: &uuid::Uuid, _: &uuid::Uuid, _: Vec<Permission>) {
+                if self.calls.fetch_add(1, Ordering::AcqRel) == 0 {
+                    role_permissions::Entity::delete_by_id(self.grant_id)
+                        .exec(&self.db).await.unwrap();
+                }
+            }
+        }
+        let cache = RevokingCache { db: db.clone(), grant_id: grant.id, calls: AtomicU32::new(0) };
+        let store = SeaOrmRelationPermissionStore::new(db.clone());
+        let resolved = rustok_rbac::resolve_permissions_with_cache(&store, &cache, &tenant, &user)
+            .await.unwrap();
+        assert_eq!(cache.calls.load(Ordering::Acquire), 2);
+        assert_ne!(resolved.permissions, original.permissions);
+        assert_eq!(resolved.permissions,
+            rustok_rbac::resolve_persisted_permissions_on(&db, &tenant, &user).await.unwrap());
     }
 
     #[tokio::test]

@@ -63,6 +63,28 @@ Direct SQL or missed notifications cannot justify a stale hit. It does not add
 a trigger-held global generation lock, advance the recovery watermark for raw
 DML, or make a previously admitted request snapshot current.
 
+## Durable revision-bound cache publication (2026-11-27)
+
+The production Moka adapter retains an immutable pair of normalized grants
+and the owner static actor revision, in addition to its local epoch token.
+On a miss, sample the revision before the grant read and check it again after
+conditional publication, then recheck the local epoch. A change retries the
+entire bounded attempt; a failed DB observation propagates as a store error.
+An entry from an unconfirmed attempt remains only a candidate: subsequent
+hits must validate both its exact persisted vocabulary and revision.
+
+Bound hits compare both using one SQL statement and the shared owner revision
+decoder. Equal grants after membership/grant ABA are a miss. Unknown subjects
+and legacy cache entries have no reusable revision and retain exact validation.
+Legacy adapters that do not opt in retain the existing contract. Include
+revision heap allocation in the bounded Moka entry weight.
+
+Do not replace exact-set validation with revision equality alone: privileged
+restore/replacement of the underlying database can reproduce counters with
+different contents, and the current recovery watchdog is not an atomic
+database-incarnation fence. The refinement does not claim a warm-hit speedup;
+misses incur two revision observations. Source regressions are unrun.
+
 ## Data, transaction, and concurrency boundary
 
 No schema or persistence migration is required. The generation comparison is a

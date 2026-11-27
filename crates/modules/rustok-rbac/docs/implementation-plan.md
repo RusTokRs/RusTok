@@ -563,3 +563,11 @@ exists.
   covers membership and raw grant ABA, missing evidence and new admission;
   unrun. Synchronous consumers, service OAuth, module/credential revocation,
   commit-time fencing and cross-replica runtime evidence remain open.
+
+- Revision-bound permission cache: bracket production fills with durable
+  revision reads and recheck the local epoch after publication. Bound hits
+  compare exact grants and original revision in one statement. Legacy entries
+  retain exact validation; missing/corrupt evidence and storage failure do not
+  authorize stale grants. Source regression covers raw grant ABA and mutation
+  during publication. Tests and performance evidence pending; revision-only
+  optimization requires a trustworthy database incarnation/restore contract.

@@ -1,4 +1,9 @@
+use crate::role_grant_revision::{
+    STATIC_ACTOR_REVISION_SELECT, StaticActorAuthorityRevision,
+    decode_static_actor_authority_revision, read_optional_static_actor_authority_revision_on,
+};
 use crate::services::permission_normalization::normalize_permissions;
+use std::sync::Arc;
 use rustok_api::Permission;
 use sea_orm::ConnectionTrait;
 
@@ -71,6 +76,7 @@ impl<C: ConnectionTrait> ConnectionRelationPermissionStore<'_, C> {
         tenant_id: &uuid::Uuid,
         user_id: &uuid::Uuid,
         permissions: &[Permission],
+        revision: Option<&StaticActorAuthorityRevision>,
     ) -> Result<bool, sea_orm::DbErr> {
         let (collation, expected_sql) = match self.db.get_database_backend() {
             sea_orm::DbBackend::Postgres => (
@@ -92,18 +98,37 @@ impl<C: ConnectionTrait> ConnectionRelationPermissionStore<'_, C> {
             "resource": permission.resource.to_string(),
             "action": permission.action.to_string(),
         })).collect::<Vec<_>>();
-        let statement = self.statement(
-            &format!(
-                "WITH persisted AS ({PERSISTED_GRANTS_SQL}), \
-                 current_grants AS (SELECT CAST(resource AS TEXT) COLLATE {collation} AS resource, \
-                                           CAST(action AS TEXT) COLLATE {collation} AS action FROM persisted), \
-                 expected_grants AS ({expected_sql}) \
-                 SELECT NOT EXISTS (SELECT resource, action FROM current_grants EXCEPT SELECT resource, action FROM expected_grants) \
-                    AND NOT EXISTS (SELECT resource, action FROM expected_grants EXCEPT SELECT resource, action FROM current_grants) AS grants_match"
-            ),
-            vec![(*tenant_id).into(), (*user_id).into(), serde_json::Value::Array(expected).to_string().into()],
-        )?;
-        let row = self.db.query_one_raw(statement).await?.ok_or_else(|| {
+        let mut sql = format!(
+            "WITH persisted AS ({PERSISTED_GRANTS_SQL}), \
+             current_grants AS (SELECT CAST(resource AS TEXT) COLLATE {collation} AS resource, \
+                                       CAST(action AS TEXT) COLLATE {collation} AS action FROM persisted), \
+             expected_grants AS ({expected_sql}), \
+             checks AS (SELECT NOT EXISTS (SELECT resource, action FROM current_grants EXCEPT SELECT resource, action FROM expected_grants) \
+                AND NOT EXISTS (SELECT resource, action FROM expected_grants EXCEPT SELECT resource, action FROM current_grants) AS grants_match)"
+        );
+        let mut values = vec![
+            (*tenant_id).into(),
+            (*user_id).into(),
+            serde_json::Value::Array(expected).to_string().into(),
+        ];
+        if let Some(revision) = revision {
+            // One observation for both exact vocabulary and durable revision.
+            // A missing actor yields no rows and cannot validate a bound hit.
+            sql.push_str(&format!(
+                ", revision AS ({STATIC_ACTOR_REVISION_SELECT} WHERE u.tenant_id = ? AND u.id = ?) \
+                 SELECT checks.grants_match, revision.* FROM checks CROSS JOIN revision"
+            ));
+            values.extend([(*tenant_id).into(), (*user_id).into()]);
+            let rows = self.db.query_all_raw(self.statement(&sql, values)?).await?;
+            let Some(row) = rows.first() else {
+                return Ok(false);
+            };
+            let matches: bool = row.try_get("", "grants_match")?;
+            let current = decode_static_actor_authority_revision(&rows)?;
+            return Ok(matches && current.as_ref() == Some(revision));
+        }
+        sql.push_str(" SELECT grants_match FROM checks");
+        let row = self.db.query_one_raw(self.statement(&sql, values)?).await?.ok_or_else(|| {
             sea_orm::DbErr::Custom("RBAC cache validation returned no result".to_string())
         })?;
         row.try_get("", "grants_match")
@@ -166,7 +191,27 @@ impl RelationPermissionStore for SeaOrmRelationPermissionStore {
         permissions: &[Permission],
     ) -> Result<bool, Self::Error> {
         ConnectionRelationPermissionStore { db: &self.db }
-            .cached_grants_match(tenant_id, user_id, permissions)
+            .cached_grants_match(tenant_id, user_id, permissions, None)
+            .await
+    }
+
+    async fn read_static_revision(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+    ) -> Result<Option<StaticActorAuthorityRevision>, Self::Error> {
+        read_optional_static_actor_authority_revision_on(&self.db, *tenant_id, *user_id).await
+    }
+
+    async fn cached_permissions_match_revision(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        permissions: &[Permission],
+        revision: &StaticActorAuthorityRevision,
+    ) -> Result<bool, Self::Error> {
+        ConnectionRelationPermissionStore { db: &self.db }
+            .cached_grants_match(tenant_id, user_id, permissions, Some(revision))
             .await
     }
 }
@@ -288,6 +333,29 @@ pub trait RelationPermissionStore {
     {
         Ok(normalize_permissions(self.load_permissions_for_user(tenant_id, user_id).await?) == permissions)
     }
+
+    /// Optional durable static relation observation. Legacy stores retain
+    /// exact validation and do not produce revision-bound cache entries.
+    async fn read_static_revision(
+        &self,
+        _tenant_id: &uuid::Uuid,
+        _user_id: &uuid::Uuid,
+    ) -> Result<Option<StaticActorAuthorityRevision>, Self::Error> {
+        Ok(None)
+    }
+
+    /// A bound hit needs both exact grant equivalence and the original
+    /// revision. Stores must observe both coherently; the default cannot
+    /// prove that contract and therefore never accepts a bound hit.
+    async fn cached_permissions_match_revision(
+        &self,
+        _tenant_id: &uuid::Uuid,
+        _user_id: &uuid::Uuid,
+        _permissions: &[Permission],
+        _revision: &StaticActorAuthorityRevision,
+    ) -> Result<bool, Self::Error> {
+        Ok(false)
+    }
 }
 
 /// Cache lookup result carrying an opaque token for conditional publication.
@@ -300,11 +368,28 @@ pub trait RelationPermissionStore {
 pub struct PermissionCacheLookup {
     permissions: Option<Vec<Permission>>,
     token: u64,
+    revision: Option<Arc<StaticActorAuthorityRevision>>,
 }
 
 impl PermissionCacheLookup {
     pub fn new(permissions: Option<Vec<Permission>>, token: u64) -> Self {
-        Self { permissions, token }
+        Self {
+            permissions,
+            token,
+            revision: None,
+        }
+    }
+
+    pub fn with_revision(
+        permissions: Vec<Permission>,
+        token: u64,
+        revision: Option<Arc<StaticActorAuthorityRevision>>,
+    ) -> Self {
+        Self {
+            permissions: Some(permissions),
+            token,
+            revision,
+        }
     }
 
     pub fn into_parts(self) -> (Option<Vec<Permission>>, u64) {
@@ -314,6 +399,12 @@ impl PermissionCacheLookup {
 
 #[async_trait::async_trait]
 pub trait PermissionCache {
+    /// Opt in only when the adapter preserves the revision and permissions
+    /// together in one immutable cache entry and the store supports revisions.
+    fn supports_static_revisions(&self) -> bool {
+        false
+    }
+
     async fn get(&self, tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) -> Option<Vec<Permission>>;
 
     async fn insert(
@@ -353,6 +444,17 @@ pub trait PermissionCache {
     ) -> bool {
         self.insert(tenant_id, user_id, permissions).await;
         true
+    }
+
+    async fn insert_bound_if_current(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        token: u64,
+        permissions: Vec<Permission>,
+        _revision: Option<Arc<StaticActorAuthorityRevision>>,
+    ) -> bool {
+        self.insert_if_current(tenant_id, user_id, token, permissions).await
     }
 }
 
@@ -405,13 +507,16 @@ where
         "Resolving permissions with cache"
     );
     for _ in 0..MAX_PERMISSION_CACHE_RESOLUTION_ATTEMPTS {
-        let (cached_permissions, token) = cache.lookup(tenant_id, user_id).await.into_parts();
+        let PermissionCacheLookup { permissions: cached_permissions, token, revision } =
+            cache.lookup(tenant_id, user_id).await;
         if let Some(cached_permissions) = cached_permissions {
             let permissions = normalize_permissions(cached_permissions);
-            let matches = store
-                .cached_permissions_are_current(tenant_id, user_id, &permissions)
-                .await
-                .map_err(PermissionCacheResolutionError::Store)?;
+            let matches = match revision.as_deref() {
+                Some(revision) => store
+                    .cached_permissions_match_revision(tenant_id, user_id, &permissions, revision)
+                    .await,
+                None => store.cached_permissions_are_current(tenant_id, user_id, &permissions).await,
+            }.map_err(PermissionCacheResolutionError::Store)?;
             if matches {
                 if cache.is_lookup_current(tenant_id, user_id, token).await {
                     return Ok(crate::PermissionResolution {
@@ -426,13 +531,32 @@ where
             // Refresh through the canonical reader and conditional publication.
         }
 
+        let revision_aware = cache.supports_static_revisions();
+        let revision = if revision_aware {
+            store.read_static_revision(tenant_id, user_id).await
+                .map_err(PermissionCacheResolutionError::Store)?
+                .map(Arc::new)
+        } else {
+            None
+        };
         let resolved_permissions = resolve_permissions_from_relations(store, tenant_id, user_id)
             .await
             .map_err(PermissionCacheResolutionError::Store)?;
         if cache
-            .insert_if_current(tenant_id, user_id, token, resolved_permissions.clone())
+            .insert_bound_if_current(tenant_id, user_id, token, resolved_permissions.clone(), revision.clone())
             .await
         {
+            if revision_aware {
+                // The original revision must bracket the grant read AND
+                // asynchronous publication; raw SQL may not bump local epochs.
+                let current = store.read_static_revision(tenant_id, user_id).await
+                    .map_err(PermissionCacheResolutionError::Store)?;
+                if current.as_ref() != revision.as_deref()
+                    || !cache.is_lookup_current(tenant_id, user_id, token).await
+                {
+                    continue;
+                }
+            }
             return Ok(crate::PermissionResolution {
                 permissions: resolved_permissions,
                 cache_hit: false,
