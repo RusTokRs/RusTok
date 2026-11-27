@@ -486,6 +486,65 @@ fn symbol_asset_dangling_references(
     references
 }
 
+fn count_component_node(component: &ComponentNode) -> usize {
+    match component {
+        ComponentNode::Object(object) => {
+            1usize.saturating_add(count_component_children(&object.components))
+        }
+        ComponentNode::Opaque(value) => count_opaque_component_node(value),
+    }
+}
+
+fn count_component_children(children: &crate::ComponentChildren) -> usize {
+    match children {
+        crate::ComponentChildren::Nodes(children) => children
+            .iter()
+            .map(count_component_node)
+            .fold(0usize, usize::saturating_add),
+        crate::ComponentChildren::Opaque(value) => count_opaque_component_children(value),
+    }
+}
+
+fn count_opaque_component_children(value: &Value) -> usize {
+    match value {
+        Value::Array(children) => children
+            .iter()
+            .map(count_opaque_component_node)
+            .fold(0usize, usize::saturating_add),
+        Value::Object(_) => count_opaque_component_node(value),
+        Value::Null => 0,
+        _ => 1,
+    }
+}
+
+fn count_opaque_component_node(value: &Value) -> usize {
+    match value {
+        Value::Array(children) => children
+            .iter()
+            .map(count_opaque_component_node)
+            .fold(0usize, usize::saturating_add),
+        Value::Object(object) => {
+            1usize.saturating_add(
+                object
+                    .get("components")
+                    .map(count_opaque_component_children)
+                    .unwrap_or_default(),
+            )
+        }
+        _ => 1,
+    }
+}
+
+fn count_document_component_nodes(document: &ProjectDocument) -> usize {
+    document
+        .project()
+        .pages
+        .iter()
+        .filter_map(|page| page.component.as_ref())
+        .map(count_component_node)
+        .fold(0usize, usize::saturating_add)
+}
+
 pub(crate) fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()> {
     let encoded = serde_json::to_vec(descriptor)
         .map_err(|error| FlyError::InvalidSymbolReference(error.to_string()))?;
@@ -740,6 +799,22 @@ pub fn resolve_symbol_instances(document: &ProjectDocument) -> FlyResult<Project
         return Ok(document.clone());
     }
     let mut resolved = document.clone();
+    let node_count = count_document_component_nodes(&resolved);
+    if node_count > crate::DEFAULT_MAXIMUM_NODES {
+        return Err(FlyError::MaximumNodesExceeded {
+            maximum: crate::DEFAULT_MAXIMUM_NODES,
+        });
+    }
+    if resolved.project().assets.len() > crate::DEFAULT_MAXIMUM_ASSETS {
+        return Err(FlyError::MaximumAssetsExceeded {
+            maximum: crate::DEFAULT_MAXIMUM_ASSETS,
+        });
+    }
+    if resolved.project().styles.len() > crate::DEFAULT_MAXIMUM_STYLE_RULES {
+        return Err(FlyError::MaximumStyleRulesExceeded {
+            maximum: crate::DEFAULT_MAXIMUM_STYLE_RULES,
+        });
+    }
     let mut asset_references = BTreeSet::new();
     for page in &resolved.project().pages {
         if let Some(root) = page.component.as_ref() {
@@ -761,6 +836,8 @@ pub fn resolve_symbol_instances(document: &ProjectDocument) -> FlyResult<Project
         asset_id_generator: crate::SequentialIdGenerator::new("fly-symbol-asset"),
         symbol_asset_mappings: BTreeMap::new(),
         symbol_asset_dangling_references,
+        node_count,
+        style_rule_count: resolved.project().styles.len(),
     };
     let mut pending_styles = Vec::new();
     for page in &mut resolved.project_mut().pages {
@@ -855,6 +932,8 @@ struct SymbolIdentityReservations {
     asset_id_generator: crate::SequentialIdGenerator,
     symbol_asset_mappings: BTreeMap<String, BTreeMap<String, String>>,
     symbol_asset_dangling_references: BTreeMap<String, BTreeSet<String>>,
+    node_count: usize,
+    style_rule_count: usize,
 }
 
 fn expand_node(
@@ -1019,6 +1098,31 @@ fn expand_instance(
         ))
     })?;
 
+    let replacement_nodes = descriptor
+        .components
+        .iter()
+        .map(count_component_node)
+        .fold(0usize, usize::saturating_add);
+    let next_node_count = identities
+        .node_count
+        .saturating_sub(1)
+        .saturating_add(replacement_nodes);
+    if next_node_count > crate::DEFAULT_MAXIMUM_NODES {
+        return Err(FlyError::MaximumNodesExceeded {
+            maximum: crate::DEFAULT_MAXIMUM_NODES,
+        });
+    }
+    let next_style_rule_count = identities
+        .style_rule_count
+        .saturating_add(descriptor.styles.len());
+    if next_style_rule_count > crate::DEFAULT_MAXIMUM_STYLE_RULES {
+        return Err(FlyError::MaximumStyleRulesExceeded {
+            maximum: crate::DEFAULT_MAXIMUM_STYLE_RULES,
+        });
+    }
+    identities.node_count = next_node_count;
+    identities.style_rule_count = next_style_rule_count;
+
     let mut source_ids = Vec::new();
     let mut dom_ids = Vec::new();
     let mut form_ids = Vec::new();
@@ -1125,6 +1229,11 @@ fn expand_instance(
             }
         } else {
             identities.assets.push(raw);
+            if identities.assets.len() > crate::DEFAULT_MAXIMUM_ASSETS {
+                return Err(FlyError::MaximumAssetsExceeded {
+                    maximum: crate::DEFAULT_MAXIMUM_ASSETS,
+                });
+            }
         }
     }
     for component in &cloned {
@@ -2297,6 +2406,48 @@ mod tests {
                 .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
                 .any(|asset| asset.id == "shared")
         );
+    }
+
+    #[test]
+    fn symbol_expansion_respects_the_project_wide_node_budget() {
+        let mut children = (0..crate::DEFAULT_MAXIMUM_NODES - 2)
+            .map(|index| {
+                json!({
+                    "id": format!("existing-{index}"),
+                    "type": "section"
+                })
+            })
+            .collect::<Vec<_>>();
+        children.push(json!({
+            "id": "slot",
+            "type": "symbol",
+            "symbolId": "large",
+            "components": []
+        }));
+        let document = GrapesJsCodec::decode_value(json!({
+            "flySymbols": [{
+                "id": "large",
+                "components": [
+                    { "id": "added-a", "type": "section" },
+                    { "id": "added-b", "type": "section" }
+                ]
+            }],
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": children
+                }
+            }]
+        }))
+        .expect("document");
+
+        assert!(matches!(
+            resolve_symbol_instances(&document),
+            Err(FlyError::MaximumNodesExceeded {
+                maximum: crate::DEFAULT_MAXIMUM_NODES
+            })
+        ));
     }
 
     #[test]
