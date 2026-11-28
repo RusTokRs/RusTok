@@ -402,6 +402,7 @@ mod tests {
     use rustok_core::generate_id;
     use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, EntityTrait, Set};
     use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
+    use std::sync::Arc;
 
     async fn test_db() -> sea_orm::DatabaseConnection {
         let db = Database::connect("sqlite::memory:")
@@ -417,15 +418,13 @@ mod tests {
     async fn insert_event(
         db: &sea_orm::DatabaseConnection,
         status: SysEventStatus,
-        dispatched_at: Option<chrono::DateTime<Utc>>,
     ) -> uuid::Uuid {
-        insert_event_at(db, status, dispatched_at, Utc::now()).await
+        insert_event_at(db, status, Utc::now()).await
     }
 
     async fn insert_event_at(
         db: &sea_orm::DatabaseConnection,
         status: SysEventStatus,
-        dispatched_at: Option<chrono::DateTime<Utc>>,
         created_at: chrono::DateTime<Utc>,
     ) -> uuid::Uuid {
         let id = generate_id();
@@ -436,34 +435,52 @@ mod tests {
             event_type: Set("test.pruned".to_string()),
             schema_version: Set(1),
             payload: Set(serde_json::json!({"tenant_id": tenant_id.to_string()})),
-            status: Set(status),
+            status: Set(SysEventStatus::Pending),
             retry_count: Set(0),
             next_attempt_at: Set(None),
             last_error: Set(None),
             claimed_by: Set(None),
             claimed_at: Set(None),
             created_at: Set(created_at),
-            dispatched_at: Set(dispatched_at),
+            dispatched_at: Set(None),
         }
         .insert(db)
         .await
-        .expect("insert sys_event");
+        .expect("insert pristine pending sys_event");
+
+        match status {
+            SysEventStatus::Pending => {}
+            SysEventStatus::Dispatched => {
+                crate::OutboxTransport::new(db.clone())
+                    .acknowledge(id).await.expect("acknowledge fixture event");
+            }
+            SysEventStatus::Failed => {
+                let relay = crate::OutboxRelay::new(
+                    db.clone(),
+                    Arc::new(crate::OutboxTransport::new(db.clone())),
+                );
+                assert_eq!(relay.process_pending_once(Some(1)).await.expect("DLQ fixture relay"), 1);
+            }
+        }
+        let stored = crate::entity::Entity::find_by_id(id).one(db).await
+            .expect("read fixture event").expect("fixture exists");
+        assert_eq!(stored.status, status);
         id
     }
 
     #[tokio::test]
     async fn prune_deletes_only_delivered_rows_older_than_the_window() {
         let db = test_db().await;
-        let stale = Utc::now() - chrono::Duration::days(40);
-        let fresh = Utc::now() - chrono::Duration::hours(1);
+        let stale_created_at = Utc::now() - chrono::Duration::days(40);
+        let failed = insert_event_at(&db, SysEventStatus::Failed, stale_created_at).await;
+        let old_dispatched = insert_event(&db, SysEventStatus::Dispatched).await;
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        let fresh_dispatched = insert_event(&db, SysEventStatus::Dispatched).await;
+        let pending = insert_event(&db, SysEventStatus::Pending).await;
 
-        let old_dispatched = insert_event(&db, SysEventStatus::Dispatched, Some(stale)).await;
-        let fresh_dispatched = insert_event(&db, SysEventStatus::Dispatched, Some(fresh)).await;
-        let undated_dispatched = insert_event(&db, SysEventStatus::Dispatched, None).await;
-        let pending = insert_event(&db, SysEventStatus::Pending, None).await;
-        let failed = insert_event(&db, SysEventStatus::Failed, Some(stale)).await;
-
-        let retention = OutboxRetention::new(db.clone());
+        let retention = OutboxRetention::new(db.clone()).with_config(OutboxRetentionConfig {
+            retention: chrono::Duration::milliseconds(100), ..Default::default()
+        });
         let report = retention.prune_once().await.expect("prune succeeds");
 
         assert_eq!(report.pruned, 1);
@@ -475,7 +492,7 @@ mod tests {
                 .expect("query")
                 .is_none()
         );
-        for survivor in [fresh_dispatched, undated_dispatched, pending, failed] {
+        for survivor in [fresh_dispatched, pending, failed] {
             assert!(
                 crate::entity::Entity::find_by_id(survivor)
                     .one(&db)
@@ -490,8 +507,7 @@ mod tests {
     #[tokio::test]
     async fn registered_consumers_hold_old_events_until_every_consumer_acknowledges() {
         let db = test_db().await;
-        let stale = Utc::now() - chrono::Duration::days(40);
-        let event_id = insert_event(&db, SysEventStatus::Dispatched, Some(stale)).await;
+        let event_id = insert_event(&db, SysEventStatus::Dispatched).await;
         let event_type = "test.pruned".to_string();
         let first = crate::OutboxConsumer::new(db.clone());
         let second = crate::OutboxConsumer::new(db.clone());
@@ -504,7 +520,10 @@ mod tests {
             .await
             .expect("register second consumer");
 
-        let retention = OutboxRetention::new(db.clone());
+        let retention = OutboxRetention::new(db.clone()).with_config(OutboxRetentionConfig {
+            retention: chrono::Duration::milliseconds(1), ..Default::default()
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
         assert_eq!(retention.prune_once().await.expect("held prune").pruned, 0);
 
         first
@@ -549,7 +568,7 @@ mod tests {
 
         // Default configuration never touches the DLQ.
         // Failed retention is measured from immutable creation time.
-        let failed = insert_event_at(&db, SysEventStatus::Failed, Some(stale), stale).await;
+        let failed = insert_event_at(&db, SysEventStatus::Failed, stale).await;
         let retention = OutboxRetention::new(db.clone());
         let report = retention.prune_once().await.expect("default prune");
         assert_eq!(report.pruned_failed, 0);
@@ -600,16 +619,15 @@ mod tests {
     #[tokio::test]
     async fn prune_bounds_each_run_and_reports_the_remaining_batch() {
         let db = test_db().await;
-        let stale = Utc::now() - chrono::Duration::days(40);
         for _ in 0..3 {
-            insert_event(&db, SysEventStatus::Dispatched, Some(stale)).await;
+            insert_event(&db, SysEventStatus::Dispatched).await;
         }
-
         let retention = OutboxRetention::new(db.clone()).with_config(OutboxRetentionConfig {
-            retention: chrono::Duration::days(30),
+            retention: chrono::Duration::milliseconds(1),
             batch_size: 2,
             ..Default::default()
         });
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
         let first = retention.prune_once().await.expect("first prune");
         assert_eq!(first.pruned, 2);
         assert!(first.batch_exhausted);
@@ -625,8 +643,7 @@ mod tests {
     #[tokio::test]
     async fn invalid_configuration_is_rejected_before_any_delete() {
         let db = test_db().await;
-        let stale = Utc::now() - chrono::Duration::days(40);
-        let survivor = insert_event(&db, SysEventStatus::Dispatched, Some(stale)).await;
+        let survivor = insert_event(&db, SysEventStatus::Dispatched).await;
 
         let retention = OutboxRetention::new(db.clone()).with_config(OutboxRetentionConfig {
             retention: chrono::Duration::zero(),
