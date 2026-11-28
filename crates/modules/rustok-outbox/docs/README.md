@@ -441,3 +441,28 @@ receipt retention remains a separate, not yet durably bound contract. Event
 status and dispatched_at mutation, privileged DDL/restore, and independent
 clock discontinuities are separate remaining boundaries. SQLite/PostgreSQL
 regression sources added; compilation and runtime evidence remain pending.
+## Database-enforced event state transitions (2026-11-28; source only)
+
+Forward migration `m20261128_000209_fence_outbox_event_state` installs the
+same event-state guard in PostgreSQL and SQLite. New rows must enter as pristine
+`pending` events. While pending, only a monotonic claim acquire/rotate/release,
+a retry charged against one open dispatch intent, a terminal validation or
+dispatch failure, or a valid delivery transition is accepted. Delivery requires
+the exact current open attempt, or the legacy unfenced ACK path on an unclaimed
+row with no open attempt. `dispatched_at` cannot be rewritten after delivery.
+The only terminal-to-pending edge is DLQ replay with closed attempt history,
+zero retry count, cleared retry metadata and no live claim.
+
+Retry deadlines are bounded relative to the claim time; the retry counter fails
+closed at its integer limit. The trigger reads attempt history without taking
+child-row locks, preserving parent-event-before-attempt lock order. Claim
+timestamps cannot be backdated or renewed with the same token. ACK and admin
+DLQ replay now retain their SQL transaction through exact readback; concurrent
+replay has a single conditional-update winner.
+
+The guard enforces the legal state graph, not caller identity or broker truth:
+a database principal able to issue a structurally valid transition can still
+forge a plausible outcome. Arbitrary privileged DDL, restored backups, and
+external broker ambiguity remain separate trust boundaries. Drain old writers
+before migration. PostgreSQL/SQLite regression sources were updated or added;
+compilation and execution remain pending.
