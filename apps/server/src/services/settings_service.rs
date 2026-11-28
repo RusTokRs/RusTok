@@ -155,9 +155,9 @@ impl SettingsValidator for EmailSettingsValidator {
 
         if let Some(provider_val) = settings.get("provider") {
             if let Some(provider) = provider_val.as_str() {
-                if !matches!(provider, "smtp" | "sendgrid" | "mailgun" | "ses" | "none") {
+                if !matches!(provider, "smtp" | "none") {
                     errors.push(format!(
-                        "email.provider must be one of: smtp, sendgrid, mailgun, ses, none; got '{provider}'"
+                        "email.provider must be one of the supported providers: smtp, none; got '{provider}'"
                     ));
                 }
             } else {
@@ -1533,12 +1533,26 @@ mod tests {
     }
 
     #[test]
-    fn email_validator_accepts_known_providers() {
+    fn email_validator_accepts_only_implemented_providers() {
         let v = EmailSettingsValidator;
-        for provider in ["smtp", "sendgrid", "mailgun", "ses", "none"] {
+        for provider in ["smtp", "none"] {
             assert!(
                 v.validate(&json!({ "provider": provider })).is_ok(),
-                "should accept provider '{provider}'"
+                "should accept implemented provider '{provider}'"
+            );
+        }
+    }
+
+    #[test]
+    fn email_validator_rejects_unimplemented_providers() {
+        let v = EmailSettingsValidator;
+        for provider in ["sendgrid", "mailgun", "ses"] {
+            let errors = v
+                .validate(&json!({ "provider": provider }))
+                .expect_err("an unimplemented provider must not be persisted as supported");
+            assert!(
+                errors.iter().any(|error| error.contains("supported providers: smtp, none")),
+                "unexpected validation errors for '{provider}': {errors:?}"
             );
         }
     }
