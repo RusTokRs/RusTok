@@ -527,6 +527,7 @@ pub fn router() -> crate::routes::ServerRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     async fn with_test_host_authority(
         request: axum::extract::Request,
@@ -553,7 +554,6 @@ mod tests {
         };
         use sea_orm::{ActiveModelTrait, EntityTrait, Set};
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        use uuid::Uuid;
 
         async fn frame(stream: &mut tokio::net::TcpStream) -> (u8, Vec<u8>) {
             let mut header = [0u8; 2];
