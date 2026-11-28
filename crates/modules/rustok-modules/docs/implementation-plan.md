@@ -3712,6 +3712,16 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
   compilation and runtime verification are pending, as is the remaining
   cross-owner receipt/FK and global generation lock audit.
 
+- Security receipt key admission: Migration 000106 adds a PostgreSQL nonwaiting transaction advisory gate for
+  each global artifact-security receipt UUID, including ordinary INSERT,
+  UPDATE and DELETE. New reservations take the receipt relation write mode
+  with NOWAIT after the epoch (if needed); replay reads take ACCESS SHARE
+  NOWAIT without taking the epoch. A busy key aborts the statement (55P03);
+  roll back the entire owner transaction before retrying. SQLite keeps its
+  serialized writer. This does not protect arbitrary explicit tuple locks,
+  privileged DDL or other receipt tables. Drain old writers for cutover;
+  source contention regressions are authored, not executed.
+
 - Registry authority witness integrity: migration 000101 rejects direct witness
   removal, identity changes and non-successor revisions; SQLite additionally
   rejects non-integer storage and replacement of an existing witness even

@@ -290,6 +290,16 @@ replay still requires current host authorization, but does not advance or
 lock the epoch. The PostgreSQL lock-order regression is authored, unrun;
 global deadlock freedom is not established.
 
+Migration 000106 adds a PostgreSQL nonwaiting transaction advisory gate for
+each global artifact-security receipt UUID, including ordinary INSERT,
+UPDATE and DELETE. New reservations take the receipt relation write mode
+with NOWAIT after the epoch (if needed); replay reads take ACCESS SHARE
+NOWAIT without taking the epoch. A busy key aborts the statement (55P03);
+roll back the entire owner transaction before retrying. SQLite keeps its
+serialized writer. This does not protect arbitrary explicit tuple locks,
+privileged DDL or other receipt tables. Drain old writers for cutover;
+source contention regressions are authored, not executed.
+
 Registry continuity witness migration 000101 protects permanent identities and
 strict integer successors from direct SQL resets or deletion (including SQLite
 replacement). SQLite also rejects release replacement by primary key,

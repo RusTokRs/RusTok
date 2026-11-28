@@ -781,6 +781,14 @@ async fn admit_security_operation(
     )
     .await
     .map_err(store_error)?;
+    // Even the replay lookup must not wait for a conflicting relation lock
+    // while holding the slug. The stronger write mode is acquired only
+    // after the epoch for a new operation.
+    if transaction.get_database_backend() == sea_orm::DbBackend::Postgres {
+        transaction.execute_unprepared(
+            "LOCK TABLE module_artifact_security_operations IN ACCESS SHARE MODE NOWAIT",
+        ).await.map_err(store_error)?;
+    }
     if let Some(receipt) =
         load_operation(transaction, &command.context, action, request_digest).await?
     {
@@ -801,6 +809,13 @@ async fn reserve_operation(
     request_digest: &str,
 ) -> Result<Option<ModuleArtifactSecurityReceipt>, ModuleArtifactSecurityError> {
     let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    if backend == SupportedBackend::Postgres {
+        // The receipt trigger fences unique-key admission, but the INSERT
+        // itself also needs a relation lock before any row trigger can run.
+        transaction.execute_unprepared(
+            "LOCK TABLE module_artifact_security_operations IN ROW EXCLUSIVE MODE NOWAIT",
+        ).await.map_err(store_error)?;
+    }
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),

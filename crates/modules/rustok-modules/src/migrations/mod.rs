@@ -100,6 +100,7 @@ mod m20261127_000102_security_epoch_integrity;
 mod m20261127_000103_artifact_http_effect_receipts;
 mod m20261127_000104_lifecycle_cursor_integrity;
 mod m20261127_000105_static_intent_authority_generation;
+mod m20261128_000106_security_receipt_key_fence;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -207,6 +208,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261127_000103_artifact_http_effect_receipts::Migration),
         Box::new(m20261127_000104_lifecycle_cursor_integrity::Migration),
         Box::new(m20261127_000105_static_intent_authority_generation::Migration),
+        Box::new(m20261128_000106_security_receipt_key_fence::Migration),
     ]
 }
 
