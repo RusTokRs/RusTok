@@ -70,7 +70,13 @@ Migration 000015 claims each existing and newly inserted tenant UUID in
 cascades. UUID updates and witness deletion/replacement are forbidden;
 conflict-do-nothing and rolled-back births consume nothing. SQLite normalizes
 UUID text/blob forms and PostgreSQL uses a nonwaiting per-UUID advisory
-fence. Slug/domain changes and reuse with a fresh UUID retain their current
-contract; natural-key REPLACE with a fresh UUID is not guarded here.
-Pre-cutover deleted IDs and privileged DDL/restore are outside this guarantee.
-Regression sources authored; migration execution remains pending.
+fence. Slug/domain changes through the owner UPDATE path retain their current
+contract. SQLite's BEFORE INSERT natural-key guard uses RAISE(IGNORE) for an
+existing slug or non-NULL domain, so INSERT OR REPLACE cannot delete the
+existing tenant or cascade its data; conflict-do-nothing remains a no-op.
+A fresh UUID may reuse a slug/domain only after the old tenant is actually
+deleted. TenantService intentionally exposes no hard-delete workflow: normal
+lifecycle uses deactivation, while cross-owner physical deletion remains a
+separate owner-coordinated maintenance capability. Pre-cutover deleted IDs
+and privileged DDL/restore are outside this guarantee. Regression source is
+authored; migration execution remains pending.

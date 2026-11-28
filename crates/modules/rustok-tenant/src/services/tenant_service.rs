@@ -104,14 +104,16 @@ impl TenantService {
         let model = match active_model.insert(&txn).await {
             Ok(model) => model,
             Err(error) => {
-                if !is_unique_violation(&error) {
+                // SQLite's natural-key BEFORE INSERT guard uses RAISE(IGNORE)
+                // to stop OR REPLACE before its implicit DELETE. SeaORM reports
+                // that no row was returned rather than a unique violation.
+                if !is_unique_violation(&error) && !matches!(&error, DbErr::RecordNotInserted) {
                     return Err(error.into());
                 }
                 // The probes above run in this transaction, so a concurrent
                 // creator can still win the unique index between probe and
-                // insert. The index is the authority: name the actual
-                // conflict (probed outside the aborted transaction) instead
-                // of leaking a raw constraint violation.
+                // insert. Re-read outside the failed insert transaction and
+                // return the canonical conflict rather than a generic DB error.
                 drop(txn);
                 if tenant::Entity::find()
                     .filter(tenant::Column::Slug.eq(&slug))

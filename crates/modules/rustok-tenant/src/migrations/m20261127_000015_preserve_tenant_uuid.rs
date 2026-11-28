@@ -90,7 +90,14 @@ impl MigrationTrait for Migration {
                      BEGIN INSERT INTO tenant_uuid_witnesses VALUES ({}); END;
                      CREATE TRIGGER tenant_uuid_immutable BEFORE UPDATE ON tenants
                      WHEN NEW.id IS NOT OLD.id
-                     BEGIN SELECT RAISE(ABORT, 'Tenant UUID is immutable'); END;",
+                     BEGIN SELECT RAISE(ABORT, 'Tenant UUID is immutable'); END;
+                     -- RAISE(IGNORE) preserves idempotent natural-key conflicts
+                     -- while stopping REPLACE before its implicit parent DELETE.
+                     CREATE TRIGGER tenant_natural_identity_insert_guard BEFORE INSERT ON tenants
+                     WHEN EXISTS (SELECT 1 FROM tenants WHERE slug = NEW.slug)
+                       OR (NEW.domain IS NOT NULL AND EXISTS (
+                           SELECT 1 FROM tenants WHERE domain = NEW.domain))
+                     BEGIN SELECT RAISE(IGNORE); END;",
                     sqlite_uuid("id"), sqlite_uuid("NEW.id")
                 )).await?;
             }
@@ -114,9 +121,9 @@ mod tests {
 
     async fn fixture(db: &impl ConnectionTrait) {
         db.execute_unprepared(&format!(
-            "CREATE TABLE tenants (id UUID PRIMARY KEY NOT NULL, slug TEXT NOT NULL UNIQUE);
+            "CREATE TABLE tenants (id UUID PRIMARY KEY NOT NULL, slug TEXT NOT NULL UNIQUE, domain TEXT UNIQUE);
              CREATE TABLE tenant_children (id TEXT PRIMARY KEY, tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE);
-             INSERT INTO tenants VALUES ('{A}', 'old');
+             INSERT INTO tenants VALUES ('{A}', 'old', 'old.example.test');
              INSERT INTO tenant_children VALUES ('child', '{A}');"
         )).await.unwrap();
     }
@@ -136,30 +143,45 @@ mod tests {
         Migration.up(&SchemaManager::new(&tx)).await.unwrap();
         tx.commit().await.unwrap();
         db.execute_unprepared(&format!(
-            "INSERT INTO tenants VALUES ('{B}', 'old') ON CONFLICT(slug) DO NOTHING"
+            "INSERT INTO tenants VALUES ('{B}', 'old', 'new.example.test') ON CONFLICT(slug) DO NOTHING"
         )).await.unwrap();
         assert_eq!(count(&db, "tenant_uuid_witnesses").await, 1);
         for sql in [
             format!("UPDATE tenants SET id = '{B}'"),
-            format!("INSERT OR REPLACE INTO tenants VALUES ('{A}', 'replacement')"),
+            format!("INSERT OR REPLACE INTO tenants VALUES ('{A}', 'replacement', 'replacement.example.test')"),
         ] {
             assert!(db.execute_unprepared(&sql).await.is_err(), "{sql}");
         }
+        // A fresh UUID cannot replace a tenant through either natural key.
+        for sql in [
+            format!("INSERT OR REPLACE INTO tenants VALUES ('{B}', 'old', 'new.example.test')"),
+            format!("INSERT OR REPLACE INTO tenants VALUES ('{B}', 'replacement', 'old.example.test')"),
+        ] {
+            db.execute_unprepared(&sql).await.unwrap();
+        }
+        let row = db.query_one_raw(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "SELECT id, slug, domain FROM tenants",
+        )).await.unwrap().unwrap();
+        assert_eq!(row.try_get::<String>("", "id").unwrap(), A);
+        assert_eq!(row.try_get::<String>("", "slug").unwrap(), "old");
+        assert_eq!(row.try_get::<String>("", "domain").unwrap(), "old.example.test");
         assert_eq!(count(&db, "tenant_children").await, 1);
+        assert_eq!(count(&db, "tenant_uuid_witnesses").await, 1);
         db.execute_unprepared("DELETE FROM tenants").await.unwrap();
         assert_eq!(count(&db, "tenant_children").await, 0);
         assert_eq!(count(&db, "tenant_uuid_witnesses").await, 1);
         for id in [A.to_owned(), A.replace('-', "")] {
-            assert!(db.execute_unprepared(&format!("INSERT OR IGNORE INTO tenants VALUES ('{id}', 'old')")).await.is_err());
+            assert!(db.execute_unprepared(&format!("INSERT OR IGNORE INTO tenants VALUES ('{id}', 'old', 'old.example.test')")).await.is_err());
         }
-        assert!(db.execute_unprepared(&format!("INSERT INTO tenants VALUES (X'{}', 'old')", A.replace('-', ""))).await.is_err());
+        assert!(db.execute_unprepared(&format!("INSERT INTO tenants VALUES (X'{}', 'old', NULL)", A.replace('-', ""))).await.is_err());
         for sql in ["DELETE FROM tenant_uuid_witnesses", "UPDATE tenant_uuid_witnesses SET id = id"] {
             assert!(db.execute_unprepared(sql).await.is_err());
         }
         let tx = db.begin().await.unwrap();
-        tx.execute_unprepared(&format!("INSERT INTO tenants VALUES ('{B}', 'old')")).await.unwrap();
+        tx.execute_unprepared(&format!("INSERT INTO tenants VALUES ('{B}', 'old', NULL)")).await.unwrap();
         tx.rollback().await.unwrap();
-        db.execute_unprepared(&format!("INSERT INTO tenants VALUES ('{B}', 'old')")).await.unwrap();
+        db.execute_unprepared(&format!("INSERT INTO tenants VALUES ('{B}', 'old', NULL)")).await.unwrap();
         assert_eq!(count(&db, "tenant_uuid_witnesses").await, 2);
     }
 
