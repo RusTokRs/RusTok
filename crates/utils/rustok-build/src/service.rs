@@ -726,7 +726,7 @@ mod tests {
 
     #[tokio::test]
     async fn new_build_result_matches_the_persisted_model_and_projection() {
-        use sea_orm::{ConnectionTrait, Database, EntityTrait, Schema};
+        use sea_orm::{ConnectionTrait, Database, EntityTrait, Schema, TransactionTrait};
 
         let db = Database::connect("sqlite::memory:")
             .await
@@ -736,6 +736,16 @@ mod tests {
         db.execute_raw(backend.build(&schema.create_table_from_entity(crate::build::Entity)))
             .await
             .expect("create builds table");
+        db.execute_unprepared(
+            "CREATE TABLE build_event_clock (id INTEGER PRIMARY KEY CHECK (id = 1), sequence INTEGER NOT NULL CHECK (typeof(sequence) = 'integer' AND sequence >= 0))",
+        )
+        .await
+        .expect("create build progress clock");
+        db.execute_unprepared(
+            "INSERT INTO build_event_clock (id, sequence) VALUES (1, 0)",
+        )
+        .await
+        .expect("initialize build progress clock");
         let request = BuildRequest {
             manifest_ref: "platform_state:7".to_string(),
             manifest_revision: 7,
@@ -757,11 +767,21 @@ mod tests {
                 storefront_build: None,
             },
         };
+        let txn = db.begin().await.expect("begin build request transaction");
         let (created, is_new) =
-            super::BuildService::request_build_on_connection(&db, request.clone())
+            super::BuildService::request_build_on_connection(&txn, request.clone())
                 .await
                 .expect("enqueue build");
+        txn.commit().await.expect("commit build request");
         assert!(is_new);
+        assert_eq!(created.event_sequence, 1);
+        assert_eq!(
+            super::BuildService::new(db.clone())
+                .current_progress_sequence()
+                .await
+                .expect("read progress sequence"),
+            1
+        );
         let stored = crate::build::Entity::find_by_id(created.id)
             .one(&db)
             .await
