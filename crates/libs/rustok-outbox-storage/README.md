@@ -414,3 +414,34 @@ with terminal payloads or completion stamps fail closed. SQLite regression
 source models rewritten admission, renewal, success and failure; compilation
 and runtime execution remain pending. This is not yet a DB-level immutable
 receipt history or durable receipt retention policy.
+
+## Durable consumer registry and ACK integrity (2026-11-28; source only)
+
+Migration `m20261128_000210_fence_outbox_consumer_receipts` and standalone
+schema setup share the same PostgreSQL and SQLite installer. Registry rows
+are immutable; deletion requires a drained event type and matching receipts
+for every extant source event. Consumer receipts require the exact source
+event and active subscription on insertion, cannot be updated, and can be
+deleted only after their parent is gone. PostgreSQL TRUNCATE is rejected.
+SQLite exact-key duplicate INSERT/REPLACE preserves the original fact;
+conflicting rowid replacement is rejected even with recursive triggers off.
+Migration validates existing identity and source linkage and fails closed on
+inconsistent history; previously retired subscriptions need not be recreated.
+
+Canonical registration and fresh ACK require one affected row and exact
+readback under the existing registry/source locks. An exact prior ACK is
+recognized before INSERT; a suppressed new INSERT cannot masquerade as a
+prior effect. Retirement also verifies the affected count. PostgreSQL direct
+receipt insertion uses registry SHARE NOWAIT, source FOR UPDATE NOWAIT and
+subscription FOR SHARE NOWAIT; registry retirement requires READ COMMITTED
+and the event-table SHARE NOWAIT fence. SQLite serializes writers.
+Stop/drain writers before migration and reconcile any rejected legacy data
+offline; no automatic rewriting or deletion of ACK history.
+
+A structurally correct ACK remains a trusted assertion by the owner. A role
+with arbitrary INSERT access can fabricate a matching ACK without performing
+the effect; generic Outbox cannot inspect another owner's private tables.
+The caller must commit the owner effect and ACK together or roll back both.
+External effects, credential isolation, event identity after retention and
+consumer recovery remain separate boundaries. SQLite/PostgreSQL regression
+sources are authored; compilation, migrations and contention tests are unrun.

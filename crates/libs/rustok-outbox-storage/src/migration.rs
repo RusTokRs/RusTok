@@ -32,6 +32,7 @@ impl MigrationTrait for SysEventsMigration {
         create_outbox_event_envelope_integrity(manager).await?;
         create_outbox_event_state_integrity(manager).await?;
         create_outbox_event_retention_policy(manager).await?;
+        create_outbox_consumer_receipt_integrity(manager).await?;
         txn.commit().await
     }
 
@@ -523,6 +524,7 @@ pub async fn create_sys_event_consumer_tables(manager: &SchemaManager<'_>) -> Re
 
 /// Drops the generic durable-consumer schema during rollback.
 pub async fn drop_sys_event_consumer_tables(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    drop_outbox_consumer_receipt_integrity(manager).await?;
     manager
         .drop_table(
             Table::drop()
@@ -1979,6 +1981,274 @@ async fn drop_outbox_event_retention_policy(manager: &SchemaManager<'_>) -> Resu
     if manager.has_table("outbox_event_retention_policy").await? {
         drop_outbox_event_retention_guards(manager).await?;
         manager.get_connection().execute_unprepared("DROP TABLE outbox_event_retention_policy").await?;
+    }
+    Ok(())
+}
+
+const POSTGRES_CONSUMER_RECEIPT_GUARDS: &str = r#"
+CREATE OR REPLACE FUNCTION outbox_guard_consumer_registry() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'TRUNCATE' THEN
+        RAISE EXCEPTION 'outbox consumer registry cannot be truncated' USING ERRCODE = '23514';
+    ELSIF TG_OP = 'INSERT' THEN
+        IF octet_length(NEW.event_type) NOT BETWEEN 1 AND 255
+           OR NEW.event_type <> btrim(NEW.event_type, chr(9) || chr(10) || chr(11) || chr(12) || chr(13) || chr(32) || chr(133) || chr(160) || chr(5760) || chr(8192) || chr(8193) || chr(8194) || chr(8195) || chr(8196) || chr(8197) || chr(8198) || chr(8199) || chr(8200) || chr(8201) || chr(8202) || chr(8232) || chr(8233) || chr(8239) || chr(8287) || chr(12288))
+           OR octet_length(NEW.consumer_key) NOT BETWEEN 1 AND 128
+           OR NEW.consumer_key <> btrim(NEW.consumer_key, chr(9) || chr(10) || chr(11) || chr(12) || chr(13) || chr(32) || chr(133) || chr(160) || chr(5760) || chr(8192) || chr(8193) || chr(8194) || chr(8195) || chr(8196) || chr(8197) || chr(8198) || chr(8199) || chr(8200) || chr(8201) || chr(8202) || chr(8232) || chr(8233) || chr(8239) || chr(8287) || chr(12288)) THEN
+            RAISE EXCEPTION 'invalid outbox consumer registration identity' USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+    ELSIF TG_OP = 'UPDATE' THEN
+        RAISE EXCEPTION 'outbox consumer registration is immutable; retire only after drain' USING ERRCODE = '23514';
+    ELSIF TG_OP = 'DELETE' THEN
+        IF current_setting('transaction_isolation') <> 'read committed' THEN
+            RAISE EXCEPTION 'outbox consumer retirement requires READ COMMITTED' USING ERRCODE = '23514';
+        END IF;
+        -- Registry -> event is the canonical retirement order. A direct
+        -- DELETE must fail fast rather than wait while holding the registry.
+        LOCK TABLE sys_events IN SHARE MODE NOWAIT;
+        IF EXISTS (
+            SELECT 1 FROM sys_events e
+            WHERE e.event_type = OLD.event_type
+              AND NOT EXISTS (
+                  SELECT 1 FROM sys_event_consumer_receipts r
+                  WHERE r.outbox_event_id = e.id
+                    AND r.consumer_key = OLD.consumer_key
+                    AND r.event_type = e.event_type
+              )
+        ) THEN
+            RAISE EXCEPTION 'outbox consumer still has unacknowledged events' USING ERRCODE = '23514';
+        END IF;
+        RETURN OLD;
+    END IF;
+    RAISE EXCEPTION 'unsupported outbox consumer registry operation' USING ERRCODE = '23514';
+END $$;
+
+CREATE OR REPLACE FUNCTION outbox_guard_consumer_receipt() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'TRUNCATE' THEN
+        RAISE EXCEPTION 'outbox consumer receipts cannot be truncated' USING ERRCODE = '23514';
+    ELSIF TG_OP = 'INSERT' THEN
+        IF octet_length(NEW.consumer_key) NOT BETWEEN 1 AND 128
+           OR NEW.consumer_key <> btrim(NEW.consumer_key, chr(9) || chr(10) || chr(11) || chr(12) || chr(13) || chr(32) || chr(133) || chr(160) || chr(5760) || chr(8192) || chr(8193) || chr(8194) || chr(8195) || chr(8196) || chr(8197) || chr(8198) || chr(8199) || chr(8200) || chr(8201) || chr(8202) || chr(8232) || chr(8233) || chr(8239) || chr(8287) || chr(12288))
+           OR octet_length(NEW.event_type) NOT BETWEEN 1 AND 255
+           OR NEW.event_type <> btrim(NEW.event_type, chr(9) || chr(10) || chr(11) || chr(12) || chr(13) || chr(32) || chr(133) || chr(160) || chr(5760) || chr(8192) || chr(8193) || chr(8194) || chr(8195) || chr(8196) || chr(8197) || chr(8198) || chr(8199) || chr(8200) || chr(8201) || chr(8202) || chr(8232) || chr(8233) || chr(8239) || chr(8287) || chr(12288)) THEN
+            RAISE EXCEPTION 'invalid outbox consumer receipt identity' USING ERRCODE = '23514';
+        END IF;
+        -- Match the canonical ACK order: registry -> source event -> exact
+        -- subscription. All late locks are NOWAIT while owner locks are held.
+        LOCK TABLE sys_event_consumers IN SHARE MODE NOWAIT;
+        PERFORM 1 FROM sys_events
+        WHERE id = NEW.outbox_event_id AND event_type = NEW.event_type
+        FOR UPDATE NOWAIT;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'outbox consumer receipt has no matching source event' USING ERRCODE = '23514';
+        END IF;
+        PERFORM 1 FROM sys_event_consumers
+        WHERE event_type = NEW.event_type AND consumer_key = NEW.consumer_key
+        FOR SHARE NOWAIT;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'outbox consumer receipt has no active subscription' USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+    ELSIF TG_OP = 'UPDATE' THEN
+        RAISE EXCEPTION 'outbox consumer receipts are immutable' USING ERRCODE = '23514';
+    ELSIF TG_OP = 'DELETE' THEN
+        -- The only permitted removal is the FK cascade after the canonical
+        -- source event has already been deleted by eligible retention.
+        IF EXISTS (SELECT 1 FROM sys_events WHERE id = OLD.outbox_event_id) THEN
+            RAISE EXCEPTION 'outbox consumer receipt follows source event retention' USING ERRCODE = '23514';
+        END IF;
+        RETURN OLD;
+    END IF;
+    RAISE EXCEPTION 'unsupported outbox consumer receipt operation' USING ERRCODE = '23514';
+END $$;
+"#;
+
+const SQLITE_CONSUMER_RECEIPT_GUARDS: &str = r#"
+CREATE TRIGGER outbox_consumer_registry_insert_guard BEFORE INSERT ON sys_event_consumers
+BEGIN
+    SELECT CASE WHEN typeof(NEW.event_type) <> 'text' OR instr(NEW.event_type, char(0)) <> 0 OR length(CAST(NEW.event_type AS BLOB)) NOT BETWEEN 1 AND 255
+        OR NEW.event_type <> trim(NEW.event_type, char(9) || char(10) || char(11) || char(12) || char(13) || char(32) || char(133) || char(160) || char(5760) || char(8192) || char(8193) || char(8194) || char(8195) || char(8196) || char(8197) || char(8198) || char(8199) || char(8200) || char(8201) || char(8202) || char(8232) || char(8233) || char(8239) || char(8287) || char(12288))
+        OR typeof(NEW.consumer_key) <> 'text' OR instr(NEW.consumer_key, char(0)) <> 0 OR length(CAST(NEW.consumer_key AS BLOB)) NOT BETWEEN 1 AND 128
+        OR NEW.consumer_key <> trim(NEW.consumer_key, char(9) || char(10) || char(11) || char(12) || char(13) || char(32) || char(133) || char(160) || char(5760) || char(8192) || char(8193) || char(8194) || char(8195) || char(8196) || char(8197) || char(8198) || char(8199) || char(8200) || char(8201) || char(8202) || char(8232) || char(8233) || char(8239) || char(8287) || char(12288))
+        THEN RAISE(ABORT, 'invalid outbox consumer registration identity') END;
+    SELECT CASE WHEN EXISTS (
+        SELECT 1 FROM sys_event_consumers c WHERE c.rowid = NEW.rowid
+          AND NOT (c.event_type = NEW.event_type AND c.consumer_key = NEW.consumer_key)
+        ) THEN RAISE(ABORT, 'outbox consumer row replacement is forbidden') END;
+    SELECT CASE WHEN EXISTS (
+        SELECT 1 FROM sys_event_consumers c
+        WHERE c.event_type = NEW.event_type AND c.consumer_key = NEW.consumer_key
+        ) THEN RAISE(IGNORE) END;
+END;
+
+CREATE TRIGGER outbox_consumer_registry_update_guard BEFORE UPDATE ON sys_event_consumers
+BEGIN SELECT RAISE(ABORT, 'outbox consumer registration is immutable; retire only after drain'); END;
+
+CREATE TRIGGER outbox_consumer_registry_delete_guard BEFORE DELETE ON sys_event_consumers
+WHEN EXISTS (
+    SELECT 1 FROM sys_events e
+    WHERE e.event_type = OLD.event_type
+      AND NOT EXISTS (
+          SELECT 1 FROM sys_event_consumer_receipts r
+          WHERE r.outbox_event_id = e.id
+            AND r.consumer_key = OLD.consumer_key
+            AND r.event_type = e.event_type
+      )
+)
+BEGIN SELECT RAISE(ABORT, 'outbox consumer still has unacknowledged events'); END;
+
+CREATE TRIGGER outbox_consumer_receipt_insert_guard BEFORE INSERT ON sys_event_consumer_receipts
+BEGIN
+    SELECT CASE WHEN typeof(NEW.consumer_key) <> 'text' OR instr(NEW.consumer_key, char(0)) <> 0 OR length(CAST(NEW.consumer_key AS BLOB)) NOT BETWEEN 1 AND 128
+        OR NEW.consumer_key <> trim(NEW.consumer_key, char(9) || char(10) || char(11) || char(12) || char(13) || char(32) || char(133) || char(160) || char(5760) || char(8192) || char(8193) || char(8194) || char(8195) || char(8196) || char(8197) || char(8198) || char(8199) || char(8200) || char(8201) || char(8202) || char(8232) || char(8233) || char(8239) || char(8287) || char(12288))
+        OR typeof(NEW.event_type) <> 'text' OR instr(NEW.event_type, char(0)) <> 0 OR length(CAST(NEW.event_type AS BLOB)) NOT BETWEEN 1 AND 255
+        OR NEW.event_type <> trim(NEW.event_type, char(9) || char(10) || char(11) || char(12) || char(13) || char(32) || char(133) || char(160) || char(5760) || char(8192) || char(8193) || char(8194) || char(8195) || char(8196) || char(8197) || char(8198) || char(8199) || char(8200) || char(8201) || char(8202) || char(8232) || char(8233) || char(8239) || char(8287) || char(12288))
+        THEN RAISE(ABORT, 'invalid outbox consumer receipt identity') END;
+    SELECT CASE WHEN EXISTS (
+        SELECT 1 FROM sys_event_consumer_receipts r WHERE r.rowid = NEW.rowid
+          AND NOT (r.outbox_event_id = NEW.outbox_event_id AND r.consumer_key = NEW.consumer_key)
+        ) THEN RAISE(ABORT, 'outbox consumer receipt row replacement is forbidden') END;
+    SELECT CASE WHEN NOT EXISTS (
+        SELECT 1 FROM sys_events e
+        WHERE e.id = NEW.outbox_event_id AND e.event_type = NEW.event_type
+        ) THEN RAISE(ABORT, 'outbox consumer receipt has no matching source event') END;
+    SELECT CASE WHEN NOT EXISTS (
+        SELECT 1 FROM sys_event_consumers c
+        WHERE c.event_type = NEW.event_type AND c.consumer_key = NEW.consumer_key
+        ) THEN RAISE(ABORT, 'outbox consumer receipt has no active subscription') END;
+    SELECT CASE WHEN EXISTS (
+        SELECT 1 FROM sys_event_consumer_receipts r
+        WHERE r.outbox_event_id = NEW.outbox_event_id
+          AND r.consumer_key = NEW.consumer_key AND r.event_type <> NEW.event_type
+        ) THEN RAISE(ABORT, 'outbox consumer receipt conflicts with prior event type') END;
+    -- Preserve exact-key idempotency without SQLite REPLACE deleting history.
+    SELECT CASE WHEN EXISTS (
+        SELECT 1 FROM sys_event_consumer_receipts r
+        WHERE r.outbox_event_id = NEW.outbox_event_id AND r.consumer_key = NEW.consumer_key
+        ) THEN RAISE(IGNORE) END;
+END;
+
+CREATE TRIGGER outbox_consumer_receipt_update_guard BEFORE UPDATE ON sys_event_consumer_receipts
+BEGIN SELECT RAISE(ABORT, 'outbox consumer receipts are immutable'); END;
+
+CREATE TRIGGER outbox_consumer_receipt_delete_guard BEFORE DELETE ON sys_event_consumer_receipts
+WHEN EXISTS (SELECT 1 FROM sys_events e WHERE e.id = OLD.outbox_event_id)
+BEGIN SELECT RAISE(ABORT, 'outbox consumer receipt follows source event retention'); END;
+"#;
+
+/// Enforces durable consumer registration and receipt identity at the database
+/// boundary. The ACK still represents a trusted owner transaction: a database
+/// principal with arbitrary INSERT rights can attest a valid active ACK.
+pub async fn create_outbox_consumer_receipt_integrity(
+    manager: &SchemaManager<'_>,
+) -> Result<(), DbErr> {
+    let txn = manager.get_connection().begin().await?;
+    let nested = SchemaManager::new(&txn);
+    let manager = &nested;
+    let db = manager.get_connection();
+    let backend = manager.get_database_backend();
+
+    match backend {
+        DbBackend::Postgres => {
+            db.execute_unprepared("LOCK TABLE sys_event_consumers IN SHARE ROW EXCLUSIVE MODE NOWAIT").await?;
+            db.execute_unprepared("LOCK TABLE sys_events IN SHARE ROW EXCLUSIVE MODE NOWAIT").await?;
+            db.execute_unprepared("LOCK TABLE sys_event_consumer_receipts IN SHARE ROW EXCLUSIVE MODE NOWAIT").await?;
+        }
+        DbBackend::Sqlite => {
+            db.execute_unprepared("UPDATE sys_event_consumers SET consumer_key = consumer_key WHERE 1 = 0").await?;
+        }
+        _ => return Err(DbErr::Migration("unsupported outbox consumer integrity backend".into())),
+    }
+
+    let invalid = if backend == DbBackend::Postgres {
+        "SELECT
+            (SELECT COUNT(*) FROM sys_event_consumers c
+             WHERE octet_length(c.event_type) NOT BETWEEN 1 AND 255 OR c.event_type <> btrim(c.event_type, chr(9) || chr(10) || chr(11) || chr(12) || chr(13) || chr(32) || chr(133) || chr(160) || chr(5760) || chr(8192) || chr(8193) || chr(8194) || chr(8195) || chr(8196) || chr(8197) || chr(8198) || chr(8199) || chr(8200) || chr(8201) || chr(8202) || chr(8232) || chr(8233) || chr(8239) || chr(8287) || chr(12288))
+                OR octet_length(c.consumer_key) NOT BETWEEN 1 AND 128 OR c.consumer_key <> btrim(c.consumer_key, chr(9) || chr(10) || chr(11) || chr(12) || chr(13) || chr(32) || chr(133) || chr(160) || chr(5760) || chr(8192) || chr(8193) || chr(8194) || chr(8195) || chr(8196) || chr(8197) || chr(8198) || chr(8199) || chr(8200) || chr(8201) || chr(8202) || chr(8232) || chr(8233) || chr(8239) || chr(8287) || chr(12288)))
+          + (SELECT COUNT(*) FROM sys_event_consumer_receipts r
+             LEFT JOIN sys_events e ON e.id = r.outbox_event_id
+             WHERE e.id IS NULL OR e.event_type <> r.event_type
+                OR octet_length(r.consumer_key) NOT BETWEEN 1 AND 128 OR r.consumer_key <> btrim(r.consumer_key, chr(9) || chr(10) || chr(11) || chr(12) || chr(13) || chr(32) || chr(133) || chr(160) || chr(5760) || chr(8192) || chr(8193) || chr(8194) || chr(8195) || chr(8196) || chr(8197) || chr(8198) || chr(8199) || chr(8200) || chr(8201) || chr(8202) || chr(8232) || chr(8233) || chr(8239) || chr(8287) || chr(12288))
+                OR octet_length(r.event_type) NOT BETWEEN 1 AND 255 OR r.event_type <> btrim(r.event_type, chr(9) || chr(10) || chr(11) || chr(12) || chr(13) || chr(32) || chr(133) || chr(160) || chr(5760) || chr(8192) || chr(8193) || chr(8194) || chr(8195) || chr(8196) || chr(8197) || chr(8198) || chr(8199) || chr(8200) || chr(8201) || chr(8202) || chr(8232) || chr(8233) || chr(8239) || chr(8287) || chr(12288))) AS invalid"
+    } else {
+        "SELECT
+            (SELECT COUNT(*) FROM sys_event_consumers c
+             WHERE typeof(c.event_type) <> 'text' OR instr(c.event_type, char(0)) <> 0 OR length(CAST(c.event_type AS BLOB)) NOT BETWEEN 1 AND 255 OR c.event_type <> trim(c.event_type, char(9) || char(10) || char(11) || char(12) || char(13) || char(32) || char(133) || char(160) || char(5760) || char(8192) || char(8193) || char(8194) || char(8195) || char(8196) || char(8197) || char(8198) || char(8199) || char(8200) || char(8201) || char(8202) || char(8232) || char(8233) || char(8239) || char(8287) || char(12288))
+                OR typeof(c.consumer_key) <> 'text' OR instr(c.consumer_key, char(0)) <> 0 OR length(CAST(c.consumer_key AS BLOB)) NOT BETWEEN 1 AND 128 OR c.consumer_key <> trim(c.consumer_key, char(9) || char(10) || char(11) || char(12) || char(13) || char(32) || char(133) || char(160) || char(5760) || char(8192) || char(8193) || char(8194) || char(8195) || char(8196) || char(8197) || char(8198) || char(8199) || char(8200) || char(8201) || char(8202) || char(8232) || char(8233) || char(8239) || char(8287) || char(12288)))
+          + (SELECT COUNT(*) FROM sys_event_consumer_receipts r
+             LEFT JOIN sys_events e ON e.id = r.outbox_event_id
+             WHERE e.id IS NULL OR e.event_type <> r.event_type
+                OR typeof(r.consumer_key) <> 'text' OR instr(r.consumer_key, char(0)) <> 0 OR length(CAST(r.consumer_key AS BLOB)) NOT BETWEEN 1 AND 128 OR r.consumer_key <> trim(r.consumer_key, char(9) || char(10) || char(11) || char(12) || char(13) || char(32) || char(133) || char(160) || char(5760) || char(8192) || char(8193) || char(8194) || char(8195) || char(8196) || char(8197) || char(8198) || char(8199) || char(8200) || char(8201) || char(8202) || char(8232) || char(8233) || char(8239) || char(8287) || char(12288))
+                OR typeof(r.event_type) <> 'text' OR instr(r.event_type, char(0)) <> 0 OR length(CAST(r.event_type AS BLOB)) NOT BETWEEN 1 AND 255 OR r.event_type <> trim(r.event_type, char(9) || char(10) || char(11) || char(12) || char(13) || char(32) || char(133) || char(160) || char(5760) || char(8192) || char(8193) || char(8194) || char(8195) || char(8196) || char(8197) || char(8198) || char(8199) || char(8200) || char(8201) || char(8202) || char(8232) || char(8233) || char(8239) || char(8287) || char(12288))) AS invalid"
+    };
+    let row = db.query_one_raw(Statement::from_string(backend, invalid.to_string()))
+        .await?.ok_or_else(|| DbErr::Migration("outbox consumer integrity validation unavailable".into()))?;
+    if row.try_get::<i64>("", "invalid")? != 0 {
+        return Err(DbErr::Migration(
+            "invalid outbox consumer registrations or receipts; offline reconciliation required".into(),
+        ));
+    }
+
+    drop_outbox_consumer_receipt_integrity(manager).await?;
+    match backend {
+        DbBackend::Postgres => {
+            db.execute_unprepared(POSTGRES_CONSUMER_RECEIPT_GUARDS).await?;
+            db.execute_unprepared(
+                "CREATE TRIGGER outbox_consumer_registry_guard BEFORE INSERT OR UPDATE OR DELETE ON sys_event_consumers FOR EACH ROW EXECUTE FUNCTION outbox_guard_consumer_registry()"
+            ).await?;
+            db.execute_unprepared(
+                "CREATE TRIGGER outbox_consumer_registry_no_truncate BEFORE TRUNCATE ON sys_event_consumers FOR EACH STATEMENT EXECUTE FUNCTION outbox_guard_consumer_registry()"
+            ).await?;
+            db.execute_unprepared(
+                "CREATE TRIGGER outbox_consumer_receipt_guard BEFORE INSERT OR UPDATE OR DELETE ON sys_event_consumer_receipts FOR EACH ROW EXECUTE FUNCTION outbox_guard_consumer_receipt()"
+            ).await?;
+            db.execute_unprepared(
+                "CREATE TRIGGER outbox_consumer_receipt_no_truncate BEFORE TRUNCATE ON sys_event_consumer_receipts FOR EACH STATEMENT EXECUTE FUNCTION outbox_guard_consumer_receipt()"
+            ).await?;
+        }
+        DbBackend::Sqlite => {
+            db.execute_unprepared(SQLITE_CONSUMER_RECEIPT_GUARDS).await?;
+        }
+        _ => return Err(DbErr::Migration("unsupported outbox consumer integrity backend".into())),
+    }
+    txn.commit().await
+}
+
+/// Removes consumer integrity guards for full standalone schema teardown only.
+pub async fn drop_outbox_consumer_receipt_integrity(
+    manager: &SchemaManager<'_>,
+) -> Result<(), DbErr> {
+    let backend = manager.get_database_backend();
+    match backend {
+        DbBackend::Postgres => {
+            if manager.has_table("sys_event_consumer_receipts").await? {
+                for sql in [
+                    "DROP TRIGGER IF EXISTS outbox_consumer_receipt_guard ON sys_event_consumer_receipts",
+                    "DROP TRIGGER IF EXISTS outbox_consumer_receipt_no_truncate ON sys_event_consumer_receipts",
+                ] { manager.get_connection().execute_unprepared(sql).await?; }
+            }
+            if manager.has_table("sys_event_consumers").await? {
+                for sql in [
+                    "DROP TRIGGER IF EXISTS outbox_consumer_registry_guard ON sys_event_consumers",
+                    "DROP TRIGGER IF EXISTS outbox_consumer_registry_no_truncate ON sys_event_consumers",
+                ] { manager.get_connection().execute_unprepared(sql).await?; }
+            }
+            manager.get_connection().execute_unprepared("DROP FUNCTION IF EXISTS outbox_guard_consumer_receipt()").await?;
+            manager.get_connection().execute_unprepared("DROP FUNCTION IF EXISTS outbox_guard_consumer_registry()").await?;
+        }
+        DbBackend::Sqlite => {
+            for sql in [
+                "DROP TRIGGER IF EXISTS outbox_consumer_registry_insert_guard",
+                "DROP TRIGGER IF EXISTS outbox_consumer_registry_update_guard",
+                "DROP TRIGGER IF EXISTS outbox_consumer_registry_delete_guard",
+                "DROP TRIGGER IF EXISTS outbox_consumer_receipt_insert_guard",
+                "DROP TRIGGER IF EXISTS outbox_consumer_receipt_update_guard",
+                "DROP TRIGGER IF EXISTS outbox_consumer_receipt_delete_guard",
+            ] { manager.get_connection().execute_unprepared(sql).await?; }
+        }
+        _ => return Err(DbErr::Migration("unsupported outbox consumer integrity backend".into())),
     }
     Ok(())
 }

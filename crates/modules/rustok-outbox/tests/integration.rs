@@ -11,7 +11,7 @@ use rustok_core::{Error, Result};
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_outbox::entity::{self, SysEventStatus};
 use rustok_outbox::{
-    OutboxRelay, OutboxRelayPort, OutboxRelayRunOnceRequest, RelayConfig, SysEventsMigration,
+    OutboxConsumer, OutboxRelay, OutboxRelayPort, OutboxRelayRunOnceRequest, RelayConfig, SysEventsMigration,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend,
@@ -298,6 +298,57 @@ async fn postgres_retention_policy_writer_fences_direct_delete_without_waiting()
         },
     ).prune_once().await?.pruned, 0);
     assert!(entity::Entity::find_by_id(event.id).one(&second).await?.is_some());
+    Ok(())
+}
+
+#[tokio::test]
+async fn postgres_consumer_receipt_integrity_fences_direct_registry_and_receipt_dml() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+    let Some(db) = setup_db().await? else { return Ok(()) };
+    if db.get_database_backend() != DatabaseBackend::Postgres { return Ok(()) }
+
+    let event = seed_event(&db).await?;
+    let consumer = OutboxConsumer::new(db.clone());
+    let key = "consumer.database-guard";
+    consumer.register_required_event_types(key, &[event.event_type.clone()]).await?;
+
+    assert!(db.execute_unprepared(
+        "UPDATE sys_event_consumers SET created_at = CURRENT_TIMESTAMP"
+    ).await.is_err(), "registry identity/history cannot be rewritten");
+    assert!(db.execute_unprepared(&format!(
+        "DELETE FROM sys_event_consumers WHERE consumer_key = '{key}'"
+    )).await.is_err(), "raw SQL cannot retire an unacknowledged consumer");
+    assert!(db.execute_unprepared("TRUNCATE sys_event_consumers").await.is_err());
+
+    let forged_unregistered = format!(
+        "INSERT INTO sys_event_consumer_receipts (outbox_event_id, consumer_key, event_type, acknowledged_at) VALUES ('{}', 'unregistered.consumer', '{}', CURRENT_TIMESTAMP)",
+        event.id, event.event_type,
+    );
+    let forged_wrong_type = format!(
+        "INSERT INTO sys_event_consumer_receipts (outbox_event_id, consumer_key, event_type, acknowledged_at) VALUES ('{}', '{key}', 'wrong.event', CURRENT_TIMESTAMP)",
+        event.id,
+    );
+    assert!(db.execute_unprepared(&forged_unregistered).await.is_err());
+    assert!(db.execute_unprepared(&forged_wrong_type).await.is_err());
+
+    consumer.acknowledge_existing(key, event.id).await?;
+    assert!(db.execute_unprepared(
+        "UPDATE sys_event_consumer_receipts SET event_type = 'wrong.event'"
+    ).await.is_err(), "terminal ACK identity is immutable");
+    assert!(db.execute_unprepared(
+        "DELETE FROM sys_event_consumer_receipts"
+    ).await.is_err(), "receipt deletion is reserved for source-event retention");
+    assert!(db.execute_unprepared("TRUNCATE sys_event_consumer_receipts").await.is_err());
+
+    let retired = db.execute_unprepared(&format!(
+        "DELETE FROM sys_event_consumers WHERE consumer_key = '{key}'"
+    )).await?;
+    assert_eq!(retired.rows_affected(), 1, "a fully drained registration may retire");
+    let count = db.query_one_raw(Statement::from_string(
+        DatabaseBackend::Postgres,
+        "SELECT COUNT(*) AS count FROM sys_event_consumer_receipts",
+    )).await?.expect("receipt count").try_get::<i64>("", "count")?;
+    assert_eq!(count, 1, "retirement preserves historical terminal receipts");
     Ok(())
 }
 

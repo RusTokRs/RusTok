@@ -75,7 +75,7 @@ impl OutboxConsumer {
 
         let mut normalized = BTreeSet::new();
         for event_type in event_types {
-            if event_type.trim() != event_type || event_type.is_empty() || event_type.len() > 255 {
+            if event_type.contains('\0') || event_type.trim() != event_type || event_type.is_empty() || event_type.len() > 255 {
                 return Err(Error::Validation(
                     "outbox consumer event type must contain 1 to 255 unpadded bytes".to_string(),
                 ));
@@ -91,10 +91,15 @@ impl OutboxConsumer {
 
         let txn = self.begin_registry_write().await?;
         for event_type in normalized {
-            subscription::Entity::insert(subscription::ActiveModel {
-                event_type: Set(event_type),
+            let lookup = || subscription::Entity::find_by_id((event_type.clone(), consumer_key.to_string()));
+            if lookup().one(&txn).await?.is_some() {
+                continue;
+            }
+            let created_at = crate::database_now(&txn).await?;
+            let affected = subscription::Entity::insert(subscription::ActiveModel {
+                event_type: Set(event_type.clone()),
                 consumer_key: Set(consumer_key.to_string()),
-                created_at: Set(crate::database_now(&txn).await?),
+                created_at: Set(created_at),
             })
             .on_conflict(
                 OnConflict::columns([
@@ -106,6 +111,10 @@ impl OutboxConsumer {
             )
             .exec_without_returning(&txn)
             .await?;
+            let saved = lookup().one(&txn).await?;
+            if affected != 1 || !saved.is_some_and(|row| row.created_at == created_at) {
+                return Err(Error::Validation("outbox consumer registration admission mismatch".into()));
+            }
         }
         txn.commit().await?;
         Ok(())
@@ -173,6 +182,7 @@ impl OutboxConsumer {
             .all(&txn)
             .await?;
 
+        let expected = subscriptions.len() as u64;
         for subscription in subscriptions {
             let acknowledgements = receipt::Entity::find()
                 .select_only()
@@ -195,10 +205,13 @@ impl OutboxConsumer {
             }
         }
 
-        subscription::Entity::delete_many()
+        let removed = subscription::Entity::delete_many()
             .filter(subscription::Column::ConsumerKey.eq(consumer_key))
             .exec(&txn)
             .await?;
+        if removed.rows_affected != expected {
+            return Err(Error::Validation("outbox consumer retirement affected unexpected rows".into()));
+        }
         txn.commit().await?;
         Ok(())
     }
@@ -226,10 +239,11 @@ impl OutboxConsumer {
         outbox_event_id: Uuid,
         event_type: &str,
     ) -> std::result::Result<bool, sea_orm::DbErr> {
-        if consumer_key.trim().is_empty()
+        if consumer_key.contains('\0') || consumer_key.trim().is_empty()
             || consumer_key.trim() != consumer_key
             || consumer_key.len() > 128
             || outbox_event_id.is_nil()
+            || event_type.contains('\0')
             || event_type.trim().is_empty()
             || event_type.trim() != event_type
             || event_type.len() > 255
@@ -310,11 +324,24 @@ impl OutboxConsumer {
             ));
         }
 
+        let lookup = || receipt::Entity::find()
+            .filter(receipt::Column::OutboxEventId.eq(outbox_event_id))
+            .filter(receipt::Column::ConsumerKey.eq(consumer_key));
+        // Source row/writer ownership serializes this read and the insert.
+        if let Some(existing) = lookup().one(txn).await? {
+            if existing.event_type != event_type {
+                return Err(sea_orm::DbErr::Custom(
+                    "outbox consumer acknowledgement conflicts with its prior event type".into(),
+                ));
+            }
+            return Ok(false);
+        }
+        let acknowledged_at = crate::database_now(txn).await?;
         let affected = receipt::Entity::insert(receipt::ActiveModel {
             outbox_event_id: Set(outbox_event_id),
             consumer_key: Set(consumer_key.to_string()),
             event_type: Set(event_type.to_string()),
-            acknowledged_at: Set(crate::database_now(txn).await?),
+            acknowledged_at: Set(acknowledged_at),
         })
         .on_conflict(
             OnConflict::columns([receipt::Column::OutboxEventId, receipt::Column::ConsumerKey])
@@ -324,37 +351,27 @@ impl OutboxConsumer {
         .exec_without_returning(txn)
         .await?;
 
-        if affected == 1 {
-            return Ok(true);
-        }
-        if affected != 0 {
+        if affected != 1 {
             return Err(sea_orm::DbErr::Custom(format!(
-                "outbox consumer acknowledgement affected {affected} rows"
+                "new outbox consumer acknowledgement affected {affected} rows"
             )));
         }
-
-        let existing = receipt::Entity::find()
-            .filter(receipt::Column::OutboxEventId.eq(outbox_event_id))
-            .filter(receipt::Column::ConsumerKey.eq(consumer_key))
-            .one(txn)
-            .await?
-            .ok_or_else(|| {
-                sea_orm::DbErr::RecordNotFound(format!(
-                    "sys_event_consumer_receipts row {consumer_key}/{outbox_event_id}"
-                ))
-            })?;
-        if existing.event_type != event_type {
+        let existing = lookup().one(txn).await?.ok_or_else(|| {
+            sea_orm::DbErr::RecordNotFound(format!(
+                "sys_event_consumer_receipts row {consumer_key}/{outbox_event_id}"
+            ))
+        })?;
+        if existing.event_type != event_type || existing.acknowledged_at != acknowledged_at {
             return Err(sea_orm::DbErr::Custom(
-                "outbox consumer acknowledgement conflicts with its prior event type".to_string(),
+                "new outbox consumer acknowledgement readback mismatch".into(),
             ));
         }
-
-        Ok(false)
+        Ok(true)
     }
 }
 
 fn validate_consumer_key(consumer_key: &str) -> Result<()> {
-    if consumer_key.trim().is_empty()
+    if consumer_key.contains('\0') || consumer_key.trim().is_empty()
         || consumer_key.trim() != consumer_key
         || consumer_key.len() > 128
     {
@@ -523,6 +540,12 @@ mod tests {
             .await
             .expect("persist event");
 
+        assert!(db.execute_unprepared(
+            "DELETE FROM sys_event_consumers WHERE consumer_key = 'consumer.retiring'"
+        ).await.is_err(), "raw SQL cannot retire a consumer with unacknowledged events");
+        assert!(db.execute_unprepared(
+            "UPDATE sys_event_consumers SET created_at = CURRENT_TIMESTAMP"
+        ).await.is_err(), "consumer registrations are immutable");
         assert!(
             consumer
                 .retire_if_drained("consumer.retiring")
@@ -557,7 +580,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn retirement_rejects_a_receipt_for_the_wrong_event_type() {
+    async fn receipt_mutation_cannot_invalidate_a_drained_consumer() {
         let db = test_db().await;
         let consumer = OutboxConsumer::new(db.clone());
         let key = "consumer.lifecycle";
@@ -567,9 +590,96 @@ mod tests {
             .await.expect("register");
         OutboxTransport::new(db.clone()).publish(envelope.clone()).await.expect("event");
         consumer.acknowledge_existing(key, envelope.id).await.expect("ack");
-        db.execute_unprepared("UPDATE sys_event_consumer_receipts SET event_type = 'wrong.type'")
-            .await.expect("simulate corrupt receipt");
-        assert!(consumer.retire_if_drained(key).await.is_err());
+        assert!(db.execute_unprepared(
+            "UPDATE sys_event_consumer_receipts SET event_type = 'wrong.type'"
+        ).await.is_err(), "receipt identity is immutable");
+        assert!(db.execute_unprepared(
+            "DELETE FROM sys_event_consumer_receipts"
+        ).await.is_err(), "a receipt cannot be removed while its source event exists");
+        consumer.retire_if_drained(key).await.expect("valid terminal receipt remains authoritative");
+    }
+
+    #[tokio::test]
+    async fn raw_receipt_insert_requires_matching_event_and_active_subscription() {
+        let db = test_db().await;
+        let tenant_id = Uuid::new_v4();
+        let envelope = EventEnvelope::new(tenant_id, None, DomainEvent::TenantUpdated { tenant_id });
+        OutboxTransport::new(db.clone()).publish(envelope.clone()).await.expect("event");
+
+        let raw = |consumer: &str, event_type: &str| format!(
+            "INSERT INTO sys_event_consumer_receipts (outbox_event_id, consumer_key, event_type, acknowledged_at) SELECT id, '{}', '{}', CURRENT_TIMESTAMP FROM sys_events",
+            consumer, event_type,
+        );
+        assert!(db.execute_unprepared(&raw("unregistered.consumer", &envelope.event_type)).await.is_err());
+        let consumer = OutboxConsumer::new(db.clone());
+        consumer.register_required_event_types(
+            "consumer.receipt-guard", &[envelope.event_type.clone()],
+        ).await.expect("register");
+        assert!(db.execute_unprepared(&raw("consumer.receipt-guard", "wrong.event")).await.is_err());
+
+        consumer.acknowledge_existing("consumer.receipt-guard", envelope.id).await.expect("ack");
+        let before = db.query_one_raw(sea_orm::Statement::from_string(
+            db.get_database_backend(),
+            "SELECT acknowledged_at FROM sys_event_consumer_receipts",
+        )).await.expect("query").expect("receipt")
+            .try_get::<String>("", "acknowledged_at").expect("timestamp");
+        db.execute_unprepared("PRAGMA recursive_triggers = OFF").await.expect("recursive triggers off");
+        let replace = format!(
+            "INSERT OR REPLACE INTO sys_event_consumer_receipts (outbox_event_id, consumer_key, event_type, acknowledged_at) SELECT id, 'consumer.receipt-guard', '{}', '2000-01-01 00:00:00' FROM sys_events",
+            envelope.event_type,
+        );
+        db.execute_unprepared(&replace).await.expect("exact duplicate is ignored");
+        let after = db.query_one_raw(sea_orm::Statement::from_string(
+            db.get_database_backend(),
+            "SELECT acknowledged_at FROM sys_event_consumer_receipts",
+        )).await.expect("query").expect("receipt")
+            .try_get::<String>("", "acknowledged_at").expect("timestamp");
+        assert_eq!(after, before, "SQLite REPLACE cannot rewrite a terminal ACK");
+    }
+
+    #[tokio::test]
+    async fn registration_replace_cannot_rewrite_the_original_registry_row() {
+        let db = test_db().await;
+        let consumer = OutboxConsumer::new(db.clone());
+        consumer.register_required_event_types(
+            "consumer.registry-guard", &["tenant.updated".to_string()],
+        ).await.expect("register");
+        let before = db.query_one_raw(sea_orm::Statement::from_string(
+            db.get_database_backend(),
+            "SELECT created_at FROM sys_event_consumers WHERE consumer_key = 'consumer.registry-guard'",
+        )).await.expect("query").expect("registration")
+            .try_get::<String>("", "created_at").expect("timestamp");
+        db.execute_unprepared(
+            "INSERT OR REPLACE INTO sys_event_consumers (event_type, consumer_key, created_at) VALUES ('tenant.updated', 'consumer.registry-guard', '2000-01-01 00:00:00')"
+        ).await.expect("exact duplicate is ignored");
+        let after = db.query_one_raw(sea_orm::Statement::from_string(
+            db.get_database_backend(),
+            "SELECT created_at FROM sys_event_consumers WHERE consumer_key = 'consumer.registry-guard'",
+        )).await.expect("query").expect("registration")
+            .try_get::<String>("", "created_at").expect("timestamp");
+        assert_eq!(after, before, "SQLite REPLACE cannot rewrite registration history");
+    }
+
+    #[tokio::test]
+    async fn suppressed_registration_and_ack_do_not_admit_effects() {
+        let db = test_db().await;
+        let consumer = OutboxConsumer::new(db.clone());
+        let tenant_id = Uuid::new_v4();
+        let event = EventEnvelope::new(tenant_id, None, DomainEvent::TenantUpdated { tenant_id });
+        let types = [event.event_type.clone()];
+        db.execute_unprepared("CREATE TRIGGER suppress_registration BEFORE INSERT ON sys_event_consumers BEGIN SELECT RAISE(IGNORE); END").await.unwrap();
+        assert!(consumer.register_required_event_types("consumer.suppressed", &types).await.is_err());
+        db.execute_unprepared("DROP TRIGGER suppress_registration").await.unwrap();
+        consumer.register_required_event_types("consumer.suppressed", &types).await.unwrap();
+        OutboxTransport::new(db.clone()).publish(event.clone()).await.unwrap();
+        db.execute_unprepared("CREATE TRIGGER suppress_ack BEFORE INSERT ON sys_event_consumer_receipts BEGIN SELECT RAISE(IGNORE); END").await.unwrap();
+        let txn = db.begin().await.unwrap();
+        assert!(OutboxConsumer::reserve_effect_in_transaction(&txn, "consumer.suppressed", event.id, &event.event_type).await.is_err());
+        txn.rollback().await.unwrap();
+        db.execute_unprepared("DROP TRIGGER suppress_ack").await.unwrap();
+        let txn = db.begin().await.unwrap();
+        assert!(OutboxConsumer::reserve_effect_in_transaction(&txn, "consumer.suppressed", event.id, &event.event_type).await.unwrap());
+        txn.commit().await.unwrap();
     }
 
     #[tokio::test]
