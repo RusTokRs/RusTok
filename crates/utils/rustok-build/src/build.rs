@@ -66,6 +66,9 @@ pub struct Model {
     pub status: BuildStatus,
     pub stage: BuildStage,
     pub progress: i32,
+    /// Global durable progress watermark. Updated atomically with every
+    /// committed build-state change.
+    pub event_sequence: i64,
     pub profile: DeploymentProfile,
     pub manifest_ref: String,
     pub manifest_hash: String,
@@ -98,6 +101,7 @@ impl Model {
             status: BuildStatus::Queued,
             stage: BuildStage::Pending,
             progress: 0,
+            event_sequence: 0,
             profile,
             manifest_ref,
             manifest_hash,
