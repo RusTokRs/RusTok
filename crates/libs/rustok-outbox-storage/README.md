@@ -78,6 +78,11 @@ The outbox_execution_policy singleton owns a per-database-schema budget
 (max_in_flight, default 8, range 1..1024) and the shared claim_ttl_ms.
 The first updated relay binds the TTL; subsequent embedded and standalone
 relays must match it before starting their brokers or claiming work.
+The first binding verifies both persisted TTL and cap before commit. Claim
+and refresh verify the complete event transition under the admission fence;
+refresh locks and compares the exact source snapshot without synthetic event
+updates. A rewritten transition rolls back before dispatch. SQLite regression
+sources cover policy and claim rewriting; compilation and runtime checks are pending.
 The local max_concurrency remains an upper bound, independent of the cluster
 budget. Existing sys_events claimed_by/claimed_at pairs are the only durable
 execution permits. Claim and refresh lock the policy before event rows;

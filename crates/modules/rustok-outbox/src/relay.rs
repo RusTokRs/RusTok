@@ -171,6 +171,14 @@ impl RelayConfig {
                 if changed.rows_affected() != 1 {
                     return Err(Error::External("outbox execution policy initialization lost".to_string()));
                 }
+                let saved = txn.query_one_raw(Statement::from_string(backend,
+                    "SELECT max_in_flight, claim_ttl_ms FROM outbox_execution_policy WHERE id = 1",
+                )).await?.ok_or_else(|| Error::External("outbox execution policy is missing".to_string()))?;
+                let saved_cap: i64 = saved.try_get("", "max_in_flight")?;
+                let saved_ttl: Option<i64> = saved.try_get("", "claim_ttl_ms")?;
+                if saved_cap != cap || saved_ttl != Some(ttl) {
+                    return Err(Error::External("outbox execution policy binding readback mismatch".into()));
+                }
             }
         }
         Ok(cap as u64)
@@ -574,7 +582,7 @@ impl OutboxRelay {
         let claimed = entity::Entity::find()
             .filter(entity::Column::Id.is_in(candidate_ids))
             .filter(entity::Column::Status.eq(SysEventStatus::Pending))
-            .filter(entity::Column::ClaimedBy.eq(worker_id))
+            .filter(entity::Column::ClaimedBy.eq(worker_id.clone()))
             .filter(entity::Column::ClaimedAt.eq(now))
             .order_by_asc(entity::Column::CreatedAt)
             .order_by_asc(entity::Column::Id)
@@ -583,6 +591,15 @@ impl OutboxRelay {
 
         if claimed.len() as u64 != claimed_count {
             return Err(Error::External("outbox claim batch readback did not match the write".into()));
+        }
+        for (mut expected, saved) in candidates.into_iter().zip(&claimed) {
+            expected.claimed_by = Some(worker_id.clone());
+            expected.claimed_at = Some(now);
+            if &expected != saved {
+                return Err(Error::External(format!(
+                    "outbox event {} claim batch transition readback mismatch", expected.id
+                )));
+            }
         }
         txn.commit().await?;
         Ok(claimed)
@@ -599,31 +616,23 @@ impl OutboxRelay {
         }
         let txn = self.db.begin().await?;
         self.config.lock_execution_policy(&txn).await?;
-        // Do not hold the global admission lock while waiting for an event.
-        if txn.get_database_backend() == DatabaseBackend::Postgres {
-            let row = entity::Entity::find_by_id(model.id)
-                .filter(entity::Column::Status.eq(SysEventStatus::Pending))
-                .filter(entity::Column::ClaimedBy.eq(model.claimed_by.clone()))
-                .filter(entity::Column::ClaimedAt.eq(model.claimed_at))
-                .lock_with_behavior(LockType::Update, LockBehavior::Nowait)
-                .one(&txn).await?;
-            if row.is_none() {
-                return Err(Error::External(format!("outbox event {} claim was lost before refresh", model.id)));
-            }
-        }
-        // Acquire the exact pending row before observing its remaining time.
-        let locked = entity::Entity::update_many()
-            .filter(entity::Column::Id.eq(model.id))
+        // PostgreSQL takes the source row NOWAIT; SQLite already owns the
+        // database writer through execution-policy admission. Neither needs
+        // a synthetic event UPDATE before sampling the lease.
+        let query = entity::Entity::find_by_id(model.id)
             .filter(entity::Column::Status.eq(SysEventStatus::Pending))
             .filter(entity::Column::ClaimedBy.eq(model.claimed_by.clone()))
-            .filter(entity::Column::ClaimedAt.eq(model.claimed_at))
-            .set(entity::ActiveModel {
-                claimed_by: Set(model.claimed_by.clone()),
-                ..Default::default()
-            })
-            .exec(&txn)
-            .await?;
-        self.ensure_claim_owned(model.id, locked.rows_affected)?;
+            .filter(entity::Column::ClaimedAt.eq(model.claimed_at));
+        let current = if txn.get_database_backend() == DatabaseBackend::Postgres {
+            query.lock_with_behavior(LockType::Update, LockBehavior::Nowait).one(&txn).await?
+        } else {
+            query.one(&txn).await?
+        };
+        if current.as_ref() != Some(model) {
+            return Err(Error::External(format!(
+                "outbox event {} claim snapshot changed before refresh", model.id
+            )));
+        }
         let now = rustok_outbox_storage::database_now(&txn).await?;
         let claimed_at = model.claimed_at.ok_or_else(|| Error::External("missing outbox claim timestamp".into()))?;
         let ttl = chrono::Duration::from_std(self.config.claim_ttl)
@@ -647,17 +656,12 @@ impl OutboxRelay {
             .exec(&txn)
             .await?;
         self.ensure_claim_owned(model.id, result.rows_affected)?;
-        // Read the actual renewed row, not a locally patched snapshot.
-        // Database transition guards forbid retry or envelope mutation while
-        // a claim is live; this readback also binds the rotated token to the full row.
-        let refreshed = entity::Entity::find_by_id(model.id)
-            .filter(entity::Column::Status.eq(SysEventStatus::Pending))
-            .filter(entity::Column::ClaimedBy.eq(token))
-            .filter(entity::Column::ClaimedAt.eq(now))
-            .one(&txn).await?
-            .ok_or_else(|| Error::External(format!("outbox event {} renewed claim readback failed", model.id)))?;
+        let mut expected = model.clone();
+        expected.claimed_by = Some(token);
+        expected.claimed_at = Some(now);
+        Self::verify_event_state(&txn, &expected).await?;
         txn.commit().await?;
-        Ok(refreshed)
+        Ok(expected)
     }
 
     async fn process_claimed_event(&self, model: &entity::Model) -> Result<DispatchOutcome> {
@@ -1390,6 +1394,60 @@ mod tests {
             assert!(checkpoints::Entity::find_by_id(id).one(&db).await.unwrap().is_none());
             assert_eq!(attempts::Entity::find().filter(attempts::Column::EventId.eq(id)).count(&db).await.unwrap(), 0);
         }
+    }
+
+    #[tokio::test]
+    async fn rewritten_execution_policy_binding_is_rolled_back() {
+        let db = database().await;
+        db.execute_unprepared(
+            "CREATE TRIGGER rewrite_execution_binding AFTER UPDATE OF claim_ttl_ms ON outbox_execution_policy
+             WHEN OLD.claim_ttl_ms IS NULL AND NEW.claim_ttl_ms IS NOT NULL
+             BEGIN UPDATE outbox_execution_policy SET claim_ttl_ms = NEW.claim_ttl_ms + 1 WHERE id = 1; END",
+        ).await.unwrap();
+        let config = RelayConfig::default();
+        let error = config.verify_execution_admission(&db).await.unwrap_err();
+        assert!(error.to_string().contains("execution policy binding readback mismatch"));
+        let row = db.query_one_raw(Statement::from_string(DatabaseBackend::Sqlite,
+            "SELECT claim_ttl_ms FROM outbox_execution_policy WHERE id = 1",
+        )).await.unwrap().unwrap();
+        assert_eq!(row.try_get::<Option<i64>>("", "claim_ttl_ms").unwrap(), None);
+        db.execute_unprepared("DROP TRIGGER rewrite_execution_binding").await.unwrap();
+        config.verify_execution_admission(&db).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn rewritten_claim_and_refresh_roll_back_the_full_transition() {
+        let db = database().await;
+        let envelope = EventEnvelope::new(
+            Uuid::new_v4(), None,
+            rustok_events::DomainEvent::UserLoggedIn { user_id: Uuid::new_v4() },
+        );
+        let id = envelope.id;
+        crate::OutboxTransport::new(db.clone()).publish(envelope).await.unwrap();
+        let before = entity::Entity::find_by_id(id).one(&db).await.unwrap().unwrap();
+        let relay = OutboxRelay::new(db.clone(), Arc::new(RejectUnexpectedPublish));
+        let horizon = rustok_outbox_storage::observe_database_clock(&db).await.unwrap();
+        // Fault injection isolates the runtime readback from the state guard.
+        db.execute_unprepared("DROP TRIGGER outbox_event_state_update_guard").await.unwrap();
+        let rewrite = "CREATE TRIGGER rewrite_claim AFTER UPDATE OF claimed_by ON sys_events
+             WHEN NEW.claimed_by IS NOT NULL AND NEW.claimed_by IS NOT OLD.claimed_by
+             BEGIN UPDATE sys_events SET retry_count = NEW.retry_count + 1 WHERE id = NEW.id; END";
+        db.execute_unprepared(rewrite).await.unwrap();
+        let error = relay.claim_batch(1, horizon, None).await.unwrap_err();
+        assert!(error.to_string().contains("claim batch transition readback mismatch"));
+        assert_eq!(entity::Entity::find_by_id(id).one(&db).await.unwrap(), Some(before));
+        db.execute_unprepared("DROP TRIGGER rewrite_claim").await.unwrap();
+
+        let claimed = relay.claim_batch(1, horizon, None).await.unwrap().pop().unwrap();
+        let mut stale = claimed.clone();
+        stale.retry_count += 1;
+        assert!(relay.refresh_claim(&stale).await.is_err());
+        db.execute_unprepared(rewrite).await.unwrap();
+        let error = relay.refresh_claim(&claimed).await.unwrap_err();
+        assert!(error.to_string().contains("transition readback mismatch"));
+        assert_eq!(entity::Entity::find_by_id(id).one(&db).await.unwrap(), Some(claimed.clone()));
+        db.execute_unprepared("DROP TRIGGER rewrite_claim").await.unwrap();
+        relay.refresh_claim(&claimed).await.unwrap();
     }
 
     #[tokio::test]
