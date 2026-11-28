@@ -281,7 +281,7 @@ async fn unfenced_transport_ack_cannot_steal_a_relay_claim() {
     let mut claimed: rustok_outbox::entity::ActiveModel =
         SysEvents::find_by_id(id).one(&db).await.unwrap().unwrap().into();
     claimed.claimed_by = Set(Some("other-relay".to_string()));
-    claimed.claimed_at = Set(Some(chrono::Utc::now()));
+    claimed.claimed_at = Set(Some(rustok_outbox_storage::database_now(&db).await.unwrap()));
     claimed.update(&db).await.expect("claim");
     assert!(transport.acknowledge(id).await.is_err());
     let stored = SysEvents::find_by_id(id).one(&db).await.unwrap().unwrap();

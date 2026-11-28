@@ -1601,11 +1601,12 @@ mod tests {
             .publish(envelope)
             .await
             .expect("persist event");
+        let claim_at = rustok_outbox_storage::database_now(&db).await.unwrap();
         entity::Entity::update_many()
             .filter(entity::Column::Id.eq(event_id))
             .set(entity::ActiveModel {
                 claimed_by: Set(Some("queued-worker".to_string())),
-                claimed_at: Set(Some(Utc::now() - chrono::Duration::seconds(1))),
+                claimed_at: Set(Some(claim_at)),
                 ..Default::default()
             })
             .exec(&db)
@@ -1625,11 +1626,9 @@ mod tests {
         wrong_tenant.tenant_id = Some(Uuid::new_v4());
         assert!(OutboxRelay::decode_envelope(&wrong_tenant).is_err());
 
-        entity::Entity::update_many().filter(entity::Column::Id.eq(event_id))
-            .set(entity::ActiveModel { retry_count: Set(1), ..Default::default() })
-            .exec(&relay.db).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(2)).await;
         let renewed = relay.refresh_claim(&queued).await.expect("renew claim");
-        assert_eq!(renewed.retry_count, 1);
+        assert_eq!(renewed.retry_count, 0);
         assert_ne!(renewed.claimed_by, queued.claimed_by);
         assert!(renewed.claimed_at > queued.claimed_at);
         let AttemptAdmission::Ready(attempt) = relay.begin_dispatch_attempt(&renewed).await.expect("admission") else { panic!("intent"); };
@@ -1754,28 +1753,35 @@ mod tests {
     #[tokio::test]
     async fn expired_claim_cannot_be_refreshed_without_reclaim() {
         let db = database().await;
-        RelayConfig::default().verify_execution_admission(&db).await.expect("bind execution policy");
+        let config = RelayConfig {
+            claim_ttl: Duration::from_millis(5),
+            publish_timeout: Duration::from_millis(1),
+            ..Default::default()
+        };
+        config.verify_execution_admission(&db).await.expect("bind execution policy");
         let envelope = EventEnvelope::new(
             Uuid::new_v4(), None,
             rustok_events::DomainEvent::UserLoggedIn { user_id: Uuid::new_v4() },
         );
         let id = envelope.id;
         crate::OutboxTransport::new(db.clone()).publish(envelope).await.unwrap();
+        let claim_at = rustok_outbox_storage::database_now(&db).await.unwrap();
         entity::Entity::update_many()
             .filter(entity::Column::Id.eq(id))
             .set(entity::ActiveModel {
                 claimed_by: Set(Some("expired-worker".into())),
-                claimed_at: Set(Some(Utc::now() - chrono::Duration::minutes(2))),
+                claimed_at: Set(Some(claim_at)),
                 ..Default::default()
             })
             .exec(&db).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(10)).await;
         let row = entity::Entity::find_by_id(id).one(&db).await.unwrap().unwrap();
-        let relay = OutboxRelay::new(db, Arc::new(RejectUnexpectedPublish));
+        let relay = OutboxRelay::new(db, Arc::new(RejectUnexpectedPublish)).with_config(config);
         assert!(relay.refresh_claim(&row).await.is_err());
     }
 
     #[tokio::test]
-    async fn unresolved_attempt_blocks_ack_and_retention_even_with_dispatched_status() {
+    async fn unresolved_attempt_blocks_forged_dispatch_ack_and_retention() {
         let db = database().await;
         let transport = crate::OutboxTransport::new(db.clone());
         let envelope = EventEnvelope::new(
@@ -1789,68 +1795,61 @@ mod tests {
         let claimed = relay.claim_batch(1, horizon, None).await.unwrap().pop().unwrap();
         let renewed = relay.refresh_claim(&claimed).await.unwrap();
         let AttemptAdmission::Ready(attempt) = relay.begin_dispatch_attempt(&renewed).await.unwrap() else { panic!("intent"); };
-        // Simulate an anomalous status-only write, not a canonical ACK.
-        entity::Entity::update_many().filter(entity::Column::Id.eq(id))
+        // A raw status/timestamp rewrite cannot manufacture delivery evidence.
+        assert!(entity::Entity::update_many().filter(entity::Column::Id.eq(id))
             .set(entity::ActiveModel {
                 status: Set(SysEventStatus::Dispatched),
-                dispatched_at: Set(Some(Utc::now() - chrono::Duration::days(31))),
+                dispatched_at: Set(Some(Utc::now())),
                 claimed_by: Set(None),
                 claimed_at: Set(None),
                 ..Default::default()
-            }).exec(&db).await.unwrap();
+            }).exec(&db).await.is_err());
         assert!(transport.acknowledge(id).await.is_err());
-        assert_eq!(crate::OutboxRetention::new(db.clone()).prune_once().await.unwrap().pruned, 0);
+        let retention = crate::OutboxRetention::new(db.clone()).with_config(
+            crate::OutboxRetentionConfig {
+                retention: chrono::Duration::milliseconds(1), ..Default::default()
+            },
+        );
+        assert_eq!(retention.prune_once().await.unwrap().pruned, 0);
         assert!(db.execute_unprepared("DELETE FROM sys_events").await.is_err());
-        // Explicitly close the unresolved attempt within a transaction.
-        // This models reviewed recovery, not evidence of actual broker acceptance.
-        let txn = db.begin().await.unwrap();
-        let now = rustok_outbox_storage::database_now(&txn).await.unwrap();
-        relay.finish_dispatch_attempt(&txn, id, attempt, OutboxRelay::claim_token(&renewed).unwrap(), attempts::CONFIRMED, now).await.unwrap();
-        txn.commit().await.unwrap();
+        relay.release_unpublished_claim(&renewed, Some(attempt)).await.unwrap();
         transport.acknowledge(id).await.unwrap();
-        assert_eq!(crate::OutboxRetention::new(db.clone()).prune_once().await.unwrap().pruned, 1);
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        assert_eq!(retention.prune_once().await.unwrap().pruned, 1);
     }
 
     #[tokio::test]
     async fn stale_worker_cannot_complete_a_reclaimed_event() {
         let db = database().await;
-        RelayConfig::default().verify_execution_admission(&db).await.expect("bind execution policy");
-        let event_id = Uuid::new_v4();
-        entity::Entity::insert(entity::ActiveModel {
-            id: Set(event_id),
-            tenant_id: Set(None),
-            event_type: Set("invalid.event".to_string()),
-            schema_version: Set(1),
-            payload: Set(serde_json::json!({ "not": "an envelope" })),
-            status: Set(SysEventStatus::Pending),
-            retry_count: Set(0),
-            next_attempt_at: Set(None),
-            last_error: Set(None),
-            claimed_by: Set(Some("old-worker".to_string())),
-            claimed_at: Set(Some(Utc::now())),
-            created_at: Set(Utc::now()),
-            dispatched_at: Set(None),
-        })
-        .exec_without_returning(&db)
-        .await
-        .expect("insert claimed event");
+        let config = RelayConfig {
+            claim_ttl: Duration::from_millis(5),
+            publish_timeout: Duration::from_millis(1),
+            worker_id: "old-worker".to_string(),
+            ..Default::default()
+        };
+        config.verify_execution_admission(&db).await.expect("bind execution policy");
+        let envelope = EventEnvelope::new(
+            Uuid::new_v4(), None,
+            rustok_events::DomainEvent::UserLoggedIn { user_id: Uuid::new_v4() },
+        );
+        let event_id = envelope.id;
+        crate::OutboxTransport::new(db.clone()).publish(envelope).await.unwrap();
+        let first_claim_at = rustok_outbox_storage::database_now(&db).await.unwrap();
+        let mut first_claim: entity::ActiveModel = entity::Entity::find_by_id(event_id)
+            .one(&db).await.unwrap().unwrap().into();
+        first_claim.claimed_by = Set(Some("old-worker".to_string()));
+        first_claim.claimed_at = Set(Some(first_claim_at));
+        first_claim.update(&db).await.expect("first claim");
+        let old_model = entity::Entity::find_by_id(event_id).one(&db).await.unwrap().unwrap();
 
-        let old_model = entity::Entity::find_by_id(event_id)
-            .one(&db)
-            .await
-            .expect("query")
-            .expect("event");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let second_claim_at = rustok_outbox_storage::database_now(&db).await.unwrap();
         let mut reclaimed: entity::ActiveModel = old_model.clone().into();
         reclaimed.claimed_by = Set(Some("new-worker".to_string()));
-        reclaimed.claimed_at = Set(Some(Utc::now() + chrono::Duration::seconds(1)));
+        reclaimed.claimed_at = Set(Some(second_claim_at));
         reclaimed.update(&db).await.expect("reclaim event");
 
-        let relay = OutboxRelay::new(db.clone(), Arc::new(RejectUnexpectedPublish)).with_config(
-            RelayConfig {
-                worker_id: "old-worker".to_string(),
-                ..RelayConfig::default()
-            },
-        );
+        let relay = OutboxRelay::new(db.clone(), Arc::new(RejectUnexpectedPublish)).with_config(config);
         assert!(relay.refresh_claim(&old_model).await.is_err());
         assert!(relay.process_claimed_event(&old_model).await.is_err());
         assert!(relay.mark_dispatched(&old_model, Uuid::new_v4()).await.is_err());
