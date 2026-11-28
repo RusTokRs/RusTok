@@ -226,6 +226,56 @@ async fn postgres_durable_event_retention_policy() -> TestResult<()> {
 }
 
 #[tokio::test]
+async fn postgres_retention_policy_writer_fences_direct_delete_without_waiting() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+    let Some(db) = setup_db().await? else { return Ok(()) };
+    if db.get_database_backend() != DatabaseBackend::Postgres { return Ok(()) }
+
+    let schema = db.query_one_raw(Statement::from_string(
+        DatabaseBackend::Postgres, "SELECT current_schema() AS schema_name",
+    )).await?.expect("schema").try_get::<String>("", "schema_name")?;
+    assert!(schema.starts_with("rustok_outbox_test_"));
+    assert!(schema.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_'));
+    let database_url = std::env::var("RUSTOK_OUTBOX_TEST_DATABASE_URL")
+        .or_else(|_| std::env::var("DATABASE_URL"))?;
+    let mut options = ConnectOptions::new(database_url);
+    options.max_connections(1).min_connections(1).sqlx_logging(false);
+    let second = Database::connect(options).await?;
+    second.execute_unprepared(&format!(r#"SET search_path TO "{schema}""#)).await?;
+
+    let event = seed_event(&db).await?;
+    let relay = OutboxRelay::new(db.clone(), Arc::new(MockTransport::default()));
+    assert_eq!(relay.process_pending_once(None).await?, 1);
+    let retention = rustok_outbox::OutboxRetention::new(db.clone());
+    assert_eq!(retention.prune_once().await?.pruned, 0);
+    let mut old: entity::ActiveModel = entity::Entity::find_by_id(event.id)
+        .one(&db).await?.expect("event").into();
+    old.dispatched_at = Set(Some(Utc::now() - chrono::Duration::days(40)));
+    old.update(&db).await?;
+
+    let writer = db.begin().await?;
+    writer.execute_unprepared(
+        "UPDATE outbox_event_retention_policy SET delivered_retention_ms = 5184000000 WHERE id = 1"
+    ).await?;
+    let denied = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        second.execute_unprepared("DELETE FROM sys_events"),
+    ).await.expect("direct DELETE must not wait on the retention policy writer");
+    assert!(denied.is_err());
+    writer.commit().await?;
+    assert!(second.execute_unprepared("DELETE FROM sys_events").await.is_err(),
+        "the committed sixty-day window still holds the forty-day event");
+    assert!(retention.prune_once().await.is_err(), "old thirty-day configuration");
+    assert_eq!(rustok_outbox::OutboxRetention::new(second.clone()).with_config(
+        rustok_outbox::OutboxRetentionConfig {
+            retention: chrono::Duration::days(60), ..Default::default()
+        },
+    ).prune_once().await?.pruned, 0);
+    assert!(entity::Entity::find_by_id(event.id).one(&second).await?.is_some());
+    Ok(())
+}
+
+#[tokio::test]
 async fn sqlite_event_envelope_and_consumer_hold_are_immutable() -> TestResult<()> {
     let db = setup_sqlite_db().await?;
     assert_event_envelope_integrity(&db).await
