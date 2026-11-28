@@ -15,7 +15,7 @@ use rustok_outbox::{
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend,
-    DatabaseConnection, EntityTrait, QueryFilter, Set, Statement, TransactionTrait,
+    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set, Statement, TransactionTrait,
 };
 use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
 use tokio::sync::Semaphore;
@@ -298,6 +298,73 @@ async fn postgres_retention_policy_writer_fences_direct_delete_without_waiting()
         },
     ).prune_once().await?.pruned, 0);
     assert!(entity::Entity::find_by_id(event.id).one(&second).await?.is_some());
+    Ok(())
+}
+
+#[tokio::test]
+async fn postgres_retention_skips_locked_delivered_and_failed_events() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+    let Some(db) = setup_db().await? else { return Ok(()) };
+    if db.get_database_backend() != DatabaseBackend::Postgres { return Ok(()) }
+
+    let schema = db.query_one_raw(Statement::from_string(
+        DatabaseBackend::Postgres, "SELECT current_schema() AS schema_name",
+    )).await?.expect("schema").try_get::<String>("", "schema_name")?;
+    assert!(schema.starts_with("rustok_outbox_test_"));
+    assert!(schema.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_'));
+    let database_url = std::env::var("RUSTOK_OUTBOX_TEST_DATABASE_URL")
+        .or_else(|_| std::env::var("DATABASE_URL"))?;
+    let mut options = ConnectOptions::new(database_url);
+    options.max_connections(1).min_connections(1).sqlx_logging(false);
+    let second = Database::connect(options).await?;
+    second.execute_unprepared(&format!(r#"SET search_path TO "{schema}""#)).await?;
+
+    let target = Arc::new(MockTransport::default());
+    for _ in 0..2 { seed_event(&db).await?; }
+    for _ in 0..2 {
+        let event = seed_event(&db).await?;
+        target.fail_n_times_for(event.id, 1).await;
+    }
+    let relay = OutboxRelay::new(db.clone(), target).with_config(RelayConfig {
+        max_attempts: 1, ..Default::default()
+    });
+    assert_eq!(relay.process_pending_once(None).await?, 4);
+    let delivered = entity::Entity::find()
+        .filter(entity::Column::Status.eq(SysEventStatus::Dispatched))
+        .order_by_asc(entity::Column::DispatchedAt).order_by_asc(entity::Column::Id)
+        .all(&db).await?;
+    let failed = entity::Entity::find()
+        .filter(entity::Column::Status.eq(SysEventStatus::Failed))
+        .order_by_asc(entity::Column::CreatedAt).order_by_asc(entity::Column::Id)
+        .all(&db).await?;
+    assert_eq!(delivered.len(), 2);
+    assert_eq!(failed.len(), 2);
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+    let locker = db.begin().await?;
+    locker.query_all_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT id FROM sys_events WHERE id IN ($1, $2) FOR UPDATE",
+        [delivered[0].id.into(), failed[0].id.into()],
+    )).await?;
+    let retention = rustok_outbox::OutboxRetention::new(second.clone()).with_config(
+        rustok_outbox::OutboxRetentionConfig {
+            retention: chrono::Duration::milliseconds(1),
+            failed_retention: Some(chrono::Duration::milliseconds(1)),
+            batch_size: 1,
+            ..Default::default()
+        },
+    );
+    let result = tokio::time::timeout(std::time::Duration::from_secs(2), retention.prune_once()).await;
+    locker.rollback().await?;
+    let report = result.expect("retention must skip locked rows instead of holding shared fences")?;
+    assert_eq!((report.pruned, report.pruned_failed), (1, 1));
+    for rows in [&delivered, &failed] {
+        assert!(entity::Entity::find_by_id(rows[0].id).one(&second).await?.is_some());
+        assert!(entity::Entity::find_by_id(rows[1].id).one(&second).await?.is_none());
+    }
+    let report = retention.prune_once().await?;
+    assert_eq!((report.pruned, report.pruned_failed), (1, 1));
     Ok(())
 }
 

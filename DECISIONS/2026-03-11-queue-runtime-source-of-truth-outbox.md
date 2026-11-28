@@ -394,3 +394,16 @@ applies to subsequent charged failures. This is a canonical relay contract,
 not proof of broker effects or validation of arbitrary direct SQL outcomes.
 SQLite/PostgreSQL regression sources cover mismatch and reconfiguration;
 compilation, migration and execution remain pending.
+
+## Retention event-row admission (source only)
+
+Delivered and explicitly enabled failed-event pruning select the bounded batch
+under the durable retention policy and consumer registry fences, using PostgreSQL
+`FOR UPDATE SKIP LOCKED` (SQLite holds its writer reservation). Both paths
+share the selection/delete protocol, retain the initial SQL-clock horizon, and
+recheck SQL time and eligibility after event-row admission. Busy rows are left
+for a later sweep; a short batch does not prove the eligible queue is empty.
+This prevents waiting for a busy event row while holding the earlier shared
+fences; it does not bound DDL or arbitrary external locks. A PostgreSQL
+multi-connection regression covers locked oldest rows in both histories;
+compilation and runtime verification remain pending.

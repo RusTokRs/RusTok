@@ -1,6 +1,6 @@
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, QueryFilter, QueryOrder, QuerySelect, Statement, TransactionTrait, sea_query::Expr,
+    EntityTrait, QueryFilter, QueryOrder, QuerySelect, Statement, TransactionTrait, sea_query::{Expr, LockBehavior, LockType},
 };
 
 use rustok_core::{Error, Result};
@@ -100,7 +100,8 @@ pub struct OutboxPruneReport {
     /// Terminal owner-operation receipts deleted by this run (only when a
     /// receipt retention window is configured).
     pub pruned_receipts: u64,
-    /// Whether the run filled its batch, i.e. another run has work to do.
+    /// Whether a candidate batch filled its limit. Busy skipped rows may
+    /// still remain even when this is false.
     pub batch_exhausted: bool,
 }
 
@@ -138,66 +139,18 @@ impl OutboxRetention {
     /// Deletes up to `batch_size` delivered rows older than the retention
     /// window and reports how much was pruned.
     ///
-    /// Candidate ids are selected first and deleted by id with the same
-    /// status, age, and consumer-acknowledgement predicates. The delete rechecks
-    /// the consumer predicate so a newly registered obligation or changed
-    /// delivery state cannot be bypassed by a stale candidate scan.
+    /// Select and lock eligible rows under the policy and consumer registry
+    /// fences, skipping busy PostgreSQL rows. Recheck the same predicates
+    /// before deletion; a contended row is left for a later sweep.
     pub async fn prune_once(&self) -> Result<OutboxPruneReport> {
         self.config.validate()?;
         rustok_outbox_storage::idempotency::verify_receipt_retention_policy(&self.db, self.config.receipt_retention)
             .await.map_err(|error| Error::External(error.to_string()))?;
         self.verify_event_retention_policy().await?;
-        let cutoff = rustok_outbox_storage::observe_database_clock(&self.db).await?
-            .checked_sub_signed(self.config.retention)
-            .ok_or_else(|| Error::Validation("outbox retention cutoff is out of range".to_string()))?;
-
-        let candidate_ids: Vec<uuid::Uuid> = entity::Entity::find()
-            .select_only()
-            .column(entity::Column::Id)
-            .filter(entity::Column::Status.eq(SysEventStatus::Dispatched))
-            .filter(entity::Column::ClaimedBy.is_null())
-            .filter(entity::Column::ClaimedAt.is_null())
-            .filter(entity::Column::DispatchedAt.is_not_null())
-            .filter(entity::Column::DispatchedAt.lte(cutoff))
-            .filter(required_consumers_acknowledged_predicate())
-            .filter(no_open_dispatch_attempt_predicate())
-            .order_by_asc(entity::Column::DispatchedAt)
-            .order_by_asc(entity::Column::Id)
-            .limit(self.config.batch_size)
-            .into_tuple::<uuid::Uuid>()
-            .all(&self.db)
-            .await?;
-
-        if candidate_ids.is_empty() {
-            let (pruned_failed, pruned_receipts, secondary_exhausted) =
-                self.prune_secondary().await?;
-            rustok_telemetry::metrics::record_outbox_retention_run();
-            return Ok(OutboxPruneReport {
-                pruned: 0,
-                pruned_failed,
-                pruned_receipts,
-                batch_exhausted: secondary_exhausted,
-            });
-        }
-
-        let batch_exhausted = candidate_ids.len() as u64 >= self.config.batch_size;
-        let txn = self.begin_event_delete().await?;
-        let cutoff = cutoff.min(rustok_outbox_storage::database_now(&txn).await?
-            .checked_sub_signed(self.config.retention)
-            .ok_or_else(|| Error::Validation("outbox retention cutoff is out of range".to_string()))?);
-        let deleted = entity::Entity::delete_many()
-            .filter(entity::Column::Id.is_in(candidate_ids))
-            .filter(entity::Column::Status.eq(SysEventStatus::Dispatched))
-            .filter(entity::Column::ClaimedBy.is_null())
-            .filter(entity::Column::ClaimedAt.is_null())
-            .filter(entity::Column::DispatchedAt.is_not_null())
-            .filter(entity::Column::DispatchedAt.lte(cutoff))
-            .filter(required_consumers_acknowledged_predicate())
-            .filter(no_open_dispatch_attempt_predicate())
-            .exec(&txn)
-            .await?
-            .rows_affected;
-        txn.commit().await?;
+        let horizon = rustok_outbox_storage::observe_database_clock(&self.db).await?;
+        let (deleted, batch_exhausted) = self.prune_events(
+            SysEventStatus::Dispatched, entity::Column::DispatchedAt, self.config.retention, horizon,
+        ).await?;
 
         if deleted > 0 {
             rustok_telemetry::metrics::record_outbox_pruned(deleted);
@@ -208,7 +161,7 @@ impl OutboxRetention {
                 "Pruned delivered outbox events"
             );
         }
-        let (pruned_failed, pruned_receipts, secondary_exhausted) = self.prune_secondary().await?;
+        let (pruned_failed, pruned_receipts, secondary_exhausted) = self.prune_secondary(horizon).await?;
         rustok_telemetry::metrics::record_outbox_retention_run();
 
         Ok(OutboxPruneReport {
@@ -291,58 +244,83 @@ impl OutboxRetention {
         Ok(txn)
     }
 
+    /// Select the batch only after acquiring policy -> registry authority.
+    /// PostgreSQL skips busy event rows rather than waiting while holding the
+    /// shared fences. SQLite already owns the writer reservation.
+    async fn prune_events(
+        &self,
+        status: SysEventStatus,
+        age_column: entity::Column,
+        window: chrono::Duration,
+        horizon: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(u64, bool)> {
+        let cutoff = horizon.checked_sub_signed(window)
+            .ok_or_else(|| Error::Validation("outbox retention cutoff is out of range".into()))?;
+        let txn = self.begin_event_delete().await?;
+        let cutoff = cutoff.min(rustok_outbox_storage::database_now(&txn).await?
+            .checked_sub_signed(window)
+            .ok_or_else(|| Error::Validation("outbox retention cutoff is out of range".into()))?);
+        let candidates = entity::Entity::find()
+            .select_only()
+            .column(entity::Column::Id)
+            .filter(entity::Column::Status.eq(status.clone()))
+            .filter(entity::Column::ClaimedBy.is_null())
+            .filter(entity::Column::ClaimedAt.is_null())
+            .filter(age_column.is_not_null())
+            .filter(age_column.lte(cutoff))
+            .filter(required_consumers_acknowledged_predicate())
+            .filter(no_open_dispatch_attempt_predicate())
+            .order_by_asc(age_column)
+            .order_by_asc(entity::Column::Id)
+            .limit(self.config.batch_size);
+        let candidates = if txn.get_database_backend() == DatabaseBackend::Postgres {
+            candidates.lock_with_behavior(LockType::Update, LockBehavior::SkipLocked)
+        } else {
+            candidates
+        };
+        let candidate_ids = candidates.into_tuple::<uuid::Uuid>().all(&txn).await?;
+        let batch_exhausted = candidate_ids.len() as u64 >= self.config.batch_size;
+        if candidate_ids.is_empty() {
+            txn.commit().await?;
+            return Ok((0, false));
+        }
+
+        // Recheck SQL time and all eligibility predicates after row admission.
+        let cutoff = cutoff.min(rustok_outbox_storage::database_now(&txn).await?
+            .checked_sub_signed(window)
+            .ok_or_else(|| Error::Validation("outbox retention cutoff is out of range".into()))?);
+        let deleted = entity::Entity::delete_many()
+            .filter(entity::Column::Id.is_in(candidate_ids))
+            .filter(entity::Column::Status.eq(status))
+            .filter(entity::Column::ClaimedBy.is_null())
+            .filter(entity::Column::ClaimedAt.is_null())
+            .filter(age_column.is_not_null())
+            .filter(age_column.lte(cutoff))
+            .filter(required_consumers_acknowledged_predicate())
+            .filter(no_open_dispatch_attempt_predicate())
+            .exec(&txn).await?.rows_affected;
+        txn.commit().await?;
+        Ok((deleted, batch_exhausted))
+    }
+
     /// Prunes the two bounded histories that are disabled by default:
     /// dead-lettered events past their configured window and terminal
     /// owner-operation receipts past theirs.
-    async fn prune_secondary(&self) -> Result<(u64, u64, bool)> {
+    async fn prune_secondary(&self, horizon: chrono::DateTime<chrono::Utc>) -> Result<(u64, u64, bool)> {
         let mut batch_exhausted = false;
         let mut pruned_failed = 0;
         if let Some(failed_retention) = self.config.failed_retention {
-            let cutoff = rustok_outbox_storage::database_now(&self.db).await?
-                .checked_sub_signed(failed_retention)
-                .ok_or_else(|| Error::Validation("outbox failed retention cutoff is out of range".to_string()))?;
-            let candidate_ids: Vec<uuid::Uuid> = entity::Entity::find()
-                .select_only()
-                .column(entity::Column::Id)
-                .filter(entity::Column::Status.eq(SysEventStatus::Failed))
-                .filter(entity::Column::ClaimedBy.is_null())
-                .filter(entity::Column::ClaimedAt.is_null())
-                .filter(entity::Column::CreatedAt.lte(cutoff))
-                .filter(required_consumers_acknowledged_predicate())
-            .filter(no_open_dispatch_attempt_predicate())
-                .order_by_asc(entity::Column::CreatedAt)
-                .order_by_asc(entity::Column::Id)
-                .limit(self.config.batch_size)
-                .into_tuple::<uuid::Uuid>()
-                .all(&self.db)
-                .await?;
-            if candidate_ids.len() as u64 >= self.config.batch_size {
-                batch_exhausted = true;
-            }
-            if !candidate_ids.is_empty() {
-                let txn = self.begin_event_delete().await?;
-                let cutoff = cutoff.min(rustok_outbox_storage::database_now(&txn).await?
-                    .checked_sub_signed(failed_retention)
-                    .ok_or_else(|| Error::Validation("outbox failed retention cutoff is out of range".to_string()))?);
-                pruned_failed = entity::Entity::delete_many()
-                    .filter(entity::Column::Id.is_in(candidate_ids))
-                    .filter(entity::Column::Status.eq(SysEventStatus::Failed))
-                .filter(entity::Column::ClaimedBy.is_null())
-                .filter(entity::Column::ClaimedAt.is_null())
-                    .filter(entity::Column::CreatedAt.lte(cutoff))
-                    .filter(required_consumers_acknowledged_predicate())
-            .filter(no_open_dispatch_attempt_predicate())
-                    .exec(&txn)
-                    .await?
-                    .rows_affected;
-                txn.commit().await?;
-                if pruned_failed > 0 {
-                    tracing::info!(
-                        pruned_failed_events = pruned_failed,
-                        retention_seconds = failed_retention.num_seconds(),
-                        "Pruned dead-lettered outbox events"
-                    );
-                }
+            let (deleted, exhausted) = self.prune_events(
+                SysEventStatus::Failed, entity::Column::CreatedAt, failed_retention, horizon,
+            ).await?;
+            pruned_failed = deleted;
+            batch_exhausted = exhausted;
+            if pruned_failed > 0 {
+                tracing::info!(
+                    pruned_failed_events = pruned_failed,
+                    retention_seconds = failed_retention.num_seconds(),
+                    "Pruned dead-lettered outbox events"
+                );
             }
         }
 
