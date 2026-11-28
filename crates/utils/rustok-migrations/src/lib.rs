@@ -84,6 +84,7 @@ mod composition {
     mod m20261128_000206_fence_outbox_delivery_history;
     mod m20261128_000207_fence_outbox_event_envelope;
     mod m20261128_000208_create_outbox_event_retention_policy;
+    mod m20261128_000209_add_build_progress_sequence;
 
     #[cfg(test)]
     mod contract_tests;
@@ -551,9 +552,18 @@ mod composition {
         ));
         all.push(Box::new(
             m20261127_000205_create_outbox_delivery_checkpoints::Migration,
+        ));
+        all.push(Box::new(
             m20261128_000206_fence_outbox_delivery_history::Migration,
+        ));
+        all.push(Box::new(
             m20261128_000207_fence_outbox_event_envelope::Migration,
+        ));
+        all.push(Box::new(
             m20261128_000208_create_outbox_event_retention_policy::Migration,
+        ));
+        all.push(Box::new(
+            m20261128_000209_add_build_progress_sequence::Migration,
         ));
         all
     }
