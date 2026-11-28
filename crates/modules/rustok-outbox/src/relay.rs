@@ -1794,12 +1794,13 @@ mod tests {
         let horizon = rustok_outbox_storage::observe_database_clock(&db).await.unwrap();
         let claimed = relay.claim_batch(1, horizon, None).await.unwrap().pop().unwrap();
         let renewed = relay.refresh_claim(&claimed).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(2)).await;
         let AttemptAdmission::Ready(attempt) = relay.begin_dispatch_attempt(&renewed).await.unwrap() else { panic!("intent"); };
-        // A raw status/timestamp rewrite cannot manufacture delivery evidence.
+        // A forged completion timestamp predating the open intent is rejected.
         assert!(entity::Entity::update_many().filter(entity::Column::Id.eq(id))
             .set(entity::ActiveModel {
                 status: Set(SysEventStatus::Dispatched),
-                dispatched_at: Set(Some(Utc::now())),
+                dispatched_at: Set(Some(renewed.claimed_at)),
                 claimed_by: Set(None),
                 claimed_at: Set(None),
                 ..Default::default()
