@@ -447,11 +447,13 @@ fn walk_opaque_value(
                 "page_content_slot is only allowed inside layout templates",
             ));
         }
-        let has_children = object.get("components").is_some_and(|children| match children {
-            Value::Array(children) => !children.is_empty(),
-            Value::Null => false,
-            _ => true,
-        });
+        let has_children = object
+            .get("components")
+            .is_some_and(|children| match children {
+                Value::Array(children) => !children.is_empty(),
+                Value::Null => false,
+                _ => true,
+            });
         if has_children {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
@@ -1051,19 +1053,13 @@ fn deduplicate_diagnostics(diagnostics: &mut Vec<ValidationDiagnostic>) {
     });
 }
 
-fn symbol_materialization_diagnostic(
-    error: &crate::FlyError,
-) -> Option<ValidationDiagnostic> {
+fn symbol_materialization_diagnostic(error: &crate::FlyError) -> Option<ValidationDiagnostic> {
     let code = match error {
-        crate::FlyError::MaximumNodesExceeded { .. } => {
-            "symbol_expansion_maximum_nodes_exceeded"
-        }
+        crate::FlyError::MaximumNodesExceeded { .. } => "symbol_expansion_maximum_nodes_exceeded",
         crate::FlyError::MaximumStyleRulesExceeded { .. } => {
             "symbol_expansion_maximum_style_rules_exceeded"
         }
-        crate::FlyError::MaximumAssetsExceeded { .. } => {
-            "symbol_expansion_maximum_assets_exceeded"
-        }
+        crate::FlyError::MaximumAssetsExceeded { .. } => "symbol_expansion_maximum_assets_exceeded",
         crate::FlyError::InvalidAssetReference(message)
             if message.contains("conflicts with an existing asset") =>
         {
@@ -1187,12 +1183,9 @@ fn validate_symbols(
             } else {
                 "invalid_symbol_definition"
             };
-            report.diagnostics.push(diagnostic(
-                ValidationSeverity::Error,
-                code,
-                &path,
-                message,
-            ));
+            report
+                .diagnostics
+                .push(diagnostic(ValidationSeverity::Error, code, &path, message));
         } else {
             // Symbol definitions are authored content too. Validate their component trees with
             // the same URL, raw-HTML, rich-text, embed and provider checks as page components,
@@ -1420,9 +1413,12 @@ mod tests {
             ValidationLimits::default(),
         );
 
-        assert!(report.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "symbol_definition_limit_exceeded"
-        }));
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "symbol_definition_limit_exceeded" })
+        );
     }
 
     #[test]
@@ -1450,9 +1446,12 @@ mod tests {
             ValidationLimits::default(),
         );
 
-        assert!(report.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "symbol_definition_limit_exceeded"
-        }));
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "symbol_definition_limit_exceeded" })
+        );
     }
 
     #[test]
@@ -1478,9 +1477,12 @@ mod tests {
             ValidationLimits::default(),
         );
 
-        assert!(report.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "page_content_slot_cannot_have_children"
-        }));
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "page_content_slot_cannot_have_children" })
+        );
     }
 
     #[test]
@@ -1553,9 +1555,12 @@ mod tests {
             ValidationLimits::default(),
         );
 
-        assert!(report.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "symbol_instance_with_children"
-        }));
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "symbol_instance_with_children" })
+        );
     }
 
     #[test]
@@ -1863,9 +1868,10 @@ mod tests {
         );
 
         assert!(
-            report.diagnostics.iter().any(|diagnostic| {
-                diagnostic.code == "symbol_expansion_maximum_nodes_exceeded"
-            }),
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "symbol_expansion_maximum_nodes_exceeded" }),
             "{:?}",
             report.diagnostics
         );
@@ -1982,11 +1988,15 @@ mod tests {
             ValidationLimits::default(),
         );
 
-        assert!(report.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "invalid_component_id"
-                && diagnostic.path.ends_with("components[0].id")
-                && diagnostic.severity == ValidationSeverity::Error
-        }), "{:?}", report.diagnostics);
+        assert!(
+            report.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "invalid_component_id"
+                    && diagnostic.path.ends_with("components[0].id")
+                    && diagnostic.severity == ValidationSeverity::Error
+            }),
+            "{:?}",
+            report.diagnostics
+        );
     }
 
     #[test]

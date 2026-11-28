@@ -45,22 +45,10 @@ fn ensure_opaque_children_stable_ids(
 ) {
     if let Some(children) = value.as_array_mut() {
         for child in children {
-            ensure_opaque_node_stable_ids(
-                child,
-                generator,
-                reserved,
-                seen,
-                remapped_component_ids,
-            );
+            ensure_opaque_node_stable_ids(child, generator, reserved, seen, remapped_component_ids);
         }
     } else if value.is_object() {
-        ensure_opaque_node_stable_ids(
-            value,
-            generator,
-            reserved,
-            seen,
-            remapped_component_ids,
-        );
+        ensure_opaque_node_stable_ids(value, generator, reserved, seen, remapped_component_ids);
     }
 }
 
@@ -380,9 +368,7 @@ fn check_component_ids_stable<'a>(
                 ComponentChildren::Nodes(children) => children
                     .iter()
                     .all(|child| check_component_ids_stable(child, seen)),
-                ComponentChildren::Opaque(value) => {
-                    check_opaque_children_ids_stable(value, seen)
-                }
+                ComponentChildren::Opaque(value) => check_opaque_children_ids_stable(value, seen),
             }
         }
         ComponentNode::Opaque(value) => check_opaque_node_ids_stable(value, seen),
@@ -710,18 +696,8 @@ impl ComponentNode {
         seen: &mut BTreeSet<String>,
     ) {
         let mut remapped_component_ids = BTreeMap::new();
-        self.ensure_typed_stable_ids_inner(
-            generator,
-            reserved,
-            seen,
-            &mut remapped_component_ids,
-        );
-        self.ensure_opaque_stable_ids_inner(
-            generator,
-            reserved,
-            seen,
-            &mut remapped_component_ids,
-        );
+        self.ensure_typed_stable_ids_inner(generator, reserved, seen, &mut remapped_component_ids);
+        self.ensure_opaque_stable_ids_inner(generator, reserved, seen, &mut remapped_component_ids);
         if !remapped_component_ids.is_empty() {
             let mut dom_ids = Vec::new();
             let mut form_ids = Vec::new();

@@ -127,7 +127,13 @@ run_browser() {
     skip 'Fly Playwright scenarios' 'run npm ci --prefix apps/next-admin'
     return
   fi
-  step 'Fly Playwright scenarios (Chromium)' env PLAYWRIGHT_SKIP_WEBSERVER=true npm --prefix apps/next-admin run test:e2e -- "tests/e2e/fly-*.spec.ts" --workers=1
+  local -a specs=()
+  mapfile -t specs < <(cd apps/next-admin && find tests/e2e -maxdepth 1 -type f -name 'fly-*.spec.ts' -print | sort)
+  if ((${#specs[@]} == 0)); then
+    skip 'Fly Playwright scenarios' 'no Fly specs found under apps/next-admin/tests/e2e'
+    return
+  fi
+  step 'Fly Playwright scenarios (Chromium)' env PLAYWRIGHT_SKIP_WEBSERVER=true npm --prefix apps/next-admin run test:e2e -- "${specs[@]}" --workers=1
 }
 
 # --------------------------------------------------------------------------------------------

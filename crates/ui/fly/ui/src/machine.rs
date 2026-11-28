@@ -62,11 +62,9 @@ impl UiIntent {
             Self::Execute(command) => {
                 !CommandCapabilityRequirement::for_command(command).is_empty()
             }
-            Self::Drop
-            | Self::CutSelection
-            | Self::PasteClipboard
-            | Self::Undo
-            | Self::Redo => true,
+            Self::Drop | Self::CutSelection | Self::PasteClipboard | Self::Undo | Self::Redo => {
+                true
+            }
             _ => false,
         }
     }

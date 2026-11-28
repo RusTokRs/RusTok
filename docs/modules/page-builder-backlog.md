@@ -1582,3 +1582,8 @@ Fly runtime verifier alignment (2026-11-27, source-only): updated SSR-first, mul
 - Add wasm checks for the actual `rustok-page-builder-admin` Leptos `hydrate` and Dioxus `dioxus-web` profiles to `scripts/fly-check.sh` and Fly CI. The previous checks compiled only the standalone adapters, leaving host-module feature drift undetected.
 - Wire the existing Fly Playwright browser contract specs into Chromium CI and expose them as `scripts/fly-check.sh browser`. These specs exercise the classic adapter and synthetic hydration handoff harness; they do not mount a real Leptos or Dioxus host.
 - Real mounted Leptos SSR/hydration and Dioxus browser interactions, including palette drag/drop, resize/pointer capture, CSP and server acknowledgement flows, remain open until maintainer/CI evidence is available. No Cargo, WASM, formatting, lint or browser run is claimed from this connector-only session.
+
+2026-11-28 first CI feedback (run `46125237286`; follow-up pending):
+- The Chromium job initially passed a shell glob to Playwright's regex-based positional filter and reported `No tests found`. Both the CI job and local `browser` mode now enumerate concrete `fly-*.spec.ts` paths before invoking Playwright.
+- The focused formatter reported 65 rustfmt-only hunks across `model.rs`, `symbol.rs`, `validation.rs`, `command_capability.rs`, `machine.rs` and `tests.rs`; the exact formatter output has been applied. Recheck is pending.
+- `Run Fly core tests` and `Run Fly browser contract tests` failed in that run; their root causes remain open pending full job logs. The actual Page Builder Leptos/Dioxus wasm host checks had not completed when this note was added. Do not treat the first run as green.

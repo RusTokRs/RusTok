@@ -914,9 +914,7 @@ fn a_read_only_session_accepts_an_empty_batch_as_a_noop() {
     let mut machine = FlyUiStateMachine::new(Presentation::ReadOnly);
     let intent = UiIntent::execute(EditorCommand::Batch { commands: vec![] });
     assert!(!intent.mutates_document());
-    machine
-        .dispatch(intent)
-        .expect("an empty batch is a no-op");
+    machine.dispatch(intent).expect("an empty batch is a no-op");
     assert!(!machine.state.dirty.dirty);
     assert_eq!(machine.state.dirty.command_sequence, 0);
 }
@@ -940,9 +938,7 @@ fn a_read_only_session_accepts_an_empty_patch_as_a_noop() {
         patch: fly::ComponentPatch::default(),
     });
     assert!(!intent.mutates_document());
-    machine
-        .dispatch(intent)
-        .expect("an empty patch is a no-op");
+    machine.dispatch(intent).expect("an empty patch is a no-op");
     assert!(!machine.state.dirty.dirty);
     assert_eq!(machine.state.dirty.command_sequence, 0);
 }
@@ -1003,10 +999,7 @@ fn edit_after_failed_save_keeps_the_failure_signal() {
         .dispatch(UiIntent::execute(EditorCommand::Patch {
             component_id: "hero".to_string(),
             patch: fly::ComponentPatch {
-                attributes: Map::from_iter([(
-                    "aria-label".to_string(),
-                    json!("Updated hero"),
-                )]),
+                attributes: Map::from_iter([("aria-label".to_string(), json!("Updated hero"))]),
                 ..fly::ComponentPatch::default()
             },
         }))

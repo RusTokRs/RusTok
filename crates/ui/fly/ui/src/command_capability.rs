@@ -87,9 +87,8 @@ impl CommandCapabilityRequirement {
             || !patch.remove_attributes.is_empty()
             || !patch.fields.is_empty()
             || !patch.remove_fields.is_empty();
-        let changes_styles = patch.style.is_some()
-            || patch.clear_style
-            || !patch.remove_style_properties.is_empty();
+        let changes_styles =
+            patch.style.is_some() || patch.clear_style || !patch.remove_style_properties.is_empty();
         if changes_properties {
             self.insert(EditorCapability::Properties);
         }

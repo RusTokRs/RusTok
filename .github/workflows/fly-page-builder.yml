@@ -378,7 +378,13 @@ jobs:
       - name: Run Fly browser scenarios
         env:
           PLAYWRIGHT_SKIP_WEBSERVER: "true"
-        run: npx playwright test "tests/e2e/fly-*.spec.ts" --workers=1
+        run: |
+          mapfile -t fly_specs < <(find tests/e2e -maxdepth 1 -type f -name 'fly-*.spec.ts' -print | sort)
+          if [[ ${#fly_specs[@]} -eq 0 ]]; then
+            echo "::error::No Fly Playwright specs found"
+            exit 1
+          fi
+          npx playwright test "${fly_specs[@]}" --workers=1
         working-directory: apps/next-admin
 
   advisories:

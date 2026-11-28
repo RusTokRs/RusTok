@@ -165,12 +165,10 @@ fn apply_symbol_command_inner(
                 if let Some(existing) = SymbolDescriptor::from_value(&entry)
                     && existing.id != descriptor.id
                 {
-                    existing_asset_references
-                        .extend(symbol_asset_dangling_references(&existing));
+                    existing_asset_references.extend(symbol_asset_dangling_references(&existing));
                 }
             }
-            let mut asset_id_generator =
-                crate::SequentialIdGenerator::new("fly-symbol-asset");
+            let mut asset_id_generator = crate::SequentialIdGenerator::new("fly-symbol-asset");
             crate::fragment::remap_fragment_asset_ids(
                 &mut symbol_assets,
                 &mut symbol_components,
@@ -183,29 +181,28 @@ fn apply_symbol_command_inner(
             let stored_object = stored_symbol.as_object_mut().ok_or_else(|| {
                 FlyError::InvalidSymbolReference("symbol definition must be an object".to_string())
             })?;
-            stored_object.insert(
-                "assets".to_string(),
-                Value::Array(symbol_assets.clone()),
-            );
+            stored_object.insert("assets".to_string(), Value::Array(symbol_assets.clone()));
             stored_object.insert(
                 "components".to_string(),
                 serde_json::to_value(&symbol_components)
                     .map_err(|error| FlyError::Encode(error.to_string()))?,
             );
-            let stored_descriptor = SymbolDescriptor::from_value(&stored_symbol).ok_or_else(|| {
-                FlyError::InvalidSymbolReference("remapped symbol definition is invalid".to_string())
-            })?;
+            let stored_descriptor =
+                SymbolDescriptor::from_value(&stored_symbol).ok_or_else(|| {
+                    FlyError::InvalidSymbolReference(
+                        "remapped symbol definition is invalid".to_string(),
+                    )
+                })?;
             validate_definition(&stored_descriptor)?;
 
             let mut merged_assets = document.project().assets.clone();
             for raw in &symbol_assets {
-                let asset_descriptor = crate::AssetDescriptor::from_value(raw.clone()).ok_or_else(
-                    || {
+                let asset_descriptor =
+                    crate::AssetDescriptor::from_value(raw.clone()).ok_or_else(|| {
                         FlyError::InvalidAssetReference(
                             "symbol asset must be an object with src, source, or url".to_string(),
                         )
-                    },
-                )?;
+                    })?;
                 let existing = merged_assets.iter().find(|candidate| {
                     crate::AssetDescriptor::from_value((*candidate).clone())
                         .is_some_and(|candidate| candidate.id == asset_descriptor.id)
@@ -313,10 +310,7 @@ enum SymbolComponentRef<'a> {
     Opaque(&'a Value),
 }
 
-fn push_opaque_symbol_children<'a>(
-    value: &'a Value,
-    pending: &mut Vec<SymbolComponentRef<'a>>,
-) {
+fn push_opaque_symbol_children<'a>(value: &'a Value, pending: &mut Vec<SymbolComponentRef<'a>>) {
     match value {
         Value::Array(children) => {
             pending.extend(children.iter().map(SymbolComponentRef::Opaque));
@@ -371,7 +365,12 @@ fn validate_symbol_component_ids(
                     }
                 }
                 crate::ComponentChildren::Opaque(raw) => {
-                    validate_opaque_symbol_component_ids(raw, symbol_id, ids, &format!("{path}.components"))?;
+                    validate_opaque_symbol_component_ids(
+                        raw,
+                        symbol_id,
+                        ids,
+                        &format!("{path}.components"),
+                    )?;
                 }
             }
         }
@@ -447,11 +446,7 @@ fn collect_symbol_instances_from_components(
     instances: &mut Vec<SymbolInstanceInfo>,
 ) {
     for (index, component) in components.iter().enumerate() {
-        collect_symbol_instances_from_node(
-            component,
-            &format!("{path}[{index}]"),
-            instances,
-        );
+        collect_symbol_instances_from_node(component, &format!("{path}[{index}]"), instances);
     }
 }
 
@@ -502,21 +497,20 @@ fn collect_opaque_symbol_instances(
     match value {
         Value::Array(children) => {
             for (index, child) in children.iter().enumerate() {
-                collect_opaque_symbol_instances(
-                    child,
-                    &format!("{path}[{index}]"),
-                    instances,
-                );
+                collect_opaque_symbol_instances(child, &format!("{path}[{index}]"), instances);
             }
         }
         Value::Object(object) => {
             if let Some(marker) = object.get("symbolId").filter(|value| !value.is_null()) {
                 let symbol_id = marker.as_str().map(ToString::to_string);
-                let has_children = object.get("components").is_some_and(|children| match children {
-                    Value::Array(children) => !children.is_empty(),
-                    Value::Null => false,
-                    _ => true,
-                });
+                let has_children =
+                    object
+                        .get("components")
+                        .is_some_and(|children| match children {
+                            Value::Array(children) => !children.is_empty(),
+                            Value::Null => false,
+                            _ => true,
+                        });
                 instances.push(SymbolInstanceInfo {
                     path: path.to_string(),
                     component_id: object
@@ -529,20 +523,14 @@ fn collect_opaque_symbol_instances(
                 });
             }
             if let Some(children) = object.get("components") {
-                collect_opaque_symbol_instances(
-                    children,
-                    &format!("{path}.components"),
-                    instances,
-                );
+                collect_opaque_symbol_instances(children, &format!("{path}.components"), instances);
             }
         }
         _ => {}
     }
 }
 
-pub(crate) fn symbol_instances_in_document(
-    document: &ProjectDocument,
-) -> Vec<SymbolInstanceInfo> {
+pub(crate) fn symbol_instances_in_document(document: &ProjectDocument) -> Vec<SymbolInstanceInfo> {
     let mut instances = Vec::new();
     for (page_index, page) in document.project().pages.iter().enumerate() {
         if let Some(root) = page.component.as_ref() {
@@ -556,17 +544,13 @@ pub(crate) fn symbol_instances_in_document(
     instances
 }
 
-fn symbol_instance_facts_in_components(
-    components: &[ComponentNode],
-) -> Vec<SymbolInstanceInfo> {
+fn symbol_instance_facts_in_components(components: &[ComponentNode]) -> Vec<SymbolInstanceInfo> {
     let mut instances = Vec::new();
     collect_symbol_instances_from_components(components, "components", &mut instances);
     instances
 }
 
-pub(crate) fn symbol_asset_dangling_references(
-    descriptor: &SymbolDescriptor,
-) -> BTreeSet<String> {
+pub(crate) fn symbol_asset_dangling_references(descriptor: &SymbolDescriptor) -> BTreeSet<String> {
     let mut references = BTreeSet::new();
     for component in &descriptor.components {
         crate::fragment::collect_component_asset_ids(component, &mut references);
@@ -616,14 +600,12 @@ fn count_opaque_component_node(value: &Value) -> usize {
             .iter()
             .map(count_opaque_component_node)
             .fold(0usize, usize::saturating_add),
-        Value::Object(object) => {
-            1usize.saturating_add(
-                object
-                    .get("components")
-                    .map(count_opaque_component_children)
-                    .unwrap_or_default(),
-            )
-        }
+        Value::Object(object) => 1usize.saturating_add(
+            object
+                .get("components")
+                .map(count_opaque_component_children)
+                .unwrap_or_default(),
+        ),
         _ => 1,
     }
 }
@@ -638,10 +620,7 @@ fn count_document_component_nodes(document: &ProjectDocument) -> usize {
         .fold(0usize, usize::saturating_add)
 }
 
-fn validate_symbol_interactions(
-    component: &ComponentNode,
-    symbol_id: &str,
-) -> FlyResult<()> {
+fn validate_symbol_interactions(component: &ComponentNode, symbol_id: &str) -> FlyResult<()> {
     match component {
         ComponentNode::Object(object) => {
             validate_symbol_interaction_fields(&object.extensions, symbol_id)?;
@@ -707,13 +686,12 @@ fn validate_symbol_interaction_fields(
         })?;
     }
     if let Some(raw) = fields.get(crate::FLY_PAGE_LINK_FIELD) {
-        let link = serde_json::from_value::<crate::InternalPageLink>(raw.clone()).map_err(
-            |error| {
+        let link =
+            serde_json::from_value::<crate::InternalPageLink>(raw.clone()).map_err(|error| {
                 FlyError::InvalidSymbolReference(format!(
                     "symbol `{symbol_id}` contains an invalid internal page link: {error}"
                 ))
-            },
-        )?;
+            })?;
         link.normalized().map_err(|error| {
             FlyError::InvalidSymbolReference(format!(
                 "symbol `{symbol_id}` contains an invalid internal page link: {error}"
@@ -721,13 +699,12 @@ fn validate_symbol_interaction_fields(
         })?;
     }
     if let Some(raw) = fields.get(crate::FLY_ACTION_FIELD) {
-        let action = serde_json::from_value::<crate::ComponentAction>(raw.clone()).map_err(
-            |error| {
+        let action =
+            serde_json::from_value::<crate::ComponentAction>(raw.clone()).map_err(|error| {
                 FlyError::InvalidSymbolReference(format!(
                     "symbol `{symbol_id}` contains an invalid action: {error}"
                 ))
-            },
-        )?;
+            })?;
         crate::action::validate_action_syntax(&action).map_err(|error| {
             FlyError::InvalidSymbolReference(format!(
                 "symbol `{symbol_id}` contains an invalid action: {error}"
@@ -768,16 +745,14 @@ pub(crate) fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()
             )));
         }
         match component {
-            SymbolComponentRef::Typed(ComponentNode::Object(object)) => {
-                match &object.components {
-                    crate::ComponentChildren::Nodes(children) => {
-                        pending.extend(children.iter().map(SymbolComponentRef::Typed));
-                    }
-                    crate::ComponentChildren::Opaque(children) => {
-                        push_opaque_symbol_children(children, &mut pending);
-                    }
+            SymbolComponentRef::Typed(ComponentNode::Object(object)) => match &object.components {
+                crate::ComponentChildren::Nodes(children) => {
+                    pending.extend(children.iter().map(SymbolComponentRef::Typed));
                 }
-            }
+                crate::ComponentChildren::Opaque(children) => {
+                    push_opaque_symbol_children(children, &mut pending);
+                }
+            },
             SymbolComponentRef::Typed(ComponentNode::Opaque(raw))
             | SymbolComponentRef::Opaque(raw) => {
                 push_opaque_symbol_node_children(raw, &mut pending);
@@ -1008,9 +983,7 @@ pub fn resolve_symbol_instances(document: &ProjectDocument) -> FlyResult<Project
     }
     let symbol_asset_dangling_references = catalog
         .iter()
-        .map(|(id, descriptor)| {
-            (id.clone(), symbol_asset_dangling_references(descriptor))
-        })
+        .map(|(id, descriptor)| (id.clone(), symbol_asset_dangling_references(descriptor)))
         .collect();
     let mut identities = SymbolIdentityReservations {
         generated: crate::id_reference::project_identity_ids(&resolved),
@@ -1160,13 +1133,9 @@ fn expand_node(
             }
             Ok(())
         }
-        ComponentNode::Opaque(value) => expand_opaque_symbol_children(
-            value,
-            catalog,
-            identities,
-            stack,
-            pending_styles,
-        ),
+        ComponentNode::Opaque(value) => {
+            expand_opaque_symbol_children(value, catalog, identities, stack, pending_styles)
+        }
     }
 }
 
@@ -1180,23 +1149,13 @@ fn expand_opaque_symbol_children(
     match value {
         Value::Array(children) => {
             for child in children {
-                expand_opaque_symbol_node(
-                    child,
-                    catalog,
-                    identities,
-                    stack,
-                    pending_styles,
-                )?;
+                expand_opaque_symbol_node(child, catalog, identities, stack, pending_styles)?;
             }
             Ok(())
         }
-        Value::Object(_) => expand_opaque_symbol_node(
-            value,
-            catalog,
-            identities,
-            stack,
-            pending_styles,
-        ),
+        Value::Object(_) => {
+            expand_opaque_symbol_node(value, catalog, identities, stack, pending_styles)
+        }
         _ => Ok(()),
     }
 }
@@ -1217,17 +1176,16 @@ fn expand_opaque_symbol_node(
         .cloned();
     match symbol_marker {
         Some(Value::String(symbol_id)) => {
-            let component = serde_json::from_value::<ComponentObject>(value.clone()).map_err(
-                |error| {
+            let component =
+                serde_json::from_value::<ComponentObject>(value.clone()).map_err(|error| {
                     FlyError::InvalidSymbolReference(format!(
                         "opaque symbol instance `{symbol_id}` cannot be decoded: {error}"
                     ))
-                },
-            )?;
+                })?;
             let mut node = ComponentNode::Object(Box::new(component));
             expand_node(&mut node, catalog, identities, stack, pending_styles)?;
-            *value = serde_json::to_value(node)
-                .map_err(|error| FlyError::Encode(error.to_string()))?;
+            *value =
+                serde_json::to_value(node).map_err(|error| FlyError::Encode(error.to_string()))?;
             Ok(())
         }
         Some(Value::Null) | None => {
@@ -1421,10 +1379,7 @@ fn expand_instance(
         }
     }
     for component in &cloned {
-        crate::fragment::collect_component_asset_ids(
-            component,
-            &mut identities.asset_references,
-        );
+        crate::fragment::collect_component_asset_ids(component, &mut identities.asset_references);
     }
     // A later instance must also see the actual HTML ids minted by this one.
     identities
@@ -1644,7 +1599,10 @@ mod tests {
         );
         let document = document_with(
             object("root", "wrapper", children),
-            vec![symbol_json("one", vec![plain_component_json("symbol-child")])],
+            vec![symbol_json(
+                "one",
+                vec![plain_component_json("symbol-child")],
+            )],
         );
 
         assert!(matches!(
@@ -1786,8 +1744,7 @@ mod tests {
                 "id": "broken",
                 "components": [component]
             });
-            let descriptor =
-                SymbolDescriptor::from_value(&definition).expect("symbol descriptor");
+            let descriptor = SymbolDescriptor::from_value(&definition).expect("symbol descriptor");
 
             assert!(matches!(
                 validate_definition(&descriptor),
@@ -2123,7 +2080,10 @@ mod tests {
         let expanded = &parent["components"];
         assert!(expanded.get("symbolId").is_none());
         assert_eq!(expanded["components"][0]["id"], "slot-cta-root");
-        assert_eq!(expanded["components"][0]["components"][0]["id"], "slot-cta-text");
+        assert_eq!(
+            expanded["components"][0]["components"][0]["id"],
+            "slot-cta-text"
+        );
     }
 
     #[test]
@@ -2462,9 +2422,8 @@ mod tests {
             vec![symbol_json("cta", vec![plain_component_json("cta-1")])],
         );
 
-        let error = resolve_symbol_instances(&document).expect_err(
-            "opaque children must not be silently overwritten by symbol expansion",
-        );
+        let error = resolve_symbol_instances(&document)
+            .expect_err("opaque children must not be silently overwritten by symbol expansion");
         assert!(matches!(
             error,
             FlyError::InvalidSymbolReference(message) if message.contains("child-free")
@@ -2555,21 +2514,33 @@ mod tests {
         .expect("document");
 
         let resolved = resolve_symbol_instances(&document).expect("resolve");
-        let assets = resolved.project().assets.iter()
+        let assets = resolved
+            .project()
+            .assets
+            .iter()
             .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
             .collect::<Vec<_>>();
         assert_eq!(
-            assets.iter().filter(|asset| asset.source == "/media/gallery.webp").count(),
+            assets
+                .iter()
+                .filter(|asset| asset.source == "/media/gallery.webp")
+                .count(),
             1
         );
         let first = resolved.component("slot-a").expect("first instance");
         let second = resolved.component("slot-b").expect("second instance");
         assert_eq!(
-            first.children()[0].as_object().expect("first image").attributes["data-fly-asset-id"],
+            first.children()[0]
+                .as_object()
+                .expect("first image")
+                .attributes["data-fly-asset-id"],
             "gallery-image"
         );
         assert_eq!(
-            second.children()[0].as_object().expect("second image").attributes["data-fly-asset-id"],
+            second.children()[0]
+                .as_object()
+                .expect("second image")
+                .attributes["data-fly-asset-id"],
             "gallery-image"
         );
     }
@@ -2627,21 +2598,37 @@ mod tests {
         .expect("document");
 
         let resolved = resolve_symbol_instances(&document).expect("resolve");
-        let page_asset = AssetDescriptor::from_value(resolved.project().assets[0].clone())
-            .expect("page asset");
+        let page_asset =
+            AssetDescriptor::from_value(resolved.project().assets[0].clone()).expect("page asset");
         assert_eq!(page_asset.id, "shared");
         assert_eq!(page_asset.source, "/media/page.webp");
 
         let first = resolved.component("slot-a").expect("first instance");
         let second = resolved.component("slot-b").expect("second instance");
-        let first_shared = first.children()[0].as_object().expect("first shared image")
-            .attributes["data-fly-asset-id"].as_str().expect("asset id");
-        let first_dangling = first.children()[1].as_object().expect("first dangling image")
-            .attributes["data-fly-asset-id"].as_str().expect("asset id");
-        let second_shared = second.children()[0].as_object().expect("second shared image")
-            .attributes["data-fly-asset-id"].as_str().expect("asset id");
-        let second_dangling = second.children()[1].as_object().expect("second dangling image")
-            .attributes["data-fly-asset-id"].as_str().expect("asset id");
+        let first_shared = first.children()[0]
+            .as_object()
+            .expect("first shared image")
+            .attributes["data-fly-asset-id"]
+            .as_str()
+            .expect("asset id");
+        let first_dangling = first.children()[1]
+            .as_object()
+            .expect("first dangling image")
+            .attributes["data-fly-asset-id"]
+            .as_str()
+            .expect("asset id");
+        let second_shared = second.children()[0]
+            .as_object()
+            .expect("second shared image")
+            .attributes["data-fly-asset-id"]
+            .as_str()
+            .expect("asset id");
+        let second_dangling = second.children()[1]
+            .as_object()
+            .expect("second dangling image")
+            .attributes["data-fly-asset-id"]
+            .as_str()
+            .expect("asset id");
 
         assert_ne!(first_shared, "shared");
         assert_ne!(first_dangling, "dangling");
@@ -2666,12 +2653,18 @@ mod tests {
             Some("dangling")
         );
         assert!(
-            resolved.project().assets.iter()
+            resolved
+                .project()
+                .assets
+                .iter()
                 .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
                 .any(|asset| asset.id == first_shared && asset.source == "/media/symbol.webp")
         );
         assert!(
-            resolved.project().assets.iter()
+            resolved
+                .project()
+                .assets
+                .iter()
                 .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
                 .any(|asset| asset.id == first_dangling && asset.source == "/media/dangling.webp")
         );
@@ -2717,21 +2710,31 @@ mod tests {
 
         let resolved = resolve_symbol_instances(&document).expect("resolve");
         let gallery = resolved.component("gallery-slot").expect("gallery");
-        let gallery_asset_id = gallery.children()[0].as_object().expect("image")
-            .attributes["data-fly-asset-id"].as_str().expect("asset id");
+        let gallery_asset_id =
+            gallery.children()[0].as_object().expect("image").attributes["data-fly-asset-id"]
+                .as_str()
+                .expect("asset id");
         let legacy = resolved.component("legacy-slot").expect("legacy");
-        let legacy_asset_id = legacy.children()[0].as_object().expect("image")
-            .attributes["data-fly-asset-id"].as_str().expect("asset id");
+        let legacy_asset_id =
+            legacy.children()[0].as_object().expect("image").attributes["data-fly-asset-id"]
+                .as_str()
+                .expect("asset id");
 
         assert_ne!(gallery_asset_id, "shared");
         assert_eq!(legacy_asset_id, "shared");
         assert!(
-            resolved.project().assets.iter()
+            resolved
+                .project()
+                .assets
+                .iter()
                 .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
                 .any(|asset| asset.id == gallery_asset_id && asset.source == "/media/gallery.webp")
         );
         assert!(
-            !resolved.project().assets.iter()
+            !resolved
+                .project()
+                .assets
+                .iter()
                 .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
                 .any(|asset| asset.id == "shared")
         );
@@ -2842,9 +2845,7 @@ mod tests {
     #[test]
     fn symbol_upsert_does_not_overwrite_colliding_page_assets() {
         let mut document = document_with(object("root", "wrapper", vec![]), Vec::new());
-        document.project_mut().assets = vec![
-            json!({ "id": "shared", "src": "/media/page.webp" }),
-        ];
+        document.project_mut().assets = vec![json!({ "id": "shared", "src": "/media/page.webp" })];
         let symbol = json!({
             "id": "gallery",
             "assets": [{ "id": "shared", "src": "/media/symbol.webp" }],
@@ -2858,22 +2859,18 @@ mod tests {
             }]
         });
 
-        apply_symbol_command(
-            &mut document,
-            &SymbolCommand::Upsert { symbol },
-        )
-        .expect("upsert");
+        apply_symbol_command(&mut document, &SymbolCommand::Upsert { symbol }).expect("upsert");
 
-        let page_asset = AssetDescriptor::from_value(document.project().assets[0].clone())
-            .expect("page asset");
+        let page_asset =
+            AssetDescriptor::from_value(document.project().assets[0].clone()).expect("page asset");
         assert_eq!(page_asset.id, "shared");
         assert_eq!(page_asset.source, "/media/page.webp");
 
         let descriptor = SymbolDescriptor::catalog_from_document(&document)
             .remove("gallery")
             .expect("stored symbol");
-        let symbol_asset = AssetDescriptor::from_value(descriptor.assets[0].clone())
-            .expect("symbol asset");
+        let symbol_asset =
+            AssetDescriptor::from_value(descriptor.assets[0].clone()).expect("symbol asset");
         assert_ne!(symbol_asset.id, "shared");
         assert_eq!(symbol_asset.source, "/media/symbol.webp");
         assert_eq!(
@@ -2886,7 +2883,10 @@ mod tests {
             Some(symbol_asset.id.as_str())
         );
         assert!(
-            document.project().assets.iter()
+            document
+                .project()
+                .assets
+                .iter()
                 .filter_map(|raw| AssetDescriptor::from_value(raw.clone()))
                 .any(|asset| asset.id == symbol_asset.id && asset.source == "/media/symbol.webp")
         );
