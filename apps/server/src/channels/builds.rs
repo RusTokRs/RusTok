@@ -1,11 +1,10 @@
-//! WebSocket channel for streaming build events.
+//! WebSocket channel for durable platform build progress snapshots.
 //!
-//! `GET /ws/builds` — upgrades to a WebSocket connection and streams
-//! `BuildEvent` payloads as newline-delimited JSON until the build hub
-//! is dropped or the client disconnects.
-//!
-//! **Authentication**: a valid user Bearer token plus explicit host-global
-//! read authority (`x-rustok-host-token`), configured by the host operator.
+//! `GET /ws/builds` upgrades to a WebSocket and sends the current active
+//! build snapshots followed by newer snapshots read from the shared database.
+//! Local BuildEventHub messages are wake-up hints only.
+
+use std::{collections::HashMap, time::Duration};
 
 use axum::{
     extract::{
@@ -19,96 +18,175 @@ use axum_extra::{
     TypedHeader,
     headers::{Authorization, authorization::Bearer},
 };
+use rustok_api::{
+    HostAuthorityContext, PlatformBuildProgressSnapshot, PlatformBuildStage, PlatformBuildStatus,
+};
+use rustok_build::{BuildEvent, SharedBuildControl};
 use serde::Serialize;
-use std::time::Duration;
-use tokio::sync::broadcast::error::RecvError;
-use uuid::Uuid;
+use tokio::sync::{OwnedSemaphorePermit, broadcast::error::RecvError};
 
 use crate::extractors::auth::{CurrentUser, WebSocketAuthLease};
-use crate::services::build_event_hub::build_event_hub_from_context;
+use crate::services::build_event_hub::{BuildEventHub, build_event_hub_from_context};
 use crate::services::server_runtime_context::ServerAuthRuntime;
-use rustok_build::BuildEvent;
 
 const BUILD_WS_AUTH_REVALIDATION_INTERVAL: Duration = Duration::from_secs(30);
+const BUILD_WS_PROGRESS_POLL_INTERVAL: Duration = Duration::from_secs(1);
+const BUILD_WS_PROGRESS_PAGE_SIZE: u64 = 100;
 const BUILD_WS_MAX_MESSAGE_SIZE: usize = 64 * 1024;
 const BUILD_WS_SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const BUILD_WS_AUTH_CHANGED_CODE: u16 = 4401;
 const BUILD_WS_AUTH_CHANGED_REASON: &str = "authorization changed; reconnect required";
+const BUILD_WS_INTERNAL_ERROR_CODE: u16 = 1011;
+const BUILD_WS_INTERNAL_ERROR_REASON: &str = "build progress temporarily unavailable";
 
 // ── Wire-format message ───────────────────────────────────────────────────────
 
-/// JSON message sent over the WebSocket for every build event.
+/// JSON message sent over the WebSocket for each latest build-state snapshot.
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[allow(clippy::enum_variant_names)]
 enum WsBuildMessage {
     BuildRequested {
-        build_id: Uuid,
+        build_id: String,
         requested_by: String,
+        sequence: String,
+        is_snapshot: bool,
     },
     BuildStarted {
-        build_id: Uuid,
+        build_id: String,
         stage: String,
         progress: i32,
+        sequence: String,
+        is_snapshot: bool,
     },
     BuildProgress {
-        build_id: Uuid,
+        build_id: String,
         stage: String,
         progress: i32,
+        sequence: String,
+        is_snapshot: bool,
     },
     BuildCompleted {
-        build_id: Uuid,
+        build_id: String,
+        sequence: String,
+        is_snapshot: bool,
     },
     BuildCancelled {
-        build_id: Uuid,
+        build_id: String,
         stage: String,
         progress: i32,
+        sequence: String,
+        is_snapshot: bool,
     },
     BuildFailed {
-        build_id: Uuid,
+        build_id: String,
         stage: String,
         progress: i32,
         error: String,
+        sequence: String,
+        is_snapshot: bool,
     },
 }
 
+impl WsBuildMessage {
+    fn from_snapshot(
+        snapshot: PlatformBuildProgressSnapshot,
+        is_snapshot: bool,
+    ) -> Self {
+        let sequence = snapshot.sequence.to_string();
+        let build_id = snapshot.id;
+        let stage = format!("{:?}", snapshot.stage).to_lowercase();
+        match snapshot.status {
+            PlatformBuildStatus::Queued => Self::BuildRequested {
+                build_id,
+                requested_by: snapshot.requested_by,
+                sequence,
+                is_snapshot,
+            },
+            PlatformBuildStatus::Running => Self::BuildProgress {
+                build_id,
+                stage,
+                progress: snapshot.progress,
+                sequence,
+                is_snapshot,
+            },
+            PlatformBuildStatus::Success => Self::BuildCompleted {
+                build_id,
+                sequence,
+                is_snapshot,
+            },
+            PlatformBuildStatus::Cancelled => Self::BuildCancelled {
+                build_id,
+                stage,
+                progress: snapshot.progress,
+                sequence,
+                is_snapshot,
+            },
+            PlatformBuildStatus::Failed => Self::BuildFailed {
+                build_id,
+                stage,
+                progress: snapshot.progress,
+                error: snapshot
+                    .error_message
+                    .unwrap_or_else(|| "Build failed".to_string()),
+                sequence,
+                is_snapshot,
+            },
+        }
+    }
+}
+
 impl From<BuildEvent> for WsBuildMessage {
-    fn from(ev: BuildEvent) -> Self {
-        match ev {
+    fn from(event: BuildEvent) -> Self {
+        let sequence = "0".to_string();
+        let is_snapshot = false;
+        match event {
             BuildEvent::BuildRequested {
                 build_id,
                 requested_by,
             } => Self::BuildRequested {
-                build_id,
+                build_id: build_id.to_string(),
                 requested_by,
+                sequence,
+                is_snapshot,
             },
             BuildEvent::BuildStarted {
                 build_id,
                 stage,
                 progress,
             } => Self::BuildStarted {
-                build_id,
+                build_id: build_id.to_string(),
                 stage: format!("{stage:?}").to_lowercase(),
                 progress,
+                sequence,
+                is_snapshot,
             },
             BuildEvent::BuildProgress {
                 build_id,
                 stage,
                 progress,
             } => Self::BuildProgress {
-                build_id,
+                build_id: build_id.to_string(),
                 stage: format!("{stage:?}").to_lowercase(),
                 progress,
+                sequence,
+                is_snapshot,
             },
-            BuildEvent::BuildCompleted { build_id } => Self::BuildCompleted { build_id },
+            BuildEvent::BuildCompleted { build_id } => Self::BuildCompleted {
+                build_id: build_id.to_string(),
+                sequence,
+                is_snapshot,
+            },
             BuildEvent::BuildCancelled {
                 build_id,
                 stage,
                 progress,
             } => Self::BuildCancelled {
-                build_id,
+                build_id: build_id.to_string(),
                 stage: format!("{stage:?}").to_lowercase(),
                 progress,
+                sequence,
+                is_snapshot,
             },
             BuildEvent::BuildFailed {
                 build_id,
@@ -116,10 +194,12 @@ impl From<BuildEvent> for WsBuildMessage {
                 progress,
                 error,
             } => Self::BuildFailed {
-                build_id,
+                build_id: build_id.to_string(),
                 stage: format!("{stage:?}").to_lowercase(),
                 progress,
                 error,
+                sequence,
+                is_snapshot,
             },
         }
     }
@@ -127,7 +207,7 @@ impl From<BuildEvent> for WsBuildMessage {
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
-/// Upgrade an HTTP request to a WebSocket connection that streams build events.
+/// Upgrade an HTTP request to a WebSocket connection that streams build state.
 pub async fn ws_builds(
     ws: WebSocketUpgrade,
     State(auth_runtime): State<ServerAuthRuntime>,
@@ -145,16 +225,33 @@ pub async fn ws_builds(
 
     let lease = WebSocketAuthLease::new(bearer.token().to_owned(), &current_user);
     let hub = build_event_hub_from_context(auth_runtime.runtime_ctx());
+    let Some(stream_permit) = hub.try_acquire_stream() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Platform build progress stream capacity reached",
+        )
+            .into_response();
+    };
+
     ws.max_message_size(BUILD_WS_MAX_MESSAGE_SIZE)
         .max_frame_size(BUILD_WS_MAX_MESSAGE_SIZE)
-        .on_upgrade(move |socket| handle_socket(socket, hub, auth_runtime, lease, host_authority))
+        .on_upgrade(move |socket| {
+            handle_socket(
+                socket,
+                hub,
+                auth_runtime,
+                lease,
+                host_authority,
+                stream_permit,
+            )
+        })
         .into_response()
 }
 
 async fn check_build_ws_auth(
     auth_runtime: &ServerAuthRuntime,
     lease: &WebSocketAuthLease,
-    host_authority: Option<rustok_api::HostAuthorityContext>,
+    host_authority: Option<HostAuthorityContext>,
 ) -> bool {
     crate::services::platform_build_access::is_platform_build_operator(host_authority)
         && lease.revalidate(auth_runtime).await.is_ok()
@@ -174,16 +271,151 @@ async fn close_for_auth_change(socket: &mut WebSocket) {
     }
 }
 
+async fn close_for_internal_error(socket: &mut WebSocket) {
+    let result = tokio::time::timeout(
+        BUILD_WS_SEND_TIMEOUT,
+        socket.send(Message::Close(Some(CloseFrame {
+            code: BUILD_WS_INTERNAL_ERROR_CODE,
+            reason: BUILD_WS_INTERNAL_ERROR_REASON.into(),
+        }))),
+    )
+    .await;
+    if !matches!(result, Ok(Ok(()))) {
+        tracing::debug!("Failed to send build WebSocket internal-error close");
+    }
+}
+
+async fn send_ws_build_message(
+    socket: &mut WebSocket,
+    lease: &WebSocketAuthLease,
+    message: WsBuildMessage,
+) -> bool {
+    let json = match serde_json::to_string(&message) {
+        Ok(json) => json,
+        Err(error) => {
+            tracing::warn!(
+                %error,
+                failure_code = "build_event_serialization_failed",
+                "Failed to serialize build progress snapshot"
+            );
+            return false;
+        }
+    };
+    let send_timeout = BUILD_WS_SEND_TIMEOUT.min(lease.remaining());
+    if send_timeout.is_zero() {
+        return false;
+    }
+    matches!(
+        tokio::time::timeout(send_timeout, socket.send(Message::Text(json.into()))).await,
+        Ok(Ok(()))
+    )
+}
+
+async fn send_build_updates(
+    socket: &mut WebSocket,
+    control: &SharedBuildControl,
+    cursor: &mut i64,
+    last_sequences: &mut HashMap<String, i64>,
+    auth_runtime: &ServerAuthRuntime,
+    lease: &WebSocketAuthLease,
+    host_authority: Option<HostAuthorityContext>,
+) -> bool {
+    let updates = match control
+        .0
+        .build_progress_after(*cursor, BUILD_WS_PROGRESS_PAGE_SIZE)
+        .await
+    {
+        Ok(updates) => updates,
+        Err(error) => {
+            tracing::error!(%error, "Durable WebSocket build progress read failed");
+            close_for_internal_error(socket).await;
+            return false;
+        }
+    };
+
+    for snapshot in updates {
+        *cursor = (*cursor).max(snapshot.sequence);
+        if last_sequences
+            .get(&snapshot.id)
+            .is_some_and(|seen| *seen >= snapshot.sequence)
+        {
+            continue;
+        }
+        last_sequences.insert(snapshot.id.clone(), snapshot.sequence);
+
+        if !check_build_ws_auth(auth_runtime, lease, host_authority).await {
+            close_for_auth_change(socket).await;
+            return false;
+        }
+
+        if !send_ws_build_message(
+            socket,
+            lease,
+            WsBuildMessage::from_snapshot(snapshot, false),
+        )
+        .await
+        {
+            return false;
+        }
+    }
+
+    last_sequences.retain(|_, sequence| *sequence > *cursor);
+    true
+}
+
 async fn handle_socket(
     mut socket: WebSocket,
-    hub: std::sync::Arc<crate::services::build_event_hub::BuildEventHub>,
+    hub: std::sync::Arc<BuildEventHub>,
     auth_runtime: ServerAuthRuntime,
     lease: WebSocketAuthLease,
-    host_authority: Option<rustok_api::HostAuthorityContext>,
+    host_authority: Option<HostAuthorityContext>,
+    _stream_permit: OwnedSemaphorePermit,
 ) {
+    let control = hub.control();
+
+    // Read the cursor before subscribing; every later commit is then either
+    // reflected in the initial snapshot or returned by the cursor query.
+    let mut cursor = match control.0.current_progress_sequence().await {
+        Ok(cursor) => cursor,
+        Err(error) => {
+            tracing::error!(%error, "Unable to initialize WebSocket build progress cursor");
+            close_for_internal_error(&mut socket).await;
+            return;
+        }
+    };
     let mut rx = hub.subscribe();
+
+    let initial = match control.0.active_build_progress().await {
+        Ok(initial) => initial,
+        Err(error) => {
+            tracing::error!(%error, "Unable to read initial WebSocket build snapshots");
+            close_for_internal_error(&mut socket).await;
+            return;
+        }
+    };
+
+    let mut last_sequences = HashMap::new();
+    for snapshot in initial {
+        last_sequences.insert(snapshot.id.clone(), snapshot.sequence);
+        if !check_build_ws_auth(&auth_runtime, &lease, host_authority).await {
+            close_for_auth_change(&mut socket).await;
+            return;
+        }
+        if !send_ws_build_message(
+            &mut socket,
+            &lease,
+            WsBuildMessage::from_snapshot(snapshot, true),
+        )
+        .await
+        {
+            return;
+        }
+    }
+
     let mut revalidation = tokio::time::interval(BUILD_WS_AUTH_REVALIDATION_INTERVAL);
     revalidation.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut progress_poll = tokio::time::interval(BUILD_WS_PROGRESS_POLL_INTERVAL);
+    progress_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let expiry = tokio::time::sleep(lease.remaining());
     tokio::pin!(expiry);
 
@@ -199,43 +431,62 @@ async fn handle_socket(
                     break;
                 }
             }
+            _ = progress_poll.tick() => {
+                if !check_build_ws_auth(&auth_runtime, &lease, host_authority).await {
+                    close_for_auth_change(&mut socket).await;
+                    break;
+                }
+                if !send_build_updates(
+                    &mut socket,
+                    &control,
+                    &mut cursor,
+                    &mut last_sequences,
+                    &auth_runtime,
+                    &lease,
+                    host_authority,
+                ).await {
+                    break;
+                }
+            }
             result = rx.recv() => {
                 match result {
-                    Ok(event) => {
-                        // Revalidate the authority before sending each event,
-                        // even when the periodic validation tick has not fired yet.
+                    Ok(()) => {
                         if !check_build_ws_auth(&auth_runtime, &lease, host_authority).await {
                             close_for_auth_change(&mut socket).await;
                             break;
                         }
-                        let msg: WsBuildMessage = event.into();
-                        match serde_json::to_string(&msg) {
-                            Ok(json) => {
-                                let send_timeout = BUILD_WS_SEND_TIMEOUT.min(lease.remaining());
-                                if send_timeout.is_zero() {
-                                    close_for_auth_change(&mut socket).await;
-                                    break;
-                                }
-                                if !matches!(
-                                    tokio::time::timeout(
-                                        send_timeout,
-                                        socket.send(Message::Text(json.into())),
-                                    ).await,
-                                    Ok(Ok(()))
-                                ) {
-                                    break;
-                                }
-                            }
-                            Err(_error) => {
-                                tracing::warn!(
-                                    failure_code = "build_event_serialization_failed",
-                                    "Failed to serialize build event"
-                                );
-                            }
+                        if !send_build_updates(
+                            &mut socket,
+                            &control,
+                            &mut cursor,
+                            &mut last_sequences,
+                            &auth_runtime,
+                            &lease,
+                            host_authority,
+                        ).await {
+                            break;
                         }
                     }
-                    Err(RecvError::Lagged(n)) => {
-                        tracing::warn!(skipped = n, "WebSocket build channel lagged");
+                    Err(RecvError::Lagged(skipped)) => {
+                        tracing::warn!(
+                            skipped,
+                            "WebSocket build wake-up channel lagged; reconciling durable state"
+                        );
+                        if !check_build_ws_auth(&auth_runtime, &lease, host_authority).await {
+                            close_for_auth_change(&mut socket).await;
+                            break;
+                        }
+                        if !send_build_updates(
+                            &mut socket,
+                            &control,
+                            &mut cursor,
+                            &mut last_sequences,
+                            &auth_runtime,
+                            &lease,
+                            host_authority,
+                        ).await {
+                            break;
+                        }
                     }
                     Err(RecvError::Closed) => break,
                 }
