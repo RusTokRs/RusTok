@@ -1692,15 +1692,21 @@ mod tests {
     #[test]
     fn production_validates_libpq_host_query_parameters() {
         for uri in [
-            "postgres:///rustok_prod?host=localhost",
-            "postgres:///rustok_prod?host=%2Fvar%2Frun%2Fpostgresql",
-            "postgres:///rustok_prod?host=db.example.com",
-            "postgres:///rustok_prod?host=prod-db.internal,localhost",
+            "postgres://app:secret@prod-db.internal/rustok_prod?host=localhost",
+            "postgres://app:secret@prod-db.internal/rustok_prod?host=%2Fvar%2Frun%2Fpostgresql",
+            "postgres://app:secret@prod-db.internal/rustok_prod?host=db.example.com",
+            "postgres://app:secret@prod-db.internal/rustok_prod?host=prod-db.internal,localhost",
         ] {
             let error = super::validate_database_deployment(uri, true)
                 .expect_err("local, placeholder, or mixed host targets must fail closed");
             assert!(error.to_string().contains("local placeholders"));
         }
+
+        super::validate_database_deployment(
+            "postgres://app:secret@prod-db.internal/rustok_prod?host=other-prod.internal",
+            true,
+        )
+        .expect("explicit remote URI and query hosts are valid production targets");
 
         let error = super::validate_database_deployment(
             "postgres:///rustok_prod?host=prod-db.internal",
