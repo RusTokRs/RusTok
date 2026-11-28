@@ -907,8 +907,8 @@ mod tests {
         tx.execute_unprepared(&format!("CREATE SCHEMA {schema}; SET LOCAL search_path TO {schema}"))
             .await.unwrap();
         tx.execute_unprepared(
-            "CREATE TABLE users (id UUID PRIMARY KEY, tenant_id UUID NOT NULL);
-             CREATE TABLE roles (id UUID PRIMARY KEY, tenant_id UUID NOT NULL);
+            "CREATE TABLE users (id UUID PRIMARY KEY, tenant_id UUID NOT NULL, rbac_membership_revision BIGINT NOT NULL);
+             CREATE TABLE roles (id UUID PRIMARY KEY, tenant_id UUID NOT NULL, grant_revision BIGINT NOT NULL);
              CREATE TABLE permissions (id UUID PRIMARY KEY, tenant_id UUID NOT NULL, resource TEXT NOT NULL, action TEXT NOT NULL);
              CREATE TABLE user_roles (user_id UUID REFERENCES users(id) ON DELETE CASCADE, role_id UUID REFERENCES roles(id) ON DELETE CASCADE);
              CREATE TABLE role_permissions (role_id UUID REFERENCES roles(id) ON DELETE CASCADE, permission_id UUID REFERENCES permissions(id) ON DELETE CASCADE)"
@@ -918,8 +918,8 @@ mod tests {
         let role = uuid::Uuid::new_v4();
         let permission = uuid::Uuid::new_v4();
         tx.execute_unprepared(&format!(
-            "INSERT INTO users VALUES ('{user}', '{tenant}');
-             INSERT INTO roles VALUES ('{role}', '{tenant}');
+            "INSERT INTO users VALUES ('{user}', '{tenant}', 7);
+             INSERT INTO roles VALUES ('{role}', '{tenant}', 9);
              INSERT INTO permissions VALUES ('{permission}', '{tenant}', 'modules', 'manage');
              INSERT INTO user_roles VALUES ('{user}', '{role}');
              INSERT INTO role_permissions VALUES ('{role}', '{permission}')"
@@ -931,10 +931,31 @@ mod tests {
         assert!(!store.cached_grants_match(&tenant, &user, &[Permission::USERS_READ], None).await.unwrap());
         assert!(!store.cached_grants_match(&uuid::Uuid::new_v4(), &user, &expected, None).await.unwrap());
 
+        // Keep the revision counters constant in this trigger-free fixture
+        // to exercise same-revision replacement and the typed SQL fallback.
+        let revision = crate::role_grant_revision::read_static_actor_authority_revision_on(
+            &tx, tenant, user,
+        ).await.unwrap();
+        assert!(store.cached_grants_match(&tenant, &user, &expected, Some(&revision)).await.unwrap());
+        tx.execute_unprepared(&format!("UPDATE permissions SET action = '*' WHERE id = '{permission}'"))
+            .await.unwrap();
+        assert!(store.cached_grants_match(&tenant, &user, &expected, Some(&revision)).await.unwrap());
+        assert!(!store.cached_grants_match(&tenant, &user, &[], Some(&revision)).await.unwrap());
+        tx.execute_unprepared(&format!("UPDATE permissions SET action = 'invalid' WHERE id = '{permission}'"))
+            .await.unwrap();
+        assert!(store.cached_grants_match(&tenant, &user, &expected, Some(&revision)).await.is_err());
+
         tx.execute_unprepared(&format!("DELETE FROM permissions WHERE id = '{permission}'"))
             .await.unwrap();
         assert!(!store.cached_grants_match(&tenant, &user, &expected, None).await.unwrap());
         assert!(store.cached_grants_match(&tenant, &user, &[], None).await.unwrap());
+        assert_eq!(
+            crate::role_grant_revision::read_static_actor_authority_revision_on(&tx, tenant, user)
+                .await.unwrap(),
+            revision,
+        );
+        assert!(!store.cached_grants_match(&tenant, &user, &expected, Some(&revision)).await.unwrap());
+        assert!(store.cached_grants_match(&tenant, &user, &[], Some(&revision)).await.unwrap());
         tx.execute_unprepared(&format!(
             "INSERT INTO permissions VALUES ('{permission}', '{tenant}', 'modules', 'manage');
              INSERT INTO role_permissions VALUES ('{role}', '{permission}')"
@@ -943,6 +964,9 @@ mod tests {
         tx.execute_unprepared(&format!("DELETE FROM roles WHERE id = '{role}'")).await.unwrap();
         assert!(!store.cached_grants_match(&tenant, &user, &expected, None).await.unwrap());
         assert!(store.cached_grants_match(&tenant, &user, &[], None).await.unwrap());
+        // Removal of a role changes the authority even if the resulting
+        // grant set is empty in both observations.
+        assert!(!store.cached_grants_match(&tenant, &user, &[], Some(&revision)).await.unwrap());
         // Transactional DDL keeps the disposable test schema out of the database.
         tx.rollback().await.unwrap();
     }
