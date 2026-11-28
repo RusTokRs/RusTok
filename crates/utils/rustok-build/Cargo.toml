@@ -20,6 +20,7 @@ rustok-core.workspace = true
 rustok-api.workspace = true
 rustok-events.workspace = true
 sea-orm.workspace = true
+sea-orm-migration.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
