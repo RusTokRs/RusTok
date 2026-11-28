@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    QueryFilter, Set, TransactionTrait, TryIntoModel, sea_query::{Expr, OnConflict},
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait,
+    QueryFilter, QuerySelect, Set, TransactionTrait, TryIntoModel,
+    sea_query::{Expr, LockBehavior, LockType, OnConflict},
 };
 use std::any::Any;
 use uuid::Uuid;
@@ -400,6 +401,22 @@ impl EventTransport for OutboxTransport {
         // Keep the ACK transition and exact readback in one transaction.
         // Relay claims and unresolved attempts are never stolen by this path.
         let txn = self.db.begin().await?;
+        // Acquire the source before sampling its completion time. A late
+        // ACK must not wait behind a relay/consumer and then publish an old
+        // dispatched_at that makes the event prematurely eligible for retention.
+        let query = entity::Entity::find_by_id(event_id);
+        let before = match txn.get_database_backend() {
+            DbBackend::Postgres => query
+                .lock_with_behavior(LockType::Update, LockBehavior::Nowait)
+                .one(&txn).await?,
+            DbBackend::Sqlite => {
+                txn.execute_unprepared(
+                    "UPDATE sys_events SET claimed_at = claimed_at WHERE 1 = 0",
+                ).await?;
+                query.one(&txn).await?
+            }
+            _ => return Err(Error::Validation("unsupported outbox ACK backend".into())),
+        }.ok_or_else(|| Error::NotFound(format!("sys_event {event_id}")))?;
         let now = crate::database_now(&txn).await?;
         let result = entity::Entity::update_many()
             .filter(entity::Column::Id.eq(event_id))
@@ -421,13 +438,14 @@ impl EventTransport for OutboxTransport {
         if result.rows_affected == 1 {
             let stored = entity::Entity::find_by_id(event_id).one(&txn).await?
                 .ok_or_else(|| Error::NotFound(format!("sys_event {event_id}")))?;
-            if stored.status != SysEventStatus::Dispatched
-                || stored.dispatched_at != Some(now)
-                || stored.claimed_by.is_some()
-                || stored.claimed_at.is_some()
-                || stored.last_error.is_some()
-                || stored.next_attempt_at.is_some()
-            {
+            let mut expected = before;
+            expected.status = SysEventStatus::Dispatched;
+            expected.dispatched_at = Some(now);
+            expected.claimed_by = None;
+            expected.claimed_at = None;
+            expected.last_error = None;
+            expected.next_attempt_at = None;
+            if stored != expected {
                 return Err(Error::External(format!("outbox event {event_id} ACK readback mismatch")));
             }
             txn.commit().await?;

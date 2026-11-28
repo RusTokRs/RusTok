@@ -352,3 +352,19 @@ forge a plausible outcome. Arbitrary privileged DDL, restored backups, and
 external broker ambiguity remain separate trust boundaries. Drain old writers
 before migration. PostgreSQL/SQLite regression sources were updated or added;
 compilation and execution remain pending.
+
+## Exact temporal observation and transport ACK admission (source only)
+
+Independent clock observations reserve the singleton using PostgreSQL row
+ownership or a SQLite zero-row writer reservation, without firing a synthetic
+row UPDATE. The observed millisecond must be read back exactly before commit;
+a suppressed or rewritten advance is an error, not durable clock evidence.
+The unclaimed transport ACK now acquires the event row with PostgreSQL
+FOR UPDATE NOWAIT (SQLite writer reservation) before sampling SQL time and
+compares the full expected event model before commit. Contention is retryable
+at the caller; an existing claim or open intent still blocks the ACK. This
+prevents an ACK waiting on source ownership from backdating retention age.
+Neither path acquires a global clock writer lock while holding event or owner
+rows. SQLite fault-injection and PostgreSQL source-contention regressions are
+authored, not executed. Independent clock jumps and privileged DDL/restore
+remain outside this guarantee.

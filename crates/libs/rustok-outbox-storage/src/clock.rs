@@ -63,12 +63,25 @@ pub async fn database_now(connection: &impl ConnectionTrait) -> Result<DateTime<
 /// never from a transaction holding domain locks or broker I/O.
 pub async fn observe_database_clock(db: &DatabaseConnection) -> Result<DateTime<Utc>, DbErr> {
     let txn = db.begin().await?;
-    let locked = txn.execute_unprepared(
-        "UPDATE outbox_temporal_clock SET high_water_ms = high_water_ms WHERE id = 1",
-    ).await?;
-    if locked.rows_affected() != 1 {
-        txn.rollback().await?;
-        return Err(unavailable("missing clock floor"));
+    let backend = txn.get_database_backend();
+    // Reserve the writer before sampling time without firing row UPDATE
+    // triggers for a synthetic no-op. This remains an independent boundary.
+    match backend {
+        DbBackend::Postgres => {
+            let locked = txn.query_one_raw(Statement::from_string(backend,
+                "SELECT high_water_ms FROM outbox_temporal_clock WHERE id = 1 FOR UPDATE",
+            )).await?;
+            if locked.is_none() {
+                txn.rollback().await?;
+                return Err(unavailable("missing clock floor"));
+            }
+        }
+        DbBackend::Sqlite => {
+            txn.execute_unprepared(
+                "UPDATE outbox_temporal_clock SET high_water_ms = high_water_ms WHERE 1 = 0",
+            ).await?;
+        }
+        _ => return Err(unavailable("unsupported database backend")),
     }
     let now = match database_now(&txn).await {
         Ok(now) => now,
@@ -77,7 +90,6 @@ pub async fn observe_database_clock(db: &DatabaseConnection) -> Result<DateTime<
             return Err(error);
         }
     };
-    let backend = txn.get_database_backend();
     let sql = match backend {
         DbBackend::Postgres => "UPDATE outbox_temporal_clock SET high_water_ms = $1 WHERE id = 1",
         DbBackend::Sqlite => "UPDATE outbox_temporal_clock SET high_water_ms = ? WHERE id = 1",
@@ -89,6 +101,19 @@ pub async fn observe_database_clock(db: &DatabaseConnection) -> Result<DateTime<
     if advanced.rows_affected() != 1 {
         txn.rollback().await?;
         return Err(unavailable("clock floor disappeared"));
+    }
+    // A successful affected-row count is not proof of the persisted floor.
+    // Read it under the same writer reservation before admitting work.
+    let saved = txn.query_one_raw(Statement::from_string(backend,
+        "SELECT high_water_ms FROM outbox_temporal_clock WHERE id = 1",
+    )).await?;
+    let saved = match saved {
+        Some(row) => Some(row.try_get::<i64>("", "high_water_ms")?),
+        None => None,
+    };
+    if saved != Some(now.timestamp_millis()) {
+        txn.rollback().await?;
+        return Err(unavailable("clock floor readback mismatch"));
     }
     txn.commit().await?;
     Ok(now)
@@ -133,6 +158,41 @@ mod tests {
         }
         crate::migration::create_outbox_temporal_clock(&SchemaManager::new(&db)).await.unwrap();
         assert!(observe_database_clock(&db).await.unwrap() >= second);
+    }
+
+    #[tokio::test]
+    async fn observation_does_not_fire_noop_row_updates_and_rejects_rewritten_floor() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let manager = SchemaManager::new(&db);
+        crate::SysEventsMigration.up(&manager).await.unwrap();
+        db.execute_unprepared(
+            "CREATE TRIGGER reject_synthetic_clock_update BEFORE UPDATE ON outbox_temporal_clock
+             WHEN NEW.high_water_ms = OLD.high_water_ms
+             BEGIN SELECT RAISE(ABORT, 'synthetic clock update'); END",
+        ).await.unwrap();
+        let first = observe_database_clock(&db).await.unwrap();
+        db.execute_unprepared("DROP TRIGGER reject_synthetic_clock_update").await.unwrap();
+
+        // Fault injection deliberately removes the monotonicity guard:
+        // a rewriting trigger can report one affected row without saving
+        // the proposed observation. The runtime must not admit work on it.
+        db.execute_unprepared("DROP TRIGGER outbox_temporal_clock_guard").await.unwrap();
+        db.execute_unprepared(
+            "CREATE TRIGGER rewrite_clock_advance AFTER UPDATE ON outbox_temporal_clock
+             WHEN NEW.high_water_ms > OLD.high_water_ms
+             BEGIN UPDATE outbox_temporal_clock SET high_water_ms = OLD.high_water_ms WHERE id = 1; END",
+        ).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(25)).await;
+        let error = observe_database_clock(&db).await.unwrap_err();
+        assert!(error.to_string().contains("clock floor readback mismatch"));
+        let saved = db.query_one_raw(Statement::from_string(DbBackend::Sqlite,
+            "SELECT high_water_ms FROM outbox_temporal_clock WHERE id = 1",
+        )).await.unwrap().unwrap();
+        assert_eq!(saved.try_get::<i64>("", "high_water_ms").unwrap(), first.timestamp_millis());
+
+        db.execute_unprepared("DROP TRIGGER rewrite_clock_advance").await.unwrap();
+        crate::migration::create_outbox_temporal_clock_integrity(&manager).await.unwrap();
+        assert!(observe_database_clock(&db).await.unwrap() > first);
     }
 
     #[tokio::test]

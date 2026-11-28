@@ -449,3 +449,19 @@ sources are authored; compilation, migrations and contention tests are unrun.
 ## Durable owner-operation receipt authority (source only)
 
 The forward migration `m20261128_000211_fence_outbox_owner_receipts` and standalone setup install immutable request identity, immutable terminal outcomes, a guarded processing/released/terminal state graph and a separate durable receipt-retention singleton. Fresh receipts start processing; creation time is no longer restamped after insertion (only the live lease is renewed). An insert delayed past its lease must roll back and retry. SQLite ignores scoped-key insert collisions rather than allowing REPLACE to erase history; UUID aliases and conflicting rowids are rejected. Admission checks the preserved request after a zero-row insert. Terminal receipt deletion requires the enabled durable window, matching SQL time floor and terminal completion age; nonterminal receipts cannot be deleted, and PostgreSQL TRUNCATE is rejected. The first retention invocation binds either a positive whole-millisecond window or indefinite retention; configuration mismatch fails closed. Pruning locks policy before receipt rows and rechecks SQL time after candidate locks; reverse-order PostgreSQL direct DELETE uses NOWAIT. Reconfigure the existing policy only with drained pruners and aligned settings. Old binaries must be stopped before migration; invalid legacy receipt shapes require offline reconciliation rather than automatic data loss. Structurally legal DML is still a trusted assertion, not proof of owner effects or an independent privilege boundary. SQLite regression sources updated; compilation and runtime verification remain pending.
+
+## Exact temporal observation and transport ACK admission (source only)
+
+Independent clock observations reserve the singleton using PostgreSQL row
+ownership or a SQLite zero-row writer reservation, without firing a synthetic
+row UPDATE. The observed millisecond must be read back exactly before commit;
+a suppressed or rewritten advance is an error, not durable clock evidence.
+The unclaimed transport ACK now acquires the event row with PostgreSQL
+FOR UPDATE NOWAIT (SQLite writer reservation) before sampling SQL time and
+compares the full expected event model before commit. Contention is retryable
+at the caller; an existing claim or open intent still blocks the ACK. This
+prevents an ACK waiting on source ownership from backdating retention age.
+Neither path acquires a global clock writer lock while holding event or owner
+rows. SQLite fault-injection and PostgreSQL source-contention regressions are
+authored, not executed. Independent clock jumps and privileged DDL/restore
+remain outside this guarantee.

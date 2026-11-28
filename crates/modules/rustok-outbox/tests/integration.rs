@@ -560,6 +560,15 @@ async fn concurrent_consumer_ack_retries_without_waiting_for_the_source_row() ->
     ).await.expect("late ACK must return without waiting on the source row");
     assert!(blocked.is_err());
     second_txn.rollback().await?;
+
+    // The legacy transport ACK also takes the exact source NOWAIT, before
+    // sampling dispatched_at. It cannot wait behind an owner effect.
+    let transport = rustok_outbox::OutboxTransport::new(second.clone());
+    let blocked = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        transport.acknowledge(envelope.id),
+    ).await.expect("transport ACK must return without waiting on the source row");
+    assert!(blocked.is_err());
     first_txn.commit().await?;
 
     let retry_txn = second.begin().await?;
@@ -577,6 +586,13 @@ async fn concurrent_consumer_ack_retries_without_waiting_for_the_source_row() ->
         "SELECT COUNT(*) AS count FROM sys_event_consumer_receipts",
     )).await?.expect("receipt count").try_get::<i64>("", "count")?;
     assert_eq!(receipts, 2);
+    let after_owner = rustok_outbox_storage::database_now(&second).await?;
+    transport.acknowledge(envelope.id).await?;
+    let dispatched = entity::Entity::find_by_id(envelope.id).one(&second).await?.expect("event");
+    assert_eq!(dispatched.status, SysEventStatus::Dispatched);
+    assert!(dispatched.dispatched_at.is_some_and(|at| at >= after_owner));
+    transport.acknowledge(envelope.id).await?;
+    assert_eq!(entity::Entity::find_by_id(envelope.id).one(&second).await?.as_ref(), Some(&dispatched));
     Ok(())
 }
 
