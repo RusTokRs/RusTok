@@ -67,7 +67,7 @@ impl OutboxRetentionConfig {
                 "outbox operation-receipt retention window must be positive".to_string(),
             ));
         }
-        for window in [Some(self.retention), self.failed_retention].into_iter().flatten() {
+        for window in [Some(self.retention), self.failed_retention, self.receipt_retention].into_iter().flatten() {
             if window != chrono::Duration::milliseconds(window.num_milliseconds()) {
                 return Err(Error::Validation("outbox event retention windows must use whole milliseconds".into()));
             }
@@ -144,6 +144,8 @@ impl OutboxRetention {
     /// delivery state cannot be bypassed by a stale candidate scan.
     pub async fn prune_once(&self) -> Result<OutboxPruneReport> {
         self.config.validate()?;
+        rustok_outbox_storage::idempotency::verify_receipt_retention_policy(&self.db, self.config.receipt_retention)
+            .await.map_err(|error| Error::External(error.to_string()))?;
         self.verify_event_retention_policy().await?;
         let cutoff = rustok_outbox_storage::observe_database_clock(&self.db).await?
             .checked_sub_signed(self.config.retention)

@@ -8,7 +8,7 @@ use rustok_core::generate_id;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr,
     EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
-    sea_query::{LockBehavior, LockType},
+    sea_query::{LockBehavior, LockType, OnConflict},
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -173,7 +173,7 @@ pub async fn admit<T: Serialize>(
     let now = crate::database_now(&txn).await.map_err(database_error)?.fixed_offset();
     let id = generate_id();
     let lease_token = generate_id();
-    let insert = entity::ActiveModel {
+    let insert = entity::Entity::insert(entity::ActiveModel {
         id: Set(id),
         tenant_id: Set(scope.tenant_id()),
         scope_key: Set(scope_key.clone()),
@@ -188,12 +188,13 @@ pub async fn admit<T: Serialize>(
         created_at: Set(now),
         updated_at: Set(now),
         completed_at: Set(None),
-    }
-    .insert(&txn)
+    })
+    .on_conflict(OnConflict::columns([entity::Column::ScopeKey, entity::Column::OwnerSlug, entity::Column::IdempotencyKey]).do_nothing().to_owned())
+    .exec_without_returning(&txn)
     .await;
 
     match insert {
-        Ok(_) => {
+        Ok(1) => {
             let mut expected = entity::Model {
                 id, tenant_id: scope.tenant_id(), scope_key: scope_key.clone(),
                 owner_slug: owner_slug.clone(), idempotency_key: idempotency_key.clone(),
@@ -206,7 +207,6 @@ pub async fn admit<T: Serialize>(
             // Stamp after a possible unique-index wait.
             let now = crate::database_now(&txn).await.map_err(database_error)?.fixed_offset();
             let updated = entity::Entity::update_many()
-                .col_expr(entity::Column::CreatedAt, sea_orm::sea_query::Expr::value(now))
                 .col_expr(entity::Column::UpdatedAt, sea_orm::sea_query::Expr::value(now))
                 .filter(entity::Column::Id.eq(id))
                 .filter(entity::Column::LeaseToken.eq(lease_token))
@@ -216,11 +216,20 @@ pub async fn admit<T: Serialize>(
                 txn.rollback().await.map_err(database_error)?;
                 return Err(lease_lost());
             }
-            expected.created_at = now;
             expected.updated_at = now;
             verify_receipt_state(&txn, &expected).await?;
             txn.commit().await.map_err(database_error)?;
             Ok(Admission::Run(Lease { operation_id: id, token: lease_token }))
+        }
+        Ok(0) => {
+            txn.rollback().await.map_err(database_error)?;
+            let existing = find(database, &scope_key, &owner_slug, &idempotency_key)
+                .await?.ok_or_else(lease_lost)?;
+            inspect_or_reclaim(database, existing, &operation, &request_hash).await
+        }
+        Ok(_) => {
+            txn.rollback().await.map_err(database_error)?;
+            Err(lease_lost())
         }
         Err(error) if is_unique_constraint(&error) => {
             txn.rollback().await.map_err(database_error)?;
@@ -582,6 +591,60 @@ where
     Ok(())
 }
 
+/// Bind the database-wide receipt window, including explicit indefinite
+/// retention. A different local configuration never overwrites a binding.
+pub async fn verify_receipt_retention_policy(
+    database: &DatabaseConnection, window: Option<Duration>,
+) -> Result<(), PortError> {
+    let txn = database.begin().await.map_err(database_error)?;
+    lock_receipt_retention_policy(&txn, window).await?;
+    txn.commit().await.map_err(database_error)
+}
+
+async fn lock_receipt_retention_policy(
+    txn: &DatabaseTransaction, window: Option<Duration>,
+) -> Result<(), PortError> {
+    if window.is_some_and(|w| w <= Duration::zero() || w > Duration::days(3650)
+        || w != Duration::milliseconds(w.num_milliseconds())) {
+        return Err(PortError::validation("outbox.operation_receipt_retention_invalid",
+            "invalid operation receipt retention window"));
+    }
+    let expected = window.map(|w| w.num_milliseconds());
+    let backend = txn.get_database_backend();
+    if backend == DbBackend::Postgres {
+        txn.execute_unprepared("SET TRANSACTION ISOLATION LEVEL READ COMMITTED").await.map_err(database_error)?;
+    }
+    let locked = txn.execute_unprepared("UPDATE outbox_owner_receipt_retention_policy SET bound = bound WHERE id = 1")
+        .await.map_err(database_error)?;
+    if locked.rows_affected() != 1 { return Err(database_error(DbErr::Custom("missing receipt retention policy".into()))); }
+    let read = || async {
+        let row = txn.query_one_raw(sea_orm::Statement::from_string(backend,
+            "SELECT bound, retention_ms FROM outbox_owner_receipt_retention_policy WHERE id = 1"))
+            .await.map_err(database_error)?.ok_or_else(|| database_error(DbErr::Custom("missing receipt retention policy".into())))?;
+        let bound: i32 = row.try_get("", "bound").map_err(database_error)?;
+        let retention: Option<i64> = row.try_get("", "retention_ms").map_err(database_error)?;
+        Ok::<_, PortError>((bound, retention))
+    };
+    match read().await? {
+        (0, None) => {
+            let sql = match backend {
+                DbBackend::Postgres => "UPDATE outbox_owner_receipt_retention_policy SET bound = 1, retention_ms = $1 WHERE id = 1 AND bound = 0",
+                DbBackend::Sqlite => "UPDATE outbox_owner_receipt_retention_policy SET bound = 1, retention_ms = ? WHERE id = 1 AND bound = 0",
+                _ => return Err(database_error(DbErr::Custom("unsupported receipt retention backend".into()))),
+            };
+            let changed = txn.execute_raw(sea_orm::Statement::from_sql_and_values(backend, sql, [expected.into()]))
+                .await.map_err(database_error)?;
+            if changed.rows_affected() != 1 || read().await? != (1, expected) {
+                return Err(database_error(DbErr::Custom("receipt retention policy binding failed".into())));
+            }
+        }
+        (1, stored) if stored == expected => {}
+        _ => return Err(PortError::validation("outbox.operation_receipt_retention_mismatch",
+            "receipt retention differs from durable policy; coordinated reconfiguration required")),
+    }
+    Ok(())
+}
+
 /// Deletes up to `batch_size` terminal (`completed`/`failed`) receipts
 /// whose completion is older than `older_than`, and reports how many were
 /// removed.
@@ -596,10 +659,11 @@ pub async fn prune_terminal_receipts(
     older_than: Duration,
     batch_size: u64,
 ) -> Result<u64, PortError> {
-    if older_than <= Duration::zero() || older_than > Duration::days(3650) {
+    if older_than <= Duration::zero() || older_than > Duration::days(3650)
+        || older_than != Duration::milliseconds(older_than.num_milliseconds()) {
         return Err(PortError::validation(
             "outbox.operation_receipt_retention_invalid",
-            "operation receipt retention window must be positive and at most 3650 days",
+            "operation receipt retention window must be whole milliseconds, positive and at most 3650 days",
         ));
     }
     if !(1..=crate::MAX_RETENTION_BATCH_SIZE).contains(&batch_size) {
@@ -615,7 +679,9 @@ pub async fn prune_terminal_receipts(
             "outbox.operation_receipt_retention_invalid",
             "operation receipt retention cutoff is out of range",
         ))?.fixed_offset();
-    let candidate_ids: Vec<Uuid> = entity::Entity::find()
+    let txn = database.begin().await.map_err(database_error)?;
+    lock_receipt_retention_policy(&txn, Some(older_than)).await?;
+    let candidates = entity::Entity::find()
         .select_only()
         .column(entity::Column::Id)
         .filter(entity::Column::Status.is_in([STATUS_COMPLETED, STATUS_FAILED]))
@@ -623,21 +689,27 @@ pub async fn prune_terminal_receipts(
         .filter(entity::Column::CompletedAt.lte(cutoff))
         .order_by_asc(entity::Column::CompletedAt)
         .order_by_asc(entity::Column::Id)
-        .limit(batch_size)
-        .into_tuple::<Uuid>()
-        .all(database)
-        .await
-        .map_err(database_error)?;
+        .limit(batch_size);
+    let candidates = if txn.get_database_backend() == DbBackend::Postgres {
+        candidates.lock_with_behavior(LockType::Update, LockBehavior::SkipLocked)
+    } else { candidates };
+    let candidate_ids = candidates.into_tuple::<Uuid>().all(&txn).await.map_err(database_error)?;
     if candidate_ids.is_empty() {
+        txn.commit().await.map_err(database_error)?;
         return Ok(0);
     }
+    // Check the clock again after the policy and candidate row locks.
+    let cutoff = cutoff.min(crate::database_now(&txn).await.map_err(database_error)?
+        .checked_sub_signed(older_than).ok_or_else(|| PortError::validation(
+            "outbox.operation_receipt_retention_invalid", "operation receipt retention cutoff is out of range"))?.fixed_offset());
     let removed = entity::Entity::delete_many()
         .filter(entity::Column::Id.is_in(candidate_ids))
         .filter(entity::Column::Status.is_in([STATUS_COMPLETED, STATUS_FAILED]))
         .filter(entity::Column::CompletedAt.lte(cutoff))
-        .exec(database)
+        .exec(&txn)
         .await
         .map_err(database_error)?;
+    txn.commit().await.map_err(database_error)?;
     Ok(removed.rows_affected)
 }
 
@@ -1066,17 +1138,32 @@ mod tests {
             0
         );
 
-        // Age the completion past the window; the receipt is then pruned
-        // and the same key admits a fresh run instead of replaying.
+        for sql in [
+            "DELETE FROM owner_operation_receipts",
+            "UPDATE owner_operation_receipts SET completed_at = '2000-01-01T00:00:00+00:00'",
+            "UPDATE owner_operation_receipts SET request_hash = 'changed'",
+            "UPDATE owner_operation_receipts SET response_json = '{}'",
+            "DELETE FROM outbox_owner_receipt_retention_policy",
+            "INSERT OR REPLACE INTO outbox_owner_receipt_retention_policy VALUES (1, 1, 1)",
+        ] {
+            assert!(database.execute_unprepared(sql).await.is_err(), "{sql}");
+        }
+        assert!(prune_terminal_receipts(&database, Duration::days(1), 10).await.is_err());
+        // Seed aged history offline in this isolated fixture only.
+        database.execute_unprepared("DROP TRIGGER outbox_owner_receipt_update_guard").await.unwrap();
+        let aged = (Utc::now() - Duration::days(120)).fixed_offset();
         entity::Entity::update_many()
+            .col_expr(entity::Column::CreatedAt, sea_orm::sea_query::Expr::value(aged))
+            .col_expr(entity::Column::UpdatedAt, sea_orm::sea_query::Expr::value(aged))
             .col_expr(
                 entity::Column::CompletedAt,
-                sea_orm::sea_query::Expr::value((Utc::now() - Duration::days(120)).fixed_offset()),
+                sea_orm::sea_query::Expr::value(aged),
             )
             .filter(entity::Column::Id.eq(lease.operation_id))
             .exec(&database)
             .await
             .expect("age receipt");
+        crate::migration::create_outbox_owner_receipt_integrity(&SchemaManager::new(&database)).await.unwrap();
         assert_eq!(
             prune_terminal_receipts(&database, Duration::days(90), 10)
                 .await
@@ -1161,11 +1248,14 @@ mod tests {
             Admission::Run(lease) => lease,
             _ => panic!("fresh receipt must run"),
         };
+        db.execute_unprepared("DROP TRIGGER outbox_owner_receipt_update_guard").await.unwrap();
+        let expired = (Utc::now() - Duration::minutes(6)).fixed_offset();
         entity::Entity::update_many()
-            .col_expr(entity::Column::UpdatedAt, sea_orm::sea_query::Expr::value(
-                (Utc::now() - Duration::minutes(6)).fixed_offset()))
+            .col_expr(entity::Column::CreatedAt, sea_orm::sea_query::Expr::value(expired))
+            .col_expr(entity::Column::UpdatedAt, sea_orm::sea_query::Expr::value(expired))
             .filter(entity::Column::Id.eq(lease.operation_id))
             .exec(&db).await.unwrap();
+        crate::migration::create_outbox_owner_receipt_integrity(&SchemaManager::new(&db)).await.unwrap();
         assert!(renew_lease(&db, lease).await.unwrap_err().retryable);
         let txn = db.begin().await.unwrap();
         assert!(lock_current(&txn, lease).await.unwrap_err().retryable);
@@ -1193,6 +1283,8 @@ mod tests {
         SysEventsMigration.up(&SchemaManager::new(&db)).await.unwrap();
         let scope = OwnerOperationScope::Tenant(Uuid::new_v4());
         let request = serde_json::json!({"request": true});
+        // Isolate application readback from the database mutation guard.
+        db.execute_unprepared("DROP TRIGGER outbox_owner_receipt_update_guard").await.unwrap();
         db.execute_unprepared(
             "CREATE TRIGGER rewrite_receipt AFTER INSERT ON owner_operation_receipts
              BEGIN UPDATE owner_operation_receipts SET request_hash = 'changed' WHERE id = NEW.id; END"
@@ -1230,6 +1322,7 @@ mod tests {
             assert_eq!(entity::Entity::find_by_id(lease.operation_id).one(&db).await.unwrap(), Some(before.clone()));
             db.execute_unprepared("DROP TRIGGER rewrite_receipt").await.unwrap();
         }
+        crate::migration::create_outbox_owner_receipt_integrity(&SchemaManager::new(&db)).await.unwrap();
         complete(&db, lease, &serde_json::json!({"ok": true})).await.unwrap();
         assert!(matches!(admit(&db, scope, "owner", "key", "write", &request).await.unwrap(),
             Admission::Replay(value) if value == serde_json::json!({"ok": true})));
@@ -1378,6 +1471,20 @@ mod tests {
         let released = entity::Entity::find_by_id(first.operation_id)
             .one(&database).await.unwrap().unwrap();
         assert_eq!(released.status, STATUS_RELEASED);
+        for sql in [
+            "DELETE FROM owner_operation_receipts",
+            "UPDATE owner_operation_receipts SET request_hash = 'changed'",
+            "UPDATE owner_operation_receipts SET owner_slug = 'other'",
+            "UPDATE owner_operation_receipts SET rowid = rowid + 100",
+        ] {
+            assert!(database.execute_unprepared(sql).await.is_err(), "{sql}");
+        }
+        database.execute_unprepared("PRAGMA recursive_triggers = OFF").await.unwrap();
+        let ignored = database.execute_unprepared(
+            "INSERT OR REPLACE INTO owner_operation_receipts SELECT id, tenant_id, scope_key, owner_slug, idempotency_key, operation, request_hash, lease_token, 'processing', NULL, NULL, created_at, created_at, NULL FROM owner_operation_receipts"
+        ).await.unwrap();
+        assert_eq!(ignored.rows_affected(), 0);
+        assert_eq!(entity::Entity::find_by_id(first.operation_id).one(&database).await.unwrap(), Some(released.clone()));
         assert_eq!(released.request_hash, stored.request_hash);
         assert_ne!(released.lease_token, first.token);
         assert!(released.completed_at.is_none());

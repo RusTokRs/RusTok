@@ -22,11 +22,11 @@ SQL implementation and migration helpers. The canonical production migrator
 applies the same schema through the existing append-only migration. Outbox
 re-exports the storage API for the shared runtime and existing callers.
 
-Receipts are uniquely namespaced by `(tenant_id, owner_slug,
+Receipts are uniquely namespaced by `(scope_key, owner_slug,
 idempotency_key)`. Admission binds that identity to one operation and a
-canonical request digest. A receipt is `processing`, `completed`, or `failed`;
-only a fenced lease can complete or fail it, and an expired processing lease
-can be reclaimed.
+canonical request digest. A receipt is `processing`, `released`, `completed`, or
+`failed`; only a fenced live lease can complete, fail or release it. An expired
+processing lease or released receipt can be reclaimed by the identical request.
 
 An owner calls `admit` before its work, performs domain validation and its
 business mutation through its own service, then writes the owner result and
@@ -74,3 +74,7 @@ with terminal payloads or completion stamps fail closed. SQLite regression
 source models rewritten admission, renewal, success and failure; compilation
 and runtime execution remain pending. This is not yet a DB-level immutable
 receipt history or durable receipt retention policy.
+
+## Durable owner-operation receipt authority (source only)
+
+The forward migration `m20261128_000211_fence_outbox_owner_receipts` and standalone setup install immutable request identity, immutable terminal outcomes, a guarded processing/released/terminal state graph and a separate durable receipt-retention singleton. Fresh receipts start processing; creation time is no longer restamped after insertion (only the live lease is renewed). An insert delayed past its lease must roll back and retry. SQLite ignores scoped-key insert collisions rather than allowing REPLACE to erase history; UUID aliases and conflicting rowids are rejected. Admission checks the preserved request after a zero-row insert. Terminal receipt deletion requires the enabled durable window, matching SQL time floor and terminal completion age; nonterminal receipts cannot be deleted, and PostgreSQL TRUNCATE is rejected. The first retention invocation binds either a positive whole-millisecond window or indefinite retention; configuration mismatch fails closed. Pruning locks policy before receipt rows and rechecks SQL time after candidate locks; reverse-order PostgreSQL direct DELETE uses NOWAIT. Reconfigure the existing policy only with drained pruners and aligned settings. Old binaries must be stopped before migration; invalid legacy receipt shapes require offline reconciliation rather than automatic data loss. Structurally legal DML is still a trusted assertion, not proof of owner effects or an independent privilege boundary. SQLite regression sources updated; compilation and runtime verification remain pending.

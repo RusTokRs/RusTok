@@ -33,10 +33,12 @@ impl MigrationTrait for SysEventsMigration {
         create_outbox_event_state_integrity(manager).await?;
         create_outbox_event_retention_policy(manager).await?;
         create_outbox_consumer_receipt_integrity(manager).await?;
+        create_outbox_owner_receipt_integrity(manager).await?;
         txn.commit().await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        drop_outbox_owner_receipt_integrity(manager).await?;
         drop_outbox_event_retention_policy(manager).await?;
         drop_outbox_event_state_integrity(manager).await?;
         drop_outbox_event_envelope_integrity(manager).await?;
@@ -2249,6 +2251,332 @@ pub async fn drop_outbox_consumer_receipt_integrity(
             ] { manager.get_connection().execute_unprepared(sql).await?; }
         }
         _ => return Err(DbErr::Migration("unsupported outbox consumer integrity backend".into())),
+    }
+    Ok(())
+}
+
+const POSTGRES_OWNER_RECEIPT_GUARDS: &str = r#"
+CREATE OR REPLACE FUNCTION outbox_guard_owner_receipt() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+    window_ms BIGINT;
+    floor_ms BIGINT;
+    now_at TIMESTAMPTZ := clock_timestamp();
+BEGIN
+    IF TG_OP = 'TRUNCATE' THEN
+        RAISE EXCEPTION 'owner receipt history cannot be truncated' USING ERRCODE = '23514';
+    ELSIF TG_OP = 'DELETE' THEN
+        IF OLD.status NOT IN ('completed', 'failed') OR OLD.completed_at IS NULL
+           OR current_setting('transaction_isolation') <> 'read committed' THEN
+            RAISE EXCEPTION 'owner receipt deletion requires a terminal receipt and READ COMMITTED' USING ERRCODE = '23514';
+        END IF;
+        -- Canonical pruners lock policy before receipts. Reverse-order raw
+        -- DELETE must fail immediately rather than wait for the policy.
+        EXECUTE format('LOCK TABLE %I.outbox_owner_receipt_retention_policy IN ROW SHARE MODE NOWAIT', TG_TABLE_SCHEMA);
+        EXECUTE format('SELECT retention_ms FROM %I.outbox_owner_receipt_retention_policy WHERE id = 1 AND bound = 1 FOR SHARE NOWAIT', TG_TABLE_SCHEMA)
+            INTO window_ms;
+        EXECUTE format('SELECT high_water_ms FROM %I.outbox_temporal_clock WHERE id = 1', TG_TABLE_SCHEMA)
+            INTO floor_ms;
+        now_at := clock_timestamp();
+        IF window_ms IS NULL OR floor_ms IS NULL
+           OR floor(extract(epoch FROM now_at) * 1000) < floor_ms
+           OR NOT (OLD.completed_at <= now_at - window_ms * interval '1 millisecond') THEN
+            RAISE EXCEPTION 'owner receipt retention age or policy is invalid' USING ERRCODE = '23514';
+        END IF;
+        RETURN OLD;
+    END IF;
+    IF NOT COALESCE((NEW.id <> '00000000-0000-0000-0000-000000000000'::uuid
+    AND NEW.lease_token <> '00000000-0000-0000-0000-000000000000'::uuid
+    AND ((NEW.tenant_id IS NULL AND NEW.scope_key = 'platform') OR
+         (NEW.tenant_id IS NOT NULL AND NEW.tenant_id <> '00000000-0000-0000-0000-000000000000'::uuid
+          AND NEW.scope_key = 'tenant:' || NEW.tenant_id::text))
+    AND NEW.request_hash ~ '^[0-9a-f]{64}$'
+       AND NEW.status IN ('processing', 'released', 'completed', 'failed')
+    AND NEW.created_at IS NOT NULL AND NEW.updated_at IS NOT NULL
+    AND NEW.created_at <= NEW.updated_at
+    AND (( NEW.status IN ('processing', 'released') AND NEW.response_json IS NULL
+          AND NEW.error_json IS NULL AND NEW.completed_at IS NULL)
+      OR (NEW.status = 'completed' AND NEW.response_json IS NOT NULL AND NEW.error_json IS NULL
+          AND NEW.completed_at IS NOT NULL AND NEW.completed_at = NEW.updated_at)
+      OR (NEW.status = 'failed' AND NEW.response_json IS NULL AND NEW.error_json IS NOT NULL
+          AND NEW.completed_at IS NOT NULL AND NEW.completed_at = NEW.updated_at))), false) OR NEW.updated_at > now_at THEN
+        RAISE EXCEPTION 'invalid owner receipt identity or state' USING ERRCODE = '23514';
+    END IF;
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.status <> 'processing' OR NEW.created_at <> NEW.updated_at THEN
+            RAISE EXCEPTION 'owner receipt must start processing' USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF ROW(NEW.id, NEW.tenant_id, NEW.scope_key, NEW.owner_slug, NEW.idempotency_key, NEW.operation, NEW.request_hash, NEW.created_at)
+       IS DISTINCT FROM ROW(OLD.id, OLD.tenant_id, OLD.scope_key, OLD.owner_slug, OLD.idempotency_key, OLD.operation, OLD.request_hash, OLD.created_at) THEN
+        RAISE EXCEPTION 'owner receipt request identity is immutable' USING ERRCODE = '23514';
+    END IF;
+    IF ROW(NEW.status, NEW.lease_token, NEW.updated_at, NEW.response_json, NEW.error_json, NEW.completed_at)
+       IS NOT DISTINCT FROM ROW(OLD.status, OLD.lease_token, OLD.updated_at, OLD.response_json, OLD.error_json, OLD.completed_at) THEN
+        RETURN NEW;
+    END IF;
+    IF NEW.updated_at < OLD.updated_at THEN
+        RAISE EXCEPTION 'owner receipt timestamp cannot regress' USING ERRCODE = '23514';
+    END IF;
+    IF OLD.status = 'processing' THEN
+        IF OLD.updated_at <= now_at AND now_at < OLD.updated_at + interval '5 minutes' THEN
+            IF (NEW.status IN ('processing', 'completed', 'failed') AND NEW.lease_token = OLD.lease_token)
+               OR (NEW.status = 'released' AND NEW.lease_token <> OLD.lease_token) THEN
+                RETURN NEW;
+            END IF;
+        ELSIF now_at >= OLD.updated_at + interval '5 minutes'
+              AND NEW.status = 'processing' AND NEW.lease_token <> OLD.lease_token
+              AND NEW.updated_at >= OLD.updated_at + interval '5 minutes' THEN
+            RETURN NEW;
+        END IF;
+    ELSIF OLD.status = 'released' AND NEW.status = 'processing'
+          AND NEW.lease_token <> OLD.lease_token THEN
+        RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'invalid owner receipt transition or expired lease' USING ERRCODE = '23514';
+END $$;
+
+CREATE OR REPLACE FUNCTION outbox_guard_owner_receipt_retention_policy() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP <> 'UPDATE' THEN
+        RAISE EXCEPTION 'owner receipt retention singleton cannot be inserted or removed' USING ERRCODE = '23514';
+    END IF;
+    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.bound < OLD.bound THEN
+        RAISE EXCEPTION 'owner receipt retention singleton cannot be reset' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END $$;
+"#;
+
+const SQLITE_OWNER_RECEIPT_GUARDS: &str = r#"
+CREATE UNIQUE INDEX IF NOT EXISTS uq_owner_receipt_uuid_identity ON owner_operation_receipts (replace(replace(replace(replace(lower(CASE WHEN typeof(id) = 'blob' THEN hex(id) ELSE CAST(id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', ''));
+CREATE TRIGGER outbox_owner_receipt_insert_guard BEFORE INSERT ON owner_operation_receipts
+BEGIN
+    SELECT CASE WHEN NOT COALESCE((length(replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.id) = 'blob' THEN hex(NEW.id) ELSE CAST(NEW.id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '')) = 32 AND replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.id) = 'blob' THEN hex(NEW.id) ELSE CAST(NEW.id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') NOT GLOB '*[^0-9a-f]*'
+    AND replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.id) = 'blob' THEN hex(NEW.id) ELSE CAST(NEW.id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') <> '00000000000000000000000000000000'
+    AND length(replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.lease_token) = 'blob' THEN hex(NEW.lease_token) ELSE CAST(NEW.lease_token AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '')) = 32 AND replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.lease_token) = 'blob' THEN hex(NEW.lease_token) ELSE CAST(NEW.lease_token AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') NOT GLOB '*[^0-9a-f]*'
+    AND replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.lease_token) = 'blob' THEN hex(NEW.lease_token) ELSE CAST(NEW.lease_token AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') <> '00000000000000000000000000000000'
+    AND ((NEW.tenant_id IS NULL AND NEW.scope_key = 'platform') OR
+         (NEW.tenant_id IS NOT NULL AND length(replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.tenant_id) = 'blob' THEN hex(NEW.tenant_id) ELSE CAST(NEW.tenant_id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '')) = 32
+          AND replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.tenant_id) = 'blob' THEN hex(NEW.tenant_id) ELSE CAST(NEW.tenant_id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') NOT GLOB '*[^0-9a-f]*'
+          AND replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.tenant_id) = 'blob' THEN hex(NEW.tenant_id) ELSE CAST(NEW.tenant_id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') <> '00000000000000000000000000000000'
+          AND length(NEW.scope_key) = 43 AND substr(NEW.scope_key, 1, 7) = 'tenant:'
+          AND replace(substr(NEW.scope_key, 8), '-', '') = replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.tenant_id) = 'blob' THEN hex(NEW.tenant_id) ELSE CAST(NEW.tenant_id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '')
+          AND substr(NEW.scope_key, 16, 1) = '-' AND substr(NEW.scope_key, 21, 1) = '-'
+          AND substr(NEW.scope_key, 26, 1) = '-' AND substr(NEW.scope_key, 31, 1) = '-'))
+    AND typeof(NEW.request_hash) = 'text' AND length(NEW.request_hash) = 64
+    AND NEW.request_hash NOT GLOB '*[^0-9a-f]*'
+       AND NEW.status IN ('processing', 'released', 'completed', 'failed')
+    AND NEW.created_at IS NOT NULL AND NEW.updated_at IS NOT NULL
+    AND julianday(NEW.created_at) IS NOT NULL AND julianday(NEW.updated_at) IS NOT NULL AND CAST(ROUND((julianday(NEW.created_at) - 2440587.5) * 86400000) AS INTEGER) <= CAST(ROUND((julianday(NEW.updated_at) - 2440587.5) * 86400000) AS INTEGER)
+    AND (( NEW.status IN ('processing', 'released') AND NEW.response_json IS NULL
+          AND NEW.error_json IS NULL AND NEW.completed_at IS NULL)
+      OR (NEW.status = 'completed' AND NEW.response_json IS NOT NULL AND NEW.error_json IS NULL
+          AND NEW.completed_at IS NOT NULL AND NEW.completed_at IS NEW.updated_at)
+      OR (NEW.status = 'failed' AND NEW.response_json IS NULL AND NEW.error_json IS NOT NULL
+          AND NEW.completed_at IS NOT NULL AND NEW.completed_at IS NEW.updated_at))
+       AND NEW.status = 'processing' AND NEW.created_at IS NEW.updated_at
+       AND CAST(ROUND((julianday(NEW.updated_at) - 2440587.5) * 86400000) AS INTEGER) <= CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)), 0)
+        THEN RAISE(ABORT, 'invalid initial owner receipt') END;
+    SELECT CASE
+        WHEN EXISTS (SELECT 1 FROM owner_operation_receipts r
+                     WHERE r.rowid = NEW.rowid AND r.id IS NOT NEW.id)
+        THEN RAISE(ABORT, 'owner receipt rowid replacement is forbidden')
+        WHEN EXISTS (SELECT 1 FROM owner_operation_receipts r
+                     WHERE replace(replace(replace(replace(lower(CASE WHEN typeof(r.id) = 'blob' THEN hex(r.id) ELSE CAST(r.id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') = replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.id) = 'blob' THEN hex(NEW.id) ELSE CAST(NEW.id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '')
+                       AND (r.id IS NOT NEW.id OR r.scope_key IS NOT NEW.scope_key
+                         OR r.owner_slug IS NOT NEW.owner_slug OR r.idempotency_key IS NOT NEW.idempotency_key))
+        THEN RAISE(ABORT, 'owner receipt UUID replacement is forbidden')
+        WHEN EXISTS (SELECT 1 FROM owner_operation_receipts r
+                     WHERE r.scope_key = NEW.scope_key AND r.owner_slug = NEW.owner_slug
+                       AND r.idempotency_key = NEW.idempotency_key)
+        THEN RAISE(IGNORE)
+    END;
+END;
+
+CREATE TRIGGER outbox_owner_receipt_update_guard BEFORE UPDATE ON owner_operation_receipts
+WHEN NOT COALESCE((
+    NEW.rowid IS OLD.rowid AND NEW.id IS OLD.id
+    AND NEW.tenant_id IS OLD.tenant_id
+    AND NEW.scope_key IS OLD.scope_key
+    AND NEW.owner_slug IS OLD.owner_slug
+    AND NEW.idempotency_key IS OLD.idempotency_key
+    AND NEW.operation IS OLD.operation
+    AND NEW.request_hash IS OLD.request_hash
+    AND NEW.created_at IS OLD.created_at
+    AND length(replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.id) = 'blob' THEN hex(NEW.id) ELSE CAST(NEW.id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '')) = 32 AND replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.id) = 'blob' THEN hex(NEW.id) ELSE CAST(NEW.id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') NOT GLOB '*[^0-9a-f]*'
+    AND replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.id) = 'blob' THEN hex(NEW.id) ELSE CAST(NEW.id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') <> '00000000000000000000000000000000'
+    AND length(replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.lease_token) = 'blob' THEN hex(NEW.lease_token) ELSE CAST(NEW.lease_token AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '')) = 32 AND replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.lease_token) = 'blob' THEN hex(NEW.lease_token) ELSE CAST(NEW.lease_token AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') NOT GLOB '*[^0-9a-f]*'
+    AND replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.lease_token) = 'blob' THEN hex(NEW.lease_token) ELSE CAST(NEW.lease_token AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') <> '00000000000000000000000000000000'
+    AND ((NEW.tenant_id IS NULL AND NEW.scope_key = 'platform') OR
+         (NEW.tenant_id IS NOT NULL AND length(replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.tenant_id) = 'blob' THEN hex(NEW.tenant_id) ELSE CAST(NEW.tenant_id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '')) = 32
+          AND replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.tenant_id) = 'blob' THEN hex(NEW.tenant_id) ELSE CAST(NEW.tenant_id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') NOT GLOB '*[^0-9a-f]*'
+          AND replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.tenant_id) = 'blob' THEN hex(NEW.tenant_id) ELSE CAST(NEW.tenant_id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') <> '00000000000000000000000000000000'
+          AND length(NEW.scope_key) = 43 AND substr(NEW.scope_key, 1, 7) = 'tenant:'
+          AND replace(substr(NEW.scope_key, 8), '-', '') = replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.tenant_id) = 'blob' THEN hex(NEW.tenant_id) ELSE CAST(NEW.tenant_id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '')
+          AND substr(NEW.scope_key, 16, 1) = '-' AND substr(NEW.scope_key, 21, 1) = '-'
+          AND substr(NEW.scope_key, 26, 1) = '-' AND substr(NEW.scope_key, 31, 1) = '-'))
+    AND typeof(NEW.request_hash) = 'text' AND length(NEW.request_hash) = 64
+    AND NEW.request_hash NOT GLOB '*[^0-9a-f]*'
+    AND NEW.status IN ('processing', 'released', 'completed', 'failed')
+    AND NEW.created_at IS NOT NULL AND NEW.updated_at IS NOT NULL
+    AND julianday(NEW.created_at) IS NOT NULL AND julianday(NEW.updated_at) IS NOT NULL AND CAST(ROUND((julianday(NEW.created_at) - 2440587.5) * 86400000) AS INTEGER) <= CAST(ROUND((julianday(NEW.updated_at) - 2440587.5) * 86400000) AS INTEGER)
+    AND (( NEW.status IN ('processing', 'released') AND NEW.response_json IS NULL
+          AND NEW.error_json IS NULL AND NEW.completed_at IS NULL)
+      OR (NEW.status = 'completed' AND NEW.response_json IS NOT NULL AND NEW.error_json IS NULL
+          AND NEW.completed_at IS NOT NULL AND NEW.completed_at IS NEW.updated_at)
+      OR (NEW.status = 'failed' AND NEW.response_json IS NULL AND NEW.error_json IS NOT NULL
+          AND NEW.completed_at IS NOT NULL AND NEW.completed_at IS NEW.updated_at))
+    AND CAST(ROUND((julianday(NEW.updated_at) - 2440587.5) * 86400000) AS INTEGER) <= CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)
+    AND CAST(ROUND((julianday(NEW.updated_at) - 2440587.5) * 86400000) AS INTEGER) >= CAST(ROUND((julianday(OLD.updated_at) - 2440587.5) * 86400000) AS INTEGER)
+    AND (
+        (NEW.status IS OLD.status AND NEW.lease_token IS OLD.lease_token AND NEW.updated_at IS OLD.updated_at AND NEW.response_json IS OLD.response_json AND NEW.error_json IS OLD.error_json AND NEW.completed_at IS OLD.completed_at)
+        OR (OLD.status = 'processing' AND CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) >= CAST(ROUND((julianday(OLD.updated_at) - 2440587.5) * 86400000) AS INTEGER)
+          AND CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) < CAST(ROUND((julianday(OLD.updated_at) - 2440587.5) * 86400000) AS INTEGER) + 300000
+          AND ((NEW.status IN ('processing', 'completed', 'failed') AND NEW.lease_token IS OLD.lease_token)
+            OR (NEW.status = 'released' AND replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.lease_token) = 'blob' THEN hex(NEW.lease_token) ELSE CAST(NEW.lease_token AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') <> replace(replace(replace(replace(lower(CASE WHEN typeof(OLD.lease_token) = 'blob' THEN hex(OLD.lease_token) ELSE CAST(OLD.lease_token AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', ''))))
+        OR (OLD.status = 'processing' AND NEW.status = 'processing'
+          AND CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) >= CAST(ROUND((julianday(OLD.updated_at) - 2440587.5) * 86400000) AS INTEGER) + 300000
+          AND CAST(ROUND((julianday(NEW.updated_at) - 2440587.5) * 86400000) AS INTEGER) >= CAST(ROUND((julianday(OLD.updated_at) - 2440587.5) * 86400000) AS INTEGER) + 300000
+          AND replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.lease_token) = 'blob' THEN hex(NEW.lease_token) ELSE CAST(NEW.lease_token AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') <> replace(replace(replace(replace(lower(CASE WHEN typeof(OLD.lease_token) = 'blob' THEN hex(OLD.lease_token) ELSE CAST(OLD.lease_token AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', ''))
+        OR (OLD.status = 'released' AND NEW.status = 'processing'
+          AND replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.lease_token) = 'blob' THEN hex(NEW.lease_token) ELSE CAST(NEW.lease_token AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') <> replace(replace(replace(replace(lower(CASE WHEN typeof(OLD.lease_token) = 'blob' THEN hex(OLD.lease_token) ELSE CAST(OLD.lease_token AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', ''))
+    )
+), 0)
+BEGIN SELECT RAISE(ABORT, 'invalid owner receipt identity or transition'); END;
+
+CREATE TRIGGER outbox_owner_receipt_delete_guard BEFORE DELETE ON owner_operation_receipts
+WHEN NOT EXISTS (
+    SELECT 1 FROM outbox_owner_receipt_retention_policy p CROSS JOIN outbox_temporal_clock c
+    WHERE p.id = 1 AND p.bound = 1 AND p.retention_ms IS NOT NULL AND c.id = 1
+      AND OLD.status IN ('completed', 'failed') AND OLD.completed_at IS NOT NULL
+      AND CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) >= c.high_water_ms
+      AND CAST(ROUND((julianday(OLD.completed_at) - 2440587.5) * 86400000) AS INTEGER) <= CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) - p.retention_ms
+)
+BEGIN SELECT RAISE(ABORT, 'owner receipt retention age or policy is invalid'); END;
+
+CREATE TRIGGER outbox_owner_receipt_policy_no_insert BEFORE INSERT ON outbox_owner_receipt_retention_policy
+BEGIN SELECT RAISE(ABORT, 'owner receipt retention singleton cannot be inserted'); END;
+CREATE TRIGGER outbox_owner_receipt_policy_no_delete BEFORE DELETE ON outbox_owner_receipt_retention_policy
+BEGIN SELECT RAISE(ABORT, 'owner receipt retention singleton cannot be removed'); END;
+CREATE TRIGGER outbox_owner_receipt_policy_update_guard BEFORE UPDATE ON outbox_owner_receipt_retention_policy
+WHEN NEW.id IS NOT OLD.id OR NEW.rowid IS NOT OLD.rowid OR NEW.bound < OLD.bound
+ OR typeof(NEW.bound) <> 'integer' OR (NEW.retention_ms IS NOT NULL AND typeof(NEW.retention_ms) <> 'integer')
+BEGIN SELECT RAISE(ABORT, 'invalid owner receipt retention policy'); END;
+"#;
+
+/// Immutable receipt request/terminal state and a separate durable retention
+/// singleton. Existing data is validated, never repaired or deleted.
+pub async fn create_outbox_owner_receipt_integrity(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let txn = manager.get_connection().begin().await?;
+    let nested = SchemaManager::new(&txn);
+    let manager = &nested;
+    let db = manager.get_connection();
+    let backend = manager.get_database_backend();
+    if !manager.has_table("outbox_owner_receipt_retention_policy").await? {
+        db.execute_unprepared("CREATE TABLE outbox_owner_receipt_retention_policy (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            bound INTEGER NOT NULL CHECK (bound IN (0, 1)),
+            retention_ms BIGINT CHECK (retention_ms BETWEEN 1 AND 315360000000),
+            CHECK (bound = 1 OR retention_ms IS NULL)
+        )").await?;
+        db.execute_unprepared("INSERT INTO outbox_owner_receipt_retention_policy (id, bound) VALUES (1, 0)").await?;
+    }
+    let validation = match backend {
+        DbBackend::Postgres => {
+            db.execute_unprepared("LOCK TABLE outbox_owner_receipt_retention_policy, owner_operation_receipts IN ACCESS EXCLUSIVE MODE NOWAIT").await?;
+            r#"SELECT 1 FROM owner_operation_receipts r WHERE NOT COALESCE((r.id <> '00000000-0000-0000-0000-000000000000'::uuid
+    AND r.lease_token <> '00000000-0000-0000-0000-000000000000'::uuid
+    AND ((r.tenant_id IS NULL AND r.scope_key = 'platform') OR
+         (r.tenant_id IS NOT NULL AND r.tenant_id <> '00000000-0000-0000-0000-000000000000'::uuid
+          AND r.scope_key = 'tenant:' || r.tenant_id::text))
+    AND r.request_hash ~ '^[0-9a-f]{64}$'
+            AND r.status IN ('processing', 'released', 'completed', 'failed')
+    AND r.created_at IS NOT NULL AND r.updated_at IS NOT NULL
+    AND r.created_at <= r.updated_at
+    AND (( r.status IN ('processing', 'released') AND r.response_json IS NULL
+          AND r.error_json IS NULL AND r.completed_at IS NULL)
+      OR (r.status = 'completed' AND r.response_json IS NOT NULL AND r.error_json IS NULL
+          AND r.completed_at IS NOT NULL AND r.completed_at = r.updated_at)
+      OR (r.status = 'failed' AND r.response_json IS NULL AND r.error_json IS NOT NULL
+          AND r.completed_at IS NOT NULL AND r.completed_at = r.updated_at))), false) LIMIT 1"#
+        }
+        DbBackend::Sqlite => {
+            db.execute_unprepared("UPDATE outbox_owner_receipt_retention_policy SET bound = bound WHERE 1 = 0").await?;
+            r#"SELECT 1 FROM owner_operation_receipts r WHERE NOT COALESCE((length(replace(replace(replace(replace(lower(CASE WHEN typeof(r.id) = 'blob' THEN hex(r.id) ELSE CAST(r.id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '')) = 32 AND replace(replace(replace(replace(lower(CASE WHEN typeof(r.id) = 'blob' THEN hex(r.id) ELSE CAST(r.id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') NOT GLOB '*[^0-9a-f]*'
+    AND replace(replace(replace(replace(lower(CASE WHEN typeof(r.id) = 'blob' THEN hex(r.id) ELSE CAST(r.id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') <> '00000000000000000000000000000000'
+    AND length(replace(replace(replace(replace(lower(CASE WHEN typeof(r.lease_token) = 'blob' THEN hex(r.lease_token) ELSE CAST(r.lease_token AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '')) = 32 AND replace(replace(replace(replace(lower(CASE WHEN typeof(r.lease_token) = 'blob' THEN hex(r.lease_token) ELSE CAST(r.lease_token AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') NOT GLOB '*[^0-9a-f]*'
+    AND replace(replace(replace(replace(lower(CASE WHEN typeof(r.lease_token) = 'blob' THEN hex(r.lease_token) ELSE CAST(r.lease_token AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') <> '00000000000000000000000000000000'
+    AND ((r.tenant_id IS NULL AND r.scope_key = 'platform') OR
+         (r.tenant_id IS NOT NULL AND length(replace(replace(replace(replace(lower(CASE WHEN typeof(r.tenant_id) = 'blob' THEN hex(r.tenant_id) ELSE CAST(r.tenant_id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '')) = 32
+          AND replace(replace(replace(replace(lower(CASE WHEN typeof(r.tenant_id) = 'blob' THEN hex(r.tenant_id) ELSE CAST(r.tenant_id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') NOT GLOB '*[^0-9a-f]*'
+          AND replace(replace(replace(replace(lower(CASE WHEN typeof(r.tenant_id) = 'blob' THEN hex(r.tenant_id) ELSE CAST(r.tenant_id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') <> '00000000000000000000000000000000'
+          AND length(r.scope_key) = 43 AND substr(r.scope_key, 1, 7) = 'tenant:'
+          AND replace(substr(r.scope_key, 8), '-', '') = replace(replace(replace(replace(lower(CASE WHEN typeof(r.tenant_id) = 'blob' THEN hex(r.tenant_id) ELSE CAST(r.tenant_id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '')
+          AND substr(r.scope_key, 16, 1) = '-' AND substr(r.scope_key, 21, 1) = '-'
+          AND substr(r.scope_key, 26, 1) = '-' AND substr(r.scope_key, 31, 1) = '-'))
+    AND typeof(r.request_hash) = 'text' AND length(r.request_hash) = 64
+    AND r.request_hash NOT GLOB '*[^0-9a-f]*'
+            AND r.status IN ('processing', 'released', 'completed', 'failed')
+    AND r.created_at IS NOT NULL AND r.updated_at IS NOT NULL
+    AND julianday(r.created_at) IS NOT NULL AND julianday(r.updated_at) IS NOT NULL AND CAST(ROUND((julianday(r.created_at) - 2440587.5) * 86400000) AS INTEGER) <= CAST(ROUND((julianday(r.updated_at) - 2440587.5) * 86400000) AS INTEGER)
+    AND (( r.status IN ('processing', 'released') AND r.response_json IS NULL
+          AND r.error_json IS NULL AND r.completed_at IS NULL)
+      OR (r.status = 'completed' AND r.response_json IS NOT NULL AND r.error_json IS NULL
+          AND r.completed_at IS NOT NULL AND r.completed_at IS r.updated_at)
+      OR (r.status = 'failed' AND r.response_json IS NULL AND r.error_json IS NOT NULL
+          AND r.completed_at IS NOT NULL AND r.completed_at IS r.updated_at))), 0) LIMIT 1"#
+        }
+        _ => return Err(DbErr::Migration("unsupported owner receipt integrity backend".into())),
+    };
+    if db.query_one_raw(Statement::from_string(backend, validation)).await?.is_some() {
+        return Err(DbErr::Migration("invalid owner receipt history; offline reconciliation required".into()));
+    }
+    let policy = db.query_one_raw(Statement::from_string(backend,
+        "SELECT COUNT(*) AS total, COUNT(CASE WHEN id = 1 AND bound IN (0, 1) AND (retention_ms IS NULL OR (bound = 1 AND retention_ms BETWEEN 1 AND 315360000000)) THEN 1 END) AS valid FROM outbox_owner_receipt_retention_policy"
+    )).await?.ok_or_else(|| DbErr::Migration("owner receipt retention policy validation unavailable".into()))?;
+    if policy.try_get::<i64>("", "total")? != 1 || policy.try_get::<i64>("", "valid")? != 1 {
+        return Err(DbErr::Migration("invalid owner receipt retention singleton; offline reconciliation required".into()));
+    }
+    match backend {
+        DbBackend::Postgres => {
+            db.execute_unprepared(POSTGRES_OWNER_RECEIPT_GUARDS).await?;
+            for sql in [
+                "DROP TRIGGER IF EXISTS outbox_owner_receipt_guard ON owner_operation_receipts",
+                "DROP TRIGGER IF EXISTS outbox_owner_receipt_no_truncate ON owner_operation_receipts",
+                "DROP TRIGGER IF EXISTS outbox_owner_receipt_policy_guard ON outbox_owner_receipt_retention_policy",
+                "DROP TRIGGER IF EXISTS outbox_owner_receipt_policy_no_truncate ON outbox_owner_receipt_retention_policy",
+                "CREATE TRIGGER outbox_owner_receipt_guard BEFORE INSERT OR UPDATE OR DELETE ON owner_operation_receipts FOR EACH ROW EXECUTE FUNCTION outbox_guard_owner_receipt()",
+                "CREATE TRIGGER outbox_owner_receipt_no_truncate BEFORE TRUNCATE ON owner_operation_receipts FOR EACH STATEMENT EXECUTE FUNCTION outbox_guard_owner_receipt()",
+                "CREATE TRIGGER outbox_owner_receipt_policy_guard BEFORE INSERT OR UPDATE OR DELETE ON outbox_owner_receipt_retention_policy FOR EACH ROW EXECUTE FUNCTION outbox_guard_owner_receipt_retention_policy()",
+                "CREATE TRIGGER outbox_owner_receipt_policy_no_truncate BEFORE TRUNCATE ON outbox_owner_receipt_retention_policy FOR EACH STATEMENT EXECUTE FUNCTION outbox_guard_owner_receipt_retention_policy()",
+            ] { db.execute_unprepared(sql).await?; }
+        }
+        DbBackend::Sqlite => {
+            for name in ["outbox_owner_receipt_insert_guard", "outbox_owner_receipt_update_guard",
+                "outbox_owner_receipt_delete_guard", "outbox_owner_receipt_policy_no_insert",
+                "outbox_owner_receipt_policy_no_delete", "outbox_owner_receipt_policy_update_guard"] {
+                db.execute_unprepared(&format!("DROP TRIGGER IF EXISTS {name}")).await?;
+            }
+            db.execute_unprepared(SQLITE_OWNER_RECEIPT_GUARDS).await?;
+        }
+        _ => return Err(DbErr::Migration("unsupported owner receipt integrity backend".into())),
+    }
+    txn.commit().await
+}
+
+async fn drop_outbox_owner_receipt_integrity(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    if !manager.has_table("outbox_owner_receipt_retention_policy").await? { return Ok(()); }
+    let db = manager.get_connection();
+    if manager.get_database_backend() == DbBackend::Postgres {
+        db.execute_unprepared("DROP TRIGGER IF EXISTS outbox_owner_receipt_guard ON owner_operation_receipts").await?;
+        db.execute_unprepared("DROP TRIGGER IF EXISTS outbox_owner_receipt_no_truncate ON owner_operation_receipts").await?;
+        db.execute_unprepared("DROP TABLE outbox_owner_receipt_retention_policy").await?;
+        db.execute_unprepared("DROP FUNCTION IF EXISTS outbox_guard_owner_receipt()").await?;
+        db.execute_unprepared("DROP FUNCTION IF EXISTS outbox_guard_owner_receipt_retention_policy()").await?;
+    } else {
+        db.execute_unprepared("DROP TRIGGER IF EXISTS outbox_owner_receipt_delete_guard").await?;
+        db.execute_unprepared("DROP TABLE outbox_owner_receipt_retention_policy").await?;
     }
     Ok(())
 }
