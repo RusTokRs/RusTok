@@ -114,6 +114,11 @@ impl RelayConfig {
                     .to_string(),
             ));
         }
+        if self.backoff_base.subsec_nanos() % 1_000_000 != 0
+            || self.backoff_max.subsec_nanos() % 1_000_000 != 0
+        {
+            return Err(Error::Validation("outbox retry backoff must use whole milliseconds".into()));
+        }
         if self.claim_ttl.subsec_nanos() % 1_000_000 != 0 {
             return Err(Error::Validation("outbox claim_ttl must use whole milliseconds".to_string()));
         }
@@ -146,39 +151,47 @@ impl RelayConfig {
         if locked.rows_affected() != 1 {
             return Err(Error::External("outbox execution policy is missing".to_string()));
         }
-        let row = txn.query_one_raw(Statement::from_string(backend,
-            "SELECT max_in_flight, claim_ttl_ms FROM outbox_execution_policy WHERE id = 1".to_string(),
-        )).await?.ok_or_else(|| Error::External("outbox execution policy is missing".to_string()))?;
-        let cap: i64 = row.try_get("", "max_in_flight")?;
-        let persisted_ttl: Option<i64> = row.try_get("", "claim_ttl_ms")?;
+        let read = || async {
+            let row = txn.query_one_raw(Statement::from_string(backend,
+                "SELECT max_in_flight, claim_ttl_ms, retry_max_attempts, retry_backoff_base_ms, retry_backoff_max_ms FROM outbox_execution_policy WHERE id = 1",
+            )).await?.ok_or_else(|| Error::External("outbox execution policy is missing".into()))?;
+            Ok::<_, Error>((row.try_get::<i64>("", "max_in_flight")?,
+                row.try_get::<Option<i64>>("", "claim_ttl_ms")?,
+                row.try_get::<Option<i64>>("", "retry_max_attempts")?,
+                row.try_get::<Option<i64>>("", "retry_backoff_base_ms")?,
+                row.try_get::<Option<i64>>("", "retry_backoff_max_ms")?))
+        };
+        let (cap, persisted_ttl, attempts, base, max) = read().await?;
         let ttl = i64::try_from(self.claim_ttl.as_millis())
-            .map_err(|_| Error::Validation("outbox claim TTL is out of range".to_string()))?;
+            .map_err(|_| Error::Validation("outbox claim TTL is out of range".into()))?;
+        let expected_attempts = i64::from(self.max_attempts);
+        let expected_base = i64::try_from(self.backoff_base.as_millis())
+            .map_err(|_| Error::Validation("outbox retry base is out of range".into()))?;
+        let expected_max = i64::try_from(self.backoff_max.as_millis())
+            .map_err(|_| Error::Validation("outbox retry maximum is out of range".into()))?;
         if !(1..=MAX_RELAY_CONCURRENCY as i64).contains(&cap) || ttl <= 1 {
-            return Err(Error::Validation("invalid durable outbox execution policy".to_string()));
+            return Err(Error::Validation("invalid durable outbox execution policy".into()));
         }
-        match persisted_ttl {
-            Some(value) if value != ttl => return Err(Error::Validation(
-                "outbox relay claim_ttl differs from durable execution policy; coordinated reconfiguration required".to_string(),
-            )),
-            Some(_) => {}
-            None => {
-                let sql = match backend {
-                    DatabaseBackend::Postgres => "UPDATE outbox_execution_policy SET claim_ttl_ms = $1 WHERE id = 1 AND claim_ttl_ms IS NULL",
-                    DatabaseBackend::Sqlite => "UPDATE outbox_execution_policy SET claim_ttl_ms = ? WHERE id = 1 AND claim_ttl_ms IS NULL",
-                    _ => return Err(Error::Validation("unsupported outbox execution backend".to_string())),
-                };
-                let changed = txn.execute_raw(Statement::from_sql_and_values(backend, sql, [ttl.into()])).await?;
-                if changed.rows_affected() != 1 {
-                    return Err(Error::External("outbox execution policy initialization lost".to_string()));
-                }
-                let saved = txn.query_one_raw(Statement::from_string(backend,
-                    "SELECT max_in_flight, claim_ttl_ms FROM outbox_execution_policy WHERE id = 1",
-                )).await?.ok_or_else(|| Error::External("outbox execution policy is missing".to_string()))?;
-                let saved_cap: i64 = saved.try_get("", "max_in_flight")?;
-                let saved_ttl: Option<i64> = saved.try_get("", "claim_ttl_ms")?;
-                if saved_cap != cap || saved_ttl != Some(ttl) {
-                    return Err(Error::External("outbox execution policy binding readback mismatch".into()));
-                }
+        if persisted_ttl.is_some_and(|stored| stored != ttl) {
+            return Err(Error::Validation("outbox relay claim_ttl differs from durable execution policy; coordinated reconfiguration required".into()));
+        }
+        let expected_retry = (Some(expected_attempts), Some(expected_base), Some(expected_max));
+        let persisted_retry = (attempts, base, max);
+        if persisted_retry != (None, None, None) && persisted_retry != expected_retry {
+            return Err(Error::Validation("outbox retry settings differ from durable execution policy; coordinated reconfiguration required".into()));
+        }
+        if persisted_ttl.is_none() || persisted_retry == (None, None, None) {
+            let sql = match backend {
+                DatabaseBackend::Postgres => "UPDATE outbox_execution_policy SET claim_ttl_ms = $1, retry_max_attempts = $2, retry_backoff_base_ms = $3, retry_backoff_max_ms = $4 WHERE id = 1",
+                DatabaseBackend::Sqlite => "UPDATE outbox_execution_policy SET claim_ttl_ms = ?, retry_max_attempts = ?, retry_backoff_base_ms = ?, retry_backoff_max_ms = ? WHERE id = 1",
+                _ => return Err(Error::Validation("unsupported outbox execution backend".into())),
+            };
+            let changed = txn.execute_raw(Statement::from_sql_and_values(backend, sql,
+                [ttl.into(), expected_attempts.into(), expected_base.into(), expected_max.into()])).await?;
+            if changed.rows_affected() != 1
+                || read().await? != (cap, Some(ttl), expected_retry.0, expected_retry.1, expected_retry.2)
+            {
+                return Err(Error::External("outbox execution policy binding readback mismatch".into()));
             }
         }
         Ok(cap as u64)
@@ -1412,6 +1425,20 @@ mod tests {
         )).await.unwrap().unwrap();
         assert_eq!(row.try_get::<Option<i64>>("", "claim_ttl_ms").unwrap(), None);
         db.execute_unprepared("DROP TRIGGER rewrite_execution_binding").await.unwrap();
+        db.execute_unprepared(
+            "CREATE TRIGGER rewrite_retry_binding AFTER UPDATE OF retry_max_attempts ON outbox_execution_policy
+             WHEN OLD.retry_max_attempts IS NULL AND NEW.retry_max_attempts IS NOT NULL
+             BEGIN UPDATE outbox_execution_policy SET retry_max_attempts = NEW.retry_max_attempts + 1 WHERE id = 1; END",
+        ).await.unwrap();
+        let error = config.verify_execution_admission(&db).await.unwrap_err();
+        assert!(error.to_string().contains("execution policy binding readback mismatch"));
+        let row = db.query_one_raw(Statement::from_string(DatabaseBackend::Sqlite,
+            "SELECT claim_ttl_ms, retry_max_attempts, retry_backoff_base_ms, retry_backoff_max_ms FROM outbox_execution_policy WHERE id = 1",
+        )).await.unwrap().unwrap();
+        for column in ["claim_ttl_ms", "retry_max_attempts", "retry_backoff_base_ms", "retry_backoff_max_ms"] {
+            assert_eq!(row.try_get::<Option<i64>>("", column).unwrap(), None);
+        }
+        db.execute_unprepared("DROP TRIGGER rewrite_retry_binding").await.unwrap();
         config.verify_execution_admission(&db).await.unwrap();
     }
 
@@ -1742,7 +1769,8 @@ mod tests {
 
         // A freshly constructed relay reuses only the committed primary checkpoint.
         let restarted = OutboxRelay::new(db.clone(), Arc::new(RejectUnexpectedPublish))
-            .with_delivery_route("external-fanout-v1");
+            .with_delivery_route("external-fanout-v1")
+            .with_config(relay.config.clone());
         let horizon = rustok_outbox_storage::observe_database_clock(&db).await.unwrap();
         let claimed = restarted.claim_batch(1, horizon, None).await.unwrap().pop().unwrap();
         let renewed = restarted.refresh_claim(&claimed).await.unwrap();

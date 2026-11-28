@@ -894,6 +894,79 @@ async fn relay_claims_only_available_slots_and_reports_each_clone_pass() -> Test
     Ok(())
 }
 
+async fn assert_durable_retry_policy(db: &DatabaseConnection) -> TestResult<()> {
+    let config = RelayConfig {
+        max_attempts: 3,
+        backoff_base: std::time::Duration::from_millis(10),
+        backoff_max: std::time::Duration::from_millis(100),
+        ..Default::default()
+    };
+    // An upgraded, TTL-bound schema still binds the complete retry tuple.
+    db.execute_unprepared("UPDATE outbox_execution_policy SET claim_ttl_ms = 60000 WHERE id = 1").await?;
+    assert!(db.execute_unprepared("UPDATE outbox_execution_policy SET retry_max_attempts = 3").await.is_err());
+    config.verify_execution_admission(db).await?;
+    let event = seed_event(db).await?;
+    let row = entity::Entity::find_by_id(event.id).one(db).await?.expect("event");
+    for mismatch in [
+        RelayConfig { max_attempts: 1, ..config.clone() },
+        RelayConfig { backoff_base: std::time::Duration::from_millis(20), ..config.clone() },
+        RelayConfig { backoff_max: std::time::Duration::from_millis(200), ..config.clone() },
+    ] {
+        assert!(mismatch.verify_execution_admission(db).await.is_err());
+        let target = Arc::new(MockTransport::default());
+        let relay = OutboxRelay::new(db.clone(), target.clone()).with_config(mismatch);
+        assert!(relay.process_pending_once(None).await.is_err());
+        assert!(target.delivered().await.is_empty());
+        assert_eq!(entity::Entity::find_by_id(event.id).one(db).await?.as_ref(), Some(&row));
+    }
+    let mut claimed: entity::ActiveModel = row.into();
+    claimed.claimed_by = Set(Some("retry-policy-test".into()));
+    claimed.claimed_at = Set(Some(rustok_outbox_storage::database_now(db).await?));
+    let claimed = claimed.update(db).await?;
+    for sql in [
+        "UPDATE outbox_execution_policy SET retry_max_attempts = 4",
+        "UPDATE outbox_execution_policy SET retry_backoff_base_ms = 11",
+        "UPDATE outbox_execution_policy SET retry_backoff_max_ms = 101",
+    ] {
+        assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+    }
+    let mut released: entity::ActiveModel = claimed.into();
+    released.claimed_by = Set(None);
+    released.claimed_at = Set(None);
+    released.update(db).await?;
+    for sql in [
+        "UPDATE outbox_execution_policy SET retry_max_attempts = NULL",
+        "UPDATE outbox_execution_policy SET retry_max_attempts = 0",
+        "UPDATE outbox_execution_policy SET retry_backoff_base_ms = 101",
+        "UPDATE outbox_execution_policy SET retry_backoff_max_ms = 315360000001",
+    ] {
+        assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+    }
+    if db.get_database_backend() == DatabaseBackend::Sqlite {
+        assert!(db.execute_unprepared("UPDATE outbox_execution_policy SET retry_backoff_base_ms = 10.5").await.is_err());
+    }
+    db.execute_unprepared("UPDATE outbox_execution_policy SET retry_max_attempts = 4").await?;
+    assert!(config.verify_execution_admission(db).await.is_err());
+    let changed = RelayConfig { max_attempts: 4, ..config };
+    changed.verify_execution_admission(db).await?;
+    let relay = OutboxRelay::new(db.clone(), Arc::new(MockTransport::default())).with_config(changed);
+    assert_eq!(relay.process_pending_once(None).await?, 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn sqlite_durable_retry_policy_rejects_replica_drift() -> TestResult<()> {
+    assert_durable_retry_policy(&setup_sqlite_db().await?).await
+}
+
+#[tokio::test]
+async fn postgres_durable_retry_policy_rejects_replica_drift() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+    let Some(db) = setup_db().await? else { return Ok(()) };
+    if db.get_database_backend() != DatabaseBackend::Postgres { return Ok(()) }
+    assert_durable_retry_policy(&db).await
+}
+
 #[tokio::test]
 async fn independent_relays_share_durable_capacity_and_ttl() -> TestResult<()> {
     let db = setup_sqlite_db().await?;

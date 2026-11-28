@@ -91,8 +91,8 @@ fn relay(db: &DatabaseConnection, target: Arc<dyn EventTransport>, attempts: i32
     OutboxRelay::new(db.clone(), target).with_config(RelayConfig {
         max_attempts: attempts,
         max_concurrency: 1,
-        backoff_base: Duration::ZERO,
-        backoff_max: Duration::ZERO,
+        backoff_base: Duration::from_millis(1),
+        backoff_max: Duration::from_millis(1),
         worker_id: "inventory-source-delivery-regression".into(),
         ..RelayConfig::default()
     })
@@ -186,6 +186,7 @@ async fn inventory_source_required_delivery_failure_retries_the_unchanged_canoni
     assert!(pending.claimed_by.is_none() && pending.claimed_at.is_none());
     assert!(pending.dispatched_at.is_none());
     target.fail.store(false, Ordering::SeqCst);
+    tokio::time::sleep(Duration::from_millis(5)).await;
     assert_eq!(relay.process_pending_once(Some(1)).await.unwrap(), 1);
     let dispatched = stored(&db, id).await;
     assert_eq!(dispatched.status, SysEventStatus::Dispatched);

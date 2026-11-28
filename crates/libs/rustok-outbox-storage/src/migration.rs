@@ -25,6 +25,7 @@ impl MigrationTrait for SysEventsMigration {
         create_outbox_temporal_clock(manager).await?;
         create_outbox_execution_policy(manager).await?;
         create_outbox_execution_policy_integrity(manager).await?;
+        create_outbox_retry_policy_integrity(manager).await?;
         create_outbox_temporal_clock_integrity(manager).await?;
         create_outbox_dispatch_attempts(manager).await?;
         create_outbox_delivery_checkpoints(manager).await?;
@@ -756,6 +757,7 @@ pub async fn create_outbox_execution_policy(manager: &SchemaManager<'_>) -> Resu
 
 pub async fn drop_outbox_execution_policy(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     if manager.has_table("outbox_execution_policy").await? {
+        drop_outbox_retry_policy_integrity(manager).await?;
         drop_outbox_execution_policy_integrity(manager).await?;
     }
     let db = manager.get_connection();
@@ -1016,6 +1018,119 @@ impl MigrationTrait for OutboxExecutionPolicyIntegrityMigration {
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         drop_outbox_execution_policy_integrity(manager).await
     }
+}
+
+
+const POSTGRES_RETRY_POLICY_GUARD: &str = r#"
+CREATE OR REPLACE FUNCTION outbox_guard_retry_policy() RETURNS TRIGGER LANGUAGE plpgsql AS $
+DECLARE has_claims boolean;
+BEGIN
+    IF NEW.retry_max_attempts IS NOT DISTINCT FROM OLD.retry_max_attempts
+       AND NEW.retry_backoff_base_ms IS NOT DISTINCT FROM OLD.retry_backoff_base_ms
+       AND NEW.retry_backoff_max_ms IS NOT DISTINCT FROM OLD.retry_backoff_max_ms THEN
+        RETURN NEW;
+    END IF;
+    IF NEW.retry_max_attempts IS NULL OR NEW.retry_backoff_base_ms IS NULL
+       OR NEW.retry_backoff_max_ms IS NULL
+       OR NEW.retry_max_attempts NOT BETWEEN 1 AND 2147483647
+       OR NEW.retry_backoff_base_ms NOT BETWEEN 1 AND 315360000000
+       OR NEW.retry_backoff_max_ms NOT BETWEEN NEW.retry_backoff_base_ms AND 315360000000 THEN
+        RAISE EXCEPTION 'invalid or reset outbox retry policy' USING ERRCODE = '23514';
+    END IF;
+    -- Claim admission serializes on the same policy row.
+    EXECUTE format('SELECT EXISTS (SELECT 1 FROM %I.sys_events WHERE claimed_by IS NOT NULL OR claimed_at IS NOT NULL)', TG_TABLE_SCHEMA)
+        INTO has_claims;
+    IF has_claims THEN
+        RAISE EXCEPTION 'outbox retry policy change requires drained claims' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END $;
+"#;
+
+const SQLITE_RETRY_POLICY_GUARD: &str = r#"
+CREATE TRIGGER outbox_retry_policy_guard BEFORE UPDATE ON outbox_execution_policy
+WHEN (NEW.retry_max_attempts IS NOT OLD.retry_max_attempts
+      OR NEW.retry_backoff_base_ms IS NOT OLD.retry_backoff_base_ms
+      OR NEW.retry_backoff_max_ms IS NOT OLD.retry_backoff_max_ms)
+ AND (typeof(NEW.retry_max_attempts) <> 'integer'
+      OR typeof(NEW.retry_backoff_base_ms) <> 'integer'
+      OR typeof(NEW.retry_backoff_max_ms) <> 'integer'
+      OR NEW.retry_max_attempts NOT BETWEEN 1 AND 2147483647
+      OR NEW.retry_backoff_base_ms NOT BETWEEN 1 AND 315360000000
+      OR NEW.retry_backoff_max_ms NOT BETWEEN NEW.retry_backoff_base_ms AND 315360000000
+      OR EXISTS (SELECT 1 FROM sys_events WHERE claimed_by IS NOT NULL OR claimed_at IS NOT NULL))
+BEGIN SELECT RAISE(ABORT, 'invalid or undrained outbox retry policy change'); END;
+"#;
+
+/// Extend the existing execution singleton rather than introduce a second
+/// global lock. Leave upgraded policy unbound until the first new relay
+/// presents its complete settings. Migration and reconfiguration are offline.
+pub async fn create_outbox_retry_policy_integrity(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let txn = manager.get_connection().begin().await?;
+    let nested = SchemaManager::new(&txn);
+    let backend = nested.get_database_backend();
+    match backend {
+        DbBackend::Postgres => {
+            txn.execute_unprepared("LOCK TABLE outbox_execution_policy IN ACCESS EXCLUSIVE MODE").await?;
+            txn.execute_unprepared("LOCK TABLE sys_events IN SHARE ROW EXCLUSIVE MODE NOWAIT").await?;
+        }
+        DbBackend::Sqlite => {
+            txn.execute_unprepared("UPDATE outbox_execution_policy SET max_in_flight = max_in_flight WHERE 1 = 0").await?;
+        }
+        _ => return Err(DbErr::Migration("unsupported outbox retry policy backend".into())),
+    }
+    let claims = txn.query_one_raw(Statement::from_string(backend,
+        "SELECT COUNT(*) AS total FROM sys_events WHERE claimed_by IS NOT NULL OR claimed_at IS NOT NULL",
+    )).await?.ok_or_else(|| DbErr::Migration("outbox retry policy claim check unavailable".into()))?;
+    if claims.try_get::<i64>("", "total")? != 0 {
+        return Err(DbErr::Migration("outbox retry policy migration requires drained claims".into()));
+    }
+    let columns = ["retry_max_attempts", "retry_backoff_base_ms", "retry_backoff_max_ms"];
+    let mut existing = 0;
+    for column in columns {
+        if nested.has_column("outbox_execution_policy", column).await? {
+            existing += 1;
+        }
+    }
+    if existing == 0 {
+        for column in columns {
+            txn.execute_unprepared(&format!("ALTER TABLE outbox_execution_policy ADD COLUMN {column} BIGINT")).await?;
+        }
+    } else if existing != columns.len() {
+        return Err(DbErr::Migration("partial outbox retry policy schema; offline recovery required".into()));
+    }
+    let integer_guard = if backend == DbBackend::Sqlite {
+        " AND typeof(retry_max_attempts) = 'integer' AND typeof(retry_backoff_base_ms) = 'integer' AND typeof(retry_backoff_max_ms) = 'integer'"
+    } else { "" };
+    let row = txn.query_one_raw(Statement::from_string(backend, format!(
+        "SELECT COUNT(*) AS total, COUNT(CASE WHEN id = 1 AND ((retry_max_attempts IS NULL AND retry_backoff_base_ms IS NULL AND retry_backoff_max_ms IS NULL) OR (retry_max_attempts BETWEEN 1 AND 2147483647 AND retry_backoff_base_ms BETWEEN 1 AND 315360000000 AND retry_backoff_max_ms BETWEEN retry_backoff_base_ms AND 315360000000{integer_guard})) THEN 1 END) AS valid FROM outbox_execution_policy"
+    ))).await?.ok_or_else(|| DbErr::Migration("outbox retry policy validation unavailable".into()))?;
+    if row.try_get::<i64>("", "total")? != 1 || row.try_get::<i64>("", "valid")? != 1 {
+        return Err(DbErr::Migration("invalid outbox retry policy; offline recovery required".into()));
+    }
+    drop_outbox_retry_policy_integrity(&nested).await?;
+    match backend {
+        DbBackend::Postgres => {
+            txn.execute_unprepared(POSTGRES_RETRY_POLICY_GUARD).await?;
+            txn.execute_unprepared("CREATE TRIGGER outbox_retry_policy_guard BEFORE UPDATE ON outbox_execution_policy FOR EACH ROW EXECUTE FUNCTION outbox_guard_retry_policy()").await?;
+        }
+        DbBackend::Sqlite => { txn.execute_unprepared(SQLITE_RETRY_POLICY_GUARD).await?; }
+        _ => return Err(DbErr::Migration("unsupported outbox retry policy backend".into())),
+    }
+    txn.commit().await
+}
+
+async fn drop_outbox_retry_policy_integrity(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let db = manager.get_connection();
+    match manager.get_database_backend() {
+        DbBackend::Postgres => {
+            db.execute_unprepared("DROP TRIGGER IF EXISTS outbox_retry_policy_guard ON outbox_execution_policy").await?;
+            db.execute_unprepared("DROP FUNCTION IF EXISTS outbox_guard_retry_policy()").await?;
+        }
+        DbBackend::Sqlite => { db.execute_unprepared("DROP TRIGGER IF EXISTS outbox_retry_policy_guard").await?; }
+        _ => return Err(DbErr::Migration("unsupported outbox retry policy backend".into())),
+    }
+    Ok(())
 }
 
 const POSTGRES_TEMPORAL_CLOCK_GUARD: &str = r#"

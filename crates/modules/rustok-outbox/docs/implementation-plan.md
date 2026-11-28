@@ -726,3 +726,24 @@ Neither path acquires a global clock writer lock while holding event or owner
 rows. SQLite fault-injection and PostgreSQL source-contention regressions are
 authored, not executed. Independent clock jumps and privileged DDL/restore
 remain outside this guarantee.
+
+## Durable shared retry policy (source only)
+
+Forward migration `m20261128_000212_bind_outbox_retry_policy` and standalone
+schema setup extend the existing execution-policy singleton with the complete
+retry tuple (maximum attempts and base/capped backoff in whole milliseconds).
+No second policy lock is introduced. The first updated relay binds the tuple
+alongside the TTL; all later startup, claim and refresh admissions require
+exact equality. The binding is read back before commit. A mismatch fails
+before transport I/O or a new claim. Local polling, batch size, concurrency
+and publication timeout remain process controls within the shared admission
+bounds; publication timeout parity is not asserted by this tuple.
+Ordinary SQL cannot partially bind, reset or change retry settings while any
+claim remains, even expired. Drain all old relays and reconcile outstanding
+claims before migrating or reconfiguring; old binaries do not enforce the new
+tuple. Align every relay's settings after coordinated SQL reconfiguration.
+Existing pending retry counts and deadlines are preserved; the new budget
+applies to subsequent charged failures. This is a canonical relay contract,
+not proof of broker effects or validation of arbitrary direct SQL outcomes.
+SQLite/PostgreSQL regression sources cover mismatch and reconfiguration;
+compilation, migration and execution remain pending.
