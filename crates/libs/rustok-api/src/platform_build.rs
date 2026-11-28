@@ -106,6 +106,23 @@ pub struct PlatformBuildSnapshot {
     pub updated_at: String,
 }
 
+/// Latest durable state for one platform build, ordered by the shared
+/// platform build-progress sequence. This is a coalescing snapshot, not an
+/// immutable event-log record.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlatformBuildProgressSnapshot {
+    /// Global monotonic watermark allocated in the same transaction as the
+    /// build-row change. Transports serialize it as a decimal string.
+    pub sequence: i64,
+    pub id: String,
+    pub status: PlatformBuildStatus,
+    pub stage: PlatformBuildStage,
+    pub progress: i32,
+    pub requested_by: String,
+    pub error_message: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
