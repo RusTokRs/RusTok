@@ -315,14 +315,55 @@ mod tests {
     use chrono::Utc;
     use rustok_api::{Action, Permission, Resource};
     use rustok_outbox::{
-        SysEventsMigration,
+        OutboxRelay, OutboxTransport, SysEventsMigration,
         entity::{self, SysEventStatus},
     };
-    use sea_orm::{ActiveModelTrait, Database, DbBackend, EntityTrait, Set};
+    use sea_orm::{ActiveModelTrait, Database, DatabaseConnection, DbBackend, EntityTrait, Set};
     use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use std::sync::Arc;
     use uuid::Uuid;
 
     use super::{requeue_failed_event, sys_event_tenant_sql};
+
+    async fn seed_failed_event(
+        db: &DatabaseConnection,
+        tenant_id: Option<Uuid>,
+        event_type: &str,
+        payload: serde_json::Value,
+    ) -> Uuid {
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+        entity::ActiveModel {
+            id: Set(id),
+            tenant_id: Set(tenant_id),
+            event_type: Set(event_type.to_string()),
+            schema_version: Set(1),
+            payload: Set(payload),
+            status: Set(SysEventStatus::Pending),
+            retry_count: Set(0),
+            next_attempt_at: Set(None),
+            last_error: Set(None),
+            claimed_by: Set(None),
+            claimed_at: Set(None),
+            created_at: Set(now),
+            dispatched_at: Set(None),
+        }
+        .insert(db)
+        .await
+        .expect("insert canonical pending fixture");
+
+        // An invalid envelope is rejected before transport I/O and follows
+        // the real terminal-failure transition into the DLQ.
+        let relay = OutboxRelay::new(
+            db.clone(),
+            Arc::new(OutboxTransport::new(db.clone())),
+        );
+        assert_eq!(relay.process_pending_once(Some(1)).await.expect("relay invalid fixture"), 1);
+        let saved = entity::Entity::find_by_id(id).one(db).await.unwrap().expect("failed event");
+        assert_eq!(saved.status, SysEventStatus::Failed);
+        assert_eq!(saved.retry_count, 1);
+        id
+    }
 
     #[test]
     fn dlq_replay_permission_is_manage_not_read() {
@@ -353,17 +394,22 @@ mod tests {
             schema_version: Set(1),
             payload: Set(serde_json::json!({"tenant_id": tenant_id})),
             status: Set(SysEventStatus::Pending),
-            retry_count: Set(3),
+            retry_count: Set(0),
             next_attempt_at: Set(None),
-            last_error: Set(Some("still running".to_string())),
-            claimed_by: Set(Some("worker-1".to_string())),
-            claimed_at: Set(Some(now)),
+            last_error: Set(None),
+            claimed_by: Set(None),
+            claimed_at: Set(None),
             created_at: Set(now),
             dispatched_at: Set(None),
         }
         .insert(&db)
         .await
-        .expect("insert claimed event");
+        .expect("insert canonical pending event");
+        let mut claimed: entity::ActiveModel = entity::Entity::find_by_id(event_id)
+            .one(&db).await.unwrap().unwrap().into();
+        claimed.claimed_by = Set(Some("worker-1".to_string()));
+        claimed.claimed_at = Set(Some(now));
+        claimed.update(&db).await.expect("claim pending event");
 
         assert!(
             requeue_failed_event(&db, tenant_id, event_id)
@@ -377,7 +423,7 @@ mod tests {
             .expect("load event")
             .expect("event should remain");
         assert_eq!(stored.status, SysEventStatus::Pending);
-        assert_eq!(stored.retry_count, 3);
+        assert_eq!(stored.retry_count, 0);
         assert_eq!(stored.claimed_by.as_deref(), Some("worker-1"));
         assert!(stored.claimed_at.is_some());
     }
@@ -515,27 +561,13 @@ mod tests {
             .await
             .expect("create sys_events");
         let tenant_id = Uuid::new_v4();
-        let now = Utc::now();
-
         for _ in 0..3 {
-            entity::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                tenant_id: Set(Some(tenant_id)),
-                event_type: Set("sample.failed".to_string()),
-                schema_version: Set(1),
-                payload: Set(serde_json::json!({"tenant_id": tenant_id})),
-                status: Set(SysEventStatus::Failed),
-                retry_count: Set(1),
-                next_attempt_at: Set(None),
-                last_error: Set(None),
-                claimed_by: Set(None),
-                claimed_at: Set(None),
-                created_at: Set(now),
-                dispatched_at: Set(None),
-            }
-            .insert(&db)
-            .await
-            .expect("insert failed event");
+            seed_failed_event(
+                &db,
+                Some(tenant_id),
+                "sample.failed",
+                serde_json::json!({"tenant_id": tenant_id}),
+            ).await;
         }
 
         let query = entity::Entity::find()
@@ -564,31 +596,16 @@ mod tests {
 
         let owning_tenant = Uuid::new_v4();
         let foreign_tenant = Uuid::new_v4();
-        let event_id = Uuid::new_v4();
-        let now = Utc::now();
-
-        entity::ActiveModel {
-            id: Set(event_id),
-            // An unbackfilled row must prefer its canonical JSON tenant over legacy data.
-            tenant_id: Set(None),
-            event_type: Set("sample.failed".to_string()),
-            schema_version: Set(1),
-            payload: Set(serde_json::json!({
+        // An unbackfilled row must prefer its canonical JSON tenant over legacy data.
+        let event_id = seed_failed_event(
+            &db,
+            None,
+            "sample.failed",
+            serde_json::json!({
                 "tenant_id": owning_tenant,
                 "event": {"tenant_id": foreign_tenant}
-            })),
-            status: Set(SysEventStatus::Failed),
-            retry_count: Set(1),
-            next_attempt_at: Set(None),
-            last_error: Set(Some("failed".to_string())),
-            claimed_by: Set(None),
-            claimed_at: Set(None),
-            created_at: Set(now),
-            dispatched_at: Set(None),
-        }
-        .insert(&db)
-        .await
-        .expect("insert conflicting envelope");
+            }),
+        ).await;
 
         let count_for = |tenant_id| {
             entity::Entity::find()
@@ -630,6 +647,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn concurrent_dlq_replay_has_exactly_one_winner() {
+        let db = Database::connect("sqlite::memory:").await.expect("connect sqlite");
+        SysEventsMigration.up(&SchemaManager::new(&db)).await.expect("create sys_events");
+        let tenant_id = Uuid::new_v4();
+        let id = seed_failed_event(
+            &db,
+            Some(tenant_id),
+            "sample.failed",
+            serde_json::json!({"tenant_id": tenant_id}),
+        ).await;
+
+        let (first, second) = tokio::join!(
+            requeue_failed_event(&db, tenant_id, id),
+            requeue_failed_event(&db, tenant_id, id),
+        );
+        assert_ne!(first.is_ok(), second.is_ok(), "only one replay may win");
+        let saved = entity::Entity::find_by_id(id).one(&db).await.unwrap().unwrap();
+        assert_eq!(saved.status, SysEventStatus::Pending);
+        assert_eq!(saved.retry_count, 0);
+        assert!(saved.last_error.is_none());
+        assert!(saved.claimed_by.is_none());
+        assert!(saved.claimed_at.is_none());
+    }
+
+    #[tokio::test]
     async fn dlq_legacy_tenant_fallback_requires_missing_canonical_key() {
         use super::sys_event_tenant_condition;
         use sea_orm::{PaginatorTrait, QueryFilter};
@@ -643,27 +685,12 @@ mod tests {
             .expect("create sys_events");
 
         let tenant_id = Uuid::new_v4();
-        let id = Uuid::new_v4();
-        entity::ActiveModel {
-            id: Set(id),
-            tenant_id: Set(None),
-            event_type: Set("legacy.failed".to_string()),
-            schema_version: Set(1),
-            payload: Set(serde_json::json!({
-                "event": {"tenant_id": tenant_id}
-            })),
-            status: Set(SysEventStatus::Failed),
-            retry_count: Set(1),
-            next_attempt_at: Set(None),
-            last_error: Set(None),
-            claimed_by: Set(None),
-            claimed_at: Set(None),
-            created_at: Set(Utc::now()),
-            dispatched_at: Set(None),
-        }
-        .insert(&db)
-        .await
-        .expect("insert legacy envelope");
+        let id = seed_failed_event(
+            &db,
+            None,
+            "legacy.failed",
+            serde_json::json!({"event": {"tenant_id": tenant_id}}),
+        ).await;
         assert_eq!(
             entity::Entity::find()
                 .filter(sys_event_tenant_condition(DbBackend::Sqlite, tenant_id))
