@@ -1,7 +1,8 @@
 //! Mapping from build-owner persistence models to neutral API snapshots.
 
 use rustok_api::{
-    PlatformBuildSnapshot, PlatformBuildStage, PlatformBuildStatus, PlatformDeploymentProfile,
+    PlatformBuildProgressSnapshot, PlatformBuildSnapshot, PlatformBuildStage, PlatformBuildStatus,
+    PlatformDeploymentProfile,
 };
 
 use crate::build::{BuildStage, BuildStatus, DeploymentProfile, Model as Build};
@@ -39,6 +40,18 @@ pub fn build_snapshot(model: &Build) -> PlatformBuildSnapshot {
         finished_at: model.finished_at.map(|value| value.to_rfc3339()),
         created_at: model.created_at.to_rfc3339(),
         updated_at: model.updated_at.to_rfc3339(),
+    }
+}
+
+pub fn build_progress_snapshot(model: &Build) -> PlatformBuildProgressSnapshot {
+    PlatformBuildProgressSnapshot {
+        sequence: model.event_sequence,
+        id: model.id.to_string(),
+        status: build_status(model.status.clone()),
+        stage: build_stage(model.stage.clone()),
+        progress: model.progress,
+        requested_by: model.requested_by.clone(),
+        error_message: model.error_message.clone(),
     }
 }
 
