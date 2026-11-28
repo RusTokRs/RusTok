@@ -1022,12 +1022,7 @@ mod tests {
         let mut state = EditorSessionState::new(sample_controller(), "Missing", "Saved");
         state.prepare_server_preview_request().expect("preview");
 
-        let root_id = state
-            .controller
-            .editor()
-            .document()
-            .project()
-            .pages[0]
+        let root_id = state.controller.editor().document().project().pages[0]
             .component
             .as_ref()
             .and_then(fly::ComponentNode::id)

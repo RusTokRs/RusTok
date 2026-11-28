@@ -2071,7 +2071,7 @@ impl FileSsrDraftSessionStore {
                     Ok(DeadRecord::Replaced | DeadRecord::Left)
                     | Err(SsrDraftSessionError::LockTimeout(_)) => {}
                     Err(error) => return Err(error),
-                }
+                },
             }
         }
         Ok(pruned)
@@ -2428,9 +2428,7 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
                                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                                         Ok(false)
                                     }
-                                    Err(error) => {
-                                        Err(SsrDraftSessionError::Io(error.to_string()))
-                                    }
+                                    Err(error) => Err(SsrDraftSessionError::Io(error.to_string())),
                                 }
                             })?,
                             Some(true)
@@ -3756,10 +3754,10 @@ fn prune_token_lock_files(dir: &Path) -> Result<(), SsrDraftSessionError> {
     };
     for entry in entries {
         let entry = match entry {
-                Ok(entry) => entry,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
-            };
+            Ok(entry) => entry,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
+        };
         let path = entry.path();
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
@@ -5632,8 +5630,7 @@ mod tests {
             })
         ));
         assert_eq!(
-            read_bounded_record_from(std::io::Cursor::new(b"1234"), 4)
-                .expect("record at limit"),
+            read_bounded_record_from(std::io::Cursor::new(b"1234"), 4).expect("record at limit"),
             "1234"
         );
     }
@@ -6499,8 +6496,7 @@ mod tests {
     #[test]
     fn kv_backend_enforces_owner_on_direct_record_load() {
         let driver = Arc::new(MemoryKvDriver::new());
-        let backend =
-            ExternalKvDraftSessionBackend::new(driver, Duration::from_secs(3600), 100);
+        let backend = ExternalKvDraftSessionBackend::new(driver, Duration::from_secs(3600), 100);
         let alice = owner("acme", "user-alice");
         let bob = owner("acme", "user-bob");
         let record = PersistentDraftSessionRecord {
@@ -7590,7 +7586,10 @@ mod tests {
     fn missing_record_file_has_no_eviction_age() {
         let dir = temp_store_dir();
         let missing = dir.join("missing.json");
-        assert_eq!(record_age(&missing, current_unix_secs()).expect("age lookup"), None);
+        assert_eq!(
+            record_age(&missing, current_unix_secs()).expect("age lookup"),
+            None
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 

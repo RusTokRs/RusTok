@@ -405,9 +405,8 @@ fn value_has_symbol_instance_id(pages: &Value, symbol_id: &str) -> bool {
         return false;
     };
     pages.iter().any(|page| {
-        page.get("component").is_some_and(|component| {
-            component_value_has_symbol_instance_id(component, symbol_id)
-        })
+        page.get("component")
+            .is_some_and(|component| component_value_has_symbol_instance_id(component, symbol_id))
     })
 }
 
@@ -558,9 +557,8 @@ fn content_references_any_symbol(
             return false;
         };
         pages.iter().any(|page| {
-            page.get("component").is_some_and(|component| {
-                component_value_has_any_symbol_instance_id(component, ids)
-            })
+            page.get("component")
+                .is_some_and(|component| component_value_has_any_symbol_instance_id(component, ids))
         })
     }))
 }

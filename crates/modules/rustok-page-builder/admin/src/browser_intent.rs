@@ -672,7 +672,12 @@ fn apply_selection_hint(
     else {
         return Ok(());
     };
-    if controller.editor().document().component(component_id).is_none() {
+    if controller
+        .editor()
+        .document()
+        .component(component_id)
+        .is_none()
+    {
         if ignore_missing_component {
             return Ok(());
         }

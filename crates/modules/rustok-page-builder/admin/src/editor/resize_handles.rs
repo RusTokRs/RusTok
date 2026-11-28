@@ -643,13 +643,47 @@ mod tests {
 
     #[test]
     fn modified_arrow_shortcuts_are_not_consumed_by_resize_handles() {
-        assert!(can_resize_by_keyboard("ArrowUp", false, false, false, false));
-        assert!(can_resize_by_keyboard("ArrowDown", false, false, false, false));
-        assert!(!can_resize_by_keyboard("ArrowUp", true, false, false, false));
-        assert!(!can_resize_by_keyboard("ArrowDown", true, false, false, false));
-        assert!(!can_resize_by_keyboard("ArrowLeft", false, true, false, false));
-        assert!(!can_resize_by_keyboard("ArrowRight", false, false, true, false));
-        assert!(!can_resize_by_keyboard("ArrowRight", false, false, false, true));
+        assert!(can_resize_by_keyboard(
+            "ArrowUp", false, false, false, false
+        ));
+        assert!(can_resize_by_keyboard(
+            "ArrowDown",
+            false,
+            false,
+            false,
+            false
+        ));
+        assert!(!can_resize_by_keyboard(
+            "ArrowUp", true, false, false, false
+        ));
+        assert!(!can_resize_by_keyboard(
+            "ArrowDown",
+            true,
+            false,
+            false,
+            false
+        ));
+        assert!(!can_resize_by_keyboard(
+            "ArrowLeft",
+            false,
+            true,
+            false,
+            false
+        ));
+        assert!(!can_resize_by_keyboard(
+            "ArrowRight",
+            false,
+            false,
+            true,
+            false
+        ));
+        assert!(!can_resize_by_keyboard(
+            "ArrowRight",
+            false,
+            false,
+            false,
+            true
+        ));
         assert!(!can_resize_by_keyboard("Enter", false, false, false, false));
     }
 
