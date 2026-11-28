@@ -529,3 +529,30 @@ can be reused after lawful pruning; permanent deduplication/tombstones are not
 introduced. No claim of protection from arbitrary DDL or restored backups.
 Drain writers before migration. PostgreSQL/SQLite regressions are authored;
 compilation, migration and contention execution remain pending.
+
+## Durable event retention policy (2026-11-28; source only)
+
+Migration `m20261128_000208_create_outbox_event_retention_policy` and standalone schema share a singleton
+`outbox_event_retention_policy`. A database starts unbound: event deletion
+fails closed until the first valid pruner binds the delivered and optional DLQ
+windows. A NULL failed window means keep DLQ indefinitely. Every later pruner
+must match both windows (whole milliseconds, 1..=3650 days), including on an
+empty queue. Local batch size and cadence remain independent. Before every
+bounded event delete, the pruner rechecks the durable values under the policy
+writer lock, then takes the consumer registry fence and event locks. The SQL
+DELETE trigger independently enforces the enabled window, event age and SQL
+clock floor. PostgreSQL direct DELETE takes the policy row SHARE NOWAIT and
+requires READ COMMITTED; SQLite uses its serialized writer. Previous consumer,
+claim and open-attempt holds remain mandatory. The singleton cannot be deleted,
+replaced, truncated or reset to unbound, and schema setup never reseeds it.
+
+For coordinated reconfiguration, stop/drain all retention workers, review the
+new deletion horizon and update both windows in a controlled SQL transaction
+on the existing singleton, align runtime settings and restart. An old worker
+with mismatched settings fails closed rather than overwriting policy. Direct
+SQL with policy-write authority can still change windows; this is not a
+privilege boundary. Stop old binaries before migration. Owner-operation
+receipt retention remains a separate, not yet durably bound contract. Event
+status and dispatched_at mutation, privileged DDL/restore, and independent
+clock discontinuities are separate remaining boundaries. SQLite/PostgreSQL
+regression sources added; compilation and runtime evidence remain pending.

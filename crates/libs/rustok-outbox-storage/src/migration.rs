@@ -30,10 +30,12 @@ impl MigrationTrait for SysEventsMigration {
         create_outbox_delivery_checkpoints(manager).await?;
         create_outbox_delivery_history_integrity(manager).await?;
         create_outbox_event_envelope_integrity(manager).await?;
+        create_outbox_event_retention_policy(manager).await?;
         txn.commit().await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        drop_outbox_event_retention_policy(manager).await?;
         drop_outbox_event_envelope_integrity(manager).await?;
         drop_outbox_delivery_history_integrity(manager).await?;
         drop_outbox_delivery_checkpoints(manager).await?;
@@ -1524,5 +1526,157 @@ async fn drop_outbox_event_envelope_integrity(manager: &SchemaManager<'_>) -> Re
         _ => return Err(DbErr::Migration("unsupported outbox envelope backend".into())),
     };
     for sql in statements { manager.get_connection().execute_unprepared(sql).await?; }
+    Ok(())
+}
+
+const POSTGRES_RETENTION_POLICY_GUARDS: &str = r#"
+CREATE OR REPLACE FUNCTION outbox_guard_event_retention_policy() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP <> 'UPDATE' THEN
+        RAISE EXCEPTION 'outbox event retention policy singleton cannot be inserted or removed' USING ERRCODE = '23514';
+    END IF;
+    IF NEW.id IS DISTINCT FROM OLD.id
+        OR (OLD.delivered_retention_ms IS NOT NULL AND NEW.delivered_retention_ms IS NULL) THEN
+        RAISE EXCEPTION 'outbox retention policy cannot change identity or reset binding' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION outbox_guard_event_retention_age() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+    window_ms BIGINT;
+    event_ms NUMERIC;
+    now_ms BIGINT;
+    floor_ms BIGINT;
+BEGIN
+    -- A canonical pruner holds this row before taking registry/event locks.
+    -- Direct DELETE must not wait in the opposite order.
+    IF current_setting('transaction_isolation') <> 'read committed' THEN
+        RAISE EXCEPTION 'outbox retention age requires READ COMMITTED' USING ERRCODE = '23514';
+    END IF;
+    SELECT CASE WHEN OLD.status = 'dispatched' THEN delivered_retention_ms
+                WHEN OLD.status = 'failed' THEN failed_retention_ms END
+        INTO window_ms FROM outbox_event_retention_policy WHERE id = 1 FOR SHARE NOWAIT;
+    IF NOT FOUND OR window_ms IS NULL THEN
+        RAISE EXCEPTION 'outbox event retention window is not enabled' USING ERRCODE = '23514';
+    END IF;
+    SELECT high_water_ms INTO floor_ms FROM outbox_temporal_clock WHERE id = 1;
+    now_ms := CAST(FLOOR(EXTRACT(EPOCH FROM clock_timestamp()) * 1000) AS BIGINT);
+    event_ms := EXTRACT(EPOCH FROM CASE WHEN OLD.status = 'dispatched' THEN OLD.dispatched_at
+                                      ELSE OLD.created_at END) * 1000;
+    IF floor_ms IS NULL OR now_ms < floor_ms OR event_ms IS NULL
+        OR NOT (event_ms <= now_ms - window_ms) THEN
+        RAISE EXCEPTION 'outbox event retention age or clock authority is invalid' USING ERRCODE = '23514';
+    END IF;
+    RETURN OLD;
+END $$;
+"#;
+
+const SQLITE_RETENTION_POLICY_GUARDS: &str = r#"
+CREATE TRIGGER outbox_event_retention_policy_no_insert BEFORE INSERT ON outbox_event_retention_policy
+BEGIN SELECT RAISE(ABORT, 'outbox event retention policy singleton cannot be inserted'); END;
+CREATE TRIGGER outbox_event_retention_policy_no_delete BEFORE DELETE ON outbox_event_retention_policy
+BEGIN SELECT RAISE(ABORT, 'outbox event retention policy singleton cannot be removed'); END;
+CREATE TRIGGER outbox_event_retention_policy_guard BEFORE UPDATE ON outbox_event_retention_policy
+WHEN NEW.id IS NOT OLD.id OR NEW.rowid IS NOT OLD.rowid
+ OR (OLD.delivered_retention_ms IS NOT NULL AND NEW.delivered_retention_ms IS NULL)
+ OR (NEW.delivered_retention_ms IS NOT NULL AND typeof(NEW.delivered_retention_ms) <> 'integer')
+ OR (NEW.failed_retention_ms IS NOT NULL AND typeof(NEW.failed_retention_ms) <> 'integer')
+BEGIN SELECT RAISE(ABORT, 'invalid outbox event retention policy update'); END;
+
+CREATE TRIGGER outbox_event_retention_age_guard BEFORE DELETE ON sys_events
+WHEN NOT EXISTS (
+    SELECT 1 FROM outbox_event_retention_policy p CROSS JOIN outbox_temporal_clock c
+    WHERE p.id = 1 AND c.id = 1 AND p.delivered_retention_ms IS NOT NULL
+      AND CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) >= c.high_water_ms
+      AND CAST(ROUND((julianday(CASE WHEN OLD.status = 'dispatched' THEN OLD.dispatched_at
+                                    ELSE OLD.created_at END) - 2440587.5) * 86400000) AS INTEGER)
+          <= CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)
+             - CASE WHEN OLD.status = 'dispatched' THEN p.delivered_retention_ms
+                    WHEN OLD.status = 'failed' THEN p.failed_retention_ms END
+)
+BEGIN SELECT RAISE(ABORT, 'outbox event retention age or clock authority is invalid'); END;
+"#;
+
+/// Durable event-retention configuration. NULL delivered window means no
+/// pruner has bound the database yet; NULL failed window means DLQ is retained.
+/// Existing bindings are never reseeded by standalone schema setup.
+pub async fn create_outbox_event_retention_policy(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let txn = manager.get_connection().begin().await?;
+    let nested = SchemaManager::new(&txn);
+    let manager = &nested;
+    let db = manager.get_connection();
+    let backend = manager.get_database_backend();
+    if !manager.has_table("outbox_event_retention_policy").await? {
+        db.execute_unprepared(
+            "CREATE TABLE outbox_event_retention_policy (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                delivered_retention_ms BIGINT CHECK (delivered_retention_ms BETWEEN 1 AND 315360000000),
+                failed_retention_ms BIGINT CHECK (failed_retention_ms BETWEEN 1 AND 315360000000),
+                CHECK (delivered_retention_ms IS NOT NULL OR failed_retention_ms IS NULL)
+            )",
+        ).await?;
+        db.execute_unprepared("INSERT INTO outbox_event_retention_policy (id) VALUES (1)").await?;
+    }
+    match backend {
+        DbBackend::Postgres => {
+            db.execute_unprepared("LOCK TABLE outbox_event_retention_policy, sys_events IN ACCESS EXCLUSIVE MODE NOWAIT").await?;
+        }
+        DbBackend::Sqlite => {
+            db.execute_unprepared("UPDATE outbox_event_retention_policy SET delivered_retention_ms = delivered_retention_ms WHERE id = 1").await?;
+        }
+        _ => return Err(DbErr::Migration("unsupported outbox retention backend".into())),
+    }
+    let integer_guard = if backend == DbBackend::Sqlite {
+        " AND (delivered_retention_ms IS NULL OR typeof(delivered_retention_ms) = 'integer') AND (failed_retention_ms IS NULL OR typeof(failed_retention_ms) = 'integer')"
+    } else { "" };
+    let row = db.query_one_raw(Statement::from_string(backend, format!(
+        "SELECT COUNT(*) AS total, COUNT(CASE WHEN id = 1 AND (delivered_retention_ms IS NULL OR delivered_retention_ms BETWEEN 1 AND 315360000000) AND (failed_retention_ms IS NULL OR failed_retention_ms BETWEEN 1 AND 315360000000) AND (delivered_retention_ms IS NOT NULL OR failed_retention_ms IS NULL){integer_guard} THEN 1 END) AS valid FROM outbox_event_retention_policy"
+    ))).await?.ok_or_else(|| DbErr::Migration("outbox retention policy validation unavailable".into()))?;
+    if row.try_get::<i64>("", "total")? != 1 || row.try_get::<i64>("", "valid")? != 1 {
+        return Err(DbErr::Migration("invalid outbox event retention policy singleton; offline recovery required".into()));
+    }
+    drop_outbox_event_retention_guards(manager).await?;
+    match backend {
+        DbBackend::Postgres => {
+            db.execute_unprepared(POSTGRES_RETENTION_POLICY_GUARDS).await?;
+            for sql in [
+                "CREATE TRIGGER outbox_event_retention_policy_guard BEFORE INSERT OR UPDATE OR DELETE ON outbox_event_retention_policy FOR EACH ROW EXECUTE FUNCTION outbox_guard_event_retention_policy()",
+                "CREATE TRIGGER outbox_event_retention_policy_no_truncate BEFORE TRUNCATE ON outbox_event_retention_policy FOR EACH STATEMENT EXECUTE FUNCTION outbox_guard_event_retention_policy()",
+                "CREATE TRIGGER outbox_event_retention_age_guard BEFORE DELETE ON sys_events FOR EACH ROW EXECUTE FUNCTION outbox_guard_event_retention_age()",
+            ] { db.execute_unprepared(sql).await?; }
+        }
+        DbBackend::Sqlite => db.execute_unprepared(SQLITE_RETENTION_POLICY_GUARDS).await.map(|_| ())?,
+        _ => return Err(DbErr::Migration("unsupported outbox retention backend".into())),
+    }
+    txn.commit().await
+}
+
+async fn drop_outbox_event_retention_guards(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let statements: &[&str] = match manager.get_database_backend() {
+        DbBackend::Postgres => &[
+            "DROP TRIGGER IF EXISTS outbox_event_retention_age_guard ON sys_events",
+            "DROP TRIGGER IF EXISTS outbox_event_retention_policy_guard ON outbox_event_retention_policy",
+            "DROP TRIGGER IF EXISTS outbox_event_retention_policy_no_truncate ON outbox_event_retention_policy",
+            "DROP FUNCTION IF EXISTS outbox_guard_event_retention_age()",
+            "DROP FUNCTION IF EXISTS outbox_guard_event_retention_policy()",
+        ],
+        DbBackend::Sqlite => &[
+            "DROP TRIGGER IF EXISTS outbox_event_retention_age_guard",
+            "DROP TRIGGER IF EXISTS outbox_event_retention_policy_guard",
+            "DROP TRIGGER IF EXISTS outbox_event_retention_policy_no_insert",
+            "DROP TRIGGER IF EXISTS outbox_event_retention_policy_no_delete",
+        ],
+        _ => return Err(DbErr::Migration("unsupported outbox retention backend".into())),
+    };
+    for sql in statements { manager.get_connection().execute_unprepared(sql).await?; }
+    Ok(())
+}
+
+async fn drop_outbox_event_retention_policy(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    if manager.has_table("outbox_event_retention_policy").await? {
+        drop_outbox_event_retention_guards(manager).await?;
+        manager.get_connection().execute_unprepared("DROP TABLE outbox_event_retention_policy").await?;
+    }
     Ok(())
 }

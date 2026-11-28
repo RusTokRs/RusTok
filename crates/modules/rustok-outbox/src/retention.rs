@@ -1,6 +1,6 @@
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait, sea_query::Expr,
+    EntityTrait, QueryFilter, QueryOrder, QuerySelect, Statement, TransactionTrait, sea_query::Expr,
 };
 
 use rustok_core::{Error, Result};
@@ -66,6 +66,11 @@ impl OutboxRetentionConfig {
             return Err(Error::Validation(
                 "outbox operation-receipt retention window must be positive".to_string(),
             ));
+        }
+        for window in [Some(self.retention), self.failed_retention].into_iter().flatten() {
+            if window != chrono::Duration::milliseconds(window.num_milliseconds()) {
+                return Err(Error::Validation("outbox event retention windows must use whole milliseconds".into()));
+            }
         }
         let maximum = chrono::Duration::days(3650);
         if self.retention > maximum
@@ -139,6 +144,7 @@ impl OutboxRetention {
     /// delivery state cannot be bypassed by a stale candidate scan.
     pub async fn prune_once(&self) -> Result<OutboxPruneReport> {
         self.config.validate()?;
+        self.verify_event_retention_policy().await?;
         let cutoff = rustok_outbox_storage::observe_database_clock(&self.db).await?
             .checked_sub_signed(self.config.retention)
             .ok_or_else(|| Error::Validation("outbox retention cutoff is out of range".to_string()))?;
@@ -211,6 +217,55 @@ impl OutboxRetention {
         })
     }
 
+    // The first pruner binds the policy, even on an empty queue. Recheck
+    // under the same row lock before every destructive event transaction.
+    async fn verify_event_retention_policy(&self) -> Result<()> {
+        let txn = self.db.begin().await?;
+        if txn.get_database_backend() == DatabaseBackend::Postgres {
+            txn.execute_unprepared("SET TRANSACTION ISOLATION LEVEL READ COMMITTED").await?;
+        }
+        self.lock_event_retention_policy(&txn).await?;
+        txn.commit().await?;
+        Ok(())
+    }
+
+    async fn lock_event_retention_policy(&self, txn: &DatabaseTransaction) -> Result<()> {
+        let backend = txn.get_database_backend();
+        let locked = txn.execute_unprepared(
+            "UPDATE outbox_event_retention_policy SET delivered_retention_ms = delivered_retention_ms WHERE id = 1"
+        ).await?;
+        if locked.rows_affected() != 1 {
+            return Err(Error::External("outbox event retention policy is missing".into()));
+        }
+        let read = || async {
+            let row = txn.query_one_raw(Statement::from_string(backend,
+                "SELECT delivered_retention_ms, failed_retention_ms FROM outbox_event_retention_policy WHERE id = 1",
+            )).await?.ok_or_else(|| Error::External("outbox event retention policy is missing".into()))?;
+            let delivered: Option<i64> = row.try_get("", "delivered_retention_ms")?;
+            let failed: Option<i64> = row.try_get("", "failed_retention_ms")?;
+            Ok::<_, Error>((delivered, failed))
+        };
+        let expected = (Some(self.config.retention.num_milliseconds()),
+            self.config.failed_retention.map(|window| window.num_milliseconds()));
+        match read().await? {
+            (None, None) => {
+                let sql = match backend {
+                    DatabaseBackend::Postgres => "UPDATE outbox_event_retention_policy SET delivered_retention_ms = $1, failed_retention_ms = $2 WHERE id = 1 AND delivered_retention_ms IS NULL",
+                    DatabaseBackend::Sqlite => "UPDATE outbox_event_retention_policy SET delivered_retention_ms = ?, failed_retention_ms = ? WHERE id = 1 AND delivered_retention_ms IS NULL",
+                    _ => return Err(Error::Validation("unsupported outbox retention backend".into())),
+                };
+                let changed = txn.execute_raw(Statement::from_sql_and_values(backend, sql,
+                    [expected.0.into(), expected.1.into()])).await?;
+                if changed.rows_affected() != 1 || read().await? != expected {
+                    return Err(Error::External("outbox event retention policy binding failed".into()));
+                }
+            }
+            stored if stored == expected => {}
+            _ => return Err(Error::Validation("outbox event retention windows differ from durable policy; coordinated reconfiguration required".into())),
+        }
+        Ok(())
+    }
+
     // PostgreSQL's statement snapshot does not see an uncommitted new
     // subscription. A SHARE table lock conflicts with the registry writer's
     // ROW EXCLUSIVE lock, including inserts of previously absent keys. Take
@@ -221,6 +276,10 @@ impl OutboxRetention {
         if self.db.get_database_backend() == DatabaseBackend::Postgres {
             txn.execute_unprepared("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
                 .await?;
+        }
+        // Policy -> consumer registry -> event rows.
+        self.lock_event_retention_policy(&txn).await?;
+        if self.db.get_database_backend() == DatabaseBackend::Postgres {
             txn.execute_unprepared("LOCK TABLE sys_event_consumers IN SHARE MODE")
                 .await?;
         } else if self.db.get_database_backend() == DatabaseBackend::Sqlite {
@@ -502,11 +561,17 @@ mod tests {
                 .is_some()
         );
 
-        // With an explicit operator window, aged failed rows are pruned.
+        // A conflicting worker cannot silently enable DLQ pruning.
         let retention = OutboxRetention::new(db.clone()).with_config(OutboxRetentionConfig {
             failed_retention: Some(chrono::Duration::days(30)),
             ..Default::default()
         });
+        assert!(retention.prune_once().await.is_err());
+        assert!(db.execute_unprepared("DELETE FROM sys_events").await.is_err());
+        // Explicit coordinated operator reconfiguration of the bound policy.
+        db.execute_unprepared("UPDATE outbox_event_retention_policy SET failed_retention_ms = 2592000000 WHERE id = 1")
+            .await.expect("enable DLQ retention");
+        assert!(OutboxRetention::new(db.clone()).prune_once().await.is_err());
         let consumer = crate::OutboxConsumer::new(db.clone());
         consumer
             .register_required_event_types("consumer.dlq", &["test.pruned".to_string()])

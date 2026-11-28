@@ -169,6 +169,62 @@ async fn assert_event_envelope_integrity(db: &DatabaseConnection) -> TestResult<
     Ok(())
 }
 
+async fn assert_durable_event_retention_policy(db: &DatabaseConnection) -> TestResult<()> {
+    let event = seed_event(db).await?;
+    let relay = OutboxRelay::new(db.clone(), Arc::new(MockTransport::default()));
+    assert_eq!(relay.process_pending_once(None).await?, 1);
+    assert!(db.execute_unprepared("DELETE FROM sys_events").await.is_err(), "unbound policy");
+    let retention = rustok_outbox::OutboxRetention::new(db.clone());
+    assert_eq!(retention.prune_once().await?.pruned, 0);
+    assert!(db.execute_unprepared("DELETE FROM sys_events").await.is_err(), "fresh event");
+    let changed = rustok_outbox::OutboxRetention::new(db.clone()).with_config(
+        rustok_outbox::OutboxRetentionConfig {
+            retention: chrono::Duration::days(1), ..Default::default()
+        },
+    );
+    assert!(changed.prune_once().await.is_err());
+    for sql in [
+        "DELETE FROM outbox_event_retention_policy",
+        "UPDATE outbox_event_retention_policy SET delivered_retention_ms = NULL",
+        "UPDATE outbox_event_retention_policy SET delivered_retention_ms = 0",
+        "INSERT INTO outbox_event_retention_policy (id) VALUES (1) ON CONFLICT (id) DO NOTHING",
+    ] {
+        assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+    }
+    if db.get_database_backend() == DatabaseBackend::Sqlite {
+        for sql in [
+            "INSERT OR REPLACE INTO outbox_event_retention_policy VALUES (1, 1, NULL)",
+            "UPDATE outbox_event_retention_policy SET delivered_retention_ms = 1.5",
+        ] {
+            assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+        }
+    } else {
+        assert!(db.execute_unprepared("TRUNCATE outbox_event_retention_policy").await.is_err());
+    }
+    let mut old: entity::ActiveModel = entity::Entity::find_by_id(event.id).one(db).await?.expect("event").into();
+    old.dispatched_at = Set(Some(Utc::now() - chrono::Duration::days(40)));
+    old.update(db).await?;
+    // Coordinated maintenance changes the durable policy, not local config.
+    db.execute_unprepared("UPDATE outbox_event_retention_policy SET delivered_retention_ms = 86400000 WHERE id = 1").await?;
+    assert!(retention.prune_once().await.is_err());
+    assert_eq!(changed.prune_once().await?.pruned, 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn sqlite_durable_event_retention_policy() -> TestResult<()> {
+    let db = setup_sqlite_db().await?;
+    assert_durable_event_retention_policy(&db).await
+}
+
+#[tokio::test]
+async fn postgres_durable_event_retention_policy() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+    let Some(db) = setup_db().await? else { return Ok(()) };
+    if db.get_database_backend() != DatabaseBackend::Postgres { return Ok(()) }
+    assert_durable_event_retention_policy(&db).await
+}
+
 #[tokio::test]
 async fn sqlite_event_envelope_and_consumer_hold_are_immutable() -> TestResult<()> {
     let db = setup_sqlite_db().await?;
