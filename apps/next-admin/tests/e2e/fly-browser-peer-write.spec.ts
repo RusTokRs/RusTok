@@ -364,6 +364,7 @@ test('strict receipt recovery rejects concurrent retry and ignores an unknown re
     const root = document.querySelector('#fly-root') as HTMLElement;
     root.dataset.flyDraftContract = 'rendered';
     root.dataset.flyRenderedDraftToken = 'draft-1';
+    root.dataset.flyRenderedDraftGeneration = '1';
     sessionStorage.setItem('fly:ssr-draft:same-page', JSON.stringify({ token: 'draft-1', generation: 1 }));
     const original = {
       protocol: 'fly_iframe', instance_id: 'editor', intent: 'save', payload: {},
@@ -404,7 +405,7 @@ test('strict receipt recovery rejects concurrent retry and ignores an unknown re
     if (!requests[1]) throw new Error('second lookup was not sent');
     responses[1](new Response(JSON.stringify({
       operation_id: 'operation-1', operation_status: 'committed',
-      result: { revision_id: 'rev-2', project_hash: 'hash-2', dirty: false },
+      result: { page_id: 'same-page', revision_id: 'rev-2', project_hash: 'hash-2', dirty: false },
       draft_token: 'draft-1', draft_generation: 2
     }), { status: 200, headers: { 'content-type': 'application/json' } }));
     await lookup;
@@ -435,6 +436,7 @@ test('strict draft view requests use the same receipt-ordered transport as edits
     const root = document.querySelector('#fly-root') as HTMLElement;
     root.dataset.flyDraftContract = 'rendered';
     root.dataset.flyRenderedDraftToken = 'draft-1';
+    root.dataset.flyRenderedDraftGeneration = '1';
     sessionStorage.setItem('fly:ssr-draft:same-page', JSON.stringify({ token: 'draft-1', generation: 1 }));
     const requests: Array<{ intent: string; draft_generation: number; operation_id: string }> = [];
     let finish: (response: Response) => void = () => {};
@@ -451,7 +453,7 @@ test('strict draft view requests use the same receipt-ordered transport as edits
     const reply = (generation: number) => new Response(JSON.stringify({
       operation_id: requests[requests.length - 1].operation_id,
       operation_status: 'committed',
-      result: { revision_id: 'rev-1', project_hash: 'hash-1', dirty: false },
+      result: { page_id: 'same-page', revision_id: 'rev-1', project_hash: 'hash-1', dirty: false },
       draft_token: 'draft-1', draft_generation: generation
     }), { status: 200, headers: { 'content-type': 'application/json' } });
     finish(reply(2));
@@ -482,7 +484,7 @@ test('a persisted write requiring SSR reload still notifies peer editors', async
   await page.evaluate(() => {
     globalThis.fetch = async () => new Response(JSON.stringify({
       reload: true,
-      result: { revision_id: 'rev-2', project_hash: 'hash-2', dirty: false }
+      result: { page_id: 'same-page', revision_id: 'rev-2', project_hash: 'hash-2', dirty: false }
     }), { status: 200, headers: { 'content-type': 'application/json' } });
     void (globalThis as PeerScope).__flyPeerAdapter?.emitIntent('save', {});
   });
@@ -526,6 +528,7 @@ test('strict success without a matching receipt cannot rebase or navigate the ed
     const root = document.querySelector('#fly-root') as HTMLElement;
     root.dataset.flyDraftContract = 'rendered';
     root.dataset.flyRenderedDraftToken = 'draft-1';
+    root.dataset.flyRenderedDraftGeneration = '1';
     const draftKey = 'fly:ssr-draft:same-page';
     const pendingKey = 'fly:ssr-pending-operation:same-page';
     sessionStorage.setItem(draftKey, JSON.stringify({ token: 'draft-1', generation: 1 }));
@@ -589,6 +592,7 @@ test('strict peer fence rejects view-state intents before emitting them', async 
     const root = document.querySelector('#fly-root') as HTMLElement;
     root.dataset.flyDraftContract = 'rendered';
     root.dataset.flyRenderedDraftToken = 'draft-1';
+    root.dataset.flyRenderedDraftGeneration = '1';
     sessionStorage.setItem('fly:ssr-draft:same-page', JSON.stringify({ token: 'draft-1', generation: 1 }));
     const adapter = scope.FlyBrowser?.mount(root, { intentEndpoint: '/fly-intent' });
     if (!adapter) throw new Error('missing adapter');
@@ -618,6 +622,7 @@ test('strict pending storage cannot be overwritten by another mounted root or cl
     const root = document.querySelector('#fly-root') as HTMLElement;
     root.dataset.flyDraftContract = 'rendered';
     root.dataset.flyRenderedDraftToken = 'draft-1';
+    root.dataset.flyRenderedDraftGeneration = '1';
     const draftKey = 'fly:ssr-draft:same-page';
     const pendingKey = 'fly:ssr-pending-operation:same-page';
     sessionStorage.setItem(draftKey, JSON.stringify({ token: 'draft-1', generation: 1 }));
@@ -687,6 +692,7 @@ test('a matching operation ID with a different draft or unchanged generation is 
     const root = document.querySelector('#fly-root') as HTMLElement;
     root.dataset.flyDraftContract = 'rendered';
     root.dataset.flyRenderedDraftToken = 'draft-1';
+    root.dataset.flyRenderedDraftGeneration = '1';
     const key = 'fly:ssr-pending-operation:same-page';
     sessionStorage.setItem('fly:ssr-draft:same-page', JSON.stringify({ token: 'draft-1', generation: 1 }));
     const responses: Array<(response: Response) => void> = [];
@@ -699,7 +705,7 @@ test('a matching operation ID with a different draft or unchanged generation is 
     if (!adapter) throw new Error('missing adapter');
     const reply = (token: string, generation: number) => new Response(JSON.stringify({
       operation_id: requests[0].operation_id, operation_status: 'committed',
-      result: { revision_id: 'rev-wrong', project_hash: 'hash-wrong', dirty: false },
+      result: { page_id: 'same-page', revision_id: 'rev-wrong', project_hash: 'hash-wrong', dirty: false },
       draft_token: token, draft_generation: generation
     }), { status: 200, headers: { 'content-type': 'application/json' } });
     const save = adapter.emitIntent('save', {});

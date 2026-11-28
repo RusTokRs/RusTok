@@ -410,7 +410,7 @@ test('a row added after the mount selects its component and announces it', async
   ]);
 });
 
-test('dragging a layer row announces the selection it makes', async ({
+test('dragging a hydrated layer row announces selection without claiming classic drag ownership', async ({
   page
 }) => {
   await mountSsrControls(page);
@@ -419,7 +419,7 @@ test('dragging a layer row announces the selection it makes', async ({
 
   expect(await adapterState(page)).toMatchObject({
     selectedId: 'hero-title',
-    dragging: 'component'
+    dragging: null
   });
   expect(await selections(page)).toEqual([
     { componentId: 'hero-title', source: 'ssr-control' }

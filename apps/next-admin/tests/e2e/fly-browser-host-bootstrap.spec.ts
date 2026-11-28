@@ -232,20 +232,34 @@ async function mountHost(
     const requests: RecordedRequest[] = [];
     fly.__flyRequests = requests;
     globalThis.fetch = async (input, init = {}) => {
+      const body = typeof init.body === 'string' ? JSON.parse(init.body) : null;
       requests.push({
         input: String(input),
         method: init.method ?? 'GET',
-        body: typeof init.body === 'string' ? JSON.parse(init.body) : null
+        body
       });
       // `reload: false` keeps the page: a real endpoint answers a mutating intent with
       // `reload: true`, which would discard the state a test reads back. A test of the reload
       // itself asks for it.
+      const strict = root.dataset.flyDraftContract === 'rendered';
+      const generation = strict && Number.isSafeInteger(body?.draft_generation)
+        ? body.draft_generation + 1
+        : 1;
       return new Response(
         JSON.stringify({
-          result: { revision_id: 'rev-2', project_hash: 'hash-2' },
+          result: {
+            page_id: 'home',
+            revision_id: 'rev-2',
+            project_hash: 'hash-2',
+            dirty: false
+          },
+          ...(strict ? {
+            operation_id: body?.operation_id,
+            operation_status: 'committed'
+          } : {}),
           reload,
-          draft_token: 'draft-1',
-          draft_generation: 1,
+          draft_token: strict ? body?.draft_token : 'draft-1',
+          draft_generation: generation,
           ...answer
         }),
         { status: 200, headers: { 'content-type': 'application/json' } }
@@ -416,8 +430,12 @@ test('the component picker selects the component and retargets every form', asyn
 
   await page.locator('#field-submit').click();
 
-  await expect.poll(async () => (await requests(page)).length).toBe(1);
-  const [request] = await requests(page);
+  await expect.poll(async () => (await requests(page)).length).toBe(2);
+  const [selection, request] = await requests(page);
+  expect(selection.body).toMatchObject({
+    intent: 'select',
+    payload: { component_id: 'cta' }
+  });
   expect(request.body?.payload).toMatchObject({
     component_id: 'cta',
     selected_component_id: 'cta'
@@ -638,7 +656,7 @@ test('a cached draft is offered for recovery rather than used with a saved-page 
 });
 
 test('an out-of-order response cannot replace the draft in the route', async ({ page }) => {
-  await openEditorRoute(page, '?tab=builder', { strictDraft: true });
+  await openEditorRoute(page, '?tab=builder');
   const result = await page.evaluate(async () => {
     const root = document.querySelector('#fly-root');
     if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
@@ -646,11 +664,11 @@ test('an out-of-order response cannot replace the draft in the route', async ({ 
     if (!adapter) throw new Error('Fly adapter unavailable');
     const pending: Array<(response: Response) => void> = [];
     globalThis.fetch = () => new Promise<Response>((resolve) => pending.push(resolve));
-    const old = adapter.emitIntent('save', {});
+    const old = adapter.emitIntent('select', { component_id: 'hero' });
     const current = adapter.emitIntent('save', {});
-    if (pending.length !== 2) throw new Error('expected two in-flight requests');
+    if (pending.length !== 2) throw new Error('expected read and write requests in flight');
     const answer = (draft: string) => new Response(JSON.stringify({
-      result: { revision_id: 'rev-2', project_hash: 'hash-2' },
+      result: { page_id: 'home', revision_id: 'rev-2', project_hash: 'hash-2', dirty: false },
       draft_token: draft, draft_generation: 1, reload: false
     }), { status: 200, headers: { 'content-type': 'application/json' } });
     pending[1](answer('new'));
@@ -678,7 +696,7 @@ test('an inconsistent rendered draft offers the displayed session for recovery',
 });
 
 test('failure to write the route blocks reload and preserves the response token', async ({ page }) => {
-  await openEditorRoute(page, '?tab=builder', { strictDraft: true, failHistory: true, reload: true });
+  await openEditorRoute(page, '?tab=builder', { failHistory: true, reload: true });
   await page.locator('#create-page-id').fill('about');
   await page.locator('#create-page-submit').click();
   const recovery = page.locator('[data-fly-draft-recovery]');
@@ -691,20 +709,36 @@ test('failure to write the route blocks reload and preserves the response token'
 });
 
 test('a response arriving after a page switch cannot rewrite or reload the new route', async ({ page }) => {
-  await openEditorRoute(page, '?page_id=home&tab=builder', { strictDraft: true });
+  await openEditorRoute(page, '?fly_draft=home-draft&page_id=home&tab=builder', {
+    strictDraft: true,
+    renderedDraft: { token: 'home-draft', generation: '1' }
+  });
   const result = await page.evaluate(async () => {
     const root = document.querySelector('#fly-root');
     if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
     const adapter = (globalThis as FlyGlobal).FlyBrowser?.mount?.(root);
     if (!adapter) throw new Error('Fly adapter unavailable');
     let resolveResponse: ((response: Response) => void) | undefined;
-    globalThis.fetch = () => new Promise<Response>((resolve) => { resolveResponse = resolve; });
+    let envelope: { operation_id: string; draft_token: string; draft_generation: number } | undefined;
+    globalThis.fetch = (_input, init = {}) => {
+      envelope = JSON.parse(String(init.body));
+      return new Promise<Response>((resolve) => { resolveResponse = resolve; });
+    };
     const request = adapter.emitIntent('save', {});
     history.pushState(null, '', '?page_id=other&tab=builder');
-    if (!resolveResponse) throw new Error('request was not dispatched');
+    if (!resolveResponse || !envelope) throw new Error('request was not dispatched');
     resolveResponse(new Response(JSON.stringify({
-      result: { revision_id: 'rev-2', project_hash: 'hash-2' },
-      draft_token: 'home-draft', draft_generation: 2, reload: true,
+      operation_id: envelope.operation_id,
+      operation_status: 'committed',
+      result: {
+        page_id: 'home',
+        revision_id: 'rev-2',
+        project_hash: 'hash-2',
+        dirty: false
+      },
+      draft_token: envelope.draft_token,
+      draft_generation: envelope.draft_generation + 1,
+      reload: true,
       location: '/wrong-page'
     }), { status: 200, headers: { 'content-type': 'application/json' } }));
     await request;
@@ -722,7 +756,7 @@ test('a response arriving after a page switch cannot rewrite or reload the new r
   expect(result.mounted).toBe('false');
   expect(result.inert).toBe(true);
   expect(result.notice).toBe(false);
-  expect(result.saved.token).toBe('home-draft');
+  expect(result.saved).toEqual({ token: 'home-draft', generation: 2 });
 });
 
 test('an old canvas cannot send new intents after client-side page navigation', async ({ page }) => {

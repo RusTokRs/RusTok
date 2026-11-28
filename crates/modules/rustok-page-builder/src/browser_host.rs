@@ -93,6 +93,21 @@ const __flyWriteDraftRoute = (token) => {
     return false;
   }
 };
+const __flyRememberDraft = (adapter, token, generation) => {
+  if (typeof token !== "string" || !token.trim()) return;
+  const nextGeneration = Number.isSafeInteger(generation) && generation >= 1
+    ? generation
+    : null;
+  adapter.draftSession = { token, generation: nextGeneration };
+  try {
+    globalThis.sessionStorage?.setItem(
+      `fly:ssr-draft:${adapter.pageId || "unbound"}`,
+      JSON.stringify({ token, generation: nextGeneration }),
+    );
+  } catch (_) {
+    // The route recovery link remains available when browser storage is denied.
+  }
+};
 // Never let a canvas post into a session different from the one rendered by
 // the server. Keep the cached token intact and offer a same-origin recovery
 // link; the server still checks session owner and page on the next render.
@@ -151,11 +166,30 @@ const __flyBindSsrAdapter = (adapter) => {
     const rawGeneration = adapter.root.dataset.flyRenderedDraftGeneration;
     const generation = typeof rawGeneration === "string" && /^[1-9][0-9]*$/.test(rawGeneration)
       ? Number(rawGeneration) : NaN;
-    const pendingToken = adapter.pendingOperation?.request?.draft_token;
+    const pendingRequest = adapter.pendingOperation?.request;
+    const pendingToken = pendingRequest?.page_id === adapter.pageId
+      ? pendingRequest.draft_token
+      : null;
+    const cachedDraftToken = (() => {
+      try {
+        const raw = globalThis.sessionStorage?.getItem(
+          `fly:ssr-draft:${adapter.pageId || "unbound"}`,
+        );
+        const cached = raw ? JSON.parse(raw) : null;
+        return __flyObject(cached) &&
+          typeof cached.token === "string" &&
+          cached.token.trim()
+          ? cached.token
+          : null;
+      } catch (_) {
+        return null;
+      }
+    })();
+    const recoveryToken = adapter.draftSession?.token || pendingToken || cachedDraftToken;
     if (
       rendered &&
       routeDraft === null &&
-      adapter.pendingOperation?.request?.page_id === pageId &&
+      pendingRequest?.page_id === adapter.pageId &&
       typeof pendingToken === "string" &&
       pendingToken &&
       pendingToken !== rendered
@@ -191,12 +225,12 @@ const __flyBindSsrAdapter = (adapter) => {
       // The generation belongs to the SSR snapshot, not to independently cached state.
       adapter.draftSession = { token: rendered, generation };
     } else if (routeDraft !== null || rawGeneration !== undefined) {
-      __flyStopForDraftRecovery(adapter, routeDraft);
+      __flyStopForDraftRecovery(adapter, routeDraft || recoveryToken);
       return adapter;
-    } else if (adapter.draftSession?.token) {
-      // The server rendered the saved page, but this tab retains a draft. Do not
-      // silently post that hidden draft or overwrite its only recovery pointer.
-      __flyStopForDraftRecovery(adapter, adapter.draftSession.token);
+    } else if (recoveryToken) {
+      // The server rendered the saved page, but this tab retains a draft or an
+      // unresolved operation. Keep it as a recovery pointer, never as authority.
+      __flyStopForDraftRecovery(adapter, recoveryToken);
       return adapter;
     } else {
       adapter.draftSession = null;
@@ -306,9 +340,9 @@ const __flyBindSsrAdapter = (adapter) => {
     if (strictDraft) {
       const ownership = __flyRouteOwnership();
       if (!ownership.valid) {
+        __flyRememberDraft(adapter, token, detail.result.draft_generation);
         detail.result.reload = false;
         delete detail.result.location;
-        // The adapter still stores an accepted response under its own page key.
         // Do not put a recovery link for the old page on a different route.
         __flyStopForDraftRecovery(adapter, token, ownership.samePage && ownership.connected);
         return;
@@ -317,12 +351,14 @@ const __flyBindSsrAdapter = (adapter) => {
     if (typeof token === "string" && token && !__flyWriteDraftRoute(token)) {
       // The adapter would otherwise reload a URL that cannot restore this
       // response's session. Keep the response and expose a recovery link.
+      __flyRememberDraft(adapter, token, detail.result.draft_generation);
       detail.result.reload = false;
       // A response may also carry a navigation target; suppress it as well
       // until the user can restore the draft whose route could not be written.
       delete detail.result.location;
       __flyStopForDraftRecovery(adapter, token);
     } else if (typeof token === "string" && token) {
+      __flyRememberDraft(adapter, token, detail.result.draft_generation);
       boundDraft = token;
     }
   }, __flyLifecycleOptions);
@@ -447,7 +483,7 @@ mod tests {
         assert!(source.contains("if (routeDraft === null)"));
         assert!(source.contains("__flyWriteDraftRoute(rendered)"));
         assert!(source.contains("boundDraft = rendered"));
-        assert!(source.contains("adapter.pendingOperation?.request?.page_id === pageId"));
+        assert!(source.contains("adapter.pendingOperation?.request?.page_id === adapter.pageId"));
         assert!(source.contains("__flyWriteDraftRoute(pendingToken)"));
         assert!(source.contains("if (adapter.pendingOperation)"));
         assert!(source.contains("adapter.resolvePendingOperation()"));

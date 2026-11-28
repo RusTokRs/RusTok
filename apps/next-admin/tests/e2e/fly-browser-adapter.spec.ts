@@ -376,11 +376,11 @@ test('stale save conflict preserves optimistic state and refreshed retry advance
     const adapter = (
       globalThis as typeof globalThis & {
         FlyBrowser?: {
-          mount?: (root: Element) => { draftSession?: unknown } | null;
+          mount?: (root: Element) => { draftSession?: unknown; stop?: () => unknown } | null;
         };
       }
     ).FlyBrowser?.mount?.(root as Element);
-    return {
+    const state = {
       revision: root?.getAttribute('data-fly-revision'),
       projectHash: root?.getAttribute('data-fly-project-hash'),
       draftSession: adapter?.draftSession ?? null,
@@ -390,6 +390,8 @@ test('stale save conflict preserves optimistic state and refreshed retry advance
       events: (globalThis as typeof globalThis & { __flyEvents?: unknown[] })
         .__flyEvents
     };
+    adapter?.stop?.();
+    return state;
   });
 
   expect(state.revision).toBe('rev-1');
