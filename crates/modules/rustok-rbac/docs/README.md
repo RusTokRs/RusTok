@@ -453,9 +453,12 @@ boundaries. Source regressions unrun.
 ## Revision-bound permission cache publication
 
 The Moka adapter binds grants to the original coherent static actor revision.
-Cache fills recheck the revision after publication and retry on drift even
-without local invalidation. Bound hits compare exact vocabulary and revision
-in one database statement; ABA is a miss. Missing subjects and legacy entries
+Cache fills and bound hits validate both the original grants and revision after
+publication or lookup, respectively, and recheck the local epoch. The canonical
+SQL comparison reads both in one statement. A raw spelling mismatch with an
+unchanged revision falls back to a single typed grant/revision observation, using
+the same permission parser as the normal reader. ABA is a miss; equal counters
+with different grants after database replacement are also rejected. Missing subjects and legacy entries
 retain exact checks. A revision-aware miss with absent subject evidence may
 publish only empty grants: a nonempty read without a revision retries before
 publication, even if the subject would again be absent afterward. Revision

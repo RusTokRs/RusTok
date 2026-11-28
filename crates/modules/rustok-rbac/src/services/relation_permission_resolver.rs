@@ -70,7 +70,7 @@ impl<C: ConnectionTrait> ConnectionRelationPermissionStore<'_, C> {
     }
 
     // Compare exact vocabulary pairs at one snapshot, with no generation
-    // write or domain lock. Different raw spellings fall back to typed reads.
+    // write or domain lock. Bound mismatches may need a coherent typed read.
     async fn cached_grants_match(
         &self,
         tenant_id: &uuid::Uuid,
@@ -125,7 +125,18 @@ impl<C: ConnectionTrait> ConnectionRelationPermissionStore<'_, C> {
             };
             let matches: bool = row.try_get("", "grants_match")?;
             let current = decode_static_actor_authority_revision(&rows)?;
-            return Ok(matches && current.as_ref() == Some(revision));
+            if current.as_ref() != Some(revision) {
+                return Ok(false);
+            }
+            if matches {
+                return Ok(true);
+            }
+            // The canonical parser accepts some noncanonical spellings.
+            // Re-observe both the typed grants and revision together rather
+            // than comparing an independent grant read with this revision.
+            return self
+                .typed_grants_match_revision(tenant_id, user_id, permissions, revision)
+                .await;
         }
         sql.push_str(" SELECT grants_match FROM checks");
         let row = self.db.query_one_raw(self.statement(&sql, values)?).await?.ok_or_else(|| {
@@ -133,6 +144,54 @@ impl<C: ConnectionTrait> ConnectionRelationPermissionStore<'_, C> {
         })?;
         row.try_get("", "grants_match")
     }
+
+    async fn typed_grants_match_revision(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        permissions: &[Permission],
+        revision: &StaticActorAuthorityRevision,
+    ) -> Result<bool, sea_orm::DbErr> {
+        // Both branches use one statement snapshot. Tag and union them
+        // instead of repeating the entire grant set for every role.
+        let sql = format!(
+            "WITH persisted AS ({PERSISTED_GRANTS_SQL}), \
+             revision AS ({STATIC_ACTOR_REVISION_SELECT} WHERE u.tenant_id = ? AND u.id = ?) \
+             SELECT 0 AS row_kind, rbac_membership_revision, role_id, grant_revision, \
+                    NULL AS resource, NULL AS action FROM revision \
+             UNION ALL \
+             SELECT 1 AS row_kind, NULL, NULL, NULL, resource, action FROM persisted"
+        );
+        let rows = self.db.query_all_raw(self.statement(
+            &sql,
+            vec![(*tenant_id).into(), (*user_id).into(), (*tenant_id).into(), (*user_id).into()],
+        )?).await?;
+        let mut revision_rows = Vec::new();
+        let mut grants = Vec::new();
+        for row in rows {
+            match row.try_get::<i32>("", "row_kind")? {
+                0 => revision_rows.push(row),
+                1 => grants.push(decode_permission(&row)?),
+                _ => return Err(sea_orm::DbErr::Custom("invalid RBAC snapshot row kind".into())),
+            }
+        }
+        let current = decode_static_actor_authority_revision(&revision_rows)?;
+        Ok(current.as_ref() == Some(revision)
+            && normalize_permissions(grants) == permissions)
+    }
+}
+
+fn decode_permission(row: &sea_orm::QueryResult) -> Result<Permission, sea_orm::DbErr> {
+    let resource: String = row.try_get("", "resource")?;
+    let action: String = row.try_get("", "action")?;
+    Ok(Permission::new(
+        resource.parse().map_err(|err: rustok_api::ResourceParseError| {
+            sea_orm::DbErr::Type(err.to_string())
+        })?,
+        action.parse().map_err(|err: rustok_api::ActionParseError| {
+            sea_orm::DbErr::Type(err.to_string())
+        })?,
+    ))
 }
 
 #[async_trait::async_trait]
@@ -149,24 +208,7 @@ impl<C: ConnectionTrait> RelationPermissionStore for ConnectionRelationPermissio
             PERSISTED_GRANTS_SQL,
             vec![(*tenant_id).into(), (*user_id).into()],
         )?).await?;
-        rows.iter()
-            .map(|row| {
-                let resource: String = row.try_get("", "resource")?;
-                let action: String = row.try_get("", "action")?;
-                Ok(Permission::new(
-                    resource
-                        .parse()
-                        .map_err(|err: rustok_api::ResourceParseError| {
-                            sea_orm::DbErr::Type(err.to_string())
-                        })?,
-                    action
-                        .parse()
-                        .map_err(|err: rustok_api::ActionParseError| {
-                            sea_orm::DbErr::Type(err.to_string())
-                        })?,
-                ))
-            })
-            .collect()
+        rows.iter().map(decode_permission).collect()
     }
 }
 
@@ -346,9 +388,9 @@ pub trait RelationPermissionStore {
         Ok(None)
     }
 
-    /// A bound hit needs both exact grant equivalence and the original
+    /// A bound hit or fill needs both grant equivalence and the original
     /// revision. Stores must observe both coherently; the default cannot
-    /// prove that contract and therefore never accepts a bound hit.
+    /// prove that contract and therefore never accepts bound evidence.
     async fn cached_permissions_match_revision(
         &self,
         _tenant_id: &uuid::Uuid,
@@ -556,13 +598,19 @@ where
             .await
         {
             if revision_aware {
-                // The original revision must bracket the grant read AND
-                // asynchronous publication; raw SQL may not bump local epochs.
-                let current = store.read_static_revision(tenant_id, user_id).await
-                    .map_err(PermissionCacheResolutionError::Store)?;
-                if current.as_ref() != revision.as_deref()
-                    || !cache.is_lookup_current(tenant_id, user_id, token).await
-                {
+                // Validate the original revision AND grants after publication.
+                // Restore/replacement can reproduce counters with different
+                // contents; revision equality alone cannot confirm the fill.
+                let matches = match revision.as_deref() {
+                    Some(revision) => store.cached_permissions_match_revision(
+                        tenant_id, user_id, &resolved_permissions, revision,
+                    ).await.map_err(PermissionCacheResolutionError::Store)?,
+                    // Only an empty set reaches this branch. An absent
+                    // subject in the canonical graph cannot own grants.
+                    None => store.read_static_revision(tenant_id, user_id).await
+                        .map_err(PermissionCacheResolutionError::Store)?.is_none(),
+                };
+                if !matches || !cache.is_lookup_current(tenant_id, user_id, token).await {
                     continue;
                 }
             }
@@ -1341,6 +1389,74 @@ mod tests {
             super::MAX_PERMISSION_CACHE_RESOLUTION_ATTEMPTS
         );
         assert_eq!(cache.publications.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn revision_aware_fill_rechecks_grants_even_when_counters_match() {
+        use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
+        struct ReplacingCache {
+            db: DatabaseConnection,
+            replacements: AtomicUsize,
+            replacement: &'static str,
+        }
+        #[async_trait]
+        impl PermissionCache for ReplacingCache {
+            fn supports_static_revisions(&self) -> bool { true }
+            async fn get(&self, _: &uuid::Uuid, _: &uuid::Uuid) -> Option<Vec<Permission>> {
+                None
+            }
+            async fn insert(&self, _: &uuid::Uuid, _: &uuid::Uuid, _: Vec<Permission>) {
+                if self.replacements.fetch_add(1, Ordering::SeqCst) == 0 {
+                    self.db.execute_unprepared(self.replacement).await.unwrap();
+                }
+            }
+            async fn invalidate(&self, _: &uuid::Uuid, _: &uuid::Uuid) {}
+        }
+
+        for (replacement, expected, publications) in [
+            ("DELETE FROM role_permissions", Vec::new(), 2),
+            ("UPDATE permissions SET action = '*'", vec![Permission::USERS_MANAGE], 1),
+        ] {
+            let db = Database::connect("sqlite::memory:").await.unwrap();
+            let tenant = uuid::Uuid::new_v4();
+            let user = uuid::Uuid::new_v4();
+            let role = uuid::Uuid::new_v4();
+            let permission = uuid::Uuid::new_v4();
+            // Deliberately hold revisions constant to model replacement of
+            // the database contents at the same revision, not normal DML.
+            db.execute_unprepared(
+                "CREATE TABLE users (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, rbac_membership_revision BIGINT NOT NULL);
+                 CREATE TABLE roles (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, grant_revision BIGINT NOT NULL);
+                 CREATE TABLE user_roles (user_id TEXT NOT NULL, role_id TEXT NOT NULL);
+                 CREATE TABLE permissions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, resource TEXT NOT NULL, action TEXT NOT NULL);
+                 CREATE TABLE role_permissions (role_id TEXT NOT NULL, permission_id TEXT NOT NULL)"
+            ).await.unwrap();
+            for (sql, values) in [
+                ("INSERT INTO users VALUES (?1, ?2, 7)", vec![user.into(), tenant.into()]),
+                ("INSERT INTO roles VALUES (?1, ?2, 9)", vec![role.into(), tenant.into()]),
+                ("INSERT INTO user_roles VALUES (?1, ?2)", vec![user.into(), role.into()]),
+                ("INSERT INTO permissions VALUES (?1, ?2, 'users', 'manage')", vec![permission.into(), tenant.into()]),
+                ("INSERT INTO role_permissions VALUES (?1, ?2)", vec![role.into(), permission.into()]),
+            ] {
+                db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, sql, values))
+                    .await.unwrap();
+            }
+            let store = super::SeaOrmRelationPermissionStore::new(db.clone());
+            let before = store.read_static_revision(&tenant, &user).await.unwrap();
+            assert!(before.is_some());
+            assert_eq!(store.load_permissions_for_user(&tenant, &user).await.unwrap(), vec![Permission::USERS_MANAGE]);
+            let cache = ReplacingCache {
+                db,
+                replacements: AtomicUsize::new(0),
+                replacement,
+            };
+            let resolved = resolve_permissions_with_cache(&store, &cache, &tenant, &user)
+                .await.unwrap();
+            assert_eq!(resolved.permissions, expected);
+            assert!(!resolved.cache_hit);
+            assert_eq!(cache.replacements.load(Ordering::SeqCst), publications);
+            assert_eq!(store.read_static_revision(&tenant, &user).await.unwrap(), before);
+        }
     }
 
     #[tokio::test]

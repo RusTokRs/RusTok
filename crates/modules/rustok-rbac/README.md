@@ -21,6 +21,10 @@ the exact persisted permission pairs in a fresh statement before returning a
 hit, followed by a local token recheck. This handles direct SQL and missed
 notifications without adding a global write lock. Cache hits still incur a DB
 query; a mismatch triggers the typed relation read and conditional publication.
+Revision-aware fills also validate the original grants and revision together after
+publication, before rechecking the local epoch. Equal counters after a database
+replacement cannot alone validate a fill. Noncanonical but parseable grant
+spellings use a coherent typed fallback; source regressions are unrun.
 The durable invalidation generation remains the owner mutation/recovery
 watermark, not a complete raw-DML change feed.
 

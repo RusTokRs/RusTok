@@ -622,9 +622,12 @@ exists.
   Source tests unrun. Continuous module policy, signing-key authority,
   synchronous-only consumers and atomic credential/effect fencing remain open.
 
-- Revision-bound permission cache: bracket production fills with durable
-  revision reads and recheck the local epoch after publication. Bound hits
-  compare exact grants and original revision in one statement. Legacy entries
+- Revision-bound permission cache: bracket production fills with the original
+  durable revision and coherent grant/revision validation after publication,
+  then recheck the local epoch. Bound hits use the same validation. Raw spelling
+  mismatches use a coherent typed observation, not a split grant/revision read.
+  Source regression models unchanged counters with revoked grants and a parseable
+  wildcard spelling change during publication. Legacy entries
   retain exact validation; missing/corrupt evidence and storage failure do not
   authorize stale grants. Source regression covers raw grant ABA and mutation
   during publication, plus transient subject visibility between absent

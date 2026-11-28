@@ -67,14 +67,18 @@ DML, or make a previously admitted request snapshot current.
 
 The production Moka adapter retains an immutable pair of normalized grants
 and the owner static actor revision, in addition to its local epoch token.
-On a miss, sample the revision before the grant read and check it again after
-conditional publication, then recheck the local epoch. A change retries the
+On a miss, sample the revision before the grant read and validate both the
+original grant set and revision coherently after conditional publication, then
+recheck the local epoch. Equal counters with different grants (for example,
+a database replacement) reject the attempt. A change retries the
 entire bounded attempt; a failed DB observation propagates as a store error.
 An entry from an unconfirmed attempt remains only a candidate: subsequent
 hits must validate both its exact persisted vocabulary and revision.
 
-Bound hits compare both using one SQL statement and the shared owner revision
-decoder. Equal grants after membership/grant ABA are a miss. Unknown subjects
+Bound hits and fills compare both using one SQL statement and the shared owner
+revision decoder. If raw vocabulary differs but the revision matches, a second
+single-statement observation compares typed grants and the same revision using
+the canonical parser; a change in representation alone is not a grant change. Equal grants after membership/grant ABA are a miss. Unknown subjects
 and legacy cache entries have no reusable revision and retain exact validation.
 In a revision-aware fill, a missing subject revision cannot witness nonempty
 grants: subject creation/deletion or tenant movement may occur between two
@@ -94,8 +98,8 @@ misses incur two revision observations. Source regressions are unrun.
 No schema or persistence migration is required. The generation comparison is a
 local cache check, not a database transaction or a fleet-wide fence. The
 SeaORM hit check compares raw vocabulary pairs by symmetric set difference;
-different spellings fall back to the typed reader. Each hit requires one
-database statement, and a mismatch incurs a fresh typed read. Existing bounded
+different spellings fall back to the typed reader. Canonical hits require one
+database statement; a raw mismatch may require a second coherent typed read. Existing bounded
 retries remain; a failed attempt's relation read is discarded.
 
 ## Context dimensions
