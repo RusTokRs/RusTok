@@ -35,10 +35,12 @@ impl MigrationTrait for SysEventsMigration {
         create_outbox_event_retention_policy(manager).await?;
         create_outbox_consumer_receipt_integrity(manager).await?;
         create_outbox_owner_receipt_integrity(manager).await?;
+        create_outbox_event_identity_authority(manager).await?;
         txn.commit().await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        drop_outbox_event_identity_authority(manager).await?;
         drop_outbox_owner_receipt_integrity(manager).await?;
         drop_outbox_event_retention_policy(manager).await?;
         drop_outbox_event_state_integrity(manager).await?;
@@ -1947,6 +1949,167 @@ async fn drop_outbox_event_envelope_integrity(manager: &SchemaManager<'_>) -> Re
         _ => return Err(DbErr::Migration("unsupported outbox envelope backend".into())),
     };
     for sql in statements { manager.get_connection().execute_unprepared(sql).await?; }
+    Ok(())
+}
+
+
+const POSTGRES_EVENT_IDENTITY_AUTHORITY: &str = r#"
+CREATE OR REPLACE FUNCTION outbox_guard_reserved_identity() RETURNS TRIGGER LANGUAGE plpgsql AS $
+DECLARE source_id uuid;
+BEGIN
+    IF TG_OP <> 'INSERT' THEN
+        RAISE EXCEPTION 'outbox event identity reservation is permanent' USING ERRCODE = '23514';
+    END IF;
+    -- A reservation is only created for a source that exists in this
+    -- transaction. Canonical insertion already owns the source row.
+    EXECUTE format('SELECT id FROM %I.sys_events WHERE id = $1 FOR KEY SHARE NOWAIT', TG_TABLE_SCHEMA)
+        INTO source_id USING NEW.event_id;
+    IF source_id IS NULL THEN
+        RAISE EXCEPTION 'outbox event identity reservation requires its source' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END $;
+
+CREATE OR REPLACE FUNCTION outbox_reserve_event_identity() RETURNS TRIGGER LANGUAGE plpgsql AS $
+DECLARE
+    affected bigint;
+    saved uuid;
+BEGIN
+    -- AFTER INSERT runs only for the winning physical source insertion.
+    -- A unique reservation conflict also fences stale transaction snapshots.
+    EXECUTE format('INSERT INTO %I.outbox_event_identities (event_id) VALUES ($1)', TG_TABLE_SCHEMA)
+        USING NEW.id;
+    GET DIAGNOSTICS affected = ROW_COUNT;
+    EXECUTE format('SELECT event_id FROM %I.outbox_event_identities WHERE event_id = $1', TG_TABLE_SCHEMA)
+        INTO saved USING NEW.id;
+    IF affected <> 1 OR saved IS DISTINCT FROM NEW.id THEN
+        RAISE EXCEPTION 'outbox event identity reservation readback mismatch' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END $;
+
+CREATE OR REPLACE FUNCTION outbox_require_reserved_identity() RETURNS TRIGGER LANGUAGE plpgsql AS $
+DECLARE saved uuid;
+BEGIN
+    EXECUTE format('SELECT event_id FROM %I.outbox_event_identities WHERE event_id = $1', TG_TABLE_SCHEMA)
+        INTO saved USING OLD.id;
+    IF saved IS DISTINCT FROM OLD.id THEN
+        RAISE EXCEPTION 'outbox event identity reservation is missing' USING ERRCODE = '23514';
+    END IF;
+    RETURN OLD;
+END $;
+
+CREATE TRIGGER outbox_event_identity_permanent BEFORE INSERT OR UPDATE OR DELETE ON outbox_event_identities
+FOR EACH ROW EXECUTE FUNCTION outbox_guard_reserved_identity();
+CREATE TRIGGER outbox_event_identity_no_truncate BEFORE TRUNCATE ON outbox_event_identities
+FOR EACH STATEMENT EXECUTE FUNCTION outbox_guard_reserved_identity();
+CREATE TRIGGER outbox_event_identity_reserve AFTER INSERT ON sys_events
+FOR EACH ROW EXECUTE FUNCTION outbox_reserve_event_identity();
+CREATE TRIGGER outbox_event_identity_require BEFORE DELETE ON sys_events
+FOR EACH ROW EXECUTE FUNCTION outbox_require_reserved_identity();
+"#;
+
+const SQLITE_EVENT_IDENTITY_AUTHORITY: &str = r#"
+CREATE TRIGGER outbox_event_identity_no_update BEFORE UPDATE ON outbox_event_identities
+BEGIN SELECT RAISE(ABORT, 'outbox event identity reservation is permanent'); END;
+CREATE TRIGGER outbox_event_identity_no_delete BEFORE DELETE ON outbox_event_identities
+BEGIN SELECT RAISE(ABORT, 'outbox event identity reservation is permanent'); END;
+CREATE TRIGGER outbox_event_identity_insert_guard BEFORE INSERT ON outbox_event_identities
+BEGIN
+    -- Explicit ABORT also defeats an outer INSERT OR REPLACE/IGNORE.
+    SELECT CASE WHEN EXISTS (SELECT 1 FROM outbox_event_identities WHERE event_id = NEW.event_id)
+        THEN RAISE(ABORT, 'outbox event identity is already reserved') END;
+    SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM sys_events e WHERE replace(replace(replace(replace(lower(CASE WHEN typeof(e.id) = 'blob' THEN hex(e.id) ELSE CAST(e.id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') = NEW.event_id)
+        THEN RAISE(ABORT, 'outbox event identity reservation requires its source') END;
+END;
+CREATE TRIGGER outbox_event_identity_reserve AFTER INSERT ON sys_events
+BEGIN
+    INSERT INTO outbox_event_identities (event_id) VALUES (replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.id) = 'blob' THEN hex(NEW.id) ELSE CAST(NEW.id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', ''));
+    SELECT CASE WHEN changes() <> 1 OR NOT EXISTS (
+        SELECT 1 FROM outbox_event_identities WHERE event_id = replace(replace(replace(replace(lower(CASE WHEN typeof(NEW.id) = 'blob' THEN hex(NEW.id) ELSE CAST(NEW.id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '')
+    ) THEN RAISE(ABORT, 'outbox event identity reservation readback mismatch') END;
+END;
+CREATE TRIGGER outbox_event_identity_require BEFORE DELETE ON sys_events
+WHEN NOT EXISTS (SELECT 1 FROM outbox_event_identities WHERE event_id = replace(replace(replace(replace(lower(CASE WHEN typeof(OLD.id) = 'blob' THEN hex(OLD.id) ELSE CAST(OLD.id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', ''))
+BEGIN SELECT RAISE(ABORT, 'outbox event identity reservation is missing'); END;
+"#;
+
+/// Permanent UUID-only evidence. No foreign key/cascade to the retained
+/// source row: the reservation must survive lawful source pruning.
+pub async fn create_outbox_event_identity_authority(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let txn = manager.get_connection().begin().await?;
+    let nested = SchemaManager::new(&txn);
+    let backend = nested.get_database_backend();
+    match backend {
+        DbBackend::Postgres => {
+            txn.execute_unprepared("LOCK TABLE sys_events IN SHARE ROW EXCLUSIVE MODE NOWAIT").await?;
+        }
+        DbBackend::Sqlite => {
+            txn.execute_unprepared("UPDATE sys_events SET retry_count = retry_count WHERE 1 = 0").await?;
+        }
+        _ => return Err(DbErr::Migration("unsupported outbox identity authority backend".into())),
+    }
+    let key = match backend {
+        DbBackend::Postgres => "id",
+        DbBackend::Sqlite => "replace(replace(replace(replace(lower(CASE WHEN typeof(id) = 'blob' THEN hex(id) ELSE CAST(id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '')",
+        _ => unreachable!(),
+    };
+    if !nested.has_table("outbox_event_identities").await? {
+        let ddl = match backend {
+            DbBackend::Postgres => "CREATE TABLE outbox_event_identities (event_id UUID PRIMARY KEY CHECK (event_id <> '00000000-0000-0000-0000-000000000000'::uuid))",
+            DbBackend::Sqlite => "CREATE TABLE outbox_event_identities (event_id TEXT PRIMARY KEY NOT NULL CHECK (typeof(event_id) = 'text' AND length(event_id) = 32 AND event_id NOT GLOB '*[^0-9a-f]*' AND event_id <> '00000000000000000000000000000000')) WITHOUT ROWID",
+            _ => unreachable!(),
+        };
+        txn.execute_unprepared(ddl).await?;
+        // Historical rows still present are reserved atomically. Previously
+        // pruned identities are unknowable; never invent missing history.
+        txn.execute_unprepared(&format!("INSERT INTO outbox_event_identities (event_id) SELECT {key} FROM sys_events")).await?;
+    }
+    // Reinstallation must not silently recreate missing live reservations.
+    let row = txn.query_one_raw(Statement::from_string(backend, format!(
+        "SELECT COUNT(*) AS missing FROM sys_events WHERE NOT EXISTS (SELECT 1 FROM outbox_event_identities a WHERE a.event_id = {key})"
+    ))).await?.ok_or_else(|| DbErr::Migration("outbox identity authority validation unavailable".into()))?;
+    if row.try_get::<i64>("", "missing")? != 0 {
+        return Err(DbErr::Migration("missing live outbox identity reservation; offline recovery required".into()));
+    }
+    drop_outbox_event_identity_guards(&nested).await?;
+    txn.execute_unprepared(match backend {
+        DbBackend::Postgres => POSTGRES_EVENT_IDENTITY_AUTHORITY,
+        DbBackend::Sqlite => SQLITE_EVENT_IDENTITY_AUTHORITY,
+        _ => unreachable!(),
+    }).await?;
+    txn.commit().await
+}
+
+async fn drop_outbox_event_identity_guards(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let statements: &[&str] = match manager.get_database_backend() {
+        DbBackend::Postgres => &[
+            "DROP TRIGGER IF EXISTS outbox_event_identity_reserve ON sys_events",
+            "DROP TRIGGER IF EXISTS outbox_event_identity_require ON sys_events",
+            "DROP TRIGGER IF EXISTS outbox_event_identity_permanent ON outbox_event_identities",
+            "DROP TRIGGER IF EXISTS outbox_event_identity_no_truncate ON outbox_event_identities",
+            "DROP FUNCTION IF EXISTS outbox_reserve_event_identity()",
+            "DROP FUNCTION IF EXISTS outbox_require_reserved_identity()",
+            "DROP FUNCTION IF EXISTS outbox_guard_reserved_identity()",
+        ],
+        DbBackend::Sqlite => &[
+            "DROP TRIGGER IF EXISTS outbox_event_identity_reserve",
+            "DROP TRIGGER IF EXISTS outbox_event_identity_require",
+            "DROP TRIGGER IF EXISTS outbox_event_identity_insert_guard",
+            "DROP TRIGGER IF EXISTS outbox_event_identity_no_update",
+            "DROP TRIGGER IF EXISTS outbox_event_identity_no_delete",
+        ],
+        _ => return Err(DbErr::Migration("unsupported outbox identity authority backend".into())),
+    };
+    for sql in statements { manager.get_connection().execute_unprepared(sql).await?; }
+    Ok(())
+}
+
+async fn drop_outbox_event_identity_authority(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    if manager.has_table("outbox_event_identities").await? {
+        drop_outbox_event_identity_guards(manager).await?;
+        manager.get_connection().execute_unprepared("DROP TABLE outbox_event_identities").await?;
+    }
     Ok(())
 }
 

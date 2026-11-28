@@ -300,9 +300,10 @@ fence NOWAIT in a direct delete, avoiding a blocking reverse lock order;
 SQLite serializes writes. Existing open-attempt protection remains in force.
 Retention queries exclude claimed rows. Configured retention age and failed
 retention enablement remain enforced by the application, not by these SQL guards;
-a privileged direct terminal DELETE can still bypass the age policy. Event IDs
-can be reused after lawful pruning; permanent deduplication/tombstones are not
-introduced. No claim of protection from arbitrary DDL or restored backups.
+a privileged direct terminal DELETE can still bypass the age policy. At this historical migration boundary event IDs
+could be reused after lawful pruning. The subsequent permanent event identity
+authority below closes that gap for extant and newly admitted UUIDs. No claim
+of protection from arbitrary DDL or restored backups.
 Drain writers before migration. PostgreSQL/SQLite regressions are authored;
 compilation, migration and contention execution remain pending.
 
@@ -407,3 +408,31 @@ This prevents waiting for a busy event row while holding the earlier shared
 fences; it does not bound DDL or arbitrary external locks. A PostgreSQL
 multi-connection regression covers locked oldest rows in both histories;
 compilation and runtime verification remain pending.
+
+## Permanent event identity authority (source only)
+
+Forward migration `m20261128_000213_reserve_outbox_event_identities` and
+standalone setup add `outbox_event_identities`, a permanent UUID-only
+reservation table without a cascading foreign key. All extant event UUIDs
+are backfilled under the event writer fence; previously pruned IDs cannot
+be reconstructed. An AFTER INSERT trigger reserves the winning physical
+source UUID in the same transaction, with unique-key enforcement and exact
+readback. Rollback releases the reservation together with the source write.
+There is no global singleton or broker I/O in this path. SQLite normalizes
+UUID representations, uses a WITHOUT ROWID primary key and explicitly
+rejects duplicate reservations even through INSERT OR REPLACE/IGNORE.
+PostgreSQL uniqueness also fences stale-snapshot reinsertions.
+Ordinary UPDATE, DELETE and PostgreSQL TRUNCATE of reservations are rejected;
+new reservations require their live source, and source deletion requires
+its reservation. Retention removes payload, attempts, checkpoint and ACK
+history as before but not the UUID. Live exact replay retains its current
+contract. After pruning, every attempted publication of that UUID fails
+closed (contract write-once returns Unavailable, not successful replay):
+there is no payload evidence to classify equality or a different request.
+A stale ACK cannot acknowledge a resurrected source. Permanent UUID storage
+grows with publication volume; it retains no payload, tenant or actor fields.
+Capacity monitoring, legal retention review and independent backup/restore
+continuity remain operational requirements. Stop/drain writers for migration;
+privileged DDL, prior pruned IDs and restored snapshots are not fenced.
+SQLite/PostgreSQL regression sources are authored; compilation and runtime
+verification remain pending.

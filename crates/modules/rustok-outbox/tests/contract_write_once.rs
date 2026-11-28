@@ -71,6 +71,41 @@ async fn exact_replay_returns_the_same_envelope_and_keeps_one_row() {
 }
 
 #[tokio::test]
+async fn pruned_contract_identity_refuses_even_exact_replay() {
+    use rustok_core::events::EventTransport;
+
+    let db = database().await;
+    let request_id = Uuid::new_v4();
+    let tenant_id = Uuid::new_v4();
+    let txn = db.begin().await.unwrap();
+    TransactionalEventBus::publish_contract_once_direct_in_tx_with_envelope_id(
+        &txn, request_id, tenant_id, None, event(request_id, 2),
+    ).await.unwrap();
+    txn.commit().await.unwrap();
+
+    rustok_outbox::OutboxTransport::new(db.clone()).acknowledge(request_id).await.unwrap();
+    let retention = rustok_outbox::OutboxRetention::new(db.clone()).with_config(
+        rustok_outbox::OutboxRetentionConfig {
+            retention: chrono::Duration::milliseconds(1),
+            ..Default::default()
+        },
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    assert_eq!(retention.prune_once().await.unwrap().pruned, 1);
+
+    for generation in [2, 3] {
+        let txn = db.begin().await.unwrap();
+        let result = TransactionalEventBus::publish_contract_once_direct_in_tx_with_envelope_id(
+            &txn, request_id, tenant_id, None, event(request_id, generation),
+        ).await;
+        // No payload remains to classify exact replay versus a conflict.
+        assert_eq!(result, Err(ContractEventWriteOnceError::Unavailable));
+        txn.rollback().await.unwrap();
+    }
+    assert_eq!(SysEvents::find().count(&db).await.unwrap(), 0);
+}
+
+#[tokio::test]
 async fn mismatched_request_id_reuse_returns_conflict_and_preserves_the_first_row() {
     let db = database().await;
     let request_id = Uuid::new_v4();

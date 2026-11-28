@@ -199,6 +199,44 @@ async fn assert_event_envelope_integrity(db: &DatabaseConnection) -> TestResult<
     );
     tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     assert_eq!(retention.prune_once().await?.pruned, 1);
+    assert!(entity::Entity::find_by_id(event.id).one(db).await?.is_none());
+    let transport = rustok_outbox::OutboxTransport::new(db.clone());
+    assert!(transport.publish(event.clone()).await.is_err(), "pruned exact replay must not republish");
+    let mut changed = event.clone();
+    changed.tenant_id = Uuid::new_v4();
+    assert!(transport.publish(changed).await.is_err(), "pruned identity cannot change tenant");
+    assert!(transport.acknowledge(event.id).await.is_err());
+    let original: entity::ActiveModel = before.into();
+    assert!(original.insert(db).await.is_err(), "direct INSERT cannot resurrect a pruned UUID");
+    for sql in [
+        "UPDATE outbox_event_identities SET event_id = event_id",
+        "DELETE FROM outbox_event_identities",
+    ] {
+        assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+    }
+    if db.get_database_backend() == DatabaseBackend::Sqlite {
+        assert!(db.execute_unprepared("INSERT OR REPLACE INTO outbox_event_identities SELECT * FROM outbox_event_identities").await.is_err());
+        for id in [format!("X'{}'", event.id.simple()), format!("'{}'", event.id.hyphenated())] {
+            assert!(db.execute_unprepared(&format!(
+                "INSERT OR REPLACE INTO sys_events (id, event_type, schema_version, payload, status, retry_count, created_at) VALUES ({id}, 'other.event', 1, '{{}}', 'pending', 0, CURRENT_TIMESTAMP)"
+            )).await.is_err(), "UUID aliases cannot resurrect a reservation");
+        }
+    } else {
+        assert!(db.execute_unprepared("TRUNCATE outbox_event_identities").await.is_err());
+    }
+    let count: i64 = db.query_one_raw(Statement::from_string(db.get_database_backend(),
+        "SELECT COUNT(*) AS count FROM outbox_event_identities",
+    )).await?.expect("identity count").try_get("", "count")?;
+    assert_eq!(count, 1);
+
+    // A rolled-back owner append must not permanently consume its UUID.
+    let fresh = EventEnvelope::new(Uuid::new_v4(), None,
+        DomainEvent::UserAccountRegistered { user_id: Uuid::new_v4() });
+    let txn = db.begin().await?;
+    transport.write_to_outbox(&txn, fresh.clone()).await?;
+    txn.rollback().await?;
+    transport.publish(fresh.clone()).await?;
+    assert!(entity::Entity::find_by_id(fresh.id).one(db).await?.is_some());
     Ok(())
 }
 

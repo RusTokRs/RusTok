@@ -88,6 +88,7 @@ mod composition {
     mod m20261128_000210_fence_outbox_consumer_receipts;
     mod m20261128_000211_fence_outbox_owner_receipts;
     mod m20261128_000212_bind_outbox_retry_policy;
+    mod m20261128_000213_reserve_outbox_event_identities;
 
     #[cfg(test)]
     mod contract_tests;
@@ -562,6 +563,7 @@ mod composition {
             m20261128_000210_fence_outbox_consumer_receipts::Migration,
             m20261128_000211_fence_outbox_owner_receipts::Migration,
             m20261128_000212_bind_outbox_retry_policy::Migration,
+            m20261128_000213_reserve_outbox_event_identities::Migration,
         ));
         all
     }
