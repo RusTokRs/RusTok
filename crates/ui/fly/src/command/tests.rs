@@ -1015,8 +1015,8 @@ fn stable_ids_fast_path_leaves_valid_documents_untouched() {
 fn repairing_invalid_component_ids_remaps_action_and_aria_references() {
     let document = GrapesJsCodec::decode_value(json!({
         "styles": [{
-            "flyComponentId": "bad target",
-            "selectors": ["#bad target"],
+            "flyComponentId": "bad@target",
+            "selectors": ["#bad@target"],
             "style": { "color": "red" }
         }],
         "pages": [{
@@ -1028,14 +1028,14 @@ fn repairing_invalid_component_ids_remaps_action_and_aria_references() {
                     {
                         "id": "trigger",
                         "type": "button",
-                        "attributes": { "aria-controls": "bad target" },
+                        "attributes": { "aria-controls": "bad@target" },
                         "flyAction": {
                             "kind": "scroll_to",
-                            "target_id": "bad target"
+                            "target_id": "bad@target"
                         }
                     },
-                    { "id": "bad target", "type": "section" },
-                    { "id": "bad target", "type": "section", "attributes": { "title": "second" } }
+                    { "id": "bad@target", "type": "section" },
+                    { "id": "bad@target", "type": "section", "attributes": { "title": "second" } }
                 ]
             }
         }]
@@ -1054,7 +1054,7 @@ fn repairing_invalid_component_ids_remaps_action_and_aria_references() {
         .and_then(Value::as_str)
         .expect("repaired target id");
 
-    assert_ne!(repaired_id, "bad target");
+    assert_ne!(repaired_id, "bad@target");
     assert!(editor.document().component(repaired_id).is_some());
     let root = editor.document().component("root").expect("root");
     let first_target_id = root.children()[1].id().expect("first repaired target");

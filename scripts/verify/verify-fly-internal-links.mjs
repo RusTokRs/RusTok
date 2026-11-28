@@ -53,7 +53,7 @@ requireMarkers('interactionRoute', [
   'pub(crate) fn page_index',
   'pub(crate) fn has_route',
   'pub(crate) fn slug_for',
-  'pub(crate) fn interaction_locale_candidates',
+  'select_translation(wrapper, values, selection)',
   'pub(crate) fn build_interaction_href',
   'catalog_resolves_identical_locale_fallback_for_all_interactions',
 ], 'shared interaction route catalog');
@@ -71,7 +71,7 @@ requireMarkers('internalLink', [
   'pub fn validate_internal_page_links',
   'component_visit::{visit_project_components, visit_project_components_mut}',
   'build_interaction_href',
-  'interaction_locale_candidates',
+  'RuntimeLocaleSelection::from_context(context)',
   'InteractionRouteCatalog',
   'safe_url::normalize_safe_url',
   'GENERATED_INTERNAL_LINK_ATTRIBUTES',

@@ -459,9 +459,10 @@ impl ScopedBindings {
 pub fn validate_binding_definitions(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let catalog = BindingCatalog::from_document(document);
     let mut diagnostics = Vec::new();
-    // One traversal for the whole catalog. `contains_component` walks every page, and this loop
-    // called it once per binding.
+    // One traversal for the whole catalog. The index also carries opaque component identities,
+    // while typed lookups remain available to the materializer.
     let components = ComponentIndex::build(document);
+    let scopes = crate::dynamic::repeater_binding_scopes(document);
 
     diagnostics.extend(binding_conflicts(&catalog).1);
     for binding in &catalog.bindings {
@@ -482,10 +483,21 @@ pub fn validate_binding_definitions(document: &ProjectDocument) -> Vec<Validatio
                 ),
             ));
         }
-        if let Err(error) = validate_binding_target(&binding.target) {
+        let scoped = is_valid_runtime_context_path(&binding.path)
+            && is_scoped_binding(binding, &scopes);
+        let target_validation = if scoped {
+            validate_scoped_binding_target(&binding.target)
+        } else {
+            validate_binding_target(&binding.target)
+        };
+        if let Err(error) = target_validation {
             diagnostics.push(binding_diagnostic(
                 ValidationSeverity::Error,
-                "runtime_binding_target_invalid",
+                if scoped {
+                    "runtime_scoped_binding_target_invalid"
+                } else {
+                    "runtime_binding_target_invalid"
+                },
                 format!(
                     "runtime binding `{}` has an invalid target: {error}",
                     binding.id

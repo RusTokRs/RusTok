@@ -38,10 +38,12 @@ impl GrapesJsCodec {
     }
 
     fn validate_input(value: &Value) -> FlyResult<()> {
+        // Check depth before shape: even a non-object root may own attacker-controlled nesting.
+        ensure_depth_within_limit(value, MAXIMUM_DECODE_DEPTH)?;
         if !value.is_object() {
             return Err(FlyError::InvalidProjectRoot);
         }
-        ensure_depth_within_limit(value, MAXIMUM_DECODE_DEPTH)
+        Ok(())
     }
 
     fn decode_checked_value(value: Value) -> FlyResult<ProjectDocument> {

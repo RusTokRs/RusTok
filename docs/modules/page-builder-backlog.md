@@ -1568,3 +1568,11 @@ Fly compile-blocker correction (2026-11-27, source-only): fixed the missing semi
 
 
 Fly runtime verifier alignment (2026-11-27, source-only): updated SSR-first, multilingual, internal-link, action/form, asset, and landing-readiness guards to assert the current scoped-binding and route-catalog runtime pipeline rather than obsolete pre-refactor call names. Updated the save-failure contract to verify that the copied failure object is persisted and reported after revision-conflict enrichment. No Fly Page Builder workflow rerun has completed yet.
+
+
+2026-11-28 Fly runtime and opaque-identity regression follow-up (source changes committed; verification pending):
+- Enforce JSON depth limits before root-shape decoding; validate scoped binding targets with repeater scope awareness; resolve regional locale tags through the same canonical fallback chain used for localized routes.
+- Keep typed component addressability separate from opaque component identity. Preserve style-rule references into opaque subtrees without making those nodes editable through typed component APIs.
+- Correct regression fixtures that asserted an action reference on the wrong opaque node, treated a whitespace-containing ARIA token as a single ID, expected component IDs in structural diagnostic paths, or acknowledged a save without starting a tracked save attempt.
+- Make iframe drag cancellation resilient to suppressed frame-boundary pointerleave events, and make adapter-stop abort tests wait for an actually started fetch instead of racing queued intent admission.
+- Align source guards with current runtime/locale/capability APIs. No passing Cargo, WASM, formatter, lint or browser result is claimed until the new workflow run completes.

@@ -153,7 +153,11 @@ requireText(
 );
 requireText(
   "crates/modules/rustok-page-builder/admin/src/editor/runtime.rs",
-  "if matches!(&intent, UiIntent::RequestSave)",
+  "let capability = request.capability();",
+);
+requireText(
+  "crates/modules/rustok-page-builder/admin/src/editor/runtime.rs",
+  "if capability == BuilderCapabilityKind::Publish",
 );
 requireText(
   "crates/modules/rustok-page-builder/admin/src/editor/dynamic_runtime.rs",

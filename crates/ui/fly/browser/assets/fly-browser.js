@@ -1067,6 +1067,7 @@ export class FlyBrowserAdapter {
     this.hoveredId = null;
     this.activeDrag = null;
     this.activeDrop = null;
+    this.iframePointerInside = false;
     this.zoom = 1;
     this.lifecycleState = ADAPTER_LIFECYCLE.CREATED;
     this.abortController = new AbortController();
@@ -1651,11 +1652,43 @@ export class FlyBrowserAdapter {
       { signal },
     );
     this.iframe.addEventListener(
-      "pointerleave",
+      "pointerenter",
       () => {
-        if (this.activeDrag) this.cancelDrag();
+        this.iframePointerInside = true;
       },
       { signal },
+    );
+    this.iframe.addEventListener(
+      "mouseenter",
+      () => {
+        this.iframePointerInside = true;
+      },
+      { signal },
+    );
+    const leaveIframe = () => {
+      this.iframePointerInside = false;
+      if (this.activeDrag) this.cancelDrag();
+    };
+    this.iframe.addEventListener("pointerleave", leaveIframe, { signal });
+    this.iframe.addEventListener("mouseleave", leaveIframe, { signal });
+    // Pointer events originating in the iframe do not bubble into the host document. When the
+    // pointer returns to the host after crossing the frame boundary, use its viewport geometry
+    // as a fallback for browsers that suppress pointerleave while a drag is active.
+    this.root.ownerDocument.addEventListener(
+      "pointermove",
+      (event) => {
+        if (!this.activeDrag || !this.iframePointerInside) return;
+        const bounds = this.iframe.getBoundingClientRect();
+        if (
+          event.clientX < bounds.left ||
+          event.clientX > bounds.right ||
+          event.clientY < bounds.top ||
+          event.clientY > bounds.bottom
+        ) {
+          leaveIframe();
+        }
+      },
+      { signal, passive: true },
     );
     this.iframe.addEventListener(
       "load",

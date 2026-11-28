@@ -1,4 +1,4 @@
-//! One-pass `id -> location` index over a project's component trees.
+//! One-pass typed `id -> location` index plus opaque component identity tracking.
 //!
 //! # Why
 //!
@@ -13,7 +13,8 @@
 //! must be invalidated when the document changes. The document caches it until its mutation
 //! boundary invalidates the cache.
 
-use crate::{ComponentLocation, ComponentNode, ComponentObject, ProjectDocument};
+use crate::{ComponentChildren, ComponentLocation, ComponentNode, ComponentObject, ProjectDocument};
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Snapshot of where every identified component sits in a document.
@@ -22,6 +23,7 @@ pub struct ComponentIndex {
     pub(crate) locations: BTreeMap<String, ComponentLocation>,
     pub(crate) paths: BTreeMap<String, (usize, Vec<usize>)>,
     pub(crate) duplicates: BTreeSet<String>,
+    identities: BTreeSet<String>,
 }
 
 impl ComponentIndex {
@@ -62,6 +64,7 @@ impl ComponentIndex {
     }
 
     fn insert(&mut self, id: &str, location: ComponentLocation, path: (usize, Vec<usize>)) {
+        self.identities.insert(id.to_string());
         if self.locations.contains_key(id) {
             self.duplicates.insert(id.to_string());
             return;
@@ -79,6 +82,9 @@ impl ComponentIndex {
         path: &mut Vec<usize>,
     ) {
         let Some(object) = parent.as_object() else {
+            if let ComponentNode::Opaque(raw) = parent {
+                collect_opaque_component_ids(raw, &mut self.identities);
+            }
             return;
         };
         for (index, child) in object.children().iter().enumerate() {
@@ -104,11 +110,22 @@ impl ComponentIndex {
             );
             path.pop();
         }
+        if let ComponentChildren::Opaque(raw) = &object.components {
+            collect_opaque_component_ids(raw, &mut self.identities);
+        }
     }
 
-    /// Whether a component with this id exists.
+    /// Whether a typed, addressable component with this id exists.
     pub fn contains(&self, component_id: &str) -> bool {
         self.locations.contains_key(component_id)
+    }
+
+    /// Whether an identity exists anywhere in the typed or preserved opaque component tree.
+    ///
+    /// This is for lossless references such as style rules; it does not make opaque nodes
+    /// addressable through typed component editing APIs.
+    pub(crate) fn contains_identity(&self, component_id: &str) -> bool {
+        self.identities.contains(component_id)
     }
 
     /// Where the component sits, or `None` if it does not exist.
@@ -180,6 +197,25 @@ impl ComponentIndex {
         } else {
             None
         }
+    }
+}
+
+fn collect_opaque_component_ids(value: &Value, identities: &mut BTreeSet<String>) {
+    match value {
+        Value::Array(children) => {
+            for child in children {
+                collect_opaque_component_ids(child, identities);
+            }
+        }
+        Value::Object(object) => {
+            if let Some(id) = object.get("id").and_then(Value::as_str) {
+                identities.insert(id.to_string());
+            }
+            if let Some(children) = object.get("components") {
+                collect_opaque_component_ids(children, identities);
+            }
+        }
+        _ => {}
     }
 }
 

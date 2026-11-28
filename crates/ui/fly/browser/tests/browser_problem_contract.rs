@@ -41,7 +41,7 @@ fn public_bundle_surfaces_save_failures_across_the_reload() {
     // ...kept while the response still describes an unsaved working copy: a host does not have
     // to repeat the save of an unchanged document, so such a response carries no `save_failure`...
     assert!(contains(
-        "const standing = state.dirty === true ? readSaveFailure(adapter.pageId) : null;"
+        "const standing = state.dirty === false ? null : readSaveFailure(adapter.pageId);"
     ));
     assert!(contains(
         "if (!standing) { clearSaveFailure(adapter.pageId); clearBrowserProblem(adapter); return; }"

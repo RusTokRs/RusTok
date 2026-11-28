@@ -131,7 +131,9 @@ requireMarkers('commandCapability', [
   'pub fn for_command(command: &EditorCommand)',
   'EditorCommand::Asset { .. } => self.insert(EditorCapability::Assets)',
   'EditorCommand::StyleRule { .. } => self.insert(EditorCapability::Styles)',
-  'PageCommand::Patch { .. } => self.insert(EditorCapability::Properties)',
+  'PageCommand::Patch { patch, .. } => {',
+  'if !patch.fields.is_empty() || !patch.remove_fields.is_empty()',
+  'self.insert(EditorCapability::Properties)',
   'EditorCommand::Batch { commands }',
   'fn extend_component_patch(',
   'mixed_and_batch_commands_require_every_specialized_capability',
@@ -146,7 +148,7 @@ requireMarkers('machine', [
   'SetEditableCapabilities(CapabilityState)',
   'editable_capabilities: CapabilityState',
   'CommandCapabilityRequirement::for_command(command.as_ref())',
-  'requirement.first_missing(self.state.capabilities)',
+  'requirement.first_missing(self.effective_capabilities())',
   'capability.as_str().to_string()',
   'self.refresh_effective_capabilities();',
   'self.state.drag = None;',
@@ -207,7 +209,7 @@ requireMarkers('workspaceCapabilities', [
   'state.assets',
 ], 'workspace capability gates');
 requireMarkers('propertyFacade', [
-  'capabilities=capabilities',
+  'capabilities=Some(effective_capabilities.get())',
   'state.properties',
   'state.styles',
   'state.assets',

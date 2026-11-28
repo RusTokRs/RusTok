@@ -94,10 +94,12 @@ fn revision_acknowledgement_detects_conflicts() {
     let document = baseline();
     let mut revision = RevisionState::new(&document);
     let expected = revision.project_hash;
+    revision.begin_save().expect("begin first save");
     revision.acknowledge(expected, "rev-1").expect("ack");
     assert!(!revision.dirty);
 
     revision.project_hash = ProjectHash(expected.0.wrapping_add(1));
+    revision.begin_save().expect("begin conflicting save");
     let error = revision
         .acknowledge(expected, "rev-2")
         .expect_err("conflict");

@@ -132,9 +132,9 @@ requireMarkers('runtimePipeline', [
   'project_translation_catalog_materializes_before_bindings',
 ], 'multilingual Fly runtime ordering');
 requireMarkers('runtimeValidation', [
-  'validate_project_locale_policy(document)',
-  'validate_translation_definitions(document)',
-  'validate_localized_page_routes(document)',
+  'validate_project_locale_policy(effective_document)',
+  'validate_translation_definitions(effective_document)',
+  'validate_localized_page_routes(effective_document)',
   'strict_project_locale_policy_promotes_missing_coverage_to_errors',
   'duplicate_localized_slugs_block_publish_validation',
 ], 'locale, translation, and route publish validation');

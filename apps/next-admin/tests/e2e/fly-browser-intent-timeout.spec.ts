@@ -28,6 +28,7 @@ type TimeoutScope = typeof globalThis & {
   __flyAborts?: IntentAbort[];
   __flyErrors?: unknown[];
   __flyFetchMode?: 'hang' | 'success';
+  __flyFetchCalls?: number;
   __flyProblems?: Array<{ code?: string; error?: string }>;
   __flySavePromises?: Promise<unknown>[];
   __flyTimeouts?: IntentTimeout[];
@@ -73,6 +74,7 @@ async function mountTimeoutContract(page: Page, timeoutMs: number) {
       scope.__flyAborts = [];
       scope.__flyErrors = [];
       scope.__flyFetchMode = 'hang';
+      scope.__flyFetchCalls = 0;
       scope.__flyProblems = [];
       scope.__flySavePromises = [];
       scope.__flyTimeouts = [];
@@ -91,6 +93,7 @@ async function mountTimeoutContract(page: Page, timeoutMs: number) {
       });
 
       globalThis.fetch = async (_input, init = {}) => {
+        scope.__flyFetchCalls = (scope.__flyFetchCalls ?? 0) + 1;
         if (scope.__flyFetchMode === 'success') {
           return new Response(JSON.stringify({ result: {} }), {
             status: 200,
@@ -220,6 +223,9 @@ test('unmount clears timer and emits only adapter-stop abort', async ({
 }) => {
   await mountTimeoutContract(page, 80);
   await emitSave(page);
+  await expect
+    .poll(() => page.evaluate(() => (globalThis as TimeoutScope).__flyFetchCalls ?? 0))
+    .toBe(1);
   await page.evaluate(() => {
     (globalThis as TimeoutScope).FlyBrowser?.unmountAll?.();
   });

@@ -90,7 +90,7 @@ requireMarkers('interactionRoute', [
   'pub(crate) fn page_index',
   'pub(crate) fn has_route',
   'pub(crate) fn slug_for',
-  'pub(crate) fn interaction_locale_candidates',
+  'select_translation(wrapper, values, selection)',
   'pub(crate) fn build_interaction_href',
   'catalog_resolves_identical_locale_fallback_for_all_interactions',
 ], 'shared interaction route catalog');
@@ -137,7 +137,7 @@ requireMarkers('actionValidation', [
   'validate_shared_safe_url(value, label)',
   'component_form_interaction_contract_conflict',
   'non-default form encoding requires post method',
-  'visit_project_components(&document.project',
+  'visit_project_components(&document.project()',
   'routes.page_index(page_id)',
   'routes.has_route(page_index)',
 ], 'action and form validation');
@@ -145,9 +145,9 @@ requireMarkers('actionMaterialize', [
   'pub fn materialize_component_actions',
   'component_visit::visit_project_components_mut',
   'build_interaction_href',
-  'interaction_locale_candidates',
+  'RuntimeLocaleSelection::from_context(context)',
   'InteractionRouteCatalog',
-  'visit_project_components_mut(&mut materialized.project',
+  'visit_project_components_mut(materialized.project_mut()',
   'clear_interaction_materialization',
   'ActionResolution',
 ], 'action and form materialization');

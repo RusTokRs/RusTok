@@ -317,7 +317,7 @@ pub fn apply_style_rule_command(
             declarations,
             remove_properties,
         } => {
-            if !document.contains_component(component_id) {
+            if !document.component_index().contains_identity(component_id) {
                 return Err(FlyError::ComponentNotFound(component_id.clone()));
             }
             let existing = find_component_rule_index(document, component_id, scope);
@@ -385,7 +385,7 @@ fn upsert_raw_style_rule(document: &mut ProjectDocument, rule: Value) -> FlyResu
         )
     })?;
     if let Some(component_id) = descriptor.component_id.as_deref()
-        && !document.contains_component(component_id)
+        && !document.component_index().contains_identity(component_id)
     {
         return Err(FlyError::ComponentNotFound(component_id.to_string()));
     }

@@ -1488,7 +1488,7 @@ mod tests {
         let nested = &parent["components"];
         let repaired_id = nested["id"].as_str().expect("repaired nested id");
         assert_ne!(repaired_id, "invalid nested id");
-        assert_eq!(parent["flyAction"]["target_id"], repaired_id);
+        assert_eq!(nested["flyAction"]["target_id"], repaired_id);
         assert!(validate_identifier(repaired_id).is_ok());
     }
 

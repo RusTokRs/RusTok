@@ -127,8 +127,13 @@ test('expected aborts stay separate from network failures', async ({
         });
       }
 
+      let resolveStopFetch = () => {};
+      const stopFetchStarted = new Promise<void>((resolve) => {
+        resolveStopFetch = resolve;
+      });
       globalThis.fetch = async (input, init = {}) => {
         const endpoint = typeof input === 'string' ? input : String(input);
+        if (endpoint === '/stop') resolveStopFetch();
         if (endpoint === '/network') throw new Error('offline');
         const signal = init.signal;
         if (!(signal instanceof AbortSignal)) {
@@ -191,6 +196,7 @@ test('expected aborts stay separate from network failures', async ({
         source: 'timeout'
       });
       const stopRequest = stopAdapter.emitIntent('save', { source: 'stop' });
+      await stopFetchStarted;
       const networkRequest = networkAdapter.emitIntent('save', {
         source: 'network'
       });

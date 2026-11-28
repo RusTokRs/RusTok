@@ -1514,13 +1514,15 @@ mod tests {
             ValidationLimits::default(),
         );
 
+        // Opaque object-valued child paths are structural paths, not component-id labels.
         assert!(report.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "symbol_reference_missing"
-                && diagnostic.path.contains("nested-slot")
+                && diagnostic.path.starts_with("pages[0].component.components")
+                && diagnostic.message.contains("missing symbol")
         }));
         assert!(report.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "symbol_instance_with_children"
-                && diagnostic.path.contains("nested-slot")
+                && diagnostic.path.starts_with("pages[0].component.components")
         }));
     }
 

@@ -1,5 +1,6 @@
 use crate::page_metadata::LOCALIZED_METADATA_FIELDS;
 use crate::runtime_locale::{duplicate_locale_key, has_unambiguous_locale};
+use crate::RuntimeLocaleSelection;
 use crate::{
     FLY_PAGE_METADATA_FIELD, FlyError, FlyResult, LOCALIZED_VALUES_FIELD, ProjectDocument,
     RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD, TranslationCatalog, ValidationDiagnostic,
@@ -76,7 +77,18 @@ impl ProjectLocalePolicy {
         let Some(locale) = normalize_locale_tag(locale) else {
             return false;
         };
-        self.supported_locales.is_empty() || self.supported_locales.contains(&locale)
+        if self.supported_locales.is_empty() {
+            return true;
+        }
+        // A regional/script tag is supported when one of its canonical fallback candidates is
+        // supported by the project. This is the same chain used to select localized values/routes.
+        RuntimeLocaleSelection {
+            locale: Some(locale),
+            fallback_locales: Vec::new(),
+        }
+        .candidates()
+        .iter()
+        .any(|candidate| self.supported_locales.contains(candidate))
     }
 }
 
@@ -524,6 +536,23 @@ mod tests {
             json!(["ru", "en"])
         );
         assert!(!explicit.default_locale_applied);
+    }
+
+    #[test]
+    fn regional_runtime_locale_uses_supported_language_fallback() {
+        let document = document(json!({
+            "flyLocales": {
+                "default_locale": "en",
+                "supported_locales": ["en", "ru"]
+            },
+            "pages": [{ "component": { "id": "root", "type": "wrapper" } }]
+        }));
+        let result = materialize_project_locale_context(
+            &document,
+            &json!({ "$locale": "ru-RU" }),
+        );
+        assert_eq!(result.context[RUNTIME_LOCALE_FIELD], "ru-RU");
+        assert!(!result.unsupported_locale_replaced);
     }
 
     #[test]

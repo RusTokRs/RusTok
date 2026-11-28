@@ -916,7 +916,7 @@ for (const value of selectionWrites) {
     );
   }
 }
-const selectMethod = adapter.match(/\n  select\(componentId, source\) \{\n([\s\S]*?)\n  \}\n/);
+const selectMethod = adapter.match(/\n  select\(componentId, source, sourceElement = null\) \{\n([\s\S]*?)\n  \}\n/);
 if (!selectMethod) {
   fail(`${adapterPath}: the adapter has no select(componentId, source) method`);
 } else {
