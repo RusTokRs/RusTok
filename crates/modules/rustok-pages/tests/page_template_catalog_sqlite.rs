@@ -281,26 +281,23 @@ async fn preview_resolves_layout_without_writing_the_source() -> TestResult<()> 
 }
 
 #[tokio::test]
-async fn preview_rejects_site_symbols_whose_stored_identity_does_not_match_content() -> TestResult<()> {
+async fn preview_rejects_site_symbols_whose_stored_identity_does_not_match_content()
+-> TestResult<()> {
     let db = fixture().await?;
     let tenant = Uuid::new_v4();
     let service = PageTemplateService::new(db.clone());
     let actor = SecurityContext::system();
     symbol(&db, tenant, "en", "header").await?;
 
-    let row = site_symbol::Entity::find_by_id((
-        tenant,
-        "en".to_string(),
-        "header".to_string(),
-    ))
-    .one(&db)
-    .await?
-    .ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "site symbol fixture was not inserted",
-        )
-    })?;
+    let row = site_symbol::Entity::find_by_id((tenant, "en".to_string(), "header".to_string()))
+        .one(&db)
+        .await?
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "site symbol fixture was not inserted",
+            )
+        })?;
     let mut active: site_symbol::ActiveModel = row.into();
     active.content = Set(json!({
         "id": "different-symbol",
@@ -351,19 +348,15 @@ async fn preview_ignores_corrupt_symbol_rows_from_other_locales() -> TestResult<
     symbol(&db, tenant, "en", "header").await?;
     symbol(&db, tenant, "ru", "header").await?;
 
-    let row = site_symbol::Entity::find_by_id((
-        tenant,
-        "ru".to_string(),
-        "header".to_string(),
-    ))
-    .one(&db)
-    .await?
-    .ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "Russian site symbol fixture was not inserted",
-        )
-    })?;
+    let row = site_symbol::Entity::find_by_id((tenant, "ru".to_string(), "header".to_string()))
+        .one(&db)
+        .await?
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Russian site symbol fixture was not inserted",
+            )
+        })?;
     let mut active: site_symbol::ActiveModel = row.into();
     active.content = Set(json!({
         "id": "different-symbol",

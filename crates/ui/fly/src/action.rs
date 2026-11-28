@@ -4,8 +4,8 @@ mod validation;
 
 pub use materialize::*;
 pub use model::*;
-pub(crate) use validation::{decode_form, validate_action_syntax};
 pub use validation::*;
+pub(crate) use validation::{decode_form, validate_action_syntax};
 
 /// The form materializer leaves conflicting or invalid interaction contracts untouched.
 /// Identity projections use the same rule when deciding whether an authored HTML id is replaced.

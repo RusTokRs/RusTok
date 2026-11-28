@@ -324,19 +324,15 @@ async fn delete_rejects_mismatched_stored_symbol_identity() -> TestResult<()> {
         )
         .await?;
 
-    let row = site_symbol::Entity::find_by_id((
-        tenant,
-        "en".to_string(),
-        "header".to_string(),
-    ))
-    .one(&db)
-    .await?
-    .ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "site symbol fixture was not inserted",
-        )
-    })?;
+    let row = site_symbol::Entity::find_by_id((tenant, "en".to_string(), "header".to_string()))
+        .one(&db)
+        .await?
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "site symbol fixture was not inserted",
+            )
+        })?;
     let mut active: site_symbol::ActiveModel = row.into();
     active.content = Set(json!({"id": "different", "components": []}));
     active.update(&db).await?;
@@ -348,14 +344,10 @@ async fn delete_rejects_mismatched_stored_symbol_identity() -> TestResult<()> {
     assert!(error.to_string().contains("identity mismatch"));
 
     assert!(
-        site_symbol::Entity::find_by_id((
-            tenant,
-            "en".to_string(),
-            "header".to_string()
-        ))
-        .one(&db)
-        .await?
-        .is_some(),
+        site_symbol::Entity::find_by_id((tenant, "en".to_string(), "header".to_string()))
+            .one(&db)
+            .await?
+            .is_some(),
         "the corrupt row must remain available for explicit repair"
     );
     Ok(())
