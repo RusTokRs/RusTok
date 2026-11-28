@@ -124,6 +124,11 @@ async fn assert_event_envelope_integrity(db: &DatabaseConnection) -> TestResult<
         "UPDATE sys_events SET created_at = '2000-01-01T00:00:00+00:00'",
         "UPDATE sys_events SET id = tenant_id",
         "DELETE FROM sys_events",
+        "UPDATE sys_events SET retry_count = retry_count + 1",
+        "UPDATE sys_events SET next_attempt_at = CURRENT_TIMESTAMP",
+        "UPDATE sys_events SET last_error = 'forged'",
+        "UPDATE sys_events SET dispatched_at = CURRENT_TIMESTAMP",
+        "UPDATE sys_events SET status = 'failed'",
     ] {
         assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
     }
@@ -162,10 +167,22 @@ async fn assert_event_envelope_integrity(db: &DatabaseConnection) -> TestResult<
             assert_eq!(count, 1, "{table}");
         }
     }
-    let mut old: entity::ActiveModel = entity::Entity::find_by_id(event.id).one(db).await?.expect("event").into();
-    old.dispatched_at = Set(Some(Utc::now() - chrono::Duration::days(40)));
-    old.update(db).await?;
-    assert_eq!(rustok_outbox::OutboxRetention::new(db.clone()).prune_once().await?.pruned, 1);
+    for sql in [
+        "UPDATE sys_events SET status = 'pending'",
+        "UPDATE sys_events SET retry_count = retry_count + 1",
+        "UPDATE sys_events SET next_attempt_at = CURRENT_TIMESTAMP",
+        "UPDATE sys_events SET last_error = 'forged'",
+        "UPDATE sys_events SET dispatched_at = CURRENT_TIMESTAMP",
+    ] {
+        assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+    }
+    let retention = rustok_outbox::OutboxRetention::new(db.clone()).with_config(
+        rustok_outbox::OutboxRetentionConfig {
+            retention: chrono::Duration::milliseconds(1), ..Default::default()
+        },
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    assert_eq!(retention.prune_once().await?.pruned, 1);
     Ok(())
 }
 
@@ -179,7 +196,7 @@ async fn assert_durable_event_retention_policy(db: &DatabaseConnection) -> TestR
     assert!(db.execute_unprepared("DELETE FROM sys_events").await.is_err(), "fresh event");
     let changed = rustok_outbox::OutboxRetention::new(db.clone()).with_config(
         rustok_outbox::OutboxRetentionConfig {
-            retention: chrono::Duration::days(1), ..Default::default()
+            retention: chrono::Duration::milliseconds(1), ..Default::default()
         },
     );
     assert!(changed.prune_once().await.is_err());
@@ -201,12 +218,10 @@ async fn assert_durable_event_retention_policy(db: &DatabaseConnection) -> TestR
     } else {
         assert!(db.execute_unprepared("TRUNCATE outbox_event_retention_policy").await.is_err());
     }
-    let mut old: entity::ActiveModel = entity::Entity::find_by_id(event.id).one(db).await?.expect("event").into();
-    old.dispatched_at = Set(Some(Utc::now() - chrono::Duration::days(40)));
-    old.update(db).await?;
     // Coordinated maintenance changes the durable policy, not local config.
-    db.execute_unprepared("UPDATE outbox_event_retention_policy SET delivered_retention_ms = 86400000 WHERE id = 1").await?;
+    db.execute_unprepared("UPDATE outbox_event_retention_policy SET delivered_retention_ms = 1 WHERE id = 1").await?;
     assert!(retention.prune_once().await.is_err());
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     assert_eq!(changed.prune_once().await?.pruned, 1);
     Ok(())
 }
@@ -248,11 +263,6 @@ async fn postgres_retention_policy_writer_fences_direct_delete_without_waiting()
     assert_eq!(relay.process_pending_once(None).await?, 1);
     let retention = rustok_outbox::OutboxRetention::new(db.clone());
     assert_eq!(retention.prune_once().await?.pruned, 0);
-    let mut old: entity::ActiveModel = entity::Entity::find_by_id(event.id)
-        .one(&db).await?.expect("event").into();
-    old.dispatched_at = Set(Some(Utc::now() - chrono::Duration::days(40)));
-    old.update(&db).await?;
-
     let writer = db.begin().await?;
     writer.execute_unprepared(
         "UPDATE outbox_event_retention_policy SET delivered_retention_ms = 5184000000 WHERE id = 1"
@@ -264,7 +274,7 @@ async fn postgres_retention_policy_writer_fences_direct_delete_without_waiting()
     assert!(denied.is_err());
     writer.commit().await?;
     assert!(second.execute_unprepared("DELETE FROM sys_events").await.is_err(),
-        "the committed sixty-day window still holds the forty-day event");
+        "the committed sixty-day window still holds the fresh event");
     assert!(retention.prune_once().await.is_err(), "old thirty-day configuration");
     assert_eq!(rustok_outbox::OutboxRetention::new(second.clone()).with_config(
         rustok_outbox::OutboxRetentionConfig {
