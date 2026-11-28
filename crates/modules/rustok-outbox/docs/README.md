@@ -316,6 +316,13 @@ spans broker I/O. This is not an exactly-once guarantee, a complete
 per-handler receipt system, or a proof that the broker retained an accepted
 message. Source regression tests are authored, not executed.
 
+A changed bound route is a terminal pre-publication validation failure:
+move directly to DLQ and release the exact claim without creating a new
+dispatch intent. Retrying cannot change the immutable route; a charged
+pending retry without an open intent violates the event-state guard.
+Preserve the original checkpoint and attempt history. Reconcile the
+deployment route before explicit DLQ replay. Regression source is unrun.
+
 Relay route configuration is validated before acquiring any event claim or
 entering the polling loop. A wrapper cannot disable checkpointing after a
 primary confirmation has been persisted for that event; the relay rejects

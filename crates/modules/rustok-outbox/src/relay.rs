@@ -706,10 +706,14 @@ impl OutboxRelay {
                 return Err(Error::External(format!("outbox event {event_id} dispatch lease budget exhausted before intent")));
             }
             AttemptAdmission::RouteConflict => {
+                // The persisted route cannot be rebound by retrying. No
+                // dispatch intent exists, so a charged pending retry would
+                // also violate the database event-state guard. Quarantine
+                // immediately and preserve the route/checkpoint for recovery.
                 let outcome = self.mark_failed_attempt(
                     model,
-                    Error::Validation("outbox delivery route changed; reconcile event before retry".into()),
-                    false,
+                    Error::Validation("outbox delivery route changed; reconcile event before replay".into()),
+                    true,
                     None,
                 ).await?;
                 self.record_processed(&model.event_type, started.elapsed().as_millis() as u64, false);
@@ -1696,6 +1700,58 @@ mod tests {
             }).await.unwrap();
         }).await;
         restarted.mark_dispatched(&renewed, attempt_id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn route_conflict_quarantines_without_opening_another_dispatch_intent() {
+        let db = database().await;
+        let envelope = EventEnvelope::new(
+            Uuid::new_v4(), None,
+            rustok_events::DomainEvent::UserLoggedIn { user_id: Uuid::new_v4() },
+        );
+        let event_id = envelope.id;
+        crate::OutboxTransport::new(db.clone()).publish(envelope).await.unwrap();
+        let original = OutboxRelay::new(db.clone(), Arc::new(RejectUnexpectedPublish))
+            .with_delivery_route("original-v1");
+        let horizon = rustok_outbox_storage::observe_database_clock(&db).await.unwrap();
+        let claimed = original.claim_batch(1, horizon, None).await.unwrap().pop().unwrap();
+        let renewed = original.refresh_claim(&claimed).await.unwrap();
+        let AttemptAdmission::Ready(attempt_id) = original.begin_dispatch_attempt(&renewed).await.unwrap() else {
+            panic!("expected dispatch intent");
+        };
+        original.release_unpublished_claim(&renewed, Some(attempt_id)).await.unwrap();
+        let checkpoint = checkpoints::Entity::find_by_id(event_id).one(&db).await.unwrap().unwrap();
+
+        let target = Arc::new(CountUnexpectedPublish::default());
+        let changed = OutboxRelay::new(db.clone(), target.clone())
+            .with_delivery_route("incompatible-v1");
+        // Default budget is five: this must not attempt an illegal pending
+        // retry, wait for lease expiry, or consume the whole retry budget.
+        let report = changed.process_pending_once_report(None).await.unwrap();
+        assert_eq!(report.claimed_count, 1);
+        assert_eq!(report.processed_total, 1);
+        assert_eq!(report.failure_total, 1);
+        assert_eq!(report.dlq_total, 1);
+        assert_eq!(report.retry_total, 0);
+        assert_eq!(target.0.load(Ordering::Relaxed), 0);
+
+        let failed = entity::Entity::find_by_id(event_id).one(&db).await.unwrap().unwrap();
+        assert_eq!(failed.status, SysEventStatus::Failed);
+        assert_eq!(failed.retry_count, 1);
+        assert!(failed.claimed_by.is_none() && failed.claimed_at.is_none());
+        assert!(failed.next_attempt_at.is_none());
+        assert!(failed.last_error.as_deref().is_some_and(|error| error.contains("delivery route changed")));
+        assert_eq!(
+            checkpoints::Entity::find_by_id(event_id).one(&db).await.unwrap().as_ref(),
+            Some(&checkpoint),
+        );
+        let history = attempts::Entity::find()
+            .filter(attempts::Column::EventId.eq(event_id))
+            .all(&db).await.unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].id, attempt_id);
+        assert_eq!(history[0].state, attempts::NOT_STARTED);
+        assert_eq!(changed.process_pending_once(None).await.unwrap(), 0);
     }
 
     #[tokio::test]
