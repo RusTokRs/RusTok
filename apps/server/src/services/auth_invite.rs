@@ -175,6 +175,26 @@ fn invite_ledger_matches_claims(
         && ledger_expires_at <= token_expires_at
 }
 
+/// Nonwaiting late receipt admission; token_hash is globally unique.
+pub(crate) async fn fence_invite_receipt(
+    tx: &sea_orm::DatabaseTransaction,
+    token_hash: &str,
+) -> Result<(), sea_orm::DbErr> {
+    match tx.get_database_backend() {
+        DbBackend::Postgres => {
+            tx.execute_unprepared("LOCK TABLE auth_invite_consumptions IN ROW EXCLUSIVE MODE NOWAIT").await?;
+            tx.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT auth_fence_invite_consumption_digest($1)",
+                [token_hash.to_owned().into()],
+            )).await?;
+            Ok(())
+        }
+        DbBackend::Sqlite => Ok(()), // caller already reserved the writer
+        _ => Err(sea_orm::DbErr::Custom("unsupported invite receipt backend".into())),
+    }
+}
+
 async fn invite_already_consumed(
     db: &impl ConnectionTrait,
     tenant_id: uuid::Uuid,
@@ -328,6 +348,20 @@ impl AuthLifecycleService {
             // Under the ledger fence a committed receipt is terminal. Avoid
             // taking module/RBAC locks for a replay. Keep the unique insert as
             // the final authority even if another writer bypasses this fence.
+            if tx.get_database_backend() == DbBackend::Postgres {
+                // Only a relation probe here; the digest gate follows RBAC.
+                if let Err(error) = tx.execute_unprepared(
+                    "LOCK TABLE auth_invite_consumptions IN ACCESS SHARE MODE NOWAIT",
+                ).await {
+                    if rustok_core::resilience::retry::rollback_for_transaction_retry(
+                        tx, &error, attempt,
+                    ).await.map_err(|error| InviteAcceptanceError::Internal(error.into()))? {
+                        attempt += 1;
+                        continue;
+                    }
+                    return Err(InviteAcceptanceError::Internal(error.into()));
+                }
+            }
             if invite_already_consumed(&tx, tenant_id, &token_hash)
                 .await
                 .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
@@ -443,7 +477,11 @@ impl AuthLifecycleService {
                 expires_at: Set(expires_at.into()),
                 consumed_at: Set(consumed_at.into()),
             };
-            if let Err(insert_error) = reservation.insert(&tx).await {
+            let reservation_result = match fence_invite_receipt(&tx, &token_hash).await {
+                Ok(()) => reservation.insert(&tx).await.map(|_| ()),
+                Err(error) => Err(error),
+            };
+            if let Err(insert_error) = reservation_result {
                 if rustok_core::resilience::retry::rollback_for_transaction_retry(
                     tx, &insert_error, attempt,
                 )

@@ -1286,3 +1286,7 @@ WebSocket revalidation, locked admin admission and refresh preflight/commit
 reject missing or mismatched evidence even at equal timestamps. Legacy
 unbound token families require fresh authorization. Existing retention
 preserves codes while their families remain. Source regressions unrun.
+
+### Invite receipt lock admission
+
+PostgreSQL migration `m20261128_000001_fence_invite_consumption_keys` fences invitation receipt digest and UUID unique keys using nonwaiting advisory locks. Acceptance and administrative revocation reserve the global digest after role authority; ordinary receipt DML uses the same gate. Receipt ID, tenant and digest are immutable on PostgreSQL. User FK SET NULL and retention DELETE remain supported. SQLite retains writer serialization. Retention reserves explicit relation modes with NOWAIT. This slice does not certify implicit cascade locks or direct SQL deletion authority; runtime verification is pending.

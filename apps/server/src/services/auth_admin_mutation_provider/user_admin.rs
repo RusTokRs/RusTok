@@ -1897,6 +1897,11 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                 return Ok(invite_record(invite));
             }
 
+            if let Err(error) = crate::services::auth_invite::fence_invite_receipt(&tx, &invite.token_hash).await {
+                retry_invite_statement(tx, error, attempt).await?;
+                attempt += 1;
+                continue;
+            }
             let consumed = match auth_invite_consumptions::Entity::find()
                 .filter(auth_invite_consumptions::Column::TenantId.eq(context.tenant_id))
                 .filter(auth_invite_consumptions::Column::TokenHash.eq(&invite.token_hash))

@@ -837,3 +837,13 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   covers exact row/table contention, unrelated-family isolation and repeat
   revocation. Protective replay remains independent of tenant active state.
   Compilation/runtime evidence unrun; no automatic replay of security effects.
+
+- Administrative receipt/retention lock slice: PostgreSQL invitation receipt
+  reservation and revocation use a nonwaiting global digest gate after role
+  authority. A DB trigger fences ordinary receipt INSERT/UPDATE/DELETE on
+  digest and UUID; ID, tenant and digest cannot change. Early replay probing
+  reserves ACCESS SHARE NOWAIT; receipt writes reserve ROW EXCLUSIVE NOWAIT.
+  Retention reserves explicit relation modes before candidate probes. Source
+  regressions cover receipt unique-key and retention relation contention.
+  SQLite writer serialization is unchanged. Cascade and direct SQL deletion
+  authority remain open; compilation and runtime verification unrun.

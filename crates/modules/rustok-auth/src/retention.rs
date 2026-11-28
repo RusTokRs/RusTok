@@ -79,6 +79,10 @@ async fn delete_before(
     let backend = tx.get_database_backend();
     let param = parameter(backend)?;
     let comparison = if inclusive { "<=" } else { "<" };
+    // Row NOWAIT does not cover the implicit DELETE relation lock.
+    if backend == DbBackend::Postgres {
+        tx.execute_unprepared(&format!("LOCK TABLE {table} IN ROW EXCLUSIVE MODE NOWAIT")).await?;
+    }
     // Table identifiers are fixed owner constants, never user input.
     // Do not block on an earlier owner's child row while retaining other
     // expired artifacts from this sweep. A busy candidate aborts the sweep.
@@ -113,6 +117,8 @@ async fn lock_oauth_retention_apps(
     token_cutoff: DateTime<Utc>,
     code_cutoff: DateTime<Utc>,
 ) -> Result<Vec<Uuid>, DbErr> {
+    tx.execute_unprepared("LOCK TABLE oauth_apps IN ROW SHARE MODE NOWAIT").await?;
+    tx.execute_unprepared("LOCK TABLE oauth_tokens, oauth_authorization_codes IN ROW EXCLUSIVE MODE NOWAIT").await?;
     let rows = tx.query_all_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "SELECT app.id FROM oauth_apps app
@@ -403,6 +409,13 @@ mod tests {
         setup.commit().await.unwrap();
         let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
         for lock in [
+            "LOCK TABLE oauth_apps IN EXCLUSIVE MODE",
+            "LOCK TABLE oauth_tokens IN SHARE MODE",
+            "LOCK TABLE oauth_authorization_codes IN SHARE MODE",
+            "LOCK TABLE sessions IN SHARE MODE",
+            "LOCK TABLE auth_invite_consumptions IN SHARE MODE",
+            "LOCK TABLE auth_invites IN SHARE MODE",
+            "LOCK TABLE auth_email_change_requests IN SHARE MODE",
             "SELECT id FROM oauth_apps FOR UPDATE",
             "SELECT id FROM sessions FOR UPDATE",
             "SELECT id FROM oauth_tokens WHERE id = '40000000-0000-0000-0000-000000000002' FOR UPDATE",
