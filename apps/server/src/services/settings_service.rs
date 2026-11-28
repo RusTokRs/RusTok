@@ -313,9 +313,13 @@ impl SettingsValidator for GeneralSettingsValidator {
                         Ok(parsed) => {
                             if !matches!(parsed.scheme(), "http" | "https")
                                 || parsed.host_str().is_none()
+                                || !parsed.username().is_empty()
+                                || parsed.password().is_some()
+                                || parsed.query().is_some()
+                                || parsed.fragment().is_some()
                             {
                                 errors.push(
-                                    "general.site_url must be an http or https URL with a host"
+                                    "general.site_url must be an http or https URL with a host and no credentials, query, or fragment"
                                         .to_string(),
                                 );
                             }
@@ -2102,6 +2106,22 @@ mod tests {
             v.validate(&json!({ "site_url": "https://rustok.dev" }))
                 .is_ok()
         );
+        assert!(
+            v.validate(&json!({ "site_url": "https://rustok.dev/docs" }))
+                .is_ok(),
+            "a site URL may include a path prefix"
+        );
+        for url in [
+            "https://user:secret@rustok.dev",
+            "https://user@rustok.dev",
+            "https://rustok.dev/?token=secret",
+            "https://rustok.dev/#secret",
+        ] {
+            assert!(
+                v.validate(&json!({ "site_url": url })).is_err(),
+                "site URL must not expose credentials or opaque URL data: {url}"
+            );
+        }
     }
 
     #[test]
