@@ -298,14 +298,18 @@ mod tests {
     }
 
     #[test]
-    fn deeply_nested_non_object_roots_are_rejected_without_recursive_drop() {
+    fn deeply_nested_non_object_roots_hit_depth_limit_without_recursive_drop() {
         let mut value = serde_json::Value::Null;
         for _ in 0..50_000 {
             value = serde_json::Value::Array(vec![value]);
         }
+        // Depth validation intentionally precedes root-shape validation; owned input is then
+        // dismantled iteratively before the depth error is returned.
         assert!(matches!(
             GrapesJsCodec::decode_value(value),
-            Err(FlyError::InvalidProjectRoot)
+            Err(FlyError::MaximumDepthExceeded {
+                maximum: MAXIMUM_DECODE_DEPTH
+            })
         ));
     }
 

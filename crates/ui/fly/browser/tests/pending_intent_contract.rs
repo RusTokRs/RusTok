@@ -30,12 +30,15 @@ fn strict_receipt_fence_blocks_view_state_intents_before_dom_dispatch() {
         .expect("emit intent");
     let body = &source[emit..];
     let fence = body
-        .find("this.pendingOperationUnresolved")
+        .find("this.refreshPendingOperationFence()")
         .expect("receipt fence");
+    let rejection = body
+        .find("return Promise.resolve(this.rejectPendingOperation(request))")
+        .expect("fenced rejection");
     let dispatch = body
         .find("new CustomEvent(\"fly:browser-intent\"")
         .expect("DOM dispatch");
-    assert!(fence < dispatch);
+    assert!(fence < rejection && rejection < dispatch);
 }
 
 #[test]
@@ -47,7 +50,8 @@ fn strict_draft_operation_identity_survives_reload_and_is_reconciled_without_aut
     assert!(source.contains("isCommittedOperationReceipt(result, this.pendingOperation.request)"));
     assert!(source.contains("readPendingOperation(this.pageId)"));
     assert!(source.contains("this.resolvePendingOperation()"));
-    assert!(source.contains("this.retryPendingOperation()"));
+    assert!(source.contains("adapter.retryPendingOperation()"));
+    assert!(source.contains("async retryPendingOperation()"));
     assert!(source.contains("intent: \"resolve_operation\""));
     assert!(source.contains("preserveOriginalRequest: true"));
     assert!(source.contains("request.operation_id = createOperationId()"));

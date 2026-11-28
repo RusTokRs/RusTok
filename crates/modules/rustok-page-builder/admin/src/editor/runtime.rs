@@ -390,7 +390,8 @@ impl AdminEditorRuntime {
             return;
         }
 
-        let result = self.controller.try_update(|controller| {
+        let result: Option<Result<(Vec<AdminCanvasEffect>, bool), crate::AdminCanvasError>> =
+            self.controller.try_update(|controller| {
             let before_revision = {
                 let revision = controller.editor().revision();
                 (revision.project_hash, revision.command_sequence)
