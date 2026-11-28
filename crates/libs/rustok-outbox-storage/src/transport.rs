@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    QueryFilter, Set, sea_query::{Expr, OnConflict},
+    QueryFilter, Set, TransactionTrait, TryIntoModel, sea_query::{Expr, OnConflict},
 };
 use std::any::Any;
 use uuid::Uuid;
@@ -42,10 +42,8 @@ impl OutboxTransport {
     where
         C: ConnectionTrait,
     {
-        let affected = entity::Entity::insert(Self::model_from_envelope(envelope, crate::database_now(txn).await?)?)
-            .exec_without_returning(txn)
-            .await?;
-        require_inserted_event(affected)
+        let active = Self::model_from_envelope(envelope, crate::database_now(txn).await?)?;
+        insert_exact_event(txn, active).await
     }
 
     /// Writes one validated sealed contract event through an owner transaction.
@@ -56,10 +54,8 @@ impl OutboxTransport {
     where
         C: ConnectionTrait,
     {
-        let affected = entity::Entity::insert(Self::model_from_contract_envelope(envelope, crate::database_now(txn).await?)?)
-            .exec_without_returning(txn)
-            .await?;
-        require_inserted_event(affected)
+        let active = Self::model_from_contract_envelope(envelope, crate::database_now(txn).await?)?;
+        insert_exact_event(txn, active).await
     }
 
     /// Writes one sealed contract exactly once under its caller-supplied envelope ID.
@@ -89,7 +85,9 @@ impl OutboxTransport {
         let active_model = Self::model_from_contract_envelope(envelope.clone(), now)
             .map_err(|error| write_once_unavailable(envelope_id, event_type.as_str(), error))?;
 
-        entity::Entity::insert(active_model)
+        let expected = active_model.clone().try_into_model()
+            .map_err(|error| write_once_unavailable(envelope_id, event_type.as_str(), error))?;
+        let affected = entity::Entity::insert(active_model)
             .on_conflict(
                 OnConflict::column(entity::Column::Id)
                     .do_nothing()
@@ -98,6 +96,15 @@ impl OutboxTransport {
             .exec_without_returning(txn)
             .await
             .map_err(|error| write_once_unavailable(envelope_id, event_type.as_str(), error))?;
+        if affected == 1 {
+            verify_inserted_event(txn, &expected).await
+                .map_err(|error| write_once_unavailable(envelope_id, event_type.as_str(), error))?;
+            return Ok(envelope_id);
+        }
+        if affected != 0 {
+            return Err(write_once_unavailable(envelope_id, event_type.as_str(),
+                format!("unexpected affected row count: {affected}")));
+        }
 
         let stored = entity::Entity::find_by_id(envelope_id)
             .one(txn)
@@ -248,6 +255,24 @@ fn require_inserted_event(affected: u64) -> Result<()> {
     Ok(())
 }
 
+// The caller owns the transaction and must roll it back on any write error.
+async fn insert_exact_event(txn: &impl ConnectionTrait, active: entity::ActiveModel) -> Result<()> {
+    let expected = active.clone().try_into_model()?;
+    let affected = entity::Entity::insert(active).exec_without_returning(txn).await?;
+    require_inserted_event(affected)?;
+    verify_inserted_event(txn, &expected).await
+}
+
+async fn verify_inserted_event(txn: &impl ConnectionTrait, expected: &entity::Model) -> Result<()> {
+    let stored = entity::Entity::find_by_id(expected.id).one(txn).await?;
+    if stored.as_ref() != Some(expected) {
+        return Err(Error::External(format!(
+            "outbox event {} insert readback mismatch", expected.id
+        )));
+    }
+    Ok(())
+}
+
 fn same_root_publication(stored: &EventEnvelope, expected: &EventEnvelope) -> bool {
     stored.id == expected.id
         && stored.correlation_id == expected.correlation_id
@@ -315,6 +340,10 @@ impl EventTransport for OutboxTransport {
         })?;
         let payload_envelope = envelope.clone();
         let active_model = Self::model_from_envelope(envelope, crate::database_now(&self.db).await?)?;
+        let expected = active_model.clone().try_into_model()?;
+        // Keep insertion and readback in one transaction; otherwise an
+        // altered insert can commit before its integrity is checked.
+        let txn = self.db.begin().await?;
 
         let affected = entity::Entity::insert(active_model)
             .on_conflict(
@@ -322,9 +351,11 @@ impl EventTransport for OutboxTransport {
                     .do_nothing()
                     .to_owned(),
             )
-            .exec_without_returning(&self.db)
+            .exec_without_returning(&txn)
             .await?;
         if affected == 1 {
+            verify_inserted_event(&txn, &expected).await?;
+            txn.commit().await?;
             return Ok(());
         }
         if affected != 0 {
@@ -334,7 +365,7 @@ impl EventTransport for OutboxTransport {
         }
 
         let stored = entity::Entity::find_by_id(envelope_id)
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or_else(|| Error::NotFound(format!("sys_event {envelope_id}")))?;
         // Idempotent replay compares canonical facts only. Generated
@@ -356,6 +387,7 @@ impl EventTransport for OutboxTransport {
                 "outbox event id {envelope_id} already belongs to different canonical facts"
             )));
         }
+        txn.commit().await?;
         Ok(())
     }
 

@@ -359,3 +359,17 @@ receipt retention remains a separate, not yet durably bound contract. Event
 status and dispatched_at mutation, privileged DDL/restore, and independent
 clock discontinuities are separate remaining boundaries. SQLite/PostgreSQL
 regression sources added; compilation and runtime evidence remain pending.
+
+## Exact initial event persistence (source only)
+
+Fresh root and sealed-contract inserts require one affected row and exact
+readback of the complete initial event model, including pending status, zero
+retry count, absent claim and canonical payload. Write-once contract inserts
+check the fresh-write path separately from an existing identity replay.
+Standalone root publication holds one SQL transaction through insert/readback
+and commit. Owner transaction append errors require rollback of the owner
+transaction; no external I/O occurs in these checks. A rewritten insert cannot
+be acknowledged as a successful fresh event. Existing duplicate replay still
+compares canonical facts rather than regenerated timestamps or trace metadata.
+SQLite regression source covers rewritten standalone and owner-transaction
+inserts; compilation and execution remain pending.

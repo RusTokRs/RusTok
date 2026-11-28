@@ -6,7 +6,7 @@ use rustok_events::{ContractEventEnvelope, DomainEvent, EventEnvelope, RbacRoleM
 use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
 use sea_orm::{
     ActiveModelTrait, ConnectOptions, Database, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, PaginatorTrait, Set, TransactionTrait,
+    ConnectionTrait, EntityTrait, PaginatorTrait, Set, TransactionTrait,
 };
 use sea_orm_migration::MigrationTrait;
 use sea_orm_migration::prelude::SchemaManager;
@@ -57,6 +57,42 @@ async fn publish_inserts_event_on_sqlite_without_unpack_insert_id_error() {
 
     let count = SysEvents::find().count(&db).await.unwrap();
     assert_eq!(count, 1);
+}
+
+#[tokio::test]
+async fn rewritten_event_insert_is_not_acknowledged() {
+    let db = setup_test_db().await;
+    let transport = OutboxTransport::new(db.clone());
+    // The immutable-envelope guard permits retry-state updates. An
+    // anomalous insert trigger must not manufacture a pre-retried event.
+    db.execute_unprepared(
+        "CREATE TRIGGER rewrite_event_insert AFTER INSERT ON sys_events
+         BEGIN UPDATE sys_events SET retry_count = 7 WHERE id = NEW.id; END"
+    ).await.unwrap();
+    let tenant = Uuid::new_v4();
+    let envelope = EventEnvelope::new(tenant, None, DomainEvent::UserLoggedIn {
+        user_id: Uuid::new_v4(),
+    });
+    assert!(transport.publish(envelope.clone()).await.is_err());
+    assert_eq!(SysEvents::find().count(&db).await.unwrap(), 0);
+
+    let txn = db.begin().await.unwrap();
+    assert!(transport.write_to_outbox(&txn, envelope.clone()).await.is_err());
+    txn.rollback().await.unwrap();
+    assert_eq!(SysEvents::find().count(&db).await.unwrap(), 0);
+
+    let txn = db.begin().await.unwrap();
+    let bus = TransactionalEventBus::new(Arc::new(transport.clone()));
+    assert!(bus.publish_contract_in_tx(
+        &txn, tenant, None,
+        RbacRoleMutationEvent::user_role_assignment_repaired(Uuid::new_v4(), "admin", 1),
+    ).await.is_err());
+    txn.rollback().await.unwrap();
+    assert_eq!(SysEvents::find().count(&db).await.unwrap(), 0);
+
+    db.execute_unprepared("DROP TRIGGER rewrite_event_insert").await.unwrap();
+    transport.publish(envelope).await.unwrap();
+    assert_eq!(SysEvents::find().count(&db).await.unwrap(), 1);
 }
 
 #[tokio::test]
