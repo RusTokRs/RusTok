@@ -9,6 +9,7 @@ use crate::graphql::rbac_runtime::rbac_graphql_role_writer_from_context;
 use crate::graphql::search_rate_limit::search_graphql_rate_limiter_from_context;
 use crate::graphql::{AppSchema, GraphqlSchemaDependencies, SharedGraphqlSchema, build_schema};
 use crate::services::app_lifecycle::StopHandle;
+use crate::services::build_control::build_control_from_context;
 use crate::services::build_event_hub::build_event_hub_from_context;
 use crate::services::commerce_provider_runtime::attach_commerce_provider_registries;
 use crate::services::event_bus::{event_bus_from_context, transactional_event_bus_from_context};
@@ -113,6 +114,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Result<Arc<AppSchema>>
         graphql_runtime_inputs,
         static_module_registry_reader,
         build_event_hub: build_event_hub_from_context(ctx),
+        build_control: build_control_from_context(ctx),
         field_definition_cache: field_definition_cache_from_context(ctx, event_bus),
         runtime_extensions,
         stop_handle,
