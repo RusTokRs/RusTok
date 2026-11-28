@@ -405,6 +405,8 @@ mod tests {
         .insert(&db)
         .await
         .expect("insert canonical pending event");
+        rustok_outbox::RelayConfig::default().verify_execution_admission(&db)
+            .await.expect("bind execution policy");
         let mut claimed: entity::ActiveModel = entity::Entity::find_by_id(event_id)
             .one(&db).await.unwrap().unwrap().into();
         claimed.claimed_by = Set(Some("worker-1".to_string()));

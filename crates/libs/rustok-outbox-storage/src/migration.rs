@@ -1651,6 +1651,7 @@ WHEN NOT (
          AND julianday(NEW.claimed_at) <= julianday('now'))
       OR
         (OLD.claimed_by IS NOT NULL AND OLD.claimed_at IS NOT NULL
+         AND julianday(OLD.claimed_at) IS NOT NULL
          AND NEW.claimed_by IS NULL AND NEW.claimed_at IS NULL
          AND (
              NOT EXISTS (SELECT 1 FROM outbox_dispatch_attempts a

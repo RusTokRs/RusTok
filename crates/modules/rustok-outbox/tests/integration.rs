@@ -114,6 +114,22 @@ impl EventTransport for AcceptedThenLocalFailure {
 }
 
 async fn assert_event_envelope_integrity(db: &DatabaseConnection) -> TestResult<()> {
+    let invalid_insert = entity::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(None),
+        event_type: Set("forged.failed".to_string()),
+        schema_version: Set(1),
+        payload: Set(serde_json::json!({"forged": true})),
+        status: Set(SysEventStatus::Failed),
+        retry_count: Set(1),
+        next_attempt_at: Set(None),
+        last_error: Set(Some("forged".to_string())),
+        claimed_by: Set(None),
+        claimed_at: Set(None),
+        created_at: Set(Utc::now()),
+        dispatched_at: Set(None),
+    }.insert(db).await;
+    assert!(invalid_insert.is_err(), "events must enter through the pristine pending state");
     let event = seed_event(db).await?;
     let before = entity::Entity::find_by_id(event.id).one(db).await?.expect("event");
     for sql in [
@@ -592,6 +608,12 @@ async fn assert_execution_policy_integrity(db: &DatabaseConnection) -> TestResul
     }
 
     claim(db, first.id).await?;
+    let mut backdated: entity::ActiveModel = entity::Entity::find_by_id(first.id)
+        .one(db).await?.expect("claimed event").into();
+    backdated.claimed_at = Set(Some(
+        backdated.claimed_at.clone().expect("claim timestamp") - chrono::Duration::seconds(1)
+    ));
+    assert!(backdated.update(db).await.is_err(), "a live claim cannot be backdated");
     assert!(claim(db, second.id).await.is_err(), "live capacity");
     assert!(db.execute_unprepared("UPDATE outbox_execution_policy SET max_in_flight = 2").await.is_err());
     assert!(db.execute_unprepared("UPDATE outbox_execution_policy SET claim_ttl_ms = 120000").await.is_err());
