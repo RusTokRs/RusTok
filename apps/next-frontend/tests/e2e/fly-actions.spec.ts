@@ -43,7 +43,7 @@ function accordion(name: string): string {
     <div data-fly-accordion="true">
       <button aria-expanded="true" data-testid="${name}-nested"
         data-fly-action='${action({ kind: 'toggle_accordion', target_id: `${name}-nested-panel`, exclusive: true })}'>Nested</button>
-      <div id="${name}-nested-panel">Nested content</div>
+      <div id="${name}-nested-panel" data-testid="${name}-nested-panel">Nested content</div>
     </div>
   </div>`;
 }

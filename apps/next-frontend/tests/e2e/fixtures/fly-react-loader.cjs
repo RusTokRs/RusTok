@@ -4,14 +4,30 @@
  * See the LICENSE file in the project root for full license terms.
  */
 
-// A tiny test-only loader: use the TypeScript version already installed by the Next app.
-const ts = require('typescript');
+// TypeScript 7 removed the legacy JavaScript compiler API. Use Next's bundled
+// SWC transform for this isolated TSX test fixture instead of depending on it.
+const { transformSync } = require('next/dist/build/swc');
+
 module.exports = function transpile(source) {
-  return ts.transpileModule(source, {
-    compilerOptions: {
-      target: ts.ScriptTarget.ES2022,
-      module: ts.ModuleKind.ESNext,
-      jsx: ts.JsxEmit.ReactJSX,
+  if (typeof transformSync !== 'function') {
+    throw new Error('Next SWC transformSync is unavailable to the Fly React test loader');
+  }
+  return transformSync(source, {
+    filename: this?.resourcePath ?? 'fly-react-harness.tsx',
+    jsc: {
+      target: 'es2022',
+      parser: {
+        syntax: 'typescript',
+        tsx: true,
+      },
+      transform: {
+        react: {
+          runtime: 'automatic',
+        },
+      },
     },
-  }).outputText;
+    module: {
+      type: 'es6',
+    },
+  }).code;
 };
