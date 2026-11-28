@@ -26,6 +26,7 @@ use serde::Serialize;
 use tokio::sync::{OwnedSemaphorePermit, broadcast::error::RecvError};
 
 use crate::extractors::auth::{CurrentUser, WebSocketAuthLease};
+use crate::services::build_control::build_control_from_context;
 use crate::services::build_event_hub::{BuildEventHub, build_event_hub_from_context};
 use crate::services::server_runtime_context::ServerAuthRuntime;
 
@@ -224,7 +225,9 @@ pub async fn ws_builds(
     }
 
     let lease = WebSocketAuthLease::new(bearer.token().to_owned(), &current_user);
-    let hub = build_event_hub_from_context(auth_runtime.runtime_ctx());
+    let runtime_ctx = auth_runtime.runtime_ctx();
+    let hub = build_event_hub_from_context(runtime_ctx);
+    let control = build_control_from_context(runtime_ctx);
     let Some(stream_permit) = hub.try_acquire_stream() else {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -239,6 +242,7 @@ pub async fn ws_builds(
             handle_socket(
                 socket,
                 hub,
+                control,
                 auth_runtime,
                 lease,
                 host_authority,
@@ -366,13 +370,12 @@ async fn send_build_updates(
 async fn handle_socket(
     mut socket: WebSocket,
     hub: std::sync::Arc<BuildEventHub>,
+    control: SharedBuildControl,
     auth_runtime: ServerAuthRuntime,
     lease: WebSocketAuthLease,
     host_authority: Option<HostAuthorityContext>,
     _stream_permit: OwnedSemaphorePermit,
 ) {
-    let control = hub.control();
-
     // Read the cursor before subscribing; every later commit is then either
     // reflected in the initial snapshot or returned by the cursor query.
     let mut cursor = match control.0.current_progress_sequence().await {
