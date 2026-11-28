@@ -387,3 +387,30 @@ receipt writers before rollout: older versions delete on release and do not
 recognize `released`. Previously deleted fingerprints cannot be reconstructed.
 SQLite source regression is extended; compilation and PostgreSQL concurrent
 admission evidence remain pending.
+
+## Immutable source event envelope (2026-11-28; source only)
+
+Migration `m20261128_000207_fence_outbox_event_envelope` shares its installer with standalone schema setup.
+The original event id, tenant projection, event type, schema version, payload
+and creation timestamp cannot change through ordinary UPDATE. Retry, ACK and
+DLQ replay retain that identity. SQLite forbids rowid mutation and different
+physical UUID aliases; an exact-key duplicate INSERT (including REPLACE) is
+suppressed without changing the original row or cascading its history. This
+preserves the existing write-once readback/conflict protocol and unconditional
+inserts still require one affected row. The unique normalized UUID index rejects
+preexisting alias collisions at migration rather than discarding history.
+PostgreSQL legacy tenant backfill considers nested tenant only if the top-level
+key is absent, leaves nil tenant unprojected and does not rerun after the guard.
+This is not retrospective repair of previously incorrect projections.
+
+Parent deletion now requires a terminal, unclaimed event and all registered
+consumer ACKs. PostgreSQL requires READ COMMITTED and takes the registry SHARE
+fence NOWAIT in a direct delete, avoiding a blocking reverse lock order;
+SQLite serializes writes. Existing open-attempt protection remains in force.
+Retention queries exclude claimed rows. Configured retention age and failed
+retention enablement remain enforced by the application, not by these SQL guards;
+a privileged direct terminal DELETE can still bypass the age policy. Event IDs
+can be reused after lawful pruning; permanent deduplication/tombstones are not
+introduced. No claim of protection from arbitrary DDL or restored backups.
+Drain writers before migration. PostgreSQL/SQLite regressions are authored;
+compilation, migration and contention execution remain pending.

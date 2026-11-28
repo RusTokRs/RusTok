@@ -147,6 +147,8 @@ impl OutboxRetention {
             .select_only()
             .column(entity::Column::Id)
             .filter(entity::Column::Status.eq(SysEventStatus::Dispatched))
+            .filter(entity::Column::ClaimedBy.is_null())
+            .filter(entity::Column::ClaimedAt.is_null())
             .filter(entity::Column::DispatchedAt.is_not_null())
             .filter(entity::Column::DispatchedAt.lte(cutoff))
             .filter(required_consumers_acknowledged_predicate())
@@ -178,6 +180,8 @@ impl OutboxRetention {
         let deleted = entity::Entity::delete_many()
             .filter(entity::Column::Id.is_in(candidate_ids))
             .filter(entity::Column::Status.eq(SysEventStatus::Dispatched))
+            .filter(entity::Column::ClaimedBy.is_null())
+            .filter(entity::Column::ClaimedAt.is_null())
             .filter(entity::Column::DispatchedAt.is_not_null())
             .filter(entity::Column::DispatchedAt.lte(cutoff))
             .filter(required_consumers_acknowledged_predicate())
@@ -240,6 +244,8 @@ impl OutboxRetention {
                 .select_only()
                 .column(entity::Column::Id)
                 .filter(entity::Column::Status.eq(SysEventStatus::Failed))
+                .filter(entity::Column::ClaimedBy.is_null())
+                .filter(entity::Column::ClaimedAt.is_null())
                 .filter(entity::Column::CreatedAt.lte(cutoff))
                 .filter(required_consumers_acknowledged_predicate())
             .filter(no_open_dispatch_attempt_predicate())
@@ -260,6 +266,8 @@ impl OutboxRetention {
                 pruned_failed = entity::Entity::delete_many()
                     .filter(entity::Column::Id.is_in(candidate_ids))
                     .filter(entity::Column::Status.eq(SysEventStatus::Failed))
+                .filter(entity::Column::ClaimedBy.is_null())
+                .filter(entity::Column::ClaimedAt.is_null())
                     .filter(entity::Column::CreatedAt.lte(cutoff))
                     .filter(required_consumers_acknowledged_predicate())
             .filter(no_open_dispatch_attempt_predicate())
@@ -352,6 +360,15 @@ mod tests {
         status: SysEventStatus,
         dispatched_at: Option<chrono::DateTime<Utc>>,
     ) -> uuid::Uuid {
+        insert_event_at(db, status, dispatched_at, Utc::now()).await
+    }
+
+    async fn insert_event_at(
+        db: &sea_orm::DatabaseConnection,
+        status: SysEventStatus,
+        dispatched_at: Option<chrono::DateTime<Utc>>,
+        created_at: chrono::DateTime<Utc>,
+    ) -> uuid::Uuid {
         let id = generate_id();
         let tenant_id = generate_id();
         crate::entity::ActiveModel {
@@ -366,7 +383,7 @@ mod tests {
             last_error: Set(None),
             claimed_by: Set(None),
             claimed_at: Set(None),
-            created_at: Set(Utc::now()),
+            created_at: Set(created_at),
             dispatched_at: Set(dispatched_at),
         }
         .insert(db)
@@ -472,16 +489,8 @@ mod tests {
         let stale = Utc::now() - chrono::Duration::days(40);
 
         // Default configuration never touches the DLQ.
-        let failed = insert_event(&db, SysEventStatus::Failed, Some(stale)).await;
-        // Failed retention is measured from creation; age the row.
-        let mut aged: crate::entity::ActiveModel = crate::entity::Entity::find_by_id(failed)
-            .one(&db)
-            .await
-            .expect("query")
-            .expect("failed event")
-            .into();
-        aged.created_at = Set(stale);
-        aged.update(&db).await.expect("age failed event");
+        // Failed retention is measured from immutable creation time.
+        let failed = insert_event_at(&db, SysEventStatus::Failed, Some(stale), stale).await;
         let retention = OutboxRetention::new(db.clone());
         let report = retention.prune_once().await.expect("default prune");
         assert_eq!(report.pruned_failed, 0);
