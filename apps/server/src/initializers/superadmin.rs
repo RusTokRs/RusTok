@@ -23,32 +23,41 @@ use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
-fn env_first(primary: &str, fallback: &str) -> Option<String> {
-    std::env::var(primary)
-        .ok()
-        .filter(|v| !v.trim().is_empty())
-        .or_else(|| {
-            std::env::var(fallback)
-                .ok()
-                .filter(|v| !v.trim().is_empty())
-        })
+fn env_value(
+    key: &str,
+    value: std::result::Result<String, std::env::VarError>,
+) -> Result<Option<String>> {
+    match value {
+        Ok(value) if !value.trim().is_empty() => Ok(Some(value)),
+        Ok(_) | Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => Err(crate::error::Error::Message(format!(
+            "FATAL: env var {key} must be valid UTF-8."
+        ))),
+    }
+}
+
+fn env_first(primary: &str, fallback: &str) -> Result<Option<String>> {
+    if let Some(value) = env_value(primary, std::env::var(primary))? {
+        return Ok(Some(value));
+    }
+    env_value(fallback, std::env::var(fallback))
 }
 
 pub async fn ensure_default_superadmin(ctx: &ServerRuntimeContext) -> Result<()> {
-    let Some(email) = env_first("SUPERADMIN_EMAIL", "SEED_ADMIN_EMAIL") else {
+    let Some(email) = env_first("SUPERADMIN_EMAIL", "SEED_ADMIN_EMAIL")? else {
         tracing::debug!("SUPERADMIN_EMAIL not set — skipping default superadmin setup");
         return Ok(());
     };
 
-    let Some(password) = env_first("SUPERADMIN_PASSWORD", "SEED_ADMIN_PASSWORD") else {
+    let Some(password) = env_first("SUPERADMIN_PASSWORD", "SEED_ADMIN_PASSWORD")? else {
         tracing::warn!("SUPERADMIN_EMAIL is set but SUPERADMIN_PASSWORD is missing — skipping");
         return Ok(());
     };
 
-    let tenant_slug = env_first("SUPERADMIN_TENANT_SLUG", "SEED_TENANT_SLUG")
+    let tenant_slug = env_first("SUPERADMIN_TENANT_SLUG", "SEED_TENANT_SLUG")?
         .unwrap_or_else(|| "default".to_string());
 
-    let tenant_name = env_first("SUPERADMIN_TENANT_NAME", "SEED_TENANT_NAME")
+    let tenant_name = env_first("SUPERADMIN_TENANT_NAME", "SEED_TENANT_NAME")?
         .unwrap_or_else(|| "Default".to_string());
 
     ensure_configured_superadmin(ctx, &email, &password, &tenant_name, &tenant_slug).await
@@ -166,6 +175,45 @@ async fn observe_existing_superadmin(
 
 #[cfg(test)]
 mod tests {
+    use super::env_value;
+
+    #[test]
+    fn missing_and_empty_optional_environment_values_are_absent() {
+        assert_eq!(
+            env_value("SUPERADMIN_EMAIL", Ok("  ".to_string())).expect("empty is absent"),
+            None
+        );
+        assert_eq!(
+            env_value(
+                "SUPERADMIN_EMAIL",
+                Err(std::env::VarError::NotPresent)
+            )
+            .expect("missing is absent"),
+            None
+        );
+        assert_eq!(
+            env_value("SUPERADMIN_EMAIL", Ok("admin@example.test".to_string()))
+                .expect("valid value"),
+            Some("admin@example.test".to_string())
+        );
+    }
+
+    #[test]
+    fn non_unicode_optional_environment_values_fail_closed() {
+        let error = env_value(
+            "SUPERADMIN_EMAIL",
+            Err(std::env::VarError::NotUnicode(std::ffi::OsString::from(
+                "invalid",
+            ))),
+        )
+        .expect_err("non-Unicode configuration must not silently fall back");
+        assert!(error.to_string().contains("SUPERADMIN_EMAIL"));
+        assert!(error.to_string().contains("valid UTF-8"));
+    }
+}
+
+#[cfg(test)]
+mod existing_account_tests {
     use super::*;
     use crate::common::settings::RustokSettings;
     use rustok_core::{UserRole, UserStatus};
