@@ -45,6 +45,7 @@ use super::system::SystemQuery;
 use super::tenant_security::GraphqlTenantPolicy;
 use crate::services::app_lifecycle::StopHandle;
 use crate::services::build_event_hub::BuildEventHub;
+use rustok_build::SharedBuildControl;
 use crate::services::field_definition_cache::FieldDefinitionCache;
 use crate::services::field_definition_registry_bootstrap::build_field_def_registry;
 use crate::services::flex_attached_values::FlexAttachedValuesGraphqlAdapter;
@@ -139,6 +140,7 @@ pub struct GraphqlSchemaDependencies {
     pub graphql_runtime_inputs: rustok_api::graphql::GraphqlRuntimeInputs,
     pub static_module_registry_reader: SharedStaticModuleRegistryReader,
     pub build_event_hub: Arc<BuildEventHub>,
+    pub build_control: SharedBuildControl,
     pub field_definition_cache: FieldDefinitionCache,
     pub runtime_extensions: Arc<ModuleRuntimeExtensions>,
     pub stop_handle: StopHandle,
@@ -176,6 +178,7 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         graphql_runtime_inputs,
         static_module_registry_reader,
         build_event_hub,
+        build_control,
         field_definition_cache,
         runtime_extensions,
         stop_handle,
@@ -312,6 +315,7 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         .data(transactional_event_bus)
         .data(static_module_registry_reader)
         .data(build_event_hub)
+        .data(build_control)
         .data(flex_runtime)
         .data(marketplace_catalog)
         .data(search_audience_registry)
