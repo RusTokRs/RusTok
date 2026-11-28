@@ -302,6 +302,75 @@ async fn postgres_retention_policy_writer_fences_direct_delete_without_waiting()
 }
 
 #[tokio::test]
+async fn postgres_owner_receipt_integrity_and_retention_lock_order() -> TestResult<()> {
+    use rustok_outbox::idempotency::{self, Admission, OwnerOperationScope};
+    let _guard = test_lock().lock().await;
+    let Some(db) = setup_db().await? else { return Ok(()) };
+    if db.get_database_backend() != DatabaseBackend::Postgres { return Ok(()) }
+    let schema = db.query_one_raw(Statement::from_string(
+        DatabaseBackend::Postgres, "SELECT current_schema() AS schema_name",
+    )).await?.expect("schema").try_get::<String>("", "schema_name")?;
+    assert!(schema.starts_with("rustok_outbox_test_"));
+    assert!(schema.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_'));
+    let database_url = std::env::var("RUSTOK_OUTBOX_TEST_DATABASE_URL")
+        .or_else(|_| std::env::var("DATABASE_URL"))?;
+    let mut options = ConnectOptions::new(database_url);
+    options.max_connections(1).min_connections(1).sqlx_logging(false);
+    let second = Database::connect(options).await?;
+    second.execute_unprepared(&format!(r#"SET search_path TO "{schema}""#)).await?;
+
+    let scope = OwnerOperationScope::Tenant(Uuid::new_v4());
+    let request = serde_json::json!({"request": true});
+    let lease = match idempotency::admit(&db, scope, "owner", "terminal", "write", &request).await.unwrap() {
+        Admission::Run(lease) => lease,
+        _ => panic!("fresh receipt"),
+    };
+    let pending = match idempotency::admit(&db, scope, "owner", "nonterminal", "write", &request).await.unwrap() {
+        Admission::Run(lease) => lease,
+        _ => panic!("fresh receipt"),
+    };
+    assert!(db.execute_unprepared("DELETE FROM owner_operation_receipts").await.is_err());
+    assert!(db.execute_unprepared("UPDATE owner_operation_receipts SET request_hash = repeat('a', 64)").await.is_err());
+    idempotency::complete(&db, lease, &serde_json::json!({"ok": true})).await.unwrap();
+    idempotency::release_retryable(&db, pending,
+        &rustok_api::PortError::unavailable("test.retry", "retry")).await.unwrap();
+
+    for sql in [
+        "UPDATE owner_operation_receipts SET response_json = '{}' WHERE status = 'completed'",
+        "UPDATE owner_operation_receipts SET completed_at = completed_at - interval '1 day' WHERE status = 'completed'",
+        "UPDATE owner_operation_receipts SET status = 'processing' WHERE status = 'completed'",
+        "TRUNCATE owner_operation_receipts",
+        "TRUNCATE outbox_owner_receipt_retention_policy",
+        "DELETE FROM owner_operation_receipts",
+    ] {
+        assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
+    }
+    idempotency::verify_receipt_retention_policy(&db, None).await.unwrap();
+    assert!(idempotency::prune_terminal_receipts(&db, chrono::Duration::days(1), 10).await.is_err());
+    assert!(db.execute_unprepared("DELETE FROM owner_operation_receipts WHERE status = 'completed'").await.is_err());
+
+    // Simulate coordinated reconfiguration. The direct DELETE obtains the
+    // receipt row before its trigger sees the policy; it must not wait.
+    let writer = db.begin().await?;
+    writer.execute_unprepared(
+        "UPDATE outbox_owner_receipt_retention_policy SET retention_ms = 86400000 WHERE id = 1"
+    ).await?;
+    let denied = tokio::time::timeout(std::time::Duration::from_secs(2),
+        second.execute_unprepared("DELETE FROM owner_operation_receipts WHERE status = 'completed'")
+    ).await.expect("reverse-order direct DELETE must not wait");
+    assert!(denied.is_err());
+    writer.commit().await?;
+    assert!(second.execute_unprepared("DELETE FROM owner_operation_receipts WHERE status = 'completed'").await.is_err());
+    assert!(idempotency::verify_receipt_retention_policy(&second, None).await.is_err());
+    assert_eq!(idempotency::prune_terminal_receipts(&second, chrono::Duration::days(1), 10).await.unwrap(), 0);
+    assert!(matches!(idempotency::admit(&second, scope, "owner", "terminal", "write", &request).await.unwrap(),
+        Admission::Replay(value) if value == serde_json::json!({"ok": true})));
+    assert!(matches!(idempotency::admit(&second, scope, "owner", "nonterminal", "write", &request).await.unwrap(),
+        Admission::Run(next) if next.operation_id == pending.operation_id && next.token != pending.token));
+    Ok(())
+}
+
+#[tokio::test]
 async fn postgres_consumer_receipt_integrity_fences_direct_registry_and_receipt_dml() -> TestResult<()> {
     let _guard = test_lock().lock().await;
     let Some(db) = setup_db().await? else { return Ok(()) };

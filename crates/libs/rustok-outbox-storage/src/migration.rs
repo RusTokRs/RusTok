@@ -2538,6 +2538,8 @@ pub async fn create_outbox_owner_receipt_integrity(manager: &SchemaManager<'_>) 
     if policy.try_get::<i64>("", "total")? != 1 || policy.try_get::<i64>("", "valid")? != 1 {
         return Err(DbErr::Migration("invalid owner receipt retention singleton; offline reconciliation required".into()));
     }
+    // Match the bounded terminal scan and deterministic cursor order.
+    db.execute_unprepared("CREATE INDEX IF NOT EXISTS idx_owner_receipt_terminal_retention ON owner_operation_receipts (completed_at, id) WHERE status IN ('completed', 'failed') AND completed_at IS NOT NULL").await?;
     match backend {
         DbBackend::Postgres => {
             db.execute_unprepared(POSTGRES_OWNER_RECEIPT_GUARDS).await?;
