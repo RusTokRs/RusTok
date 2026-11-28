@@ -1195,7 +1195,12 @@ security epoch through commit: platform/tenant slug fences precede the epoch
 writes. Security operations take the platform slug before inspecting a receipt;
 a completed exact replay does not reserve the epoch. New quarantine/revoke
 operations acquire the exclusive epoch before reserving their receipt or
-writing security state. Clear-quarantine does not advance the epoch. A
+writing security state. PostgreSQL reserves ROW EXCLUSIVE NOWAIT on the epoch
+relation before the exclusive row lock, and ROW SHARE NOWAIT before the shared
+row lock. This prevents a maintenance SHARE lock from interposing between
+FOR UPDATE and UPDATE and rejects conflicting relation locks while earlier
+slug fences are held. Ordinary epoch row waits remain intentional. Clear-quarantine
+does not advance the epoch. A
 conflicting receipt key without a visible exact receipt fails closed. All
 replays still require the transaction-bound host authority at commit.
 Finalization rechecks exact receipt replay after waiting on the platform

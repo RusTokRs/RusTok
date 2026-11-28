@@ -3704,7 +3704,11 @@ worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#s
 
 - Security operation receipt ordering: new quarantine/revoke commands acquire
   the platform slug and exclusive security epoch before receipt reservation,
-  matching governed finalization. Completed exact receipts are read after the
+  matching governed finalization. Before the epoch row, PostgreSQL reserves
+  the eventual relation mode with NOWAIT (ROW EXCLUSIVE for writers, ROW SHARE
+  for commit readers). A conflicting maintenance relation lock fails early;
+  ordinary epoch row waits remain unchanged. Regression sources cover both
+  admission orders and rollback, unrun. Completed exact receipts are read after the
   slug fence without taking the epoch; authorization is still checked at
   commit. Missing receipts after unique-key conflict deny admission. An opt-in
   PostgreSQL regression observes actual waits on both earlier fences and

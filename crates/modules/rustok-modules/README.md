@@ -287,7 +287,10 @@ Auth/RBAC and cross-owner FK order is not certified.
 Security-state operations now acquire platform slug and (for quarantine/revoke)
 the exclusive security epoch before reserving a new operation receipt. Exact
 replay still requires current host authorization, but does not advance or
-lock the epoch. The PostgreSQL lock-order regression is authored, unrun;
+lock the epoch. PostgreSQL reserves the epoch relation in ROW EXCLUSIVE NOWAIT
+for advancing writers and ROW SHARE NOWAIT for commit readers before the row
+lock; this prevents late relation-mode upgrades while preserving normal epoch
+row serialization. The PostgreSQL lock-order regression is authored, unrun;
 global deadlock freedom is not established.
 
 Migration 000106 adds a PostgreSQL nonwaiting transaction advisory gate for

@@ -55,7 +55,12 @@ authorization; a cached request snapshot alone is not sufficient. Because a dire
 credential can expire while waiting for the platform slug lock, the owner
 rechecks the earliest credential deadline immediately before both new-state
 and exact-replay commits, after all durable writes; expiry rolls the entire
-transaction back. The lock covers short SQL transactions, not guest execution
+transaction back. For a new quarantine/revoke the platform slug fence precedes exclusive security
+epoch admission. PostgreSQL reserves the epoch relation in ROW EXCLUSIVE NOWAIT
+before FOR UPDATE; governed commit readers reserve ROW SHARE NOWAIT before
+FOR SHARE. This prevents an implicit relation lock upgrade after locking the
+singleton. Conflicting relation admission aborts the owner transaction; ordinary
+row-level epoch serialization is unchanged. The lock covers short SQL transactions, not guest execution
 or external calls; a security action waits for an already-admitted SQL
 transaction to finish.
 Registry status has a separate monotonic release authority witness (migration

@@ -238,6 +238,9 @@ impl SeaOrmSecurityEpochStore {
     /// Acquire the singleton after all required slug fences and before
     /// transition/security domain writes. PostgreSQL SHARE conflicts with
     /// the non-key UPDATE that advances the epoch; KEY SHARE would not.
+    /// PostgreSQL reserves the required relation mode without waiting before
+    /// the row lock: an advancing transaction must not later upgrade from
+    /// ROW SHARE to ROW EXCLUSIVE while owning the singleton.
     /// SQLite explicitly reserves the writer before reading the snapshot.
     async fn lock_on(
         tx: &sea_orm::DatabaseTransaction,
@@ -246,6 +249,19 @@ impl SeaOrmSecurityEpochStore {
         use sea_orm::{ConnectionTrait, Statement};
         let backend = SupportedBackend::new(tx.get_database_backend())
             .map_err(|e| SecurityEpochStoreError::Persistence(e.to_string()))?;
+        if backend == SupportedBackend::Postgres {
+            // FOR UPDATE alone takes ROW SHARE on the relation. A concurrent
+            // SHARE holder could then block our UPDATE while waiting for our
+            // singleton row. Reserve the eventual write mode up front.
+            // Keep ordinary row-level epoch serialization blocking; only
+            // conflicting relation admission fails immediately.
+            let relation_lock = if exclusive {
+                "LOCK TABLE module_security_epoch IN ROW EXCLUSIVE MODE NOWAIT"
+            } else {
+                "LOCK TABLE module_security_epoch IN ROW SHARE MODE NOWAIT"
+            };
+            tx.execute_unprepared(relation_lock).await?;
+        }
         if backend == SupportedBackend::Sqlite {
             let result = tx.execute_raw(Statement::from_string(
                 backend.db_backend(),
@@ -380,6 +396,49 @@ mod tests {
              INSERT INTO module_security_epoch VALUES (1, 1, 'initial', now())"
         ).await.unwrap();
         setup.commit().await.unwrap();
+
+        // A maintenance SHARE lock is compatible with the implicit ROW
+        // SHARE of SELECT FOR UPDATE, but not with a later UPDATE. Reject
+        // it at exclusive admission, before taking the epoch row.
+        let maintenance = transaction(&db, &schema).await;
+        maintenance.execute_unprepared("LOCK TABLE module_security_epoch IN SHARE MODE").await.unwrap();
+        let reader = transaction(&db, &schema).await;
+        assert_eq!(
+            SeaOrmSecurityEpochStore::load_registry_for_commit(&reader).await.unwrap().current_epoch(),
+            GlobalSecurityEpoch(1)
+        );
+        reader.rollback().await.unwrap();
+        let writer = transaction(&db, &schema).await;
+        let error = tokio::time::timeout(
+            Duration::from_secs(2), SeaOrmSecurityEpochStore::lock_for_advance(&writer),
+        ).await.expect("exclusive epoch relation admission must not wait").unwrap_err();
+        assert!(matches!(error, SecurityEpochStoreError::Persistence(_)));
+        writer.rollback().await.unwrap();
+        maintenance.rollback().await.unwrap();
+
+        // Once exclusive admission succeeds, a later SHARE lock cannot
+        // slip in between the epoch row lock and the eventual UPDATE.
+        let writer = transaction(&db, &schema).await;
+        SeaOrmSecurityEpochStore::lock_for_advance(&writer).await.unwrap();
+        let maintenance = transaction(&db, &schema).await;
+        assert!(maintenance.execute_unprepared(
+            "LOCK TABLE module_security_epoch IN SHARE MODE NOWAIT"
+        ).await.is_err());
+        maintenance.rollback().await.unwrap();
+        assert_eq!(SeaOrmSecurityEpochStore::advance(&writer, "rollback probe", Utc::now()).await.unwrap(), GlobalSecurityEpoch(2));
+        writer.rollback().await.unwrap();
+
+        // Even read admission must not wait on a conflicting DDL lock
+        // while earlier slug and authority fences are held.
+        let maintenance = transaction(&db, &schema).await;
+        maintenance.execute_unprepared("LOCK TABLE module_security_epoch IN ACCESS EXCLUSIVE MODE").await.unwrap();
+        let reader = transaction(&db, &schema).await;
+        let error = tokio::time::timeout(
+            Duration::from_secs(2), SeaOrmSecurityEpochStore::load_registry_for_commit(&reader),
+        ).await.expect("shared epoch relation admission must not wait").unwrap_err();
+        assert!(matches!(error, SecurityEpochStoreError::Persistence(_)));
+        reader.rollback().await.unwrap();
+        maintenance.rollback().await.unwrap();
 
         let reader = transaction(&db, &schema).await;
         let snapshot = SeaOrmSecurityEpochStore::load_registry_for_commit(&reader).await.unwrap();
