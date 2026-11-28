@@ -1,23 +1,25 @@
+// Leptos-only pointer-capture resize runtime. Dioxus owns its resize lifecycle in
+// ui::dioxus_canvas and must not compile these Leptos browser exports in its wasm profile.
 use crate::editor::AdminEditorRuntime;
 use leptos::prelude::*;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 use crate::AdminCanvasController;
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(any(all(target_arch = "wasm32", feature = "wasm-client"), test))]
 use crate::core::page_builder_resize_policy;
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 use fly::ComponentPatch;
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(any(all(target_arch = "wasm32", feature = "wasm-client"), test))]
 use fly_ui::{CanvasRect, ResizeHandle, ViewportState};
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 use fly_ui::{ResizeResult, ResizeSession};
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 use wasm_bindgen::JsCast;
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 use web_sys::{Element, Event, EventTarget, KeyboardEvent, PointerEvent};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(any(all(target_arch = "wasm32", feature = "wasm-client"), test))]
 struct SvgRectGeometry {
     x: f64,
     y: f64,
@@ -26,18 +28,18 @@ struct SvgRectGeometry {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(any(all(target_arch = "wasm32", feature = "wasm-client"), test))]
 struct SvgPoint {
     x: f64,
     y: f64,
 }
 
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(any(all(target_arch = "wasm32", feature = "wasm-client"), test))]
 fn can_start_resize_pointer(listeners_ready: bool, button: i16, is_primary: bool) -> bool {
     listeners_ready && button == 0 && is_primary
 }
 
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(any(all(target_arch = "wasm32", feature = "wasm-client"), test))]
 fn can_resize_by_keyboard(
     key: &str,
     alt: bool,
@@ -53,7 +55,7 @@ fn can_resize_by_keyboard(
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(any(all(target_arch = "wasm32", feature = "wasm-client"), test))]
 struct ResizeContext {
     page_id: String,
     active_page_id: Option<String>,
@@ -66,7 +68,7 @@ struct ResizeContext {
     zoom: f64,
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 fn current_resize_context(controller: &AdminCanvasController) -> Option<ResizeContext> {
     let selected = controller.selected_component_view()?;
     let capabilities = controller.ui().state.capabilities;
@@ -91,12 +93,12 @@ fn current_resize_context(controller: &AdminCanvasController) -> Option<ResizeCo
     })
 }
 
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(any(all(target_arch = "wasm32", feature = "wasm-client"), test))]
 fn resize_context_is_current(captured: &ResizeContext, current: Option<&ResizeContext>) -> bool {
     current == Some(captured)
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 #[component]
 pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
     let session = StoredValue::new_local(None::<fly_leptos::BrowserResizeSession>);
@@ -278,7 +280,7 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 fn install_resize_listeners(
     runtime: AdminEditorRuntime,
     session: StoredValue<Option<fly_leptos::BrowserResizeSession>, LocalStorage>,
@@ -479,7 +481,7 @@ fn install_resize_listeners(
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 fn apply_resize_patch(runtime: &AdminEditorRuntime, component_id: &str, patch: ComponentPatch) {
     let intent = runtime
         .controller
@@ -490,7 +492,7 @@ fn apply_resize_patch(runtime: &AdminEditorRuntime, component_id: &str, patch: C
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 fn cancel_active_resize(
     runtime: &AdminEditorRuntime,
     session: StoredValue<Option<fly_leptos::BrowserResizeSession>, LocalStorage>,
@@ -522,7 +524,7 @@ fn cancel_active_resize(
     preview.set(None);
 }
 
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(any(all(target_arch = "wasm32", feature = "wasm-client"), test))]
 fn svg_rect_geometry(rect: CanvasRect, viewport: ViewportState) -> SvgRectGeometry {
     let zoom = f64::from(viewport.zoom.max(0.01));
     SvgRectGeometry {
@@ -533,7 +535,7 @@ fn svg_rect_geometry(rect: CanvasRect, viewport: ViewportState) -> SvgRectGeomet
     }
 }
 
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(any(all(target_arch = "wasm32", feature = "wasm-client"), test))]
 fn svg_handle_position(
     rect: CanvasRect,
     viewport: ViewportState,
@@ -557,7 +559,7 @@ fn svg_handle_position(
     SvgPoint { x, y }
 }
 
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(any(all(target_arch = "wasm32", feature = "wasm-client"), test))]
 fn resize_handle_cursor_class(handle: ResizeHandle) -> &'static str {
     match handle {
         ResizeHandle::North | ResizeHandle::South => "cursor-ns-resize",
@@ -567,7 +569,7 @@ fn resize_handle_cursor_class(handle: ResizeHandle) -> &'static str {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
 #[component]
 pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
     let _ = runtime;

@@ -13,9 +13,16 @@ on:
       - "apps/admin/Cargo.toml"
       - "apps/next-admin/packages/blog/**"
       - "apps/next-admin/src/app/dashboard/blog/**"
+      - "apps/next-admin/package.json"
+      - "apps/next-admin/package-lock.json"
+      - "apps/next-admin/playwright.config.ts"
+      - "apps/next-admin/tests/e2e/fly-*.spec.ts"
+      - "apps/next-admin/tests/e2e/support/**"
       - "apps/next-frontend/packages/rustok-pages/src/components/fly-actions.js"
       - "apps/next-frontend/scripts/verify-fly-actions-parity.mjs"
       - "scripts/verify/verify-fly-*.mjs"
+      - "scripts/fly-check.sh"
+      - "docs/modules/page-builder-backlog.md"
       - "scripts/verify/verify-pages-current-only.mjs"
       - ".github/workflows/fly-page-builder.yml"
       - "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-authenticated-inline-edit-adapter.mjs"
@@ -37,9 +44,16 @@ on:
       - "apps/admin/Cargo.toml"
       - "apps/next-admin/packages/blog/**"
       - "apps/next-admin/src/app/dashboard/blog/**"
+      - "apps/next-admin/package.json"
+      - "apps/next-admin/package-lock.json"
+      - "apps/next-admin/playwright.config.ts"
+      - "apps/next-admin/tests/e2e/fly-*.spec.ts"
+      - "apps/next-admin/tests/e2e/support/**"
       - "apps/next-frontend/packages/rustok-pages/src/components/fly-actions.js"
       - "apps/next-frontend/scripts/verify-fly-actions-parity.mjs"
       - "scripts/verify/verify-fly-*.mjs"
+      - "scripts/fly-check.sh"
+      - "docs/modules/page-builder-backlog.md"
       - "scripts/verify/verify-pages-current-only.mjs"
       - ".github/workflows/fly-page-builder.yml"
       - "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-authenticated-inline-edit-adapter.mjs"
@@ -201,13 +215,16 @@ jobs:
           -p rustok-pages-storefront
           --lib -- -D warnings
 
-      # The wasm-only code behind `cfg(target_arch = "wasm32")` compiled in no CI job before this.
-      - name: Check Fly browser runtime on wasm32
+      # Adapter-only checks do not compile the host integration modules. Compile both actual
+      # Page Builder browser profiles so Leptos and Dioxus cfg/feature boundaries stay honest.
+      - name: Check Fly and Page Builder browser hosts on wasm32
         if: ${{ !cancelled() }}
         run: |
           rustup target add wasm32-unknown-unknown
           cargo check --target wasm32-unknown-unknown -p fly-web --features wasm-client
           cargo check --target wasm32-unknown-unknown -p fly-leptos --features wasm-client
+          cargo check --target wasm32-unknown-unknown -p rustok-page-builder-admin --no-default-features --features hydrate
+          cargo check --target wasm32-unknown-unknown -p rustok-page-builder-admin --no-default-features --features dioxus-web
 
       # The 1353-line browser asset shipped with no syntax gate at all. Note the spelling:
       # `node --check` on this path is a no-op, because the file is `.js` but uses `export`, so
@@ -338,6 +355,31 @@ jobs:
       - name: Verify capability denial response
         if: ${{ !cancelled() }}
         run: node scripts/verify/verify-fly-capability-denial-response.mjs
+
+  browser:
+    name: Fly browser contract scenarios (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/next-admin/package-lock.json
+      - name: Install Next Admin Playwright dependencies
+        run: npm ci
+        working-directory: apps/next-admin
+      - name: Install Chromium and system dependencies
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/next-admin
+      # These specs are self-contained browser contract harnesses; the blank-document helper
+      # intercepts the local origin, so the Next host server is deliberately not started.
+      - name: Run Fly browser scenarios
+        env:
+          PLAYWRIGHT_SKIP_WEBSERVER: "true"
+        run: npx playwright test "tests/e2e/fly-*.spec.ts" --workers=1
+        working-directory: apps/next-admin
 
   advisories:
     name: Dependency advisories (advisory only)

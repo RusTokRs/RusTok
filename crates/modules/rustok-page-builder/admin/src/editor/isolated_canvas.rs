@@ -1,18 +1,20 @@
-#[cfg(target_arch = "wasm32")]
+// Leptos-only iframe subscription. The Dioxus wasm host uses ui::dioxus_canvas;
+// keep this bridge behind the Leptos wasm-client feature instead of target_arch alone.
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 use crate::editor::decode_canvas_message;
 use crate::editor::{
     AdminEditorRuntime, CanvasResourceLimit, ResizeHandles, render_canvas_srcdoc_with_context,
 };
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 use crate::editor::{CanvasBridgeMessage, CanvasComponentGeometry, dispatch_shortcut};
 use fly_ui::{CanvasRect, ViewportState};
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 use fly_ui::{UiIntent, resolve_editor_shortcut};
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 use fly_web::BrowserPoint;
 use leptos::prelude::*;
 use rustok_ui_core::UiCspNonce;
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -44,7 +46,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
         let instance_id = instance_id.clone();
         move |_| format!("{}-frame", instance_id.get())
     });
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
     let geometry = RwSignal::new(BTreeMap::<String, CanvasComponentGeometry>::new());
     let geometry_limit = RwSignal::new(None::<CanvasResourceLimit>);
     let ready = RwSignal::new(false);
@@ -79,7 +81,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
         }
     });
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
     let bridge_subscription = StoredValue::new_local(None::<fly_leptos::IframeJsonSubscription>);
 
     let on_iframe_load = {
@@ -88,13 +90,13 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
         let expected_instance_id = instance_id.clone();
         move |_| {
             let iframe_id = iframe_id.get_untracked();
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
             let identity_runtime = runtime.clone();
             let expected_instance_id = expected_instance_id.get_untracked();
             ready.set(false);
             pointer.set(None);
             geometry_limit.set(None);
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
             {
                 geometry.set(BTreeMap::new());
                 runtime.dispatch(UiIntent::SetSelectedOverlay(None));
@@ -145,7 +147,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                     Err(error) => runtime.fail(error.to_string()),
                 }
             }
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
             {
                 let _ = (&iframe_id, &expected_instance_id, &runtime);
             }
@@ -277,7 +279,7 @@ fn OverlayLayer(runtime: AdminEditorRuntime, kind: OverlayKind) -> impl IntoView
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 fn handle_canvas_message(
     runtime: &AdminEditorRuntime,
     geometry: RwSignal<BTreeMap<String, CanvasComponentGeometry>>,
@@ -428,7 +430,7 @@ fn handle_canvas_message(
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 fn update_drag_candidates(
     runtime: &AdminEditorRuntime,
     geometry: RwSignal<BTreeMap<String, CanvasComponentGeometry>>,
@@ -447,7 +449,7 @@ fn update_drag_candidates(
     runtime.dispatch(UiIntent::UpdateHitTest(candidates));
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 fn synchronize_overlays(
     runtime: &AdminEditorRuntime,
     geometry: RwSignal<BTreeMap<String, CanvasComponentGeometry>>,
@@ -472,7 +474,7 @@ fn synchronize_overlays(
     runtime.dispatch(UiIntent::SetHoveredOverlay(hovered));
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 fn canvas_rect(rect: fly_web::BrowserRect) -> CanvasRect {
     CanvasRect {
         x: rect.left,

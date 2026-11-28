@@ -78,8 +78,11 @@ through the existing Pages transport facade.
 
 The iframe is sandboxed with `allow-scripts` and without `allow-same-origin`. A `srcdoc` iframe has
 an opaque `null` origin, so the parent validates both that origin and the exact `contentWindow`
-identity before decoding the feature protocol. Browser listener, observer, pointer-capture and
-postMessage lifecycle primitives live in `fly-leptos` and are compiled only for `wasm32`.
+identity before decoding the feature protocol. Leptos listener, observer, pointer-capture and
+postMessage lifecycle primitives live in `fly-leptos` and are compiled only for `wasm32` with the
+admin package's `wasm-client` feature. The Dioxus web host uses `fly-web` directly; the Leptos-only
+`IsolatedAuthoringCanvas` and `ResizeHandles` browser branches stay disabled in the Dioxus-only
+profile, so that host does not acquire Leptos hydration as an accidental feature dependency.
 The admin package's direct DOM bindings are owned by its `browser-js` feature;
 `csr` and `hydrate` enable that feature through `wasm-client`, while `ssr`
 keeps the native rendering path independent from browser APIs.

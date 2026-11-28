@@ -1576,3 +1576,9 @@ Fly runtime verifier alignment (2026-11-27, source-only): updated SSR-first, mul
 - Correct regression fixtures that asserted an action reference on the wrong opaque node, treated a whitespace-containing ARIA token as a single ID, expected component IDs in structural diagnostic paths, or acknowledged a save without starting a tracked save attempt.
 - Make iframe drag cancellation resilient to suppressed frame-boundary pointerleave events, and make adapter-stop abort tests wait for an actually started fetch instead of racing queued intent admission.
 - Align source guards with current runtime/locale/capability APIs. No passing Cargo, WASM, formatter, lint or browser result is claimed until the new workflow run completes.
+
+2026-11-28 Fly host-profile integration correction (source-only; verification pending):
+- Gate Leptos iframe subscription and pointer-capture resize code on the explicit `wasm-client` feature as well as `wasm32`. The shared Page Builder admin crate also compiles a Dioxus wasm host; its Dioxus canvas uses `fly-web` directly and must not pull Leptos browser exports into that profile.
+- Add wasm checks for the actual `rustok-page-builder-admin` Leptos `hydrate` and Dioxus `dioxus-web` profiles to `scripts/fly-check.sh` and Fly CI. The previous checks compiled only the standalone adapters, leaving host-module feature drift undetected.
+- Wire the existing Fly Playwright browser contract specs into Chromium CI and expose them as `scripts/fly-check.sh browser`. These specs exercise the classic adapter and synthetic hydration handoff harness; they do not mount a real Leptos or Dioxus host.
+- Real mounted Leptos SSR/hydration and Dioxus browser interactions, including palette drag/drop, resize/pointer capture, CSP and server acknowledgement flows, remain open until maintainer/CI evidence is available. No Cargo, WASM, formatting, lint or browser run is claimed from this connector-only session.

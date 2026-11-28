@@ -6,7 +6,8 @@
 # ---------------
 # `scripts/verify` holds over 1300 scripts and the workspace holds dozens of crates. Checking a
 # Fly change by running "the tests" means wading through output that has nothing to do with Fly.
-# This runs exactly the checks the Fly CI workflow runs, and nothing else.
+# This runs the focused non-E2E checks from Fly CI. The Playwright browser suite is a separate
+# `browser` mode so `all` stays scoped and does not start a long-running E2E suite.
 #
 # It also does not stop at the first failure. One run reports every problem, so a fix cycle is
 # one pass instead of one pass per defect.
@@ -14,6 +15,7 @@
 # Usage
 #   scripts/fly-check.sh            # everything (gates, tests, features, lint, format)
 #   scripts/fly-check.sh gates      # source guards and action runtime Node tests — no cargo
+#   scripts/fly-check.sh browser    # self-contained Fly Playwright scenarios in Chromium
 #   scripts/fly-check.sh test       # crate tests only
 #   scripts/fly-check.sh features   # non-default feature combinations, incl. wasm32
 #   scripts/fly-check.sh lint       # clippy (-D warnings) and rustfmt
@@ -113,6 +115,22 @@ run_gates() {
 }
 
 # --------------------------------------------------------------------------------------------
+# Browser contract scenarios. Explicit opt-in because this is a real browser/E2E suite.
+# --------------------------------------------------------------------------------------------
+run_browser() {
+  heading 'Fly browser scenarios (Playwright)'
+  if ! have node || ! have npm; then
+    skip 'Fly Playwright scenarios' 'node/npm not installed'
+    return
+  fi
+  if [[ ! -x apps/next-admin/node_modules/.bin/playwright ]]; then
+    skip 'Fly Playwright scenarios' 'run npm ci --prefix apps/next-admin'
+    return
+  fi
+  step 'Fly Playwright scenarios (Chromium)' env PLAYWRIGHT_SKIP_WEBSERVER=true npm --prefix apps/next-admin run test:e2e -- "tests/e2e/fly-*.spec.ts" --workers=1
+}
+
+# --------------------------------------------------------------------------------------------
 # Crate tests.
 # --------------------------------------------------------------------------------------------
 run_tests() {
@@ -141,6 +159,10 @@ run_features() {
     step 'wasm32 fly-web'    cargo check --target wasm32-unknown-unknown -p fly-web --features wasm-client
     step 'wasm32 fly-leptos' cargo check --target wasm32-unknown-unknown -p fly-leptos --features wasm-client
     step 'wasm32 fly-dioxus' cargo check --target wasm32-unknown-unknown -p fly-dioxus --features web
+    # Compile the actual consumer hosts as well as the standalone adapters; these profiles
+    # catch cfg/feature drift in Leptos and Dioxus integration modules.
+    step 'wasm32 Page Builder Leptos host' cargo check --target wasm32-unknown-unknown -p rustok-page-builder-admin --no-default-features --features hydrate
+    step 'wasm32 Page Builder Dioxus host' cargo check --target wasm32-unknown-unknown -p rustok-page-builder-admin --no-default-features --features dioxus-web
   else
     skip 'wasm32 targets' 'rustup target add wasm32-unknown-unknown'
   fi
@@ -188,6 +210,7 @@ needs_cargo() {
 
 case "$MODE" in
   gates)     run_gates ;;
+  browser)   run_browser ;;
   test)      needs_cargo 'crate tests' && run_tests ;;
   features)  needs_cargo 'feature combinations' && run_features ;;
   lint)      needs_cargo 'lint and format' && run_lint ;;
@@ -203,7 +226,7 @@ case "$MODE" in
     ;;
   *)
     printf 'unknown mode: %s\n' "$MODE" >&2
-    printf 'use one of: all gates test features lint consumers\n' >&2
+    printf 'use one of: all gates browser test features lint consumers\n' >&2
     exit 2
     ;;
 esac
@@ -227,6 +250,6 @@ for entry in "${FAILED[@]}"; do
   tail -n 40 "$log" | sed 's/^/    /'
 done
 
-printf '\n%sRe-run a single area with: scripts/fly-check.sh {gates|test|features|lint|consumers}%s\n' \
+printf '\n%sRe-run a single area with: scripts/fly-check.sh {gates|browser|test|features|lint|consumers}%s\n' \
   "$DIM" "$OFF"
 exit 1
