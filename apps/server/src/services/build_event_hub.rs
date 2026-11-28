@@ -1,25 +1,48 @@
 use std::sync::Arc;
 
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, OwnedSemaphorePermit, Semaphore};
 
-use crate::services::server_runtime_context::ServerRuntimeContext;
-use rustok_build::{BuildEvent, BuildEventPublisher};
+use crate::services::{
+    build_control::ServerBuildControl, server_runtime_context::ServerRuntimeContext,
+};
+use rustok_build::{BuildEvent, BuildEventPublisher, SharedBuildControl};
+
+const MAX_BUILD_PROGRESS_STREAMS_PER_PROCESS: usize = 64;
 
 #[derive(Clone)]
 pub struct SharedBuildEventHub(pub Arc<BuildEventHub>);
 
+/// Process-local wake-up fan-out for subscribers of the durable build-state
+/// cursor. The database-backed BuildControl port is the source of truth.
 pub struct BuildEventHub {
-    sender: broadcast::Sender<BuildEvent>,
+    sender: broadcast::Sender<()>,
+    control: SharedBuildControl,
+    stream_slots: Arc<Semaphore>,
 }
 
 impl BuildEventHub {
-    pub fn new(capacity: usize) -> Self {
+    pub fn new(control: SharedBuildControl, capacity: usize) -> Self {
         let (sender, _) = broadcast::channel(capacity);
-        Self { sender }
+        Self {
+            sender,
+            control,
+            stream_slots: Arc::new(Semaphore::new(
+                MAX_BUILD_PROGRESS_STREAMS_PER_PROCESS,
+            )),
+        }
     }
 
-    pub fn subscribe(&self) -> broadcast::Receiver<BuildEvent> {
+    pub fn subscribe(&self) -> broadcast::Receiver<()> {
         self.sender.subscribe()
+    }
+
+    pub fn control(&self) -> SharedBuildControl {
+        self.control.clone()
+    }
+
+    /// Bound per-process database polling from GraphQL and WebSocket streams.
+    pub fn try_acquire_stream(&self) -> Option<OwnedSemaphorePermit> {
+        self.stream_slots.clone().try_acquire_owned().ok()
     }
 
     #[cfg(test)]
@@ -27,17 +50,22 @@ impl BuildEventHub {
         self.sender.receiver_count()
     }
 
-    pub fn publish(&self, event: BuildEvent) {
-        // INVARIANT: In broadcast channels, SendError occurs only when there are no active subscribers.
-        if let Err(error) = self.sender.send(event) {
-            tracing::trace!(%error, "BuildEvent published with no active subscribers");
+    /// Notify local subscribers that durable build state may have changed.
+    /// Losing this hint is harmless: every subscriber also polls BuildControl.
+    pub fn publish(&self, _event: BuildEvent) {
+        if let Err(error) = self.sender.send(()) {
+            tracing::trace!(%error, "Build progress wake-up had no local subscribers");
         }
     }
 }
 
 pub fn build_event_hub_from_context(ctx: &ServerRuntimeContext) -> Arc<BuildEventHub> {
-    ctx.shared_get_or_insert_with(|| SharedBuildEventHub(Arc::new(BuildEventHub::new(128))))
-        .0
+    let control =
+        ctx.shared_get_or_insert_with(|| ServerBuildControl::shared(ctx.clone()));
+    ctx.shared_get_or_insert_with(|| {
+        SharedBuildEventHub(Arc::new(BuildEventHub::new(control, 128)))
+    })
+    .0
 }
 
 pub struct BuildEventHubPublisher {
@@ -105,5 +133,20 @@ mod tests {
             hubs.push(task.await.expect("initialization task"));
         }
         assert!(hubs.iter().all(|hub| Arc::ptr_eq(hub, &hubs[0])));
+    }
+
+    #[tokio::test]
+    async fn stream_slots_are_bounded_and_released_with_the_connection() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("test database");
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let hub = build_event_hub_from_context(&ctx);
+        let permits = (0..MAX_BUILD_PROGRESS_STREAMS_PER_PROCESS)
+            .map(|_| hub.try_acquire_stream().expect("available stream slot"))
+            .collect::<Vec<_>>();
+        assert!(hub.try_acquire_stream().is_none());
+        drop(permits);
+        assert!(hub.try_acquire_stream().is_some());
     }
 }
