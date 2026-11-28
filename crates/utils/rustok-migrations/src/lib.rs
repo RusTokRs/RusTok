@@ -84,6 +84,7 @@ mod composition {
     mod m20261128_000206_fence_outbox_delivery_history;
     mod m20261128_000207_fence_outbox_event_envelope;
     mod m20261128_000208_create_outbox_event_retention_policy;
+    mod m20261128_000209_fence_outbox_event_state;
 
     #[cfg(test)]
     mod contract_tests;
@@ -554,6 +555,7 @@ mod composition {
             m20261128_000206_fence_outbox_delivery_history::Migration,
             m20261128_000207_fence_outbox_event_envelope::Migration,
             m20261128_000208_create_outbox_event_retention_policy::Migration,
+            m20261128_000209_fence_outbox_event_state::Migration,
         ));
         all
     }

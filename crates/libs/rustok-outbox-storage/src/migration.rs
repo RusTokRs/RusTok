@@ -30,12 +30,14 @@ impl MigrationTrait for SysEventsMigration {
         create_outbox_delivery_checkpoints(manager).await?;
         create_outbox_delivery_history_integrity(manager).await?;
         create_outbox_event_envelope_integrity(manager).await?;
+        create_outbox_event_state_integrity(manager).await?;
         create_outbox_event_retention_policy(manager).await?;
         txn.commit().await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         drop_outbox_event_retention_policy(manager).await?;
+        drop_outbox_event_state_integrity(manager).await?;
         drop_outbox_event_envelope_integrity(manager).await?;
         drop_outbox_delivery_history_integrity(manager).await?;
         drop_outbox_delivery_checkpoints(manager).await?;
@@ -1746,33 +1748,67 @@ pub async fn create_outbox_event_envelope_integrity(manager: &SchemaManager<'_>)
             db.execute_unprepared("LOCK TABLE sys_event_consumers, sys_events IN SHARE ROW EXCLUSIVE MODE NOWAIT").await?;
             drop_outbox_event_envelope_integrity(manager).await?;
             db.execute_unprepared(POSTGRES_EVENT_ENVELOPE_GUARD).await?;
-            db.execute_unprepared(POSTGRES_EVENT_STATE_GUARD).await?;
             db.execute_unprepared("CREATE TRIGGER outbox_event_envelope_guard BEFORE UPDATE OR DELETE ON sys_events FOR EACH ROW EXECUTE FUNCTION outbox_guard_event_envelope()").await?;
-            db.execute_unprepared("CREATE TRIGGER outbox_event_state_guard BEFORE INSERT OR UPDATE ON sys_events FOR EACH ROW EXECUTE FUNCTION outbox_guard_event_state()").await?;
         }
         DbBackend::Sqlite => {
             db.execute_unprepared("UPDATE sys_events SET retry_count = retry_count WHERE 1 = 0").await?;
             drop_outbox_event_envelope_integrity(manager).await?;
             db.execute_unprepared(SQLITE_EVENT_ENVELOPE_GUARDS).await?;
-            db.execute_unprepared(SQLITE_EVENT_STATE_GUARDS).await?;
         }
         _ => return Err(DbErr::Migration("unsupported outbox envelope backend".into())),
     }
     txn.commit().await
 }
 
+/// Enforces the canonical pending -> claimed -> delivered/retry/DLQ state graph.
+pub async fn create_outbox_event_state_integrity(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let txn = manager.get_connection().begin().await?;
+    let nested = SchemaManager::new(&txn);
+    let manager = &nested;
+    let db = manager.get_connection();
+    match manager.get_database_backend() {
+        DbBackend::Postgres => {
+            // Event writers own the parent before reading or closing attempt
+            // history. Drain them without waiting in a reverse lock order.
+            db.execute_unprepared("LOCK TABLE sys_events IN SHARE ROW EXCLUSIVE MODE NOWAIT").await?;
+            drop_outbox_event_state_integrity(manager).await?;
+            db.execute_unprepared(POSTGRES_EVENT_STATE_GUARD).await?;
+            db.execute_unprepared("CREATE TRIGGER outbox_event_state_guard BEFORE INSERT OR UPDATE ON sys_events FOR EACH ROW EXECUTE FUNCTION outbox_guard_event_state()").await?;
+        }
+        DbBackend::Sqlite => {
+            db.execute_unprepared("UPDATE sys_events SET retry_count = retry_count WHERE 1 = 0").await?;
+            drop_outbox_event_state_integrity(manager).await?;
+            db.execute_unprepared(SQLITE_EVENT_STATE_GUARDS).await?;
+        }
+        _ => return Err(DbErr::Migration("unsupported outbox event state backend".into())),
+    }
+    txn.commit().await
+}
+
+async fn drop_outbox_event_state_integrity(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let statements: &[&str] = match manager.get_database_backend() {
+        DbBackend::Postgres => &[
+            "DROP TRIGGER IF EXISTS outbox_event_state_guard ON sys_events",
+            "DROP FUNCTION IF EXISTS outbox_guard_event_state()",
+        ],
+        DbBackend::Sqlite => &[
+            "DROP TRIGGER IF EXISTS outbox_event_state_insert_guard",
+            "DROP TRIGGER IF EXISTS outbox_event_state_update_guard",
+        ],
+        _ => return Err(DbErr::Migration("unsupported outbox event state backend".into())),
+    };
+    for sql in statements { manager.get_connection().execute_unprepared(sql).await?; }
+    Ok(())
+}
+
 async fn drop_outbox_event_envelope_integrity(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let statements: &[&str] = match manager.get_database_backend() {
         DbBackend::Postgres => &[
             "DROP TRIGGER IF EXISTS outbox_event_envelope_guard ON sys_events",
-            "DROP TRIGGER IF EXISTS outbox_event_state_guard ON sys_events",
-            "DROP FUNCTION IF EXISTS outbox_guard_event_envelope()",
-            "DROP FUNCTION IF EXISTS outbox_guard_event_state()",
+            "DROP FUNCTION IF EXISTS outbox_guard_event_envelope()"
         ],
         DbBackend::Sqlite => &[
             "DROP TRIGGER IF EXISTS outbox_event_insert_identity_guard",
-            "DROP TRIGGER IF EXISTS outbox_event_state_insert_guard",
-            "DROP TRIGGER IF EXISTS outbox_event_state_update_guard",
             "DROP TRIGGER IF EXISTS outbox_event_envelope_guard",
             "DROP TRIGGER IF EXISTS outbox_event_retention_guard",
             "DROP INDEX IF EXISTS uq_sys_events_uuid_identity",
