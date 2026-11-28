@@ -6,8 +6,9 @@ use chrono::Utc;
 use rustok_api::PortError;
 use rustok_core::generate_id;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbErr,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr,
     EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    sea_query::{LockBehavior, LockType},
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -193,6 +194,15 @@ pub async fn admit<T: Serialize>(
 
     match insert {
         Ok(_) => {
+            let mut expected = entity::Model {
+                id, tenant_id: scope.tenant_id(), scope_key: scope_key.clone(),
+                owner_slug: owner_slug.clone(), idempotency_key: idempotency_key.clone(),
+                operation: operation.clone(), request_hash: request_hash.clone(),
+                lease_token, status: STATUS_PROCESSING.to_string(),
+                response_json: None, error_json: None,
+                created_at: now, updated_at: now, completed_at: None,
+            };
+            verify_receipt_state(&txn, &expected).await?;
             // Stamp after a possible unique-index wait.
             let now = crate::database_now(&txn).await.map_err(database_error)?.fixed_offset();
             let updated = entity::Entity::update_many()
@@ -200,11 +210,15 @@ pub async fn admit<T: Serialize>(
                 .col_expr(entity::Column::UpdatedAt, sea_orm::sea_query::Expr::value(now))
                 .filter(entity::Column::Id.eq(id))
                 .filter(entity::Column::LeaseToken.eq(lease_token))
+                .filter(entity::Column::Status.eq(STATUS_PROCESSING))
                 .exec(&txn).await.map_err(database_error)?;
             if updated.rows_affected != 1 {
                 txn.rollback().await.map_err(database_error)?;
                 return Err(lease_lost());
             }
+            expected.created_at = now;
+            expected.updated_at = now;
+            verify_receipt_state(&txn, &expected).await?;
             txn.commit().await.map_err(database_error)?;
             Ok(Admission::Run(Lease { operation_id: id, token: lease_token }))
         }
@@ -248,19 +262,27 @@ async fn lock_receipt(
     lease: Lease,
     status: &str,
 ) -> Result<Option<(entity::Model, DateTime<FixedOffset>)>, PortError> {
-    let update = entity::Entity::update_many()
-        .col_expr(entity::Column::LeaseToken, sea_orm::sea_query::Expr::value(lease.token))
-        .filter(entity::Column::Id.eq(lease.operation_id))
+    let query = entity::Entity::find_by_id(lease.operation_id)
         .filter(entity::Column::LeaseToken.eq(lease.token))
-        .filter(entity::Column::Status.eq(status))
-        .exec(txn).await.map_err(database_error)?;
-    if update.rows_affected != 1 {
-        return Ok(None);
-    }
-    let row = entity::Entity::find_by_id(lease.operation_id)
-        .one(txn).await.map_err(database_error)?
-        .ok_or_else(lease_lost)?;
-    if row.lease_token != lease.token || row.status != status {
+        .filter(entity::Column::Status.eq(status));
+    // Do not UPDATE a receipt merely to lock it: even a no-op UPDATE can
+    // invoke triggers and mutate the supposedly authoritative snapshot.
+    let row = match txn.get_database_backend() {
+        DbBackend::Postgres => query.lock_with_behavior(LockType::Update, LockBehavior::Nowait)
+            .one(txn).await.map_err(database_error)?,
+        DbBackend::Sqlite => {
+            // A zero-row write reserves the SQLite writer without firing
+            // row-level triggers. Read the receipt only after that fence.
+            txn.execute_unprepared("UPDATE owner_operation_receipts SET lease_token = lease_token WHERE 1 = 0")
+                .await.map_err(database_error)?;
+            query.one(txn).await.map_err(database_error)?
+        }
+        _ => return Err(database_error(DbErr::Custom("unsupported receipt database backend".into()))),
+    };
+    let Some(row) = row else { return Ok(None); };
+    if row.lease_token != lease.token || row.status != status
+        || row.response_json.is_some() || row.error_json.is_some() || row.completed_at.is_some()
+    {
         return Err(lease_lost());
     }
     let now = crate::database_now(txn).await.map_err(database_error)?.fixed_offset();
@@ -316,7 +338,8 @@ pub async fn renew_lease(database: &DatabaseConnection, lease: Lease) -> Result<
     }
     crate::observe_database_clock(database).await.map_err(database_error)?;
     let txn = database.begin().await.map_err(database_error)?;
-    let Some(now) = live_processing_time(&txn, lease).await? else {
+    let Some((mut expected, now)) = lock_processing(&txn, lease).await?
+        .filter(|(row, now)| lease_is_live(row.updated_at, *now)) else {
         txn.rollback().await.map_err(database_error)?;
         return Err(lease_lost());
     };
@@ -332,6 +355,8 @@ pub async fn renew_lease(database: &DatabaseConnection, lease: Lease) -> Result<
         txn.rollback().await.map_err(database_error)?;
         return Err(lease_lost());
     }
+    expected.updated_at = now;
+    verify_receipt_state(&txn, &expected).await?;
     txn.commit().await.map_err(database_error)?;
     Ok(())
 }
@@ -352,7 +377,8 @@ where
         PortError::invariant_violation("outbox.operation_receipt_encode", error.to_string())
     })?;
     let txn = connection.begin().await.map_err(database_error)?;
-    let Some(now) = live_processing_time(&txn, lease).await? else {
+    let Some((mut expected, now)) = lock_processing(&txn, lease).await?
+        .filter(|(row, now)| lease_is_live(row.updated_at, *now)) else {
         txn.rollback().await.map_err(database_error)?;
         return Err(PortError::unavailable(
             "outbox.operation_receipt_state_invalid", "receipt is no longer live and owned by this worker",
@@ -365,7 +391,7 @@ where
         )
         .col_expr(
             entity::Column::ResponseJson,
-            sea_orm::sea_query::Expr::value(Some(response)),
+            sea_orm::sea_query::Expr::value(Some(response.clone())),
         )
         .col_expr(
             entity::Column::ErrorJson,
@@ -396,6 +422,15 @@ where
             "outbox.operation_receipt_state_invalid",
             "owner operation receipt was not processing during completion",
         ));
+    }
+    expected.status = STATUS_COMPLETED.to_string();
+    expected.response_json = Some(response);
+    expected.error_json = None;
+    expected.updated_at = now;
+    expected.completed_at = Some(now);
+    if let Err(error) = verify_receipt_state(&txn, &expected).await {
+        txn.rollback().await.map_err(database_error)?;
+        return Err(error);
     }
     txn.commit().await.map_err(database_error)?;
     Ok(())
@@ -428,7 +463,8 @@ where
         )
     })?;
     let txn = connection.begin().await.map_err(database_error)?;
-    let Some(now) = live_processing_time(&txn, lease).await? else {
+    let Some((mut expected, now)) = lock_processing(&txn, lease).await?
+        .filter(|(row, now)| lease_is_live(row.updated_at, *now)) else {
         txn.rollback().await.map_err(database_error)?;
         return Err(PortError::unavailable(
             "outbox.operation_receipt_state_invalid", "receipt is no longer live and owned by this worker",
@@ -441,7 +477,7 @@ where
         )
         .col_expr(
             entity::Column::ErrorJson,
-            sea_orm::sea_query::Expr::value(Some(error_json)),
+            sea_orm::sea_query::Expr::value(Some(error_json.clone())),
         )
         .col_expr(
             entity::Column::UpdatedAt,
@@ -467,6 +503,14 @@ where
             "outbox.operation_receipt_state_invalid",
             "owner operation receipt was not processing during failure finalization",
         ));
+    }
+    expected.status = STATUS_FAILED.to_string();
+    expected.error_json = Some(error_json);
+    expected.updated_at = now;
+    expected.completed_at = Some(now);
+    if let Err(error) = verify_receipt_state(&txn, &expected).await {
+        txn.rollback().await.map_err(database_error)?;
+        return Err(error);
     }
     txn.commit().await.map_err(database_error)?;
     Ok(())
@@ -1141,6 +1185,54 @@ mod tests {
         complete(&txn, reclaimed, &()).await.unwrap();
         txn.commit().await.unwrap();
         assert!(matches!(admit(&db, scope, "owner", "expired", "write", &request).await.unwrap(), Admission::Replay(_)));
+    }
+
+    #[tokio::test]
+    async fn rewritten_receipt_transitions_are_not_acknowledged() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        SysEventsMigration.up(&SchemaManager::new(&db)).await.unwrap();
+        let scope = OwnerOperationScope::Tenant(Uuid::new_v4());
+        let request = serde_json::json!({"request": true});
+        db.execute_unprepared(
+            "CREATE TRIGGER rewrite_receipt AFTER INSERT ON owner_operation_receipts
+             BEGIN UPDATE owner_operation_receipts SET request_hash = 'changed' WHERE id = NEW.id; END"
+        ).await.unwrap();
+        assert!(matches!(admit(&db, scope, "owner", "key", "write", &request).await,
+            Err(error) if error.retryable));
+        assert!(entity::Entity::find().all(&db).await.unwrap().is_empty());
+        db.execute_unprepared("DROP TRIGGER rewrite_receipt").await.unwrap();
+
+        let lease = match admit(&db, scope, "owner", "key", "write", &request).await.unwrap() {
+            Admission::Run(lease) => lease,
+            _ => panic!("fresh receipt must run"),
+        };
+        let before = entity::Entity::find_by_id(lease.operation_id).one(&db).await.unwrap().unwrap();
+        for (kind, trigger) in [
+            ("renew", "CREATE TRIGGER rewrite_receipt AFTER UPDATE OF updated_at ON owner_operation_receipts WHEN NEW.status = 'processing' BEGIN UPDATE owner_operation_receipts SET request_hash = 'changed' WHERE id = NEW.id; END"),
+            ("complete", "CREATE TRIGGER rewrite_receipt AFTER UPDATE OF status ON owner_operation_receipts WHEN NEW.status = 'completed' BEGIN UPDATE owner_operation_receipts SET response_json = '{}' WHERE id = NEW.id; END"),
+            ("fail", "CREATE TRIGGER rewrite_receipt AFTER UPDATE OF status ON owner_operation_receipts WHEN NEW.status = 'failed' BEGIN UPDATE owner_operation_receipts SET error_json = '{}' WHERE id = NEW.id; END"),
+        ] {
+            db.execute_unprepared(trigger).await.unwrap();
+            let result = match kind {
+                "renew" => renew_lease(&db, lease).await,
+                "complete" => {
+                    let txn = db.begin().await.unwrap();
+                    let result = complete(&txn, lease, &serde_json::json!({"ok": true})).await;
+                    // The nested receipt savepoint must itself be rolled back.
+                    assert_eq!(entity::Entity::find_by_id(lease.operation_id).one(&txn).await.unwrap(), Some(before.clone()));
+                    txn.rollback().await.unwrap();
+                    result
+                }
+                _ => fail(&db, lease, &PortError::validation("test.terminal", "terminal")).await,
+            };
+            let error = result.expect_err("rewritten transition cannot report success");
+            assert!(error.retryable);
+            assert_eq!(entity::Entity::find_by_id(lease.operation_id).one(&db).await.unwrap(), Some(before.clone()));
+            db.execute_unprepared("DROP TRIGGER rewrite_receipt").await.unwrap();
+        }
+        complete(&db, lease, &serde_json::json!({"ok": true})).await.unwrap();
+        assert!(matches!(admit(&db, scope, "owner", "key", "write", &request).await.unwrap(),
+            Admission::Replay(value) if value == serde_json::json!({"ok": true})));
     }
 
     #[tokio::test]

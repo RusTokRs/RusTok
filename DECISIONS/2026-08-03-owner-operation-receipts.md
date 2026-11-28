@@ -58,3 +58,19 @@ revision/CAS checks, owner change evidence, and atomic business writes.
 - [`rustok-media`](../crates/modules/rustok-media/README.md)
 - [`rustok-taxonomy`](../crates/modules/rustok-taxonomy/README.md)
 - [Translation control plane and owner-owned localized data](./2026-07-26-translation-control-plane-boundary.md)
+
+## Exact owner-operation receipt transitions (source only)
+
+Fresh admission verifies the inserted receipt before and after restamping its
+lease following possible unique-index contention. Renewal and terminal success
+or failure compare the full persisted model to the expected transition before
+commit, including request identity, token, timestamps and result/error payload.
+Terminal readback mismatch explicitly rolls back the nested receipt savepoint;
+callers must still roll back the entire business transaction on receipt error.
+PostgreSQL acquires the exact receipt row with FOR UPDATE NOWAIT; SQLite reserves
+the writer with a zero-row write. Neither lock path fires receipt row UPDATE
+triggers merely to acquire ownership. Contention is retryable. Nonterminal rows
+with terminal payloads or completion stamps fail closed. SQLite regression
+source models rewritten admission, renewal, success and failure; compilation
+and runtime execution remain pending. This is not yet a DB-level immutable
+receipt history or durable receipt retention policy.
