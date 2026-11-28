@@ -941,6 +941,17 @@ Standalone Storefront SSR composition, Next Storefront and mobile integration,
 stale client projections and all mounted runtime verification remain pending.
 See [the ADR](../../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
 
+## Credential diagnostic confidentiality
+
+Secret-bearing GraphQL credential inputs and bootstrap identity requests use
+explicit redacted `Debug` implementations, including identity fields on those
+inputs. OAuth browser authorization and consent request diagnostics omit raw
+redirect URIs, state, PKCE challenges and the CSRF confirmation proof. This
+applies to both normal and pretty Debug formatting; wire fields and credential
+validation are unchanged. Source regressions cover each affected DTO and remain
+unrun pending maintainer verification. This does not certify unrelated raw
+request-body logging or downstream transport diagnostics.
+
 ## GraphQL credential throttling
 
 The Auth-owned rate-limit extension charges each distinct root credential mutation

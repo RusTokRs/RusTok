@@ -32,12 +32,24 @@ fn normalize_bootstrap_email(email: &str) -> String {
 ///
 /// Role assignment is deliberately excluded: it belongs to the RBAC owner and
 /// is composed separately by the installer seed workflow.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct AuthUserBootstrapRequest {
     pub tenant_id: Uuid,
     pub email: String,
     pub name: String,
     pub password: String,
+}
+
+impl std::fmt::Debug for AuthUserBootstrapRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AuthUserBootstrapRequest")
+            .field("tenant_id", &self.tenant_id)
+            .field("email", &"<redacted>")
+            .field("name", &"<redacted>")
+            .field("password", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -238,6 +250,23 @@ mod tests {
     use super::ensure_supported_backend;
     use crate::AuthLifecycleMutationError;
     use sea_orm::DbBackend;
+
+    #[test]
+    fn bootstrap_request_debug_redacts_credentials() {
+        let request = super::AuthUserBootstrapRequest {
+            tenant_id: uuid::Uuid::new_v4(),
+            email: "bootstrap-email-sentinel@example.com".to_string(),
+            name: "bootstrap-name-sentinel".to_string(),
+            password: "bootstrap-password-sentinel".to_string(),
+        };
+        for formatted in [format!("{request:?}"), format!("{request:#?}")] {
+            assert!(formatted.contains("<redacted>"));
+            assert!(formatted.contains(request.tenant_id.to_string().as_str()));
+            assert!(!formatted.contains(request.email.as_str()));
+            assert!(!formatted.contains(request.name.as_str()));
+            assert!(!formatted.contains(request.password.as_str()));
+        }
+    }
 
     #[test]
     fn bootstrap_email_lookup_is_case_normalized() {

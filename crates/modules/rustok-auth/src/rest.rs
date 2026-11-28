@@ -245,7 +245,7 @@ impl std::fmt::Debug for TokenRequest {
 }
 
 /// OAuth2 Authorization Request.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema)]
 pub struct AuthorizeRequest {
     pub response_type: String,
     pub client_id: String,
@@ -256,8 +256,23 @@ pub struct AuthorizeRequest {
     pub code_challenge_method: Option<String>,
 }
 
+impl std::fmt::Debug for AuthorizeRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AuthorizeRequest")
+            .field("response_type", &self.response_type)
+            .field("client_id", &self.client_id)
+            .field("redirect_uri", &"<redacted>")
+            .field("scope", &self.scope)
+            .field("state", &self.state.as_ref().map(|_| "<redacted>"))
+            .field("code_challenge", &"<redacted>")
+            .field("code_challenge_method", &self.code_challenge_method)
+            .finish()
+    }
+}
+
 /// Browser OAuth2 Authorization Request.
-#[derive(Debug, Deserialize, Clone, ToSchema)]
+#[derive(Deserialize, Clone, ToSchema)]
 pub struct BrowserAuthorizeRequest {
     pub response_type: String,
     pub client_id: String,
@@ -268,8 +283,23 @@ pub struct BrowserAuthorizeRequest {
     pub code_challenge_method: Option<String>,
 }
 
+impl std::fmt::Debug for BrowserAuthorizeRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("BrowserAuthorizeRequest")
+            .field("response_type", &self.response_type)
+            .field("client_id", &self.client_id)
+            .field("redirect_uri", &"<redacted>")
+            .field("scope", &self.scope)
+            .field("state", &self.state.as_ref().map(|_| "<redacted>"))
+            .field("code_challenge", &"<redacted>")
+            .field("code_challenge_method", &self.code_challenge_method)
+            .finish()
+    }
+}
+
 /// Server-hosted consent form submission.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema)]
 pub struct ConsentRequest {
     pub action: String,
     pub client_id: String,
@@ -282,6 +312,22 @@ pub struct ConsentRequest {
     /// the signed-in user and the exact authorization parameters.
     /// Submissions without a valid token are rejected.
     pub consent_csrf: Option<String>,
+}
+
+impl std::fmt::Debug for ConsentRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ConsentRequest")
+            .field("action", &self.action)
+            .field("client_id", &self.client_id)
+            .field("redirect_uri", &"<redacted>")
+            .field("scope", &self.scope)
+            .field("state", &self.state.as_ref().map(|_| "<redacted>"))
+            .field("code_challenge", &"<redacted>")
+            .field("code_challenge_method", &self.code_challenge_method)
+            .field("consent_csrf", &self.consent_csrf.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -383,6 +429,76 @@ mod tests {
         assert!(!auth_dbg.contains("super-secret-refresh-token"));
         assert!(auth_dbg.contains("<redacted>"));
         assert!(auth_dbg.contains("admin@example.com"));
+    }
+
+    #[test]
+    fn oauth_browser_request_debug_redacts_confirmation_evidence() {
+        let request = AuthorizeRequest {
+            response_type: "code".to_string(),
+            client_id: "public-client-id".to_string(),
+            redirect_uri: "https://example.com/callback?private=redirect-sentinel".to_string(),
+            scope: Some("openid".to_string()),
+            state: Some("state-sentinel".to_string()),
+            code_challenge: "challenge-sentinel".to_string(),
+            code_challenge_method: Some("S256".to_string()),
+        };
+        for formatted in [format!("{request:?}"), format!("{request:#?}")] {
+            assert!(formatted.contains("public-client-id"));
+            assert!(formatted.contains("<redacted>"));
+            for secret in [
+                "redirect-sentinel",
+                "state-sentinel",
+                "challenge-sentinel",
+                "csrf-sentinel",
+            ] {
+                assert!(!formatted.contains(secret), "OAuth evidence exposed in Debug");
+            }
+        }
+
+        let request = BrowserAuthorizeRequest {
+            response_type: "code".to_string(),
+            client_id: "public-client-id".to_string(),
+            redirect_uri: "https://example.com/callback?private=redirect-sentinel".to_string(),
+            scope: Some("openid".to_string()),
+            state: Some("state-sentinel".to_string()),
+            code_challenge: "challenge-sentinel".to_string(),
+            code_challenge_method: Some("S256".to_string()),
+        };
+        for formatted in [format!("{request:?}"), format!("{request:#?}")] {
+            assert!(formatted.contains("public-client-id"));
+            assert!(formatted.contains("<redacted>"));
+            for secret in [
+                "redirect-sentinel",
+                "state-sentinel",
+                "challenge-sentinel",
+                "csrf-sentinel",
+            ] {
+                assert!(!formatted.contains(secret), "OAuth evidence exposed in Debug");
+            }
+        }
+
+        let request = ConsentRequest {
+            action: "code".to_string(),
+            client_id: "public-client-id".to_string(),
+            redirect_uri: "https://example.com/callback?private=redirect-sentinel".to_string(),
+            scope: Some("openid".to_string()),
+            state: Some("state-sentinel".to_string()),
+            code_challenge: "challenge-sentinel".to_string(),
+            code_challenge_method: Some("S256".to_string()),
+            consent_csrf: Some("csrf-sentinel".to_string()),
+        };
+        for formatted in [format!("{request:?}"), format!("{request:#?}")] {
+            assert!(formatted.contains("public-client-id"));
+            assert!(formatted.contains("<redacted>"));
+            for secret in [
+                "redirect-sentinel",
+                "state-sentinel",
+                "challenge-sentinel",
+                "csrf-sentinel",
+            ] {
+                assert!(!formatted.contains(secret), "OAuth evidence exposed in Debug");
+            }
+        }
     }
 
     #[test]
