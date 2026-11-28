@@ -44,7 +44,7 @@ jobs:
           rm -rf "$CARGO_HOME/advisory-dbs" || true
           rm -rf "$CARGO_HOME"/advisory-db-empty-* || true
         shell: bash
-      - uses: EmbarkStudios/cargo-deny-action@70f81531115945ba6eb6b941ec9d39d063438eb9
+      - uses: EmbarkStudios/cargo-deny-action@81891abc19297b21343b15ef67dc61e4aea74fda
         with:
           command: check
           arguments: --all-features
