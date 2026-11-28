@@ -872,3 +872,13 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   phases. PostgreSQL issuance UUID/digest gates cover update/delete as well
   as birth. Added contention and mismatched receipt/ledger horizon regression
   sources; unrun. Pending migration amended in place per AGENTS.md §7.
+
+- Auth physical parent cascade fence: PostgreSQL BEFORE DELETE on users,
+  OAuth apps and sessions reserves exact Auth-child relation/row locks with
+  NOWAIT, including nested session history. Active child RLS fails closed.
+  Existing FK actions and witnesses remain authoritative; unrelated rows and
+  service credentials survive user deletion. Source regression covers busy
+  child rows/tables, rollback, retry, SET NULL and deferred family cascade;
+  compilation and migration/runtime checks unrun. Tenant-wide and non-Auth
+  cascades (including RBAC), outer parent lock admission and event coupling
+  remain open. No readiness promotion.

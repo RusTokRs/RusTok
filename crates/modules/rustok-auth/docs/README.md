@@ -1300,3 +1300,19 @@ covers rollback and isolation; compilation/runtime verification is pending.
 ### Invite terminal authority
 
 Migration `m20261128_000002_preserve_invite_terminal_authority` retains permanent, globally scoped issuance and consumption SHA-256 digest witnesses, without account, tenant, email or plaintext token fields. Backfill retains existing evidence; new births and their witnesses commit or roll back together. The issuance binding, identity, expiry and receipt claims are immutable; revocation is terminal, issuer nulling requires actual parent deletion, and receipt user linkage keeps its existing FK audit semantics. SQLite rejects implicit replacement (including hidden rowid). PostgreSQL uses the existing nonwaiting digest fence and guards TRUNCATE. Prune the ledger first and only then its receipt, after the existing 30-day horizon. Tenant deletion can cascade metadata but not witnesses. A DB-time lower bound on direct DELETE is defense in depth, not a replacement for the corroborated owner retention clock. Privileged DDL, restore and pre-cutover pruned evidence remain outside this guarantee. Source regressions unrun.
+
+### Auth parent deletion fences
+
+Migration `m20261128_000003_fence_auth_parent_cascades` reserves child relation write modes and locks exact
+referencing rows in stable identity order before PostgreSQL user, OAuth
+application and session DELETE. The existing child-to-parent fences prevent
+new references while the parent DELETE owns its row. A nested session cascade
+also fences refresh history; invitation links still use SET NULL and OAuth
+lineages retain their existing deferred family FK. An active child RLS policy
+fails closed rather than assuming the visible subset covers the FK action.
+Contention aborts the transaction with 55P03; retry at the owning transaction
+boundary only. SQLite keeps its serialized writer. The trigger is a locking
+guard, not a new lifecycle writer: it does not emit events or alter deletion
+semantics. Tenant-wide cascades, RBAC and other owners' children, parent row
+acquisition, privileged TRUNCATE and full cross-owner lock order are not
+certified. PostgreSQL concurrency regression source added, unrun.

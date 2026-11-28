@@ -467,3 +467,10 @@ Invite terminal authority uses permanent issuance and consumption digest
 witnesses; ordinary DML cannot reset revocation or rebind issued grants.
 Metadata retains its 30-day cleanup policy (ledger before receipt), while
 digest witnesses survive account/tenant removal. See the Auth owner docs.
+
+PostgreSQL physical deletion of a user, OAuth app or session now prelocks
+its Auth-owned FK children with NOWAIT before the referential actions. The
+scope includes session history, invitation audit links, pending mailbox
+changes and OAuth credentials/translations; it does not change soft account
+deletion or OAuth revocation. SQLite retains its serialized writer. Runtime
+checks and tenant-wide/other-owner cascades remain open.
