@@ -15,6 +15,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 const STATUS_PROCESSING: &str = "processing";
+const STATUS_RELEASED: &str = "released";
 const STATUS_COMPLETED: &str = "completed";
 const STATUS_FAILED: &str = "failed";
 const MAX_IDENTITY_LENGTH: usize = 191;
@@ -239,11 +240,19 @@ async fn lock_processing(
     txn: &DatabaseTransaction,
     lease: Lease,
 ) -> Result<Option<(entity::Model, DateTime<FixedOffset>)>, PortError> {
+    lock_receipt(txn, lease, STATUS_PROCESSING).await
+}
+
+async fn lock_receipt(
+    txn: &DatabaseTransaction,
+    lease: Lease,
+    status: &str,
+) -> Result<Option<(entity::Model, DateTime<FixedOffset>)>, PortError> {
     let update = entity::Entity::update_many()
         .col_expr(entity::Column::LeaseToken, sea_orm::sea_query::Expr::value(lease.token))
         .filter(entity::Column::Id.eq(lease.operation_id))
         .filter(entity::Column::LeaseToken.eq(lease.token))
-        .filter(entity::Column::Status.eq(STATUS_PROCESSING))
+        .filter(entity::Column::Status.eq(status))
         .exec(txn).await.map_err(database_error)?;
     if update.rows_affected != 1 {
         return Ok(None);
@@ -251,6 +260,9 @@ async fn lock_processing(
     let row = entity::Entity::find_by_id(lease.operation_id)
         .one(txn).await.map_err(database_error)?
         .ok_or_else(lease_lost)?;
+    if row.lease_token != lease.token || row.status != status {
+        return Err(lease_lost());
+    }
     let now = crate::database_now(txn).await.map_err(database_error)?.fixed_offset();
     Ok(Some((row, now)))
 }
@@ -467,7 +479,9 @@ where
 ///
 /// The lease token and processing state guard are essential. If an uncertain
 /// transaction actually committed, its receipt is already completed and cannot
-/// be deleted. If another worker reclaimed the lease, we cannot release it.
+/// be released. Preserve the receipt identity and request fingerprint, revoke the
+/// old token, and allow immediate exact-request re-admission. If another worker
+/// reclaimed the lease, we cannot release it.
 /// Call only after the command transaction has been rolled back or commit has
 /// returned, never while a write transaction is still live.
 pub async fn release_retryable<C>(
@@ -491,26 +505,35 @@ where
         ));
     }
     let txn = connection.begin().await.map_err(database_error)?;
-    let Some(_now) = live_processing_time(&txn, lease).await? else {
+    let Some((mut expected, now)) = lock_processing(&txn, lease).await?
+        .filter(|(row, now)| lease_is_live(row.updated_at, *now)) else {
         txn.rollback().await.map_err(database_error)?;
         return Err(PortError::unavailable(
             "outbox.operation_receipt_release_uncertain", "receipt is no longer live and owned by this worker",
         ));
     };
-    let removed = entity::Entity::delete_many()
+    let token = generate_id();
+    let released = entity::Entity::update_many()
+        .col_expr(entity::Column::Status, sea_orm::sea_query::Expr::value(STATUS_RELEASED))
+        .col_expr(entity::Column::LeaseToken, sea_orm::sea_query::Expr::value(token))
+        .col_expr(entity::Column::UpdatedAt, sea_orm::sea_query::Expr::value(now))
         .filter(entity::Column::Id.eq(lease.operation_id))
         .filter(entity::Column::LeaseToken.eq(lease.token))
         .filter(entity::Column::Status.eq(STATUS_PROCESSING))
         .exec(&txn)
         .await
         .map_err(database_error)?;
-    if removed.rows_affected != 1 {
+    if released.rows_affected != 1 {
         txn.rollback().await.map_err(database_error)?;
         return Err(PortError::unavailable(
             "outbox.operation_receipt_release_uncertain",
             "receipt was completed or reclaimed before retryable release",
         ));
     }
+    expected.status = STATUS_RELEASED.to_string();
+    expected.lease_token = token;
+    expected.updated_at = now;
+    verify_receipt_state(&txn, &expected).await?;
     txn.commit().await.map_err(database_error)?;
     Ok(())
 }
@@ -522,8 +545,8 @@ where
 /// Receipts are the replay memory of the idempotency primitive: pruning one
 /// means a later retry with the same key admits and runs the operation
 /// again, so the window is an operator policy, not a correctness
-/// requirement. Processing receipts are never touched — they may still
-/// finish, fail, or be reclaimed through the normal lease path.
+/// requirement. Processing and released receipts are never touched — they
+/// still bind a request and may be completed or re-admitted.
 pub async fn prune_terminal_receipts(
     database: &DatabaseConnection,
     older_than: Duration,
@@ -613,12 +636,12 @@ async fn inspect_or_reclaim(
                     )
                 })
         }
-        STATUS_PROCESSING => {
+        STATUS_PROCESSING | STATUS_RELEASED => {
             let stale_before = crate::observe_database_clock(database)
                 .await.map_err(database_error)?.fixed_offset()
                 .checked_sub_signed(Duration::minutes(PROCESSING_LEASE_MINUTES))
                 .ok_or_else(|| database_error(DbErr::Custom("receipt lease cutoff is out of range".to_string())))?;
-            if existing.updated_at > stale_before {
+            if existing.status == STATUS_PROCESSING && existing.updated_at > stale_before {
                 return Err(PortError::unavailable(
                     "outbox.operation_receipt_in_progress",
                     "the owner operation for this idempotency key is still processing",
@@ -627,13 +650,16 @@ async fn inspect_or_reclaim(
 
             let txn = database.begin().await.map_err(database_error)?;
             let previous = Lease { operation_id: existing.id, token: existing.lease_token };
-            let Some((locked, now)) = lock_processing(&txn, previous).await? else {
+            let Some((locked, now)) = lock_receipt(&txn, previous, existing.status.as_str()).await? else {
                 txn.rollback().await.map_err(database_error)?;
                 return Err(lease_lost());
             };
-            if locked.updated_at != existing.updated_at
+            if locked != existing
                 || locked.updated_at > now
-                || lease_is_live(locked.updated_at, now)
+                || locked.response_json.is_some()
+                || locked.error_json.is_some()
+                || locked.completed_at.is_some()
+                || (locked.status == STATUS_PROCESSING && lease_is_live(locked.updated_at, now))
             {
                 txn.rollback().await.map_err(database_error)?;
                 return Err(PortError::unavailable(
@@ -643,6 +669,7 @@ async fn inspect_or_reclaim(
             }
             let lease_token = generate_id();
             let claim = entity::Entity::update_many()
+                .col_expr(entity::Column::Status, sea_orm::sea_query::Expr::value(STATUS_PROCESSING))
                 .col_expr(
                     entity::Column::LeaseToken,
                     sea_orm::sea_query::Expr::value(lease_token),
@@ -652,13 +679,18 @@ async fn inspect_or_reclaim(
                     sea_orm::sea_query::Expr::value(now),
                 )
                 .filter(entity::Column::Id.eq(existing.id))
-                .filter(entity::Column::Status.eq(STATUS_PROCESSING))
+                .filter(entity::Column::Status.eq(existing.status.as_str()))
                 .filter(entity::Column::UpdatedAt.eq(existing.updated_at))
                 .filter(entity::Column::LeaseToken.eq(existing.lease_token))
                 .exec(&txn)
                 .await
                 .map_err(database_error)?;
             if claim.rows_affected == 1 {
+                let mut expected = locked;
+                expected.status = STATUS_PROCESSING.to_string();
+                expected.lease_token = lease_token;
+                expected.updated_at = now;
+                verify_receipt_state(&txn, &expected).await?;
                 txn.commit().await.map_err(database_error)?;
                 Ok(Admission::Run(Lease {
                     operation_id: existing.id,
@@ -677,6 +709,21 @@ async fn inspect_or_reclaim(
             "owner operation receipt has an unknown state",
         )),
     }
+}
+
+async fn verify_receipt_state(
+    txn: &DatabaseTransaction,
+    expected: &entity::Model,
+) -> Result<(), PortError> {
+    let saved = entity::Entity::find_by_id(expected.id)
+        .one(txn).await.map_err(database_error)?;
+    if saved.as_ref() != Some(expected) {
+        return Err(PortError::unavailable(
+            "outbox.operation_receipt_state_invalid",
+            "owner operation receipt transition readback mismatch",
+        ));
+    }
+    Ok(())
 }
 
 async fn find(
@@ -1234,7 +1281,26 @@ mod tests {
             &PortError::unavailable("comments.database", "retryable"),
         )
         .await
-        .expect("temporary failure releases the receipt");
+        .expect("temporary failure releases the lease");
+
+        let released = entity::Entity::find_by_id(first.operation_id)
+            .one(&database).await.unwrap().unwrap();
+        assert_eq!(released.status, STATUS_RELEASED);
+        assert_eq!(released.request_hash, stored.request_hash);
+        assert_ne!(released.lease_token, first.token);
+        assert!(released.completed_at.is_none());
+        assert!(renew_lease(&database, first).await.is_err());
+        assert!(complete(&database, first, &serde_json::json!({"stale": true})).await.is_err());
+        assert!(release_retryable(&database, first, &retryable).await.is_err());
+        let conflict = match admit(
+            &database, OwnerOperationScope::Tenant(tenant), "comments",
+            "stable-command", "create_comment", &serde_json::json!({"different": true}),
+        ).await {
+            Err(error) => error,
+            Ok(_) => panic!("released request fingerprint must remain reserved"),
+        };
+        assert_eq!(conflict.code, "outbox.operation_receipt_conflict");
+        assert_eq!(prune_terminal_receipts(&database, Duration::milliseconds(1), 10).await.unwrap(), 0);
 
         let second = match admit(
             &database,
@@ -1250,6 +1316,10 @@ mod tests {
             Admission::Run(lease) => lease,
             _ => panic!("released command must run again"),
         };
+        assert_eq!(second.operation_id, first.operation_id);
+        assert_ne!(second.token, first.token);
+        assert_ne!(second.token, released.lease_token);
+        assert!(complete(&database, first, &serde_json::json!({"stale": true})).await.is_err());
         complete(&database, second, &serde_json::json!({"comment": "ok"}))
             .await
             .expect("commit receipt");

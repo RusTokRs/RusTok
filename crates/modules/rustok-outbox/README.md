@@ -19,10 +19,10 @@ use the storage library with its own database and compose delivery separately.
   admission/replay primitive; owner services retain their domain mutations and
   semantic side effects. The owner may persist terminal failures with `fail`.
   For retryable failures it may retain the processing receipt and fingerprint,
-  or use `release_retryable` only when deleting that fingerprint is safe after
-  rollback (or a commit error). Release requires both a matching lease token and
-  `processing` status, so it cannot delete a completed receipt or a reclaimed
-  operation. Owners coordinating another aggregate may use `lock_current` at
+  or use `release_retryable` after rollback (or a commit error). Release revokes
+  the live lease without deleting the fingerprint, permitting only an exact
+  request to re-admit the operation. Completed or reclaimed receipts cannot
+  be released. Owners coordinating another aggregate may use `lock_current` at
   the start of their owner transaction before acquiring aggregate locks; this
   verifies the receipt token and holds its row lock, but does not renew the
   lease or fence external side effects. An operation that may run longer
@@ -485,3 +485,20 @@ reporting success or silently losing retry state. No broker I/O is added to
 these transactions; ambiguous broker effects still require recovery.
 SQLite regression sources exercise rewritten event and attempt ACK outcomes
 independently of the history guard; compilation and execution remain pending.
+
+## Durable retryable receipt release (source only)
+
+A retryable release changes `processing` to `released` under the exact live
+lease, rotates its token and retains the original operation UUID and request
+fingerprint. Only the identical request can immediately re-admit a released
+receipt; a different operation or payload conflicts. Re-admission locks the
+prior state and token, compares the stored snapshot, rotates the token again
+and verifies the resulting row before commit. Release verifies its readback
+as well. Released receipts are not terminal and are excluded from retention;
+abandoned keys therefore remain reserved until the exact command completes
+or an explicitly reviewed recovery is performed. This changes no schema
+columns; the status is stored in the existing string column. Stop/drain old
+receipt writers before rollout: older versions delete on release and do not
+recognize `released`. Previously deleted fingerprints cannot be reconstructed.
+SQLite source regression is extended; compilation and PostgreSQL concurrent
+admission evidence remain pending.

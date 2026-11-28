@@ -288,3 +288,20 @@ row without any open attempt in one read snapshot. A contradictory external
 status-only update cannot report successful ACK or permit retention while
 unresolved evidence exists. A SQLite source regression covers this anomaly
 and explicit closure/retention; execution remains pending.
+
+## Durable retryable receipt release (source only)
+
+A retryable release changes `processing` to `released` under the exact live
+lease, rotates its token and retains the original operation UUID and request
+fingerprint. Only the identical request can immediately re-admit a released
+receipt; a different operation or payload conflicts. Re-admission locks the
+prior state and token, compares the stored snapshot, rotates the token again
+and verifies the resulting row before commit. Release verifies its readback
+as well. Released receipts are not terminal and are excluded from retention;
+abandoned keys therefore remain reserved until the exact command completes
+or an explicitly reviewed recovery is performed. This changes no schema
+columns; the status is stored in the existing string column. Stop/drain old
+receipt writers before rollout: older versions delete on release and do not
+recognize `released`. Previously deleted fingerprints cannot be reconstructed.
+SQLite source regression is extended; compilation and PostgreSQL concurrent
+admission evidence remain pending.
