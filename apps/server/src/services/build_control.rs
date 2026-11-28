@@ -9,12 +9,14 @@ use rustok_build::{
 
 #[derive(Clone)]
 pub struct ServerBuildControl {
-    runtime: ServerRuntimeContext,
+    db: sea_orm::DatabaseConnection,
 }
 
 impl ServerBuildControl {
     pub fn new(runtime: ServerRuntimeContext) -> Self {
-        Self { runtime }
+        Self {
+            db: runtime.db_clone(),
+        }
     }
 
     pub fn shared(runtime: ServerRuntimeContext) -> SharedBuildControl {
@@ -22,8 +24,14 @@ impl ServerBuildControl {
     }
 
     fn read_service(&self) -> BuildService {
-        BuildService::new(self.runtime.db_clone())
+        BuildService::new(self.db.clone())
     }
+}
+
+/// Retrieve the shared read-only build control port, installing the server
+/// adapter once when a runtime context is assembled outside normal bootstrap.
+pub fn build_control_from_context(ctx: &ServerRuntimeContext) -> SharedBuildControl {
+    ctx.shared_get_or_insert_with(|| ServerBuildControl::shared(ctx.clone()))
 }
 
 #[async_trait]
