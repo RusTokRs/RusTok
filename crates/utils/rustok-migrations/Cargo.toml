@@ -93,6 +93,7 @@ percent-encoding.workspace = true
 async-trait.workspace = true
 # Platform-core dependencies
 rustok-core.workspace = true
+rustok-build.workspace = true
 rustok-modules = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }
 # Module crates — each owns its own migration files
