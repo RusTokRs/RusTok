@@ -319,6 +319,16 @@ mod tests {
         db.execute_raw(backend.build(&schema.create_table_from_entity(build::Entity)))
             .await
             .expect("create builds table");
+        db.execute_unprepared(
+            "CREATE TABLE build_event_clock (id INTEGER PRIMARY KEY CHECK (id = 1), sequence INTEGER NOT NULL CHECK (typeof(sequence) = 'integer' AND sequence >= 0))",
+        )
+        .await
+        .expect("create build progress clock");
+        db.execute_unprepared(
+            "INSERT INTO build_event_clock (id, sequence) VALUES (1, 0)",
+        )
+        .await
+        .expect("initialize build progress clock");
         db
     }
 
