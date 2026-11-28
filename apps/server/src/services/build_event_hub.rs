@@ -5,7 +5,7 @@ use tokio::sync::{broadcast, OwnedSemaphorePermit, Semaphore};
 use crate::services::{
     build_control::ServerBuildControl, server_runtime_context::ServerRuntimeContext,
 };
-use rustok_build::{BuildEvent, BuildEventPublisher, SharedBuildControl};
+use rustok_build::{BuildEvent, BuildEventPublisher};
 
 const MAX_BUILD_PROGRESS_STREAMS_PER_PROCESS: usize = 64;
 
@@ -16,16 +16,14 @@ pub struct SharedBuildEventHub(pub Arc<BuildEventHub>);
 /// cursor. The database-backed BuildControl port is the source of truth.
 pub struct BuildEventHub {
     sender: broadcast::Sender<()>,
-    control: SharedBuildControl,
     stream_slots: Arc<Semaphore>,
 }
 
 impl BuildEventHub {
-    pub fn new(control: SharedBuildControl, capacity: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         let (sender, _) = broadcast::channel(capacity);
         Self {
             sender,
-            control,
             stream_slots: Arc::new(Semaphore::new(
                 MAX_BUILD_PROGRESS_STREAMS_PER_PROCESS,
             )),
@@ -34,10 +32,6 @@ impl BuildEventHub {
 
     pub fn subscribe(&self) -> broadcast::Receiver<()> {
         self.sender.subscribe()
-    }
-
-    pub fn control(&self) -> SharedBuildControl {
-        self.control.clone()
     }
 
     /// Bound per-process database polling from GraphQL and WebSocket streams.
@@ -60,12 +54,11 @@ impl BuildEventHub {
 }
 
 pub fn build_event_hub_from_context(ctx: &ServerRuntimeContext) -> Arc<BuildEventHub> {
-    let control =
-        ctx.shared_get_or_insert_with(|| ServerBuildControl::shared(ctx.clone()));
-    ctx.shared_get_or_insert_with(|| {
-        SharedBuildEventHub(Arc::new(BuildEventHub::new(control, 128)))
-    })
-    .0
+    // Ensure the read-only port is available to both GraphQL and WebSocket
+    // adapters without making the wake-up hub own the runtime context.
+    let _ = build_control_from_context(ctx);
+    ctx.shared_get_or_insert_with(|| SharedBuildEventHub(Arc::new(BuildEventHub::new(128))))
+        .0
 }
 
 pub struct BuildEventHubPublisher {
