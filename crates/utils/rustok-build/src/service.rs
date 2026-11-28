@@ -721,7 +721,10 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{compute_build_request_hash, validate_history_page};
-    use crate::{BuildExecutionPlan, BuildRequest, BuildRuntimeMode, DeploymentProfile};
+    use crate::{
+        BuildExecutionPlan, BuildRequest, BuildRuntimeMode, BuildService, BuildStage, BuildStatus,
+        DeploymentProfile,
+    };
 
     #[test]
     fn build_request_hash_changes_for_each_runtime_mode() {
@@ -836,6 +839,211 @@ mod tests {
         assert_eq!(
             snapshot.build_target.as_deref(),
             Some("x86_64-unknown-linux-gnu")
+        );
+    }
+
+    async fn setup_progress_db() -> sea_orm::DatabaseConnection {
+        use sea_orm::{ConnectionTrait, Database, Schema};
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database");
+        let backend = db.get_database_backend();
+        let schema = Schema::new(backend);
+        db.execute_raw(backend.build(&schema.create_table_from_entity(crate::build::Entity)))
+            .await
+            .expect("create builds table");
+        db.execute_unprepared(
+            "CREATE TABLE build_event_clock (id INTEGER PRIMARY KEY CHECK (id = 1), sequence INTEGER NOT NULL CHECK (typeof(sequence) = 'integer' AND sequence >= 0))",
+        )
+        .await
+        .expect("create progress clock");
+        db.execute_unprepared(
+            "INSERT INTO build_event_clock (id, sequence) VALUES (1, 0)",
+        )
+        .await
+        .expect("initialize progress clock");
+        db
+    }
+
+    fn progress_test_request() -> BuildRequest {
+        use std::collections::HashMap;
+
+        BuildRequest {
+            manifest_ref: "platform_state:progress-test".to_string(),
+            manifest_revision: 1,
+            manifest_snapshot: serde_json::json!({"modules": {}}),
+            artifact_identity: "progress-test-artifact".to_string(),
+            requested_by: "operator".to_string(),
+            reason: Some("progress sequence test".to_string()),
+            modules_delta: "test".to_string(),
+            modules: HashMap::new(),
+            profile: DeploymentProfile::HeadlessApi,
+            execution_plan: BuildExecutionPlan {
+                runtime_mode: BuildRuntimeMode::Api,
+                cargo_package: "rustok-server".to_string(),
+                cargo_profile: "release".to_string(),
+                cargo_target: None,
+                cargo_features: Vec::new(),
+                cargo_command: "cargo build -p rustok-server --release".to_string(),
+                admin_build: None,
+                storefront_build: None,
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn progress_watermark_tracks_atomic_latest_state_and_rejects_regressions() {
+        let db = setup_progress_db().await;
+        let service = BuildService::new(db.clone());
+        let build = service
+            .request_build(progress_test_request())
+            .await
+            .expect("request build");
+        assert_eq!(build.event_sequence, 1);
+
+        let claimed = service
+            .claim_queued_build(build.id)
+            .await
+            .expect("claim build")
+            .expect("queued build");
+        assert_eq!(claimed.status, BuildStatus::Running);
+        assert_eq!(claimed.event_sequence, 2);
+
+        service
+            .update_build_status(
+                build.id,
+                BuildStatus::Running,
+                Some(BuildStage::Checkout),
+                Some(10),
+            )
+            .await
+            .expect("checkout progress");
+        service
+            .update_build_status(
+                build.id,
+                BuildStatus::Running,
+                Some(BuildStage::Build),
+                Some(50),
+            )
+            .await
+            .expect("build progress");
+
+        let current = service
+            .build_progress(build.id)
+            .await
+            .expect("read current progress")
+            .expect("build exists");
+        assert_eq!(current.event_sequence, 4);
+        assert_eq!(current.stage, BuildStage::Build);
+        assert_eq!(current.progress, 50);
+        assert_eq!(service.current_progress_sequence().await.unwrap(), 4);
+
+        let catch_up = service
+            .build_progress_after(1, 100)
+            .await
+            .expect("read updates after cursor");
+        assert_eq!(catch_up.len(), 1, "intermediate progress is coalesced");
+        assert_eq!(catch_up[0].event_sequence, 4);
+        assert_eq!(
+            service.active_build_progress().await.unwrap()[0].event_sequence,
+            4
+        );
+
+        assert!(
+            service
+                .update_build_status(
+                    build.id,
+                    BuildStatus::Running,
+                    Some(BuildStage::Checkout),
+                    Some(60),
+                )
+                .await
+                .is_err(),
+            "stages cannot move backwards"
+        );
+        assert!(
+            service
+                .update_build_status(
+                    build.id,
+                    BuildStatus::Running,
+                    Some(BuildStage::Build),
+                    Some(49),
+                )
+                .await
+                .is_err(),
+            "progress cannot decrease"
+        );
+        assert!(
+            service
+                .update_build_status(
+                    build.id,
+                    BuildStatus::Running,
+                    Some(BuildStage::Deploy),
+                    Some(101),
+                )
+                .await
+                .is_err(),
+            "progress cannot exceed 100"
+        );
+        assert!(
+            service
+                .update_build_status(
+                    build.id,
+                    BuildStatus::Running,
+                    Some(BuildStage::Deploy),
+                    Some(-1),
+                )
+                .await
+                .is_err(),
+            "progress cannot be negative"
+        );
+        assert_eq!(
+            service.current_progress_sequence().await.unwrap(),
+            4,
+            "rejected progress changes must not consume a durable sequence"
+        );
+
+        service
+            .update_build_status(
+                build.id,
+                BuildStatus::Success,
+                Some(BuildStage::Complete),
+                Some(100),
+            )
+            .await
+            .expect("complete build");
+        let completed = service.get_build(build.id).await.unwrap().unwrap();
+        assert_eq!(completed.status, BuildStatus::Success);
+        assert_eq!(completed.stage, BuildStage::Complete);
+        assert_eq!(completed.progress, 100);
+        assert_eq!(completed.event_sequence, 5);
+        assert!(service.active_build_progress().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn exhausted_progress_clock_fails_build_creation_without_partial_row() {
+        use sea_orm::{ConnectionTrait, EntityTrait};
+
+        let db = setup_progress_db().await;
+        db.execute_unprepared(
+            "UPDATE build_event_clock SET sequence = 9223372036854775807 WHERE id = 1",
+        )
+        .await
+        .expect("exhaust progress clock");
+        let service = BuildService::new(db.clone());
+
+        assert!(
+            service.request_build(progress_test_request()).await.is_err(),
+            "an exhausted clock must fail closed"
+        );
+        assert!(
+            crate::build::Entity::find()
+                .all(&db)
+                .await
+                .expect("read builds")
+                .is_empty(),
+            "failed sequence allocation must roll back the build insert"
         );
     }
 
