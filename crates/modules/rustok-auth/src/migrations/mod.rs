@@ -31,6 +31,7 @@ mod m20261127_000008_sqlite_oauth_user_cascade;
 mod m20261127_000014_preserve_credential_identity;
 mod m20261127_000018_bind_oauth_code_consent_generation;
 mod m20261128_000001_fence_invite_consumption_keys;
+mod m20261128_000002_preserve_invite_terminal_authority;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -88,6 +89,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     migrations.push(Box::new(m20261127_000014_preserve_credential_identity::Migration));
     migrations.push(Box::new(m20261127_000018_bind_oauth_code_consent_generation::Migration));
     migrations.push(Box::new(m20261128_000001_fence_invite_consumption_keys::Migration));
+    migrations.push(Box::new(m20261128_000002_preserve_invite_terminal_authority::Migration));
     migrations
 }
 
@@ -102,6 +104,10 @@ pub(crate) fn jwt_fence_migrations() -> Vec<Box<dyn MigrationTrait>> {
 
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
     vec![
+        MigrationDependencyDescriptor::new(
+            "m20261128_000002_preserve_invite_terminal_authority",
+            vec!["m20261128_000001_fence_invite_consumption_keys", "m20261127_000005_bind_invite_module_policy"],
+        ),
         MigrationDependencyDescriptor::new(
             "m20261128_000001_fence_invite_consumption_keys",
             vec!["m20261127_000018_bind_oauth_code_consent_generation", "m20261127_000007_fence_auth_credential_parents"],

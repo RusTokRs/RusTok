@@ -1296,3 +1296,7 @@ locks the exact history of pinned expired session IDs in a fresh READ COMMITTED
 statement before parent deletion. This prevents the FK cascade from waiting
 on a busy history row and preserves unrelated live history. Source regression
 covers rollback and isolation; compilation/runtime verification is pending.
+
+### Invite terminal authority
+
+Migration `m20261128_000002_preserve_invite_terminal_authority` retains permanent, globally scoped issuance and consumption SHA-256 digest witnesses, without account, tenant, email or plaintext token fields. Backfill retains existing evidence; new births and their witnesses commit or roll back together. The issuance binding, identity, expiry and receipt claims are immutable; revocation is terminal, issuer nulling requires actual parent deletion, and receipt user linkage keeps its existing FK audit semantics. SQLite rejects implicit replacement (including hidden rowid). PostgreSQL uses the existing nonwaiting digest fence and guards TRUNCATE. Prune the ledger first and only then its receipt, after the existing 30-day horizon. Tenant deletion can cascade metadata but not witnesses. A DB-time lower bound on direct DELETE is defense in depth, not a replacement for the corroborated owner retention clock. Privileged DDL, restore and pre-cutover pruned evidence remain outside this guarantee. Source regressions unrun.

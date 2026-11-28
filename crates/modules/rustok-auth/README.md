@@ -462,3 +462,8 @@ WebSocket revalidation, locked admin admission and refresh preflight/commit
 reject missing or mismatched evidence even at equal timestamps. Legacy
 unbound token families require fresh authorization. Existing retention
 preserves codes while their families remain. Source regressions unrun.
+
+Invite terminal authority uses permanent issuance and consumption digest
+witnesses; ordinary DML cannot reset revocation or rebind issued grants.
+Metadata retains its 30-day cleanup policy (ledger before receipt), while
+digest witnesses survive account/tenant removal. See the Auth owner docs.

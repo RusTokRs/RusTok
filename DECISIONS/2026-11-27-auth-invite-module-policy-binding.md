@@ -53,3 +53,16 @@ This does not couple direct tenant_modules edits to the cursor or prove that
 a manually supplied successor digest describes the current policy; the
 existing content observation remains necessary. Privileged DDL, restores
 and pre-cutover lost history are not covered. Source regressions unrun.
+
+### Terminal invitation authority
+
+Signed invitation issuance claims and first revocation are immutable. Retain
+permanent global issued and consumed digest witnesses, with no email, tenant,
+account or plaintext token fields. Both claims are inserted atomically with
+their respective ledger/receipt. Ordinary retention may delete metadata after
+its existing horizon, issuance ledger before receipt; tenant deletion removes
+metadata but never witnesses. SQLite replacement and PostgreSQL truncate are
+not permitted. Direct deletion has a supplemental database-time lower bound;
+canonical retention continues to use the corroborated application clock. The
+witness survives clock discontinuity but not privileged restore or pre-cutover
+loss of evidence. Old writers must be drained for migration. Source tests unrun.

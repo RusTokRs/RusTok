@@ -855,3 +855,13 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   trip per session, and retain unrelated live history. PostgreSQL row/table
   contention and cascade rollback regressions authored, unrun. Other parent
   cascades and full lock hierarchy remain open.
+
+- Invitation terminal authority: permanent issued/consumed digest witnesses
+  are atomic with credential births and survive metadata retention and tenant
+  removal. Immutable issuance claims and first revocation prevent rebinding or
+  reactivation; receipt claims cannot be rewritten. Retention deletes ledger
+  before receipt and skips receipts whose ledger remains. SQLite replacement
+  and PostgreSQL truncate are rejected. DB-time deletion guard is supplemental
+  to the verified owner clock; no plaintext or account identifiers in witnesses.
+  Legacy pruned evidence/restore and other parent cascades remain open; source
+  regression and compilation unrun.

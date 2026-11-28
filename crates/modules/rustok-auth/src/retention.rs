@@ -108,6 +108,36 @@ async fn delete_before(
 }
 
 
+/// Legacy receipts can have a different expiry from the issuance ledger.
+/// Leave them alone until the ledger's own retention horizon is reached.
+async fn delete_expired_invite_receipts(
+    tx: &DatabaseTransaction,
+    cutoff: DateTime<Utc>,
+) -> Result<u64, DbErr> {
+    let backend = tx.get_database_backend();
+    let param = parameter(backend)?;
+    if backend == DbBackend::Postgres {
+        tx.execute_unprepared("LOCK TABLE auth_invite_consumptions IN ROW EXCLUSIVE MODE NOWAIT").await?;
+    }
+    let predicate = format!(
+        "c.expires_at < {param} AND NOT EXISTS (
+             SELECT 1 FROM auth_invites i WHERE i.token_hash = c.token_hash)"
+    );
+    let sql = match backend {
+        DbBackend::Postgres => format!(
+            "WITH candidates AS MATERIALIZED (
+                SELECT c.id FROM auth_invite_consumptions c WHERE {predicate}
+                ORDER BY c.id FOR UPDATE OF c NOWAIT
+             ) DELETE FROM auth_invite_consumptions c USING candidates
+             WHERE c.id = candidates.id"
+        ),
+        _ => format!("DELETE FROM auth_invite_consumptions AS c WHERE {predicate}"),
+    };
+    Ok(tx.execute_raw(Statement::from_sql_and_values(
+        backend, sql, [cutoff.into()],
+    )).await?.rows_affected())
+}
+
 /// The session DELETE cascades to history. Pin exact parent IDs first,
 /// then use a fresh READ COMMITTED statement to fence their history: a
 /// child committed before the parent lock may not be visible to the first
@@ -258,9 +288,9 @@ async fn delete_artifacts(
     if sessions_only {
         return Ok(report);
     }
-    report.invite_consumptions =
-        delete_before(tx, "auth_invite_consumptions", common_cutoff, false).await?;
+    // A receipt may be pruned only after its issuance ledger is gone.
     report.invites = delete_before(tx, "auth_invites", common_cutoff, false).await?;
+    report.invite_consumptions = delete_expired_invite_receipts(tx, common_cutoff).await?;
     report.email_change_requests =
         delete_before(tx, "auth_email_change_requests", now, true).await?;
 
@@ -431,7 +461,10 @@ mod tests {
         db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
         let setup = postgres_tx(&db, &schema).await;
         for table in ["sessions", "auth_invite_consumptions", "auth_invites", "auth_email_change_requests"] {
-            setup.execute_unprepared(&format!("CREATE TABLE {table} (id UUID PRIMARY KEY, expires_at TIMESTAMPTZ NOT NULL)")).await.unwrap();
+            let digest = if matches!(table, "auth_invites" | "auth_invite_consumptions") {
+                ", token_hash TEXT NOT NULL UNIQUE"
+            } else { "" };
+            setup.execute_unprepared(&format!("CREATE TABLE {table} (id UUID PRIMARY KEY, expires_at TIMESTAMPTZ NOT NULL{digest})")).await.unwrap();
         }
         setup.execute_unprepared(
             "CREATE TABLE session_refresh_history (

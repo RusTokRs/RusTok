@@ -962,18 +962,21 @@ mod tests {
             ..Default::default()
         }.update(&db).await.unwrap();
 
-        // The unlocked locator must not authorize a different issuer.
-        auth_invites::ActiveModel {
+        // The durable ledger must reject issuer replacement. A stale
+        // locator still cannot authorize a different issuer.
+        assert!(auth_invites::ActiveModel {
             id: Set(observed.id),
             issued_by: Set(Some(other.id)),
             ..Default::default()
         }
         .update(&db)
         .await
-        .unwrap();
+        .is_err());
+        let mut stale_locator = observed.clone();
+        stale_locator.issued_by = Some(other.id);
         let tx = db.begin().await.unwrap();
         assert!(
-            lock_invite_for_acceptance(&tx, tenant.id, &observed)
+            lock_invite_for_acceptance(&tx, tenant.id, &stale_locator)
                 .await
                 .unwrap()
                 .is_none()
@@ -983,7 +986,6 @@ mod tests {
         // A revocation committed after the preflight remains terminal.
         auth_invites::ActiveModel {
             id: Set(observed.id),
-            issued_by: Set(Some(issuer.id)),
             revoked_at: Set(Some(now.into())),
             ..Default::default()
         }
