@@ -370,7 +370,13 @@ async fn assert_dispatch_attempt_history(db: &DatabaseConnection) -> TestResult<
     }
     assert_eq!(count_state(db, "confirmed").await?, 1);
     assert_eq!(count_state(db, "uncertain").await?, 1);
-    assert_eq!(rustok_outbox::OutboxRetention::new(db.clone()).prune_once().await?.pruned, 1);
+    let retention = rustok_outbox::OutboxRetention::new(db.clone()).with_config(
+        rustok_outbox::OutboxRetentionConfig {
+            retention: chrono::Duration::milliseconds(1), ..Default::default()
+        },
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    assert_eq!(retention.prune_once().await?.pruned, 1);
     assert_eq!(count_state(db, "confirmed").await?, 0);
     assert_eq!(count_state(db, "uncertain").await?, 0);
     Ok(())
