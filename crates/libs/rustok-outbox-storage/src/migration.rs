@@ -1453,6 +1453,132 @@ BEGIN
 END $$;
 "#;
 
+const POSTGRES_EVENT_STATE_GUARD: &str = r#"
+CREATE OR REPLACE FUNCTION outbox_guard_event_state() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+    open_attempt_count BIGINT;
+    open_attempt_token TEXT;
+    open_attempt_started_at TIMESTAMPTZ;
+    now_at TIMESTAMPTZ;
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.status <> 'pending' OR NEW.retry_count <> 0
+           OR NEW.next_attempt_at IS NOT NULL OR NEW.last_error IS NOT NULL
+           OR NEW.claimed_by IS NOT NULL OR NEW.claimed_at IS NOT NULL
+           OR NEW.dispatched_at IS NOT NULL THEN
+            RAISE EXCEPTION 'outbox event must be inserted in the pristine pending state' USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF NEW.status NOT IN ('pending', 'dispatched', 'failed') OR NEW.retry_count < 0
+       OR ((NEW.claimed_by IS NULL) <> (NEW.claimed_at IS NULL))
+       OR (NEW.claimed_by IS NOT NULL AND (btrim(NEW.claimed_by) = '' OR length(NEW.claimed_by) > 128))
+       OR (NEW.last_error IS NOT NULL AND length(NEW.last_error) > 2048) THEN
+        RAISE EXCEPTION 'invalid outbox event state fields' USING ERRCODE = '23514';
+    END IF;
+    IF ROW(NEW.status, NEW.retry_count, NEW.next_attempt_at, NEW.last_error,
+           NEW.claimed_by, NEW.claimed_at, NEW.dispatched_at)
+       IS NOT DISTINCT FROM
+       ROW(OLD.status, OLD.retry_count, OLD.next_attempt_at, OLD.last_error,
+           OLD.claimed_by, OLD.claimed_at, OLD.dispatched_at) THEN
+        RETURN NEW;
+    END IF;
+    SELECT COUNT(*), MIN(claim_token), MIN(started_at)
+      INTO open_attempt_count, open_attempt_token, open_attempt_started_at
+      FROM outbox_dispatch_attempts
+     WHERE event_id = OLD.id AND state = 'open';
+    now_at := clock_timestamp();
+    IF OLD.status = 'pending' AND NEW.status = 'pending' THEN
+        -- Claim acquisition, renewal/reclaim, and pre-publication release.
+        IF NEW.retry_count = OLD.retry_count
+           AND NEW.next_attempt_at IS NOT DISTINCT FROM OLD.next_attempt_at
+           AND NEW.last_error IS NOT DISTINCT FROM OLD.last_error
+           AND OLD.dispatched_at IS NULL AND NEW.dispatched_at IS NULL THEN
+            IF OLD.claimed_by IS NULL AND OLD.claimed_at IS NULL
+               AND NEW.claimed_by IS NOT NULL AND NEW.claimed_at IS NOT NULL THEN
+                IF NEW.claimed_at < OLD.created_at OR NEW.claimed_at > now_at THEN
+                    RAISE EXCEPTION 'outbox claim timestamp is outside the event lifetime' USING ERRCODE = '23514';
+                END IF;
+                RETURN NEW;
+            ELSIF OLD.claimed_by IS NOT NULL AND OLD.claimed_at IS NOT NULL
+               AND NEW.claimed_by IS NOT NULL AND NEW.claimed_at IS NOT NULL THEN
+                IF NEW.claimed_by = OLD.claimed_by
+                   OR NEW.claimed_at < OLD.claimed_at OR NEW.claimed_at > now_at THEN
+                    RAISE EXCEPTION 'outbox claim renewal must rotate its token monotonically' USING ERRCODE = '23514';
+                END IF;
+                RETURN NEW;
+            ELSIF OLD.claimed_by IS NOT NULL AND OLD.claimed_at IS NOT NULL
+               AND NEW.claimed_by IS NULL AND NEW.claimed_at IS NULL THEN
+                IF open_attempt_count > 1
+                   OR (open_attempt_count = 1 AND open_attempt_token IS DISTINCT FROM OLD.claimed_by) THEN
+                    RAISE EXCEPTION 'outbox claim release does not own the open attempt' USING ERRCODE = '23514';
+                END IF;
+                RETURN NEW;
+            END IF;
+        END IF;
+        -- A retry is a claimed, charged outcome with one unresolved intent.
+        IF NEW.retry_count::BIGINT = OLD.retry_count::BIGINT + 1
+           AND OLD.claimed_by IS NOT NULL AND OLD.claimed_at IS NOT NULL
+           AND NEW.claimed_by IS NULL AND NEW.claimed_at IS NULL
+           AND OLD.dispatched_at IS NULL AND NEW.dispatched_at IS NULL
+           AND NEW.last_error IS NOT NULL AND btrim(NEW.last_error) <> ''
+           AND NEW.next_attempt_at IS NOT NULL
+           AND NEW.next_attempt_at >= OLD.claimed_at + interval '1 millisecond'
+           AND NEW.next_attempt_at <= OLD.claimed_at + interval '7300 days'
+           AND open_attempt_count = 1 AND open_attempt_started_at <= now_at THEN
+            RETURN NEW;
+        END IF;
+    END IF;
+    -- Terminal failure is either an unpublishable envelope (no intent) or
+    -- the close of the one current/previously interrupted open intent.
+    IF OLD.status = 'pending' AND NEW.status = 'failed'
+       AND OLD.claimed_by IS NOT NULL AND OLD.claimed_at IS NOT NULL
+       AND NEW.claimed_by IS NULL AND NEW.claimed_at IS NULL
+       AND OLD.dispatched_at IS NULL AND NEW.dispatched_at IS NULL
+       AND NEW.next_attempt_at IS NULL
+       AND NEW.last_error IS NOT NULL AND btrim(NEW.last_error) <> ''
+       AND (NEW.retry_count::BIGINT = OLD.retry_count::BIGINT + 1
+            OR (OLD.retry_count = 2147483647 AND NEW.retry_count = OLD.retry_count))
+       AND open_attempt_count <= 1
+       AND (open_attempt_count = 0 OR open_attempt_started_at <= now_at) THEN
+        RETURN NEW;
+    END IF;
+    -- Successful delivery must be backed by the exact current open attempt.
+    -- The legacy unfenced ACK path is admitted only for an unclaimed row with
+    -- no unresolved intent.
+    IF OLD.status = 'pending' AND NEW.status = 'dispatched'
+       AND NEW.retry_count = OLD.retry_count
+       AND OLD.dispatched_at IS NULL AND NEW.dispatched_at IS NOT NULL
+       AND NEW.dispatched_at >= OLD.created_at AND NEW.dispatched_at <= now_at
+       AND NEW.claimed_by IS NULL AND NEW.claimed_at IS NULL
+       AND NEW.last_error IS NULL AND NEW.next_attempt_at IS NULL
+       AND (
+            (OLD.claimed_by IS NOT NULL AND OLD.claimed_at IS NOT NULL
+             AND open_attempt_count = 1
+             AND open_attempt_token = OLD.claimed_by
+             AND open_attempt_started_at <= NEW.dispatched_at)
+            OR
+            (OLD.claimed_by IS NULL AND OLD.claimed_at IS NULL
+             AND open_attempt_count = 0)
+       ) THEN
+        RETURN NEW;
+    END IF;
+    -- DLQ replay is the only terminal-to-pending transition. It preserves the
+    -- immutable envelope and requires all prior delivery intents to be closed.
+    IF OLD.status = 'failed' AND NEW.status = 'pending'
+       AND OLD.retry_count > 0 AND NEW.retry_count = 0
+       AND OLD.claimed_by IS NULL AND OLD.claimed_at IS NULL
+       AND NEW.claimed_by IS NULL AND NEW.claimed_at IS NULL
+       AND OLD.dispatched_at IS NULL AND NEW.dispatched_at IS NULL
+       AND OLD.next_attempt_at IS NULL AND NEW.next_attempt_at IS NULL
+       AND NEW.last_error IS NULL
+       AND open_attempt_count = 0 THEN
+        RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'invalid outbox event state transition' USING ERRCODE = '23514';
+END $$;
+"#;
+
 const SQLITE_EVENT_ENVELOPE_GUARDS: &str = r#"
 -- REPLACE may otherwise implicitly delete the old row and its children even
 -- with recursive_triggers OFF. Preserve the exact-key DO NOTHING contract
@@ -1485,6 +1611,127 @@ WHEN OLD.status NOT IN ('dispatched', 'failed') OR OLD.claimed_by IS NOT NULL
 BEGIN SELECT RAISE(ABORT, 'outbox event is not terminal, unclaimed and acknowledged'); END;
 "#;
 
+const SQLITE_EVENT_STATE_GUARDS: &str = r#"
+CREATE TRIGGER outbox_event_state_insert_guard BEFORE INSERT ON sys_events
+WHEN NEW.status IS NOT 'pending' OR typeof(NEW.retry_count) <> 'integer' OR NEW.retry_count IS NOT 0
+ OR NEW.next_attempt_at IS NOT NULL OR NEW.last_error IS NOT NULL
+ OR NEW.claimed_by IS NOT NULL OR NEW.claimed_at IS NOT NULL OR NEW.dispatched_at IS NOT NULL
+ OR julianday(NEW.created_at) IS NULL
+BEGIN SELECT RAISE(ABORT, 'outbox event must be inserted in the pristine pending state'); END;
+
+CREATE TRIGGER outbox_event_state_update_guard BEFORE UPDATE ON sys_events
+WHEN NOT (
+    (NEW.status IS OLD.status AND NEW.retry_count IS OLD.retry_count
+     AND NEW.next_attempt_at IS OLD.next_attempt_at AND NEW.last_error IS OLD.last_error
+     AND NEW.claimed_by IS OLD.claimed_by AND NEW.claimed_at IS OLD.claimed_at
+     AND NEW.dispatched_at IS OLD.dispatched_at)
+ OR (
+    OLD.status IS 'pending' AND NEW.status IS 'pending'
+    AND NEW.retry_count IS OLD.retry_count
+    AND NEW.next_attempt_at IS OLD.next_attempt_at AND NEW.last_error IS OLD.last_error
+    AND OLD.dispatched_at IS NULL AND NEW.dispatched_at IS NULL
+    AND (
+        (OLD.claimed_by IS NULL AND OLD.claimed_at IS NULL
+         AND NEW.claimed_by IS NOT NULL AND typeof(NEW.claimed_by) = 'text'
+         AND length(trim(NEW.claimed_by)) BETWEEN 1 AND 128
+         AND NEW.claimed_at IS NOT NULL AND julianday(NEW.claimed_at) IS NOT NULL
+         AND julianday(NEW.claimed_at) >= julianday(OLD.created_at)
+         AND julianday(NEW.claimed_at) <= julianday('now'))
+      OR
+        (OLD.claimed_by IS NOT NULL AND OLD.claimed_at IS NOT NULL
+         AND NEW.claimed_by IS NOT NULL AND typeof(NEW.claimed_by) = 'text'
+         AND length(trim(NEW.claimed_by)) BETWEEN 1 AND 128
+         AND NEW.claimed_by IS NOT OLD.claimed_by
+         AND NEW.claimed_at IS NOT NULL AND julianday(NEW.claimed_at) IS NOT NULL
+         AND julianday(NEW.claimed_at) >= julianday(OLD.claimed_at)
+         AND julianday(NEW.claimed_at) <= julianday('now'))
+      OR
+        (OLD.claimed_by IS NOT NULL AND OLD.claimed_at IS NOT NULL
+         AND NEW.claimed_by IS NULL AND NEW.claimed_at IS NULL
+         AND (
+             NOT EXISTS (SELECT 1 FROM outbox_dispatch_attempts a
+                         WHERE a.event_id = OLD.id AND a.state = 'open')
+             OR
+             ((SELECT COUNT(*) FROM outbox_dispatch_attempts a
+               WHERE a.event_id = OLD.id AND a.state = 'open') = 1
+              AND EXISTS (SELECT 1 FROM outbox_dispatch_attempts a
+                          WHERE a.event_id = OLD.id AND a.state = 'open'
+                            AND a.claim_token = OLD.claimed_by))
+         ))
+    )
+ )
+ OR (
+    OLD.status IS 'pending' AND NEW.status IS 'pending'
+    AND typeof(NEW.retry_count) = 'integer' AND NEW.retry_count = OLD.retry_count + 1
+    AND OLD.claimed_by IS NOT NULL AND OLD.claimed_at IS NOT NULL
+    AND NEW.claimed_by IS NULL AND NEW.claimed_at IS NULL
+    AND OLD.dispatched_at IS NULL AND NEW.dispatched_at IS NULL
+    AND NEW.last_error IS NOT NULL AND typeof(NEW.last_error) = 'text'
+    AND length(trim(NEW.last_error)) BETWEEN 1 AND 2048
+    AND NEW.next_attempt_at IS NOT NULL AND julianday(NEW.next_attempt_at) IS NOT NULL
+    AND julianday(NEW.next_attempt_at) >= julianday(OLD.claimed_at) + (1.0 / 86400000.0)
+    AND julianday(NEW.next_attempt_at) <= julianday(OLD.claimed_at) + 7300.0
+    AND (SELECT COUNT(*) FROM outbox_dispatch_attempts a
+         WHERE a.event_id = OLD.id AND a.state = 'open') = 1
+    AND NOT EXISTS (SELECT 1 FROM outbox_dispatch_attempts a
+                    WHERE a.event_id = OLD.id AND a.state = 'open'
+                      AND julianday(a.started_at) > julianday('now'))
+ )
+ OR (
+    OLD.status IS 'pending' AND NEW.status IS 'failed'
+    AND typeof(NEW.retry_count) = 'integer'
+    AND (NEW.retry_count = OLD.retry_count + 1
+         OR (OLD.retry_count = 2147483647 AND NEW.retry_count = OLD.retry_count))
+    AND OLD.claimed_by IS NOT NULL AND OLD.claimed_at IS NOT NULL
+    AND NEW.claimed_by IS NULL AND NEW.claimed_at IS NULL
+    AND OLD.dispatched_at IS NULL AND NEW.dispatched_at IS NULL
+    AND NEW.next_attempt_at IS NULL
+    AND NEW.last_error IS NOT NULL AND typeof(NEW.last_error) = 'text'
+    AND length(trim(NEW.last_error)) BETWEEN 1 AND 2048
+    AND (SELECT COUNT(*) FROM outbox_dispatch_attempts a
+         WHERE a.event_id = OLD.id AND a.state = 'open') <= 1
+    AND NOT EXISTS (SELECT 1 FROM outbox_dispatch_attempts a
+                    WHERE a.event_id = OLD.id AND a.state = 'open'
+                      AND julianday(a.started_at) > julianday('now'))
+ )
+ OR (
+    OLD.status IS 'pending' AND NEW.status IS 'dispatched'
+    AND NEW.retry_count IS OLD.retry_count
+    AND OLD.dispatched_at IS NULL AND NEW.dispatched_at IS NOT NULL
+    AND julianday(NEW.dispatched_at) IS NOT NULL
+    AND julianday(NEW.dispatched_at) >= julianday(OLD.created_at)
+    AND julianday(NEW.dispatched_at) <= julianday('now')
+    AND NEW.claimed_by IS NULL AND NEW.claimed_at IS NULL
+    AND NEW.last_error IS NULL AND NEW.next_attempt_at IS NULL
+    AND (
+        (OLD.claimed_by IS NOT NULL AND OLD.claimed_at IS NOT NULL
+         AND (SELECT COUNT(*) FROM outbox_dispatch_attempts a
+              WHERE a.event_id = OLD.id AND a.state = 'open') = 1
+         AND EXISTS (SELECT 1 FROM outbox_dispatch_attempts a
+                     WHERE a.event_id = OLD.id AND a.state = 'open'
+                       AND a.claim_token = OLD.claimed_by
+                       AND julianday(a.started_at) <= julianday(NEW.dispatched_at)))
+        OR
+        (OLD.claimed_by IS NULL AND OLD.claimed_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM outbox_dispatch_attempts a
+                         WHERE a.event_id = OLD.id AND a.state = 'open'))
+    )
+ )
+ OR (
+    OLD.status IS 'failed' AND NEW.status IS 'pending'
+    AND OLD.retry_count > 0 AND typeof(NEW.retry_count) = 'integer' AND NEW.retry_count IS 0
+    AND OLD.claimed_by IS NULL AND OLD.claimed_at IS NULL
+    AND NEW.claimed_by IS NULL AND NEW.claimed_at IS NULL
+    AND OLD.dispatched_at IS NULL AND NEW.dispatched_at IS NULL
+    AND OLD.next_attempt_at IS NULL AND NEW.next_attempt_at IS NULL
+    AND NEW.last_error IS NULL
+    AND NOT EXISTS (SELECT 1 FROM outbox_dispatch_attempts a
+                    WHERE a.event_id = OLD.id AND a.state = 'open')
+ )
+)
+BEGIN SELECT RAISE(ABORT, 'invalid outbox event state transition'); END;
+"#;
+
 /// Protect the canonical event identity, including SQLite implicit REPLACE.
 /// This is deliberately independent of the configurable retention age window.
 pub async fn create_outbox_event_envelope_integrity(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
@@ -1499,12 +1746,15 @@ pub async fn create_outbox_event_envelope_integrity(manager: &SchemaManager<'_>)
             db.execute_unprepared("LOCK TABLE sys_event_consumers, sys_events IN SHARE ROW EXCLUSIVE MODE NOWAIT").await?;
             drop_outbox_event_envelope_integrity(manager).await?;
             db.execute_unprepared(POSTGRES_EVENT_ENVELOPE_GUARD).await?;
+            db.execute_unprepared(POSTGRES_EVENT_STATE_GUARD).await?;
             db.execute_unprepared("CREATE TRIGGER outbox_event_envelope_guard BEFORE UPDATE OR DELETE ON sys_events FOR EACH ROW EXECUTE FUNCTION outbox_guard_event_envelope()").await?;
+            db.execute_unprepared("CREATE TRIGGER outbox_event_state_guard BEFORE INSERT OR UPDATE ON sys_events FOR EACH ROW EXECUTE FUNCTION outbox_guard_event_state()").await?;
         }
         DbBackend::Sqlite => {
             db.execute_unprepared("UPDATE sys_events SET retry_count = retry_count WHERE 1 = 0").await?;
             drop_outbox_event_envelope_integrity(manager).await?;
             db.execute_unprepared(SQLITE_EVENT_ENVELOPE_GUARDS).await?;
+            db.execute_unprepared(SQLITE_EVENT_STATE_GUARDS).await?;
         }
         _ => return Err(DbErr::Migration("unsupported outbox envelope backend".into())),
     }
@@ -1515,10 +1765,14 @@ async fn drop_outbox_event_envelope_integrity(manager: &SchemaManager<'_>) -> Re
     let statements: &[&str] = match manager.get_database_backend() {
         DbBackend::Postgres => &[
             "DROP TRIGGER IF EXISTS outbox_event_envelope_guard ON sys_events",
+            "DROP TRIGGER IF EXISTS outbox_event_state_guard ON sys_events",
             "DROP FUNCTION IF EXISTS outbox_guard_event_envelope()",
+            "DROP FUNCTION IF EXISTS outbox_guard_event_state()",
         ],
         DbBackend::Sqlite => &[
             "DROP TRIGGER IF EXISTS outbox_event_insert_identity_guard",
+            "DROP TRIGGER IF EXISTS outbox_event_state_insert_guard",
+            "DROP TRIGGER IF EXISTS outbox_event_state_update_guard",
             "DROP TRIGGER IF EXISTS outbox_event_envelope_guard",
             "DROP TRIGGER IF EXISTS outbox_event_retention_guard",
             "DROP INDEX IF EXISTS uq_sys_events_uuid_identity",
