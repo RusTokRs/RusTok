@@ -7,7 +7,8 @@ use rustok_api::{
     ArtifactUiContributionViewContent, ArtifactUiSurface as ArtifactUiSurfaceContract,
     ModuleCompositionSnapshotView, ModuleEffectivePolicyDecisionView,
     ModuleEffectivePolicyDenialReasonView, ModuleEffectivePolicyView, Permission,
-    PlatformBuildSnapshot, PlatformBuildStage, PlatformBuildStatus, PlatformDeploymentProfile,
+    PlatformBuildProgressSnapshot, PlatformBuildSnapshot, PlatformBuildStage,
+    PlatformBuildStatus, PlatformDeploymentProfile,
     StaticInstalledModuleView, StaticModuleRegistryView, StaticTenantModuleView,
 };
 use rustok_core::{UserRole, UserStatus};
@@ -22,7 +23,6 @@ use crate::models::users;
 use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::module_lifecycle::ModuleLifecycleStateSnapshot;
 use crate::services::rbac_service::RbacService;
-use rustok_build::BuildEvent;
 use rustok_build::build::{BuildStage, BuildStatus};
 
 #[derive(SimpleObject, Clone)]
@@ -1316,76 +1316,49 @@ pub struct BuildProgressEvent {
     pub stage: GqlBuildStage,
     pub progress: i32,
     pub error_message: Option<String>,
+    /// Decimal string to preserve the full signed 64-bit cursor in JavaScript.
+    pub sequence: String,
+    /// True when this payload is the initial current-state snapshot.
+    pub is_snapshot: bool,
 }
 
 impl BuildProgressEvent {
-    pub fn from_event(event: BuildEvent) -> Self {
-        match event {
-            BuildEvent::BuildRequested { build_id, .. } => Self {
-                kind: GqlBuildEventKind::Requested,
-                build_id: build_id.to_string(),
-                status: GqlBuildStatus::Queued,
-                stage: GqlBuildStage::Pending,
-                progress: 0,
-                error_message: None,
-            },
-            BuildEvent::BuildStarted {
-                build_id,
-                stage,
-                progress,
-            } => Self {
-                kind: GqlBuildEventKind::Started,
-                build_id: build_id.to_string(),
-                status: GqlBuildStatus::Running,
-                stage: stage.into(),
-                progress,
-                error_message: None,
-            },
-            BuildEvent::BuildProgress {
-                build_id,
-                stage,
-                progress,
-            } => Self {
-                kind: GqlBuildEventKind::Progress,
-                build_id: build_id.to_string(),
-                status: GqlBuildStatus::Running,
-                stage: stage.into(),
-                progress,
-                error_message: None,
-            },
-            BuildEvent::BuildCompleted { build_id } => Self {
-                kind: GqlBuildEventKind::Completed,
-                build_id: build_id.to_string(),
-                status: GqlBuildStatus::Success,
-                stage: GqlBuildStage::Complete,
-                progress: 100,
-                error_message: None,
-            },
-            BuildEvent::BuildCancelled {
-                build_id,
-                stage,
-                progress,
-            } => Self {
-                kind: GqlBuildEventKind::Cancelled,
-                build_id: build_id.to_string(),
-                status: GqlBuildStatus::Cancelled,
-                stage: stage.into(),
-                progress,
-                error_message: None,
-            },
-            BuildEvent::BuildFailed {
-                build_id,
-                stage,
-                progress,
-                error,
-            } => Self {
-                kind: GqlBuildEventKind::Failed,
-                build_id: build_id.to_string(),
-                status: GqlBuildStatus::Failed,
-                stage: stage.into(),
-                progress,
-                error_message: Some(error),
-            },
+    pub fn from_snapshot(
+        snapshot: PlatformBuildProgressSnapshot,
+        is_snapshot: bool,
+    ) -> Self {
+        let kind = match snapshot.status {
+            PlatformBuildStatus::Queued => GqlBuildEventKind::Requested,
+            PlatformBuildStatus::Running => GqlBuildEventKind::Progress,
+            PlatformBuildStatus::Success => GqlBuildEventKind::Completed,
+            PlatformBuildStatus::Failed => GqlBuildEventKind::Failed,
+            PlatformBuildStatus::Cancelled => GqlBuildEventKind::Cancelled,
+        };
+        let status = match snapshot.status {
+            PlatformBuildStatus::Queued => GqlBuildStatus::Queued,
+            PlatformBuildStatus::Running => GqlBuildStatus::Running,
+            PlatformBuildStatus::Success => GqlBuildStatus::Success,
+            PlatformBuildStatus::Failed => GqlBuildStatus::Failed,
+            PlatformBuildStatus::Cancelled => GqlBuildStatus::Cancelled,
+        };
+        let stage = match snapshot.stage {
+            PlatformBuildStage::Pending => GqlBuildStage::Pending,
+            PlatformBuildStage::Checkout => GqlBuildStage::Checkout,
+            PlatformBuildStage::Build => GqlBuildStage::Build,
+            PlatformBuildStage::Test => GqlBuildStage::Test,
+            PlatformBuildStage::Deploy => GqlBuildStage::Deploy,
+            PlatformBuildStage::Complete => GqlBuildStage::Complete,
+        };
+
+        Self {
+            kind,
+            build_id: snapshot.id,
+            status,
+            stage,
+            progress: snapshot.progress,
+            error_message: snapshot.error_message,
+            sequence: snapshot.sequence.to_string(),
+            is_snapshot,
         }
     }
 }
