@@ -776,3 +776,12 @@ writers before applying. No uncertain commit retry. Source tests unrun.
   The purpose is to preserve existing per-owner revision and global generation
   coverage when the conflict victim would otherwise bypass DELETE triggers.
   Normal owner inserts/updates/deletes remain supported. Source regression unrun.
+
+- Static RBAC parent cascade admission: BEFORE DELETE fences exact
+  memberships/grants and surviving revision owners in PostgreSQL without
+  waiting, before native FK cascades. Existing deferred watermark remains
+  the only generation writer. Source regression covers child/parent and
+  relation contention, rollback on busy watermark, unrelated scope and
+  successful revision/generation advancement. Compilation and runtime
+  verification unrun; artifact RESTRICT and tenant-wide/cross-owner
+  deletion workflows remain unchanged/open.

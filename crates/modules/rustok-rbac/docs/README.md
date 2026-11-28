@@ -548,3 +548,18 @@ This does not couple direct tenant_modules edits to the cursor or prove that
 a manually supplied successor digest describes the current policy; the
 existing content observation remains necessary. Privileged DDL, restores
 and pre-cutover lost history are not covered. Source regressions unrun.
+
+### Static RBAC parent cascade admission
+
+Migration `m20261128_000004_fence_rbac_static_parent_cascades` adds PostgreSQL BEFORE DELETE fences on users, roles
+and permissions. Before native static FK cascades, reserve relation write
+modes NOWAIT, reject incomplete RLS visibility and lock surviving user or
+role revision owners in UUID order, then exact membership/grant children
+in identity order. The parent DELETE already owns its row; reverse owner
+acquisition must fail with 55P03 rather than wait. Existing child triggers
+retain revision increments and deferred durable generation advancement;
+no second generation writer is introduced. SQLite retains serialized
+writes. Artifact FK RESTRICT, permission and role lifecycle rules, and the
+absence of a public hard-delete workflow are unchanged. Other-owner and
+tenant-wide cascades, parent acquisition and event delivery remain outside
+this guarantee. PostgreSQL source regression unrun.

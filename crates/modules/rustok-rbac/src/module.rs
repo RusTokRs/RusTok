@@ -29,6 +29,7 @@ impl MigrationSource for RbacModule {
             Box::new(crate::m20261127_000206_preserve_artifact_operation_witnesses::Migration),
             Box::new(crate::m20261127_000207_couple_static_relation_generation::Migration),
             Box::new(crate::m20261127_000208_fence_static_relation_rowids::Migration),
+            Box::new(crate::m20261128_000004_fence_rbac_static_parent_cascades::Migration),
         ]
     }
 }

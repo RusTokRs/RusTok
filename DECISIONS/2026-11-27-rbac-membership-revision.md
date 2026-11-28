@@ -57,3 +57,10 @@ separate epochs. Trusted database administration and joint database rollback
 are outside this guarantee. Source regressions cover rollback, ABA, no-op,
 owner transfer, cascade, overflow and cutover. Compilation, fresh/incremental
 schema, PostgreSQL contention and Auth transport evidence remain unrun.
+
+Migration `m20261128_000004_fence_rbac_static_parent_cascades` additionally fences static FK children and surviving
+revision owners before PostgreSQL parent DELETE. This closes the scoped
+child tuple wait preceding row triggers for user, role and permission
+parents. It does not make cross-owner or tenant-wide cascades globally
+nonblocking. The deferred generation writer and native FK actions remain
+unchanged. Runtime evidence is pending.

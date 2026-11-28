@@ -332,3 +332,9 @@ replacement and repair notification markers remain conservative additional
 advances pending consumer migration. Generation is a recovery watermark, not
 an operation counter; gaps require namespace-wide reconciliation. Drain old
 writers before applying. No uncertain commit retry. Source tests unrun.
+
+PostgreSQL static relation parent deletion now fences exact membership/grant
+children and surviving revision owners without waiting. Deferred durable
+generation advancement is unchanged. This does not implement a public hard
+user/tenant delete workflow or change artifact RESTRICT constraints. Source
+regression unrun; tenant-wide and other-owner FK edges remain open.
