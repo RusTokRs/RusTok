@@ -200,7 +200,7 @@ mod tests {
         assert_eq!(count(&tx, "tenant_uuid_witnesses").await, 1);
         tx.commit().await.unwrap();
         for sql in [
-            format!("INSERT INTO tenants VALUES ('{A}', 'old')"),
+            format!("INSERT INTO tenants VALUES ('{A}', 'old', 'old.example.test')"),
             "TRUNCATE tenant_uuid_witnesses".to_owned(),
         ] {
             let tx = db.begin().await.unwrap();
