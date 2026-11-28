@@ -296,7 +296,7 @@ mod tests {
     use super::BuildExecutionService;
     use crate::{
         BuildEvent, BuildEventPublisher, BuildExecutionPlan, BuildRuntimeMode, BuildService,
-        BuildStatus, DeploymentProfile, build,
+        BuildStage, BuildStatus, DeploymentProfile, build,
     };
 
     #[derive(Default)]
@@ -451,60 +451,66 @@ mod tests {
     }
 
     #[derive(Default)]
-    struct StartFailurePublisher {
-        fail_failed_event: bool,
-        failed_attempts: AtomicUsize,
-    }
+    struct StateNotificationFailurePublisher(AtomicUsize);
 
     #[async_trait::async_trait]
-    impl BuildEventPublisher for StartFailurePublisher {
-        async fn publish(&self, event: BuildEvent) -> anyhow::Result<()> {
-            match event {
-                BuildEvent::BuildStarted { .. } => anyhow::bail!("start delivery failed"),
-                BuildEvent::BuildFailed { .. } => {
-                    self.failed_attempts.fetch_add(1, Ordering::SeqCst);
-                    if self.fail_failed_event {
-                        anyhow::bail!("failure delivery failed");
-                    }
-                    Ok(())
-                }
-                _ => Ok(()),
-            }
+    impl BuildEventPublisher for StateNotificationFailurePublisher {
+        async fn publish(&self, _event: BuildEvent) -> anyhow::Result<()> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            anyhow::bail!("post-commit notification failed")
         }
     }
 
     #[tokio::test]
-    async fn claim_notification_failure_marks_build_failed_before_returning() {
-        for fail_failed_event in [false, true] {
-            let db = database().await;
-            let build = queued_build(&db, true).await;
-            let publisher = Arc::new(StartFailurePublisher {
-                fail_failed_event,
-                ..Default::default()
-            });
-            let executor = BuildExecutionService::new(db.clone(), publisher.clone(), ".".into());
-            let error = executor
-                .execute_build(build.id, false)
-                .await
-                .expect_err("notification failure");
-            let diagnostic = format!("{error:#}");
-            assert!(diagnostic.contains("start delivery failed"));
-            if fail_failed_event {
-                assert!(diagnostic.contains("failure delivery failed"));
-            }
-            let saved = build::Entity::find_by_id(build.id)
-                .one(&db)
-                .await
-                .unwrap()
-                .unwrap();
-            assert_eq!(saved.status, BuildStatus::Failed);
-            assert_eq!(
-                saved.error_message.as_deref(),
-                Some("Build start notification failed")
-            );
-            assert!(saved.finished_at.is_some());
-            assert_eq!(publisher.failed_attempts.load(Ordering::SeqCst), 1);
-        }
+    async fn post_commit_notification_failures_do_not_change_build_outcomes() {
+        let db = database().await;
+        let build = queued_build(&db, true).await;
+        let publisher = Arc::new(StateNotificationFailurePublisher::default());
+        let service = BuildService::with_event_publisher(db.clone(), publisher.clone());
+
+        let claimed = service
+            .claim_queued_build(build.id)
+            .await
+            .expect("notification failure must not fail the claim")
+            .expect("queued build is claimed");
+        assert_eq!(claimed.status, BuildStatus::Running);
+
+        service
+            .update_build_status(
+                build.id,
+                BuildStatus::Success,
+                Some(BuildStage::Complete),
+                Some(100),
+            )
+            .await
+            .expect("completion notification failure must not fail persisted success");
+
+        let saved = build::Entity::find_by_id(build.id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(saved.status, BuildStatus::Success);
+        assert_eq!(saved.stage, BuildStage::Complete);
+        assert_eq!(saved.progress, 100);
+        assert_eq!(saved.error_message, None);
+
+        let failed_build = queued_build(&db, true).await;
+        service
+            .fail_build(failed_build.id, "expected build failure".to_string())
+            .await
+            .expect("failure notification must not undo persisted failure");
+        let saved_failure = build::Entity::find_by_id(failed_build.id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(saved_failure.status, BuildStatus::Failed);
+        assert_eq!(
+            saved_failure.error_message.as_deref(),
+            Some("expected build failure")
+        );
+        assert_eq!(publisher.0.load(Ordering::SeqCst), 3);
     }
 
     struct CancelThenFailPublisher(sea_orm::DatabaseConnection);
@@ -513,13 +519,9 @@ mod tests {
     impl BuildEventPublisher for CancelThenFailPublisher {
         async fn publish(&self, event: BuildEvent) -> anyhow::Result<()> {
             if let BuildEvent::BuildStarted { build_id, .. } = event {
-                let mut active = build::Entity::find_by_id(build_id)
-                    .one(&self.0)
-                    .await?
-                    .expect("claimed build")
-                    .into_active_model();
-                active.status = Set(BuildStatus::Cancelled);
-                active.update(&self.0).await?;
+                BuildService::new(self.0.clone())
+                    .update_build_status(build_id, BuildStatus::Cancelled, None, None)
+                    .await?;
                 anyhow::bail!("start delivery failed after concurrent cancellation");
             }
             Ok(())
@@ -542,45 +544,6 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(saved.status, BuildStatus::Cancelled);
-        assert_eq!(saved.error_message, None);
-    }
-
-    struct CompletionFailurePublisher;
-
-    #[async_trait::async_trait]
-    impl BuildEventPublisher for CompletionFailurePublisher {
-        async fn publish(&self, event: BuildEvent) -> anyhow::Result<()> {
-            if matches!(event, BuildEvent::BuildCompleted { .. }) {
-                anyhow::bail!("completion delivery failed");
-            }
-            Ok(())
-        }
-    }
-
-    #[tokio::test]
-    async fn failed_completion_notification_does_not_undo_committed_success() {
-        let db = database().await;
-        let build = queued_build(&db, true).await;
-        let service =
-            BuildService::with_event_publisher(db.clone(), Arc::new(CompletionFailurePublisher));
-        service.claim_queued_build(build.id).await.unwrap().unwrap();
-        assert!(
-            service
-                .update_build_status(build.id, BuildStatus::Success, None, Some(100))
-                .await
-                .is_err()
-        );
-        service
-            .fail_build(build.id, "notification failed".to_string())
-            .await
-            .unwrap();
-        let saved = build::Entity::find_by_id(build.id)
-            .one(&db)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(saved.status, BuildStatus::Success);
-        assert_eq!(saved.progress, 100);
         assert_eq!(saved.error_message, None);
     }
 
