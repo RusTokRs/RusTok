@@ -1067,7 +1067,6 @@ export class FlyBrowserAdapter {
     this.hoveredId = null;
     this.activeDrag = null;
     this.activeDrop = null;
-    this.dragEnteredIframe = false;
     this.zoom = 1;
     this.lifecycleState = ADAPTER_LIFECYCLE.CREATED;
     this.abortController = new AbortController();
@@ -1252,31 +1251,12 @@ export class FlyBrowserAdapter {
       if (record.timeoutId !== null) {
         globalThis.clearTimeout(record.timeoutId);
       }
-      if (!record.responseReceived) {
-        if (!record.controller.signal.aborted) {
-          record.abort.code = INTENT_REQUEST_ABORTED_CODE;
-          record.abort.kind = INTENT_ABORT_KIND.ADAPTER_STOP;
-          record.abort.error =
-            "Editor action cancelled because the adapter stopped.";
-          record.controller.abort(record.abort.error);
-        }
-        if (!record.abortEventDispatched) {
-          record.abortEventDispatched = true;
-          this.root.dispatchEvent(
-            new CustomEvent("fly:browser-intent-aborted", {
-              bubbles: true,
-              detail: intentAbortDetail(
-                this,
-                record.abort,
-                record.controller.signal,
-                record.request,
-                record.requestGeneration,
-                false,
-                record.abort.error,
-              ),
-            }),
-          );
-        }
+      if (!record.controller.signal.aborted) {
+        record.abort.code = INTENT_REQUEST_ABORTED_CODE;
+        record.abort.kind = INTENT_ABORT_KIND.ADAPTER_STOP;
+        record.abort.error =
+          "Editor action cancelled because the adapter stopped.";
+        record.controller.abort(record.abort.error);
       }
     }
     this.pendingIntentRequests.clear();
@@ -1513,7 +1493,6 @@ export class FlyBrowserAdapter {
           event.dataTransfer?.setData("application/x-fly-block", blockId);
           event.dataTransfer?.setData("text/plain", blockId);
           this.activeDrag = { kind: "block", block_id: blockId };
-          this.dragEnteredIframe = false;
           this.activeDrop = null;
           this.root.dataset.flyDragging = "block";
         },
@@ -1578,7 +1557,6 @@ export class FlyBrowserAdapter {
         event.dataTransfer?.setData("text/plain", componentId);
         this.select(componentId, "ssr-control", componentElement);
         this.activeDrag = { kind: "component", component_id: componentId };
-        this.dragEnteredIframe = false;
         this.activeDrop = null;
         this.root.dataset.flyDragging = "component";
       },
@@ -1620,7 +1598,6 @@ export class FlyBrowserAdapter {
               ?.dataset.flyBlockId;
             if (blockId) {
               this.activeDrag = { kind: "block", block_id: blockId };
-              this.dragEnteredIframe = false;
               this.activeDrop = null;
               this.root.dataset.flyDragging = "block";
             }
@@ -1639,7 +1616,6 @@ export class FlyBrowserAdapter {
                   kind: "component",
                   component_id: this.selectedId,
                 };
-                this.dragEnteredIframe = false;
                 this.activeDrop = null;
                 this.root.dataset.flyDragging = "component";
               }
@@ -1674,41 +1650,12 @@ export class FlyBrowserAdapter {
       },
       { signal },
     );
-    // Mouse pointer-up is not delivered to an iframe after the pointer leaves its
-    // browsing context. Cancel the host-owned drag at the boundary so it cannot
-    // remain armed and commit unexpectedly when the pointer later re-enters.
-    this.iframe.addEventListener(
-      "pointerenter",
-      () => {
-        if (this.activeDrag) this.dragEnteredIframe = true;
-      },
-      { signal },
-    );
     this.iframe.addEventListener(
       "pointerleave",
       () => {
         if (this.activeDrag) this.cancelDrag();
       },
       { signal },
-    );
-    // Pointer events inside an iframe do not bubble into the parent document.
-    // Once a host-owned drag has entered the canvas, observe the first parent
-    // pointer move after it leaves the iframe and cancel before it can re-enter.
-    window.addEventListener(
-      "pointermove",
-      (event) => {
-        if (!this.activeDrag || !this.dragEnteredIframe) return;
-        const rect = this.iframe.getBoundingClientRect();
-        if (
-          event.clientX < rect.left ||
-          event.clientX > rect.right ||
-          event.clientY < rect.top ||
-          event.clientY > rect.bottom
-        ) {
-          this.cancelDrag();
-        }
-      },
-      { signal, capture: true },
     );
     this.iframe.addEventListener(
       "load",
@@ -1816,7 +1763,6 @@ export class FlyBrowserAdapter {
   cancelDrag() {
     this.activeDrag = null;
     this.activeDrop = null;
-    this.dragEnteredIframe = false;
     delete this.root.dataset.flyDragging;
     this.drawDrop();
   }
@@ -2268,10 +2214,7 @@ export class FlyBrowserAdapter {
       resolvesOperation,
       readStartedDuringWrite,
       intent: request.intent,
-      request,
       requestGeneration,
-      responseReceived: false,
-      abortEventDispatched: false,
       timeoutId: null,
       timeoutMs: limitFor(
         this,
@@ -2315,7 +2258,6 @@ export class FlyBrowserAdapter {
         body: JSON.stringify(request),
         signal: controller.signal,
       });
-      record.responseReceived = true;
       const result = response.headers
         .get("content-type")
         ?.includes("application/json")
@@ -2582,23 +2524,20 @@ export class FlyBrowserAdapter {
         showPendingOperationNotice(this, "unavailable");
       }
       if (controller.signal.aborted) {
-        if (!record.abortEventDispatched) {
-          record.abortEventDispatched = true;
-          this.root.dispatchEvent(
-            new CustomEvent("fly:browser-intent-aborted", {
-              bubbles: true,
-              detail: intentAbortDetail(
-                this,
-                abort,
-                controller.signal,
-                request,
-                requestGeneration,
-                current,
-                error,
-              ),
-            }),
-          );
-        }
+        this.root.dispatchEvent(
+          new CustomEvent("fly:browser-intent-aborted", {
+            bubbles: true,
+            detail: intentAbortDetail(
+              this,
+              abort,
+              controller.signal,
+              request,
+              requestGeneration,
+              current,
+              error,
+            ),
+          }),
+        );
         return null;
       }
       this.root.dispatchEvent(

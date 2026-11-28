@@ -244,9 +244,17 @@
     const component = componentAt(event.target);
     send('hover_requested', { component_id: component?.dataset.flyComponentId ?? null });
   });
-  document.addEventListener('pointerleave', () => {
+  const handleCanvasPointerLeave = () => {
     send('hover_requested', { component_id: null });
-  });
+    send('cancel_drag_requested');
+  };
+  document.addEventListener('pointerleave', handleCanvasPointerLeave);
+  document.addEventListener('pointerout', (event) => {
+    if (event.relatedTarget === null) handleCanvasPointerLeave();
+  }, { passive: true });
+  document.addEventListener('mouseout', (event) => {
+    if (event.relatedTarget === null) handleCanvasPointerLeave();
+  }, { passive: true });
   document.addEventListener('pointermove', (event) => {
     pendingPointerSample = {
       drag_epoch: dragEpoch,
