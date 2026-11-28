@@ -174,7 +174,7 @@ async fn observe_existing_superadmin(
 }
 
 #[cfg(test)]
-mod tests {
+mod env_value_tests {
     use super::env_value;
 
     #[test]
@@ -213,7 +213,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod existing_account_tests {
+mod tests {
     use super::*;
     use crate::common::settings::RustokSettings;
     use rustok_core::{UserRole, UserStatus};

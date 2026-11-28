@@ -157,7 +157,7 @@ impl SettingsValidator for EmailSettingsValidator {
             if let Some(provider) = provider_val.as_str() {
                 if !matches!(provider, "smtp" | "none") {
                     errors.push(format!(
-                        "email.provider must be one of the supported providers: smtp, none; got '{provider}'"
+                        "email.provider must be a supported provider (smtp or none); got '{provider}'"
                     ));
                 }
             } else {
@@ -319,8 +319,11 @@ impl SettingsValidator for GeneralSettingsValidator {
                                 || parsed.fragment().is_some()
                             {
                                 errors.push(
-                                    "general.site_url must be an http or https URL with a host and no credentials, query, or fragment"
-                                        .to_string(),
+                                    concat!(
+                                        "general.site_url must be an http or https URL with a host ",
+                                        "and no credentials, query, or fragment"
+                                    )
+                                    .to_string(),
                                 );
                             }
                         }

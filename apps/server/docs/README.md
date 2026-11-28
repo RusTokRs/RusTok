@@ -1,5 +1,24 @@
 # Documentation: `apps/server`
 
+## Production and platform settings validation hardening (2026-11-28)
+
+Production database validation now requires an explicit URL-authority host; a
+query-only `host` parameter cannot substitute for it. Authority hosts and
+query overrides are checked for loopback, socket and placeholder targets.
+
+SuperAdmin bootstrap, installer configuration, runtime host mode, event
+delivery profile and Alloy sandbox endpoint handling now fail closed on
+non-Unicode environment values. Missing optional values retain their existing
+fallback behavior.
+
+Platform settings validation now accepts only implemented email providers
+(`smtp` and `none`), rejects credentials/query/fragment components in
+`general.site_url`, and validates OAuth provider-array identifiers and
+credential field types.
+
+Focused regression tests were added for these cases. Compilation and tests
+were not run in this session; maintainer verification remains pending.
+
 ## GraphQL resolver telemetry
 
 Resolver debug events use the validated schema field name (`ResolveInfo::name`),

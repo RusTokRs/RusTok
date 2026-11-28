@@ -1,5 +1,23 @@
 # Server App — Implementation Plan
 
+## Production and platform settings validation hardening (2026-11-28)
+
+Production database URIs must include an explicit URL-authority host. Query
+host overrides cannot replace a missing authority and are independently
+checked for local sockets, loopback addresses and placeholder domains.
+SuperAdmin and installer environment configuration now fails closed on
+non-Unicode values. The runtime host mode, event delivery profile and Alloy
+sandbox endpoint use the same UTF-8-aware optional environment reader.
+
+Settings validation now matches implemented runtime behavior: email providers
+are restricted to `smtp` and `none`; `general.site_url` cannot contain
+userinfo, query parameters or fragments; OAuth provider-array entries require
+an identifier and correctly typed optional client credentials.
+
+Regression tests were added but not executed. Maintainer verification remains
+pending: `cargo fmt --check`, `cargo check -p rustok-server`, and
+`cargo test -p rustok-server --lib`.
+
 ## GraphQL Playground CSP and production exposure (2026-11-27)
 
 `GET /api/graphql` returned the async-graphql Playground HTML while the
