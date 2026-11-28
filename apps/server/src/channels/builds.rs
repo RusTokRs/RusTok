@@ -547,8 +547,13 @@ mod tests {
         use crate::services::server_runtime_context::ServerRuntimeContext;
         use chrono::{Duration as ChronoDuration, Utc};
         use rustok_core::UserRole;
+        use rustok_build::{
+            BuildExecutionPlan, BuildRequest, BuildRuntimeMode, BuildService, BuildStage,
+            BuildStatus, DeploymentProfile,
+        };
         use sea_orm::{ActiveModelTrait, EntityTrait, Set};
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use uuid::Uuid;
 
         async fn frame(stream: &mut tokio::net::TcpStream) -> (u8, Vec<u8>) {
             let mut header = [0u8; 2];
@@ -599,6 +604,30 @@ mod tests {
         let session_id = Uuid::new_v4();
         session.id = Set(session_id);
         session.insert(&db).await.expect("session");
+        let build = BuildService::new(db.clone())
+            .request_build(BuildRequest {
+                manifest_ref: "main".to_string(),
+                manifest_revision: 1,
+                manifest_snapshot: serde_json::json!({"modules": []}),
+                artifact_identity: "websocket-test-artifact".to_string(),
+                requested_by: user.id.to_string(),
+                reason: Some("WebSocket progress test".to_string()),
+                modules_delta: "{}".to_string(),
+                modules: std::collections::HashMap::new(),
+                profile: DeploymentProfile::Monolith,
+                execution_plan: BuildExecutionPlan {
+                    runtime_mode: BuildRuntimeMode::Api,
+                    cargo_package: "rustok-server".to_string(),
+                    cargo_profile: "release".to_string(),
+                    cargo_target: None,
+                    cargo_features: Vec::new(),
+                    cargo_command: "cargo build -p rustok-server --release".to_string(),
+                    admin_build: None,
+                    storefront_build: None,
+                },
+            })
+            .await
+            .expect("persist queued build");
         let config =
             crate::auth::test_auth_config("test-secret-key-for-auth-extractor-32b".to_string());
         let token = encode_access_token(
@@ -648,16 +677,31 @@ mod tests {
             while hub.receiver_count() == 0 {
                 tokio::task::yield_now().await;
             }
-            hub.publish(BuildEvent::BuildCompleted {
-                build_id: Uuid::new_v4(),
-            });
-            assert_eq!(frame(&mut stream).await.0, 0x01);
+            let (snapshot_opcode, snapshot_payload) = frame(&mut stream).await;
+            assert_eq!(snapshot_opcode, 0x01);
+            let snapshot: serde_json::Value =
+                serde_json::from_slice(&snapshot_payload).expect("snapshot JSON");
+            assert_eq!(snapshot["type"], "build_requested");
+            assert_eq!(snapshot["is_snapshot"], true);
+            assert_eq!(snapshot["build_id"], build.id.to_string());
+
             sessions::Entity::delete_by_id(session_id)
                 .exec(&db)
                 .await
                 .expect("revoke session");
-            hub.publish(BuildEvent::BuildCompleted {
-                build_id: Uuid::new_v4(),
+            BuildService::new(db.clone())
+                .update_build_status(
+                    build.id,
+                    BuildStatus::Running,
+                    Some(BuildStage::Checkout),
+                    Some(10),
+                )
+                .await
+                .expect("persist next build state");
+            hub.publish(BuildEvent::BuildProgress {
+                build_id: build.id,
+                stage: BuildStage::Checkout,
+                progress: 10,
             });
             let (opcode, payload) = frame(&mut stream).await;
             assert_eq!(opcode, 0x08, "revoked session must not receive the event");
