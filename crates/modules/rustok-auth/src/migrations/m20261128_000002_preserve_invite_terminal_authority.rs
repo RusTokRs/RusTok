@@ -19,15 +19,15 @@ FOR EACH ROW EXECUTE FUNCTION auth_guard_invite_digest_witness();
 CREATE TRIGGER auth_invite_digest_witness_no_truncate BEFORE TRUNCATE ON auth_invite_digest_witnesses
 FOR EACH STATEMENT EXECUTE FUNCTION auth_guard_invite_digest_witness();
 
-CREATE FUNCTION auth_fence_invite_issuance_id(target uuid) RETURNS void LANGUAGE plpgsql AS $
+CREATE FUNCTION auth_fence_invite_issuance_id(target uuid) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
     IF NOT pg_try_advisory_xact_lock(
         hashtextextended('rustok:auth-invite-issuance:id:' || target::text, 0)) THEN
         RAISE EXCEPTION 'Invite issuance identity busy' USING ERRCODE = '55P03';
     END IF;
-END; $;
+END; $$;
 
-CREATE FUNCTION auth_guard_invite_birth() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE FUNCTION auth_guard_invite_birth() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     LOCK TABLE auth_invite_digest_witnesses IN ROW EXCLUSIVE MODE NOWAIT;
     PERFORM auth_fence_invite_consumption_digest(NEW.token_hash);
@@ -58,7 +58,7 @@ FOR EACH ROW EXECUTE FUNCTION auth_claim_invite_birth('issued');
 CREATE TRIGGER auth_invite_receipt_birth_claim AFTER INSERT ON auth_invite_consumptions
 FOR EACH ROW EXECUTE FUNCTION auth_claim_invite_birth('consumed');
 
-CREATE FUNCTION auth_guard_invite_issued_claims() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE FUNCTION auth_guard_invite_issued_claims() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     -- Raw UPDATE may already own the tuple; the gate must never wait.
     PERFORM auth_fence_invite_consumption_digest(OLD.token_hash);
