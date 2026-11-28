@@ -419,7 +419,7 @@ mod tests {
         db: &sea_orm::DatabaseConnection,
         status: SysEventStatus,
     ) -> uuid::Uuid {
-        insert_event_at(db, status, Utc::now()).await
+        insert_event_at(db, status, rustok_outbox_storage::database_now(db).await.expect("database clock")).await
     }
 
     async fn insert_event_at(

@@ -332,7 +332,7 @@ mod tests {
         payload: serde_json::Value,
     ) -> Uuid {
         let id = Uuid::new_v4();
-        let now = Utc::now();
+        let now = Utc::now() - chrono::Duration::seconds(3);
         entity::ActiveModel {
             id: Set(id),
             tenant_id: Set(tenant_id),
@@ -386,7 +386,7 @@ mod tests {
 
         let event_id = Uuid::new_v4();
         let tenant_id = Uuid::new_v4();
-        let now = Utc::now();
+        let now = Utc::now() - chrono::Duration::seconds(3);
         entity::ActiveModel {
             id: Set(event_id),
             tenant_id: Set(Some(tenant_id)),

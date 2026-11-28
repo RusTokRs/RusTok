@@ -887,7 +887,7 @@ async fn seed_event(db: &DatabaseConnection) -> TestResult<EventEnvelope> {
         last_error: Set(None),
         claimed_by: Set(None),
         claimed_at: Set(None),
-        created_at: Set(Utc::now()),
+        created_at: Set(rustok_outbox_storage::database_now(db).await?),
         dispatched_at: Set(None),
     };
     entity::Entity::insert(model)
