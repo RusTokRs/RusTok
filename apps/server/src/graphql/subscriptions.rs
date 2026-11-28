@@ -7,6 +7,7 @@ use async_graphql::{Context, Result, Subscription};
 use futures_util::stream;
 use rustok_api::HostAuthorityContext;
 use rustok_core::EventConsumerRuntime;
+use rustok_build::SharedBuildControl;
 use uuid::Uuid;
 
 use crate::graphql::types::BuildProgressEvent;
@@ -46,7 +47,7 @@ impl BuildSubscription {
         let _stream_permit = hub
             .try_acquire_stream()
             .ok_or_else(|| async_graphql::Error::new("Build progress stream capacity reached"))?;
-        let control = hub.control();
+        let control = ctx.data::<SharedBuildControl>()?.clone();
 
         let build_filter = build_id
             .filter(|value| !value.trim().is_empty())
