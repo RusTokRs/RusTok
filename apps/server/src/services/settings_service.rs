@@ -536,6 +536,31 @@ impl SettingsValidator for OAuthSettingsValidator {
                                     "oauth provider at index {idx} identifier must be a string"
                                 ));
                             }
+                        } else {
+                            errors.push(format!(
+                                "oauth provider at index {idx} must include provider, name, or id"
+                            ));
+                        }
+
+                        if let Some(client_id) =
+                            p_cfg.get("client_id").or_else(|| p_cfg.get("clientId"))
+                        {
+                            if !client_id.is_string() {
+                                errors.push(format!(
+                                    "oauth provider at index {idx} client_id must be a string"
+                                ));
+                            }
+                        }
+                        if let Some(secret) = p_cfg
+                            .get("client_secret")
+                            .or_else(|| p_cfg.get("clientSecret"))
+                            .or_else(|| p_cfg.get("secret"))
+                        {
+                            if !secret.is_string() {
+                                errors.push(format!(
+                                    "oauth provider at index {idx} client_secret must be a string"
+                                ));
+                            }
                         }
                     } else {
                         errors.push(format!("oauth provider at index {idx} must be an object"));
@@ -2260,6 +2285,34 @@ mod tests {
         let incoming_new = json!({ "client_secret": "[REDACTED]" });
         let cleared = preserve_oauth_secret_fields(empty_prior, incoming_new);
         assert_eq!(cleared["client_secret"], "");
+    }
+
+    #[test]
+    fn oauth_validator_checks_array_provider_identifiers_and_credentials() {
+        let validator = OAuthSettingsValidator;
+        assert!(
+            validator
+                .validate(&json!({
+                    "providers": [{
+                        "provider": "google",
+                        "client_id": "google-id",
+                        "client_secret": "google-secret"
+                    }]
+                }))
+                .is_ok()
+        );
+
+        for invalid in [
+            json!({ "providers": [{}] }),
+            json!({ "providers": [{ "provider": "" }] }),
+            json!({ "providers": [{ "provider": "google", "client_id": 42 }] }),
+            json!({ "providers": [{ "provider": "google", "client_secret": false }] }),
+        ] {
+            assert!(
+                validator.validate(&invalid).is_err(),
+                "invalid OAuth provider array entry must be rejected: {invalid}"
+            );
+        }
     }
 
     #[test]
