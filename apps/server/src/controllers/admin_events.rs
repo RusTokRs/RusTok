@@ -9,7 +9,7 @@ use rustok_outbox::entity::{self, SysEventStatus};
 use rustok_telemetry::metrics;
 use sea_orm::{
     ColumnTrait, Condition, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, sea_query::Expr,
+    QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
@@ -200,7 +200,9 @@ pub async fn replay_dlq_event(
         ));
     }
 
-    requeue_failed_event(ctx.db(), tenant.id, id).await?;
+    let txn = ctx.db().begin().await.map_err(Error::Database)?;
+    requeue_failed_event(&txn, tenant.id, id).await?;
+    txn.commit().await.map_err(Error::Database)?;
 
     Ok(Json(DlqReplayResponse {
         id,
@@ -239,6 +241,23 @@ async fn requeue_failed_event(db: &impl ConnectionTrait, tenant_id: Uuid, id: Uu
         return Err(Error::BadRequest(
             "Only failed (DLQ) events can be replayed".to_string(),
         ));
+    }
+
+    let saved = entity::Entity::find_by_id(id)
+        .filter(sys_event_tenant_condition(db.get_database_backend(), tenant_id))
+        .one(db)
+        .await
+        .map_err(Error::Database)?
+        .ok_or(Error::NotFound)?;
+    if saved.status != SysEventStatus::Pending
+        || saved.retry_count != 0
+        || saved.next_attempt_at.is_some()
+        || saved.last_error.is_some()
+        || saved.claimed_by.is_some()
+        || saved.claimed_at.is_some()
+        || saved.dispatched_at.is_some()
+    {
+        return Err(Error::InternalServerError);
     }
 
     Ok(())

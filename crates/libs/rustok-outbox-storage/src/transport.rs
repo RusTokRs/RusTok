@@ -397,8 +397,10 @@ impl EventTransport for OutboxTransport {
                 "outbox event_id must not be nil".to_string(),
             ));
         }
-        // An unfenced ACK may complete only an unclaimed pending row.
-        // Relay claims require the exact owner token and timestamp.
+        // Keep the ACK transition and exact readback in one transaction.
+        // Relay claims and unresolved attempts are never stolen by this path.
+        let txn = self.db.begin().await?;
+        let now = crate::database_now(&txn).await?;
         let result = entity::Entity::update_many()
             .filter(entity::Column::Id.eq(event_id))
             .filter(entity::Column::Status.eq(SysEventStatus::Pending))
@@ -407,20 +409,33 @@ impl EventTransport for OutboxTransport {
             .filter(Expr::cust("NOT EXISTS (SELECT 1 FROM outbox_dispatch_attempts WHERE event_id = sys_events.id AND state = 'open')"))
             .set(entity::ActiveModel {
                 status: Set(SysEventStatus::Dispatched),
-                dispatched_at: Set(Some(crate::database_now(&self.db).await?)),
+                dispatched_at: Set(Some(now)),
                 claimed_by: Set(None),
                 claimed_at: Set(None),
                 last_error: Set(None),
                 next_attempt_at: Set(None),
                 ..Default::default()
             })
-            .exec(&self.db)
+            .exec(&txn)
             .await?;
         if result.rows_affected == 1 {
+            let stored = entity::Entity::find_by_id(event_id).one(&txn).await?
+                .ok_or_else(|| Error::NotFound(format!("sys_event {event_id}")))?;
+            if stored.status != SysEventStatus::Dispatched
+                || stored.dispatched_at != Some(now)
+                || stored.claimed_by.is_some()
+                || stored.claimed_at.is_some()
+                || stored.last_error.is_some()
+                || stored.next_attempt_at.is_some()
+            {
+                return Err(Error::External(format!("outbox event {event_id} ACK readback mismatch")));
+            }
+            txn.commit().await?;
             return Ok(());
         }
-        // Distinguish an idempotent re-acknowledgement from a real state
-        // conflict without ever overwriting the current state.
+        if result.rows_affected != 0 {
+            return Err(Error::External(format!("outbox event {event_id} ACK affected an unexpected row count")));
+        }
         // Status alone is not proof of completion: an unresolved attempt
         // must also block the idempotent ACK path. Read both in one snapshot.
         if entity::Entity::find_by_id(event_id)
@@ -428,12 +443,13 @@ impl EventTransport for OutboxTransport {
             .filter(entity::Column::ClaimedBy.is_null())
             .filter(entity::Column::ClaimedAt.is_null())
             .filter(Expr::cust("NOT EXISTS (SELECT 1 FROM outbox_dispatch_attempts WHERE event_id = sys_events.id AND state = 'open')"))
-            .one(&self.db).await?.is_some()
+            .one(&txn).await?.is_some()
         {
+            txn.commit().await?;
             return Ok(());
         }
         entity::Entity::find_by_id(event_id)
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or_else(|| Error::NotFound(format!("sys_event {event_id}")))?;
         Err(Error::Validation(format!(
