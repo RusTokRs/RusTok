@@ -407,12 +407,12 @@ Migration `m20260916_000032_clean_product_category_canonical_taxonomy` completes
    - On category creation, synchronization to `taxonomy_terms` is executed first within the write transaction, before `catalog_categories` insertion.
 
 4. **Elimination of legacy hierarchy reads**:
-   - Runtime hierarchy consumers use the Taxonomy owner port rather than Product `parent_id` or closure mirrors. Product path/level remain navigation projections; the reparenting refresh protocol is still outstanding.
+   - Runtime hierarchy consumers use the Taxonomy owner port rather than Product `parent_id` or closure mirrors. Product directory paths and new-child path/level values are derived from current Taxonomy owner snapshots; persisted Product `path`/`level` are compatibility storage only.
    - Category listing, effective-form resolution, inherited group labels, and storefront/admin subtree filters and facets consume `TaxonomyOwnerCategoryReader` uniformly across all supported database engines.
 
 ## Current error boundary (2026-10-18)
 
-The create/read/hierarchy source guards follow the Same-ID/all-backend runtime contract above. PostgreSQL has physically retired the legacy hierarchy columns; non-PostgreSQL compatibility storage may remain but is not a runtime ancestry source. Product path/level remain navigation projections. Taxonomy synchronization
+The create/read/hierarchy source guards follow the Same-ID/all-backend runtime contract above. PostgreSQL has physically retired the legacy hierarchy columns; non-PostgreSQL compatibility storage may remain but is not a runtime ancestry source. Persisted Product path/level are compatibility storage; runtime paths are rebuilt from the Taxonomy owner snapshot. Taxonomy synchronization
 preserves typed domain conflicts, forbidden access and storage failures with static Product copy.
 Taxonomy reads and corrupt owner projections fail as internal invariants rather than client
 Validation; storage and forbidden remain distinct. See the
@@ -422,3 +422,24 @@ This updates source guards/classification only; no migration or runtime certific
 ## Native admin runtime composition (2026-11-27)
 
 The native Leptos Product admin reads Taxonomy-owned hierarchy for the category directory, effective forms, product-list subtree filters and facet counts. When Product and Taxonomy are selected, Distribution publishes `ProductTaxonomyPortFactory` into the host runtime extensions. Native admin server functions resolve that factory from `HostRuntimeContext` and inject the resulting database-bound provider into both `ProductCatalogSchemaService` and `CatalogService`. A missing factory is treated as a composition failure; mounted native admin must not silently use `NoopProductTaxonomyPort`. The same provider also resolves Product tag names, keeping category and tag reads on the selected Taxonomy owner adapter.
+
+
+## Product navigation paths after Taxonomy reparent hardening (2026-11-28)
+
+The Product schema-directory `path` field remains a Product-owned response projection, but it
+is now rebuilt from the strict Taxonomy owner snapshot: localized owner slugs plus canonical
+parent links. The directory loads Product identities and Taxonomy owner rows in one consistent
+transaction snapshot (PostgreSQL uses repeatable read), validates exact owner identity/scope and
+orders by Taxonomy sibling position. A missing owner projection, missing hierarchy row for a
+selected Product category, missing or foreign-scope parent term, or cycle is an internal
+invariant failure. A valid Taxonomy parent outside the live
+Product subset remains a visible-root boundary: the returned `parent_id` is preserved, while
+the visible path starts at the child.
+
+Creating a child category derives the parent path and level from the same transaction-bound
+Taxonomy hierarchy after acquiring the shared schema/hierarchy writer fence. Persisted Product
+`catalog_categories.path` and `level` are retained as compatibility storage, but Product no
+longer reads them for directory navigation or child-path construction. A Taxonomy reparent is
+therefore reflected by the next Product directory read and subsequent child creation without an
+asynchronous Product path-refresh worker. Runtime reparent/read/write concurrency and snapshot
+cost still require maintainer verification.

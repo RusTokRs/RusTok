@@ -126,9 +126,12 @@ pub trait ProductTaxonomyPort: TaxonomyTermNamesReadPort {
         input: ProductTaxonomyCategoryTranslationInput,
     ) -> Result<(), CommerceError>;
 
-    /// Loads scoped product categories from the taxonomy provider without inventing
-    /// root placements for missing hierarchy rows. Only an explicitly empty ID
-    /// selection may succeed without an available provider.
+    /// Loads scoped product categories from the taxonomy provider using the supplied
+    /// connection/transaction. The provider must reject missing requested owners, missing
+    /// hierarchy rows for requested categories, and missing or foreign-scope Taxonomy
+    /// parent terms, even when a valid parent is outside the requested ID set. Product may render that validated parent
+    /// outside its live subset as a visible-root boundary while preserving its owner ID.
+    /// Only an explicitly empty ID selection may succeed without an available provider.
     async fn load_scoped_categories(
         &self,
         conn: TaxonomyConnection<'_>,

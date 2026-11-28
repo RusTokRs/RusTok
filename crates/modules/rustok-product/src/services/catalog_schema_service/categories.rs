@@ -10,15 +10,19 @@ use super::{
     CreateCatalogCategoryInput, CreateCategoryAttributeGroupInput, ProductAttributeGroupRecord,
     ProductCatalogSchemaService, SetCategorySchemaModeInput, ensure_attribute, ensure_schema,
     ensure_structural_category, insert_category_group_translation, load_category_group_id,
-    load_category_parent, parse_virtual_category_rule_v1,
+    parse_virtual_category_rule_v1,
     validate_virtual_category_rule_references,
 };
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult, Statement};
+use sea_orm::{
+    ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult, Statement,
+    TransactionTrait,
+};
 use serde_json::Value;
 use tracing::instrument;
 use uuid::Uuid;
 
 use crate::error::{CommerceError, CommerceResult};
+use crate::ports::AsTaxonomyConnection;
 use crate::services::write_transaction::{
     ProductWriteTransaction, current_product_operation_id, record_product_operation_result,
 };
@@ -49,26 +53,39 @@ impl ProductCatalogSchemaService {
             validate_virtual_category_rule_references(&txn, tenant_id, &rule).await?;
         }
 
-        let parent = match input.parent_id {
-            Some(parent_id) => Some(load_category_parent(&txn, tenant_id, parent_id).await?),
-            None => None,
-        };
-        let level = match parent.as_ref() {
-            Some(parent) => parent
-                .level
-                .checked_add(1)
-                .filter(|level| *level > 0)
-                .ok_or_else(|| {
+        // Persisted Product path/level are compatibility fields. Build a new child path
+        // from the current Taxonomy hierarchy instead of inheriting a stale Product path.
+        let (path, level) = match input.parent_id {
+            Some(parent_id) => {
+                let (rows, owners) = load_category_taxonomy_snapshot(
+                    self,
+                    &txn,
+                    tenant_id,
+                    PLATFORM_FALLBACK_LOCALE,
+                )
+                .await?;
+                if !rows.iter().any(|row| row.id == parent_id) {
+                    return Err(CommerceError::Validation(
+                        "parent category not found".into(),
+                    ));
+                }
+                let owners = index_taxonomy_category_owners(&rows, owners)?;
+                let (_, navigation) = taxonomy_category_hierarchy_and_paths(&owners)?;
+                let parent = navigation.get(&parent_id).ok_or_else(|| {
+                    super::taxonomy_projection_error(
+                        "Product category is missing its Taxonomy navigation path",
+                    )
+                })?;
+                let level = parent.level.checked_add(1).ok_or_else(|| {
                     CommerceError::Validation(
                         "parent category level must be nonnegative and representable".into(),
                     )
-                })?,
-            None => 0,
+                })?;
+                let path = format!("{}/{}", parent.path, input.slug);
+                (path, level)
+            }
+            None => (input.slug.clone(), 0),
         };
-        let path = parent
-            .as_ref()
-            .map(|row| format!("{}/{}", row.path, input.slug))
-            .unwrap_or_else(|| input.slug.clone());
 
         sync_created_category_to_taxonomy_in_tx(
             self,
@@ -375,8 +392,13 @@ impl ProductCatalogSchemaService {
 struct ProductCategoryTaxonomyReadRow {
     id: Uuid,
     code: String,
-    path: String,
     kind: String,
+}
+
+#[derive(Clone, Debug)]
+struct CategoryNavigationPath {
+    path: String,
+    level: i32,
 }
 
 async fn list_categories_from_taxonomy(
@@ -384,17 +406,40 @@ async fn list_categories_from_taxonomy(
     tenant_id: Uuid,
     locale: &str,
 ) -> CommerceResult<Vec<CatalogCategoryListRecord>> {
+    // The owner reader performs multiple queries. Keep Product rows, parent links and
+    // localized slugs on one snapshot so a concurrent Taxonomy reparent cannot mix them.
+    let txn = service.db.begin().await?;
+    if txn.get_database_backend() == DatabaseBackend::Postgres {
+        txn.execute_unprepared("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            .await?;
+    }
+
+    let (rows, owners) =
+        load_category_taxonomy_snapshot(service, &txn, tenant_id, locale).await?;
+    let records = compose_taxonomy_category_list_records(rows, owners)?;
+    txn.commit().await?;
+    Ok(records)
+}
+
+async fn load_category_taxonomy_snapshot<C>(
+    service: &ProductCatalogSchemaService,
+    connection: &C,
+    tenant_id: Uuid,
+    locale: &str,
+) -> CommerceResult<(
+    Vec<ProductCategoryTaxonomyReadRow>,
+    Vec<crate::ports::ProductTaxonomyCategorySnapshot>,
+)>
+where
+    C: ConnectionTrait + AsTaxonomyConnection,
+{
     let rows = ProductCategoryTaxonomyReadRow::find_by_statement(Statement::from_sql_and_values(
-        service.db.get_database_backend(),
+        connection.get_database_backend(),
         r#"
-        SELECT
-            c.id,
-            c.code,
-            c.path,
-            c.kind
+        SELECT c.id, c.code, c.kind
         FROM catalog_categories c
         WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
-        ORDER BY c.path ASC
+        ORDER BY c.id ASC
         LIMIT $2
         "#,
         vec![
@@ -402,20 +447,19 @@ async fn list_categories_from_taxonomy(
             ((super::MAX_SCHEMA_LIST_ROWS + 1) as i64).into(),
         ],
     ))
-    .all(&service.db)
+    .all(connection)
     .await?;
     super::ensure_schema_list_within_limit(rows.len(), "category")?;
 
     if rows.is_empty() {
-        return Ok(Vec::new());
+        return Ok((rows, Vec::new()));
     }
 
     let taxonomy_category_ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
-
     let owners = service
         .taxonomy()
         .load_scoped_categories(
-            (&service.db).into(),
+            connection.as_taxonomy_connection(),
             tenant_id,
             Some(&taxonomy_category_ids),
             locale,
@@ -423,17 +467,61 @@ async fn list_categories_from_taxonomy(
         )
         .await?;
 
-    compose_taxonomy_category_list_records(rows, owners)
+    Ok((rows, owners))
 }
 
 fn compose_taxonomy_category_list_records(
-    mut rows: Vec<ProductCategoryTaxonomyReadRow>,
+    rows: Vec<ProductCategoryTaxonomyReadRow>,
     owners: Vec<crate::ports::ProductTaxonomyCategorySnapshot>,
 ) -> CommerceResult<Vec<CatalogCategoryListRecord>> {
-    // A scoped Taxonomy read is an exact owner projection of these Product rows.
-    // Duplicate or unrelated owner records are an invariant violation, not a
-    // nondeterministic last-write-wins map entry or an invisible extra record.
+    let mut owners = index_taxonomy_category_owners(&rows, owners)?;
+    let (hierarchy_order, navigation_paths) = taxonomy_category_hierarchy_and_paths(&owners)?;
+    let order_by_id = hierarchy_order
+        .into_iter()
+        .enumerate()
+        .map(|(index, category_id)| (category_id, index))
+        .collect::<HashMap<_, _>>();
+    let mut rows = rows;
+    rows.sort_by_key(|row| order_by_id.get(&row.id).copied().unwrap_or(usize::MAX));
+
+    rows.into_iter()
+        .map(|row| {
+            let owner = owners.remove(&row.id).ok_or_else(|| {
+                super::taxonomy_projection_error(
+                    "Product category is missing its Taxonomy owner projection",
+                )
+            })?;
+            let navigation = navigation_paths.get(&row.id).ok_or_else(|| {
+                super::taxonomy_projection_error(
+                    "Product category is missing its Taxonomy navigation path",
+                )
+            })?;
+
+            CatalogCategoryListRow {
+                id: row.id,
+                parent_id: owner.parent_id,
+                code: row.code,
+                slug: owner.slug,
+                path: navigation.path.clone(),
+                kind: row.kind,
+                name: owner.name,
+            }
+            .try_into()
+        })
+        .collect()
+}
+
+fn index_taxonomy_category_owners(
+    rows: &[ProductCategoryTaxonomyReadRow],
+    owners: Vec<crate::ports::ProductTaxonomyCategorySnapshot>,
+) -> CommerceResult<HashMap<Uuid, crate::ports::ProductTaxonomyCategorySnapshot>> {
     let requested_ids = rows.iter().map(|row| row.id).collect::<HashSet<_>>();
+    if requested_ids.len() != rows.len() {
+        return Err(super::taxonomy_projection_error(
+            "Product category snapshot contains duplicate Product identities",
+        ));
+    }
+
     let mut owner_by_id = HashMap::with_capacity(owners.len());
     for owner in owners {
         if !requested_ids.contains(&owner.id) {
@@ -447,53 +535,74 @@ fn compose_taxonomy_category_list_records(
             ));
         }
     }
-    let mut owners = owner_by_id;
-    let hierarchy_order = taxonomy_category_hierarchy_order(&owners)?;
-    let order_by_id = hierarchy_order
-        .into_iter()
-        .enumerate()
-        .map(|(index, category_id)| (category_id, index))
-        .collect::<HashMap<_, _>>();
-    rows.sort_by_key(|row| order_by_id.get(&row.id).copied().unwrap_or(usize::MAX));
 
-    rows.into_iter()
-        .map(|row| {
-            let owner = owners.remove(&row.id).ok_or_else(|| {
-                super::taxonomy_projection_error(
-                    "Product category is missing its Taxonomy owner projection",
-                )
-            })?;
-            let expected_key = canonical_key_for_product_category(row.id);
-            if owner.canonical_key != expected_key {
-                return Err(super::taxonomy_projection_error(
-                    "Product category has incompatible Taxonomy canonical key",
-                ));
-            }
-            if owner.scope_type != "module"
-                || owner.scope_value.as_deref() != Some(PRODUCT_TAXONOMY_SCOPE)
-            {
-                return Err(super::taxonomy_projection_error(
-                    "Product category has incompatible Taxonomy scope",
-                ));
-            }
-            if owner.available_locales.is_empty() {
-                return Err(super::taxonomy_projection_error(
-                    "Product category has no canonical Taxonomy localized copy",
-                ));
-            }
+    for row in rows {
+        let owner = owner_by_id.get(&row.id).ok_or_else(|| {
+            super::taxonomy_projection_error(
+                "Product category is missing its Taxonomy owner projection",
+            )
+        })?;
+        let expected_key = canonical_key_for_product_category(row.id);
+        if owner.canonical_key != expected_key {
+            return Err(super::taxonomy_projection_error(
+                "Product category has incompatible Taxonomy canonical key",
+            ));
+        }
+        if owner.scope_type != "module"
+            || owner.scope_value.as_deref() != Some(PRODUCT_TAXONOMY_SCOPE)
+        {
+            return Err(super::taxonomy_projection_error(
+                "Product category has incompatible Taxonomy scope",
+            ));
+        }
+        if owner.available_locales.is_empty() {
+            return Err(super::taxonomy_projection_error(
+                "Product category has no canonical Taxonomy localized copy",
+            ));
+        }
+        if owner.slug.trim().is_empty() {
+            return Err(super::taxonomy_projection_error(
+                "Product category has an empty Taxonomy route slug",
+            ));
+        }
+    }
 
-            CatalogCategoryListRow {
-                id: row.id,
-                parent_id: owner.parent_id,
-                code: row.code,
-                slug: owner.slug,
-                path: row.path,
-                kind: row.kind,
-                name: owner.name,
-            }
-            .try_into()
-        })
-        .collect()
+    Ok(owner_by_id)
+}
+
+fn taxonomy_category_hierarchy_and_paths(
+    owners: &HashMap<Uuid, crate::ports::ProductTaxonomyCategorySnapshot>,
+) -> CommerceResult<(Vec<Uuid>, HashMap<Uuid, CategoryNavigationPath>)> {
+    let hierarchy_order = taxonomy_category_hierarchy_order(owners)?;
+    let mut navigation_paths = HashMap::with_capacity(owners.len());
+
+    for category_id in &hierarchy_order {
+        let owner = owners.get(category_id).ok_or_else(|| {
+            super::taxonomy_projection_error(
+                "Product category is missing its Taxonomy hierarchy projection",
+            )
+        })?;
+        // A validated Taxonomy parent outside the live Product subset is a visible-root
+        // boundary; keep its parent_id in the record, but start the visible path here.
+        let (path, level) = match owner.parent_id {
+            Some(parent_id) => match navigation_paths.get(&parent_id) {
+                Some(parent) => {
+                    let level = parent.level.checked_add(1).ok_or_else(|| {
+                        super::taxonomy_projection_error(
+                            "Product category Taxonomy hierarchy depth exceeds supported bounds",
+                        )
+                    })?;
+                    (format!("{}/{}", parent.path, owner.slug), level)
+                }
+                None => (owner.slug.clone(), 0),
+            },
+            None => (owner.slug.clone(), 0),
+        };
+
+        navigation_paths.insert(category_id.to_owned(), CategoryNavigationPath { path, level });
+    }
+
+    Ok((hierarchy_order, navigation_paths))
 }
 
 fn taxonomy_category_hierarchy_order(
@@ -508,6 +617,8 @@ fn taxonomy_category_hierarchy_order(
                 "Product category has a negative Taxonomy sibling position",
             ));
         }
+        // The strict Taxonomy provider validates parent existence and scope even when
+        // the parent is outside this live Product selection.
         match owner.parent_id {
             Some(parent_id) if owners.contains_key(&parent_id) => {
                 children_by_parent
@@ -765,7 +876,6 @@ mod tests {
         ProductCategoryTaxonomyReadRow {
             id,
             code: "product-code".to_string(),
-            path: "retained/product-path".to_string(),
             kind: "structural".to_string(),
         }
     }
@@ -854,28 +964,39 @@ mod tests {
     }
 
     #[test]
-    fn category_taxonomy_read_composes_owner_copy() {
+    fn category_taxonomy_read_composes_owner_copy_and_current_path() {
         let id = Uuid::new_v4();
         let parent_id = Uuid::new_v4();
         let records = compose_taxonomy_category_list_records(
-            vec![taxonomy_read_row(id)],
-            vec![taxonomy_owner_category(
-                id,
-                "Taxonomy name",
-                "taxonomy-slug",
-                Some(parent_id),
-            )],
+            vec![taxonomy_read_row(id), taxonomy_read_row(parent_id)],
+            vec![
+                taxonomy_owner_category(
+                    id,
+                    "Taxonomy name",
+                    "taxonomy-slug",
+                    Some(parent_id),
+                ),
+                taxonomy_owner_category(
+                    parent_id,
+                    "Taxonomy parent",
+                    "taxonomy-parent",
+                    None,
+                ),
+            ],
         )
         .expect("Taxonomy-backed Product category list");
 
-        assert_eq!(records.len(), 1);
-        let record = &records[0];
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].id, parent_id);
+        assert_eq!(records[0].path, "taxonomy-parent");
+
+        let record = &records[1];
         assert_eq!(record.id, id);
         assert_eq!(record.parent_id, Some(parent_id));
         assert_eq!(record.name, "Taxonomy name");
         assert_eq!(record.slug, "taxonomy-slug");
         assert_eq!(record.code, "product-code");
-        assert_eq!(record.path, "retained/product-path");
+        assert_eq!(record.path, "taxonomy-parent/taxonomy-slug");
         assert!(matches!(record.kind, CatalogCategoryKind::Structural));
     }
 
@@ -919,7 +1040,7 @@ mod tests {
     }
 
     #[test]
-    fn category_taxonomy_directory_order_uses_owner_hierarchy_not_product_path() {
+    fn category_taxonomy_directory_order_and_paths_use_owner_hierarchy() {
         let first_root = Uuid::new_v4();
         let second_root = Uuid::new_v4();
         let first_child = Uuid::new_v4();
@@ -940,21 +1061,12 @@ mod tests {
         );
         second_child_owner.position = 1;
 
-        let mut second_root_row = taxonomy_read_row(second_root);
-        second_root_row.path = "a-product-path".to_string();
-        let mut second_child_row = taxonomy_read_row(second_child);
-        second_child_row.path = "b-product-path".to_string();
-        let mut first_child_row = taxonomy_read_row(first_child);
-        first_child_row.path = "y-product-path".to_string();
-        let mut first_root_row = taxonomy_read_row(first_root);
-        first_root_row.path = "z-product-path".to_string();
-
         let records = compose_taxonomy_category_list_records(
             vec![
-                second_root_row,
-                second_child_row,
-                first_child_row,
-                first_root_row,
+                taxonomy_read_row(second_root),
+                taxonomy_read_row(second_child),
+                taxonomy_read_row(first_child),
+                taxonomy_read_row(first_root),
             ],
             vec![
                 second_child_owner,
@@ -969,8 +1081,30 @@ mod tests {
             records.iter().map(|record| record.id).collect::<Vec<_>>(),
             vec![first_root, first_child, second_child, second_root]
         );
-        assert_eq!(records[0].path, "z-product-path");
-        assert_eq!(records[3].path, "a-product-path");
+        assert_eq!(records[0].path, "first");
+        assert_eq!(records[1].path, "first/first-child");
+        assert_eq!(records[2].path, "first/second-child");
+        assert_eq!(records[3].path, "second");
+    }
+
+    #[test]
+    fn category_taxonomy_directory_uses_visible_root_for_parent_outside_live_product_subset() {
+        let child_id = Uuid::new_v4();
+        let parent_id = Uuid::new_v4();
+        let records = compose_taxonomy_category_list_records(
+            vec![taxonomy_read_row(child_id)],
+            vec![taxonomy_owner_category(
+                child_id,
+                "Child",
+                "child",
+                Some(parent_id),
+            )],
+        )
+        .expect("a strict owner snapshot may have a parent outside the live Product subset");
+
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].parent_id, Some(parent_id));
+        assert_eq!(records[0].path, "child");
     }
 
     #[test]

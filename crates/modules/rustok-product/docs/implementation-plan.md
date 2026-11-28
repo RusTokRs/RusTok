@@ -216,9 +216,14 @@ No tests, Rust compilation/macro expansion, database or mounted-client checks we
    reads. Product effective-form inheritance, inherited group-label ancestry, and storefront/admin
    category subtree filters and facets now consume strict Taxonomy owner snapshots on all supported
    database engines; they no longer use Product path or the legacy `parent_id` compatibility column as canonical
-   ancestry. Product `catalog_categories.path` remains a Product-owned navigation projection that
-   Taxonomy moves do not refresh. Add an owner-approved projection refresh protocol or remove stale
-   path from externally visible navigation, then measure snapshot cost and lock contention.
+   ancestry. Product category-directory reads now derive localized paths from strict Taxonomy
+   owner snapshots, and child creation derives its parent path/level from the same transaction-
+   bound hierarchy. A valid Taxonomy parent outside the live Product subset remains a visible-root
+   boundary with its owner parent ID preserved; missing owner rows, missing hierarchy rows for
+   selected Product categories, missing/foreign-scope Taxonomy parent terms, and cycles fail
+   closed. Persisted Product `path`/`level` remain compatibility
+   storage and are no longer read for navigation or child creation. Execute reparent/read/write
+   concurrency scenarios and measure snapshot cost and lock contention.
    - Implemented source-side active-Product impact validation for effective category-schema
      requirement/scope tightening. Schema-attribute bindings, category-attribute bindings and
      category schema-mode changes snapshot effective requirements under the exclusive schema

@@ -570,12 +570,6 @@ impl BindCategoryAttributeInput {
 }
 
 #[derive(FromQueryResult)]
-struct CategoryParentRow {
-    path: String,
-    level: i32,
-}
-
-#[derive(FromQueryResult)]
 struct ProductPrimaryCategoryRow {
     primary_category_id: Option<Uuid>,
 }
@@ -934,24 +928,6 @@ fn json_depth(value: &Value) -> usize {
         Value::Object(values) => 1 + values.values().map(json_depth).max().unwrap_or(0),
         _ => 0,
     }
-}
-
-async fn load_category_parent<C>(
-    conn: &C,
-    tenant_id: Uuid,
-    category_id: Uuid,
-) -> CommerceResult<CategoryParentRow>
-where
-    C: ConnectionTrait,
-{
-    CategoryParentRow::find_by_statement(Statement::from_sql_and_values(
-        conn.get_database_backend(),
-        "SELECT path, level FROM catalog_categories WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL",
-        vec![tenant_id.into(), category_id.into()],
-    ))
-    .one(conn)
-    .await?
-    .ok_or_else(|| CommerceError::Validation("parent category not found".into()))
 }
 
 async fn ensure_structural_category<C>(
