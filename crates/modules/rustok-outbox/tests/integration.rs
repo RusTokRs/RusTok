@@ -120,7 +120,8 @@ async fn assert_event_envelope_integrity(db: &DatabaseConnection) -> TestResult<
         "UPDATE sys_events SET tenant_id = NULL",
         "UPDATE sys_events SET event_type = 'other.event'",
         "UPDATE sys_events SET schema_version = schema_version + 1",
-        "UPDATE sys_events SET created_at = claimed_at",
+        "UPDATE sys_events SET payload = '{}'",
+        "UPDATE sys_events SET created_at = '2000-01-01T00:00:00+00:00'",
         "UPDATE sys_events SET id = tenant_id",
         "DELETE FROM sys_events",
     ] {
@@ -129,9 +130,13 @@ async fn assert_event_envelope_integrity(db: &DatabaseConnection) -> TestResult<
     if db.get_database_backend() == DatabaseBackend::Sqlite {
         db.execute_unprepared("PRAGMA recursive_triggers = OFF").await?;
         let changed = db.execute_unprepared(
-            "INSERT OR REPLACE INTO sys_events SELECT id, tenant_id, 'changed.event', schema_version, payload, status, retry_count, next_attempt_at, last_error, claimed_by, claimed_at, created_at, dispatched_at FROM sys_events"
+            "INSERT OR REPLACE INTO sys_events (id, tenant_id, event_type, schema_version, payload, status, retry_count, next_attempt_at, last_error, claimed_by, claimed_at, created_at, dispatched_at) SELECT id, tenant_id, 'changed.event', schema_version, payload, status, retry_count, next_attempt_at, last_error, claimed_by, claimed_at, created_at, dispatched_at FROM sys_events"
         ).await?;
         assert_eq!(changed.rows_affected(), 0);
+        assert!(db.execute_unprepared(&format!(
+            "INSERT OR REPLACE INTO sys_events (id, tenant_id, event_type, schema_version, payload, status, retry_count, created_at) SELECT CASE WHEN typeof(id) = 'blob' THEN lower(hex(id)) ELSE X'{}' END, tenant_id, event_type, schema_version, payload, status, retry_count, created_at FROM sys_events",
+            event.id.simple(),
+        )).await.is_err());
         assert!(db.execute_unprepared("UPDATE sys_events SET rowid = rowid + 100").await.is_err());
         assert!(db.execute_unprepared(&format!(
             "INSERT OR REPLACE INTO sys_events (rowid, id, event_type, schema_version, payload, status, retry_count, created_at) SELECT rowid, '{}', event_type, schema_version, payload, status, retry_count, created_at FROM sys_events",
@@ -145,6 +150,18 @@ async fn assert_event_envelope_integrity(db: &DatabaseConnection) -> TestResult<
     assert_eq!(relay.process_pending_once(None).await?, 1);
     assert!(db.execute_unprepared("DELETE FROM sys_events").await.is_err());
     consumer.acknowledge_existing("integrity.consumer", event.id).await?;
+    if db.get_database_backend() == DatabaseBackend::Sqlite {
+        let changed = db.execute_unprepared(
+            "INSERT OR REPLACE INTO sys_events SELECT * FROM sys_events"
+        ).await?;
+        assert_eq!(changed.rows_affected(), 0);
+        for table in ["outbox_dispatch_attempts", "outbox_delivery_checkpoints", "sys_event_consumer_receipts"] {
+            let count: i64 = db.query_one_raw(Statement::from_string(
+                db.get_database_backend(), format!("SELECT COUNT(*) AS count FROM {table}"),
+            )).await?.expect("history count").try_get("", "count")?;
+            assert_eq!(count, 1, "{table}");
+        }
+    }
     let mut old: entity::ActiveModel = entity::Entity::find_by_id(event.id).one(db).await?.expect("event").into();
     old.dispatched_at = Set(Some(Utc::now() - chrono::Duration::days(40)));
     old.update(db).await?;
