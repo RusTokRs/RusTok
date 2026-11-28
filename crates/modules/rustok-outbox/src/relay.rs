@@ -648,8 +648,8 @@ impl OutboxRelay {
             .await?;
         self.ensure_claim_owned(model.id, result.rows_affected)?;
         // Read the actual renewed row, not a locally patched snapshot.
-        // Even a maintenance write between claim and refresh must not cause
-        // dispatch to use stale payload or retry metadata.
+        // Database transition guards forbid retry or envelope mutation while
+        // a claim is live; this readback also binds the rotated token to the full row.
         let refreshed = entity::Entity::find_by_id(model.id)
             .filter(entity::Column::Status.eq(SysEventStatus::Pending))
             .filter(entity::Column::ClaimedBy.eq(token))
@@ -1125,7 +1125,8 @@ impl OutboxRelay {
         let txn = self.db.begin().await?;
         self.lock_current_claim(&txn, model).await?;
         let now = rustok_outbox_storage::database_now(&txn).await?;
-        let retry_count = model.retry_count.saturating_add(1);
+        let retry_count = model.retry_count.checked_add(1).unwrap_or(i32::MAX);
+        let terminal = terminal || model.retry_count == i32::MAX;
         let (status, next_attempt_at, moved_to_dlq) =
             if terminal || retry_count >= self.config.max_attempts {
                 (SysEventStatus::Failed, None, true)
