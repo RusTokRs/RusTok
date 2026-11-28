@@ -254,7 +254,10 @@ serialized writer and existing FKs. PostgreSQL regression authored, unrun.
 Migration 000017 couples actual artifact grant SQL changes to the existing
 RBAC watermark, including direct INSERT/DELETE and changed grant identity.
 PostgreSQL defers advancement to commit and rejects late role or watermark
-contention without waiting; SQLite advances under its writer reservation.
+contention without waiting. Active PostgreSQL RLS on the global watermark or
+a suppressed UPDATE fails the transaction. SQLite advances under its writer
+reservation and both static and artifact triggers verify exactly one updated
+watermark row. Source regressions are unrun.
 The owner no longer explicitly reserves a second generation for artifact
 assignment. Cutover advances once to invalidate older continuity receipts.
 Static direct relation generation coupling and runtime verification remain open.

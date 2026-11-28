@@ -47,6 +47,9 @@ BEGIN
     -- Deferred to the commit tail by default. Even when a caller makes
     -- constraints immediate, never wait on this global row below domain locks.
     LOCK TABLE rbac_invalidation_state IN ROW EXCLUSIVE MODE NOWAIT;
+    IF row_security_active('rbac_invalidation_state'::regclass) THEN
+        RAISE EXCEPTION 'RBAC invalidation watermark visibility incomplete' USING ERRCODE = '42501';
+    END IF;
     PERFORM 1 FROM rbac_invalidation_state
       WHERE scope = 'permissions' AND generation >= 0 AND generation < 9223372036854775807
       FOR UPDATE NOWAIT;
@@ -55,6 +58,9 @@ BEGIN
     END IF;
     UPDATE rbac_invalidation_state SET generation = generation + 1, updated_at = CURRENT_TIMESTAMP
       WHERE scope = 'permissions';
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'RBAC invalidation watermark update failed' USING ERRCODE = '23514';
+    END IF;
     RETURN NULL;
 EXCEPTION WHEN lock_not_available THEN
     RAISE EXCEPTION 'Artifact grant invalidation watermark busy' USING ERRCODE = '55P03';
@@ -94,6 +100,8 @@ const SQLITE_ADVANCE: &str = "
           AND generation >= 0 AND generation < 9223372036854775807);
     UPDATE rbac_invalidation_state SET generation = generation + 1, updated_at = CURRENT_TIMESTAMP
       WHERE scope = 'permissions';
+    SELECT RAISE(ABORT, 'RBAC invalidation watermark update failed')
+        WHERE changes() <> 1;
 ";
 
 #[async_trait::async_trait]
@@ -164,6 +172,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sqlite_artifact_grant_change_rejects_suppressed_watermark_update() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE rbac_invalidation_state (scope TEXT PRIMARY KEY, generation BIGINT NOT NULL, updated_at TEXT NOT NULL);
+             CREATE TABLE rbac_artifact_role_permissions (id TEXT PRIMARY KEY, tenant_id TEXT, role_id TEXT, artifact_permission_id TEXT, permission_scope_key TEXT);
+             INSERT INTO rbac_invalidation_state VALUES ('permissions', 0, CURRENT_TIMESTAMP);
+             INSERT INTO rbac_artifact_role_permissions VALUES ('grant', 'tenant', 'role', 'permission', 'platform')"
+        ).await.unwrap();
+        Migration.up(&SchemaManager::new(&db)).await.unwrap();
+        db.execute_unprepared(
+            "CREATE TRIGGER suppress_watermark_update BEFORE UPDATE ON rbac_invalidation_state
+             BEGIN SELECT RAISE(IGNORE); END"
+        ).await.unwrap();
+        let error = db.execute_unprepared("DELETE FROM rbac_artifact_role_permissions").await.unwrap_err();
+        assert!(error.to_string().contains("RBAC invalidation watermark update failed"), "{error}");
+        assert_eq!(crate::read_permission_invalidation_generation(&db).await.unwrap(), 1);
+        let row = db.query_one_raw(Statement::from_string(
+            DatabaseBackend::Sqlite, "SELECT COUNT(*) AS total FROM rbac_artifact_role_permissions",
+        )).await.unwrap().unwrap();
+        assert_eq!(row.try_get::<i64>("", "total").unwrap(), 1);
+        db.execute_unprepared("DROP TRIGGER suppress_watermark_update").await.unwrap();
+        db.execute_unprepared("DELETE FROM rbac_artifact_role_permissions").await.unwrap();
+        assert_eq!(crate::read_permission_invalidation_generation(&db).await.unwrap(), 2);
+    }
+
+    #[tokio::test]
     #[ignore = "requires RUSTOK_RBAC_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
     async fn postgres_artifact_grant_generation_is_deferred_and_direct_delete_fenced() {
         let db = Database::connect(std::env::var("RUSTOK_RBAC_TEST_DATABASE_URL").unwrap()).await.unwrap();
@@ -207,6 +241,37 @@ mod tests {
             .await.expect("late watermark must not wait").unwrap_err();
         assert!(error.to_string().contains("Artifact grant invalidation watermark busy"), "{error}");
         holder.rollback().await.unwrap();
+
+        let holder = tx(&db, &schema).await;
+        holder.execute_unprepared("LOCK TABLE rbac_invalidation_state IN SHARE MODE").await.unwrap();
+        let writer = tx(&db, &schema).await;
+        writer.execute_unprepared("DELETE FROM rbac_artifact_role_permissions").await.unwrap();
+        let error = tokio::time::timeout(Duration::from_secs(2), writer.commit())
+            .await.expect("late watermark table fence must not wait").unwrap_err();
+        assert!(error.to_string().contains("Artifact grant invalidation watermark busy"), "{error}");
+        holder.rollback().await.unwrap();
+
+        // A suppressed UPDATE must not witness a committed grant deletion.
+        let setup = tx(&db, &schema).await;
+        setup.execute_unprepared(
+            "CREATE FUNCTION suppress_watermark_update() RETURNS trigger LANGUAGE plpgsql AS $
+             BEGIN RETURN NULL; END; $;
+             CREATE TRIGGER suppress_watermark_update BEFORE UPDATE ON rbac_invalidation_state
+             FOR EACH ROW EXECUTE FUNCTION suppress_watermark_update()"
+        ).await.unwrap();
+        setup.commit().await.unwrap();
+        let writer = tx(&db, &schema).await;
+        writer.execute_unprepared("DELETE FROM rbac_artifact_role_permissions").await.unwrap();
+        let error = writer.commit().await.unwrap_err();
+        assert!(error.to_string().contains("RBAC invalidation watermark update failed"), "{error}");
+        let verify = tx(&db, &schema).await;
+        assert_eq!(crate::read_permission_invalidation_generation(&verify).await.unwrap(), 1);
+        let row = verify.query_one_raw(Statement::from_string(
+            DatabaseBackend::Postgres, "SELECT COUNT(*) AS total FROM rbac_artifact_role_permissions",
+        )).await.unwrap().unwrap();
+        assert_eq!(row.try_get::<i64>("", "total").unwrap(), 1);
+        verify.execute_unprepared("DROP TRIGGER suppress_watermark_update ON rbac_invalidation_state; DROP FUNCTION suppress_watermark_update()").await.unwrap();
+        verify.commit().await.unwrap();
 
         let writer = tx(&db, &schema).await;
         assert_eq!(writer.execute_unprepared("DELETE FROM rbac_artifact_role_permissions").await.unwrap().rows_affected(), 1);

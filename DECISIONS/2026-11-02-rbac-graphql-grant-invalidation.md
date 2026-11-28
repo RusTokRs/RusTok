@@ -158,7 +158,10 @@ Migration 000017 makes the existing artifact grant relation itself responsible
 for advancing the same recovery watermark on actual row births, removals and
 authority-tuple changes. PostgreSQL advances through deferred constraint
 triggers at commit by default and refuses a contended watermark without
-waiting; SQLite advances inside the serialized write. Raw grant DELETE and
+waiting; PostgreSQL also rejects active row-level security on the global
+watermark and a zero-row UPDATE. SQLite advances inside the serialized write;
+both artifact and static triggers abort the domain statement if the watermark
+UPDATE does not affect exactly one row. Raw grant DELETE and
 changed identity require nonwaiting affected-role fences. The artifact owner
 no longer separately reserves a generation; its receipt and event share the
 transaction, including a commit-time failure. Direct SQL does not synthesize

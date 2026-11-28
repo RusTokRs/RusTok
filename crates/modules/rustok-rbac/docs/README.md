@@ -392,7 +392,12 @@ artifact grant row birth, removal or authority-tuple update, independent of
 entrypoint. Exact retries and unchanged authority tuples do not advance it.
 PostgreSQL uses deferred constraint triggers and nonwaiting generation locks;
 raw grant deletion and changed identity also take the affected roles in UUID
-order with NOWAIT. SQLite uses immediate row triggers under its single writer.
+order with NOWAIT. PostgreSQL rejects active RLS on the global watermark and
+requires its UPDATE to affect the singleton, matching the static grant trigger.
+SQLite uses immediate row triggers under its single writer; both artifact and
+static triggers abort the domain statement if the watermark UPDATE affects
+anything other than one row. Source regressions model suppressed updates and
+PostgreSQL watermark table contention; execution is pending.
 The owner assignment no longer performs a second explicit reservation; event,
 receipt, state and watermark roll back together on transaction failure. The
 migration invalidates pre-cutover continuity receipts by advancing once and

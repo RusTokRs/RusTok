@@ -54,6 +54,8 @@ const SQLITE_ADVANCE: &str = r#"
             AND generation >= 0 AND generation < 9223372036854775807);
     UPDATE rbac_invalidation_state SET generation = generation + 1, updated_at = CURRENT_TIMESTAMP
         WHERE scope = 'permissions';
+    SELECT RAISE(ABORT, 'RBAC invalidation watermark update failed')
+        WHERE changes() <> 1;
 "#;
 
 async fn install_sqlite(db: &impl ConnectionTrait) -> Result<(), DbErr> {
@@ -160,6 +162,15 @@ mod tests {
         assert_eq!(read_permission_invalidation_generation(&db).await.unwrap(), initial + 4);
         db.execute_unprepared("DELETE FROM permissions WHERE id = 'q'; DELETE FROM users WHERE id = 'u'").await.unwrap();
         assert_eq!(read_permission_invalidation_generation(&db).await.unwrap(), initial + 6);
+
+        db.execute_unprepared(
+            "CREATE TRIGGER suppress_watermark_update BEFORE UPDATE ON rbac_invalidation_state
+             BEGIN SELECT RAISE(IGNORE); END"
+        ).await.unwrap();
+        let error = db.execute_unprepared("INSERT INTO role_permissions VALUES ('suppressed','r','p')").await.unwrap_err();
+        assert!(error.to_string().contains("RBAC invalidation watermark update failed"), "{error}");
+        assert_eq!(read_permission_invalidation_generation(&db).await.unwrap(), initial + 6);
+        db.execute_unprepared("DROP TRIGGER suppress_watermark_update").await.unwrap();
 
         db.execute_unprepared("UPDATE rbac_invalidation_state SET generation = 9223372036854775807").await.unwrap();
         assert!(db.execute_unprepared("INSERT INTO role_permissions VALUES ('g2','r','p')").await.is_err());
