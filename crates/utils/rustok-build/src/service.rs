@@ -17,6 +17,7 @@ use rustok_api::manifest_hash::hash_manifest_snapshot;
 const MAX_HISTORY_PAGE_SIZE: u64 = 100;
 const MAX_HISTORY_OFFSET: u64 = 1_000_000;
 const MAX_PROGRESS_UPDATE_PAGE_SIZE: u64 = 100;
+const MAX_ACTIVE_BUILD_PROGRESS_SNAPSHOT: u64 = 1_000;
 const MAX_DURABLE_BUILD_PROGRESS_SEQUENCE: i64 = i64::MAX;
 
 pub struct BuildService {
@@ -86,6 +87,7 @@ impl BuildService {
             .await?
             .filter(|existing| existing.status == BuildStatus::Success)
         {
+            validate_build_sequence(&existing)?;
             info!(
                 build_id = %existing.id,
                 "Build with same immutable execution plan already exists, returning existing build"
@@ -158,9 +160,14 @@ impl BuildService {
             .filter(crate::build::Column::Status.is_in([BuildStatus::Queued, BuildStatus::Running]))
             .order_by_asc(crate::build::Column::CreatedAt)
             .order_by_asc(crate::build::Column::Id)
-            .limit(MAX_PROGRESS_UPDATE_PAGE_SIZE)
+            .limit(MAX_ACTIVE_BUILD_PROGRESS_SNAPSHOT + 1)
             .all(&self.db)
             .await?;
+        if builds.len() as u64 > MAX_ACTIVE_BUILD_PROGRESS_SNAPSHOT {
+            anyhow::bail!(
+                "active build snapshot exceeds the supported limit of {MAX_ACTIVE_BUILD_PROGRESS_SNAPSHOT}; subscribe to a specific build"
+            );
+        }
         validate_build_sequences(&builds)?;
         Ok(builds)
     }
@@ -221,6 +228,18 @@ impl BuildService {
             .db
             .transaction::<_, Option<Build>, sea_orm::DbErr>(|txn| {
                 Box::pin(async move {
+                    let Some(candidate) = BuildEntity::find_by_id(build_id).one(txn).await? else {
+                        return Ok(None);
+                    };
+                    if candidate.status != BuildStatus::Queued {
+                        return Ok(None);
+                    }
+                    if candidate.event_sequence < 0 {
+                        return Err(sea_orm::DbErr::Custom(format!(
+                            "build {build_id} has a corrupt negative progress sequence"
+                        )));
+                    }
+
                     let now = Utc::now();
                     let event_sequence = reserve_build_progress_sequence(txn)
                         .await
@@ -244,6 +263,7 @@ impl BuildService {
                         )
                         .filter(crate::build::Column::Id.eq(build_id))
                         .filter(crate::build::Column::Status.eq(BuildStatus::Queued))
+                        .filter(crate::build::Column::EventSequence.eq(candidate.event_sequence))
                         .exec(txn)
                         .await?;
 
@@ -282,6 +302,9 @@ impl BuildService {
         // A cancellation may win after the claim commits but before the worker
         // begins side effects. Re-read the canonical row after notification.
         let current = self.get_build(build_id).await?;
+        if let Some(current) = current.as_ref() {
+            validate_build_sequence(current)?;
+        }
         Ok(current.filter(|build| build.status == BuildStatus::Running))
     }
 
@@ -345,6 +368,11 @@ impl BuildService {
                     if build.is_final() {
                         return Err(sea_orm::DbErr::Custom(format!(
                             "build {build_id} is already final"
+                        )));
+                    }
+                    if build.event_sequence < 0 {
+                        return Err(sea_orm::DbErr::Custom(format!(
+                            "build {build_id} has a corrupt negative progress sequence"
                         )));
                     }
                     if !matches!(
@@ -506,6 +534,11 @@ impl BuildService {
                     if build.is_final() {
                         return Ok(None);
                     }
+                    if build.event_sequence < 0 {
+                        return Err(sea_orm::DbErr::Custom(format!(
+                            "build {build_id} has a corrupt negative progress sequence"
+                        )));
+                    }
 
                     let now = Utc::now();
                     let event_sequence = reserve_build_progress_sequence(txn)
@@ -617,7 +650,7 @@ async fn read_build_progress_sequence(db: &DatabaseConnection) -> anyhow::Result
         backend,
         format!(
             "SELECT sequence FROM build_event_clock \
-             WHERE id = 1 AND sequence >= 0 AND sequence < {MAX_DURABLE_BUILD_PROGRESS_SEQUENCE}{storage_guard}"
+             WHERE id = 1 AND sequence >= 0{storage_guard}"
         ),
     );
     let row = db
