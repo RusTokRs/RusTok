@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
+    DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement, TransactionTrait,
 };
-use tracing::{error, info, instrument};
+use tracing::{error, info, instrument, warn};
 use uuid::Uuid;
 
 use crate::build::{
@@ -16,6 +16,8 @@ use rustok_api::manifest_hash::hash_manifest_snapshot;
 
 const MAX_HISTORY_PAGE_SIZE: u64 = 100;
 const MAX_HISTORY_OFFSET: u64 = 1_000_000;
+const MAX_PROGRESS_UPDATE_PAGE_SIZE: u64 = 100;
+const MAX_DURABLE_BUILD_PROGRESS_SEQUENCE: i64 = i64::MAX;
 
 pub struct BuildService {
     db: DatabaseConnection,
@@ -57,7 +59,9 @@ impl BuildService {
     }
 
     pub async fn request_build(&self, request: BuildRequest) -> anyhow::Result<Build> {
-        let (build, created) = Self::request_build_on_connection(&self.db, request).await?;
+        let txn = self.db.begin().await?;
+        let (build, created) = Self::request_build_on_connection(&txn, request).await?;
+        txn.commit().await?;
 
         if created {
             info!(build_id = %build.id, "Build requested");
@@ -72,13 +76,10 @@ impl BuildService {
         Ok(build)
     }
 
-    pub async fn request_build_on_connection<C>(
-        db: &C,
+    pub async fn request_build_on_connection(
+        db: &DatabaseTransaction,
         request: BuildRequest,
-    ) -> anyhow::Result<(Build, bool)>
-    where
-        C: sea_orm::ConnectionTrait,
-    {
+    ) -> anyhow::Result<(Build, bool)> {
         let manifest_hash = compute_build_request_hash(&request);
 
         if let Some(existing) = Self::find_build_by_hash_on(db, &manifest_hash)
@@ -92,7 +93,8 @@ impl BuildService {
             return Ok((existing, false));
         }
 
-        let build = Build::new(
+        let event_sequence = reserve_build_progress_sequence(db).await?;
+        let mut build = Build::new(
             request.manifest_ref,
             manifest_hash,
             request.manifest_revision,
@@ -100,6 +102,7 @@ impl BuildService {
             request.requested_by,
             request.profile,
         );
+        build.event_sequence = event_sequence;
 
         let modules_delta = serde_json::json!({
             "summary": request.modules_delta,
@@ -112,6 +115,7 @@ impl BuildService {
             status: Set(build.status.clone()),
             stage: Set(build.stage.clone()),
             progress: Set(build.progress),
+            event_sequence: Set(build.event_sequence),
             profile: Set(build.profile.clone()),
             manifest_ref: Set(build.manifest_ref.clone()),
             manifest_hash: Set(build.manifest_hash.clone()),
@@ -144,14 +148,57 @@ impl BuildService {
         Ok(BuildEntity::find()
             .filter(crate::build::Column::Status.is_in([BuildStatus::Queued, BuildStatus::Running]))
             .order_by_desc(crate::build::Column::CreatedAt)
+            .order_by_desc(crate::build::Column::Id)
             .one(&self.db)
             .await?)
+    }
+
+    pub async fn active_build_progress(&self) -> anyhow::Result<Vec<Build>> {
+        let builds = BuildEntity::find()
+            .filter(crate::build::Column::Status.is_in([BuildStatus::Queued, BuildStatus::Running]))
+            .order_by_asc(crate::build::Column::CreatedAt)
+            .order_by_asc(crate::build::Column::Id)
+            .limit(MAX_PROGRESS_UPDATE_PAGE_SIZE)
+            .all(&self.db)
+            .await?;
+        validate_build_sequences(&builds)?;
+        Ok(builds)
+    }
+
+    pub async fn build_progress(&self, build_id: Uuid) -> anyhow::Result<Option<Build>> {
+        let build = self.get_build(build_id).await?;
+        if let Some(build) = build.as_ref() {
+            validate_build_sequence(build)?;
+        }
+        Ok(build)
+    }
+
+    pub async fn current_progress_sequence(&self) -> anyhow::Result<i64> {
+        read_build_progress_sequence(&self.db).await
+    }
+
+    pub async fn build_progress_after(
+        &self,
+        sequence: i64,
+        limit: u64,
+    ) -> anyhow::Result<Vec<Build>> {
+        validate_progress_page(sequence, limit)?;
+        let builds = BuildEntity::find()
+            .filter(crate::build::Column::EventSequence.gt(sequence))
+            .order_by_asc(crate::build::Column::EventSequence)
+            .order_by_asc(crate::build::Column::Id)
+            .limit(limit)
+            .all(&self.db)
+            .await?;
+        validate_build_sequences(&builds)?;
+        Ok(builds)
     }
 
     pub async fn running_build(&self) -> anyhow::Result<Option<Build>> {
         Ok(BuildEntity::find()
             .filter(crate::build::Column::Status.eq(BuildStatus::Running))
             .order_by_desc(crate::build::Column::CreatedAt)
+            .order_by_desc(crate::build::Column::Id)
             .one(&self.db)
             .await?)
     }
@@ -160,6 +207,7 @@ impl BuildService {
         Ok(BuildEntity::find()
             .filter(crate::build::Column::Status.eq(BuildStatus::Queued))
             .order_by_asc(crate::build::Column::CreatedAt)
+            .order_by_asc(crate::build::Column::Id)
             .one(&self.db)
             .await?)
     }
@@ -174,6 +222,9 @@ impl BuildService {
             .transaction::<_, Option<Build>, sea_orm::DbErr>(|txn| {
                 Box::pin(async move {
                     let now = Utc::now();
+                    let event_sequence = reserve_build_progress_sequence(txn)
+                        .await
+                        .map_err(|error| sea_orm::DbErr::Custom(error.to_string()))?;
                     let updated = BuildEntity::update_many()
                         .col_expr(
                             crate::build::Column::Status,
@@ -186,6 +237,10 @@ impl BuildService {
                         .col_expr(
                             crate::build::Column::UpdatedAt,
                             sea_orm::sea_query::Expr::value(now),
+                        )
+                        .col_expr(
+                            crate::build::Column::EventSequence,
+                            sea_orm::sea_query::Expr::value(event_sequence),
                         )
                         .filter(crate::build::Column::Id.eq(build_id))
                         .filter(crate::build::Column::Status.eq(BuildStatus::Queued))
@@ -202,34 +257,32 @@ impl BuildService {
             .await
             .map_err(|e| anyhow::anyhow!(format!("Failed to claim build {build_id}: {e}")))?;
 
-        if let Some(build) = claimed.as_ref() {
-            if let Err(error) = self
-                .event_publisher
-                .publish(BuildEvent::BuildStarted {
-                    build_id: build.id,
-                    stage: build.stage.clone(),
-                    progress: build.progress,
-                })
-                .await
-            {
-                // The claim has committed and execution has not started. Try to
-                // record the notification failure rather than strand the claim.
-                let cause = error.context(format!(
-                    "build {build_id} was claimed but its start notification failed"
-                ));
-                if let Err(record_error) = self
-                    .fail_build(build_id, "Build start notification failed".to_string())
-                    .await
-                {
-                    return Err(cause.context(format!(
-                        "could not reliably record or notify build failure: {record_error:#}"
-                    )));
-                }
-                return Err(cause);
-            }
+        let Some(claimed) = claimed else {
+            return Ok(None);
+        };
+
+        if let Err(error) = self
+            .event_publisher
+            .publish(BuildEvent::BuildStarted {
+                build_id: claimed.id,
+                stage: claimed.stage.clone(),
+                progress: claimed.progress,
+            })
+            .await
+        {
+            // The database row is authoritative. A lost wake-up is repaired by
+            // the durable progress poll and must not fail a committed claim.
+            warn!(
+                build_id = %build_id,
+                error = %error,
+                "Build start notification failed; retaining committed claim"
+            );
         }
 
-        Ok(claimed)
+        // A cancellation may win after the claim commits but before the worker
+        // begins side effects. Re-read the canonical row after notification.
+        let current = self.get_build(build_id).await?;
+        Ok(current.filter(|build| build.status == BuildStatus::Running))
     }
 
     /// Claims the oldest queued build atomically.
@@ -249,6 +302,7 @@ impl BuildService {
         validate_history_page(limit, offset)?;
         let builds = BuildEntity::find()
             .order_by_desc(crate::build::Column::CreatedAt)
+            .order_by_desc(crate::build::Column::Id)
             .offset(offset)
             .limit(limit)
             .all(&self.db)
@@ -262,6 +316,8 @@ impl BuildService {
     {
         Ok(BuildEntity::find()
             .filter(crate::build::Column::ManifestHash.eq(hash))
+            .order_by_desc(crate::build::Column::CreatedAt)
+            .order_by_desc(crate::build::Column::Id)
             .one(db)
             .await?)
     }
@@ -306,32 +362,67 @@ impl BuildService {
                         )));
                     }
 
-                    let now = Utc::now();
                     let previous_status = build.status.clone();
+                    let next_stage = stage.unwrap_or_else(|| build.stage.clone());
+                    let next_progress = progress.unwrap_or(build.progress);
+                    if status == BuildStatus::Success
+                        && (next_stage != BuildStage::Complete || next_progress != 100)
+                    {
+                        return Err(sea_orm::DbErr::Custom(format!(
+                            "successful build {build_id} must finish at Complete/100"
+                        )));
+                    }
+                    if !(0..=100).contains(&next_progress) {
+                        return Err(sea_orm::DbErr::Custom(format!(
+                            "build {build_id} progress must be between 0 and 100"
+                        )));
+                    }
+                    if next_progress < build.progress {
+                        return Err(sea_orm::DbErr::Custom(format!(
+                            "build {build_id} progress cannot decrease"
+                        )));
+                    }
+                    if build_stage_rank(&next_stage) < build_stage_rank(&build.stage) {
+                        return Err(sea_orm::DbErr::Custom(format!(
+                            "build {build_id} stage cannot move backwards"
+                        )));
+                    }
+                    if status == BuildStatus::Running && next_stage == BuildStage::Complete {
+                        return Err(sea_orm::DbErr::Custom(format!(
+                            "running build {build_id} cannot enter the Complete stage"
+                        )));
+                    }
+
+                    let now = Utc::now();
+                    let event_sequence = reserve_build_progress_sequence(txn)
+                        .await
+                        .map_err(|error| sea_orm::DbErr::Custom(error.to_string()))?;
                     let mut update = BuildEntity::update_many()
                         .col_expr(
                             crate::build::Column::Status,
                             sea_orm::sea_query::Expr::value(status.clone()),
                         )
                         .col_expr(
+                            crate::build::Column::Stage,
+                            sea_orm::sea_query::Expr::value(next_stage),
+                        )
+                        .col_expr(
+                            crate::build::Column::Progress,
+                            sea_orm::sea_query::Expr::value(next_progress),
+                        )
+                        .col_expr(
                             crate::build::Column::UpdatedAt,
                             sea_orm::sea_query::Expr::value(now),
                         )
+                        .col_expr(
+                            crate::build::Column::EventSequence,
+                            sea_orm::sea_query::Expr::value(event_sequence),
+                        )
                         .filter(crate::build::Column::Id.eq(build_id))
-                        // A concurrent terminal transition must never be overwritten.
-                        .filter(crate::build::Column::Status.eq(previous_status.clone()));
-                    if let Some(stage) = stage {
-                        update = update.col_expr(
-                            crate::build::Column::Stage,
-                            sea_orm::sea_query::Expr::value(stage),
-                        );
-                    }
-                    if let Some(progress) = progress {
-                        update = update.col_expr(
-                            crate::build::Column::Progress,
-                            sea_orm::sea_query::Expr::value(progress),
-                        );
-                    }
+                        // Status alone is not a version fence: Running -> Running
+                        // writers must also compare the observed progress watermark.
+                        .filter(crate::build::Column::Status.eq(previous_status.clone()))
+                        .filter(crate::build::Column::EventSequence.eq(build.event_sequence));
                     if status == BuildStatus::Running && build.started_at.is_none() {
                         update = update.col_expr(
                             crate::build::Column::StartedAt,
@@ -386,7 +477,15 @@ impl BuildService {
             BuildStatus::Queued | BuildStatus::Failed => return Ok(()),
         };
 
-        self.event_publisher.publish(event).await?;
+        if let Err(error) = self.event_publisher.publish(event).await {
+            // State and sequence committed together. The notification is only a
+            // local wake-up hint; replicas recover the snapshot from the database.
+            warn!(
+                build_id = %build_id,
+                error = %error,
+                "Build progress notification failed; retaining committed state"
+            );
+        }
 
         Ok(())
     }
@@ -409,6 +508,9 @@ impl BuildService {
                     }
 
                     let now = Utc::now();
+                    let event_sequence = reserve_build_progress_sequence(txn)
+                        .await
+                        .map_err(|error| sea_orm::DbErr::Custom(error.to_string()))?;
                     let update = BuildEntity::update_many()
                         .col_expr(
                             crate::build::Column::Status,
@@ -426,8 +528,13 @@ impl BuildService {
                             crate::build::Column::UpdatedAt,
                             sea_orm::sea_query::Expr::value(now),
                         )
+                        .col_expr(
+                            crate::build::Column::EventSequence,
+                            sea_orm::sea_query::Expr::value(event_sequence),
+                        )
                         .filter(crate::build::Column::Id.eq(build_id))
-                        .filter(crate::build::Column::Status.eq(build.status));
+                        .filter(crate::build::Column::Status.eq(build.status))
+                        .filter(crate::build::Column::EventSequence.eq(build.event_sequence));
                     if update.exec(txn).await?.rows_affected != 1 {
                         return Err(sea_orm::DbErr::Custom(format!(
                             "build {build_id} changed during failure recording"
@@ -448,20 +555,116 @@ impl BuildService {
             .map_err(|e| anyhow::anyhow!("Failed to fail build: {e}"))?;
 
         if let Some(updated) = updated {
-            self.event_publisher
+            if let Err(error) = self
+                .event_publisher
                 .publish(BuildEvent::BuildFailed {
                     build_id,
                     stage: updated.stage.clone(),
                     progress: updated.progress,
                     error: err_msg,
                 })
-                .await?;
+                .await
+            {
+                warn!(
+                    build_id = %build_id,
+                    error = %error,
+                    "Build failure notification failed; retaining committed failure state"
+                );
+            }
             error!(build_id = %build_id, "Build failed");
         }
 
         Ok(())
     }
 }
+async fn reserve_build_progress_sequence(
+    db: &DatabaseTransaction,
+) -> anyhow::Result<i64> {
+    let backend = db.get_database_backend();
+    let storage_guard = match backend {
+        DbBackend::Postgres => "",
+        DbBackend::Sqlite => " AND typeof(sequence) = 'integer'",
+        _ => anyhow::bail!("durable build progress requires PostgreSQL or SQLite"),
+    };
+    let statement = Statement::from_string(
+        backend,
+        format!(
+            "UPDATE build_event_clock \
+             SET sequence = sequence + 1 \
+             WHERE id = 1 AND sequence >= 0 AND sequence < {MAX_DURABLE_BUILD_PROGRESS_SEQUENCE}{storage_guard} \
+             RETURNING sequence"
+        ),
+    );
+    let row = db
+        .query_one_raw(statement)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("build progress sequence clock is missing, corrupt, or exhausted"))?;
+    let sequence = row.try_get::<i64>("", "sequence")?;
+    if sequence <= 0 {
+        anyhow::bail!("build progress sequence clock returned an invalid value");
+    }
+    Ok(sequence)
+}
+
+async fn read_build_progress_sequence(db: &DatabaseConnection) -> anyhow::Result<i64> {
+    let backend = db.get_database_backend();
+    let storage_guard = match backend {
+        DbBackend::Postgres => "",
+        DbBackend::Sqlite => " AND typeof(sequence) = 'integer'",
+        _ => anyhow::bail!("durable build progress requires PostgreSQL or SQLite"),
+    };
+    let statement = Statement::from_string(
+        backend,
+        format!(
+            "SELECT sequence FROM build_event_clock \
+             WHERE id = 1 AND sequence >= 0 AND sequence < {MAX_DURABLE_BUILD_PROGRESS_SEQUENCE}{storage_guard}"
+        ),
+    );
+    let row = db
+        .query_one_raw(statement)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("build progress sequence clock is missing, corrupt, or exhausted"))?;
+    let sequence = row.try_get::<i64>("", "sequence")?;
+    if sequence < 0 {
+        anyhow::bail!("build progress sequence clock returned a negative value");
+    }
+    Ok(sequence)
+}
+
+fn validate_progress_page(sequence: i64, limit: u64) -> anyhow::Result<()> {
+    if sequence < 0 || limit == 0 || limit > MAX_PROGRESS_UPDATE_PAGE_SIZE {
+        anyhow::bail!(
+            "build progress query requires a non-negative cursor and a limit between 1 and {MAX_PROGRESS_UPDATE_PAGE_SIZE}"
+        );
+    }
+    Ok(())
+}
+
+fn validate_build_sequence(build: &Build) -> anyhow::Result<()> {
+    if build.event_sequence < 0 {
+        anyhow::bail!("build {} has a corrupt negative progress sequence", build.id);
+    }
+    Ok(())
+}
+
+fn validate_build_sequences(builds: &[Build]) -> anyhow::Result<()> {
+    for build in builds {
+        validate_build_sequence(build)?;
+    }
+    Ok(())
+}
+
+fn build_stage_rank(stage: &BuildStage) -> u8 {
+    match stage {
+        BuildStage::Pending => 0,
+        BuildStage::Checkout => 1,
+        BuildStage::Build => 2,
+        BuildStage::Test => 3,
+        BuildStage::Deploy => 4,
+        BuildStage::Complete => 5,
+    }
+}
+
 fn validate_history_page(limit: u64, offset: u64) -> anyhow::Result<()> {
     if limit == 0 || limit > MAX_HISTORY_PAGE_SIZE || offset > MAX_HISTORY_OFFSET {
         anyhow::bail!(
