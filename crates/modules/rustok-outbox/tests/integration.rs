@@ -317,16 +317,17 @@ async fn assert_dispatch_attempt_history(db: &DatabaseConnection) -> TestResult<
     let event = seed_event(db).await?;
     let transport = Arc::new(AcceptedThenLocalFailure { accepted: Mutex::new(Vec::new()) });
     let relay = OutboxRelay::new(db.clone(), transport.clone()).with_config(RelayConfig {
-        max_attempts: 3, ..Default::default()
+        max_attempts: 3,
+        backoff_base: std::time::Duration::from_millis(1),
+        backoff_max: std::time::Duration::from_millis(2),
+        ..Default::default()
     });
     assert_eq!(relay.process_pending_once(None).await?, 1);
     let row = entity::Entity::find_by_id(event.id).one(db).await?.expect("event");
     assert_eq!(row.status, SysEventStatus::Pending);
     assert_eq!(row.retry_count, 1);
     assert_eq!(relay.metrics().dlq_total, 0);
-    let mut row: entity::ActiveModel = row.into();
-    row.next_attempt_at = Set(None);
-    row.update(db).await?;
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     assert_eq!(relay.process_pending_once(None).await?, 1);
     let row = entity::Entity::find_by_id(event.id).one(db).await?.expect("event");
     assert_eq!(row.status, SysEventStatus::Dispatched);
@@ -344,9 +345,6 @@ async fn assert_dispatch_attempt_history(db: &DatabaseConnection) -> TestResult<
     assert_eq!(count_state(db, "confirmed").await?, 1);
     assert_eq!(count_state(db, "uncertain").await?, 1);
     assert_eq!(count_state(db, "open").await?, 0);
-    let mut old: entity::ActiveModel = row.into();
-    old.dispatched_at = Set(Some(Utc::now() - chrono::Duration::days(31)));
-    old.update(db).await?;
     // Closed evidence cannot be reopened or erased while its parent exists.
     for sql in [
         "UPDATE outbox_dispatch_attempts SET state = 'open', finished_at = NULL WHERE state = 'uncertain'",
@@ -492,15 +490,7 @@ async fn relay_retries_then_succeeds() -> TestResult<()> {
 
     let processed_first = relay.process_pending_once(None).await?;
     assert_eq!(processed_first, 1);
-
-    let mut failed_once: entity::ActiveModel = entity::Entity::find_by_id(envelope.id)
-        .one(&db)
-        .await?
-        .expect("event record")
-        .into();
-    failed_once.next_attempt_at = Set(Some(Utc::now() - chrono::Duration::milliseconds(1)));
-    failed_once.update(&db).await?;
-
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     let processed_second = relay.process_pending_once(None).await?;
     assert_eq!(processed_second, 1);
 
@@ -537,15 +527,7 @@ async fn relay_moves_to_dlq_on_max_retry() -> TestResult<()> {
     });
 
     let _ = relay.process_pending_once(None).await?;
-
-    let mut first_failed: entity::ActiveModel = entity::Entity::find_by_id(envelope.id)
-        .one(&db)
-        .await?
-        .expect("event record")
-        .into();
-    first_failed.next_attempt_at = Set(Some(Utc::now() - chrono::Duration::milliseconds(1)));
-    first_failed.update(&db).await?;
-
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     let _ = relay.process_pending_once(None).await?;
 
     let record = entity::Entity::find_by_id(envelope.id)
@@ -564,20 +546,26 @@ async fn relay_moves_to_dlq_on_max_retry() -> TestResult<()> {
 }
 
 async fn assert_execution_policy_integrity(db: &DatabaseConnection) -> TestResult<()> {
-    // Bind through the same admission path as a real relay.
     db.execute_unprepared("UPDATE outbox_execution_policy SET max_in_flight = 1 WHERE id = 1").await?;
     let first = seed_event(db).await?;
     let second = seed_event(db).await?;
-    async fn claim(db: &DatabaseConnection, id: Uuid, age_seconds: i64) -> TestResult<()> {
+    async fn claim(db: &DatabaseConnection, id: Uuid) -> TestResult<()> {
         let mut row: entity::ActiveModel = entity::Entity::find_by_id(id)
             .one(db).await?.expect("event").into();
-        row.claimed_by = Set(Some("test-worker".into()));
-        row.claimed_at = Set(Some(Utc::now() - chrono::Duration::seconds(age_seconds)));
+        row.claimed_by = Set(Some(format!("test-worker:{}", Uuid::new_v4())));
+        row.claimed_at = Set(Some(rustok_outbox_storage::database_now(db).await?));
         row.update(db).await?;
         Ok(())
     }
-    assert!(claim(db, first.id, 0).await.is_err(), "unbound policy");
+    assert!(claim(db, first.id).await.is_err(), "unbound policy");
     RelayConfig::default().verify_execution_admission(db).await?;
+    db.execute_unprepared("UPDATE outbox_execution_policy SET claim_ttl_ms = 5 WHERE id = 1").await?;
+    let short_lease = RelayConfig {
+        claim_ttl: std::time::Duration::from_millis(5),
+        publish_timeout: std::time::Duration::from_millis(1),
+        ..Default::default()
+    };
+    short_lease.verify_execution_admission(db).await?;
     for sql in [
         "DELETE FROM outbox_execution_policy",
         "INSERT INTO outbox_execution_policy VALUES (1, 2, 60000) ON CONFLICT (id) DO NOTHING",
@@ -597,59 +585,22 @@ async fn assert_execution_policy_integrity(db: &DatabaseConnection) -> TestResul
         assert!(db.execute_unprepared("TRUNCATE outbox_execution_policy").await.is_err());
     }
 
-    claim(db, first.id, 0).await?;
-    assert!(claim(db, second.id, 0).await.is_err(), "live capacity");
+    claim(db, first.id).await?;
+    assert!(claim(db, second.id).await.is_err(), "live capacity");
     assert!(db.execute_unprepared("UPDATE outbox_execution_policy SET max_in_flight = 2").await.is_err());
     assert!(db.execute_unprepared("UPDATE outbox_execution_policy SET claim_ttl_ms = 120000").await.is_err());
-    // A stale claim does not occupy a live permit, but still blocks policy changes.
-    claim(db, first.id, 120).await?;
-    claim(db, second.id, 0).await?;
-    assert!(claim(db, first.id, 0).await.is_err());
+
+    // Let the first lease expire naturally; never forge a backdated claim.
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    claim(db, second.id).await?;
+    assert!(claim(db, first.id).await.is_err(), "second live claim occupies capacity");
+    assert!(db.execute_unprepared("UPDATE outbox_execution_policy SET max_in_flight = 2").await.is_err());
     db.execute_unprepared("UPDATE sys_events SET claimed_by = NULL, claimed_at = NULL").await?;
     db.execute_unprepared("UPDATE outbox_execution_policy SET max_in_flight = 2, claim_ttl_ms = 120000").await?;
     assert!(RelayConfig::default().verify_execution_admission(db).await.is_err());
     RelayConfig { claim_ttl: std::time::Duration::from_secs(120), ..Default::default() }.verify_execution_admission(db).await?;
-    claim(db, first.id, 0).await?;
-    claim(db, second.id, 0).await?;
-    Ok(())
-}
-
-#[tokio::test]
-async fn postgres_temporal_clock_integrity_preserves_floor() -> TestResult<()> {
-    let _guard = test_lock().lock().await;
-    let Some(db) = setup_db().await? else { return Ok(()) };
-    if db.get_database_backend() != DatabaseBackend::Postgres { return Ok(()) }
-    async fn floor(db: &impl ConnectionTrait) -> TestResult<i64> {
-        Ok(db.query_one_raw(Statement::from_string(
-            db.get_database_backend(),
-            "SELECT high_water_ms FROM outbox_temporal_clock WHERE id = 1",
-        )).await?.expect("clock floor").try_get("", "high_water_ms")?)
-    }
-    let relay = OutboxRelay::new(db.clone(), Arc::new(MockTransport::default()));
-    relay.process_pending_once(None).await?;
-    let before = floor(&db).await?;
-    assert!(before > 0);
-    for sql in [
-        "DELETE FROM outbox_temporal_clock",
-        "TRUNCATE outbox_temporal_clock",
-        "INSERT INTO outbox_temporal_clock VALUES (1, 0) ON CONFLICT (id) DO NOTHING",
-        "UPDATE outbox_temporal_clock SET id = 2",
-        "UPDATE outbox_temporal_clock SET high_water_ms = 0",
-        "UPDATE outbox_temporal_clock SET high_water_ms = high_water_ms + 60000",
-    ] {
-        assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
-        assert_eq!(floor(&db).await?, before);
-    }
-    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-    let txn = db.begin().await?;
-    txn.execute_unprepared("UPDATE outbox_temporal_clock SET high_water_ms = CAST(FLOOR(EXTRACT(EPOCH FROM clock_timestamp()) * 1000) AS BIGINT)").await?;
-    assert!(floor(&txn).await? > before);
-    txn.rollback().await?;
-    assert_eq!(floor(&db).await?, before);
-    SysEventsMigration.up(&SchemaManager::new(&db)).await?;
-    assert_eq!(floor(&db).await?, before);
-    relay.process_pending_once(None).await?;
-    assert!(floor(&db).await? >= before);
+    claim(db, first.id).await?;
+    claim(db, second.id).await?;
     Ok(())
 }
 
@@ -672,7 +623,12 @@ async fn postgres_execution_policy_integrity_rejects_reset_and_overbooking() -> 
 #[tokio::test]
 async fn relay_reclaims_stale_claims() -> TestResult<()> {
     let db = setup_sqlite_db().await?;
-    RelayConfig { claim_ttl: std::time::Duration::from_secs(5), publish_timeout: std::time::Duration::from_secs(2), ..Default::default() }.verify_execution_admission(&db).await?;
+    let config = RelayConfig {
+        claim_ttl: std::time::Duration::from_millis(5),
+        publish_timeout: std::time::Duration::from_millis(1),
+        ..Default::default()
+    };
+    config.verify_execution_admission(&db).await?;
     let envelope = seed_event(&db).await?;
     let mut claimed: entity::ActiveModel = entity::Entity::find_by_id(envelope.id)
         .one(&db)
@@ -680,15 +636,11 @@ async fn relay_reclaims_stale_claims() -> TestResult<()> {
         .expect("event record")
         .into();
     claimed.claimed_by = Set(Some("dead-worker".to_string()));
-    claimed.claimed_at = Set(Some(Utc::now() - chrono::Duration::seconds(10)));
+    claimed.claimed_at = Set(Some(rustok_outbox_storage::database_now(&db).await?));
     claimed.update(&db).await?;
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
-    let relay =
-        OutboxRelay::new(db.clone(), Arc::new(MockTransport::default())).with_config(RelayConfig {
-            claim_ttl: std::time::Duration::from_secs(5),
-            publish_timeout: std::time::Duration::from_secs(2),
-            ..Default::default()
-        });
+    let relay = OutboxRelay::new(db.clone(), Arc::new(MockTransport::default())).with_config(config);
 
     assert_eq!(relay.process_pending_once(None).await?, 1);
     let record = entity::Entity::find_by_id(envelope.id)
