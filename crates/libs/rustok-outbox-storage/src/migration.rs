@@ -1637,6 +1637,7 @@ WHEN NOT (
          AND NEW.claimed_by IS NOT NULL AND typeof(NEW.claimed_by) = 'text'
          AND length(trim(NEW.claimed_by)) BETWEEN 1 AND 128
          AND NEW.claimed_at IS NOT NULL AND julianday(NEW.claimed_at) IS NOT NULL
+         AND julianday(OLD.created_at) IS NOT NULL
          AND julianday(NEW.claimed_at) >= julianday(OLD.created_at)
          AND julianday(NEW.claimed_at) <= julianday('now'))
       OR
@@ -1645,6 +1646,7 @@ WHEN NOT (
          AND length(trim(NEW.claimed_by)) BETWEEN 1 AND 128
          AND NEW.claimed_by IS NOT OLD.claimed_by
          AND NEW.claimed_at IS NOT NULL AND julianday(NEW.claimed_at) IS NOT NULL
+         AND julianday(OLD.claimed_at) IS NOT NULL
          AND julianday(NEW.claimed_at) >= julianday(OLD.claimed_at)
          AND julianday(NEW.claimed_at) <= julianday('now'))
       OR
@@ -1664,8 +1666,10 @@ WHEN NOT (
  )
  OR (
     OLD.status IS 'pending' AND NEW.status IS 'pending'
-    AND typeof(NEW.retry_count) = 'integer' AND NEW.retry_count = OLD.retry_count + 1
+    AND typeof(NEW.retry_count) = 'integer' AND typeof(OLD.retry_count) = 'integer'
+    AND NEW.retry_count = OLD.retry_count + 1
     AND OLD.claimed_by IS NOT NULL AND OLD.claimed_at IS NOT NULL
+    AND julianday(OLD.claimed_at) IS NOT NULL
     AND NEW.claimed_by IS NULL AND NEW.claimed_at IS NULL
     AND OLD.dispatched_at IS NULL AND NEW.dispatched_at IS NULL
     AND NEW.last_error IS NOT NULL AND typeof(NEW.last_error) = 'text'
@@ -1675,13 +1679,15 @@ WHEN NOT (
     AND julianday(NEW.next_attempt_at) <= julianday(OLD.claimed_at) + 7300.0
     AND (SELECT COUNT(*) FROM outbox_dispatch_attempts a
          WHERE a.event_id = OLD.id AND a.state = 'open') = 1
-    AND NOT EXISTS (SELECT 1 FROM outbox_dispatch_attempts a
-                    WHERE a.event_id = OLD.id AND a.state = 'open'
-                      AND julianday(a.started_at) > julianday('now'))
+    AND EXISTS (SELECT 1 FROM outbox_dispatch_attempts a
+                WHERE a.event_id = OLD.id AND a.state = 'open'
+                  AND julianday(a.started_at) IS NOT NULL
+                  AND julianday(a.started_at) <= julianday('now'))
  )
  OR (
     OLD.status IS 'pending' AND NEW.status IS 'failed'
-    AND typeof(NEW.retry_count) = 'integer'
+    AND typeof(NEW.retry_count) = 'integer' AND typeof(OLD.retry_count) = 'integer'
+    AND julianday(OLD.claimed_at) IS NOT NULL
     AND (NEW.retry_count = OLD.retry_count + 1
          OR (OLD.retry_count = 2147483647 AND NEW.retry_count = OLD.retry_count))
     AND OLD.claimed_by IS NOT NULL AND OLD.claimed_at IS NOT NULL
@@ -1692,21 +1698,26 @@ WHEN NOT (
     AND length(trim(NEW.last_error)) BETWEEN 1 AND 2048
     AND (SELECT COUNT(*) FROM outbox_dispatch_attempts a
          WHERE a.event_id = OLD.id AND a.state = 'open') <= 1
-    AND NOT EXISTS (SELECT 1 FROM outbox_dispatch_attempts a
+    AND ((SELECT COUNT(*) FROM outbox_dispatch_attempts a
+          WHERE a.event_id = OLD.id AND a.state = 'open') = 0
+         OR EXISTS (SELECT 1 FROM outbox_dispatch_attempts a
                     WHERE a.event_id = OLD.id AND a.state = 'open'
-                      AND julianday(a.started_at) > julianday('now'))
+                      AND julianday(a.started_at) IS NOT NULL
+                      AND julianday(a.started_at) <= julianday('now')))
  )
  OR (
     OLD.status IS 'pending' AND NEW.status IS 'dispatched'
     AND NEW.retry_count IS OLD.retry_count
     AND OLD.dispatched_at IS NULL AND NEW.dispatched_at IS NOT NULL
     AND julianday(NEW.dispatched_at) IS NOT NULL
+    AND julianday(OLD.created_at) IS NOT NULL
     AND julianday(NEW.dispatched_at) >= julianday(OLD.created_at)
     AND julianday(NEW.dispatched_at) <= julianday('now')
     AND NEW.claimed_by IS NULL AND NEW.claimed_at IS NULL
     AND NEW.last_error IS NULL AND NEW.next_attempt_at IS NULL
     AND (
         (OLD.claimed_by IS NOT NULL AND OLD.claimed_at IS NOT NULL
+         AND julianday(OLD.claimed_at) IS NOT NULL
          AND (SELECT COUNT(*) FROM outbox_dispatch_attempts a
               WHERE a.event_id = OLD.id AND a.state = 'open') = 1
          AND EXISTS (SELECT 1 FROM outbox_dispatch_attempts a

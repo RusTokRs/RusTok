@@ -1803,7 +1803,7 @@ mod tests {
         assert!(entity::Entity::update_many().filter(entity::Column::Id.eq(id))
             .set(entity::ActiveModel {
                 status: Set(SysEventStatus::Dispatched),
-                dispatched_at: Set(Some(renewed.claimed_at)),
+                dispatched_at: Set(Some(renewed.claimed_at.clone().expect("claim timestamp"))),
                 claimed_by: Set(None),
                 claimed_at: Set(None),
                 ..Default::default()
