@@ -1,6 +1,6 @@
+use crate::RuntimeLocaleSelection;
 use crate::page_metadata::LOCALIZED_METADATA_FIELDS;
 use crate::runtime_locale::{duplicate_locale_key, has_unambiguous_locale};
-use crate::RuntimeLocaleSelection;
 use crate::{
     FLY_PAGE_METADATA_FIELD, FlyError, FlyResult, LOCALIZED_VALUES_FIELD, ProjectDocument,
     RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD, TranslationCatalog, ValidationDiagnostic,
@@ -547,10 +547,7 @@ mod tests {
             },
             "pages": [{ "component": { "id": "root", "type": "wrapper" } }]
         }));
-        let result = materialize_project_locale_context(
-            &document,
-            &json!({ "$locale": "ru-RU" }),
-        );
+        let result = materialize_project_locale_context(&document, &json!({ "$locale": "ru-RU" }));
         assert_eq!(result.context[RUNTIME_LOCALE_FIELD], "ru-RU");
         assert!(!result.unsupported_locale_replaced);
     }

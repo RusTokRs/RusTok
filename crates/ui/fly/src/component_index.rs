@@ -13,7 +13,9 @@
 //! must be invalidated when the document changes. The document caches it until its mutation
 //! boundary invalidates the cache.
 
-use crate::{ComponentChildren, ComponentLocation, ComponentNode, ComponentObject, ProjectDocument};
+use crate::{
+    ComponentChildren, ComponentLocation, ComponentNode, ComponentObject, ProjectDocument,
+};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 

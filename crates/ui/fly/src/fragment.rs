@@ -138,11 +138,7 @@ impl ProjectFragment {
             crate::style_rule::remap_component_style_rule(style, &mapping);
         }
         crate::id_reference::remap_runtime_catalogs(&mut self.extensions, &mapping);
-        remap_fragment_runtime_catalog_entry_ids(
-            &mut self.extensions,
-            generator,
-            &mut reserved,
-        )?;
+        remap_fragment_runtime_catalog_entry_ids(&mut self.extensions, generator, &mut reserved)?;
         Ok(mapping)
     }
 
@@ -166,11 +162,11 @@ impl ProjectFragment {
                 collect_component_asset_ids(root, &mut existing_asset_references);
             }
         }
-        for (_, entry) in crate::symbol::SymbolDescriptor::entries_from_document(staged.document()) {
+        for (_, entry) in crate::symbol::SymbolDescriptor::entries_from_document(staged.document())
+        {
             if let Some(symbol) = crate::symbol::SymbolDescriptor::from_value(&entry) {
-                existing_asset_references.extend(
-                    crate::symbol::symbol_asset_dangling_references(&symbol),
-                );
+                existing_asset_references
+                    .extend(crate::symbol::symbol_asset_dangling_references(&symbol));
             }
         }
         remap_fragment_asset_ids(
@@ -189,9 +185,9 @@ impl ProjectFragment {
             if let Some(id) = component.id() {
                 inserted_ids.push(id.to_string());
             }
-            let insertion_index = index.checked_add(offset).ok_or_else(|| {
-                FlyError::Decode("fragment insertion index overflow".to_string())
-            })?;
+            let insertion_index = index
+                .checked_add(offset)
+                .ok_or_else(|| FlyError::Decode("fragment insertion index overflow".to_string()))?;
             commands.push(EditorCommand::Insert {
                 parent_id: parent_id.clone(),
                 index: insertion_index,
@@ -225,7 +221,9 @@ pub(crate) fn remap_fragment_asset_ids(
     let mut existing_by_id = BTreeMap::new();
     for raw in existing_assets {
         if let Some(asset) = AssetDescriptor::from_value(raw.clone()) {
-            existing_by_id.entry(asset.id).or_insert_with(|| raw.clone());
+            existing_by_id
+                .entry(asset.id)
+                .or_insert_with(|| raw.clone());
         }
     }
 
@@ -412,10 +410,7 @@ fn remap_opaque_asset_references(raw: &mut Value, mapping: &BTreeMap<String, Str
     }
 }
 
-fn remap_asset_attribute(
-    attributes: &mut Map<String, Value>,
-    mapping: &BTreeMap<String, String>,
-) {
+fn remap_asset_attribute(attributes: &mut Map<String, Value>, mapping: &BTreeMap<String, String>) {
     for (name, value) in attributes {
         if name.eq_ignore_ascii_case("data-fly-asset-id")
             && let Value::String(asset_id) = value
@@ -554,8 +549,10 @@ fn fragment_runtime_catalog_commands(
     let mut commands = Vec::new();
     if let Some(Value::Array(entries)) = extensions.get(crate::FLY_RUNTIME_BINDINGS_FIELD) {
         for entry in entries {
-            let binding = serde_json::from_value::<RuntimeBinding>(entry.clone())
-                .map_err(|error| FlyError::Decode(format!("invalid fragment runtime binding: {error}")))?;
+            let binding =
+                serde_json::from_value::<RuntimeBinding>(entry.clone()).map_err(|error| {
+                    FlyError::Decode(format!("invalid fragment runtime binding: {error}"))
+                })?;
             commands.push(EditorCommand::Binding {
                 command: BindingCommand::Upsert {
                     binding: Box::new(binding),
@@ -565,8 +562,10 @@ fn fragment_runtime_catalog_commands(
     }
     if let Some(Value::Array(entries)) = extensions.get(crate::FLY_RUNTIME_CONDITIONS_FIELD) {
         for entry in entries {
-            let condition = serde_json::from_value::<RuntimeCondition>(entry.clone())
-                .map_err(|error| FlyError::Decode(format!("invalid fragment runtime condition: {error}")))?;
+            let condition =
+                serde_json::from_value::<RuntimeCondition>(entry.clone()).map_err(|error| {
+                    FlyError::Decode(format!("invalid fragment runtime condition: {error}"))
+                })?;
             commands.push(EditorCommand::Dynamic {
                 command: DynamicCommand::UpsertCondition { condition },
             });
@@ -574,8 +573,10 @@ fn fragment_runtime_catalog_commands(
     }
     if let Some(Value::Array(entries)) = extensions.get(crate::FLY_RUNTIME_REPEATERS_FIELD) {
         for entry in entries {
-            let repeater = serde_json::from_value::<RuntimeRepeater>(entry.clone())
-                .map_err(|error| FlyError::Decode(format!("invalid fragment runtime repeater: {error}")))?;
+            let repeater =
+                serde_json::from_value::<RuntimeRepeater>(entry.clone()).map_err(|error| {
+                    FlyError::Decode(format!("invalid fragment runtime repeater: {error}"))
+                })?;
             commands.push(EditorCommand::Dynamic {
                 command: DynamicCommand::UpsertRepeater { repeater },
             });
@@ -627,10 +628,7 @@ fn collect_opaque_provider_requirements(raw: &Value, requirements: &mut BTreeSet
     }
 }
 
-fn collect_node_asset_references(
-    component: &ComponentNode,
-    references: &mut BTreeSet<String>,
-) {
+fn collect_node_asset_references(component: &ComponentNode, references: &mut BTreeSet<String>) {
     match component {
         ComponentNode::Object(object) => {
             collect_component_asset_references(object, references);
@@ -993,8 +991,7 @@ mod tests {
             }]
         }))
         .expect("source");
-        let fragment =
-            ProjectFragment::from_component(&source, "pasted-image").expect("fragment");
+        let fragment = ProjectFragment::from_component(&source, "pasted-image").expect("fragment");
         let target = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "component": {
@@ -1025,8 +1022,8 @@ mod tests {
             .expect("pasted asset id");
         assert_ne!(pasted_asset_id, "shared");
         assert_eq!(
-            editor.document().project().extensions["flySymbols"][0]["components"][0]
-                ["attributes"]["data-fly-asset-id"],
+            editor.document().project().extensions["flySymbols"][0]["components"][0]["attributes"]
+                ["data-fly-asset-id"],
             "shared"
         );
         assert!(
@@ -1073,7 +1070,10 @@ mod tests {
             .map(|asset| asset.id)
             .collect::<BTreeSet<_>>();
 
-        assert_eq!(ids, BTreeSet::from(["large".to_string(), "small".to_string()]));
+        assert_eq!(
+            ids,
+            BTreeSet::from(["large".to_string(), "small".to_string()])
+        );
     }
 
     #[test]
@@ -1115,11 +1115,18 @@ mod tests {
             .expect("paste");
 
         let catalog = AssetDescriptor::from_value;
-        let assets = editor.document().project().assets.iter()
+        let assets = editor
+            .document()
+            .project()
+            .assets
+            .iter()
             .filter_map(|raw| catalog(raw.clone()))
             .collect::<Vec<_>>();
         assert_eq!(
-            assets.iter().find(|asset| asset.id == "shared").map(|asset| asset.source.as_str()),
+            assets
+                .iter()
+                .find(|asset| asset.id == "shared")
+                .map(|asset| asset.source.as_str()),
             Some("/target.webp")
         );
         let inserted_component = editor.document().component(&inserted[0]).expect("inserted");
@@ -1128,13 +1135,13 @@ mod tests {
             .expect("asset id");
         assert_ne!(pasted_asset_id, "shared");
         assert_eq!(
-            assets.iter().find(|asset| asset.id == pasted_asset_id).map(|asset| asset.source.as_str()),
+            assets
+                .iter()
+                .find(|asset| asset.id == pasted_asset_id)
+                .map(|asset| asset.source.as_str()),
             Some("/source.webp")
         );
-        assert_eq!(
-            inserted_component.attributes["src"],
-            "/source.webp"
-        );
+        assert_eq!(inserted_component.attributes["src"], "/source.webp");
     }
 
     #[test]
@@ -1181,13 +1188,11 @@ mod tests {
             Some("fly-symbol-asset-asset-2")
         );
         assert_eq!(
-            components[0].as_object().expect("source image").attributes
-                ["data-fly-asset-id"],
+            components[0].as_object().expect("source image").attributes["data-fly-asset-id"],
             "fly-symbol-asset-asset-2"
         );
         assert_eq!(
-            components[1].as_object().expect("legacy image").attributes
-                ["data-fly-asset-id"],
+            components[1].as_object().expect("legacy image").attributes["data-fly-asset-id"],
             "fly-symbol-asset-asset-1"
         );
         assert_eq!(assets[0]["id"], "fly-symbol-asset-asset-2");
@@ -1246,13 +1251,17 @@ mod tests {
         assert_eq!(assets[1]["id"], "fly-symbol-asset-asset-1");
         assert_ne!(assets[0]["id"], assets[1]["id"]);
         assert_eq!(
-            components[0].as_object().expect("source image a").attributes
-                ["data-fly-asset-id"],
+            components[0]
+                .as_object()
+                .expect("source image a")
+                .attributes["data-fly-asset-id"],
             "fly-symbol-asset-asset-2"
         );
         assert_eq!(
-            components[1].as_object().expect("source image b").attributes
-                ["data-fly-asset-id"],
+            components[1]
+                .as_object()
+                .expect("source image b")
+                .attributes["data-fly-asset-id"],
             "fly-symbol-asset-asset-1"
         );
     }
@@ -1353,9 +1362,18 @@ mod tests {
         }))
         .expect("source");
         let fragment = ProjectFragment::from_component(&source, "hero").expect("fragment");
-        assert_eq!(fragment.extensions["flyRuntimeBindings"][0]["component_id"], "hero");
-        assert_eq!(fragment.extensions["flyRuntimeConditions"][0]["component_id"], "hero");
-        assert_eq!(fragment.extensions["flyRuntimeRepeaters"][0]["component_id"], "hero");
+        assert_eq!(
+            fragment.extensions["flyRuntimeBindings"][0]["component_id"],
+            "hero"
+        );
+        assert_eq!(
+            fragment.extensions["flyRuntimeConditions"][0]["component_id"],
+            "hero"
+        );
+        assert_eq!(
+            fragment.extensions["flyRuntimeRepeaters"][0]["component_id"],
+            "hero"
+        );
 
         let target = GrapesJsCodec::decode_value(json!({
             "flyRuntimeBindings": [{

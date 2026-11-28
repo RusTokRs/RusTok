@@ -2721,11 +2721,13 @@ mod tests {
     #[test]
     fn repeater_budget_counts_object_valued_opaque_descendants_before_cloning() {
         let children = (0..60)
-            .map(|index| json!({
-                "id": format!("opaque-child-{index}"),
-                "provider": "provider.opaque-child",
-                "attributes": { "data-index": index }
-            }))
+            .map(|index| {
+                json!({
+                    "id": format!("opaque-child-{index}"),
+                    "provider": "provider.opaque-child",
+                    "attributes": { "data-index": index }
+                })
+            })
             .collect::<Vec<_>>();
         let source = GrapesJsCodec::decode_value(json!({
             "pages": [{
@@ -2755,9 +2757,12 @@ mod tests {
 
         assert_eq!(result.repeated_nodes, 0);
         assert_eq!(result.document, source);
-        assert!(result.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "runtime_repeater_budget_exceeded"
-        }));
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "runtime_repeater_budget_exceeded" })
+        );
     }
 
     #[test]
@@ -2807,9 +2812,7 @@ mod tests {
             let ComponentChildren::Opaque(panel) = &card.components else {
                 panic!("provider child must remain opaque")
             };
-            let id = panel["attributes"]["id"]
-                .as_str()
-                .expect("opaque panel id");
+            let id = panel["attributes"]["id"].as_str().expect("opaque panel id");
             let trigger = &panel["components"];
             let reference = trigger["attributes"]["aria-controls"]
                 .as_str()

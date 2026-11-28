@@ -483,8 +483,8 @@ pub fn validate_binding_definitions(document: &ProjectDocument) -> Vec<Validatio
                 ),
             ));
         }
-        let scoped = is_valid_runtime_context_path(&binding.path)
-            && is_scoped_binding(binding, &scopes);
+        let scoped =
+            is_valid_runtime_context_path(&binding.path) && is_scoped_binding(binding, &scopes);
         let target_validation = if scoped {
             validate_scoped_binding_target(&binding.target)
         } else {
