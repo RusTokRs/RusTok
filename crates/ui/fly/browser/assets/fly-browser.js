@@ -1346,6 +1346,9 @@ export class FlyBrowserAdapter {
     if (this.lastSequence !== null && envelope.sequence <= this.lastSequence)
       return;
     this.lastSequence = envelope.sequence;
+    if (envelope.message?.type === "pointer_moved") {
+      this.iframePointerInside = true;
+    }
     this.applyBrowserMessage(envelope.message);
     const detail = {
       protocol: envelope.protocol,
@@ -1456,6 +1459,7 @@ export class FlyBrowserAdapter {
         break;
       case "teardown":
         this.root.dataset.flyCanvasConnected = "false";
+        this.iframePointerInside = false;
         this.geometry.clear();
         this.dropAxes.clear();
         // Not a selection: the canvas went away, and the forms that the server rendered still
@@ -1694,6 +1698,7 @@ export class FlyBrowserAdapter {
       "load",
       () => {
         this.lastSequence = null;
+        this.iframePointerInside = false;
         this.geometry.clear();
         this.dropAxes.clear();
         this.activeDrop = null;
@@ -2533,30 +2538,27 @@ export class FlyBrowserAdapter {
         ? null
         : result;
     } catch (error) {
-      // The adapter was disposed: late rejected/aborted promises must not
-      // repaint a stopped root or emit misleading lifecycle events.
-      if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return null;
-      const current = !this.peerWriteConflict && (resolvesOperation
+      // Aborts are lifecycle outcomes, not network failures. Report them even after stop()
+      // fences the adapter; only suppress UI/state mutations for a disposed instance.
+      const stopped = this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED;
+      const current = !stopped && !this.peerWriteConflict && (resolvesOperation
         ? this.pendingOperation?.request?.operation_id === request.operation_id
         : authoritative
           ? requestGeneration === this.latestAuthoritativeRequestGeneration
           : !readStartedDuringWrite &&
             requestGeneration === this.latestIntentRequestGeneration &&
             requestGeneration > this.latestAuthoritativeRequestGeneration);
-      if (current) {
-        updateNetworkIndicator(this.root, "error", error);
-      }
-      if (authoritative && this.requiresOperationReceipts && this.pendingOperation) {
-        this.pendingOperationUnresolved = true;
-        shouldResolvePendingAfterRequest = true;
-        showPendingOperationNotice(this, "checking");
-      }
-      if (resolvesOperation &&
-          this.pendingOperation?.request?.operation_id === request.operation_id) {
-        this.pendingOperationUnresolved = true;
-        showPendingOperationNotice(this, "unavailable");
-      }
       if (controller.signal.aborted) {
+        if (!stopped && authoritative && this.requiresOperationReceipts && this.pendingOperation) {
+          this.pendingOperationUnresolved = true;
+          shouldResolvePendingAfterRequest = true;
+          showPendingOperationNotice(this, "checking");
+        }
+        if (!stopped && resolvesOperation &&
+            this.pendingOperation?.request?.operation_id === request.operation_id) {
+          this.pendingOperationUnresolved = true;
+          showPendingOperationNotice(this, "unavailable");
+        }
         this.root.dispatchEvent(
           new CustomEvent("fly:browser-intent-aborted", {
             bubbles: true,
@@ -2572,6 +2574,21 @@ export class FlyBrowserAdapter {
           }),
         );
         return null;
+      }
+      // A late non-abort rejection after disposal must not repaint the stopped root.
+      if (stopped) return null;
+      if (current) {
+        updateNetworkIndicator(this.root, "error", error);
+      }
+      if (authoritative && this.requiresOperationReceipts && this.pendingOperation) {
+        this.pendingOperationUnresolved = true;
+        shouldResolvePendingAfterRequest = true;
+        showPendingOperationNotice(this, "checking");
+      }
+      if (resolvesOperation &&
+          this.pendingOperation?.request?.operation_id === request.operation_id) {
+        this.pendingOperationUnresolved = true;
+        showPendingOperationNotice(this, "unavailable");
       }
       this.root.dispatchEvent(
         new CustomEvent("fly:browser-error", {

@@ -14,6 +14,7 @@
   let dragEpoch = 0;
   let lastDragPoint = null;
   let pageHidden = false;
+  let pointerOutsideViewport = false;
 
   const send = (type, payload = {}) => {
     if (pageHidden) return;
@@ -245,6 +246,11 @@
     send('hover_requested', { component_id: component?.dataset.flyComponentId ?? null });
   });
   const handleCanvasPointerLeave = () => {
+    if (pointerOutsideViewport) return;
+    pointerOutsideViewport = true;
+    pendingPointerSample = null;
+    pointerScheduled = false;
+    cancelScheduledDrag();
     send('hover_requested', { component_id: null });
     send('cancel_drag_requested');
   };
@@ -256,6 +262,16 @@
     if (event.relatedTarget === null) handleCanvasPointerLeave();
   }, { passive: true });
   document.addEventListener('pointermove', (event) => {
+    if (
+      event.clientX < 0 ||
+      event.clientX >= window.innerWidth ||
+      event.clientY < 0 ||
+      event.clientY >= window.innerHeight
+    ) {
+      handleCanvasPointerLeave();
+      return;
+    }
+    pointerOutsideViewport = false;
     pendingPointerSample = {
       drag_epoch: dragEpoch,
       pointer_id: event.pointerId,
@@ -279,6 +295,10 @@
     });
   }, { passive: true });
   document.addEventListener('pointerup', (event) => {
+    if (pointerOutsideViewport) {
+      cancelScheduledDrag();
+      return;
+    }
     finishDrag(point(event));
   }, { passive: true });
   document.addEventListener('pointercancel', () => {
