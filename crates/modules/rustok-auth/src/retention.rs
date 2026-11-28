@@ -108,6 +108,50 @@ async fn delete_before(
 }
 
 
+/// The session DELETE cascades to history. Pin exact parent IDs first,
+/// then use a fresh READ COMMITTED statement to fence their history: a
+/// child committed before the parent lock may not be visible to the first
+/// snapshot. The parent FOR UPDATE prevents new FK children until commit.
+async fn delete_expired_sessions(
+    tx: &DatabaseTransaction,
+    cutoff: DateTime<Utc>,
+) -> Result<u64, DbErr> {
+    if tx.get_database_backend() != DbBackend::Postgres {
+        return delete_before(tx, "sessions", cutoff, false).await;
+    }
+    tx.execute_unprepared("LOCK TABLE sessions IN ROW EXCLUSIVE MODE NOWAIT").await?;
+    tx.execute_unprepared("LOCK TABLE session_refresh_history IN ROW EXCLUSIVE MODE NOWAIT").await?;
+    let rows = tx.query_all_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT id FROM sessions WHERE expires_at < $1 ORDER BY id FOR UPDATE NOWAIT",
+        [cutoff.into()],
+    )).await?;
+    let ids = rows.into_iter().map(|row| row.try_get::<Uuid>("", "id"))
+        .collect::<Result<Vec<_>, DbErr>>()?;
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    // One bound value avoids one query per session or a variable-sized
+    // parameter list. Both subsequent statements use exactly the pinned IDs.
+    let keys = serde_json::to_string(&ids).map_err(|e| DbErr::Custom(e.to_string()))?;
+    tx.query_all_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT h.token_hash FROM session_refresh_history h
+         JOIN jsonb_array_elements_text(CAST(CAST($1 AS text) AS jsonb)) AS candidate(id)
+           ON h.session_id = candidate.id::uuid
+         ORDER BY h.session_id, h.token_hash FOR UPDATE OF h NOWAIT",
+        [keys.clone().into()],
+    )).await?;
+    let result = tx.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "DELETE FROM sessions target
+         USING jsonb_array_elements_text(CAST(CAST($1 AS text) AS jsonb)) AS candidate(id)
+         WHERE target.id = candidate.id::uuid",
+        [keys.into()],
+    )).await?;
+    Ok(result.rows_affected())
+}
+
 /// Lock OAuth owner applications before any child deletion in the sweep.
 /// The candidate query is only a hint: all subsequent OAuth deletion is
 /// restricted to these exact application IDs. A new candidate on another
@@ -208,7 +252,7 @@ async fn delete_artifacts(
         Vec::new()
     };
     let mut report = AuthRetentionPurge {
-        sessions: delete_before(tx, "sessions", common_cutoff, false).await?,
+        sessions: delete_expired_sessions(tx, common_cutoff).await?,
         ..Default::default()
     };
     if sessions_only {
@@ -390,12 +434,19 @@ mod tests {
             setup.execute_unprepared(&format!("CREATE TABLE {table} (id UUID PRIMARY KEY, expires_at TIMESTAMPTZ NOT NULL)")).await.unwrap();
         }
         setup.execute_unprepared(
-            "CREATE TABLE oauth_apps (id UUID PRIMARY KEY);
+            "CREATE TABLE session_refresh_history (
+                 token_hash TEXT PRIMARY KEY, session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE);
+             CREATE TABLE oauth_apps (id UUID PRIMARY KEY);
              CREATE TABLE oauth_authorization_codes (id UUID PRIMARY KEY, app_id UUID NOT NULL REFERENCES oauth_apps(id), expires_at TIMESTAMPTZ NOT NULL);
              CREATE TABLE oauth_tokens (id UUID PRIMARY KEY, app_id UUID NOT NULL REFERENCES oauth_apps(id),
                  family_id UUID NOT NULL REFERENCES oauth_tokens(id) DEFERRABLE INITIALLY DEFERRED,
                  authorization_code_id UUID, expires_at TIMESTAMPTZ NOT NULL);
-             INSERT INTO sessions VALUES ('10000000-0000-0000-0000-000000000001', '2000-01-01 UTC');
+             INSERT INTO sessions VALUES
+                ('10000000-0000-0000-0000-000000000001', '2000-01-01 UTC'),
+                ('10000000-0000-0000-0000-000000000002', '2099-01-01 UTC');
+             INSERT INTO session_refresh_history VALUES
+                ('expired-session-history', '10000000-0000-0000-0000-000000000001'),
+                ('live-session-history', '10000000-0000-0000-0000-000000000002');
              INSERT INTO oauth_apps VALUES ('20000000-0000-0000-0000-000000000001');
              INSERT INTO oauth_authorization_codes VALUES
                 ('30000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '2000-01-01 UTC'),
@@ -413,6 +464,8 @@ mod tests {
             "LOCK TABLE oauth_tokens IN SHARE MODE",
             "LOCK TABLE oauth_authorization_codes IN SHARE MODE",
             "LOCK TABLE sessions IN SHARE MODE",
+            "LOCK TABLE session_refresh_history IN SHARE MODE",
+            "SELECT token_hash FROM session_refresh_history WHERE token_hash = 'expired-session-history' FOR UPDATE",
             "LOCK TABLE auth_invite_consumptions IN SHARE MODE",
             "LOCK TABLE auth_invites IN SHARE MODE",
             "LOCK TABLE auth_email_change_requests IN SHARE MODE",
@@ -432,24 +485,39 @@ mod tests {
             let check = postgres_tx(&db, &schema).await;
             let row = check.query_one_raw(Statement::from_string(
                 DbBackend::Postgres,
-                "SELECT (SELECT COUNT(*) FROM sessions) AS sessions, (SELECT COUNT(*) FROM oauth_tokens) AS tokens, (SELECT COUNT(*) FROM oauth_authorization_codes) AS codes",
+                "SELECT (SELECT COUNT(*) FROM sessions) AS sessions,
+                        (SELECT COUNT(*) FROM session_refresh_history) AS history,
+                        (SELECT COUNT(*) FROM oauth_tokens) AS tokens,
+                        (SELECT COUNT(*) FROM oauth_authorization_codes) AS codes",
             )).await.unwrap().unwrap();
-            assert_eq!(row.try_get::<i64>("", "sessions").unwrap(), 1);
+            assert_eq!(row.try_get::<i64>("", "sessions").unwrap(), 2);
+            assert_eq!(row.try_get::<i64>("", "history").unwrap(), 2);
             assert_eq!(row.try_get::<i64>("", "tokens").unwrap(), 4);
             assert_eq!(row.try_get::<i64>("", "codes").unwrap(), 2);
             check.rollback().await.unwrap();
         }
+        let owner = postgres_tx(&db, &schema).await;
+        owner.execute_unprepared("SELECT token_hash FROM session_refresh_history WHERE token_hash = 'live-session-history' FOR UPDATE").await.unwrap();
         let writer = postgres_tx(&db, &schema).await;
-        let report = delete_artifacts(&writer, now, false).await.unwrap();
+        let report = tokio::time::timeout(
+            std::time::Duration::from_secs(3), delete_artifacts(&writer, now, false),
+        ).await.expect("unrelated history must not block retention").unwrap();
         assert_eq!(report.sessions, 1);
         assert_eq!(report.oauth_tokens, 2);
         assert_eq!(report.oauth_authorization_codes, 1);
         writer.commit().await.unwrap();
+        owner.rollback().await.unwrap();
 
         let writer = postgres_tx(&db, &schema).await;
         let report = delete_artifacts(&writer, now, false).await.unwrap();
         assert_eq!(report.oauth_tokens, 0);
         assert_eq!(report.oauth_authorization_codes, 0);
+        assert_eq!(report.sessions, 0);
+        let history = writer.query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT token_hash FROM session_refresh_history",
+        )).await.unwrap().unwrap();
+        assert_eq!(history.try_get::<String>("", "token_hash").unwrap(), "live-session-history");
         writer.commit().await.unwrap();
         db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
     }

@@ -1290,3 +1290,9 @@ preserves codes while their families remain. Source regressions unrun.
 ### Invite receipt lock admission
 
 PostgreSQL migration `m20261128_000001_fence_invite_consumption_keys` fences invitation receipt digest and UUID unique keys using nonwaiting advisory locks. Acceptance and administrative revocation reserve the global digest after role authority; ordinary receipt DML uses the same gate. Receipt ID, tenant and digest are immutable on PostgreSQL. User FK SET NULL and retention DELETE remain supported. SQLite retains writer serialization. Retention reserves explicit relation modes with NOWAIT. This slice does not certify implicit cascade locks or direct SQL deletion authority; runtime verification is pending.
+
+PostgreSQL session retention now reserves the history table's write mode and
+locks the exact history of pinned expired session IDs in a fresh READ COMMITTED
+statement before parent deletion. This prevents the FK cascade from waiting
+on a busy history row and preserves unrelated live history. Source regression
+covers rollback and isolation; compilation/runtime verification is pending.

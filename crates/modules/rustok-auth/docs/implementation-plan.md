@@ -847,3 +847,11 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   regressions cover receipt unique-key and retention relation contention.
   SQLite writer serialization is unchanged. Cascade and direct SQL deletion
   authority remain open; compilation and runtime verification unrun.
+
+- Session retention FK cascade continuation: pin exact expired session IDs in
+  UUID order with FOR UPDATE NOWAIT, re-observe their history in a fresh READ
+  COMMITTED statement and fence exact children before parent DELETE. Reserve
+  both relation write modes NOWAIT. Keep the original cutoff, no extra round
+  trip per session, and retain unrelated live history. PostgreSQL row/table
+  contention and cascade rollback regressions authored, unrun. Other parent
+  cascades and full lock hierarchy remain open.

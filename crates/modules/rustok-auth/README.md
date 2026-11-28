@@ -370,6 +370,11 @@ contention with ROW EXCLUSIVE NOWAIT and UUID-ordered FOR UPDATE NOWAIT.
 Session revocation remains tenant/user scoped and excludes the proving session
 when requested. Source regressions cover contention and idempotent retry; unrun.
 
+PostgreSQL session retention also fences the exact session refresh history
+before parent deletion, using a fresh READ COMMITTED snapshot after pinning
+expired sessions. History table/row contention aborts the sweep; unrelated
+live history remains untouched. Source regression unrun.
+
 PostgreSQL retention uses ordered nonblocking candidate locks and app-first
 OAuth family deletion with fresh whole-family expiry checks. Contention rolls
 back the complete sweep; the next attempt starts a new transaction. SQLite
