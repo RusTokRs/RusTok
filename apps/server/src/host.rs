@@ -561,28 +561,65 @@ fn validate_database_deployment(database_uri: &str, production: bool) -> Result<
     let uses_placeholder_credentials = known_placeholder_fragment(&username).is_some()
         || known_placeholder_fragment(&password).is_some();
 
-    let host = parsed
+    // PostgreSQL also accepts `host` in the query string. Inspect both URL authority
+    // and query-parameter hosts so a hostless URI cannot silently fall back to a
+    // local socket/default endpoint, and an override cannot bypass this check.
+    let mut configured_hosts = parsed
         .host_str()
-        .unwrap_or_default()
-        .trim_start_matches('[')
-        .trim_end_matches(']')
-        .trim_end_matches('.')
-        .to_ascii_lowercase();
-    let host_is_local = host == "localhost"
-        || host == "localhost.localdomain"
-        || host.ends_with(".localhost")
-        || host
-            .parse::<std::net::IpAddr>()
-            .is_ok_and(|address| address.is_loopback() || address.is_unspecified());
-    let host_is_placeholder = matches!(
-        host.as_str(),
-        "example.com" | "example.net" | "example.org"
-    ) || host.ends_with(".example.com")
-        || host.ends_with(".example.net")
-        || host.ends_with(".example.org")
-        || host.ends_with(".example")
-        || host.ends_with(".invalid")
-        || host.ends_with(".test");
+        .map(str::to_owned)
+        .into_iter()
+        .collect::<Vec<_>>();
+    configured_hosts.extend(parsed.query_pairs().filter_map(|(key, value)| {
+        key.eq_ignore_ascii_case("host").then(|| value.into_owned())
+    }));
+    if configured_hosts.is_empty()
+        || configured_hosts
+            .iter()
+            .any(|host| host.trim().is_empty())
+    {
+        return Err(Error::BadRequest(
+            "Production database URI must specify an explicit host".to_string(),
+        ));
+    }
+
+    let hosts = configured_hosts
+        .iter()
+        .flat_map(|host| host.split(','))
+        .map(|host| {
+            host.trim()
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .trim_end_matches('.')
+                .to_ascii_lowercase()
+        })
+        .collect::<Vec<_>>();
+    if hosts.is_empty() || hosts.iter().any(String::is_empty) {
+        return Err(Error::BadRequest(
+            "Production database URI contains an invalid host".to_string(),
+        ));
+    }
+
+    let host_is_local = hosts.iter().any(|host| {
+        host.starts_with('/')
+            || host.starts_with("unix:")
+            || host == "localhost"
+            || host == "localhost.localdomain"
+            || host.ends_with(".localhost")
+            || host
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|address| address.is_loopback() || address.is_unspecified())
+    });
+    let host_is_placeholder = hosts.iter().any(|host| {
+        matches!(
+            host.as_str(),
+            "example.com" | "example.net" | "example.org"
+        ) || host.ends_with(".example.com")
+            || host.ends_with(".example.net")
+            || host.ends_with(".example.org")
+            || host.ends_with(".example")
+            || host.ends_with(".invalid")
+            || host.ends_with(".test")
+    });
     let database_name = decode_percent_encoded_component(parsed.path().trim_matches('/'))
         .ok_or_else(|| {
             Error::BadRequest(
@@ -1635,6 +1672,38 @@ mod tests {
                 .expect_err("unspecified addresses are not production database endpoints");
             assert!(error.to_string().contains("local placeholders"));
         }
+    }
+
+    #[test]
+    fn production_rejects_database_uris_without_an_explicit_host() {
+        for uri in [
+            "postgres:///rustok_prod",
+            "postgres:///rustok_prod?application_name=rustok",
+        ] {
+            let error = super::validate_database_deployment(uri, true)
+                .expect_err("hostless production database URIs must not use implicit local defaults");
+            assert!(error.to_string().contains("explicit host"));
+        }
+    }
+
+    #[test]
+    fn production_validates_libpq_host_query_parameters() {
+        for uri in [
+            "postgres:///rustok_prod?host=localhost",
+            "postgres:///rustok_prod?host=%2Fvar%2Frun%2Fpostgresql",
+            "postgres:///rustok_prod?host=db.example.com",
+            "postgres:///rustok_prod?host=prod-db.internal,localhost",
+        ] {
+            let error = super::validate_database_deployment(uri, true)
+                .expect_err("local, placeholder, or mixed host targets must fail closed");
+            assert!(error.to_string().contains("local placeholders"));
+        }
+
+        super::validate_database_deployment(
+            "postgres:///rustok_prod?host=prod-db.internal",
+            true,
+        )
+        .expect("an explicit remote libpq host is a valid production target");
     }
 
     #[test]
