@@ -896,11 +896,15 @@ impl RustokSettings {
         parsed.email.smtp.host = parsed.email.smtp.host.trim().to_string();
         parsed.email.smtp.username = parsed.email.smtp.username.trim().to_string();
 
-        if let Ok(raw_profile) = std::env::var("RUSTOK_EVENT_DELIVERY_PROFILE") {
+        if let Some(raw_profile) =
+            read_optional_environment_value("RUSTOK_EVENT_DELIVERY_PROFILE")?
+        {
             parsed.events.delivery_profile = parse_event_delivery_profile(&raw_profile)?;
         }
 
-        if let Ok(raw_host_mode) = std::env::var("RUSTOK_RUNTIME_HOST_MODE") {
+        if let Some(raw_host_mode) =
+            read_optional_environment_value("RUSTOK_RUNTIME_HOST_MODE")?
+        {
             parsed.runtime.host_mode = parse_runtime_host_mode(&raw_host_mode)?;
         }
 
@@ -1476,16 +1480,23 @@ fn settings_validation_error(message: impl Into<String>) -> serde_json::Error {
     ))
 }
 
-fn read_email_environment_value(
+fn optional_environment_value_from(
     name: &str,
+    value: std::result::Result<String, std::env::VarError>,
 ) -> Result<Option<String>, serde_json::Error> {
-    match std::env::var(name) {
+    match value {
         Ok(value) => Ok(Some(value)),
         Err(std::env::VarError::NotPresent) => Ok(None),
         Err(std::env::VarError::NotUnicode(_)) => Err(settings_validation_error(format!(
             "{name} must be valid UTF-8"
         ))),
     }
+}
+
+pub(crate) fn read_optional_environment_value(
+    name: &str,
+) -> Result<Option<String>, serde_json::Error> {
+    optional_environment_value_from(name, std::env::var(name))
 }
 
 fn parse_email_environment_bool(name: &str, value: &str) -> Result<bool, serde_json::Error> {
@@ -1501,10 +1512,10 @@ fn parse_email_environment_bool(name: &str, value: &str) -> Result<bool, serde_j
 fn apply_email_environment_overrides(
     email: &mut EmailSettings,
 ) -> Result<(), serde_json::Error> {
-    if let Some(value) = read_email_environment_value("EMAIL_ENABLED")? {
+    if let Some(value) = read_optional_environment_value("EMAIL_ENABLED")? {
         email.enabled = parse_email_environment_bool("EMAIL_ENABLED", &value)?;
     }
-    if let Some(value) = read_email_environment_value("EMAIL_PROVIDER")? {
+    if let Some(value) = read_optional_environment_value("EMAIL_PROVIDER")? {
         email.provider = match value.trim().to_ascii_lowercase().as_str() {
             "smtp" => EmailProvider::Smtp,
             "none" => EmailProvider::None,
@@ -1515,16 +1526,16 @@ fn apply_email_environment_overrides(
             }
         };
     }
-    if let Some(value) = read_email_environment_value("EMAIL_FROM")? {
+    if let Some(value) = read_optional_environment_value("EMAIL_FROM")? {
         email.from = value.trim().to_string();
     }
-    if let Some(value) = read_email_environment_value("RESET_BASE_URL")? {
+    if let Some(value) = read_optional_environment_value("RESET_BASE_URL")? {
         email.reset_base_url = value.trim().to_string();
     }
-    if let Some(value) = read_email_environment_value("SMTP_HOST")? {
+    if let Some(value) = read_optional_environment_value("SMTP_HOST")? {
         email.smtp.host = value.trim().to_string();
     }
-    if let Some(value) = read_email_environment_value("SMTP_PORT")? {
+    if let Some(value) = read_optional_environment_value("SMTP_PORT")? {
         let port = value.trim().parse::<u16>().map_err(|_| {
             settings_validation_error("SMTP_PORT must be an integer from 1 through 65535")
         })?;
@@ -1533,10 +1544,10 @@ fn apply_email_environment_overrides(
         }
         email.smtp.port = port;
     }
-    if let Some(value) = read_email_environment_value("SMTP_USERNAME")? {
+    if let Some(value) = read_optional_environment_value("SMTP_USERNAME")? {
         email.smtp.username = value.trim().to_string();
     }
-    if let Some(value) = read_email_environment_value("SMTP_PASSWORD")? {
+    if let Some(value) = read_optional_environment_value("SMTP_PASSWORD")? {
         email.smtp.password = value;
     }
     Ok(())
@@ -2955,6 +2966,28 @@ mod tests {
             Err(TenantSettingsError::MissingSubdomainBaseDomain)
         );
     }
+    #[test]
+    fn optional_environment_values_reject_non_unicode_values() {
+        let error = super::optional_environment_value_from(
+            "RUSTOK_RUNTIME_HOST_MODE",
+            Err(std::env::VarError::NotUnicode(std::ffi::OsString::from(
+                "invalid",
+            ))),
+        )
+        .expect_err("non-Unicode runtime configuration must fail closed");
+        assert!(error.to_string().contains("RUSTOK_RUNTIME_HOST_MODE"));
+        assert!(error.to_string().contains("valid UTF-8"));
+
+        assert_eq!(
+            super::optional_environment_value_from(
+                "RUSTOK_RUNTIME_HOST_MODE",
+                Err(std::env::VarError::NotPresent),
+            )
+            .expect("missing optional setting"),
+            None
+        );
+    }
+
     #[test]
     fn non_unicode_environment_alias_is_rejected_instead_of_ignored() {
         let error = super::normalize_environment_value(

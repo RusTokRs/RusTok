@@ -718,7 +718,7 @@ async fn apply(
         pg_admin_url: request.pg_admin_url,
         bootstrap_public_key_base64: configured_value(
             "RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY",
-        ),
+        )?,
     };
     let registry = ctx
         .shared_get::<rustok_core::ModuleRegistry>()
@@ -912,9 +912,7 @@ async fn bind_host_install_plan(
     plan.topology.distribution = None;
     plan.topology.distribution =
         Some(resolve_host_distribution_binding(ctx, &host_composition).await?);
-    let configured_root = std::env::var("RUSTOK_INSTANCE_ROOT")
-        .ok()
-        .filter(|value| !value.trim().is_empty());
+    let configured_root = configured_value("RUSTOK_INSTANCE_ROOT")?;
     if host_is_production && configured_root.is_none() {
         return Err(bad_request_error(
             "production installer HTTP requests require a host-selected RUSTOK_INSTANCE_ROOT",
@@ -932,9 +930,9 @@ async fn resolve_host_distribution_binding(
     ctx: &ServerRuntimeContext,
     host_composition: &InstallComposition,
 ) -> Result<InstallDistributionBinding> {
-    let release_id = configured_value("RUSTOK_INSTALL_DISTRIBUTION_RELEASE_ID");
-    let receipt_path = configured_value("RUSTOK_INSTALL_BASE_DISTRIBUTION_RECEIPT");
-    let receipt_public_key = configured_value("RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY");
+    let release_id = configured_value("RUSTOK_INSTALL_DISTRIBUTION_RELEASE_ID")?;
+    let receipt_path = configured_value("RUSTOK_INSTALL_BASE_DISTRIBUTION_RECEIPT")?;
+    let receipt_public_key = configured_value("RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY")?;
 
     match (release_id, receipt_path, receipt_public_key) {
         (Some(_), Some(_), _) | (Some(_), _, Some(_)) => Err(bad_request_error(
@@ -999,10 +997,10 @@ async fn resolve_host_distribution_binding(
     }
 }
 
-fn configured_value(name: &str) -> Option<String> {
-    std::env::var(name)
-        .ok()
-        .filter(|value| !value.trim().is_empty())
+fn configured_value(name: &str) -> Result<Option<String>> {
+    crate::common::settings::read_optional_environment_value(name)
+        .map(|value| value.filter(|value| !value.trim().is_empty()))
+        .map_err(|error| Error::Message(error.to_string()))
 }
 
 async fn job_status(
@@ -1169,9 +1167,7 @@ fn validate_setup_token_value(provided: Option<&str>, expected: &str) -> bool {
 
 fn require_setup_token(headers: &HeaderMap) -> Result<()> {
     let production = is_production_security_mode();
-    let expected = std::env::var("RUSTOK_INSTALL_SETUP_TOKEN")
-        .ok()
-        .filter(|value| !value.trim().is_empty());
+    let expected = configured_value("RUSTOK_INSTALL_SETUP_TOKEN")?;
     let Some(expected) = expected else {
         if production {
             return Err(forbidden_error(
