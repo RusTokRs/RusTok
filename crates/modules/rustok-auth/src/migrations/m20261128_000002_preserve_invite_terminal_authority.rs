@@ -19,13 +19,20 @@ FOR EACH ROW EXECUTE FUNCTION auth_guard_invite_digest_witness();
 CREATE TRIGGER auth_invite_digest_witness_no_truncate BEFORE TRUNCATE ON auth_invite_digest_witnesses
 FOR EACH STATEMENT EXECUTE FUNCTION auth_guard_invite_digest_witness();
 
-CREATE FUNCTION auth_guard_invite_birth() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE FUNCTION auth_fence_invite_issuance_id(target uuid) RETURNS void LANGUAGE plpgsql AS $
+BEGIN
+    IF NOT pg_try_advisory_xact_lock(
+        hashtextextended('rustok:auth-invite-issuance:id:' || target::text, 0)) THEN
+        RAISE EXCEPTION 'Invite issuance identity busy' USING ERRCODE = '55P03';
+    END IF;
+END; $;
+
+CREATE FUNCTION auth_guard_invite_birth() RETURNS trigger LANGUAGE plpgsql AS $
 BEGIN
     LOCK TABLE auth_invite_digest_witnesses IN ROW EXCLUSIVE MODE NOWAIT;
     PERFORM auth_fence_invite_consumption_digest(NEW.token_hash);
-    IF TG_TABLE_NAME = 'auth_invites' AND NOT pg_try_advisory_xact_lock(
-        hashtextextended('rustok:auth-invite-issuance:id:' || NEW.id::text, 0)) THEN
-        RAISE EXCEPTION 'Invite issuance identity busy' USING ERRCODE = '55P03';
+    IF TG_TABLE_NAME = 'auth_invites' THEN
+        PERFORM auth_fence_invite_issuance_id(NEW.id);
     END IF;
     IF row_security_active('auth_invite_digest_witnesses'::regclass) THEN
         RAISE EXCEPTION 'Invite witness visibility incomplete' USING ERRCODE = '42501';
@@ -51,8 +58,11 @@ FOR EACH ROW EXECUTE FUNCTION auth_claim_invite_birth('issued');
 CREATE TRIGGER auth_invite_receipt_birth_claim AFTER INSERT ON auth_invite_consumptions
 FOR EACH ROW EXECUTE FUNCTION auth_claim_invite_birth('consumed');
 
-CREATE FUNCTION auth_guard_invite_issued_claims() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE FUNCTION auth_guard_invite_issued_claims() RETURNS trigger LANGUAGE plpgsql AS $
 BEGIN
+    -- Raw UPDATE may already own the tuple; the gate must never wait.
+    PERFORM auth_fence_invite_consumption_digest(OLD.token_hash);
+    PERFORM auth_fence_invite_issuance_id(OLD.id);
     IF ROW(NEW.id, NEW.tenant_id, NEW.token_hash, NEW.email, NEW.role,
            NEW.created_at, NEW.expires_at, NEW.issuer_recovery_revision,
            NEW.issuer_membership_revision, NEW.role_grant_binding, NEW.module_policy_binding)
@@ -95,6 +105,9 @@ BEGIN
         RAISE EXCEPTION 'Invite metadata cannot be truncated' USING ERRCODE = '23514';
     END IF;
     PERFORM auth_fence_invite_consumption_digest(OLD.token_hash);
+    IF TG_TABLE_NAME = 'auth_invites' THEN
+        PERFORM auth_fence_invite_issuance_id(OLD.id);
+    END IF;
     LOCK TABLE tenants IN ACCESS SHARE MODE NOWAIT;
     IF row_security_active('tenants'::regclass) THEN
         RAISE EXCEPTION 'Invite tenant visibility incomplete' USING ERRCODE = '42501';
@@ -118,9 +131,12 @@ END; $$;
 
 const SQLITE_WITNESS: &str = r#"
 CREATE TRIGGER auth_invite_digest_witness_insert_guard BEFORE INSERT ON auth_invite_digest_witnesses
-WHEN EXISTS (SELECT 1 FROM auth_invite_digest_witnesses
+WHEN NEW.kind IS NULL OR NEW.kind NOT IN ('issued', 'consumed')
+ OR typeof(NEW.token_hash) <> 'text' OR length(NEW.token_hash) <> 64
+ OR NEW.token_hash GLOB '*[^0-9a-f]*'
+ OR EXISTS (SELECT 1 FROM auth_invite_digest_witnesses
              WHERE kind = NEW.kind AND token_hash = NEW.token_hash)
-BEGIN SELECT RAISE(ABORT, 'Invite digest already registered'); END;
+BEGIN SELECT RAISE(ABORT, 'Invite digest invalid or already registered'); END;
 CREATE TRIGGER auth_invite_digest_witness_no_update BEFORE UPDATE ON auth_invite_digest_witnesses
 BEGIN SELECT RAISE(ABORT, 'Invite digest witness is permanent'); END;
 CREATE TRIGGER auth_invite_digest_witness_no_delete BEFORE DELETE ON auth_invite_digest_witnesses
@@ -181,7 +197,7 @@ impl MigrationTrait for Migration {
             "CREATE TABLE auth_invite_digest_witnesses (
                 kind TEXT NOT NULL CHECK (kind IN ('issued', 'consumed')),
                 token_hash TEXT NOT NULL CHECK ({shape}),
-                PRIMARY KEY (kind, token_hash)
+                PRIMARY KEY (token_hash, kind)
              ){suffix};
              INSERT INTO auth_invite_digest_witnesses SELECT 'issued', token_hash FROM auth_invites;
              INSERT INTO auth_invite_digest_witnesses SELECT 'consumed', token_hash FROM auth_invite_consumptions;"
@@ -208,7 +224,9 @@ impl MigrationTrait for Migration {
                     } else { "" };
                     db.execute_unprepared(&format!(
                         "CREATE TRIGGER auth_invite_birth_guard_{kind} BEFORE INSERT ON {table}
-                         WHEN EXISTS (SELECT 1 FROM auth_invite_digest_witnesses WHERE token_hash = NEW.token_hash{duplicate})
+                         WHEN typeof(NEW.token_hash) <> 'text' OR length(NEW.token_hash) <> 64
+                            OR NEW.token_hash GLOB '*[^0-9a-f]*'
+                            OR EXISTS (SELECT 1 FROM auth_invite_digest_witnesses WHERE token_hash = NEW.token_hash{duplicate})
                             OR EXISTS (SELECT 1 FROM {table} WHERE id = NEW.id OR rowid = NEW.rowid)
                          BEGIN SELECT RAISE(ABORT, 'Invite digest or row already registered'); END;
                          CREATE TRIGGER auth_invite_birth_claim_{kind} AFTER INSERT ON {table}
@@ -350,6 +368,15 @@ mod tests {
             "c".repeat(64),
         )).await;
         reject(&db, None, "INSERT OR REPLACE INTO auth_invite_digest_witnesses SELECT kind, token_hash FROM auth_invite_digest_witnesses").await;
+        // SQLite outer conflict policies can override inner CHECK handling;
+        // an explicit RAISE must reject the complete source statement.
+        reject(&db, None, &format!(
+            "INSERT OR IGNORE INTO auth_invites VALUES ('{FRESH}', '{TENANT}', 'malformed', 'fresh@example.test', 'customer', '{USER}', '2000-01-01', '2099-01-01', NULL, 1, 2, 'grant', 'policy')"
+        )).await;
+        reject(&db, None, &format!(
+            "INSERT OR IGNORE INTO auth_invite_consumptions VALUES ('{FRESH}', '{TENANT}', 'malformed', 'fresh@example.test', 'customer', NULL, '2099-01-01', '2000-01-01')"
+        )).await;
+        reject(&db, None, "INSERT OR IGNORE INTO auth_invite_digest_witnesses VALUES ('issued', 'malformed')").await;
         exercise(&db, None).await;
     }
 
@@ -368,6 +395,24 @@ mod tests {
         for table in ["auth_invites", "auth_invite_consumptions", "auth_invite_digest_witnesses"] {
             reject(&db, Some(&schema), &format!("TRUNCATE {table}")).await;
         }
+        // A concurrent deletion owns the old UUID even if a new writer
+        // supplies a different digest. It must not wait at the unique index.
+        let owner = tx(&db, Some(&schema)).await;
+        owner.execute_unprepared(&format!("DELETE FROM auth_invites WHERE id = '{OLD}'")).await.unwrap();
+        let writer = tx(&db, Some(&schema)).await;
+        let error = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            writer.execute_unprepared(&format!(
+                "INSERT INTO auth_invites VALUES ('{OLD}', '{TENANT}', '{}', 'fresh@example.test', 'customer', '{USER}', '2000-01-01', '2099-01-01', NULL, 1, 2, 'grant', 'policy')",
+                "d".repeat(64),
+            )),
+        ).await.expect("issuance identity contention must not wait").unwrap_err();
+        assert_eq!(
+            rustok_core::resilience::retry::PostgresTransactionConflict::classify(DatabaseBackend::Postgres, &error),
+            Some(rustok_core::resilience::retry::PostgresTransactionConflict::LockUnavailable),
+        );
+        writer.rollback().await.unwrap();
+        owner.rollback().await.unwrap();
         exercise(&db, Some(&schema)).await;
         db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
     }

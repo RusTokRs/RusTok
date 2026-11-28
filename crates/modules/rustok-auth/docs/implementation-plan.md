@@ -865,3 +865,10 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
   to the verified owner clock; no plaintext or account identifiers in witnesses.
   Legacy pruned evidence/restore and other parent cascades remain open; source
   regression and compilation unrun.
+
+- Pending terminal-authority migration refinement: explicit SQLite ABORT on
+  malformed digest/kind prevents outer INSERT OR IGNORE from suppressing the
+  inner witness constraint; digest-first witness primary key supports both
+  phases. PostgreSQL issuance UUID/digest gates cover update/delete as well
+  as birth. Added contention and mismatched receipt/ledger horizon regression
+  sources; unrun. Pending migration amended in place per AGENTS.md §7.

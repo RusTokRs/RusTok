@@ -446,6 +446,26 @@ mod tests {
         assert_eq!(purge_expired_sessions(&db).await.unwrap(), 0);
     }
 
+    #[tokio::test]
+    async fn invite_receipt_retention_waits_for_the_ledger_horizon() {
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE auth_invites (id INTEGER PRIMARY KEY, token_hash TEXT UNIQUE, expires_at TEXT NOT NULL);
+             CREATE TABLE auth_invite_consumptions (id INTEGER PRIMARY KEY, token_hash TEXT UNIQUE, expires_at TEXT NOT NULL);
+             INSERT INTO auth_invites VALUES (1, 'still-retained', '2099-01-01'), (2, 'expired', '2000-01-01');
+             INSERT INTO auth_invite_consumptions VALUES (1, 'still-retained', '2000-01-01'), (2, 'expired', '2000-01-01');"
+        ).await.unwrap();
+        let cutoff = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+        let tx = db.begin().await.unwrap();
+        assert_eq!(delete_before(&tx, "auth_invites", cutoff, false).await.unwrap(), 1);
+        assert_eq!(delete_expired_invite_receipts(&tx, cutoff).await.unwrap(), 1);
+        let row = tx.query_one_raw(Statement::from_string(
+            DbBackend::Sqlite, "SELECT token_hash FROM auth_invite_consumptions",
+        )).await.unwrap().unwrap();
+        assert_eq!(row.try_get::<String>("", "token_hash").unwrap(), "still-retained");
+        tx.commit().await.unwrap();
+    }
+
     async fn postgres_tx(db: &DatabaseConnection, schema: &str) -> DatabaseTransaction {
         let tx = db.begin_with_config(Some(IsolationLevel::ReadCommitted), None).await.unwrap();
         tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
