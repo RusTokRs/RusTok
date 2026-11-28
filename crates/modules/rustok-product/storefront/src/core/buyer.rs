@@ -533,8 +533,7 @@ pub fn build_view(
     BuyerView {
         axes: axis_views(product, &input.values),
         currencies,
-        selected_sku: variant
-            .map(|variant| variant.sku.clone().unwrap_or_else(|| variant.id.clone())),
+        selected_sku: variant.and_then(|variant| variant.sku.clone()),
         price: price.map(|price| {
             super::format_product_price(
                 locale,
@@ -889,5 +888,43 @@ mod tests {
         assert!(decode_snapshot(&encode_snapshot(&snapshot).unwrap()).is_err());
         snapshot.tenant_slug.clear();
         assert!(decode_snapshot(&encode_snapshot(&snapshot).unwrap()).is_err());
+    }
+
+    #[test]
+    fn buyer_view_never_exposes_variant_id_as_a_missing_sku() {
+        let mut product = product();
+        let input = BuyerInput {
+            values: BTreeMap::from([(id(10), id(11)), (id(20), id(21))]),
+            quantity_text: "1".into(),
+            request: FetchRequest {
+                selected_handle: Some("boots".into()),
+                locale: Some("en".into()),
+                currency_code: None,
+                region_id: None,
+                price_list_id: None,
+                channel_id: None,
+                channel_slug: None,
+                quantity: Some(1),
+            },
+        };
+
+        let view = build_view(
+            &product,
+            &input,
+            BuyerQuoteCycle::default(),
+            None,
+            Some("en"),
+        );
+        assert_eq!(view.selected_sku, None);
+
+        product.variants[0].sku = Some("SKU-003".into());
+        let view = build_view(
+            &product,
+            &input,
+            BuyerQuoteCycle::default(),
+            None,
+            Some("en"),
+        );
+        assert_eq!(view.selected_sku.as_deref(), Some("SKU-003"));
     }
 }
