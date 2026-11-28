@@ -52,7 +52,6 @@ impl BuildSubscription {
             .filter(|value| !value.trim().is_empty())
             .map(|value| {
                 Uuid::parse_str(value.trim())
-                    .map(|id| id.to_string())
                     .map_err(|_| async_graphql::Error::new("buildId must be a valid UUID"))
             })
             .transpose()?;
@@ -68,10 +67,10 @@ impl BuildSubscription {
 
         // A filtered subscription may target a terminal build; an unfiltered
         // subscription starts with every queued/running build.
-        let initial = if let Some(build_id) = build_filter.as_deref() {
+        let initial = if let Some(build_id) = build_filter {
             control
                 .0
-                .build_progress(Uuid::parse_str(build_id).expect("validated UUID"))
+                .build_progress(build_id)
                 .await
                 .map_err(|error| {
                     tracing::error!(%error, "Unable to read initial build progress snapshot");
@@ -194,8 +193,7 @@ impl BuildSubscription {
                         last_sequences.insert(snapshot.id.clone(), snapshot.sequence);
 
                         if build_filter
-                            .as_ref()
-                            .is_some_and(|build_id| snapshot.id != *build_id)
+                            .is_some_and(|build_id| snapshot.id != build_id.to_string())
                         {
                             continue;
                         }
