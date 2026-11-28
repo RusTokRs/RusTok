@@ -1652,7 +1652,12 @@ mod tests {
         let event_id = envelope.id;
         crate::OutboxTransport::new(db.clone()).publish(envelope).await.unwrap();
         let relay = OutboxRelay::new(db.clone(), Arc::new(RejectUnexpectedPublish))
-            .with_delivery_route("external-fanout-v1");
+            .with_delivery_route("external-fanout-v1")
+            .with_config(RelayConfig {
+                backoff_base: Duration::from_millis(1),
+                backoff_max: Duration::from_millis(1),
+                ..RelayConfig::default()
+            });
         let horizon = rustok_outbox_storage::observe_database_clock(&db).await.unwrap();
         let claimed = relay.claim_batch(1, horizon, None).await.unwrap().pop().unwrap();
         let renewed = relay.refresh_claim(&claimed).await.unwrap();
@@ -1671,9 +1676,7 @@ mod tests {
             assert!(db.execute_unprepared(sql).await.is_err(), "{sql}");
         }
         relay.mark_failed_attempt(&renewed, Error::External("local failure".into()), false, Some((attempt_id, OutboxRelay::claim_token(&renewed).unwrap()))).await.unwrap();
-        entity::Entity::update_many().filter(entity::Column::Id.eq(event_id))
-            .set(entity::ActiveModel { next_attempt_at: Set(None), ..Default::default() })
-            .exec(&db).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(5)).await;
 
         // A freshly constructed relay reuses only the committed primary checkpoint.
         let restarted = OutboxRelay::new(db.clone(), Arc::new(RejectUnexpectedPublish))

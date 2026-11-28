@@ -448,7 +448,7 @@ mod tests {
         .await
         .expect("insert pristine pending sys_event");
 
-        match status {
+        match status.clone() {
             SysEventStatus::Pending => {}
             SysEventStatus::Dispatched => {
                 crate::OutboxTransport::new(db.clone())
