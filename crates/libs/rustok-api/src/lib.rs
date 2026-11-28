@@ -136,8 +136,8 @@ pub use permissions::{
     has_any_effective_permission, has_effective_permission,
 };
 pub use platform_build::{
-    ParsePlatformCodeError, PlatformBuildSnapshot, PlatformBuildStage, PlatformBuildStatus,
-    PlatformDeploymentProfile,
+    ParsePlatformCodeError, PlatformBuildProgressSnapshot, PlatformBuildSnapshot,
+    PlatformBuildStage, PlatformBuildStatus, PlatformDeploymentProfile,
 };
 pub use ports::{
     PortActor, PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind,
