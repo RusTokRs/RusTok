@@ -564,21 +564,22 @@ fn validate_database_deployment(database_uri: &str, production: bool) -> Result<
     // PostgreSQL also accepts `host` in the query string. Inspect both URL authority
     // and query-parameter hosts so a hostless URI cannot silently fall back to a
     // local socket/default endpoint, and an override cannot bypass this check.
-    let mut configured_hosts = parsed
+    let authority_host = parsed
         .host_str()
-        .map(str::to_owned)
-        .into_iter()
-        .collect::<Vec<_>>();
+        .filter(|host| !host.trim().is_empty())
+        .ok_or_else(|| {
+            Error::BadRequest(
+                "Production database URI must specify an explicit host in its authority"
+                    .to_string(),
+            )
+        })?;
+    let mut configured_hosts = vec![authority_host.to_owned()];
     configured_hosts.extend(parsed.query_pairs().filter_map(|(key, value)| {
         key.eq_ignore_ascii_case("host").then(|| value.into_owned())
     }));
-    if configured_hosts.is_empty()
-        || configured_hosts
-            .iter()
-            .any(|host| host.trim().is_empty())
-    {
+    if configured_hosts.iter().any(|host| host.trim().is_empty()) {
         return Err(Error::BadRequest(
-            "Production database URI must specify an explicit host".to_string(),
+            "Production database URI contains an invalid host".to_string(),
         ));
     }
 
@@ -1679,9 +1680,11 @@ mod tests {
         for uri in [
             "postgres:///rustok_prod",
             "postgres:///rustok_prod?application_name=rustok",
+            "postgres:///rustok_prod?host=prod-db.internal",
         ] {
-            let error = super::validate_database_deployment(uri, true)
-                .expect_err("hostless production database URIs must not use implicit local defaults");
+            let error = super::validate_database_deployment(uri, true).expect_err(
+                "hostless production database URIs must not use implicit local defaults",
+            );
             assert!(error.to_string().contains("explicit host"));
         }
     }
@@ -1699,11 +1702,12 @@ mod tests {
             assert!(error.to_string().contains("local placeholders"));
         }
 
-        super::validate_database_deployment(
+        let error = super::validate_database_deployment(
             "postgres:///rustok_prod?host=prod-db.internal",
             true,
         )
-        .expect("an explicit remote libpq host is a valid production target");
+        .expect_err("a query-only host must not replace the URI authority");
+        assert!(error.to_string().contains("explicit host"));
     }
 
     #[test]
