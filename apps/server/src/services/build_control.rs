@@ -2,8 +2,10 @@ use std::sync::Arc;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use async_trait::async_trait;
-use rustok_api::PlatformBuildSnapshot;
-use rustok_build::{BuildControl, BuildService, SharedBuildControl, build_snapshot};
+use rustok_api::{PlatformBuildProgressSnapshot, PlatformBuildSnapshot};
+use rustok_build::{
+    BuildControl, BuildService, SharedBuildControl, build_progress_snapshot, build_snapshot,
+};
 
 #[derive(Clone)]
 pub struct ServerBuildControl {
@@ -46,6 +48,48 @@ impl BuildControl for ServerBuildControl {
             .await?
             .iter()
             .map(build_snapshot)
+            .collect())
+    }
+
+    async fn current_progress_sequence(&self) -> anyhow::Result<i64> {
+        self.read_service().current_progress_sequence().await
+    }
+
+    async fn active_build_progress(
+        &self,
+    ) -> anyhow::Result<Vec<PlatformBuildProgressSnapshot>> {
+        Ok(self
+            .read_service()
+            .active_build_progress()
+            .await?
+            .iter()
+            .map(build_progress_snapshot)
+            .collect())
+    }
+
+    async fn build_progress(
+        &self,
+        build_id: uuid::Uuid,
+    ) -> anyhow::Result<Option<PlatformBuildProgressSnapshot>> {
+        Ok(self
+            .read_service()
+            .build_progress(build_id)
+            .await?
+            .as_ref()
+            .map(build_progress_snapshot))
+    }
+
+    async fn build_progress_after(
+        &self,
+        sequence: i64,
+        limit: u64,
+    ) -> anyhow::Result<Vec<PlatformBuildProgressSnapshot>> {
+        Ok(self
+            .read_service()
+            .build_progress_after(sequence, limit)
+            .await?
+            .iter()
+            .map(build_progress_snapshot)
             .collect())
     }
 }
